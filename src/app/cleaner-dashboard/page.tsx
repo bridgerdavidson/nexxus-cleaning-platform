@@ -73,31 +73,68 @@ export default function CleanerDashboard() {
   const getHomeownerName = (appointment: any) => {
     if (appointment.homeowner) {
       const { first_name, last_name } = appointment.homeowner;
-      return `${first_name} ${last_name}`;
+      return `${first_name || ''} ${last_name || ''}`.trim() || 'Unknown Homeowner';
     }
-    return 'Unknown';
+    return 'Unknown Homeowner';
   };
 
   const getPropertyAddress = (appointment: any) => {
     if (appointment.property) {
       const { address, city, state, zip_code } = appointment.property;
-      return `${address}, ${city}, ${state} ${zip_code}`;
+      if (address && city && state) {
+        return `${address}, ${city}, ${state}${zip_code ? ' ' + zip_code : ''}`;
+      }
     }
     return 'Address not available';
   };
 
   const getTodaysJobs = () => {
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's date in local timezone (NOT UTC)
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
+    
     return appointments.filter(appointment => 
       appointment.scheduled_date === today && 
-      ['confirmed', 'in_progress'].includes(appointment.status)
+      ['pending', 'confirmed', 'in_progress'].includes(appointment.status)
     );
   };
 
   const getUpcomingJobs = () => {
+    // Get today's date in local timezone
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
+    
+    // Return only future jobs (exclude today's jobs)
     return appointments.filter(appointment => 
+      appointment.scheduled_date !== today &&
       ['pending', 'confirmed', 'in_progress'].includes(appointment.status)
     );
+  };
+
+  const formatTime = (time: string) => {
+    // Convert military time (HH:mm:ss) to standard time (h:mm AM/PM)
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const standardHour = hour % 12 || 12;
+    return `${standardHour}:${minutes} ${ampm}`;
+  };
+
+  const formatDate = (dateString: string) => {
+    // Parse date as local date (not UTC) to avoid timezone issues
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
   };
 
   const handleStartJob = async (appointmentId: string) => {
@@ -181,7 +218,7 @@ export default function CleanerDashboard() {
               {statsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.completedThisWeek}</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.upcomingJobs}</p>
               )}
             </div>
           </div>
@@ -193,11 +230,16 @@ export default function CleanerDashboard() {
               <DollarSign className="w-6 h-6 text-green-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Earned</p>
-              {statsLoading ? (
+              <p className="text-sm font-medium text-gray-600">Confirmed Today</p>
+              {appointmentsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">${stats.totalEarnings}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ${getTodaysJobs()
+                    .filter(a => a.status === 'confirmed')
+                    .reduce((sum, a) => sum + Number(a.total_price), 0)
+                    .toFixed(0)}
+                </p>
               )}
             </div>
           </div>
@@ -209,11 +251,16 @@ export default function CleanerDashboard() {
               <DollarSign className="w-6 h-6 text-yellow-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending</p>
-              {statsLoading ? (
+              <p className="text-sm font-medium text-gray-600">Pending Today</p>
+              {appointmentsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">${stats.pendingPayouts}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ${getTodaysJobs()
+                    .filter(a => a.status === 'pending')
+                    .reduce((sum, a) => sum + Number(a.total_price), 0)
+                    .toFixed(0)}
+                </p>
               )}
             </div>
           </div>
@@ -247,22 +294,49 @@ export default function CleanerDashboard() {
         ) : (
           <div className="space-y-4">
             {getTodaysJobs().map((appointment) => (
-              <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-4">
+              <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative" style={{
+                borderLeftColor: appointment.status === 'confirmed' ? '#10b981' : 
+                                 appointment.status === 'in_progress' ? '#f59e0b' : 
+                                 appointment.status === 'pending' ? '#3b82f6' : '#6b7280'
+              }}>
+                <div className="flex items-center space-x-4 flex-1">
                   <div className="flex-shrink-0">
                     <Clock className="w-8 h-8 text-primary-600" />
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{appointment.scheduled_time}</p>
-                    <p className="text-sm text-gray-600">{getHomeownerName(appointment)}</p>
-                    <p className="text-sm text-gray-600">{getPropertyAddress(appointment)}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900 text-lg">{formatTime(appointment.scheduled_time)}</p>
+                      <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                        appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                        appointment.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                        appointment.status === 'pending' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        <span className="w-1.5 h-1.5 rounded-full mr-1" style={{
+                          backgroundColor: appointment.status === 'confirmed' ? '#10b981' : 
+                                         appointment.status === 'in_progress' ? '#f59e0b' : 
+                                         appointment.status === 'pending' ? '#3b82f6' : '#6b7280'
+                        }}></span>
+                        {appointment.status}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-800 mt-1">
+                      {appointment.homeowner ? 
+                        `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}` : 
+                        'Unknown Homeowner'}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {appointment.property ? 
+                        `${appointment.property.address}, ${appointment.property.city}, ${appointment.property.state}` : 
+                        'Address not available'}
+                    </p>
                     {appointment.service_type && (
                       <p className="text-sm text-gray-600">{appointment.service_type.name}</p>
                     )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold text-gray-900">${appointment.total_price}</p>
+                <div className="text-right ml-4">
+                  <p className="text-lg font-bold text-gray-900">${Number(appointment.total_price).toFixed(0)}</p>
                   <button 
                     onClick={() => setActiveTab('jobs')}
                     className="btn-primary text-sm mt-2"
@@ -276,6 +350,82 @@ export default function CleanerDashboard() {
               <div className="text-center py-8">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">No jobs scheduled for today</p>
+                <p className="text-sm text-gray-500 mt-2">Check "Upcoming Jobs" below</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Upcoming Jobs */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Jobs</h3>
+        {appointmentsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-600">Loading jobs...</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {getUpcomingJobs().map((appointment) => (
+              <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative" style={{
+                borderLeftColor: appointment.status === 'confirmed' ? '#10b981' : 
+                                 appointment.status === 'in_progress' ? '#f59e0b' : 
+                                 appointment.status === 'pending' ? '#3b82f6' : '#6b7280'
+              }}>
+                <div className="flex items-center space-x-4 flex-1">
+                  <div className="flex-shrink-0">
+                    <Calendar className="w-8 h-8 text-primary-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900 text-lg">
+                        {formatDate(appointment.scheduled_date)} at {formatTime(appointment.scheduled_time)}
+                      </p>
+                      <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                        appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                        appointment.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
+                        appointment.status === 'pending' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        <span className="w-1.5 h-1.5 rounded-full mr-1" style={{
+                          backgroundColor: appointment.status === 'confirmed' ? '#10b981' : 
+                                         appointment.status === 'in_progress' ? '#f59e0b' : 
+                                         appointment.status === 'pending' ? '#3b82f6' : '#6b7280'
+                        }}></span>
+                        {appointment.status}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-800 mt-1">
+                      {appointment.homeowner ? 
+                        `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}` : 
+                        'Unknown Homeowner'}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {appointment.property ? 
+                        `${appointment.property.address}, ${appointment.property.city}, ${appointment.property.state}` : 
+                        'Address not available'}
+                    </p>
+                    {appointment.service_type && (
+                      <p className="text-sm text-gray-600">{appointment.service_type.name}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right ml-4">
+                  <p className="text-lg font-bold text-gray-900">${Number(appointment.total_price).toFixed(0)}</p>
+                  <button 
+                    onClick={() => setActiveTab('jobs')}
+                    className="btn-primary text-sm mt-2"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            ))}
+            {getUpcomingJobs().length === 0 && (
+              <div className="text-center py-8">
+                <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">No upcoming jobs</p>
               </div>
             )}
           </div>
@@ -318,10 +468,10 @@ export default function CleanerDashboard() {
                 </span>
               </div>
               
-              {appointment.special_instructions && (
+              {appointment.special_requests && (
                 <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm text-yellow-800">
-                    <strong>Special Instructions:</strong> {appointment.special_instructions}
+                    <strong>Special Requests:</strong> {appointment.special_requests}
                   </p>
                 </div>
               )}

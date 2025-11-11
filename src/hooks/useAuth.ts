@@ -172,63 +172,30 @@ export function useAuth(): AuthState & AuthActions {
       
       console.log('Signing up user:', { email, userData });
       
-      // Simple sign up first - for development, we'll disable email confirmation
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: undefined, // Disable email confirmation for development
-          data: {
-            first_name: userData.firstName,
-            last_name: userData.lastName,
-            role: userData.role,
-          }
-        }
+      // Call secure API route that uses admin client to set app_metadata
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          role: userData.role,
+        }),
       });
 
-      console.log('Auth signup result:', { authData, authError });
+      const result = await response.json();
 
-      if (authError) {
-        return { error: authError.message };
+      if (!response.ok) {
+        return { error: result.error || 'Signup failed' };
       }
 
-      if (authData.user) {
-        // Wait a moment for the trigger to potentially create the profile
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if profile was created by trigger
-        const { data: existingProfile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', authData.user.id)
-          .single();
+      console.log('Signup successful:', result);
 
-        if (!existingProfile) {
-          // Create the profile manually since the trigger didn't work
-          console.log('Creating profile manually...');
-          const { data: newProfile, error: profileError } = await supabase
-            .from('user_profiles')
-            .insert({
-              id: authData.user.id,
-              email: email,
-              first_name: userData.firstName,
-              last_name: userData.lastName,
-              role: userData.role as 'homeowner' | 'cleaner' | 'admin',
-            })
-            .select()
-            .single();
-
-          if (profileError) {
-            console.error('Error creating profile:', profileError);
-            return { error: 'Failed to create user profile' };
-          }
-          
-          console.log('Profile created successfully:', newProfile);
-        } else {
-          console.log('Profile already exists:', existingProfile);
-        }
-      }
-
+      // User can now sign in
       return {};
     } catch (error) {
       console.error('Signup error:', error);

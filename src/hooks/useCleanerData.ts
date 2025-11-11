@@ -10,7 +10,7 @@ export interface CleanerAppointment {
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   total_price: number;
-  special_instructions?: string;
+  special_requests?: string;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -27,7 +27,7 @@ export interface CleanerAppointment {
   service_type: {
     name: string;
     description: string;
-    estimated_duration: number;
+    duration_minutes: number;
   } | null;
 }
 
@@ -100,14 +100,18 @@ export function useCleanerAppointments() {
       try {
         setLoading(true);
         
-        // First get the cleaner profile ID
+        // Check if cleaner profile exists for this user
+        // Note: cleaner_profiles.id IS the user's id (no separate user_id column)
         const { data: cleanerProfile, error: profileError } = await supabase
           .from('cleaner_profiles')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .single();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Cleaner profile error:', profileError);
+          throw profileError;
+        }
         if (!cleanerProfile) throw new Error('Cleaner profile not found');
 
         const { data, error } = await supabase
@@ -118,7 +122,7 @@ export function useCleanerAppointments() {
             scheduled_time,
             status,
             total_price,
-            special_instructions,
+            special_requests,
             homeowner:user_profiles!homeowner_id(
               first_name,
               last_name,
@@ -135,12 +139,12 @@ export function useCleanerAppointments() {
             service_type:service_types(
               name,
               description,
-              estimated_duration
+              duration_minutes
             )
           `)
-          .eq('cleaner_id', cleanerProfile.id)
+          .eq('cleaner_id', user.id)
           .order('scheduled_date', { ascending: true });
-
+        
         if (error) throw error;
         
         // Transform the data to match our interface
@@ -187,10 +191,11 @@ export function useCleanerStats() {
         setLoading(true);
 
         // First get the cleaner profile
+        // Note: cleaner_profiles.id IS the user's id
         const { data: cleanerProfile, error: profileError } = await supabase
           .from('cleaner_profiles')
           .select('id, rating, total_jobs')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .single();
 
         if (profileError) throw profileError;
@@ -200,20 +205,20 @@ export function useCleanerStats() {
         const { count: totalJobs } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('cleaner_id', cleanerProfile.id);
+          .eq('cleaner_id', user.id);
 
         // Get completed jobs count
         const { count: completedJobs } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('cleaner_id', cleanerProfile.id)
+          .eq('cleaner_id', user.id)
           .eq('status', 'completed');
 
         // Get upcoming jobs count
         const { count: upcomingJobs } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('cleaner_id', cleanerProfile.id)
+          .eq('cleaner_id', user.id)
           .in('status', ['pending', 'confirmed', 'in_progress']);
 
         // Get jobs completed this week
@@ -223,7 +228,7 @@ export function useCleanerStats() {
         const { count: completedThisWeek } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('cleaner_id', cleanerProfile.id)
+          .eq('cleaner_id', user.id)
           .eq('status', 'completed')
           .gte('scheduled_date', oneWeekAgo.toISOString().split('T')[0]);
 
@@ -231,7 +236,7 @@ export function useCleanerStats() {
         const { data: completedAppointments } = await supabase
           .from('appointments')
           .select('id, total_price')
-          .eq('cleaner_id', cleanerProfile.id)
+          .eq('cleaner_id', user.id)
           .eq('status', 'completed');
 
         const totalEarnings = completedAppointments?.reduce((sum, appointment) => 
@@ -337,11 +342,11 @@ export function useCleanerPayouts() {
       try {
         setLoading(true);
         
-        // First get the cleaner profile ID
+        // Note: cleaner_profiles.id IS the user's id
         const { data: cleanerProfile, error: profileError } = await supabase
           .from('cleaner_profiles')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .single();
 
         if (profileError) throw profileError;
@@ -351,7 +356,7 @@ export function useCleanerPayouts() {
         const { data: appointments } = await supabase
           .from('appointments')
           .select('id')
-          .eq('cleaner_id', cleanerProfile.id);
+          .eq('cleaner_id', user.id);
 
         if (!appointments || appointments.length === 0) {
           setPayouts([]);
@@ -427,11 +432,11 @@ export function useCleanerPhotos() {
       try {
         setLoading(true);
         
-        // First get the cleaner profile ID
+        // Note: cleaner_profiles.id IS the user's id
         const { data: cleanerProfile, error: profileError } = await supabase
           .from('cleaner_profiles')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .single();
 
         if (profileError) throw profileError;
@@ -441,7 +446,7 @@ export function useCleanerPhotos() {
         const { data: appointments } = await supabase
           .from('appointments')
           .select('id')
-          .eq('cleaner_id', cleanerProfile.id);
+          .eq('cleaner_id', user.id);
 
         if (!appointments || appointments.length === 0) {
           setPhotos([]);

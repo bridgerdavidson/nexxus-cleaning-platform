@@ -250,6 +250,8 @@ INSERT INTO service_types (name, description, base_price, duration_minutes, serv
 ('Custom Service', 'Tailored cleaning service based on specific requirements', 100.00, 180, 'custom');
 
 -- Function to handle new user registration
+-- Uses app_metadata for role (secure, only settable by service role)
+-- Uses user_metadata for name (user-editable)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -259,7 +261,7 @@ BEGIN
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
         COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
-        COALESCE(NEW.raw_user_meta_data->>'role', 'homeowner')::user_role
+        COALESCE(NEW.raw_app_meta_data->>'role', 'homeowner')::user_role
     );
     RETURN NEW;
 END;
