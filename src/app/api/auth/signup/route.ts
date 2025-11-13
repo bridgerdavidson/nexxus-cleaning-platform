@@ -3,6 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function POST(request: NextRequest) {
   try {
+    // 🔍 DEBUG: Check environment variables
+    console.log('🔍 === ENVIRONMENT DEBUG ===');
+    console.log('🔍 SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log('🔍 HAS_SERVICE_KEY:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+    console.log('🔍 SERVICE_KEY_START:', process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20));
+    console.log('🔍 === END DEBUG ===');
+    
     const body = await request.json();
     const { email, password, firstName, lastName, role } = body;
 
