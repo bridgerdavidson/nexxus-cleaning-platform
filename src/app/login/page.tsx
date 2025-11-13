@@ -32,6 +32,8 @@ function LoginContent() {
         return '/homeowner-dashboard';
       case 'cleaner':
         return '/cleaner-dashboard';
+      case 'manager':
+        return '/manager-dashboard';
       case 'admin':
         return '/admin-dashboard';
       default:
@@ -63,6 +65,8 @@ function LoginContent() {
         return 'Homeowner';
       case 'cleaner':
         return 'Cleaner';
+      case 'manager':
+        return 'Manager';
       case 'admin':
         return 'Admin';
       default:
@@ -76,6 +80,11 @@ function LoginContent() {
         return {
           email: 'admin@nexxus.com',
           password: 'Admin123!'
+        };
+      case 'manager':
+        return {
+          email: 'manager@nexxus.com',
+          password: 'Manager123!'
         };
       case 'cleaner':
         return {
@@ -241,7 +250,7 @@ function LoginContent() {
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="mt-6 grid grid-cols-2 gap-3">
               <Link
                 href="/login?role=homeowner"
                 className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
@@ -257,6 +266,14 @@ function LoginContent() {
                 }`}
               >
                 Cleaner
+              </Link>
+              <Link
+                href="/login?role=manager"
+                className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
+                  role === 'manager' ? 'bg-primary-50 border-primary-300 text-primary-700' : ''
+                }`}
+              >
+                Manager
               </Link>
               <Link
                 href="/login?role=admin"
@@ -289,7 +306,7 @@ function LoginContent() {
             <button
               type="button"
               onClick={() => {
-                const validRole = role as 'homeowner' | 'cleaner' | 'admin';
+                const validRole = role as 'homeowner' | 'cleaner' | 'admin' | 'manager';
                 enterBypassMode(validRole);
                 router.push(getDashboardPath(validRole));
               }}

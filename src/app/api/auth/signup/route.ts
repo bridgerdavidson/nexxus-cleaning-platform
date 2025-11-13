@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate role - be explicit about what we're doing
-    const validRoles = ['homeowner', 'cleaner', 'admin'];
+    const validRoles = ['homeowner', 'cleaner', 'admin', 'manager'];
     const userRole = role && validRoles.includes(role) ? role : 'homeowner';
     
     console.log('✅ Role validation:', { 

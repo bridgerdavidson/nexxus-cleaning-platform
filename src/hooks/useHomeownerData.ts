@@ -53,7 +53,14 @@ export interface Message {
   content: string;
   is_read: boolean;
   created_at: string;
+  sender_id: string;
+  recipient_id: string;
   sender: {
+    first_name: string;
+    last_name: string;
+    role: string;
+  } | null;
+  recipient: {
     first_name: string;
     last_name: string;
     role: string;
@@ -276,13 +283,20 @@ export function useHomeownerMessages() {
             content,
             is_read,
             created_at,
+            sender_id,
+            recipient_id,
             sender:user_profiles!sender_id(
+              first_name,
+              last_name,
+              role
+            ),
+            recipient:user_profiles!recipient_id(
               first_name,
               last_name,
               role
             )
           `)
-          .eq('recipient_id', user.id)
+          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -290,7 +304,8 @@ export function useHomeownerMessages() {
         // Transform the data to match our interface
         const transformedData = (data || []).map(message => ({
           ...message,
-          sender: Array.isArray(message.sender) ? message.sender[0] : message.sender
+          sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
+          recipient: Array.isArray(message.recipient) ? message.recipient[0] : message.recipient
         }));
         
         setMessages(transformedData);
@@ -319,6 +334,8 @@ export function useHomeownerPayments() {
     const fetchPayments = async () => {
       try {
         setLoading(true);
+        
+        // Get all payments - RLS policy will automatically filter for homeowner's appointments
         const { data, error } = await supabase
           .from('payments')
           .select(`
@@ -327,7 +344,7 @@ export function useHomeownerPayments() {
             status,
             paid_at,
             created_at,
-            appointment:appointments!inner(
+            appointment:appointments(
               scheduled_date,
               homeowner_id,
               service_type:service_types(
@@ -335,7 +352,6 @@ export function useHomeownerPayments() {
               )
             )
           `)
-          .eq('appointment.homeowner_id', user.id)
           .order('created_at', { ascending: false });
 
         if (error) throw error;

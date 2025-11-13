@@ -16,7 +16,7 @@ export interface AuthActions {
   signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role: string }) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User['profile']>) => Promise<{ error?: string }>;
-  enterBypassMode: (role: 'admin' | 'homeowner' | 'cleaner') => void;
+  enterBypassMode: (role: 'admin' | 'homeowner' | 'cleaner' | 'manager') => void;
 }
 
 export function useAuth(): AuthState & AuthActions {
@@ -206,7 +206,29 @@ export function useAuth(): AuthState & AuthActions {
   };
 
   const signOut = async (): Promise<void> => {
-    await supabase.auth.signOut();
+    try {
+      // Sign out from Supabase
+      await supabase.auth.signOut();
+      
+      // Clear local state immediately
+      setUser(null);
+      setSession(null);
+      setBypassMode(false);
+      
+      // Force navigation to home page
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    } catch (error) {
+      console.error('Error signing out:', error);
+      // Still try to clear state and redirect even if signOut fails
+      setUser(null);
+      setSession(null);
+      setBypassMode(false);
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+    }
   };
 
   const updateProfile = async (updates: Partial<User['profile']>): Promise<{ error?: string }> => {
@@ -239,7 +261,7 @@ export function useAuth(): AuthState & AuthActions {
     }
   };
 
-  const enterBypassMode = (role: 'admin' | 'homeowner' | 'cleaner') => {
+  const enterBypassMode = (role: 'admin' | 'homeowner' | 'cleaner' | 'manager') => {
     const mockUsers = {
       admin: {
         id: 'mock-admin-id',
@@ -276,6 +298,19 @@ export function useAuth(): AuthState & AuthActions {
           lastName: 'Cleaner',
           phone: '(555) 345-6789',
           address: '789 Service Rd, Clean City, CC 34567',
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      manager: {
+        id: 'mock-manager-id',
+        email: 'manager@nexxus.com',
+        role: 'manager' as const,
+        profile: {
+          firstName: 'Operations',
+          lastName: 'Manager',
+          phone: '(555) 456-7890',
+          address: '321 Management Blvd, Manager City, MC 45678',
         },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

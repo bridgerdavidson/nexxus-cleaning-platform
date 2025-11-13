@@ -2,21 +2,18 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '../hooks/useAuth';
 import { Menu, X, ChevronDown, LogOut, User, Settings } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const { user, signOut } = useAuth();
-  const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
   const handleLogout = async () => {
-    await signOut();
     setIsUserDropdownOpen(false);
-    router.push('/'); // Redirect to home page after logout
+    await signOut(); // signOut now handles redirect automatically
   };
 
   const getDashboardLink = () => {
@@ -29,6 +26,8 @@ const Navbar: React.FC = () => {
         return '/cleaner-dashboard';
       case 'admin':
         return '/admin-dashboard';
+      case 'manager':
+        return '/manager-dashboard';
       default:
         return '/';
     }
@@ -136,6 +135,13 @@ const Navbar: React.FC = () => {
                       Cleaner Login
                     </Link>
                     <Link
+                      href="/login?role=manager"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      onClick={() => setIsLoginDropdownOpen(false)}
+                    >
+                      Manager Login
+                    </Link>
+                    <Link
                       href="/login?role=admin"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       onClick={() => setIsLoginDropdownOpen(false)}
@@ -233,6 +239,13 @@ const Navbar: React.FC = () => {
                     onClick={() => setIsMenuOpen(false)}
                   >
                     Cleaner Login
+                  </Link>
+                  <Link
+                    href="/login?role=manager"
+                    className="block px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Manager Login
                   </Link>
                   <Link
                     href="/login?role=admin"

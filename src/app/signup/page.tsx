@@ -37,6 +37,8 @@ function SignupContent() {
         return '/homeowner-dashboard';
       case 'cleaner':
         return '/cleaner-dashboard';
+      case 'manager':
+        return '/manager-dashboard';
       case 'admin':
         return '/admin-dashboard';
       default:
@@ -91,6 +93,8 @@ function SignupContent() {
         return 'Homeowner';
       case 'cleaner':
         return 'Cleaner';
+      case 'manager':
+        return 'Manager';
       case 'admin':
         return 'Admin';
       default:
@@ -106,6 +110,13 @@ function SignupContent() {
           firstName: 'Admin',
           lastName: 'User',
           password: 'Admin123!'
+        };
+      case 'manager':
+        return {
+          email: 'manager@nexxus.com',
+          firstName: 'Operations',
+          lastName: 'Manager',
+          password: 'Manager123!'
         };
       case 'cleaner':
         return {
@@ -356,7 +367,7 @@ function SignupContent() {
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="mt-6 grid grid-cols-2 gap-3">
               <Link
                 href="/signup?role=homeowner"
                 className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
@@ -372,6 +383,14 @@ function SignupContent() {
                 }`}
               >
                 Cleaner
+              </Link>
+              <Link
+                href="/signup?role=manager"
+                className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
+                  role === 'manager' ? 'bg-primary-50 border-primary-300 text-primary-700' : ''
+                }`}
+              >
+                Manager
               </Link>
               <Link
                 href="/signup?role=admin"

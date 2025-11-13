@@ -364,32 +364,48 @@ export default function HomeownerDashboard() {
         </div>
       ) : (
         <div className="space-y-4">
-          {messages.map((message) => (
-            <div key={message.id} className={`p-4 rounded-lg border ${message.is_read ? 'bg-white' : 'bg-blue-50 border-blue-200'}`}>
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center space-x-2">
-                  <MessageCircle className="w-5 h-5 text-primary-600" />
-                  {message.sender && (
-                    <span className="font-medium text-gray-900">
-                      {message.sender.first_name} {message.sender.last_name}
-                    </span>
-                  )}
-                  {message.sender?.role && (
-                    <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                      {message.sender.role}
-                    </span>
-                  )}
+          {messages.map((message) => {
+            const isSent = message.sender_id === user?.id;
+            const displayPerson = isSent ? message.recipient : message.sender;
+            const direction = isSent ? 'To' : 'From';
+            
+            return (
+              <div key={message.id} className={`p-4 rounded-lg border ${
+                isSent 
+                  ? 'bg-green-50 border-green-200' 
+                  : message.is_read ? 'bg-white' : 'bg-blue-50 border-blue-200'
+              }`}>
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <MessageCircle className={`w-5 h-5 ${isSent ? 'text-green-600' : 'text-primary-600'}`} />
+                    <span className="text-xs text-gray-500 font-medium">{direction}:</span>
+                    {displayPerson && (
+                      <span className="font-medium text-gray-900">
+                        {displayPerson.first_name} {displayPerson.last_name}
+                      </span>
+                    )}
+                    {displayPerson?.role && (
+                      <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
+                        {displayPerson.role}
+                      </span>
+                    )}
+                    {isSent && (
+                      <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                        Sent
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm text-gray-500">
+                    {new Date(message.created_at).toLocaleDateString()}
+                  </span>
                 </div>
-                <span className="text-sm text-gray-500">
-                  {new Date(message.created_at).toLocaleDateString()}
-                </span>
+                {message.subject && (
+                  <h4 className="font-medium text-gray-900 mb-1">{message.subject}</h4>
+                )}
+                <p className="text-gray-700">{message.content}</p>
               </div>
-              {message.subject && (
-                <h4 className="font-medium text-gray-900 mb-1">{message.subject}</h4>
-              )}
-              <p className="text-gray-700">{message.content}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

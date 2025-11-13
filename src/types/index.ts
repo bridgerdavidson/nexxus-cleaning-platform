@@ -4,7 +4,7 @@
 // ==========================================
 
 // ENUMS (must match database)
-export type UserRole = 'homeowner' | 'cleaner' | 'admin';
+export type UserRole = 'homeowner' | 'cleaner' | 'admin' | 'manager';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 export type ServiceType = 'regular' | 'deep' | 'move_out' | 'custom';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
