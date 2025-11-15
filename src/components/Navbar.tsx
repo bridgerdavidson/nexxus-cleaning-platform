@@ -8,7 +8,6 @@ import { Menu, X, ChevronDown, LogOut, User, Settings } from 'lucide-react';
 const Navbar: React.FC = () => {
   const { user, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -109,47 +108,19 @@ const Navbar: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="relative">
-                <button
-                  onClick={() => setIsLoginDropdownOpen(!isLoginDropdownOpen)}
-                  className="flex items-center space-x-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors duration-200"
+              <div className="flex items-center space-x-3">
+                <Link
+                  href="/login"
+                  className="text-gray-700 hover:text-primary-600 font-medium transition-colors duration-200"
                 >
-                  <span>Login</span>
-                  <ChevronDown className="w-4 h-4" />
-                </button>
-
-                {isLoginDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                    <Link
-                      href="/login?role=homeowner"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsLoginDropdownOpen(false)}
-                    >
-                      Homeowner Login
-                    </Link>
-                    <Link
-                      href="/login?role=cleaner"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsLoginDropdownOpen(false)}
-                    >
-                      Cleaner Login
-                    </Link>
-                    <Link
-                      href="/login?role=manager"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsLoginDropdownOpen(false)}
-                    >
-                      Manager Login
-                    </Link>
-                    <Link
-                      href="/login?role=admin"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsLoginDropdownOpen(false)}
-                    >
-                      Admin Login
-                    </Link>
-                  </div>
-                )}
+                  Login
+                </Link>
+                <Link
+                  href="/signup"
+                  className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors duration-200"
+                >
+                  Sign Up
+                </Link>
               </div>
             )}
           </div>
@@ -225,34 +196,20 @@ const Navbar: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <div className="border-t border-gray-200 pt-3">
+                <div className="border-t border-gray-200 pt-3 space-y-2">
                   <Link
-                    href="/login?role=homeowner"
-                    className="block px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
+                    href="/login"
+                    className="block px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200 font-medium"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    Homeowner Login
+                    Login
                   </Link>
                   <Link
-                    href="/login?role=cleaner"
-                    className="block px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
+                    href="/signup"
+                    className="block px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200 font-medium text-center mx-3"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    Cleaner Login
-                  </Link>
-                  <Link
-                    href="/login?role=manager"
-                    className="block px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Manager Login
-                  </Link>
-                  <Link
-                    href="/login?role=admin"
-                    className="block px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Admin Login
+                    Sign Up
                   </Link>
                 </div>
               )}

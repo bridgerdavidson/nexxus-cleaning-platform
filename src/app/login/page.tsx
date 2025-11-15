@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { Eye, EyeOff, Loader } from 'lucide-react';
 import Link from 'next/link';
@@ -12,11 +12,10 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showDemoSelector, setShowDemoSelector] = useState(false);
   
   const { signIn, user, loading, enterBypassMode } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const role = searchParams.get('role') || 'homeowner';
 
   useEffect(() => {
     // Redirect if already logged in
@@ -59,55 +58,9 @@ function LoginContent() {
     }
   };
 
-  const getRoleDisplayName = (role: string) => {
-    switch (role) {
-      case 'homeowner':
-        return 'Homeowner';
-      case 'cleaner':
-        return 'Cleaner';
-      case 'manager':
-        return 'Manager';
-      case 'admin':
-        return 'Admin';
-      default:
-        return 'User';
-    }
-  };
-
-  const getTestCredentials = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return {
-          email: 'admin@nexxus.com',
-          password: 'Admin123!'
-        };
-      case 'manager':
-        return {
-          email: 'manager@nexxus.com',
-          password: 'Manager123!'
-        };
-      case 'cleaner':
-        return {
-          email: 'cleaner@nexxus.com',
-          password: 'Cleaner123!'
-        };
-      case 'homeowner':
-        return {
-          email: 'homeowner@nexxus.com',
-          password: 'Homeowner123!'
-        };
-      default:
-        return {
-          email: '',
-          password: ''
-        };
-    }
-  };
-
-  const fillTestCredentials = () => {
-    const testData = getTestCredentials(role);
-    setEmail(testData.email);
-    setPassword(testData.password);
+  const handleDemoMode = (role: 'homeowner' | 'cleaner' | 'admin' | 'manager') => {
+    enterBypassMode(role);
+    router.push(getDashboardPath(role));
   };
 
   return (
@@ -118,34 +71,15 @@ function LoginContent() {
           <p className="text-sm text-gray-600 mt-1">Cleaning Solutions</p>
         </div>
         <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-          {getRoleDisplayName(role)} Login
+          Sign in to your account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Sign in to your {role} account
+          Welcome back! Please enter your credentials
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {/* Test Credentials Banner */}
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="text-sm font-medium text-blue-800 mb-2">Test Account</h3>
-            <p className="text-xs text-blue-600 mb-3">
-              Use these credentials to test the {role} dashboard:
-            </p>
-            <div className="text-xs text-blue-700 mb-3">
-              <div>Email: {getTestCredentials(role).email}</div>
-              <div>Password: {getTestCredentials(role).password}</div>
-            </div>
-            <button
-              type="button"
-              onClick={fillTestCredentials}
-              className="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
-            >
-              Fill Test Credentials
-            </button>
-          </div>
-
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
@@ -240,83 +174,70 @@ function LoginContent() {
             </div>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Or sign in as</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <Link
-                href="/login?role=homeowner"
-                className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
-                  role === 'homeowner' ? 'bg-primary-50 border-primary-300 text-primary-700' : ''
-                }`}
-              >
-                Homeowner
-              </Link>
-              <Link
-                href="/login?role=cleaner"
-                className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
-                  role === 'cleaner' ? 'bg-primary-50 border-primary-300 text-primary-700' : ''
-                }`}
-              >
-                Cleaner
-              </Link>
-              <Link
-                href="/login?role=manager"
-                className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
-                  role === 'manager' ? 'bg-primary-50 border-primary-300 text-primary-700' : ''
-                }`}
-              >
-                Manager
-              </Link>
-              <Link
-                href="/login?role=admin"
-                className={`inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors ${
-                  role === 'admin' ? 'bg-primary-50 border-primary-300 text-primary-700' : ''
-                }`}
-              >
-                Admin
-              </Link>
-            </div>
-          </div>
-
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{' '}
-              <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
+              <Link href="/signup" className="font-medium text-primary-600 hover:text-primary-500">
                 Sign up here
-              </a>
+              </Link>
             </p>
           </div>
 
           {/* Demo Mode Section */}
           <div className="mt-8 pt-6 border-t border-gray-200">
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-medium text-gray-900 mb-1">Demo Mode</h3>
-              <p className="text-xs text-gray-600">
-                Skip authentication and explore the {getRoleDisplayName(role).toLowerCase()} dashboard
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const validRole = role as 'homeowner' | 'cleaner' | 'admin' | 'manager';
-                enterBypassMode(validRole);
-                router.push(getDashboardPath(validRole));
-              }}
-              className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-2 px-4 rounded-md text-sm font-medium hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-sm"
-            >
-              🚀 Enter {getRoleDisplayName(role)} Portal
-            </button>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              Perfect for presentations and demos
-            </p>
+            {!showDemoSelector ? (
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowDemoSelector(true)}
+                  className="text-sm text-gray-600 hover:text-primary-600 transition-colors"
+                >
+                  Try Demo Mode →
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="text-center mb-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-1">Demo Mode</h3>
+                  <p className="text-xs text-gray-600">
+                    Explore the platform without authentication
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDemoMode('homeowner')}
+                    className="text-sm bg-primary-50 text-primary-700 py-2 px-3 rounded-md hover:bg-primary-100 transition-colors"
+                  >
+                    Homeowner
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDemoMode('cleaner')}
+                    className="text-sm bg-success-50 text-success-700 py-2 px-3 rounded-md hover:bg-success-100 transition-colors"
+                  >
+                    Cleaner
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDemoMode('manager')}
+                    className="text-sm bg-gray-50 text-gray-700 py-2 px-3 rounded-md hover:bg-gray-100 transition-colors"
+                  >
+                    Manager
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDemoMode('admin')}
+                    className="text-sm bg-gray-50 text-gray-700 py-2 px-3 rounded-md hover:bg-gray-100 transition-colors"
+                  >
+                    Admin
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-3 text-center">
+                  Perfect for presentations and demos
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

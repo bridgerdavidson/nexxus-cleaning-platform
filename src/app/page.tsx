@@ -30,15 +30,18 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-slide-up">
               <Link
-                href="/login?role=homeowner"
+                href="/signup"
                 className="btn-primary text-lg px-8 py-4 inline-flex items-center space-x-2"
               >
-                <span>Get a Cleaning Quote Today</span>
+                <span>Get Started Today</span>
                 <ArrowRight className="w-5 h-5" />
               </Link>
-              <button className="btn-secondary text-lg px-8 py-4">
-                Learn More
-              </button>
+              <Link
+                href="/login"
+                className="btn-secondary text-lg px-8 py-4"
+              >
+                Sign In
+              </Link>
             </div>
           </div>
         </div>
@@ -244,10 +247,10 @@ export default function Home() {
             with their homes.
           </p>
           <Link
-            href="/login?role=homeowner"
+            href="/signup"
             className="btn-secondary text-lg px-8 py-4 inline-flex items-center space-x-2"
           >
-            <span>Book Your First Cleaning</span>
+            <span>Get Started Now</span>
             <ArrowRight className="w-5 h-5" />
           </Link>
         </div>
