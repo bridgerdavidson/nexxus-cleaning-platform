@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, withTimeout } from '../lib/supabase';
 import { User } from '../types';
 
 export interface AuthState {
@@ -56,11 +56,15 @@ export function useAuth(): AuthState & AuthActions {
     try {
       console.log('Loading profile for user:', supabaseUser.id, supabaseUser.email);
       
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', supabaseUser.id)
-        .single();
+      const { data: profile, error } = await withTimeout(
+        () => supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', supabaseUser.id)
+          .single(),
+        5000,
+        "Profile query timed out"
+      );
 
       console.log('Profile query result:', { profile, error });
 
@@ -71,11 +75,15 @@ export function useAuth(): AuthState & AuthActions {
           console.log('No profile found, waiting and retrying...');
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          const { data: retryProfile, error: retryError } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', supabaseUser.id)
-            .single();
+          const { data: retryProfile, error: retryError } = await withTimeout(
+            () => supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', supabaseUser.id)
+              .single(),
+            5000,
+            "Profile retry query timed out"
+          );
 
           if (retryError || !retryProfile) {
             console.error('Profile still not found after retry:', retryError);
