@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { 
   Calendar, 
@@ -28,8 +29,9 @@ import {
 } from '../../hooks/useAdminData';
 
 export default function AdminDashboard() {
-  const { user, enterBypassMode } = useAuth();
+  const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const router = useRouter();
 
   // Real data hooks - must be called at top level
   const { appointments, loading: appointmentsLoading, error: appointmentsError } = useAdminAppointments();
@@ -38,26 +40,20 @@ export default function AdminDashboard() {
   const { payments, loading: paymentsLoading, error: paymentsError } = useAdminPayments();
   const { messages, loading: messagesLoading, error: messagesError } = useAdminMessages();
 
-  // If no user, show Enter button
-  if (!user) {
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+
+  // Show loading while checking auth
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <div className="mb-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <BarChart3 className="w-8 h-8 text-primary-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Admin Portal</h2>
-            <p className="text-gray-600">
-              Access your administrative dashboard to manage cleaners, bookings, and business operations.
-            </p>
-          </div>
-          <button
-            onClick={() => enterBypassMode('admin')}
-            className="w-full btn-primary text-lg py-3"
-          >
-            Enter Portal
-          </button>
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+          <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );

@@ -1,34 +1,56 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { useAuth } from '../hooks/useAuth';
-import { Menu, X, ChevronDown, LogOut, User, Settings } from 'lucide-react';
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useAuth } from "../hooks/useAuth";
+import { Menu, X, ChevronDown, LogOut, User, Settings } from "lucide-react";
 
 const Navbar: React.FC = () => {
   const { user, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = async () => {
-    setIsUserDropdownOpen(false);
-    await signOut(); // signOut now handles redirect automatically
+    // Don't close dropdown - signOut will redirect anyway
+    // Closing dropdown first can cause the click event to be lost
+    await signOut();
   };
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+
+    if (isUserDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isUserDropdownOpen]);
+
   const getDashboardLink = () => {
-    if (!user) return '/';
-    
+    if (!user) return "/";
+
     switch (user.role) {
-      case 'homeowner':
-        return '/homeowner-dashboard';
-      case 'cleaner':
-        return '/cleaner-dashboard';
-      case 'admin':
-        return '/admin-dashboard';
-      case 'manager':
-        return '/manager-dashboard';
+      case "homeowner":
+        return "/homeowner-dashboard";
+      case "cleaner":
+        return "/cleaner-dashboard";
+      case "admin":
+        return "/admin-dashboard";
+      case "manager":
+        return "/manager-dashboard";
       default:
-        return '/';
+        return "/";
     }
   };
 
@@ -39,9 +61,7 @@ const Navbar: React.FC = () => {
           {/* Logo */}
           <div className="flex-shrink-0">
             <Link href="/" className="flex items-center">
-              <div className="text-2xl font-bold text-primary-600">
-                Nexxus
-              </div>
+              <div className="text-2xl font-bold text-primary-600">Nexxus</div>
               <div className="ml-2 text-sm text-gray-600 font-medium">
                 Cleaning Solutions
               </div>
@@ -69,7 +89,7 @@ const Navbar: React.FC = () => {
           {/* Auth Section */}
           <div className="hidden md:block">
             {user ? (
-              <div className="relative">
+              <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                   className="flex items-center space-x-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
@@ -172,11 +192,12 @@ const Navbar: React.FC = () => {
               >
                 Contact
               </Link>
-              
+
               {user ? (
                 <div className="border-t border-gray-200 pt-3">
                   <div className="px-3 py-2 text-sm text-gray-500">
-                    Signed in as {user.profile.firstName} {user.profile.lastName}
+                    Signed in as {user.profile.firstName}{" "}
+                    {user.profile.lastName}
                   </div>
                   <Link
                     href={getDashboardLink()}
@@ -186,10 +207,7 @@ const Navbar: React.FC = () => {
                     Dashboard
                   </Link>
                   <button
-                    onClick={() => {
-                      handleLogout();
-                      setIsMenuOpen(false);
-                    }}
+                    onClick={handleLogout}
                     className="block w-full text-left px-3 py-2 text-gray-700 hover:text-primary-600 transition-colors duration-200"
                   >
                     Sign Out

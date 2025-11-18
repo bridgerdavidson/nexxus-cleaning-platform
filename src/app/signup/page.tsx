@@ -12,7 +12,7 @@ export default function SignupRoleSelector() {
       description: 'Book professional cleaning services for your home',
       icon: Home,
       color: 'primary',
-      featured: true,
+      featured: false,
     },
     {
       id: 'cleaner',

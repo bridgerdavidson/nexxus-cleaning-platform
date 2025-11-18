@@ -12,9 +12,8 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showDemoSelector, setShowDemoSelector] = useState(false);
   
-  const { signIn, user, loading, enterBypassMode } = useAuth();
+  const { signIn, user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -56,11 +55,6 @@ function LoginContent() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleDemoMode = (role: 'homeowner' | 'cleaner' | 'admin' | 'manager') => {
-    enterBypassMode(role);
-    router.push(getDashboardPath(role));
   };
 
   return (
@@ -181,63 +175,6 @@ function LoginContent() {
                 Sign up here
               </Link>
             </p>
-          </div>
-
-          {/* Demo Mode Section */}
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            {!showDemoSelector ? (
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setShowDemoSelector(true)}
-                  className="text-sm text-gray-600 hover:text-primary-600 transition-colors"
-                >
-                  Try Demo Mode →
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div className="text-center mb-4">
-                  <h3 className="text-sm font-medium text-gray-900 mb-1">Demo Mode</h3>
-                  <p className="text-xs text-gray-600">
-                    Explore the platform without authentication
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleDemoMode('homeowner')}
-                    className="text-sm bg-primary-50 text-primary-700 py-2 px-3 rounded-md hover:bg-primary-100 transition-colors"
-                  >
-                    Homeowner
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDemoMode('cleaner')}
-                    className="text-sm bg-success-50 text-success-700 py-2 px-3 rounded-md hover:bg-success-100 transition-colors"
-                  >
-                    Cleaner
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDemoMode('manager')}
-                    className="text-sm bg-gray-50 text-gray-700 py-2 px-3 rounded-md hover:bg-gray-100 transition-colors"
-                  >
-                    Manager
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDemoMode('admin')}
-                    className="text-sm bg-gray-50 text-gray-700 py-2 px-3 rounded-md hover:bg-gray-100 transition-colors"
-                  >
-                    Admin
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-3 text-center">
-                  Perfect for presentations and demos
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -168,6 +168,9 @@ CREATE POLICY "Cleaners can view their own profile" ON cleaner_profiles
 CREATE POLICY "Cleaners can update their own profile" ON cleaner_profiles
     FOR UPDATE USING (auth.uid() = id);
 
+CREATE POLICY "Cleaners can insert their own profile" ON cleaner_profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
 CREATE POLICY "Anyone can view cleaner profiles" ON cleaner_profiles
     FOR SELECT USING (true);
 

@@ -1,10 +1,62 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 // Client-side Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Avoid clever background refresh that may hook into visibilitychange
+    autoRefreshToken: false,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});
+
+/** Generic timeout helper so no async call can hang the UI forever */
+export async function withTimeout<T>(
+  fn: () => Promise<T> | T,
+  ms: number,
+  errorMessage = 'Operation timed out'
+): Promise<T> {
+  console.log('[withTimeout] starting', { ms, errorMessage });
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      console.warn('[withTimeout] timeout fired', { ms, errorMessage });
+      reject(new Error(errorMessage));
+    }, ms);
+  });
+
+  try {
+    const op = Promise.resolve(fn() as unknown as T);
+    const result = (await Promise.race([op, timeout])) as T;
+    console.log('[withTimeout] operation resolved before timeout');
+    return result;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    console.log('[withTimeout] cleanup done');
+  }
+}
+
+/** Safe session getter with a timeout, so it can't hang either */
+export async function getSessionSafe(timeoutMs = 5000) {
+  const { data, error } = await withTimeout(
+    () => supabase.auth.getSession(),
+    timeoutMs,
+    'Session check timed out'
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return data.session ?? null;
+}
 
 // Database types
 export type Database = {

@@ -9,6 +9,7 @@ export interface AuthState {
   user: User | null;
   loading: boolean;
   session: Session | null;
+  accessToken: string | null | undefined;
 }
 
 export interface AuthActions {
@@ -23,7 +24,6 @@ export function useAuth(): AuthState & AuthActions {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
-  const [bypassMode, setBypassMode] = useState(false);
 
   useEffect(() => {
     // Get initial session
@@ -66,43 +66,39 @@ export function useAuth(): AuthState & AuthActions {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No profile found - create one
-          console.log('No profile found, creating one...');
-          const { data: newProfile, error: createError } = await supabase
+          // No profile found - the database trigger should have created it
+          // Wait a moment and try again (might be a timing issue)
+          console.log('No profile found, waiting and retrying...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const { data: retryProfile, error: retryError } = await supabase
             .from('user_profiles')
-            .insert({
-              id: supabaseUser.id,
-              email: supabaseUser.email || '',
-              first_name: '',
-              last_name: '',
-              role: 'homeowner' as const,
-            })
-            .select()
+            .select('*')
+            .eq('id', supabaseUser.id)
             .single();
 
-          if (createError) {
-            console.error('Error creating user profile:', createError);
+          if (retryError || !retryProfile) {
+            console.error('Profile still not found after retry:', retryError);
             setLoading(false);
             return;
           }
 
-          console.log('Created new profile:', newProfile);
-          
-          // Convert the new profile to our User type
+          // Profile found on retry - convert to User type
           const userData: User = {
             id: supabaseUser.id,
             email: supabaseUser.email || '',
-            role: (newProfile?.role as 'homeowner' | 'cleaner' | 'admin') || 'homeowner',
+            role: (retryProfile?.role as 'homeowner' | 'cleaner' | 'admin' | 'manager') || 'homeowner',
             profile: {
-              firstName: newProfile?.first_name || '',
-              lastName: newProfile?.last_name || '',
-              phone: newProfile?.phone || '',
-              address: '',
+              firstName: retryProfile?.first_name || '',
+              lastName: retryProfile?.last_name || '',
+              phone: retryProfile?.phone || '',
+              address: retryProfile?.address || '',
             },
             createdAt: supabaseUser.created_at,
-            updatedAt: newProfile?.updated_at || supabaseUser.created_at,
+            updatedAt: retryProfile?.updated_at || supabaseUser.created_at,
           };
 
+          console.log('Successfully loaded user profile after retry:', userData);
           setUser(userData);
           return;
         } else {
@@ -145,7 +141,7 @@ export function useAuth(): AuthState & AuthActions {
     try {
       setLoading(true);
       
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data,error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -153,7 +149,10 @@ export function useAuth(): AuthState & AuthActions {
       if (error) {
         return { error: error.message };
       }
-
+      if (data.session) {
+        setSession(data.session);
+        // also update user if you don't already
+      }
       return {};
     } catch (error) {
       return { error: 'An unexpected error occurred' };
@@ -206,28 +205,27 @@ export function useAuth(): AuthState & AuthActions {
   };
 
   const signOut = async (): Promise<void> => {
+    // Clear local state immediately
+    setUser(null);
+    setSession(null);
+    
+    // Try to sign out from Supabase with a timeout
+    // This prevents hanging but still attempts proper cleanup
     try {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
-      
-      // Clear local state immediately
-      setUser(null);
-      setSession(null);
-      setBypassMode(false);
-      
-      // Force navigation to home page
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
-      }
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Signout timeout')), 3000)
+        )
+      ]);
     } catch (error) {
-      console.error('Error signing out:', error);
-      // Still try to clear state and redirect even if signOut fails
-      setUser(null);
-      setSession(null);
-      setBypassMode(false);
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
-      }
+      // If timeout or error, continue anyway - local state already cleared
+      console.warn('Supabase signOut timeout/error (continuing):', error);
+    }
+    
+    // Redirect after signout attempt (successful or timed out)
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
     }
   };
 
@@ -317,11 +315,12 @@ export function useAuth(): AuthState & AuthActions {
       },
     };
 
-    setBypassMode(true);
     setUser(mockUsers[role]);
     setLoading(false);
     console.log(`Entered bypass mode as ${role}:`, mockUsers[role]);
   };
+
+  const accessToken = session?.access_token || null;
 
   return {
     user,
@@ -332,5 +331,6 @@ export function useAuth(): AuthState & AuthActions {
     signOut,
     updateProfile,
     enterBypassMode,
+    accessToken,
   };
 }
