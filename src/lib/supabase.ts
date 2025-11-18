@@ -6,8 +6,7 @@ export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 // Client-side Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Avoid clever background refresh that may hook into visibilitychange
-    autoRefreshToken: false,
+    autoRefreshToken: true, // Re-enabled: handles token expiration automatically
     persistSession: true,
     detectSessionInUrl: true,
   },
