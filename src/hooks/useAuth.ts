@@ -14,7 +14,7 @@ export interface AuthState {
 
 export interface AuthActions {
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
-  signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role: string }) => Promise<{ error?: string }>;
+  signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role: string }) => Promise<{ error?: string; role?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User['profile']>) => Promise<{ error?: string }>;
   enterBypassMode: (role: 'admin' | 'homeowner' | 'cleaner' | 'manager') => void;
@@ -78,7 +78,12 @@ export function useAuth(): AuthState & AuthActions {
             .single();
 
           if (retryError || !retryProfile) {
-            console.error('Profile still not found after retry:', retryError);
+            // Only log as error if it's not a "not found" error (PGRST116)
+            if (retryError?.code === 'PGRST116') {
+              console.log('Profile not found - user may need to complete signup');
+            } else {
+              console.error('Profile still not found after retry:', retryError);
+            }
             setLoading(false);
             return;
           }
@@ -92,7 +97,7 @@ export function useAuth(): AuthState & AuthActions {
               firstName: retryProfile?.first_name || '',
               lastName: retryProfile?.last_name || '',
               phone: retryProfile?.phone || '',
-              address: retryProfile?.address || '',
+              avatarUrl: retryProfile?.avatar_url || undefined,
             },
             createdAt: supabaseUser.created_at,
             updatedAt: retryProfile?.updated_at || supabaseUser.created_at,
@@ -122,7 +127,7 @@ export function useAuth(): AuthState & AuthActions {
           firstName: profile?.first_name || '',
           lastName: profile?.last_name || '',
           phone: profile?.phone || '',
-          address: profile?.address || '',
+          avatarUrl: profile?.avatar_url || undefined,
         },
         createdAt: supabaseUser.created_at,
         updatedAt: profile?.updated_at || supabaseUser.created_at,
@@ -141,20 +146,20 @@ export function useAuth(): AuthState & AuthActions {
     try {
       setLoading(true);
       
-      const { data,error } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        return { error: error.message };
+      if (signInError) {
+        return { error: signInError.message };
       }
       if (data.session) {
         setSession(data.session);
         // also update user if you don't already
       }
       return {};
-    } catch (error) {
+    } catch {
       return { error: 'An unexpected error occurred' };
     } finally {
       setLoading(false);
@@ -165,65 +170,131 @@ export function useAuth(): AuthState & AuthActions {
     email: string,
     password: string,
     userData: { firstName: string; lastName: string; role: string }
-  ): Promise<{ error?: string }> => {
+  ): Promise<{ error?: string; role?: string }> => {
     try {
       setLoading(true);
       
       console.log('Signing up user:', { email, userData });
       
-      // Call secure API route that uses admin client to set app_metadata
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          role: userData.role,
-        }),
-      });
+      // Helper function to fetch with timeout
+      const fetchWithTimeout = async (url: string, options: RequestInit, timeout = 30000) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        try {
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          return response;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          throw error;
+        }
+      };
 
-      const result = await response.json();
+      // Retry logic for cold start issues
+      let lastError: Error | null = null;
+      const maxRetries = 2;
+      
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`Signup attempt ${attempt + 1}/${maxRetries + 1}`);
+          
+          // Call secure API route that uses admin client to set app_metadata
+          // Use longer timeout on first attempt (cold start), shorter on retries
+          const timeout = attempt === 0 ? 30000 : 15000;
+          const response = await fetchWithTimeout('/api/auth/signup', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email,
+              password,
+              firstName: userData.firstName,
+              lastName: userData.lastName,
+              role: userData.role,
+            }),
+          }, timeout);
 
-      if (!response.ok) {
-        return { error: result.error || 'Signup failed' };
+          const result = await response.json();
+
+          if (!response.ok) {
+            return { error: result.error || 'Signup failed' };
+          }
+
+          console.log('Signup successful:', result);
+
+          // Automatically sign in the user after successful signup
+          console.log('Auto-signing in user...');
+          const signInResult = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (signInResult.error) {
+            console.error('Auto sign-in failed:', signInResult.error);
+            // Signup succeeded but auto sign-in failed - user can manually log in
+            return { error: 'Account created. Please log in.' };
+          }
+
+          if (signInResult.data.session) {
+            setSession(signInResult.data.session);
+            console.log('Auto sign-in successful');
+          }
+
+          // Return the role so the signup page can redirect appropriately
+          return { role: userData.role };
+        } catch (error) {
+          lastError = error as Error;
+          console.error(`Signup attempt ${attempt + 1} failed:`, error);
+          
+          // If it's an abort error (timeout) and we have retries left, try again
+          if (error instanceof Error && error.name === 'AbortError' && attempt < maxRetries) {
+            console.log('Request timed out, retrying...');
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+            continue;
+          }
+          
+          // If it's not a timeout or we're out of retries, throw
+          throw error;
+        }
       }
-
-      console.log('Signup successful:', result);
-
-      // User can now sign in
-      return {};
+      
+      // If we get here, all retries failed
+      throw lastError || new Error('All signup attempts failed');
     } catch (error) {
       console.error('Signup error:', error);
-      return { error: 'An unexpected error occurred' };
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { error: 'Request timed out. Please try again.' };
+      }
+      return { error: error instanceof Error ? error.message : 'An unexpected error occurred' };
     } finally {
       setLoading(false);
     }
   };
 
   const signOut = async (): Promise<void> => {
-    // Clear local state immediately
-    setUser(null);
-    setSession(null);
-    
-    // Try to sign out from Supabase with a timeout
-    // This prevents hanging but still attempts proper cleanup
     try {
+      // Call signOut on Supabase first (with timeout for reliability)
       await Promise.race([
         supabase.auth.signOut(),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Signout timeout')), 3000)
+          setTimeout(() => reject(new Error('Signout timeout')), 5000)
         )
       ]);
     } catch (error) {
-      // If timeout or error, continue anyway - local state already cleared
-      console.warn('Supabase signOut timeout/error (continuing):', error);
+      // If timeout or error, log but continue with cleanup
+      console.warn('Supabase signOut timeout/error:', error);
     }
     
-    // Redirect after signout attempt (successful or timed out)
+    // Clear local state after Supabase signOut completes
+    setUser(null);
+    setSession(null);
+    
+    // Now redirect - session is actually cleared
     if (typeof window !== 'undefined') {
       window.location.href = '/';
     }
@@ -233,7 +304,7 @@ export function useAuth(): AuthState & AuthActions {
     if (!user) return { error: 'No user logged in' };
 
     try {
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
           first_name: updates.firstName,
@@ -242,8 +313,8 @@ export function useAuth(): AuthState & AuthActions {
         })
         .eq('id', user.id);
 
-      if (error) {
-        return { error: error.message };
+      if (updateError) {
+        return { error: updateError.message };
       }
 
       // Update local user state
@@ -254,7 +325,7 @@ export function useAuth(): AuthState & AuthActions {
       } : null);
 
       return {};
-    } catch (error) {
+    } catch {
       return { error: 'An unexpected error occurred' };
     }
   };

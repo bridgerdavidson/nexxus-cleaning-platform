@@ -14,7 +14,7 @@ interface CleanerProfileModalProps {
 
 export default function CleanerProfileModal({
   isOpen,
-  onClose: _onClose, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onClose,
   userId,
   accessToken,
 }: CleanerProfileModalProps) {
@@ -87,7 +87,8 @@ export default function CleanerProfileModal({
       const data = await res.json();
       console.log("[CleanerProfileModal] update via fetch resolved", data);
 
-      router.push("/login");
+      // Call onClose to let parent handle redirect
+      onClose();
     } catch (err) {
       console.error("[CleanerProfileModal] CATCH", err);
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -101,8 +102,8 @@ export default function CleanerProfileModal({
   };
 
   const handleSkip = async () => {
-    // Just redirect - user can set up profile later in dashboard
-    router.push("/login");
+    // Call onClose to let parent handle redirect - user can set up profile later in dashboard
+    onClose();
   };
 
   return (

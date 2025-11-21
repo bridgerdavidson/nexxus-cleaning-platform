@@ -124,7 +124,7 @@ export function useAdminAppointments() {
               email
             ),
             cleaner_profile:cleaner_profiles(
-              user_profile:user_profiles(
+              user_profile:user_profiles!id(
                 first_name,
                 last_name
               )
@@ -197,7 +197,7 @@ export function useAdminCleaners() {
             hourly_rate,
             background_check_verified,
             insurance_verified,
-            user_profile:user_profiles(
+            user_profile:user_profiles!id(
               first_name,
               last_name,
               email

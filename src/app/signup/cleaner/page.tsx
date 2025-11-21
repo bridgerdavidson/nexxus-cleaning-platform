@@ -29,18 +29,25 @@ export default function CleanerSignup() {
   // Watch for user state after successful sign-in
   useEffect(() => {
     // Open modal when we're waiting and user is loaded
-    if (waitingForUser && user?.id) {
+    if (waitingForUser && user?.id && !loading) {
+      console.log('[CleanerSignup] Opening profile modal for new user');
       setWaitingForUser(false);
       setShowProfileModal(true);
     }
-  }, [user, loading, waitingForUser, showProfileModal]);
+  }, [user, loading, waitingForUser]);
 
+  // Separate effect for redirection - only check when user or loading state changes
+  // This handles the case where an already-logged-in user visits the signup page
   useEffect(() => {
-    // Don't auto-redirect if we're showing the profile modal or waiting for user
-    if (user && !showProfileModal && !waitingForUser) {
+    // Only redirect if user exists and we're not in the signup flow
+    // By not including showProfileModal and waitingForUser in dependencies,
+    // we prevent this from re-running when the modal opens/closes
+    // The modal's onClose handler will handle the redirect after profile completion
+    if (user && !showProfileModal && !waitingForUser && !loading) {
+      console.log('[CleanerSignup] User already logged in, redirecting to dashboard');
       router.push("/cleaner-dashboard");
     }
-  }, [user, router, showProfileModal, waitingForUser]);
+  }, [user, loading]); // Intentionally omitting showProfileModal and waitingForUser
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,22 +77,11 @@ export default function CleanerSignup() {
       if (result.error) {
         setError(result.error);
       } else {
-        // Set waiting flag BEFORE signin so it's ready when auth state changes
+        // Set waiting flag to show loading state while profile loads
         setWaitingForUser(true);
-
-        // After successful signup, immediately sign in the user
-        const signInResult = await signIn(email, password);
-
-        if (signInResult.error) {
-          // Signup succeeded but signin failed, redirect to login
-          setWaitingForUser(false);
-          setError(
-            "Account created but sign in failed. Please sign in manually."
-          );
-          setTimeout(() => {
-            router.push("/login");
-          }, 2000);
-        }
+        
+        // signUp now automatically signs in the user
+        // The useEffect will detect the user and show profile modal or redirect
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
@@ -100,7 +96,7 @@ export default function CleanerSignup() {
         isOpen={showProfileModal && !!user?.id}
         onClose={() => {
           setShowProfileModal(false);
-          router.push("/login");
+          router.push("/cleaner-dashboard");
         }}
         userId={user?.id || ""}
         accessToken={accessToken}

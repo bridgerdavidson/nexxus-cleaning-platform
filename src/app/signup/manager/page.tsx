@@ -56,11 +56,8 @@ export default function ManagerSignup() {
       if (result.error) {
         setError(result.error);
       } else {
-        setSuccess(true);
-        // Redirect to login after successful signup
-        setTimeout(() => {
-          router.push('/login');
-        }, 2000);
+        // Redirect to dashboard immediately after successful signup and auto-login
+        router.push('/manager-dashboard');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed');
@@ -68,38 +65,6 @@ export default function ManagerSignup() {
       setIsLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-        <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-            <div className="text-center">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-              </div>
-              <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
-                Account Created Successfully!
-              </h2>
-              <p className="mt-2 text-center text-sm text-gray-600">
-                Your manager account has been created. You will be redirected to the login page shortly.
-              </p>
-              <div className="mt-6">
-                <Link
-                  href="/login"
-                  className="btn-primary w-full"
-                >
-                  Go to Login
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
