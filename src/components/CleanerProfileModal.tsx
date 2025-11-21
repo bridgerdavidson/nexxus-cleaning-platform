@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader, ArrowRight, X, Sparkles } from "lucide-react";
-import { supabaseUrl, supabaseAnonKey, withTimeout } from "../lib/supabase";
+import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 
 interface CleanerProfileModalProps {
   isOpen: boolean;
@@ -62,21 +62,16 @@ export default function CleanerProfileModal({
         payload,
       });
 
-      const res = await withTimeout(
-        () =>
-          fetch(url, {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${accessToken}`,
-              Prefer: "return=representation",
-            },
-            body: JSON.stringify(payload),
-          }),
-        8000,
-        "Cleaner profile update timed out"
-      );
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(payload),
+      });
 
       if (!res.ok) {
         const text = await res.text();

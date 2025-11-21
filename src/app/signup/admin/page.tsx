@@ -18,7 +18,7 @@ export default function AdminSignup() {
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   
-  const { signUp, user, loading } = useAuth();
+  const { signUp, user, } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
