@@ -56,11 +56,35 @@ export function useAuth(): AuthState & AuthActions {
     try {
       console.log('Loading profile for user:', supabaseUser.id, supabaseUser.email);
       
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', supabaseUser.id)
-        .single();
+      // Wrap the profile query with a timeout (30 seconds)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 30000)
+      );
+
+      let profile;
+      let error;
+      
+      try {
+        const result = await Promise.race([
+          supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', supabaseUser.id)
+            .single(),
+          timeoutPromise
+        ]);
+        profile = result.data;
+        error = result.error;
+      } catch (timeoutError) {
+        console.error('Profile query timeout:', timeoutError);
+        profile = null;
+        error = {
+          message: 'Profile query timed out after 30 seconds',
+          code: 'TIMEOUT',
+          details: 'The database query took too long to respond',
+          hint: 'Check your database connection and RLS policies'
+        };
+      }
 
       console.log('Profile query result:', { profile, error });
 
@@ -122,7 +146,7 @@ export function useAuth(): AuthState & AuthActions {
       const userData: User = {
         id: supabaseUser.id,
         email: supabaseUser.email || '',
-        role: (profile?.role as 'homeowner' | 'cleaner' | 'admin') || 'homeowner',
+        role: (profile?.role as 'homeowner' | 'cleaner' | 'admin' | 'manager') || 'homeowner',
         profile: {
           firstName: profile?.first_name || '',
           lastName: profile?.last_name || '',
@@ -137,6 +161,9 @@ export function useAuth(): AuthState & AuthActions {
       setUser(userData);
     } catch (error) {
       console.error('Unexpected error loading user profile:', error);
+      if (error instanceof Error && error.message.includes('timed out')) {
+        console.error('⚠️ Profile loading timed out - this may indicate database connection issues');
+      }
     } finally {
       setLoading(false);
     }
@@ -144,25 +171,24 @@ export function useAuth(): AuthState & AuthActions {
 
   const signIn = async (email: string, password: string): Promise<{ error?: string }> => {
     try {
-      setLoading(true);
-      
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (signInError) {
+        setLoading(false);
         return { error: signInError.message };
       }
       if (data.session) {
         setSession(data.session);
-        // also update user if you don't already
+        // Loading state will be managed by onAuthStateChange -> loadUserProfile
       }
       return {};
-    } catch {
-      return { error: 'An unexpected error occurred' };
-    } finally {
+    } catch (error) {
+      console.error('Sign in error:', error);
       setLoading(false);
+      return { error: 'An unexpected error occurred' };
     }
   };
 
@@ -172,8 +198,6 @@ export function useAuth(): AuthState & AuthActions {
     userData: { firstName: string; lastName: string; role: string }
   ): Promise<{ error?: string; role?: string }> => {
     try {
-      setLoading(true);
-      
       console.log('Signing up user:', { email, userData });
       
       // Helper function to fetch with timeout
@@ -222,6 +246,7 @@ export function useAuth(): AuthState & AuthActions {
           const result = await response.json();
 
           if (!response.ok) {
+            setLoading(false);
             return { error: result.error || 'Signup failed' };
           }
 
@@ -236,6 +261,7 @@ export function useAuth(): AuthState & AuthActions {
 
           if (signInResult.error) {
             console.error('Auto sign-in failed:', signInResult.error);
+            setLoading(false);
             // Signup succeeded but auto sign-in failed - user can manually log in
             return { error: 'Account created. Please log in.' };
           }
@@ -243,6 +269,7 @@ export function useAuth(): AuthState & AuthActions {
           if (signInResult.data.session) {
             setSession(signInResult.data.session);
             console.log('Auto sign-in successful');
+            // Loading state will be managed by onAuthStateChange -> loadUserProfile
           }
 
           // Return the role so the signup page can redirect appropriately
@@ -267,12 +294,11 @@ export function useAuth(): AuthState & AuthActions {
       throw lastError || new Error('All signup attempts failed');
     } catch (error) {
       console.error('Signup error:', error);
+      setLoading(false);
       if (error instanceof Error && error.name === 'AbortError') {
         return { error: 'Request timed out. Please try again.' };
       }
       return { error: error instanceof Error ? error.message : 'An unexpected error occurred' };
-    } finally {
-      setLoading(false);
     }
   };
 

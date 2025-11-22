@@ -30,7 +30,7 @@ export default function CleanerSignup() {
   useEffect(() => {
     // Open modal when we're waiting and user is loaded
     if (waitingForUser && user?.id && !loading) {
-      console.log('[CleanerSignup] Opening profile modal for new user');
+      console.log("[CleanerSignup] Opening profile modal for new user");
       setWaitingForUser(false);
       setShowProfileModal(true);
     }
@@ -44,7 +44,9 @@ export default function CleanerSignup() {
     // we prevent this from re-running when the modal opens/closes
     // The modal's onClose handler will handle the redirect after profile completion
     if (user && !showProfileModal && !waitingForUser && !loading) {
-      console.log('[CleanerSignup] User already logged in, redirecting to dashboard');
+      console.log(
+        "[CleanerSignup] User already logged in, redirecting to dashboard"
+      );
       router.push("/cleaner-dashboard");
     }
   }, [user, loading]); // Intentionally omitting showProfileModal and waitingForUser
@@ -79,7 +81,7 @@ export default function CleanerSignup() {
       } else {
         // Set waiting flag to show loading state while profile loads
         setWaitingForUser(true);
-        
+
         // signUp now automatically signs in the user
         // The useEffect will detect the user and show profile modal or redirect
       }
