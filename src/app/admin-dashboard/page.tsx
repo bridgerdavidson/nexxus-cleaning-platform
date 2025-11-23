@@ -27,10 +27,11 @@ import {
   updateAppointmentStatus,
   assignCleanerToAppointment,
 } from "../../hooks/useAdminData";
+import DashboardHeader from "../../components/DashboardHeader";
 
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("home");
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -139,7 +140,7 @@ export default function AdminDashboard() {
   };
 
   const tabs = [
-    { id: "overview", label: "Overview", icon: BarChart3 },
+    { id: "home", label: "Home", icon: Home },
     { id: "bookings", label: "All Bookings", icon: Calendar },
     { id: "cleaners", label: "Cleaners", icon: Users },
     { id: "messages", label: "Messages", icon: MessageCircle },
@@ -840,7 +841,7 @@ export default function AdminDashboard() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case "overview":
+      case "home":
         return renderOverview();
       case "bookings":
         return renderBookings();
@@ -858,36 +859,19 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tab Navigation */}
-        <div className="mb-8">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8 overflow-x-auto">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                      activeTab === tab.id
-                        ? "border-primary-500 text-primary-600"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
+    <>
+      <DashboardHeader 
+        role="admin" 
+        tabs={tabs} 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab}
+      />
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Tab Content */}
+          {renderContent()}
         </div>
-
-        {/* Tab Content */}
-        {renderContent()}
       </div>
-    </div>
+    </>
   );
 }

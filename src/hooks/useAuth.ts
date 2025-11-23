@@ -53,13 +53,18 @@ export function useAuth(): AuthState & AuthActions {
   }, []);
 
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
+    const callId = Math.random().toString(36).substring(7);
     try {
-      console.log('Loading profile for user:', supabaseUser.id, supabaseUser.email);
+      console.log(`[${callId}] Loading profile for user:`, supabaseUser.id, supabaseUser.email);
       
       // Wrap the profile query with a timeout (30 seconds)
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 30000)
-      );
+      let timeoutId: NodeJS.Timeout | number | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          console.error(`[${callId}] TIMEOUT ERROR - This should not happen if cleared properly!`);
+          reject(new Error('TIMEOUT'));
+        }, 30000);
+      });
 
       let profile;
       let error;
@@ -76,7 +81,7 @@ export function useAuth(): AuthState & AuthActions {
         profile = result.data;
         error = result.error;
       } catch (timeoutError) {
-        console.error('Profile query timeout:', timeoutError);
+        console.error(`[${callId}] Profile query timeout:`, timeoutError);
         profile = null;
         error = {
           message: 'Profile query timed out after 30 seconds',
@@ -84,9 +89,13 @@ export function useAuth(): AuthState & AuthActions {
           details: 'The database query took too long to respond',
           hint: 'Check your database connection and RLS policies'
         };
+      } finally {
+        // Clear the timeout to prevent it from firing later
+        console.log(`[${callId}] Clearing timeout ${timeoutId}`);
+        clearTimeout(timeoutId);
       }
 
-      console.log('Profile query result:', { profile, error });
+      console.log(`[${callId}] Profile query result:`, { profile, error });
 
       if (error) {
         if (error.code === 'PGRST116') {
@@ -157,10 +166,10 @@ export function useAuth(): AuthState & AuthActions {
         updatedAt: profile?.updated_at || supabaseUser.created_at,
       };
 
-      console.log('Successfully loaded user profile:', userData);
+      console.log(`[${callId}] Successfully loaded user profile:`, userData);
       setUser(userData);
     } catch (error) {
-      console.error('Unexpected error loading user profile:', error);
+      console.error(`[${callId}] Unexpected error loading user profile:`, error);
       if (error instanceof Error && error.message.includes('timed out')) {
         console.error('⚠️ Profile loading timed out - this may indicate database connection issues');
       }
@@ -303,17 +312,21 @@ export function useAuth(): AuthState & AuthActions {
   };
 
   const signOut = async (): Promise<void> => {
+    let signOutTimeoutId: NodeJS.Timeout | number | undefined;
     try {
       // Call signOut on Supabase first (with timeout for reliability)
       await Promise.race([
         supabase.auth.signOut(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Signout timeout')), 5000)
-        )
+        new Promise((_, reject) => {
+          signOutTimeoutId = setTimeout(() => reject(new Error('Signout timeout')), 5000);
+        })
       ]);
     } catch (error) {
       // If timeout or error, log but continue with cleanup
       console.warn('Supabase signOut timeout/error:', error);
+    } finally {
+      // Clear the timeout to prevent it from firing later
+      clearTimeout(signOutTimeoutId);
     }
     
     // Clear local state after Supabase signOut completes
