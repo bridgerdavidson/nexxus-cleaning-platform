@@ -58,13 +58,13 @@ export function useAuth(): AuthState & AuthActions {
       console.log(`[${callId}] Loading profile for user:`, supabaseUser.id, supabaseUser.email);
       
       // Wrap the profile query with a timeout (30 seconds)
-      // let timeoutId: NodeJS.Timeout | number | undefined;
-      // const timeoutPromise = new Promise<never>((_, reject) => {
-      //   timeoutId = setTimeout(() => {
-      //     console.error(`[${callId}] TIMEOUT ERROR - This should not happen if cleared properly!`);
-      //     reject(new Error('TIMEOUT'));
-      //   }, 30000);
-      // });
+      let timeoutId: NodeJS.Timeout | number | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          console.error(`[${callId}] TIMEOUT ERROR - This should not happen if cleared properly!`);
+          reject(new Error('TIMEOUT'));
+        }, 30000);
+      });
 
       let profile;
       let error;
@@ -76,7 +76,7 @@ export function useAuth(): AuthState & AuthActions {
             .select('*')
             .eq('id', supabaseUser.id)
             .single(),
-          // timeoutPromise
+          timeoutPromise
         ]);
         profile = result.data;
         error = result.error;
@@ -91,8 +91,8 @@ export function useAuth(): AuthState & AuthActions {
         };
       } finally {
         // Clear the timeout to prevent it from firing later
-        // console.log(`[${callId}] Clearing timeout ${timeoutId}`);
-        // clearTimeout(timeoutId);
+        console.log(`[${callId}] Clearing timeout ${timeoutId}`);
+        clearTimeout(timeoutId);
       }
 
       console.log(`[${callId}] Profile query result:`, { profile, error });
