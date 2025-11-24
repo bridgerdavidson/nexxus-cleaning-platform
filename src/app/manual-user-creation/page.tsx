@@ -151,7 +151,7 @@ ORDER BY u.email;`;
               <h3 className="text-xl font-semibold text-gray-800">1. Create Homeowner User</h3>
               <button
                 onClick={() => copyToClipboard(homeownerSQL, 'homeowner')}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
               >
                 {copied === 'homeowner' ? 'Copied!' : 'Copy SQL'}
               </button>
@@ -167,7 +167,7 @@ ORDER BY u.email;`;
               <h3 className="text-xl font-semibold text-gray-800">2. Create Cleaner User</h3>
               <button
                 onClick={() => copyToClipboard(cleanerSQL, 'cleaner')}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
               >
                 {copied === 'cleaner' ? 'Copied!' : 'Copy SQL'}
               </button>
@@ -204,9 +204,9 @@ ORDER BY u.email;`;
           </div>
 
           {/* Next Steps */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-            <h3 className="text-xl font-semibold text-blue-800 mb-4">Next Steps</h3>
-            <ol className="list-decimal list-inside space-y-2 text-blue-700">
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-6">
+            <h3 className="text-xl font-semibold text-primary-800 mb-4">Next Steps</h3>
+            <ol className="list-decimal list-inside space-y-2 text-primary-700">
               <li>Go to your Supabase dashboard</li>
               <li>Navigate to SQL Editor</li>
               <li>Click "New Query"</li>

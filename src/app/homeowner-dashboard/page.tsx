@@ -1,49 +1,69 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../../hooks/useAuth';
-import { 
-  Calendar, 
-  Home, 
-  MessageCircle, 
-  CreditCard, 
-  Camera, 
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../hooks/useAuth";
+import {
+  Calendar,
+  Home,
+  MessageCircle,
+  CreditCard,
+  Camera,
   Plus,
   Clock,
   CheckCircle,
   AlertCircle,
   Star,
-  Loader2
-} from 'lucide-react';
+  Loader2,
+} from "lucide-react";
 import {
   useHomeownerAppointments,
   useHomeownerProperties,
   useHomeownerStats,
   useHomeownerMessages,
-  useHomeownerPayments
-} from '../../hooks/useHomeownerData';
-import DashboardHeader from '../../components/DashboardHeader';
-import MobileNavigation from '../../components/MobileNavigation';
-import MobileSidebar from '../../components/MobileSidebar';
+  useHomeownerPayments,
+} from "../../hooks/useHomeownerData";
+import DashboardHeader from "../../components/DashboardHeader";
+import MobileNavigation from "../../components/MobileNavigation";
+import MobileSidebar from "../../components/MobileSidebar";
 
 export default function HomeownerDashboard() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
-  const { appointments, loading: appointmentsLoading, error: appointmentsError } = useHomeownerAppointments();
-  const { properties, loading: propertiesLoading, error: propertiesError } = useHomeownerProperties();
-  const { stats, loading: statsLoading, error: statsError } = useHomeownerStats();
-  const { messages, loading: messagesLoading, error: messagesError } = useHomeownerMessages();
-  const { payments, loading: paymentsLoading, error: paymentsError } = useHomeownerPayments();
+  const {
+    appointments,
+    loading: appointmentsLoading,
+    error: appointmentsError,
+  } = useHomeownerAppointments();
+  const {
+    properties,
+    loading: propertiesLoading,
+    error: propertiesError,
+  } = useHomeownerProperties();
+  const {
+    stats,
+    loading: statsLoading,
+    error: statsError,
+  } = useHomeownerStats();
+  const {
+    messages,
+    loading: messagesLoading,
+    error: messagesError,
+  } = useHomeownerMessages();
+  const {
+    payments,
+    loading: paymentsLoading,
+    error: paymentsError,
+  } = useHomeownerPayments();
 
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.push("/login");
     }
   }, [user, loading, router]);
 
@@ -61,10 +81,10 @@ export default function HomeownerDashboard() {
 
   // Helper function to format date and time
   const formatDateTime = (date: string, time: string) => {
-    const formattedDate = new Date(date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
+    const formattedDate = new Date(date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     });
     return `${formattedDate} at ${time}`;
   };
@@ -72,7 +92,8 @@ export default function HomeownerDashboard() {
   // Helper function to get cleaner name
   const getCleanerName = (appointment: any) => {
     if (appointment.cleaner_profile?.user_profile) {
-      const { first_name, last_name } = appointment.cleaner_profile.user_profile;
+      const { first_name, last_name } =
+        appointment.cleaner_profile.user_profile;
       return `${first_name} ${last_name}`;
     }
     return null;
@@ -84,29 +105,29 @@ export default function HomeownerDashboard() {
       const { address, city, state } = appointment.property;
       return `${address}, ${city}, ${state}`;
     }
-    return 'Address not available';
+    return "Address not available";
   };
 
   const tabs = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'bookings', label: 'My Bookings', icon: Calendar },
-    { id: 'messages', label: 'Messages', icon: MessageCircle },
-    { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'properties', label: 'Properties', icon: Camera }
+    { id: "home", label: "Home", icon: Home },
+    { id: "bookings", label: "My Bookings", icon: Calendar },
+    { id: "messages", label: "Messages", icon: MessageCircle },
+    { id: "payments", label: "Payments", icon: CreditCard },
+    { id: "properties", label: "Properties", icon: Camera },
   ];
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'confirmed':
-        return 'text-green-600 bg-green-100';
-      case 'pending':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'completed':
-        return 'text-blue-600 bg-blue-100';
-      case 'cancelled':
-        return 'text-red-600 bg-red-100';
+      case "confirmed":
+        return "text-green-600 bg-green-100";
+      case "pending":
+        return "text-yellow-600 bg-yellow-100";
+      case "completed":
+        return "text-primary-600 bg-primary-100";
+      case "cancelled":
+        return "text-red-600 bg-red-100";
       default:
-        return 'text-gray-600 bg-gray-100';
+        return "text-gray-600 bg-gray-100";
     }
   };
 
@@ -118,7 +139,8 @@ export default function HomeownerDashboard() {
           Welcome back, {user?.profile?.firstName || user?.email}!
         </h2>
         <p className="text-primary-100">
-          Your home cleaning dashboard is ready. Book your next cleaning or manage existing appointments.
+          Your home cleaning dashboard is ready. Book your next cleaning or
+          manage existing appointments.
         </p>
       </div>
 
@@ -130,11 +152,15 @@ export default function HomeownerDashboard() {
               <CheckCircle className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Cleanings</p>
+              <p className="text-sm font-medium text-gray-600">
+                Total Cleanings
+              </p>
               {statsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.totalCleanings}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {stats.totalCleanings}
+                </p>
               )}
             </div>
           </div>
@@ -150,7 +176,9 @@ export default function HomeownerDashboard() {
               {statsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.upcomingCleanings}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {stats.upcomingCleanings}
+                </p>
               )}
             </div>
           </div>
@@ -166,7 +194,9 @@ export default function HomeownerDashboard() {
               {statsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">${stats.totalSpent}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  ${stats.totalSpent}
+                </p>
               )}
             </div>
           </div>
@@ -178,11 +208,15 @@ export default function HomeownerDashboard() {
               <Star className="w-6 h-6 text-purple-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Favorite Cleaners</p>
+              <p className="text-sm font-medium text-gray-600">
+                Favorite Cleaners
+              </p>
               {statsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.favoriteCleaners}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {stats.favoriteCleaners}
+                </p>
               )}
             </div>
           </div>
@@ -191,7 +225,9 @@ export default function HomeownerDashboard() {
 
       {/* Quick Actions */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Quick Actions
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button className="btn-primary flex items-center justify-center space-x-2">
             <Plus className="w-5 h-5" />
@@ -210,7 +246,9 @@ export default function HomeownerDashboard() {
 
       {/* Recent Bookings */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Bookings</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Recent Bookings
+        </h3>
         {appointmentsLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -229,29 +267,47 @@ export default function HomeownerDashboard() {
         ) : (
           <div className="space-y-4">
             {appointments.slice(0, 3).map((appointment) => (
-              <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div
+                key={appointment.id}
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+              >
                 <div className="flex items-center space-x-4">
                   <div className="flex-shrink-0">
                     <Calendar className="w-8 h-8 text-primary-600" />
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">
-                      {formatDateTime(appointment.scheduled_date, appointment.scheduled_time)}
+                      {formatDateTime(
+                        appointment.scheduled_date,
+                        appointment.scheduled_time
+                      )}
                     </p>
-                    <p className="text-sm text-gray-600">{getPropertyAddress(appointment)}</p>
+                    <p className="text-sm text-gray-600">
+                      {getPropertyAddress(appointment)}
+                    </p>
                     {getCleanerName(appointment) && (
-                      <p className="text-sm text-gray-600">Cleaner: {getCleanerName(appointment)}</p>
+                      <p className="text-sm text-gray-600">
+                        Cleaner: {getCleanerName(appointment)}
+                      </p>
                     )}
                     {appointment.service_type && (
-                      <p className="text-sm text-gray-600">Service: {appointment.service_type.name}</p>
+                      <p className="text-sm text-gray-600">
+                        Service: {appointment.service_type.name}
+                      </p>
                     )}
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
+                  <span
+                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
+                      appointment.status
+                    )}`}
+                  >
                     {appointment.status}
                   </span>
-                  <p className="text-sm font-medium text-gray-900 mt-1">${appointment.total_price}</p>
+                  <p className="text-sm font-medium text-gray-900 mt-1">
+                    ${appointment.total_price}
+                  </p>
                 </div>
               </div>
             ))}
@@ -279,14 +335,20 @@ export default function HomeownerDashboard() {
       ) : appointmentsError ? (
         <div className="text-center py-12">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load appointments</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to load appointments
+          </h3>
           <p className="text-gray-600">{appointmentsError}</p>
         </div>
       ) : appointments.length === 0 ? (
         <div className="text-center py-12">
           <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No appointments yet</h3>
-          <p className="text-gray-600">Book your first cleaning to get started!</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No appointments yet
+          </h3>
+          <p className="text-gray-600">
+            Book your first cleaning to get started!
+          </p>
         </div>
       ) : (
         <div className="grid gap-6">
@@ -297,23 +359,35 @@ export default function HomeownerDashboard() {
                   <Calendar className="w-6 h-6 text-primary-600" />
                   <div>
                     <h3 className="font-semibold text-gray-900">
-                      {formatDateTime(appointment.scheduled_date, appointment.scheduled_time)}
+                      {formatDateTime(
+                        appointment.scheduled_date,
+                        appointment.scheduled_time
+                      )}
                     </h3>
-                    <p className="text-sm text-gray-600">{getPropertyAddress(appointment)}</p>
+                    <p className="text-sm text-gray-600">
+                      {getPropertyAddress(appointment)}
+                    </p>
                     {appointment.service_type && (
-                      <p className="text-sm text-gray-600">Service: {appointment.service_type.name}</p>
+                      <p className="text-sm text-gray-600">
+                        Service: {appointment.service_type.name}
+                      </p>
                     )}
                   </div>
                 </div>
-                <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
+                <span
+                  className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(
+                    appointment.status
+                  )}`}
+                >
                   {appointment.status}
                 </span>
               </div>
-              
+
               {getCleanerName(appointment) && (
                 <div className="mb-4">
                   <p className="text-sm text-gray-600">
-                    <strong>Assigned Cleaner:</strong> {getCleanerName(appointment)}
+                    <strong>Assigned Cleaner:</strong>{" "}
+                    {getCleanerName(appointment)}
                   </p>
                 </div>
               )}
@@ -326,10 +400,8 @@ export default function HomeownerDashboard() {
                   <button className="btn-secondary text-sm">
                     View Details
                   </button>
-                  {appointment.status === 'pending' && (
-                    <button className="btn-primary text-sm">
-                      Modify
-                    </button>
+                  {appointment.status === "pending" && (
+                    <button className="btn-primary text-sm">Modify</button>
                   )}
                 </div>
               </div>
@@ -351,13 +423,17 @@ export default function HomeownerDashboard() {
       ) : messagesError ? (
         <div className="text-center py-12">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load messages</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to load messages
+          </h3>
           <p className="text-gray-600">{messagesError}</p>
         </div>
       ) : messages.length === 0 ? (
         <div className="text-center py-12">
           <MessageCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No messages yet</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No messages yet
+          </h3>
           <p className="text-gray-600">
             Messages with your cleaners and support team will appear here.
           </p>
@@ -367,18 +443,29 @@ export default function HomeownerDashboard() {
           {messages.map((message) => {
             const isSent = message.sender_id === user?.id;
             const displayPerson = isSent ? message.recipient : message.sender;
-            const direction = isSent ? 'To' : 'From';
-            
+            const direction = isSent ? "To" : "From";
+
             return (
-              <div key={message.id} className={`p-4 rounded-lg border ${
-                isSent 
-                  ? 'bg-green-50 border-green-200' 
-                  : message.is_read ? 'bg-white' : 'bg-blue-50 border-blue-200'
-              }`}>
+              <div
+                key={message.id}
+                className={`p-4 rounded-lg border ${
+                  isSent
+                    ? "bg-green-50 border-green-200"
+                    : message.is_read
+                    ? "bg-white"
+                    : "bg-primary-50 border-primary-200"
+                }`}
+              >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-2">
-                    <MessageCircle className={`w-5 h-5 ${isSent ? 'text-green-600' : 'text-primary-600'}`} />
-                    <span className="text-xs text-gray-500 font-medium">{direction}:</span>
+                    <MessageCircle
+                      className={`w-5 h-5 ${
+                        isSent ? "text-green-600" : "text-primary-600"
+                      }`}
+                    />
+                    <span className="text-xs text-gray-500 font-medium">
+                      {direction}:
+                    </span>
                     {displayPerson && (
                       <span className="font-medium text-gray-900">
                         {displayPerson.first_name} {displayPerson.last_name}
@@ -400,7 +487,9 @@ export default function HomeownerDashboard() {
                   </span>
                 </div>
                 {message.subject && (
-                  <h4 className="font-medium text-gray-900 mb-1">{message.subject}</h4>
+                  <h4 className="font-medium text-gray-900 mb-1">
+                    {message.subject}
+                  </h4>
                 )}
                 <p className="text-gray-700">{message.content}</p>
               </div>
@@ -422,13 +511,17 @@ export default function HomeownerDashboard() {
       ) : paymentsError ? (
         <div className="text-center py-12">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load payments</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to load payments
+          </h3>
           <p className="text-gray-600">{paymentsError}</p>
         </div>
       ) : payments.length === 0 ? (
         <div className="text-center py-12">
           <CreditCard className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No payments yet</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No payments yet
+          </h3>
           <p className="text-gray-600">
             Your payment history and receipts will appear here.
           </p>
@@ -451,23 +544,31 @@ export default function HomeownerDashboard() {
                     )}
                     {payment.appointment?.scheduled_date && (
                       <p className="text-sm text-gray-600">
-                        {new Date(payment.appointment.scheduled_date).toLocaleDateString()}
+                        {new Date(
+                          payment.appointment.scheduled_date
+                        ).toLocaleDateString()}
                       </p>
                     )}
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    payment.status === 'paid' ? 'text-green-600 bg-green-100' :
-                    payment.status === 'pending' ? 'text-yellow-600 bg-yellow-100' :
-                    payment.status === 'failed' ? 'text-red-600 bg-red-100' :
-                    'text-gray-600 bg-gray-100'
-                  }`}>
+                  <span
+                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      payment.status === "paid"
+                        ? "text-green-600 bg-green-100"
+                        : payment.status === "pending"
+                        ? "text-yellow-600 bg-yellow-100"
+                        : payment.status === "failed"
+                        ? "text-red-600 bg-red-100"
+                        : "text-gray-600 bg-gray-100"
+                    }`}
+                  >
                     {payment.status}
                   </span>
                   <p className="text-sm text-gray-500 mt-1">
-                    {payment.paid_at ? new Date(payment.paid_at).toLocaleDateString() : 
-                     new Date(payment.created_at).toLocaleDateString()}
+                    {payment.paid_at
+                      ? new Date(payment.paid_at).toLocaleDateString()
+                      : new Date(payment.created_at).toLocaleDateString()}
                   </p>
                 </div>
               </div>
@@ -489,19 +590,21 @@ export default function HomeownerDashboard() {
       ) : propertiesError ? (
         <div className="text-center py-12">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load properties</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to load properties
+          </h3>
           <p className="text-gray-600">{propertiesError}</p>
         </div>
       ) : properties.length === 0 ? (
         <div className="text-center py-12">
           <Home className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No properties added</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No properties added
+          </h3>
           <p className="text-gray-600 mb-4">
             Add your properties to make booking faster and easier.
           </p>
-          <button className="btn-primary">
-            Add Property
-          </button>
+          <button className="btn-primary">Add Property</button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -511,26 +614,33 @@ export default function HomeownerDashboard() {
                 <div className="flex items-start space-x-3">
                   <Home className="w-6 h-6 text-primary-600 mt-1" />
                   <div>
-                    <h3 className="font-medium text-gray-900">{property.name}</h3>
+                    <h3 className="font-medium text-gray-900">
+                      {property.name}
+                    </h3>
                     <p className="text-sm text-gray-600">
-                      {property.address}, {property.city}, {property.state} {property.zip_code}
+                      {property.address}, {property.city}, {property.state}{" "}
+                      {property.zip_code}
                     </p>
-                    {(property.bedrooms || property.bathrooms || property.square_feet) && (
+                    {(property.bedrooms ||
+                      property.bathrooms ||
+                      property.square_feet) && (
                       <div className="flex space-x-4 mt-1 text-sm text-gray-500">
-                        {property.bedrooms && <span>{property.bedrooms} bed</span>}
-                        {property.bathrooms && <span>{property.bathrooms} bath</span>}
-                        {property.square_feet && <span>{property.square_feet} sq ft</span>}
+                        {property.bedrooms && (
+                          <span>{property.bedrooms} bed</span>
+                        )}
+                        {property.bathrooms && (
+                          <span>{property.bathrooms} bath</span>
+                        )}
+                        {property.square_feet && (
+                          <span>{property.square_feet} sq ft</span>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="flex space-x-2">
-                  <button className="btn-secondary text-sm">
-                    Edit
-                  </button>
-                  <button className="btn-primary text-sm">
-                    Book Cleaning
-                  </button>
+                  <button className="btn-secondary text-sm">Edit</button>
+                  <button className="btn-primary text-sm">Book Cleaning</button>
                 </div>
               </div>
             </div>
@@ -542,15 +652,15 @@ export default function HomeownerDashboard() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'home':
+      case "home":
         return renderOverview();
-      case 'bookings':
+      case "bookings":
         return renderBookings();
-      case 'messages':
+      case "messages":
         return renderMessages();
-      case 'payments':
+      case "payments":
         return renderPayments();
-      case 'properties':
+      case "properties":
         return renderProperties();
       default:
         return renderOverview();
@@ -559,10 +669,10 @@ export default function HomeownerDashboard() {
 
   return (
     <>
-      <DashboardHeader 
-        role="homeowner" 
-        tabs={tabs} 
-        activeTab={activeTab} 
+      <DashboardHeader
+        role="homeowner"
+        tabs={tabs}
+        activeTab={activeTab}
         onTabChange={setActiveTab}
       />
       <div className="min-h-screen bg-gray-50">
@@ -571,13 +681,13 @@ export default function HomeownerDashboard() {
           {renderContent()}
         </div>
       </div>
-      <MobileNavigation 
+      <MobileNavigation
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
       />
-      <MobileSidebar 
+      <MobileSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="homeowner"

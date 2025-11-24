@@ -25,25 +25,25 @@ export default function CreateCompleteAuth() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Create Complete Authentication System</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">🚀 Final Authentication Setup</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">🚀 Final Authentication Setup</h2>
+        <p className="text-primary-700 mb-4">
           This will create the complete authentication system by:
         </p>
-        <ul className="text-blue-700 mb-4 list-disc list-inside space-y-1">
+        <ul className="text-primary-700 mb-4 list-disc list-inside space-y-1">
           <li>✅ Creating missing auth users (homeowner@nexxus.com, cleaner@nexxus.com)</li>
           <li>🔑 Setting passwords for all users</li>
           <li>👤 Creating/updating database profiles</li>
           <li>🔗 Synchronizing auth IDs with profile IDs</li>
           <li>✨ Providing test credentials</li>
         </ul>
-        <p className="text-blue-700 mb-4">
+        <p className="text-primary-700 mb-4">
           <strong>This is the complete solution that will fix all authentication issues!</strong>
         </p>
         <button
           onClick={createCompleteAuth}
           disabled={loading}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+          className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
         >
           {loading ? 'Creating Complete Auth System...' : '🚀 Create Complete Auth System'}
         </button>
@@ -66,8 +66,8 @@ export default function CreateCompleteAuth() {
                 <div className="bg-white border rounded p-4">
                   <h5 className="font-medium mb-3">📊 Creation Results:</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <strong className="text-blue-800">Homeowner</strong><br />
+                    <div className="bg-primary-50 p-3 rounded">
+                      <strong className="text-primary-800">Homeowner</strong><br />
                       <span className="text-sm">Auth ID: {result.results.homeowner.authUserId}</span><br />
                       <span className="text-sm">Email: {result.results.homeowner.email}</span><br />
                       <span className="text-sm">Created: {result.results.homeowner.authUserCreated ? 'Yes' : 'Updated existing'}</span>
@@ -96,7 +96,7 @@ export default function CreateCompleteAuth() {
                   
                   <div className="space-y-2">
                     <div>
-                      <strong className="text-blue-800">Auth Users:</strong>
+                      <strong className="text-primary-800">Auth Users:</strong>
                       <div className="text-sm text-gray-600">
                         {result.verification.authUsers.map((user: any, index: number) => (
                           <div key={index}>• {user.email} (ID: {user.id.substring(0, 8)}...)</div>
@@ -119,8 +119,8 @@ export default function CreateCompleteAuth() {
                 <div className="bg-white border rounded p-4">
                   <h5 className="font-medium mb-3">🔑 Test Login Credentials:</h5>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <strong className="text-blue-800">Homeowner</strong><br />
+                    <div className="bg-primary-50 p-3 rounded">
+                      <strong className="text-primary-800">Homeowner</strong><br />
                       <span className="text-sm">Email: {result.testCredentials.homeowner.email}</span><br />
                       <span className="text-sm">Password: {result.testCredentials.homeowner.password}</span>
                     </div>
@@ -147,7 +147,7 @@ export default function CreateCompleteAuth() {
                 </a>
                 <a 
                   href="/homeowner-dashboard" 
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 inline-block"
+                  className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 inline-block"
                 >
                   Homeowner Dashboard
                 </a>

@@ -187,7 +187,7 @@ export default function CleanerDashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "upcoming":
-        return "text-blue-600 bg-blue-100";
+        return "text-primary-600 bg-primary-100";
       case "in_progress":
         return "text-yellow-600 bg-yellow-100";
       case "completed":
@@ -355,7 +355,7 @@ export default function CleanerDashboard() {
                             : appointment.status === "in_progress"
                             ? "bg-yellow-100 text-yellow-800"
                             : appointment.status === "pending"
-                            ? "bg-blue-100 text-blue-800"
+                            ? "bg-primary-100 text-primary-800"
                             : "bg-gray-100 text-gray-800"
                         }`}
                       >
@@ -462,7 +462,7 @@ export default function CleanerDashboard() {
                             : appointment.status === "in_progress"
                             ? "bg-yellow-100 text-yellow-800"
                             : appointment.status === "pending"
-                            ? "bg-blue-100 text-blue-800"
+                            ? "bg-primary-100 text-primary-800"
                             : "bg-gray-100 text-gray-800"
                         }`}
                       >
@@ -674,7 +674,7 @@ export default function CleanerDashboard() {
                     className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                       message.is_read
                         ? "text-gray-600 bg-gray-100"
-                        : "text-blue-600 bg-blue-100"
+                        : "text-primary-600 bg-primary-100"
                     }`}
                   >
                     {message.is_read ? "Read" : "Unread"}
@@ -735,7 +735,7 @@ export default function CleanerDashboard() {
           {statsLoading ? (
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
           ) : (
-            <p className="text-3xl font-bold text-blue-600">
+            <p className="text-3xl font-bold text-primary-600">
               ${stats.completedThisWeek * 120}
             </p>
           )}
@@ -893,10 +893,10 @@ export default function CleanerDashboard() {
 
   return (
     <>
-      <DashboardHeader 
-        role="cleaner" 
-        tabs={tabs} 
-        activeTab={activeTab} 
+      <DashboardHeader
+        role="cleaner"
+        tabs={tabs}
+        activeTab={activeTab}
         onTabChange={setActiveTab}
       />
       <div className="min-h-screen bg-gray-50">
@@ -905,13 +905,13 @@ export default function CleanerDashboard() {
           {renderContent()}
         </div>
       </div>
-      <MobileNavigation 
+      <MobileNavigation
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
       />
-      <MobileSidebar 
+      <MobileSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="cleaner"

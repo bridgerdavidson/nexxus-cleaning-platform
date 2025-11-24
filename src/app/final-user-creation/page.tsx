@@ -100,9 +100,9 @@ export default function FinalUserCreationPage() {
                       </div>
                     </div>
 
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-800 mb-2">🚀 Next Steps:</h4>
-                      <div className="space-y-1 text-blue-700 text-sm">
+                    <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-primary-800 mb-2">🚀 Next Steps:</h4>
+                      <div className="space-y-1 text-primary-700 text-sm">
                         <p>1. Test login with admin credentials: admin@nexxus.com / Admin123!</p>
                         <p>2. Test login with cleaner credentials: cleaner@nexxus.com / Clean123!</p>
                         <p>3. Verify that the admin dashboard now works properly</p>

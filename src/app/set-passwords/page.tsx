@@ -25,22 +25,22 @@ export default function SetPasswords() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Set User Passwords</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">Admin SDK Password Setting</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">Admin SDK Password Setting</h2>
+        <p className="text-primary-700 mb-4">
           This will use the Supabase Admin SDK to set passwords for existing auth users:
         </p>
-        <ul className="text-blue-700 mb-4 list-disc list-inside space-y-1">
+        <ul className="text-primary-700 mb-4 list-disc list-inside space-y-1">
           <li><strong>homeowner@nexxus.com</strong> → Password: Homeowner123!</li>
           <li><strong>cleaner@nexxus.com</strong> → Password: Cleaner123!</li>
         </ul>
-        <p className="text-blue-700 mb-4">
+        <p className="text-primary-700 mb-4">
           This uses the service role key to directly update user passwords.
         </p>
         <button
           onClick={setPasswords}
           disabled={loading}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+          className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
         >
           {loading ? 'Setting Passwords...' : 'Set Passwords with Admin SDK'}
         </button>
@@ -60,8 +60,8 @@ export default function SetPasswords() {
                 <div className="bg-white border rounded p-4 mb-4">
                   <h5 className="font-medium mb-3">🔑 Test Login Credentials:</h5>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <strong className="text-blue-800">Homeowner</strong><br />
+                    <div className="bg-primary-50 p-3 rounded">
+                      <strong className="text-primary-800">Homeowner</strong><br />
                       <span className="text-sm">Email: {result.testCredentials.homeowner.email}</span><br />
                       <span className="text-sm">Password: {result.testCredentials.homeowner.password}</span>
                     </div>
@@ -88,7 +88,7 @@ export default function SetPasswords() {
                 </a>
                 <a 
                   href="/homeowner-dashboard" 
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 inline-block"
+                  className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 inline-block"
                 >
                   Homeowner Dashboard
                 </a>

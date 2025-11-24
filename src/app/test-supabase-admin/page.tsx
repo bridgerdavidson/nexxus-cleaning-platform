@@ -25,15 +25,15 @@ export default function TestSupabaseAdmin() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Test Supabase Admin Connection</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">Connection Test</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">Connection Test</h2>
+        <p className="text-primary-700 mb-4">
           This will test if our Supabase Admin API connection is working properly.
         </p>
         <button
           onClick={testConnection}
           disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+          className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 disabled:opacity-50"
         >
           {loading ? 'Testing...' : 'Test Connection'}
         </button>

@@ -14,7 +14,7 @@ export default function ContactPage() {
             </div>
             <h1 className="text-5xl lg:text-6xl font-black mb-8 leading-tight">
               Ready to Get<br />
-              <span className="text-blue-400">Started?</span>
+              <span className="text-primary-400">Started?</span>
             </h1>
             <p className="text-xl text-gray-300 mb-10 leading-relaxed max-w-3xl mx-auto">
               Contact us today for a free quote or to schedule your cleaning service. 
@@ -43,7 +43,7 @@ export default function ContactPage() {
                     <label className="block text-sm font-bold text-slate-900 mb-3">First Name</label>
                     <input 
                       type="text" 
-                      className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                      className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                       placeholder="Enter your first name"
                       required
                     />
@@ -52,7 +52,7 @@ export default function ContactPage() {
                     <label className="block text-sm font-bold text-slate-900 mb-3">Last Name</label>
                     <input 
                       type="text" 
-                      className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                      className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                       placeholder="Enter your last name"
                       required
                     />
@@ -63,7 +63,7 @@ export default function ContactPage() {
                   <label className="block text-sm font-bold text-slate-900 mb-3">Email Address</label>
                   <input 
                     type="email" 
-                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                     placeholder="Enter your email address"
                     required
                   />
@@ -73,7 +73,7 @@ export default function ContactPage() {
                   <label className="block text-sm font-bold text-slate-900 mb-3">Phone Number</label>
                   <input 
                     type="tel" 
-                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                     placeholder="Enter your phone number"
                     required
                   />
@@ -81,7 +81,7 @@ export default function ContactPage() {
                 
                 <div>
                   <label className="block text-sm font-bold text-slate-900 mb-3">Service Type</label>
-                  <select className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white">
+                  <select className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white">
                     <option value="">Select a service</option>
                     <option value="regular">Regular Cleaning</option>
                     <option value="deep">Deep Cleaning</option>
@@ -94,7 +94,7 @@ export default function ContactPage() {
                   <label className="block text-sm font-bold text-slate-900 mb-3">Home Address</label>
                   <input 
                     type="text" 
-                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                     placeholder="Enter your home address"
                     required
                   />
@@ -103,7 +103,7 @@ export default function ContactPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-slate-900 mb-3">Bedrooms</label>
-                    <select className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white">
+                    <select className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white">
                       <option value="">Select</option>
                       <option value="1">1 Bedroom</option>
                       <option value="2">2 Bedrooms</option>
@@ -114,7 +114,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-900 mb-3">Bathrooms</label>
-                    <select className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white">
+                    <select className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white">
                       <option value="">Select</option>
                       <option value="1">1 Bathroom</option>
                       <option value="2">2 Bathrooms</option>
@@ -129,7 +129,7 @@ export default function ContactPage() {
                   <label className="block text-sm font-bold text-slate-900 mb-3">Additional Details</label>
                   <textarea 
                     rows={4}
-                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
+                    className="w-full px-4 py-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white"
                     placeholder="Tell us about any specific cleaning needs, preferences, or questions you have..."
                   ></textarea>
                 </div>
@@ -152,8 +152,8 @@ export default function ContactPage() {
               
               <div className="space-y-8 mb-12">
                 <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Phone className="w-6 h-6 text-blue-600" />
+                  <div className="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Phone className="w-6 h-6 text-primary-600" />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-slate-900 mb-2">Phone</h3>
@@ -200,9 +200,9 @@ export default function ContactPage() {
               </div>
               
               {/* Quick Response Promise */}
-              <div className="bg-blue-50 rounded-2xl p-8 border border-blue-100">
+              <div className="bg-primary-50 rounded-2xl p-8 border border-primary-100">
                 <div className="flex items-center mb-4">
-                  <CheckCircle className="w-8 h-8 text-blue-600 mr-3" />
+                  <CheckCircle className="w-8 h-8 text-primary-600 mr-3" />
                   <h3 className="text-2xl font-bold text-slate-900">Quick Response Guarantee</h3>
                 </div>
                 <p className="text-gray-600 text-lg leading-relaxed">
@@ -303,8 +303,8 @@ export default function ContactPage() {
                 "Absolutely amazing service! My house has never been cleaner. The team was professional and thorough."
               </p>
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mr-4">
-                  <span className="text-blue-600 font-bold text-lg">SJ</span>
+                <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mr-4">
+                  <span className="text-primary-600 font-bold text-lg">SJ</span>
                 </div>
                 <div>
                   <p className="font-bold text-slate-900 text-lg">Sarah Johnson</p>

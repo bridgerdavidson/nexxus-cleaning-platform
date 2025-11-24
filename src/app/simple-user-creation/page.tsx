@@ -237,12 +237,12 @@ ORDER BY u.email;`;
           </div>
 
           {/* Verification SQL */}
-          <div className="bg-white border border-blue-200 rounded-lg p-6">
+          <div className="bg-white border border-primary-200 rounded-lg p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold text-blue-800">4. Verify Users Created</h3>
+              <h3 className="text-xl font-semibold text-primary-800">4. Verify Users Created</h3>
               <button
                 onClick={() => copyToClipboard(verificationSQL, 'verify')}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700"
               >
                 {copied === 'verify' ? 'Copied!' : 'Copy SQL'}
               </button>
@@ -263,9 +263,9 @@ ORDER BY u.email;`;
           </div>
 
           {/* Next Steps */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-            <h3 className="text-xl font-semibold text-blue-800 mb-4">Next Steps</h3>
-            <ol className="list-decimal list-inside space-y-2 text-blue-700">
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-6">
+            <h3 className="text-xl font-semibold text-primary-800 mb-4">Next Steps</h3>
+            <ol className="list-decimal list-inside space-y-2 text-primary-700">
               <li>Go to your Supabase dashboard → SQL Editor</li>
               <li>Run the "Create/Update Both Users" SQL (step 3)</li>
               <li>Run the verification query to confirm users exist</li>

@@ -25,22 +25,22 @@ export default function UpdateProfiles() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Update Profile IDs</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">Step 1: Update Database Profile IDs</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">Step 1: Update Database Profile IDs</h2>
+        <p className="text-primary-700 mb-4">
           This will update the user_profiles table to use the correct auth user IDs:
         </p>
-        <ul className="text-blue-700 mb-4 list-disc list-inside space-y-1">
+        <ul className="text-primary-700 mb-4 list-disc list-inside space-y-1">
           <li><strong>homeowner@nexxus.com</strong> → UID: d811e717-8807-4cfd-928f-eb827b67ce87</li>
           <li><strong>cleaner@nexxus.com</strong> → UID: 71f7a3c8-6072-4dae-87a8-210d51d2fca2</li>
         </ul>
-        <p className="text-blue-700 mb-4">
+        <p className="text-primary-700 mb-4">
           After this, you'll need to manually set passwords in the Supabase dashboard.
         </p>
         <button
           onClick={runUpdate}
           disabled={loading}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+          className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
         >
           {loading ? 'Updating Profiles...' : 'Update Profile IDs'}
         </button>

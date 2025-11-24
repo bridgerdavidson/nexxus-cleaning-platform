@@ -143,11 +143,11 @@ export default function AdminDashboard() {
   };
 
   const tabs = [
-    { id: "home", label: "Home", icon: Home },
+    { id: "home", label: "Overview", icon: Home },
     { id: "bookings", label: "Bookings", icon: Calendar },
     { id: "cleaners", label: "Cleaners", icon: Users },
     { id: "messages", label: "Messages", icon: MessageCircle },
-    { id: "payments", label: "Payments", icon: DollarSign },
+    { id: "payments", label: "Finance", icon: DollarSign },
     { id: "analytics", label: "Analytics", icon: TrendingUp },
   ];
 
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
       case "pending":
         return "text-yellow-600 bg-yellow-100";
       case "confirmed":
-        return "text-blue-600 bg-blue-100";
+        return "text-primary-600 bg-primary-100";
       case "completed":
         return "text-green-600 bg-green-100";
       case "cancelled":
@@ -169,9 +169,14 @@ export default function AdminDashboard() {
   const renderOverview = () => (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-lg p-6 text-white">
-        <h2 className="text-2xl font-bold mb-2">Admin Dashboard</h2>
-        <p className="text-primary-100">
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+            Admin Dashboard
+          </span>
+        </div>
+        <p className="text-gray-600">
           Manage your cleaning business operations from one central location.
         </p>
       </div>
@@ -200,8 +205,8 @@ export default function AdminDashboard() {
 
         <div className="card">
           <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Users className="w-6 h-6 text-green-600" />
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <Users className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">
@@ -220,8 +225,8 @@ export default function AdminDashboard() {
 
         <div className="card">
           <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-green-600" />
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <DollarSign className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
@@ -238,8 +243,8 @@ export default function AdminDashboard() {
 
         <div className="card">
           <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-yellow-600" />
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <AlertTriangle className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Pending</p>
@@ -256,8 +261,8 @@ export default function AdminDashboard() {
 
         <div className="card">
           <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Growth</p>
@@ -274,8 +279,8 @@ export default function AdminDashboard() {
 
         <div className="card">
           <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-purple-600" />
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <CheckCircle className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Completion</p>
@@ -312,7 +317,7 @@ export default function AdminDashboard() {
                 .map((appointment) => (
                   <div
                     key={appointment.id}
-                    className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg"
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                   >
                     <div>
                       <p className="font-medium text-gray-900">
@@ -655,7 +660,7 @@ export default function AdminDashboard() {
                     className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                       message.is_read
                         ? "text-gray-600 bg-gray-100"
-                        : "text-blue-600 bg-blue-100"
+                        : "text-primary-600 bg-primary-100"
                     }`}
                   >
                     {message.is_read ? "Read" : "Unread"}
@@ -706,7 +711,7 @@ export default function AdminDashboard() {
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
             This Month
           </h3>
-          <p className="text-3xl font-bold text-blue-600">$4,250</p>
+          <p className="text-3xl font-bold text-primary-600">$4,250</p>
         </div>
       </div>
 
@@ -863,10 +868,10 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <DashboardHeader 
-        role="admin" 
-        tabs={tabs} 
-        activeTab={activeTab} 
+      <DashboardHeader
+        role="admin"
+        tabs={tabs}
+        activeTab={activeTab}
         onTabChange={setActiveTab}
       />
       <div className="min-h-screen bg-gray-50">
@@ -875,13 +880,13 @@ export default function AdminDashboard() {
           {renderContent()}
         </div>
       </div>
-      <MobileNavigation 
+      <MobileNavigation
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
       />
-      <MobileSidebar 
+      <MobileSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="admin"

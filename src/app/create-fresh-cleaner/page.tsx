@@ -29,12 +29,12 @@ export default function CreateFreshCleaner() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Create Fresh Cleaner User</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">🧹 Fresh Cleaner Creation</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">🧹 Fresh Cleaner Creation</h2>
+        <p className="text-primary-700 mb-4">
           This will create a completely fresh cleaner user with no conflicts:
         </p>
-        <ul className="text-blue-700 mb-4 list-disc list-inside space-y-1">
+        <ul className="text-primary-700 mb-4 list-disc list-inside space-y-1">
           <li>🗑️ Clean up any old cleaner data</li>
           <li>✨ Create fresh auth user: cleanertest@nexxus.com</li>
           <li>👤 Create matching database profile</li>
@@ -45,7 +45,7 @@ export default function CreateFreshCleaner() {
         <button
           onClick={createFreshCleaner}
           disabled={loading}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+          className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
         >
           {loading ? 'Creating Fresh Cleaner...' : '🧹 Create Fresh Cleaner'}
         </button>
@@ -112,7 +112,7 @@ export default function CreateFreshCleaner() {
                   
                   <div className="space-y-2">
                     <div>
-                      <strong className="text-blue-800">Auth Users:</strong>
+                      <strong className="text-primary-800">Auth Users:</strong>
                       <div className="text-sm text-gray-600">
                         {result.verification.authUsers.map((user: any, index: number) => (
                           <div key={index}>• {user.email} (ID: {user.id})</div>
@@ -140,7 +140,7 @@ export default function CreateFreshCleaner() {
                 </a>
                 <a 
                   href="/cleaner-dashboard" 
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 inline-block"
+                  className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 inline-block"
                 >
                   Cleaner Dashboard
                 </a>
@@ -186,9 +186,9 @@ export default function CreateFreshCleaner() {
           <li>Provides test credentials for immediate login testing</li>
         </ul>
         
-        <div className="mt-4 p-3 bg-blue-100 rounded">
-          <p className="text-blue-800 font-medium">🎯 Test Flow:</p>
-          <ol className="text-blue-700 list-decimal list-inside mt-1">
+        <div className="mt-4 p-3 bg-primary-100 rounded">
+          <p className="text-primary-800 font-medium">🎯 Test Flow:</p>
+          <ol className="text-primary-700 list-decimal list-inside mt-1">
             <li>Click "Create Fresh Cleaner"</li>
             <li>Copy the test credentials</li>
             <li>Go to Login page</li>

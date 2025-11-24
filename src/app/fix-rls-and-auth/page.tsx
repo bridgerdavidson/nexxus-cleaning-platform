@@ -37,12 +37,12 @@ export default function FixRLSAndAuthPage() {
         <div className="bg-white rounded-lg shadow-lg p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Fix RLS & Authentication</h1>
           
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-            <h2 className="text-xl font-semibold text-blue-900 mb-4">🔧 RLS Bypass & User Creation</h2>
-            <p className="text-blue-800 mb-4">
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold text-primary-900 mb-4">🔧 RLS Bypass & User Creation</h2>
+            <p className="text-primary-800 mb-4">
               This will bypass RLS restrictions and create test users for all three roles:
             </p>
-            <ul className="list-disc list-inside text-blue-800 space-y-2 mb-6">
+            <ul className="list-disc list-inside text-primary-800 space-y-2 mb-6">
               <li>🧹 Clean up any existing test users and profiles</li>
               <li>🧪 Test basic user creation functionality</li>
               <li>👤 Create admin, cleaner, and homeowner users</li>
@@ -54,7 +54,7 @@ export default function FixRLSAndAuthPage() {
             <button
               onClick={runFix}
               disabled={loading}
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? '🔄 Running Fix...' : '🔧 Fix RLS & Create Users'}
             </button>
@@ -147,9 +147,9 @@ export default function FixRLSAndAuthPage() {
                     </div>
 
                     {/* Next Steps */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-800 mb-2">🚀 Next Steps:</h4>
-                      <ol className="list-decimal list-inside text-blue-700 text-sm space-y-1">
+                    <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-primary-800 mb-2">🚀 Next Steps:</h4>
+                      <ol className="list-decimal list-inside text-primary-700 text-sm space-y-1">
                         {result.nextSteps?.map((step: string, index: number) => (
                           <li key={index}>{step}</li>
                         ))}

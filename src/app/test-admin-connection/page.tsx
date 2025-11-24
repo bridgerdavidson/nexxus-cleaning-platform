@@ -37,12 +37,12 @@ export default function TestAdminConnectionPage() {
         <div className="bg-white rounded-lg shadow-lg p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Test Admin Connection</h1>
           
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-            <h2 className="text-xl font-semibold text-blue-900 mb-4">🔧 Admin Connection Test</h2>
-            <p className="text-blue-800 mb-4">
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold text-primary-900 mb-4">🔧 Admin Connection Test</h2>
+            <p className="text-primary-800 mb-4">
               This will test the Supabase admin connection by:
             </p>
-            <ul className="list-disc list-inside text-blue-800 space-y-2">
+            <ul className="list-disc list-inside text-primary-800 space-y-2">
               <li>📋 Listing existing auth users</li>
               <li>🗄️ Querying the database</li>
               <li>👤 Creating a test user</li>
@@ -52,7 +52,7 @@ export default function TestAdminConnectionPage() {
             <button
               onClick={testConnection}
               disabled={loading}
-              className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-6 bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? '🔄 Testing...' : '🧪 Test Admin Connection'}
             </button>

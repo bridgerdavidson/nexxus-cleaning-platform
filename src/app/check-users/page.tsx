@@ -36,16 +36,16 @@ export default function CheckUsersPage() {
         <div className="bg-white rounded-lg shadow-lg p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Check Existing Users</h1>
           
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
-            <h2 className="text-xl font-semibold text-blue-900 mb-4">📋 Database Status Check</h2>
-            <p className="text-blue-800 mb-4">
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold text-primary-900 mb-4">📋 Database Status Check</h2>
+            <p className="text-primary-800 mb-4">
               This will show you all existing users in your Supabase database so you know which accounts you can login with.
             </p>
             
             <button
               onClick={checkUsers}
               disabled={loading}
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? '🔄 Checking...' : '🔍 Refresh User List'}
             </button>
@@ -88,9 +88,9 @@ export default function CheckUsersPage() {
                         <p className="text-purple-800 font-medium">Admins</p>
                         <p className="text-3xl font-bold text-purple-600">{result.summary.roleDistribution.admin}</p>
                       </div>
-                      <div className="text-center p-4 bg-blue-50 rounded">
-                        <p className="text-blue-800 font-medium">Cleaners</p>
-                        <p className="text-3xl font-bold text-blue-600">{result.summary.roleDistribution.cleaner}</p>
+                      <div className="text-center p-4 bg-primary-50 rounded">
+                        <p className="text-primary-800 font-medium">Cleaners</p>
+                        <p className="text-3xl font-bold text-primary-600">{result.summary.roleDistribution.cleaner}</p>
                       </div>
                       <div className="text-center p-4 bg-green-50 rounded">
                         <p className="text-green-800 font-medium">Homeowners</p>
@@ -109,7 +109,7 @@ export default function CheckUsersPage() {
                             <div className="flex items-center space-x-3">
                               <span className={`px-2 py-1 rounded text-xs font-medium ${
                                 profile.role === 'admin' ? 'bg-purple-100 text-purple-800' :
-                                profile.role === 'cleaner' ? 'bg-blue-100 text-blue-800' :
+                                profile.role === 'cleaner' ? 'bg-primary-100 text-primary-800' :
                                 'bg-green-100 text-green-800'
                               }`}>
                                 {profile.role.toUpperCase()}
@@ -145,12 +145,12 @@ export default function CheckUsersPage() {
                   )}
 
                   {/* Recommendations */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                    <h4 className="font-semibold text-blue-800 mb-4">💡 Next Steps:</h4>
-                    <ol className="list-decimal list-inside text-blue-700 space-y-2">
+                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-6">
+                    <h4 className="font-semibold text-primary-800 mb-4">💡 Next Steps:</h4>
+                    <ol className="list-decimal list-inside text-primary-700 space-y-2">
                       <li>
                         <strong>Run the SQL script:</strong> Go to your Supabase dashboard → SQL Editor → 
-                        Copy and paste the contents of <code className="bg-blue-100 px-1 rounded">disable-rls-sql-script.sql</code>
+                        Copy and paste the contents of <code className="bg-primary-100 px-1 rounded">disable-rls-sql-script.sql</code>
                       </li>
                       <li>
                         <strong>Test login:</strong> Try logging in with any of the users listed above

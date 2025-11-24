@@ -14,7 +14,7 @@ export default function AboutPage() {
             </div>
             <h1 className="text-5xl lg:text-6xl font-black mb-8 leading-tight">
               Cleaning Excellence<br />
-              <span className="text-blue-400">Since Day One</span>
+              <span className="text-primary-400">Since Day One</span>
             </h1>
             <p className="text-xl text-gray-300 mb-10 leading-relaxed max-w-3xl mx-auto">
               We're more than just a cleaning service. We're your trusted partner in creating a healthier, 
@@ -49,8 +49,8 @@ export default function AboutPage() {
             </div>
             <div className="relative">
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 text-center">
-                <div className="w-32 h-32 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-8">
-                  <Sparkles className="w-16 h-16 text-blue-600" />
+                <div className="w-32 h-32 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-8">
+                  <Sparkles className="w-16 h-16 text-primary-600" />
                 </div>
                 <h3 className="text-3xl font-bold text-slate-900 mb-4">1000+ Families</h3>
                 <p className="text-gray-600 text-lg">Trust our cleaning services</p>
@@ -74,8 +74,8 @@ export default function AboutPage() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 transition-all duration-300 hover:shadow-xl text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-8">
-                <Target className="w-8 h-8 text-blue-600" />
+              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-8">
+                <Target className="w-8 h-8 text-primary-600" />
               </div>
               <h3 className="text-2xl font-bold text-slate-900 mb-6">Our Mission</h3>
               <p className="text-gray-600 text-lg leading-relaxed">
@@ -123,8 +123,8 @@ export default function AboutPage() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 transition-all duration-300 hover:shadow-xl">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
-                <Shield className="w-8 h-8 text-blue-600" />
+              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mb-6">
+                <Shield className="w-8 h-8 text-primary-600" />
               </div>
               <h3 className="text-2xl font-bold text-slate-900 mb-4">Fully Insured & Bonded</h3>
               <p className="text-gray-600 leading-relaxed">
@@ -205,19 +205,19 @@ export default function AboutPage() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center">
-              <div className="text-5xl font-black text-blue-400 mb-2">1000+</div>
+              <div className="text-5xl font-black text-primary-400 mb-2">1000+</div>
               <div className="text-gray-300 font-medium text-lg">Homes Cleaned</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl font-black text-blue-400 mb-2">4.9</div>
+              <div className="text-5xl font-black text-primary-400 mb-2">4.9</div>
               <div className="text-gray-300 font-medium text-lg">Average Rating</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl font-black text-blue-400 mb-2">50+</div>
+              <div className="text-5xl font-black text-primary-400 mb-2">50+</div>
               <div className="text-gray-300 font-medium text-lg">Professional Cleaners</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl font-black text-blue-400 mb-2">100%</div>
+              <div className="text-5xl font-black text-primary-400 mb-2">100%</div>
               <div className="text-gray-300 font-medium text-lg">Satisfaction Rate</div>
             </div>
           </div>
@@ -238,11 +238,11 @@ export default function AboutPage() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 transition-all duration-300 hover:shadow-xl text-center">
-              <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-blue-600 font-bold text-2xl">SJ</span>
+              <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span className="text-primary-600 font-bold text-2xl">SJ</span>
               </div>
               <h3 className="text-2xl font-bold text-slate-900 mb-2">Sarah Johnson</h3>
-              <p className="text-blue-600 font-medium mb-4">Founder & CEO</p>
+              <p className="text-primary-600 font-medium mb-4">Founder & CEO</p>
               <p className="text-gray-600 leading-relaxed">
                 With over 10 years in the cleaning industry, Sarah founded Nexxus with a vision 
                 to revolutionize home cleaning services in Arizona.

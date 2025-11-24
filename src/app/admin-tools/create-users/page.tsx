@@ -74,9 +74,9 @@ export default function AdminCreateUsersPage() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Admin User Creation Tool</h1>
         
-        <div className="bg-blue-50 border border-blue-200 p-4 rounded mb-6">
-          <h2 className="font-semibold text-blue-800">Secure Server-Side User Creation</h2>
-          <p className="text-blue-700">
+        <div className="bg-primary-50 border border-primary-200 p-4 rounded mb-6">
+          <h2 className="font-semibold text-primary-800">Secure Server-Side User Creation</h2>
+          <p className="text-primary-700">
             This tool uses the Supabase Admin API (server-side only) to create missing test users.
             The service role key is never exposed to the client.
           </p>
@@ -153,10 +153,10 @@ export default function AdminCreateUsersPage() {
                 </div>
 
                 {result.success && (
-                  <div className="mt-6 bg-blue-50 border border-blue-200 p-4 rounded">
-                    <h4 className="font-semibold text-blue-800 mb-2">Next Steps</h4>
-                    <ol className="list-decimal list-inside space-y-1 text-blue-700">
-                      <li>Go to your login page: <a href="/login" className="underline hover:text-blue-800">/login</a></li>
+                  <div className="mt-6 bg-primary-50 border border-primary-200 p-4 rounded">
+                    <h4 className="font-semibold text-primary-800 mb-2">Next Steps</h4>
+                    <ol className="list-decimal list-inside space-y-1 text-primary-700">
+                      <li>Go to your login page: <a href="/login" className="underline hover:text-primary-800">/login</a></li>
                       <li>Test the homeowner credentials: homeowner@nexxus.com / Homeowner123!</li>
                       <li>Test the cleaner credentials: cleaner@nexxus.com / Cleaner123!</li>
                       <li>Verify that both users can access their respective dashboards</li>

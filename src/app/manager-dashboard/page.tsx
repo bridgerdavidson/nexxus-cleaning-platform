@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../../hooks/useAuth';
-import { 
-  Calendar, 
-  Users, 
-  MessageCircle, 
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../hooks/useAuth";
+import {
+  Calendar,
+  Users,
+  MessageCircle,
   DollarSign,
   CheckCircle,
   Clock,
@@ -14,8 +14,8 @@ import {
   AlertCircle,
   Star,
   Loader2,
-  Home
-} from 'lucide-react';
+  Home,
+} from "lucide-react";
 import {
   useManagerAppointments,
   useManagerCleaners,
@@ -23,28 +23,44 @@ import {
   useManagerMessages,
   updateAppointmentStatus,
   assignCleanerToAppointment,
-  updateCleanerAvailability
-} from '../../hooks/useManagerData';
-import DashboardHeader from '../../components/DashboardHeader';
-import MobileNavigation from '../../components/MobileNavigation';
-import MobileSidebar from '../../components/MobileSidebar';
+  updateCleanerAvailability,
+} from "../../hooks/useManagerData";
+import DashboardHeader from "../../components/DashboardHeader";
+import MobileNavigation from "../../components/MobileNavigation";
+import MobileSidebar from "../../components/MobileSidebar";
 
 export default function ManagerDashboard() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
-  const { appointments, loading: appointmentsLoading, error: appointmentsError } = useManagerAppointments();
-  const { cleaners, loading: cleanersLoading, error: cleanersError } = useManagerCleaners();
-  const { payments, loading: paymentsLoading, error: paymentsError } = useManagerPayments();
-  const { messages, loading: messagesLoading, error: messagesError } = useManagerMessages();
+  const {
+    appointments,
+    loading: appointmentsLoading,
+    error: appointmentsError,
+  } = useManagerAppointments();
+  const {
+    cleaners,
+    loading: cleanersLoading,
+    error: cleanersError,
+  } = useManagerCleaners();
+  const {
+    payments,
+    loading: paymentsLoading,
+    error: paymentsError,
+  } = useManagerPayments();
+  const {
+    messages,
+    loading: messagesLoading,
+    error: messagesError,
+  } = useManagerMessages();
 
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      router.push("/login");
     }
   }, [user, loading, router]);
 
@@ -61,39 +77,43 @@ export default function ManagerDashboard() {
   }
 
   const tabs = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'appointments', label: 'Appointments', icon: MapPin },
-    { id: 'cleaners', label: 'Cleaners', icon: Users },
-    { id: 'payments', label: 'Payments', icon: DollarSign },
-    { id: 'messages', label: 'Messages', icon: MessageCircle }
+    { id: "home", label: "Home", icon: Home },
+    { id: "appointments", label: "Appointments", icon: MapPin },
+    { id: "cleaners", label: "Cleaners", icon: Users },
+    { id: "payments", label: "Payments", icon: DollarSign },
+    { id: "messages", label: "Messages", icon: MessageCircle },
   ];
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending':
-        return 'text-blue-600 bg-blue-100';
-      case 'confirmed':
-        return 'text-green-600 bg-green-100';
-      case 'in_progress':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'completed':
-        return 'text-green-600 bg-green-100';
-      case 'cancelled':
-        return 'text-red-600 bg-red-100';
+      case "pending":
+        return "text-primary-600 bg-primary-100";
+      case "confirmed":
+        return "text-green-600 bg-green-100";
+      case "in_progress":
+        return "text-yellow-600 bg-yellow-100";
+      case "completed":
+        return "text-green-600 bg-green-100";
+      case "cancelled":
+        return "text-red-600 bg-red-100";
       default:
-        return 'text-gray-600 bg-gray-100';
+        return "text-gray-600 bg-gray-100";
     }
   };
 
   const renderOverview = () => (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-lg p-6 text-white">
-        <h2 className="text-2xl font-bold mb-2">
-          Welcome, {user.profile.firstName}!
-        </h2>
-        <p className="text-primary-100">
-          Operations Management Dashboard
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+            Manager Dashboard
+          </span>
+        </div>
+        <p className="text-gray-600">
+          Welcome, {user.profile.firstName}! Manage your team operations and
+          oversee cleaning services.
         </p>
       </div>
 
@@ -101,15 +121,19 @@ export default function ManagerDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="card">
           <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-blue-600" />
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <Calendar className="w-6 h-6 text-primary-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Appointments</p>
+              <p className="text-sm font-medium text-gray-600">
+                Total Appointments
+              </p>
               {appointmentsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">{appointments.length}</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {appointments.length}
+                </p>
               )}
             </div>
           </div>
@@ -121,12 +145,14 @@ export default function ManagerDashboard() {
               <Users className="w-6 h-6 text-green-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Active Cleaners</p>
+              <p className="text-sm font-medium text-gray-600">
+                Active Cleaners
+              </p>
               {cleanersLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900">
-                  {cleaners.filter(c => c.is_available).length}
+                  {cleaners.filter((c) => c.is_available).length}
                 </p>
               )}
             </div>
@@ -139,12 +165,14 @@ export default function ManagerDashboard() {
               <Clock className="w-6 h-6 text-yellow-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending Appointments</p>
+              <p className="text-sm font-medium text-gray-600">
+                Pending Appointments
+              </p>
               {appointmentsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900">
-                  {appointments.filter(a => a.status === 'pending').length}
+                  {appointments.filter((a) => a.status === "pending").length}
                 </p>
               )}
             </div>
@@ -157,12 +185,14 @@ export default function ManagerDashboard() {
               <DollarSign className="w-6 h-6 text-purple-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending Payments</p>
+              <p className="text-sm font-medium text-gray-600">
+                Pending Payments
+              </p>
               {paymentsLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900">
-                  {payments.filter(p => p.status === 'pending').length}
+                  {payments.filter((p) => p.status === "pending").length}
                 </p>
               )}
             </div>
@@ -172,7 +202,9 @@ export default function ManagerDashboard() {
 
       {/* Recent Appointments */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Appointments</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Recent Appointments
+        </h3>
         {appointmentsLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -180,26 +212,40 @@ export default function ManagerDashboard() {
         ) : (
           <div className="space-y-4">
             {appointments.slice(0, 5).map((appointment) => (
-              <div key={appointment.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div
+                key={appointment.id}
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+              >
                 <div className="flex items-center space-x-4">
                   <Calendar className="w-8 h-8 text-primary-600" />
                   <div>
                     <p className="font-medium text-gray-900">
-                      {appointment.homeowner ? 
-                        `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}` : 
-                        'Unknown'}
+                      {appointment.homeowner
+                        ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
+                        : "Unknown"}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {new Date(appointment.scheduled_date).toLocaleDateString()} at {appointment.scheduled_time}
+                      {new Date(
+                        appointment.scheduled_date
+                      ).toLocaleDateString()}{" "}
+                      at {appointment.scheduled_time}
                     </p>
-                    <p className="text-sm text-gray-600">{appointment.service_type?.name}</p>
+                    <p className="text-sm text-gray-600">
+                      {appointment.service_type?.name}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
+                  <span
+                    className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(
+                      appointment.status
+                    )}`}
+                  >
                     {appointment.status}
                   </span>
-                  <p className="text-lg font-semibold text-gray-900">${appointment.total_price}</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    ${appointment.total_price}
+                  </p>
                 </div>
               </div>
             ))}
@@ -211,7 +257,9 @@ export default function ManagerDashboard() {
 
   const renderAppointments = () => (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">All Appointments</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">
+        All Appointments
+      </h2>
       {appointmentsLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -255,20 +303,24 @@ export default function ManagerDashboard() {
                     {appointment.scheduled_time}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {appointment.homeowner ? 
-                      `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}` : 
-                      'N/A'}
+                    {appointment.homeowner
+                      ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
+                      : "N/A"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {appointment.cleaner_profile?.user_profile ?
-                      `${appointment.cleaner_profile.user_profile.first_name} ${appointment.cleaner_profile.user_profile.last_name}` :
-                      'Unassigned'}
+                    {appointment.cleaner_profile?.user_profile
+                      ? `${appointment.cleaner_profile.user_profile.first_name} ${appointment.cleaner_profile.user_profile.last_name}`
+                      : "Unassigned"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {appointment.service_type?.name || 'N/A'}
+                    {appointment.service_type?.name || "N/A"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(appointment.status)}`}>
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
+                        appointment.status
+                      )}`}
+                    >
                       {appointment.status}
                     </span>
                   </td>
@@ -286,7 +338,9 @@ export default function ManagerDashboard() {
 
   const renderCleaners = () => (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Cleaner Management</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">
+        Cleaner Management
+      </h2>
       {cleanersLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -299,37 +353,50 @@ export default function ManagerDashboard() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {cleaners.map((cleaner) => (
-            <div key={cleaner.id} className="border border-gray-200 rounded-lg p-6">
+            <div
+              key={cleaner.id}
+              className="border border-gray-200 rounded-lg p-6"
+            >
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    {cleaner.user_profile ? 
-                      `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}` : 
-                      'Unknown'}
+                    {cleaner.user_profile
+                      ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
+                      : "Unknown"}
                   </h3>
-                  <p className="text-sm text-gray-600">{cleaner.user_profile?.email}</p>
+                  <p className="text-sm text-gray-600">
+                    {cleaner.user_profile?.email}
+                  </p>
                 </div>
                 <div className="flex items-center space-x-1">
                   <Star className="w-5 h-5 text-yellow-400 fill-current" />
-                  <span className="text-sm font-medium text-gray-900">{cleaner.rating.toFixed(1)}</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {cleaner.rating.toFixed(1)}
+                  </span>
                 </div>
               </div>
-              
+
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Total Jobs:</span>
-                  <span className="font-medium text-gray-900">{cleaner.total_jobs}</span>
+                  <span className="font-medium text-gray-900">
+                    {cleaner.total_jobs}
+                  </span>
                 </div>
                 {cleaner.experience_years && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Experience:</span>
-                    <span className="font-medium text-gray-900">{cleaner.experience_years} years</span>
+                    <span className="font-medium text-gray-900">
+                      {cleaner.experience_years} years
+                    </span>
                   </div>
                 )}
                 {cleaner.hourly_rate && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Hourly Rate:</span>
-                    <span className="font-medium text-gray-900">${cleaner.hourly_rate}</span>
+                    <span className="font-medium text-gray-900">
+                      ${cleaner.hourly_rate}
+                    </span>
                   </div>
                 )}
               </div>
@@ -352,11 +419,11 @@ export default function ManagerDashboard() {
               <button
                 className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                   cleaner.is_available
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? "bg-green-100 text-green-700 hover:bg-green-200"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
-                {cleaner.is_available ? 'Available' : 'Unavailable'}
+                {cleaner.is_available ? "Available" : "Unavailable"}
               </button>
             </div>
           ))}
@@ -367,7 +434,9 @@ export default function ManagerDashboard() {
 
   const renderPayments = () => (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Payment Management</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">
+        Payment Management
+      </h2>
       {paymentsLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -406,22 +475,26 @@ export default function ManagerDashboard() {
                     {new Date(payment.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {payment.appointment?.homeowner ?
-                      `${payment.appointment.homeowner.first_name} ${payment.appointment.homeowner.last_name}` :
-                      'N/A'}
+                    {payment.appointment?.homeowner
+                      ? `${payment.appointment.homeowner.first_name} ${payment.appointment.homeowner.last_name}`
+                      : "N/A"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {payment.appointment?.service_type?.name || 'N/A'}
+                    {payment.appointment?.service_type?.name || "N/A"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     ${payment.amount}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      payment.status === 'paid' ? 'text-green-600 bg-green-100' :
-                      payment.status === 'pending' ? 'text-yellow-600 bg-yellow-100' :
-                      'text-red-600 bg-red-100'
-                    }`}>
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        payment.status === "paid"
+                          ? "text-green-600 bg-green-100"
+                          : payment.status === "pending"
+                          ? "text-yellow-600 bg-yellow-100"
+                          : "text-red-600 bg-red-100"
+                      }`}
+                    >
                       {payment.status}
                     </span>
                   </td>
@@ -459,17 +532,25 @@ export default function ManagerDashboard() {
                 <div>
                   <div className="flex items-center space-x-2">
                     <p className="font-medium text-gray-900">
-                      {message.sender ? `${message.sender.first_name} ${message.sender.last_name}` : 'Unknown'}
+                      {message.sender
+                        ? `${message.sender.first_name} ${message.sender.last_name}`
+                        : "Unknown"}
                     </p>
                     <span className="text-xs text-gray-500">→</span>
                     <p className="font-medium text-gray-900">
-                      {message.recipient ? `${message.recipient.first_name} ${message.recipient.last_name}` : 'Unknown'}
+                      {message.recipient
+                        ? `${message.recipient.first_name} ${message.recipient.last_name}`
+                        : "Unknown"}
                     </p>
                   </div>
                   {message.subject && (
-                    <p className="text-sm font-medium text-gray-800 mt-1">{message.subject}</p>
+                    <p className="text-sm font-medium text-gray-800 mt-1">
+                      {message.subject}
+                    </p>
                   )}
-                  <p className="text-sm text-gray-600 mt-1">{message.content}</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {message.content}
+                  </p>
                 </div>
                 <span className="text-xs text-gray-500">
                   {new Date(message.created_at).toLocaleDateString()}
@@ -484,15 +565,15 @@ export default function ManagerDashboard() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'home':
+      case "home":
         return renderOverview();
-      case 'appointments':
+      case "appointments":
         return renderAppointments();
-      case 'cleaners':
+      case "cleaners":
         return renderCleaners();
-      case 'payments':
+      case "payments":
         return renderPayments();
-      case 'messages':
+      case "messages":
         return renderMessages();
       default:
         return renderOverview();
@@ -501,10 +582,10 @@ export default function ManagerDashboard() {
 
   return (
     <>
-      <DashboardHeader 
-        role="manager" 
-        tabs={tabs} 
-        activeTab={activeTab} 
+      <DashboardHeader
+        role="manager"
+        tabs={tabs}
+        activeTab={activeTab}
         onTabChange={setActiveTab}
       />
       <div className="min-h-screen bg-gray-50">
@@ -513,13 +594,13 @@ export default function ManagerDashboard() {
           {renderContent()}
         </div>
       </div>
-      <MobileNavigation 
+      <MobileNavigation
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
       />
-      <MobileSidebar 
+      <MobileSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="manager"
@@ -527,4 +608,3 @@ export default function ManagerDashboard() {
     </>
   );
 }
-

@@ -25,15 +25,15 @@ export default function ListUsers() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">List All Users</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">Diagnostic Tool</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">Diagnostic Tool</h2>
+        <p className="text-primary-700 mb-4">
           This will list all auth users and profiles to help us identify the correct UIDs.
         </p>
         <button
           onClick={listUsers}
           disabled={loading}
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+          className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 disabled:opacity-50 font-medium"
         >
           {loading ? 'Loading Users...' : 'List All Users'}
         </button>
@@ -66,10 +66,10 @@ export default function ListUsers() {
               </div>
 
               <div className="bg-white border rounded p-4">
-                <h4 className="font-medium text-blue-800 mb-3">🔐 Auth Users</h4>
+                <h4 className="font-medium text-primary-800 mb-3">🔐 Auth Users</h4>
                 <div className="space-y-2">
                   {result.data.authUsers.map((user: any, index: number) => (
-                    <div key={index} className="bg-blue-50 p-3 rounded border">
+                    <div key={index} className="bg-primary-50 p-3 rounded border">
                       <div className="font-mono text-sm">
                         <strong>ID:</strong> {user.id}
                       </div>

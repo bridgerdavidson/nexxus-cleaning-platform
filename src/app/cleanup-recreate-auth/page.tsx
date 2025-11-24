@@ -72,8 +72,8 @@ export default function CleanupRecreateAuth() {
                 <div className="bg-white border rounded p-4">
                   <h5 className="font-medium mb-3">📊 Recreation Results:</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <strong className="text-blue-800">Homeowner</strong><br />
+                    <div className="bg-primary-50 p-3 rounded">
+                      <strong className="text-primary-800">Homeowner</strong><br />
                       <span className="text-sm">Auth ID: {result.results.homeowner.authUserId}</span><br />
                       <span className="text-sm">Email: {result.results.homeowner.email}</span><br />
                       <span className="text-sm">Profile Created: ✅</span>
@@ -102,7 +102,7 @@ export default function CleanupRecreateAuth() {
                   
                   <div className="space-y-2">
                     <div>
-                      <strong className="text-blue-800">Auth Users:</strong>
+                      <strong className="text-primary-800">Auth Users:</strong>
                       <div className="text-sm text-gray-600">
                         {result.verification.authUsers.map((user: any, index: number) => (
                           <div key={index}>• {user.email} (ID: {user.id.substring(0, 8)}...)</div>
@@ -125,8 +125,8 @@ export default function CleanupRecreateAuth() {
                 <div className="bg-white border rounded p-4">
                   <h5 className="font-medium mb-3">🔑 Fresh Test Login Credentials:</h5>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <strong className="text-blue-800">Homeowner</strong><br />
+                    <div className="bg-primary-50 p-3 rounded">
+                      <strong className="text-primary-800">Homeowner</strong><br />
                       <span className="text-sm">Email: {result.testCredentials.homeowner.email}</span><br />
                       <span className="text-sm">Password: {result.testCredentials.homeowner.password}</span>
                     </div>
@@ -153,7 +153,7 @@ export default function CleanupRecreateAuth() {
                 </a>
                 <a 
                   href="/homeowner-dashboard" 
-                  className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 inline-block"
+                  className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 inline-block"
                 >
                   Homeowner Dashboard
                 </a>

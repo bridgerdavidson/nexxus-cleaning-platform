@@ -14,7 +14,7 @@ export default function ServicesPage() {
             </div>
             <h1 className="text-5xl lg:text-6xl font-black mb-8 leading-tight">
               Expertise That Drives<br />
-              <span className="text-blue-400">Quality</span>
+              <span className="text-primary-400">Quality</span>
             </h1>
             <p className="text-xl text-gray-300 mb-10 leading-relaxed max-w-3xl mx-auto">
               We're committed to providing the best cleaning experience with professional standards
@@ -47,8 +47,8 @@ export default function ServicesPage() {
             </div>
             
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 transition-all duration-300 hover:shadow-xl text-center group">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-8">
-                <ShieldCheck className="w-8 h-8 text-blue-600" />
+              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-8">
+                <ShieldCheck className="w-8 h-8 text-primary-600" />
               </div>
               <h3 className="text-2xl font-bold text-slate-900 mb-6">Trusted Professionals</h3>
               <p className="text-gray-600 text-lg leading-relaxed">
@@ -131,8 +131,8 @@ export default function ServicesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Regular Cleaning */}
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 transition-all duration-300 hover:shadow-xl">
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
-                <Home className="w-8 h-8 text-blue-600" />
+              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mb-6">
+                <Home className="w-8 h-8 text-primary-600" />
               </div>
               <h3 className="text-2xl font-bold text-slate-900 mb-4">Regular Cleaning</h3>
               <p className="text-gray-600 mb-6">

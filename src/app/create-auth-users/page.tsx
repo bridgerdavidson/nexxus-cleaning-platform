@@ -25,15 +25,15 @@ export default function CreateAuthUsers() {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Create Missing Auth Users</h1>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h2 className="text-lg font-semibold text-blue-800 mb-2">Problem Identified</h2>
-        <p className="text-blue-700 mb-4">
+      <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 mb-6">
+        <h2 className="text-lg font-semibold text-primary-800 mb-2">Problem Identified</h2>
+        <p className="text-primary-700 mb-4">
           We have user profiles in the database but missing corresponding auth users in Supabase Auth.
         </p>
-        <p className="text-blue-700 mb-4">
+        <p className="text-primary-700 mb-4">
           This will:
         </p>
-        <ul className="text-blue-700 mb-4 list-disc list-inside">
+        <ul className="text-primary-700 mb-4 list-disc list-inside">
           <li>Find profiles without corresponding auth users</li>
           <li>Create auth users for homeowner@nexxus.com and cleaner@nexxus.com</li>
           <li>Link the auth users to existing profiles</li>
@@ -42,7 +42,7 @@ export default function CreateAuthUsers() {
         <button
           onClick={createMissingAuthUsers}
           disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+          className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 disabled:opacity-50"
         >
           {loading ? 'Creating Auth Users...' : 'Create Missing Auth Users'}
         </button>

@@ -222,9 +222,9 @@ export default function CreateTestUsersPage() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Create Test Users</h1>
         
-        <div className="bg-blue-50 border border-blue-200 p-4 rounded mb-6">
-          <h2 className="font-semibold text-blue-800">Test User Creation</h2>
-          <p className="text-blue-700">This will create the missing Homeowner and Cleaner test accounts.</p>
+        <div className="bg-primary-50 border border-primary-200 p-4 rounded mb-6">
+          <h2 className="font-semibold text-primary-800">Test User Creation</h2>
+          <p className="text-primary-700">This will create the missing Homeowner and Cleaner test accounts.</p>
         </div>
         
         <div className="space-x-4 mb-6">
@@ -239,7 +239,7 @@ export default function CreateTestUsersPage() {
           <button
             onClick={testAllLogins}
             disabled={loading}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            className="bg-primary-600 text-white px-4 py-2 rounded hover:bg-primary-700 disabled:opacity-50"
           >
             {loading ? 'Testing...' : 'Test All Logins'}
           </button>
