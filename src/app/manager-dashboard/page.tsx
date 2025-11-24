@@ -26,10 +26,13 @@ import {
   updateCleanerAvailability
 } from '../../hooks/useManagerData';
 import DashboardHeader from '../../components/DashboardHeader';
+import MobileNavigation from '../../components/MobileNavigation';
+import MobileSidebar from '../../components/MobileSidebar';
 
 export default function ManagerDashboard() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('home');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -505,11 +508,22 @@ export default function ManagerDashboard() {
         onTabChange={setActiveTab}
       />
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
           {/* Tab Content */}
           {renderContent()}
         </div>
       </div>
+      <MobileNavigation 
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onMenuClick={() => setIsSidebarOpen(true)}
+      />
+      <MobileSidebar 
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        role="manager"
+      />
     </>
   );
 }

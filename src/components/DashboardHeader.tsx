@@ -63,7 +63,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ role, tabs = [], acti
   };
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50">
+    <header className="bg-white shadow-sm sticky top-0 z-50 hidden md:block">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
@@ -72,52 +72,27 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ role, tabs = [], acti
               <div className="text-2xl font-bold text-primary-600">
                 Nexxus
               </div>
-              <div className="ml-2 text-sm text-gray-600 font-medium hidden sm:block">
+              <div className="ml-2 text-sm text-gray-600 font-medium">
                 Cleaning Solutions
               </div>
             </Link>
           </div>
 
-          {/* Navigation Tabs */}
+          {/* Navigation Tabs - Desktop Only, Text Only */}
           {tabs.length > 0 && (
-            <nav className="hidden md:flex items-center space-x-1 flex-1 justify-center px-8">
+            <nav className="flex items-center space-x-1 flex-1 justify-center px-8">
               {tabs.map((tab) => {
-                const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => onTabChange?.(tab.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
+                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
                       activeTab === tab.id
                         ? 'text-primary-600 bg-primary-50'
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          )}
-
-          {/* Mobile Navigation Tabs */}
-          {tabs.length > 0 && (
-            <nav className="flex md:hidden items-center space-x-1 flex-1 justify-center px-2 overflow-x-auto">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => onTabChange?.(tab.id)}
-                    className={`flex items-center justify-center p-2 rounded-lg transition-all duration-200 ${
-                      activeTab === tab.id
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                    title={tab.label}
-                  >
-                    <Icon className="w-5 h-5" />
+                    {tab.label}
                   </button>
                 );
               })}
