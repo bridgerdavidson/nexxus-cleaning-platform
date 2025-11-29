@@ -183,115 +183,99 @@ export default function AdminDashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-primary-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Total Bookings
+        <div className="card flex items-center">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <Calendar className="w-6 h-6 text-primary-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Total Bookings</p>
+            {statsLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            ) : (
+              <p className="text-2xl font-bold text-gray-900">
+                {stats.totalBookings}
               </p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.totalBookings}
-                </p>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <Users className="w-6 h-6 text-primary-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Active Cleaners
+        <div className="card flex items-center">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <Users className="w-6 h-6 text-primary-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Active Cleaners</p>
+            {statsLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            ) : (
+              <p className="text-2xl font-bold text-gray-900">
+                {stats.activeCleaners}
               </p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.activeCleaners}
-                </p>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-primary-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  ${stats.totalRevenue}
-                </p>
-              )}
-            </div>
+        <div className="card flex items-center">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <DollarSign className="w-6 h-6 text-primary-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Total Revenue</p>
+            {statsLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            ) : (
+              <p className="text-2xl font-bold text-gray-900">
+                ${stats.totalRevenue}
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-primary-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.pendingApprovals}
-                </p>
-              )}
-            </div>
+        <div className="card flex items-center">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <AlertTriangle className="w-6 h-6 text-primary-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Pending</p>
+            {statsLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            ) : (
+              <p className="text-2xl font-bold text-gray-900">
+                {stats.pendingApprovals}
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-primary-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Growth</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.monthlyGrowth}%
-                </p>
-              )}
-            </div>
+        <div className="card flex items-center">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <TrendingUp className="w-6 h-6 text-primary-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Growth</p>
+            {statsLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            ) : (
+              <p className="text-2xl font-bold text-gray-900">
+                {stats.monthlyGrowth}%
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-primary-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Completion</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.completionRate}%
-                </p>
-              )}
-            </div>
+        <div className="card flex items-center">
+          <div className="p-2 bg-primary-100 rounded-lg">
+            <CheckCircle className="w-6 h-6 text-primary-600" />
+          </div>
+          <div className="ml-4">
+            <p className="text-sm font-medium text-gray-600">Completion</p>
+            {statsLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            ) : (
+              <p className="text-2xl font-bold text-gray-900">
+                {stats.completionRate}%
+              </p>
+            )}
           </div>
         </div>
       </div>
