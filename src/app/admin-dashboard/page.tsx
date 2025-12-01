@@ -325,13 +325,13 @@ export default function AdminDashboard() {
                     <div className="flex space-x-2">
                       <button
                         onClick={() => handleApproveAppointment(appointment.id)}
-                        className="btn-primary text-sm"
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors duration-200"
                       >
                         Approve
                       </button>
                       <button
                         onClick={() => handleDeclineAppointment(appointment.id)}
-                        className="btn-secondary text-sm"
+                        className="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors duration-200"
                       >
                         Decline
                       </button>

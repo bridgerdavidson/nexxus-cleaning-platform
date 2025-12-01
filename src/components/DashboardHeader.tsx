@@ -119,29 +119,6 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </nav>
           )}
 
-          {/* Mobile Navigation Tabs */}
-          {tabs.length > 0 && (
-            <nav className="flex md:hidden items-center space-x-1 flex-1 justify-center px-2 overflow-x-auto">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => onTabChange?.(tab.id)}
-                    className={`flex items-center justify-center p-2 rounded-lg transition-all duration-200 ${
-                      activeTab === tab.id
-                        ? "text-primary-600 bg-primary-50"
-                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                    }`}
-                    title={tab.label}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </button>
-                );
-              })}
-            </nav>
-          )}
-
           {/* User Profile */}
           <div className="flex items-center flex-shrink-0">
             {user ? (
