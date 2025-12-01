@@ -3,6 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
+
+// Prevent static generation - this page requires authentication
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 import {
   Calendar,
   MapPin,
@@ -30,12 +34,13 @@ import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 
 export default function CleanerDashboard() {
-  const { user, loading } = useAuth();
+  const { user, loading, currentOrganizationId } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
+  // These hooks handle currentOrganizationId internally, but we need to ensure it's available
   const {
     appointments,
     loading: appointmentsLoading,

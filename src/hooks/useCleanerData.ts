@@ -91,10 +91,14 @@ export function useCleanerAppointments() {
   const [appointments, setAppointments] = useState<CleanerAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth;
 
   useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+    if (!user?.id || currentOrganizationId === null || currentOrganizationId === undefined) {
+      setLoading(false);
+      return;
+    }
 
     const fetchAppointments = async () => {
       try {
@@ -106,7 +110,7 @@ export function useCleanerAppointments() {
           .from('cleaner_profiles')
           .select('id')
           .eq('id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .single();
 
         if (profileError) {
@@ -144,7 +148,7 @@ export function useCleanerAppointments() {
             )
           `)
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .order('scheduled_date', { ascending: true });
         
         if (error) throw error;
@@ -166,7 +170,7 @@ export function useCleanerAppointments() {
     };
 
     fetchAppointments();
-  }, [user?.id, currentOrganizationId]);
+  }, [user?.id, orgId]);
 
   return { appointments, loading, error };
 }
@@ -183,10 +187,14 @@ export function useCleanerStats() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth;
 
   useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+    if (!user?.id || currentOrganizationId === null || currentOrganizationId === undefined) {
+      setLoading(false);
+      return;
+    }
 
     const fetchStats = async () => {
       try {
@@ -198,7 +206,7 @@ export function useCleanerStats() {
           .from('cleaner_profiles')
           .select('id, rating, total_jobs')
           .eq('id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .single();
 
         if (profileError) throw profileError;
@@ -209,14 +217,14 @@ export function useCleanerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId);
+          .eq('organization_id', orgId);
 
         // Get completed jobs count
         const { count: completedJobs } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .eq('status', 'completed');
 
         // Get upcoming jobs count
@@ -224,7 +232,7 @@ export function useCleanerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .in('status', ['pending', 'confirmed', 'in_progress']);
 
         // Get jobs completed this week
@@ -235,7 +243,7 @@ export function useCleanerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .eq('status', 'completed')
           .gte('scheduled_date', oneWeekAgo.toISOString().split('T')[0]);
 
@@ -244,7 +252,7 @@ export function useCleanerStats() {
           .from('appointments')
           .select('id, total_price')
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .eq('status', 'completed');
 
         const totalEarnings = completedAppointments?.reduce((sum, appointment) => 
@@ -257,7 +265,7 @@ export function useCleanerStats() {
         const { data: payouts } = await supabase
           .from('payments')
           .select('amount')
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .eq('status', 'paid')
           .in('appointment_id', completedAppointments?.map(a => a.id) || []);
 
@@ -281,7 +289,7 @@ export function useCleanerStats() {
     };
 
     fetchStats();
-  }, [user?.id, currentOrganizationId]);
+  }, [user?.id, orgId]);
 
   return { stats, loading, error };
 }
@@ -290,10 +298,15 @@ export function useCleanerMessages() {
   const [messages, setMessages] = useState<CleanerMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
 
   useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+    if (!user?.id || !orgId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchMessages = async () => {
       try {
@@ -313,7 +326,7 @@ export function useCleanerMessages() {
               role
             )
           `)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .eq('recipient_id', user.id)
           .order('created_at', { ascending: false });
 
@@ -334,7 +347,7 @@ export function useCleanerMessages() {
     };
 
     fetchMessages();
-  }, [user?.id, currentOrganizationId]);
+  }, [user?.id, orgId]);
 
   return { messages, loading, error };
 }
@@ -343,10 +356,15 @@ export function useCleanerPayouts() {
   const [payouts, setPayouts] = useState<CleanerPayout[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !orgId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchPayouts = async () => {
       try {
@@ -357,7 +375,7 @@ export function useCleanerPayouts() {
           .from('cleaner_profiles')
           .select('id')
           .eq('id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .single();
 
         if (profileError) throw profileError;
@@ -368,7 +386,7 @@ export function useCleanerPayouts() {
           .from('appointments')
           .select('id')
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId);
+          .eq('organization_id', orgId);
 
         if (!appointments || appointments.length === 0) {
           setPayouts([]);
@@ -396,7 +414,7 @@ export function useCleanerPayouts() {
               )
             )
           `)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .in('appointment_id', appointmentIds)
           .order('created_at', { ascending: false });
 
@@ -427,7 +445,7 @@ export function useCleanerPayouts() {
     };
 
     fetchPayouts();
-  }, [user?.id, currentOrganizationId]);
+  }, [user?.id, orgId]);
 
   return { payouts, loading, error };
 }
@@ -436,10 +454,15 @@ export function useCleanerPhotos() {
   const [photos, setPhotos] = useState<CleanerPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !orgId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchPhotos = async () => {
       try {
@@ -450,7 +473,7 @@ export function useCleanerPhotos() {
           .from('cleaner_profiles')
           .select('id')
           .eq('id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('organization_id', orgId)
           .single();
 
         if (profileError) throw profileError;
@@ -461,7 +484,7 @@ export function useCleanerPhotos() {
           .from('appointments')
           .select('id')
           .eq('cleaner_id', user.id)
-          .eq('organization_id', currentOrganizationId);
+          .eq('organization_id', orgId);
 
         if (!appointments || appointments.length === 0) {
           setPhotos([]);
@@ -512,7 +535,7 @@ export function useCleanerPhotos() {
     };
 
     fetchPhotos();
-  }, [user?.id, currentOrganizationId]);
+  }, [user?.id, orgId]);
 
   return { photos, loading, error };
 }
