@@ -92,10 +92,11 @@ export function useCleanerAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const auth = useAuth();
-  const { user, currentOrganizationId } = auth;
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
 
   useEffect(() => {
-    if (!user?.id || currentOrganizationId === null || currentOrganizationId === undefined) {
+    if (!user?.id || !orgId) {
       setLoading(false);
       return;
     }
@@ -188,10 +189,11 @@ export function useCleanerStats() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const auth = useAuth();
-  const { user, currentOrganizationId } = auth;
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
 
   useEffect(() => {
-    if (!user?.id || currentOrganizationId === null || currentOrganizationId === undefined) {
+    if (!user?.id || !orgId) {
       setLoading(false);
       return;
     }
