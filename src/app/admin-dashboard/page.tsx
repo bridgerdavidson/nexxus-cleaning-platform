@@ -17,6 +17,8 @@ import {
   UserCheck,
   Home,
   Loader2,
+  Search,
+  Trash2,
 } from "lucide-react";
 import {
   useAdminAppointments,
@@ -26,15 +28,33 @@ import {
   useAdminMessages,
   updateAppointmentStatus,
   assignCleanerToAppointment,
+  deleteCleaner,
 } from "../../hooks/useAdminData";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
+import AddCleanerModal from "../../components/AddCleanerModal";
+import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 
 export default function AdminDashboard() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [availabilityFilter, setAvailabilityFilter] = useState<
+    "all" | "available" | "unavailable"
+  >("all");
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    isOpen: boolean;
+    cleanerId: string | null;
+    cleanerName: string;
+  }>({
+    isOpen: false,
+    cleanerId: null,
+    cleanerName: "",
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -42,11 +62,13 @@ export default function AdminDashboard() {
     appointments,
     loading: appointmentsLoading,
     error: appointmentsError,
+    refetch: refetchAppointments,
   } = useAdminAppointments();
   const {
     cleaners,
     loading: cleanersLoading,
     error: cleanersError,
+    refetch: refetchCleaners,
   } = useAdminCleaners();
   const { stats, loading: statsLoading, error: statsError } = useAdminStats();
   const {
@@ -125,8 +147,8 @@ export default function AdminDashboard() {
   const handleApproveAppointment = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "confirmed");
     if (result.success) {
-      // Refresh data or show success message
-      window.location.reload(); // Simple refresh for now
+      // Refresh appointments data (pending approvals and bookings table)
+      await refetchAppointments();
     } else {
       alert("Failed to approve appointment: " + result.error);
     }
@@ -135,8 +157,8 @@ export default function AdminDashboard() {
   const handleDeclineAppointment = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "cancelled");
     if (result.success) {
-      // Refresh data or show success message
-      window.location.reload(); // Simple refresh for now
+      // Refresh appointments data (pending approvals and bookings table)
+      await refetchAppointments();
     } else {
       alert("Failed to decline appointment: " + result.error);
     }
@@ -325,13 +347,13 @@ export default function AdminDashboard() {
                     <div className="flex space-x-2">
                       <button
                         onClick={() => handleApproveAppointment(appointment.id)}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors duration-200"
+                        className="px-4 py-3 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors font-medium"
                       >
                         Approve
                       </button>
                       <button
                         onClick={() => handleDeclineAppointment(appointment.id)}
-                        className="bg-rose-500 hover:bg-rose-600 text-white font-semibold py-3 px-6 rounded-lg text-sm transition-colors duration-200"
+                        className="px-4 py-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-medium"
                       >
                         Decline
                       </button>
@@ -515,84 +537,183 @@ export default function AdminDashboard() {
     </div>
   );
 
-  const renderCleaners = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Cleaner Management</h2>
-        <button className="btn-primary">Add New Cleaner</button>
-      </div>
+  const handleDeleteCleaner = async () => {
+    if (!deleteConfirmModal.cleanerId) return;
 
-      {cleanersLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          <span className="ml-2 text-gray-600">Loading cleaners...</span>
+    setIsDeleting(true);
+    const result = await deleteCleaner(deleteConfirmModal.cleanerId);
+    setIsDeleting(false);
+
+    if (result.success) {
+      setDeleteConfirmModal({
+        isOpen: false,
+        cleanerId: null,
+        cleanerName: "",
+      });
+      await refetchCleaners();
+    } else {
+      alert("Failed to delete cleaner: " + result.error);
+    }
+  };
+
+  const renderCleaners = () => {
+    // Filter cleaners based on search and availability
+    const filteredCleaners = cleaners.filter((cleaner) => {
+      // Search filter
+      const fullName = cleaner.user_profile
+        ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`.toLowerCase()
+        : "";
+      const matchesSearch =
+        searchQuery === "" ||
+        fullName.includes(searchQuery.toLowerCase()) ||
+        cleaner.user_profile?.email
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase());
+
+      // Availability filter
+      const matchesAvailability =
+        availabilityFilter === "all" ||
+        (availabilityFilter === "available" && cleaner.is_available) ||
+        (availabilityFilter === "unavailable" && !cleaner.is_available);
+
+      return matchesSearch && matchesAvailability;
+    });
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Cleaner Management
+          </h2>
+          <button
+            className="btn-primary"
+            onClick={() => setShowAddCleanerModal(true)}
+          >
+            Add New Cleaner
+          </button>
         </div>
-      ) : (
-        <div className="grid gap-6">
-          {cleaners.map((cleaner) => (
-            <div key={cleaner.id} className="card">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                    <UserCheck className="w-6 h-6 text-primary-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {getCleanerFullName(cleaner)}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {cleaner.total_jobs} completed jobs • {cleaner.rating}★
-                      rating
-                    </p>
-                    {cleaner.experience_years && (
+
+        {/* Search and Filter Controls */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Search Input */}
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field pl-10 w-full"
+            />
+          </div>
+
+          {/* Availability Filter Dropdown */}
+          <select
+            value={availabilityFilter}
+            onChange={(e) =>
+              setAvailabilityFilter(
+                e.target.value as "all" | "available" | "unavailable"
+              )
+            }
+            className="input-field w-full sm:w-auto sm:min-w-[140px] text-sm"
+          >
+            <option value="all">All Cleaners</option>
+            <option value="available">Available</option>
+            <option value="unavailable">Unavailable</option>
+          </select>
+        </div>
+
+        {cleanersLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-600">Loading cleaners...</span>
+          </div>
+        ) : (
+          <div className="grid gap-6">
+            {filteredCleaners.map((cleaner) => (
+              <div key={cleaner.id} className="card">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
+                      <UserCheck className="w-6 h-6 text-primary-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {getCleanerFullName(cleaner)}
+                      </h3>
                       <p className="text-sm text-gray-600">
-                        {cleaner.experience_years} years experience
+                        {cleaner.total_jobs} completed jobs • {cleaner.rating}★
+                        rating
                       </p>
-                    )}
-                    {cleaner.hourly_rate && (
-                      <p className="text-sm text-gray-600">
-                        ${cleaner.hourly_rate}/hour
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <div className="text-right">
-                    <span
-                      className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                        cleaner.is_available
-                          ? "text-green-600 bg-green-100"
-                          : "text-gray-600 bg-gray-100"
-                      }`}
-                    >
-                      {cleaner.is_available ? "Available" : "Unavailable"}
-                    </span>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {cleaner.background_check_verified &&
-                        "✓ Background Check "}
-                      {cleaner.insurance_verified && "✓ Insured"}
+                      {cleaner.experience_years && (
+                        <p className="text-sm text-gray-600">
+                          {cleaner.experience_years} years experience
+                        </p>
+                      )}
+                      {cleaner.hourly_rate && (
+                        <p className="text-sm text-gray-600">
+                          ${cleaner.hourly_rate}/hour
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex space-x-2">
-                    <button className="btn-secondary text-sm">
-                      View Profile
-                    </button>
-                    <button className="btn-primary text-sm">Assign Job</button>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <span
+                        className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                          cleaner.is_available
+                            ? "text-green-600 bg-green-100"
+                            : "text-gray-600 bg-gray-100"
+                        }`}
+                      >
+                        {cleaner.is_available ? "Available" : "Unavailable"}
+                      </span>
+                      <div className="mt-1 text-xs text-gray-500">
+                        {cleaner.background_check_verified &&
+                          "✓ Background Check "}
+                        {cleaner.insurance_verified && "✓ Insured"}
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button className="btn-secondary text-sm">
+                        View Profile
+                      </button>
+                      <button className="btn-primary text-sm">
+                        Assign Job
+                      </button>
+                      <button
+                        className="bg-red-100 text-red-600 hover:bg-red-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1"
+                        onClick={() =>
+                          setDeleteConfirmModal({
+                            isOpen: true,
+                            cleanerId: cleaner.id,
+                            cleanerName: getCleanerFullName(cleaner),
+                          })
+                        }
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-          {cleaners.length === 0 && (
-            <div className="text-center py-12">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600">No cleaners found</p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+            ))}
+            {filteredCleaners.length === 0 && (
+              <div className="text-center py-12">
+                <Users className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">
+                  {cleaners.length === 0
+                    ? "No cleaners found"
+                    : "No cleaners match your search or filter criteria"}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderMessages = () => (
     <div className="card">
@@ -874,6 +995,25 @@ export default function AdminDashboard() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="admin"
+      />
+      <AddCleanerModal
+        isOpen={showAddCleanerModal}
+        onClose={() => setShowAddCleanerModal(false)}
+      />
+      <DeleteConfirmModal
+        isOpen={deleteConfirmModal.isOpen}
+        onClose={() =>
+          setDeleteConfirmModal({
+            isOpen: false,
+            cleanerId: null,
+            cleanerName: "",
+          })
+        }
+        onConfirm={handleDeleteCleaner}
+        title="Delete Cleaner"
+        message="Are you sure you want to delete this cleaner? This action cannot be undone."
+        itemName={deleteConfirmModal.cleanerName}
+        isLoading={isDeleting}
       />
     </>
   );

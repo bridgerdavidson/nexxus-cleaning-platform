@@ -15,6 +15,8 @@ import {
   Star,
   Loader2,
   Home,
+  Search,
+  Trash2,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -24,15 +26,31 @@ import {
   updateAppointmentStatus,
   assignCleanerToAppointment,
   updateCleanerAvailability,
+  deleteCleaner,
 } from "../../hooks/useManagerData";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
+import AddCleanerModal from "../../components/AddCleanerModal";
+import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 
 export default function ManagerDashboard() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable">("all");
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    isOpen: boolean;
+    cleanerId: string | null;
+    cleanerName: string;
+  }>({
+    isOpen: false,
+    cleanerId: null,
+    cleanerName: "",
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -45,6 +63,7 @@ export default function ManagerDashboard() {
     cleaners,
     loading: cleanersLoading,
     error: cleanersError,
+    refetch: refetchCleaners,
   } = useManagerCleaners();
   const {
     payments,
@@ -77,7 +96,7 @@ export default function ManagerDashboard() {
   }
 
   const tabs = [
-    { id: "home", label: "Home", icon: Home },
+    { id: "home", label: "Overview", icon: Home },
     { id: "appointments", label: "Appointments", icon: MapPin },
     { id: "cleaners", label: "Cleaners", icon: Users },
     { id: "payments", label: "Payments", icon: DollarSign },
@@ -112,8 +131,7 @@ export default function ManagerDashboard() {
           </span>
         </div>
         <p className="text-gray-600">
-          Welcome, {user.profile.firstName}! Manage your team operations and
-          oversee cleaning services.
+          Manage your team operations and oversee cleaning services from one central location.
         </p>
       </div>
 
@@ -336,23 +354,94 @@ export default function ManagerDashboard() {
     </div>
   );
 
-  const renderCleaners = () => (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">
-        Cleaner Management
-      </h2>
-      {cleanersLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+  const handleDeleteCleaner = async () => {
+    if (!deleteConfirmModal.cleanerId) return;
+
+    setIsDeleting(true);
+    const result = await deleteCleaner(deleteConfirmModal.cleanerId);
+    setIsDeleting(false);
+
+    if (result.success) {
+      setDeleteConfirmModal({ isOpen: false, cleanerId: null, cleanerName: "" });
+      await refetchCleaners();
+    } else {
+      alert("Failed to delete cleaner: " + result.error);
+    }
+  };
+
+  const renderCleaners = () => {
+    // Filter cleaners based on search and availability
+    const filteredCleaners = cleaners.filter((cleaner) => {
+      // Search filter
+      const fullName = cleaner.user_profile
+        ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`.toLowerCase()
+        : "";
+      const matchesSearch =
+        searchQuery === "" ||
+        fullName.includes(searchQuery.toLowerCase()) ||
+        cleaner.user_profile?.email?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // Availability filter
+      const matchesAvailability =
+        availabilityFilter === "all" ||
+        (availabilityFilter === "available" && cleaner.is_available) ||
+        (availabilityFilter === "unavailable" && !cleaner.is_available);
+
+      return matchesSearch && matchesAvailability;
+    });
+
+    return (
+      <div className="card">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Cleaner Management
+          </h2>
+          <button 
+            className="btn-primary"
+            onClick={() => setShowAddCleanerModal(true)}
+          >
+            Add New Cleaner
+          </button>
         </div>
-      ) : cleanersError ? (
-        <div className="text-center py-12">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <p className="text-gray-600">{cleanersError}</p>
+
+        {/* Search and Filter Controls */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          {/* Search Input */}
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field pl-10 w-full"
+            />
+          </div>
+
+          {/* Availability Filter Dropdown */}
+          <select
+            value={availabilityFilter}
+            onChange={(e) => setAvailabilityFilter(e.target.value as "all" | "available" | "unavailable")}
+            className="input-field w-full sm:w-auto sm:min-w-[140px] text-sm"
+          >
+            <option value="all">All Cleaners</option>
+            <option value="available">Available</option>
+            <option value="unavailable">Unavailable</option>
+          </select>
         </div>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {cleaners.map((cleaner) => (
+
+        {cleanersLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+          </div>
+        ) : cleanersError ? (
+          <div className="text-center py-12">
+            <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <p className="text-gray-600">{cleanersError}</p>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredCleaners.map((cleaner) => (
             <div
               key={cleaner.id}
               className="border border-gray-200 rounded-lg p-6"
@@ -416,21 +505,49 @@ export default function ManagerDashboard() {
                 )}
               </div>
 
-              <button
-                className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                  cleaner.is_available
-                    ? "bg-green-100 text-green-700 hover:bg-green-200"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                {cleaner.is_available ? "Available" : "Unavailable"}
-              </button>
+              <div className="space-y-2">
+                <button
+                  className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                    cleaner.is_available
+                      ? "bg-green-100 text-green-700 hover:bg-green-200"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  {cleaner.is_available ? "Available" : "Unavailable"}
+                </button>
+                <button
+                  className="w-full bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                  onClick={() =>
+                    setDeleteConfirmModal({
+                      isOpen: true,
+                      cleanerId: cleaner.id,
+                      cleanerName: cleaner.user_profile
+                        ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
+                        : "Unknown",
+                    })
+                  }
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete</span>
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+            ))}
+            {filteredCleaners.length === 0 && (
+              <div className="col-span-full text-center py-12">
+                <Users className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">
+                  {cleaners.length === 0
+                    ? "No cleaners found"
+                    : "No cleaners match your search or filter criteria"}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderPayments = () => (
     <div className="card">
@@ -604,6 +721,21 @@ export default function ManagerDashboard() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="manager"
+      />
+      <AddCleanerModal
+        isOpen={showAddCleanerModal}
+        onClose={() => setShowAddCleanerModal(false)}
+      />
+      <DeleteConfirmModal
+        isOpen={deleteConfirmModal.isOpen}
+        onClose={() =>
+          setDeleteConfirmModal({ isOpen: false, cleanerId: null, cleanerName: "" })
+        }
+        onConfirm={handleDeleteCleaner}
+        title="Delete Cleaner"
+        message="Are you sure you want to delete this cleaner? This action cannot be undone."
+        itemName={deleteConfirmModal.cleanerName}
+        isLoading={isDeleting}
       />
     </>
   );

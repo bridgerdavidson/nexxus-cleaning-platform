@@ -177,7 +177,7 @@ export default function CleanerDashboard() {
   };
 
   const tabs = [
-    { id: "home", label: "Home", icon: Home },
+    { id: "home", label: "Overview", icon: Home },
     { id: "jobs", label: "Job Details", icon: MapPin },
     { id: "messages", label: "Messages", icon: MessageCircle },
     { id: "earnings", label: "Earnings", icon: DollarSign },
@@ -202,10 +202,15 @@ export default function CleanerDashboard() {
   const renderSchedule = () => (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-lg p-6 text-white">
-        <h2 className="text-2xl font-bold mb-2">Good morning, Cleaner!</h2>
-        <p className="text-primary-100">
-          You have {getTodaysJobs().length} jobs scheduled for today.
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+            Cleaner Dashboard
+          </span>
+        </div>
+        <p className="text-gray-600">
+          Manage your cleaning jobs and schedule from one central location.
         </p>
       </div>
 

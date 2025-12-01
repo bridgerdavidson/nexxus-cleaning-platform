@@ -66,34 +66,21 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     };
   }, [isUserDropdownOpen]);
 
-  // Get dashboard link based on role
-  const getDashboardLink = () => {
-    switch (role) {
-      case "homeowner":
-        return "/homeowner-dashboard";
-      case "cleaner":
-        return "/cleaner-dashboard";
-      case "manager":
-        return "/manager-dashboard";
-      case "admin":
-        return "/admin-dashboard";
-      default:
-        return "/";
-    }
-  };
-
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link href={getDashboardLink()} className="flex items-center">
+            <button
+              onClick={() => onTabChange?.("home")}
+              className="flex items-center hover:opacity-80 transition-opacity"
+            >
               <div className="text-2xl font-bold text-primary-600">Nexxus</div>
               <div className="ml-2 text-sm text-gray-600 font-medium hidden sm:block">
                 Cleaning Solutions
               </div>
-            </Link>
+            </button>
           </div>
 
           {/* Navigation Tabs */}

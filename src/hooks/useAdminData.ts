@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
@@ -104,74 +104,78 @@ export function useAdminAppointments() {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
+  const fetchAppointments = useCallback(async () => {
     if (!user?.id) return;
 
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('appointments')
-          .select(`
-            id,
-            scheduled_date,
-            scheduled_time,
-            status,
-            total_price,
-            homeowner:user_profiles!homeowner_id(
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          scheduled_date,
+          scheduled_time,
+          status,
+          total_price,
+          homeowner:user_profiles!homeowner_id(
+            first_name,
+            last_name,
+            email
+          ),
+          cleaner_profile:cleaner_profiles(
+            user_profile:user_profiles!id(
               first_name,
-              last_name,
-              email
-            ),
-            cleaner_profile:cleaner_profiles(
-              user_profile:user_profiles!id(
-                first_name,
-                last_name
-              )
-            ),
-            property:properties(
-              name,
-              address,
-              city,
-              state
-            ),
-            service_type:service_types(
-              name,
-              description
+              last_name
             )
-          `)
-          .order('scheduled_date', { ascending: false });
+          ),
+          property:properties(
+            name,
+            address,
+            city,
+            state
+          ),
+          service_type:service_types(
+            name,
+            description
+          )
+        `)
+        .order('scheduled_date', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(appointment => ({
-          ...appointment,
-          homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
-          property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
-          cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
-            ? {
-                ...appointment.cleaner_profile[0],
-                user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
-                  ? appointment.cleaner_profile[0].user_profile[0] 
-                  : appointment.cleaner_profile[0]?.user_profile
-              }
-            : appointment.cleaner_profile
-        }));
-        
-        setAppointments(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAppointments();
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(appointment => ({
+        ...appointment,
+        homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
+        property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
+        service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
+          ? {
+              ...appointment.cleaner_profile[0],
+              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
+                ? appointment.cleaner_profile[0].user_profile[0] 
+                : appointment.cleaner_profile[0]?.user_profile
+            }
+          : appointment.cleaner_profile
+      }));
+      
+      setAppointments(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
-  return { appointments, loading, error };
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  const refetch = useCallback(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  return { appointments, loading, error, refetch };
 }
 
 export function useAdminCleaners() {
@@ -180,51 +184,51 @@ export function useAdminCleaners() {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
+  const fetchCleaners = useCallback(async () => {
     if (!user?.id) return;
 
-    const fetchCleaners = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('cleaner_profiles')
-          .select(`
-            id,
-            rating,
-            total_jobs,
-            is_available,
-            experience_years,
-            hourly_rate,
-            background_check_verified,
-            insurance_verified,
-            user_profile:user_profiles!id(
-              first_name,
-              last_name,
-              email
-            )
-          `)
-          .order('total_jobs', { ascending: false });
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('cleaner_profiles')
+        .select(`
+          id,
+          rating,
+          total_jobs,
+          is_available,
+          experience_years,
+          hourly_rate,
+          background_check_verified,
+          insurance_verified,
+          user_profile:user_profiles!id(
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .order('total_jobs', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(cleaner => ({
-          ...cleaner,
-          user_profile: Array.isArray(cleaner.user_profile) ? cleaner.user_profile[0] : cleaner.user_profile
-        }));
-        
-        setCleaners(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch cleaners');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCleaners();
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(cleaner => ({
+        ...cleaner,
+        user_profile: Array.isArray(cleaner.user_profile) ? cleaner.user_profile[0] : cleaner.user_profile
+      }));
+      
+      setCleaners(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch cleaners');
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
-  return { cleaners, loading, error };
+  useEffect(() => {
+    fetchCleaners();
+  }, [fetchCleaners]);
+
+  return { cleaners, loading, error, refetch: fetchCleaners };
 }
 
 export function useAdminStats() {
@@ -243,93 +247,97 @@ export function useAdminStats() {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
+  const fetchStats = useCallback(async () => {
     if (!user?.id) return;
 
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
+    try {
+      setLoading(true);
 
-        // Get total bookings
-        const { count: totalBookings } = await supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true });
+      // Get total bookings
+      const { count: totalBookings } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true });
 
-        // Get active cleaners
-        const { count: activeCleaners } = await supabase
-          .from('cleaner_profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_available', true);
+      // Get active cleaners
+      const { count: activeCleaners } = await supabase
+        .from('cleaner_profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_available', true);
 
-        // Get pending approvals
-        const { count: pendingApprovals } = await supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending');
+      // Get pending approvals
+      const { count: pendingApprovals } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
 
-        // Get total revenue from paid payments
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('status', 'paid');
+      // Get total revenue from paid payments
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('status', 'paid');
 
-        const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
+      const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
 
-        // Get completion rate
-        const { count: completedJobs } = await supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'completed');
+      // Get completion rate
+      const { count: completedJobs } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'completed');
 
-        const completionRate = totalBookings ? (completedJobs || 0) / totalBookings * 100 : 0;
+      const completionRate = totalBookings ? (completedJobs || 0) / totalBookings * 100 : 0;
 
-        // Get average rating from reviews
-        const { data: reviews } = await supabase
-          .from('reviews')
-          .select('rating');
+      // Get average rating from reviews
+      const { data: reviews } = await supabase
+        .from('reviews')
+        .select('rating');
 
-        const avgRating = reviews?.length ? 
-          reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
+      const avgRating = reviews?.length ? 
+        reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
 
-        // Calculate average job value
-        const avgJobValue = totalBookings ? totalRevenue / totalBookings : 0;
+      // Calculate average job value
+      const avgJobValue = totalBookings ? totalRevenue / totalBookings : 0;
 
-        // Calculate jobs per day (last 30 days)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        
-        const { count: recentJobs } = await supabase
-          .from('appointments')
-          .select('*', { count: 'exact', head: true })
-          .gte('created_at', thirtyDaysAgo.toISOString());
+      // Calculate jobs per day (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const { count: recentJobs } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', thirtyDaysAgo.toISOString());
 
-        const avgJobsPerDay = (recentJobs || 0) / 30;
+      const avgJobsPerDay = (recentJobs || 0) / 30;
 
-        // Calculate monthly growth (simplified - would need historical data for real calculation)
-        const monthlyGrowth = 15.3; // Placeholder
+      // Calculate monthly growth (simplified - would need historical data for real calculation)
+      const monthlyGrowth = 15.3; // Placeholder
 
-        setStats({
-          totalBookings: totalBookings || 0,
-          activeCleaners: activeCleaners || 0,
-          totalRevenue,
-          pendingApprovals: pendingApprovals || 0,
-          monthlyGrowth,
-          completionRate: Math.round(completionRate * 10) / 10,
-          avgRating: Math.round(avgRating * 10) / 10,
-          avgJobsPerDay: Math.round(avgJobsPerDay * 10) / 10,
-          avgJobValue: Math.round(avgJobValue)
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch stats');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
+      setStats({
+        totalBookings: totalBookings || 0,
+        activeCleaners: activeCleaners || 0,
+        totalRevenue,
+        pendingApprovals: pendingApprovals || 0,
+        monthlyGrowth,
+        completionRate: Math.round(completionRate * 10) / 10,
+        avgRating: Math.round(avgRating * 10) / 10,
+        avgJobsPerDay: Math.round(avgJobsPerDay * 10) / 10,
+        avgJobValue: Math.round(avgJobValue)
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch stats');
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
-  return { stats, loading, error };
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const refetch = useCallback(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  return { stats, loading, error, refetch };
 }
 
 export function useAdminPayments() {
@@ -484,5 +492,30 @@ export async function assignCleanerToAppointment(appointmentId: string, cleanerI
     return { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to assign cleaner' };
+  }
+}
+
+// Helper function to delete a cleaner
+export async function deleteCleaner(cleanerId: string) {
+  try {
+    const response = await fetch(`/api/admin/delete-cleaner?id=${encodeURIComponent(cleanerId)}`, {
+      method: 'DELETE',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return { 
+        success: false, 
+        error: data.error || 'Failed to delete cleaner' 
+      };
+    }
+
+    return { success: true, message: data.message };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to delete cleaner' 
+    };
   }
 }

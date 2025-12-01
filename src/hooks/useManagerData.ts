@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
@@ -169,51 +169,51 @@ export function useManagerCleaners() {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
+  const fetchCleaners = useCallback(async () => {
     if (!user?.id) return;
 
-    const fetchCleaners = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('cleaner_profiles')
-          .select(`
-            id,
-            rating,
-            total_jobs,
-            is_available,
-            experience_years,
-            hourly_rate,
-            background_check_verified,
-            insurance_verified,
-            user_profile:user_profiles!id(
-              first_name,
-              last_name,
-              email
-            )
-          `)
-          .order('total_jobs', { ascending: false });
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('cleaner_profiles')
+        .select(`
+          id,
+          rating,
+          total_jobs,
+          is_available,
+          experience_years,
+          hourly_rate,
+          background_check_verified,
+          insurance_verified,
+          user_profile:user_profiles!id(
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .order('total_jobs', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(cleaner => ({
-          ...cleaner,
-          user_profile: Array.isArray(cleaner.user_profile) ? cleaner.user_profile[0] : cleaner.user_profile
-        }));
-        
-        setCleaners(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch cleaners');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCleaners();
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(cleaner => ({
+        ...cleaner,
+        user_profile: Array.isArray(cleaner.user_profile) ? cleaner.user_profile[0] : cleaner.user_profile
+      }));
+      
+      setCleaners(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch cleaners');
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
-  return { cleaners, loading, error };
+  useEffect(() => {
+    fetchCleaners();
+  }, [fetchCleaners]);
+
+  return { cleaners, loading, error, refetch: fetchCleaners };
 }
 
 export function useManagerPayments() {
@@ -383,6 +383,31 @@ export async function updateCleanerAvailability(cleanerId: string, isAvailable: 
     return { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update cleaner availability' };
+  }
+}
+
+// Helper function to delete a cleaner
+export async function deleteCleaner(cleanerId: string) {
+  try {
+    const response = await fetch(`/api/admin/delete-cleaner?id=${encodeURIComponent(cleanerId)}`, {
+      method: 'DELETE',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return { 
+        success: false, 
+        error: data.error || 'Failed to delete cleaner' 
+      };
+    }
+
+    return { success: true, message: data.message };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to delete cleaner' 
+    };
   }
 }
 
