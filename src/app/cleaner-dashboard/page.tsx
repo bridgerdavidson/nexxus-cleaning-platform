@@ -3,10 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
-
-// Prevent static generation - this page requires authentication
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 import {
   Calendar,
   MapPin,
