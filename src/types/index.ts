@@ -5,6 +5,7 @@
 
 // ENUMS (must match database)
 export type UserRole = 'homeowner' | 'cleaner' | 'admin' | 'manager';
+export type OrgRole = 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 export type ServiceType = 'regular' | 'deep' | 'move_out' | 'custom';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
@@ -22,9 +23,28 @@ export interface UserProfile {
   updated_at: string;
 }
 
+// ORGANIZATIONS
+export interface Organization {
+  id: string;
+  name: string;
+  logo_url?: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+// ORGANIZATION MEMBERS
+export interface OrganizationMember {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: OrgRole;
+  created_at: string;
+}
+
 // CLEANER PROFILES
 export interface CleanerProfile {
   id: string; // References user_profiles(id) - NOT a separate user_id field!
+  organization_id: string | null;
   bio: string | null;
   experience_years: number | null;
   hourly_rate: number | null;
@@ -41,6 +61,7 @@ export interface CleanerProfile {
 export interface Property {
   id: string;
   owner_id: string; // References user_profiles(id)
+  organization_id: string | null;
   name: string;
   address: string;
   city: string;
@@ -58,6 +79,7 @@ export interface Property {
 // SERVICE TYPES
 export interface ServiceTypeRecord {
   id: string;
+  organization_id: string | null;
   name: string;
   description: string | null;
   base_price: number; // numeric(10,2)
@@ -70,6 +92,7 @@ export interface ServiceTypeRecord {
 // APPOINTMENTS
 export interface Appointment {
   id: string;
+  organization_id: string | null;
   homeowner_id: string; // References user_profiles(id)
   cleaner_id: string | null; // References cleaner_profiles(id)
   property_id: string;
@@ -88,6 +111,7 @@ export interface Appointment {
 // PAYMENTS
 export interface Payment {
   id: string;
+  organization_id: string | null;
   appointment_id: string;
   amount: number; // numeric(10,2)
   status: PaymentStatus;
@@ -99,6 +123,7 @@ export interface Payment {
 // MESSAGES
 export interface Message {
   id: string;
+  organization_id: string | null;
   sender_id: string; // References user_profiles(id)
   recipient_id: string; // References user_profiles(id)
   appointment_id: string | null;
@@ -111,6 +136,7 @@ export interface Message {
 // REVIEWS
 export interface Review {
   id: string;
+  organization_id: string | null;
   appointment_id: string;
   reviewer_id: string; // References user_profiles(id)
   reviewee_id: string; // References user_profiles(id)

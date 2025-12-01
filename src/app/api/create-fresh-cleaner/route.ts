@@ -77,12 +77,57 @@ export async function POST(request: NextRequest) {
     console.log('Waiting for database trigger to create user profile...');
     await new Promise(resolve => setTimeout(resolve, 1000));
 
+    // Step 3.5: Get Default Organization ID
+    let defaultOrgId: string;
+    const { data: defaultOrg } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('name', 'Default Organization')
+      .limit(1)
+      .single();
+
+    if (defaultOrg) {
+      defaultOrgId = defaultOrg.id;
+    } else {
+      // Create Default Organization if it doesn't exist
+      const { data: newOrg, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .insert({
+          name: 'Default Organization',
+          created_by: cleanerAuth.user.id,
+        })
+        .select('id')
+        .single();
+
+      if (orgError || !newOrg) {
+        console.error('Error creating Default Organization:', orgError);
+        // Try to find any organization as fallback
+        const { data: anyOrg } = await supabaseAdmin
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .single();
+        
+        if (!anyOrg) {
+          return NextResponse.json({
+            success: false,
+            error: 'No organization found. Cannot create cleaner profile.',
+            step: 'organization_lookup'
+          });
+        }
+        defaultOrgId = anyOrg.id;
+      } else {
+        defaultOrgId = newOrg.id;
+      }
+    }
+
     // Step 4: Create cleaner_profiles entry
     console.log('Creating cleaner_profiles entry...');
     const { data: cleanerProfileEntry, error: cleanerProfileEntryError } = await supabaseAdmin
       .from('cleaner_profiles')
       .insert({
         id: cleanerAuth.user.id, // This should be 'id', not 'user_id' based on schema
+        organization_id: defaultOrgId,
         is_available: true,
         hourly_rate: 25.00,
         experience_years: 2,

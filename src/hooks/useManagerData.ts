@@ -91,10 +91,10 @@ export function useManagerAppointments() {
   const [appointments, setAppointments] = useState<ManagerAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchAppointments = async () => {
       try {
@@ -129,6 +129,7 @@ export function useManagerAppointments() {
               description
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .order('scheduled_date', { ascending: false });
 
         if (error) throw error;
@@ -158,7 +159,7 @@ export function useManagerAppointments() {
     };
 
     fetchAppointments();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { appointments, loading, error };
 }
@@ -167,10 +168,10 @@ export function useManagerCleaners() {
   const [cleaners, setCleaners] = useState<ManagerCleaner[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   const fetchCleaners = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     try {
       setLoading(true);
@@ -191,6 +192,7 @@ export function useManagerCleaners() {
             email
           )
         `)
+        .eq('organization_id', currentOrganizationId)
         .order('total_jobs', { ascending: false });
 
       if (error) throw error;
@@ -207,7 +209,7 @@ export function useManagerCleaners() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   useEffect(() => {
     fetchCleaners();
@@ -220,10 +222,10 @@ export function useManagerPayments() {
   const [payments, setPayments] = useState<ManagerPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchPayments = async () => {
       try {
@@ -247,6 +249,7 @@ export function useManagerPayments() {
               )
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -276,7 +279,7 @@ export function useManagerPayments() {
     };
 
     fetchPayments();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { payments, loading, error };
 }
@@ -285,10 +288,10 @@ export function useManagerMessages() {
   const [messages, setMessages] = useState<ManagerMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchMessages = async () => {
       try {
@@ -313,6 +316,7 @@ export function useManagerMessages() {
               role
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -333,7 +337,7 @@ export function useManagerMessages() {
     };
 
     fetchMessages();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { messages, loading, error };
 }

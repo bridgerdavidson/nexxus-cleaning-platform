@@ -81,6 +81,50 @@ export async function POST(request: NextRequest) {
 
     console.log('User profile created successfully:', profile);
 
+    // Step 3.5: Get Default Organization ID
+    let defaultOrgId: string;
+    const { data: defaultOrg } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('name', 'Default Organization')
+      .limit(1)
+      .single();
+
+    if (defaultOrg) {
+      defaultOrgId = defaultOrg.id;
+    } else {
+      // Create Default Organization if it doesn't exist
+      const { data: newOrg, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .insert({
+          name: 'Default Organization',
+          created_by: authUser.user.id,
+        })
+        .select('id')
+        .single();
+
+      if (orgError || !newOrg) {
+        console.error('Error creating Default Organization:', orgError);
+        // Try to find any organization as fallback
+        const { data: anyOrg } = await supabaseAdmin
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .single();
+        
+        if (!anyOrg) {
+          return NextResponse.json({
+            success: false,
+            error: 'No organization found. Cannot create cleaner profile.',
+            step: 'organization_lookup'
+          });
+        }
+        defaultOrgId = anyOrg.id;
+      } else {
+        defaultOrgId = newOrg.id;
+      }
+    }
+
     // Step 4: Create cleaner profile
     console.log('Creating cleaner profile...');
     
@@ -88,6 +132,7 @@ export async function POST(request: NextRequest) {
       .from('cleaner_profiles')
       .insert({
         id: authUser.user.id,
+        organization_id: defaultOrgId,
         bio: 'Experienced cleaner with attention to detail',
         experience_years: 2,
         hourly_rate: 25.00,

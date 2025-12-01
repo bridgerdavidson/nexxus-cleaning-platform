@@ -91,10 +91,10 @@ export function useCleanerAppointments() {
   const [appointments, setAppointments] = useState<CleanerAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchAppointments = async () => {
       try {
@@ -106,6 +106,7 @@ export function useCleanerAppointments() {
           .from('cleaner_profiles')
           .select('id')
           .eq('id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .single();
 
         if (profileError) {
@@ -143,6 +144,7 @@ export function useCleanerAppointments() {
             )
           `)
           .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .order('scheduled_date', { ascending: true });
         
         if (error) throw error;
@@ -164,7 +166,7 @@ export function useCleanerAppointments() {
     };
 
     fetchAppointments();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { appointments, loading, error };
 }
@@ -181,10 +183,10 @@ export function useCleanerStats() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchStats = async () => {
       try {
@@ -196,6 +198,7 @@ export function useCleanerStats() {
           .from('cleaner_profiles')
           .select('id, rating, total_jobs')
           .eq('id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .single();
 
         if (profileError) throw profileError;
@@ -205,13 +208,15 @@ export function useCleanerStats() {
         const { count: totalJobs } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('cleaner_id', user.id);
+          .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId);
 
         // Get completed jobs count
         const { count: completedJobs } = await supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .eq('status', 'completed');
 
         // Get upcoming jobs count
@@ -219,6 +224,7 @@ export function useCleanerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .in('status', ['pending', 'confirmed', 'in_progress']);
 
         // Get jobs completed this week
@@ -229,6 +235,7 @@ export function useCleanerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .eq('status', 'completed')
           .gte('scheduled_date', oneWeekAgo.toISOString().split('T')[0]);
 
@@ -237,6 +244,7 @@ export function useCleanerStats() {
           .from('appointments')
           .select('id, total_price')
           .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .eq('status', 'completed');
 
         const totalEarnings = completedAppointments?.reduce((sum, appointment) => 
@@ -249,6 +257,7 @@ export function useCleanerStats() {
         const { data: payouts } = await supabase
           .from('payments')
           .select('amount')
+          .eq('organization_id', currentOrganizationId)
           .eq('status', 'paid')
           .in('appointment_id', completedAppointments?.map(a => a.id) || []);
 
@@ -272,7 +281,7 @@ export function useCleanerStats() {
     };
 
     fetchStats();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { stats, loading, error };
 }
@@ -281,10 +290,10 @@ export function useCleanerMessages() {
   const [messages, setMessages] = useState<CleanerMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchMessages = async () => {
       try {
@@ -304,6 +313,7 @@ export function useCleanerMessages() {
               role
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .eq('recipient_id', user.id)
           .order('created_at', { ascending: false });
 
@@ -324,7 +334,7 @@ export function useCleanerMessages() {
     };
 
     fetchMessages();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { messages, loading, error };
 }
@@ -347,6 +357,7 @@ export function useCleanerPayouts() {
           .from('cleaner_profiles')
           .select('id')
           .eq('id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .single();
 
         if (profileError) throw profileError;
@@ -356,7 +367,8 @@ export function useCleanerPayouts() {
         const { data: appointments } = await supabase
           .from('appointments')
           .select('id')
-          .eq('cleaner_id', user.id);
+          .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId);
 
         if (!appointments || appointments.length === 0) {
           setPayouts([]);
@@ -384,6 +396,7 @@ export function useCleanerPayouts() {
               )
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .in('appointment_id', appointmentIds)
           .order('created_at', { ascending: false });
 
@@ -414,7 +427,7 @@ export function useCleanerPayouts() {
     };
 
     fetchPayouts();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { payouts, loading, error };
 }
@@ -437,6 +450,7 @@ export function useCleanerPhotos() {
           .from('cleaner_profiles')
           .select('id')
           .eq('id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .single();
 
         if (profileError) throw profileError;
@@ -446,7 +460,8 @@ export function useCleanerPhotos() {
         const { data: appointments } = await supabase
           .from('appointments')
           .select('id')
-          .eq('cleaner_id', user.id);
+          .eq('cleaner_id', user.id)
+          .eq('organization_id', currentOrganizationId);
 
         if (!appointments || appointments.length === 0) {
           setPhotos([]);
@@ -497,7 +512,7 @@ export function useCleanerPhotos() {
     };
 
     fetchPhotos();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { photos, loading, error };
 }

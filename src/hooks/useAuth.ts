@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { User } from '../types';
+import { User, OrgRole, Organization } from '../types';
 
 export interface AuthState {
   user: User | null;
@@ -11,6 +11,9 @@ export interface AuthState {
   session: Session | null;
   accessToken: string | null | undefined;
   isCleaningUp: boolean; // True when waiting for Supabase client to reset after sign out
+  currentOrganizationId: string | null;
+  currentOrgRole: OrgRole | null;
+  currentOrganization: Organization | null;
 }
 
 export interface AuthActions {
@@ -25,6 +28,9 @@ export function useAuth(): AuthState & AuthActions {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
+  const [currentOrgRole, setCurrentOrgRole] = useState<OrgRole | null>(null);
+  const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
   const isSigningOutRef = useRef(false);
   const isSigningInRef = useRef(false);
   const userRef = useRef<User | null>(null);
@@ -233,6 +239,67 @@ export function useAuth(): AuthState & AuthActions {
     }
   }, []);
 
+  // Load organization membership after user is loaded
+  useEffect(() => {
+    if (!user) {
+      setCurrentOrganizationId(null);
+      setCurrentOrgRole(null);
+      setCurrentOrganization(null);
+      return;
+    }
+
+    const loadOrganization = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('organization_members')
+          .select('organization_id, role, organizations ( id, name, logo_url )')
+          .eq('user_id', user.id)
+          .limit(1);
+
+        if (error) {
+          console.error('[useAuth] Error loading organization:', error);
+          setCurrentOrganizationId(null);
+          setCurrentOrgRole(null);
+          setCurrentOrganization(null);
+          return;
+        }
+
+        if (!data || data.length === 0) {
+          console.warn('[useAuth] No organization membership found for user');
+          setCurrentOrganizationId(null);
+          setCurrentOrgRole(null);
+          setCurrentOrganization(null);
+          return;
+        }
+
+        const membership = data[0];
+        const orgData = membership.organizations as { id: string; name: string; logo_url: string | null } | { id: string; name: string; logo_url: string | null }[] | null;
+        const org = Array.isArray(orgData) ? orgData[0] : orgData;
+        
+        setCurrentOrganizationId(membership.organization_id);
+        setCurrentOrgRole(membership.role as OrgRole);
+        if (org) {
+          setCurrentOrganization({
+            id: org.id,
+            name: org.name,
+            logo_url: org.logo_url || undefined,
+            created_at: new Date().toISOString(), // We don't have this from the query, use current time as fallback
+            created_by: null,
+          });
+        } else {
+          setCurrentOrganization(null);
+        }
+      } catch (err) {
+        console.error('[useAuth] Unexpected error loading organization:', err);
+        setCurrentOrganizationId(null);
+        setCurrentOrgRole(null);
+        setCurrentOrganization(null);
+      }
+    };
+
+    loadOrganization();
+  }, [user]);
+
   useEffect(() => {
     let isMounted = true;
   
@@ -283,6 +350,9 @@ export function useAuth(): AuthState & AuthActions {
       if (event === 'SIGNED_OUT' || !session) {
         setSession(null);
         setUser(null);
+        setCurrentOrganizationId(null);
+        setCurrentOrgRole(null);
+        setCurrentOrganization(null);
         setLoading(false);
         isSigningInRef.current = false; // Reset sign-in flag if sign out happens
         return;
@@ -599,6 +669,9 @@ export function useAuth(): AuthState & AuthActions {
       // Clear local state immediately for responsive UI
       setUser(null);
       setSession(null);
+      setCurrentOrganizationId(null);
+      setCurrentOrgRole(null);
+      setCurrentOrganization(null);
       setLoading(false); // Ensure loading state is cleared
 
       // Sign out via Supabase with global scope to clear server session
@@ -640,6 +713,9 @@ export function useAuth(): AuthState & AuthActions {
       // Ensure local state is cleared even if something unexpected happens
       setUser(null);
       setSession(null);
+      setCurrentOrganizationId(null);
+      setCurrentOrgRole(null);
+      setCurrentOrganization(null);
       setLoading(false);
       isSigningOutRef.current = false;
       isSigningInRef.current = false;
@@ -701,5 +777,8 @@ export function useAuth(): AuthState & AuthActions {
     updateProfile,
     accessToken,
     isCleaningUp,
+    currentOrganizationId,
+    currentOrgRole,
+    currentOrganization,
   };
 }

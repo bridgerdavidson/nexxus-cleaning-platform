@@ -51,10 +51,57 @@ export type Database = {
           updated_at?: string
         }
       }
+      organizations: {
+        Row: {
+          id: string
+          name: string
+          logo_url: string | null
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          logo_url?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          logo_url?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+      }
+      organization_members: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          role: 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          role: 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner'
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          role?: 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner'
+          created_at?: string
+        }
+      }
       properties: {
         Row: {
           id: string
           owner_id: string
+          organization_id: string | null
           address: string
           city: string
           state: string
@@ -69,6 +116,7 @@ export type Database = {
         Insert: {
           id?: string
           owner_id: string
+          organization_id?: string | null
           address: string
           city: string
           state: string
@@ -83,6 +131,7 @@ export type Database = {
         Update: {
           id?: string
           owner_id?: string
+          organization_id?: string | null
           address?: string
           city?: string
           state?: string
@@ -98,6 +147,7 @@ export type Database = {
       service_types: {
         Row: {
           id: string
+          organization_id: string | null
           name: string
           description: string | null
           base_price: number
@@ -108,6 +158,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          organization_id?: string | null
           name: string
           description?: string | null
           base_price: number
@@ -118,6 +169,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          organization_id?: string | null
           name?: string
           description?: string | null
           base_price?: number
@@ -130,6 +182,7 @@ export type Database = {
       appointments: {
         Row: {
           id: string
+          organization_id: string | null
           homeowner_id: string
           cleaner_id: string | null
           property_id: string
@@ -144,6 +197,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          organization_id?: string | null
           homeowner_id: string
           cleaner_id?: string | null
           property_id: string
@@ -158,6 +212,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          organization_id?: string | null
           homeowner_id?: string
           cleaner_id?: string | null
           property_id?: string
@@ -174,6 +229,7 @@ export type Database = {
       cleaner_profiles: {
         Row: {
           id: string
+          organization_id: string | null
           user_id: string
           hourly_rate: number | null
           experience_years: number | null
@@ -188,6 +244,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          organization_id?: string | null
           user_id: string
           hourly_rate?: number | null
           experience_years?: number | null
@@ -202,6 +259,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          organization_id?: string | null
           user_id?: string
           hourly_rate?: number | null
           experience_years?: number | null
@@ -218,6 +276,7 @@ export type Database = {
       payments: {
         Row: {
           id: string
+          organization_id: string | null
           appointment_id: string
           amount: number
           status: 'pending' | 'paid' | 'failed' | 'refunded'
@@ -228,6 +287,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          organization_id?: string | null
           appointment_id: string
           amount: number
           status?: 'pending' | 'paid' | 'failed' | 'refunded'
@@ -238,6 +298,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          organization_id?: string | null
           appointment_id?: string
           amount?: number
           status?: 'pending' | 'paid' | 'failed' | 'refunded'
@@ -250,6 +311,7 @@ export type Database = {
       messages: {
         Row: {
           id: string
+          organization_id: string | null
           sender_id: string
           recipient_id: string
           appointment_id: string | null
@@ -261,6 +323,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          organization_id?: string | null
           sender_id: string
           recipient_id: string
           appointment_id?: string | null
@@ -272,6 +335,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          organization_id?: string | null
           sender_id?: string
           recipient_id?: string
           appointment_id?: string | null
@@ -282,6 +346,38 @@ export type Database = {
           updated_at?: string
         }
       }
+      reviews: {
+        Row: {
+          id: string
+          organization_id: string | null
+          appointment_id: string
+          reviewer_id: string
+          reviewee_id: string
+          rating: number
+          comment: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id?: string | null
+          appointment_id: string
+          reviewer_id: string
+          reviewee_id: string
+          rating: number
+          comment?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string | null
+          appointment_id?: string
+          reviewer_id?: string
+          reviewee_id?: string
+          rating?: number
+          comment?: string | null
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
@@ -290,7 +386,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      org_role: 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner'
     }
   }
 }

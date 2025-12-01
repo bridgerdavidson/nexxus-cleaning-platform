@@ -85,10 +85,10 @@ export function useHomeownerAppointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchAppointments = async () => {
       try {
@@ -119,6 +119,7 @@ export function useHomeownerAppointments() {
             )
           `)
           .eq('homeowner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .order('scheduled_date', { ascending: true });
 
         if (error) throw error;
@@ -147,7 +148,7 @@ export function useHomeownerAppointments() {
     };
 
     fetchAppointments();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { appointments, loading, error, refetch: () => {} };
 }
@@ -156,10 +157,10 @@ export function useHomeownerProperties() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchProperties = async () => {
       try {
@@ -168,6 +169,7 @@ export function useHomeownerProperties() {
           .from('properties')
           .select('*')
           .eq('owner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -180,7 +182,7 @@ export function useHomeownerProperties() {
     };
 
     fetchProperties();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { properties, loading, error };
 }
@@ -194,10 +196,10 @@ export function useHomeownerStats() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchStats = async () => {
       try {
@@ -208,6 +210,7 @@ export function useHomeownerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('homeowner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .eq('status', 'completed');
 
         // Get upcoming cleanings
@@ -215,13 +218,15 @@ export function useHomeownerStats() {
           .from('appointments')
           .select('*', { count: 'exact', head: true })
           .eq('homeowner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .in('status', ['pending', 'confirmed']);
 
         // Get total spent (from paid payments)
         const { data: payments } = await supabase
           .from('payments')
-          .select('amount, appointments!inner(homeowner_id)')
+          .select('amount, appointments!inner(homeowner_id, organization_id)')
           .eq('appointments.homeowner_id', user.id)
+          .eq('appointments.organization_id', currentOrganizationId)
           .eq('status', 'paid');
 
         const totalSpent = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
@@ -231,6 +236,7 @@ export function useHomeownerStats() {
           .from('appointments')
           .select('cleaner_id')
           .eq('homeowner_id', user.id)
+          .eq('organization_id', currentOrganizationId)
           .eq('status', 'completed')
           .not('cleaner_id', 'is', null);
 
@@ -258,7 +264,7 @@ export function useHomeownerStats() {
     };
 
     fetchStats();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { stats, loading, error };
 }
@@ -267,10 +273,10 @@ export function useHomeownerMessages() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchMessages = async () => {
       try {
@@ -296,6 +302,7 @@ export function useHomeownerMessages() {
               role
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
           .order('created_at', { ascending: false });
 
@@ -317,7 +324,7 @@ export function useHomeownerMessages() {
     };
 
     fetchMessages();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { messages, loading, error };
 }
@@ -326,10 +333,10 @@ export function useHomeownerPayments() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchPayments = async () => {
       try {
@@ -352,6 +359,7 @@ export function useHomeownerPayments() {
               )
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -378,7 +386,7 @@ export function useHomeownerPayments() {
     };
 
     fetchPayments();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { payments, loading, error };
 }

@@ -102,10 +102,10 @@ export function useAdminAppointments() {
   const [appointments, setAppointments] = useState<AdminAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   const fetchAppointments = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     try {
       setLoading(true);
@@ -139,6 +139,7 @@ export function useAdminAppointments() {
             description
           )
         `)
+        .eq('organization_id', currentOrganizationId)
         .order('scheduled_date', { ascending: false });
 
       if (error) throw error;
@@ -165,7 +166,7 @@ export function useAdminAppointments() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   useEffect(() => {
     fetchAppointments();
@@ -182,10 +183,10 @@ export function useAdminCleaners() {
   const [cleaners, setCleaners] = useState<AdminCleaner[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   const fetchCleaners = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     try {
       setLoading(true);
@@ -206,6 +207,7 @@ export function useAdminCleaners() {
             email
           )
         `)
+        .eq('organization_id', currentOrganizationId)
         .order('total_jobs', { ascending: false });
 
       if (error) throw error;
@@ -222,7 +224,7 @@ export function useAdminCleaners() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   useEffect(() => {
     fetchCleaners();
@@ -245,10 +247,10 @@ export function useAdminStats() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   const fetchStats = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     try {
       setLoading(true);
@@ -256,24 +258,28 @@ export function useAdminStats() {
       // Get total bookings
       const { count: totalBookings } = await supabase
         .from('appointments')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .eq('organization_id', currentOrganizationId);
 
       // Get active cleaners
       const { count: activeCleaners } = await supabase
         .from('cleaner_profiles')
         .select('*', { count: 'exact', head: true })
+        .eq('organization_id', currentOrganizationId)
         .eq('is_available', true);
 
       // Get pending approvals
       const { count: pendingApprovals } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
+        .eq('organization_id', currentOrganizationId)
         .eq('status', 'pending');
 
       // Get total revenue from paid payments
       const { data: payments } = await supabase
         .from('payments')
         .select('amount')
+        .eq('organization_id', currentOrganizationId)
         .eq('status', 'paid');
 
       const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
@@ -282,6 +288,7 @@ export function useAdminStats() {
       const { count: completedJobs } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
+        .eq('organization_id', currentOrganizationId)
         .eq('status', 'completed');
 
       const completionRate = totalBookings ? (completedJobs || 0) / totalBookings * 100 : 0;
@@ -289,7 +296,8 @@ export function useAdminStats() {
       // Get average rating from reviews
       const { data: reviews } = await supabase
         .from('reviews')
-        .select('rating');
+        .select('rating')
+        .eq('organization_id', currentOrganizationId);
 
       const avgRating = reviews?.length ? 
         reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
@@ -304,6 +312,7 @@ export function useAdminStats() {
       const { count: recentJobs } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
+        .eq('organization_id', currentOrganizationId)
         .gte('created_at', thirtyDaysAgo.toISOString());
 
       const avgJobsPerDay = (recentJobs || 0) / 30;
@@ -327,7 +336,7 @@ export function useAdminStats() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   useEffect(() => {
     fetchStats();
@@ -344,10 +353,10 @@ export function useAdminPayments() {
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchPayments = async () => {
       try {
@@ -371,6 +380,7 @@ export function useAdminPayments() {
               )
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -400,7 +410,7 @@ export function useAdminPayments() {
     };
 
     fetchPayments();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { payments, loading, error };
 }
@@ -409,10 +419,10 @@ export function useAdminMessages() {
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganizationId) return;
 
     const fetchMessages = async () => {
       try {
@@ -437,6 +447,7 @@ export function useAdminMessages() {
               role
             )
           `)
+          .eq('organization_id', currentOrganizationId)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -457,7 +468,7 @@ export function useAdminMessages() {
     };
 
     fetchMessages();
-  }, [user?.id]);
+  }, [user?.id, currentOrganizationId]);
 
   return { messages, loading, error };
 }

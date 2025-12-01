@@ -99,6 +99,80 @@ export async function POST(request: NextRequest) {
       console.log('✅ Profile role confirmed:', userRole);
     }
 
+    // Get or create Default Organization
+    let defaultOrgId: string;
+    const { data: existingOrgs } = await supabaseAdmin
+      .from('organizations')
+      .select('id')
+      .eq('name', 'Default Organization')
+      .limit(1)
+      .single();
+
+    if (existingOrgs) {
+      defaultOrgId = existingOrgs.id;
+      console.log('✅ Using existing Default Organization:', defaultOrgId);
+    } else {
+      // Create Default Organization if it doesn't exist
+      const { data: newOrg, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .insert({
+          name: 'Default Organization',
+          created_by: authData.user.id,
+        })
+        .select('id')
+        .single();
+
+      if (orgError || !newOrg) {
+        console.error('⚠️ Error creating Default Organization:', orgError);
+        // Try to find any organization as fallback
+        const { data: anyOrg } = await supabaseAdmin
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .single();
+        
+        if (anyOrg) {
+          defaultOrgId = anyOrg.id;
+          console.log('✅ Using fallback organization:', defaultOrgId);
+        } else {
+          console.error('❌ No organizations found. Cannot create membership.');
+          return NextResponse.json(
+            { error: 'Organization setup required' },
+            { status: 500 }
+          );
+        }
+      } else {
+        defaultOrgId = newOrg.id;
+        console.log('✅ Created Default Organization:', defaultOrgId);
+      }
+    }
+
+    // Map user role to org role
+    const orgRoleMap: Record<string, 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner'> = {
+      'admin': 'admin',
+      'manager': 'manager',
+      'cleaner': 'cleaner',
+      'homeowner': 'homeowner',
+    };
+    const orgRole = orgRoleMap[userRole] || 'homeowner';
+
+    // Create organization membership
+    console.log('👥 Creating organization membership...');
+    const { error: membershipError } = await supabaseAdmin
+      .from('organization_members')
+      .insert({
+        organization_id: defaultOrgId,
+        user_id: authData.user.id,
+        role: orgRole,
+      });
+
+    if (membershipError) {
+      console.error('⚠️ Organization membership creation error:', membershipError);
+      // Don't fail the signup, but log the error
+    } else {
+      console.log('✅ Organization membership created successfully');
+    }
+
     // If user is a cleaner, create their cleaner profile
     if (userRole === 'cleaner') {
       console.log('🧹 Creating cleaner profile...');
@@ -107,6 +181,7 @@ export async function POST(request: NextRequest) {
         .from('cleaner_profiles')
         .insert({
           id: authData.user.id,
+          organization_id: defaultOrgId,
           // All other fields have defaults:
           // rating: 0.00, total_jobs: 0, is_available: true, etc.
         });
