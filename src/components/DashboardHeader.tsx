@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { useAuth } from '../hooks/useAuth';
-import { ChevronDown, LogOut, User, LucideIcon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../hooks/useAuth";
+import { ChevronDown, LogOut, User, LucideIcon } from "lucide-react";
 
 interface Tab {
   id: string;
@@ -12,87 +13,129 @@ interface Tab {
 }
 
 interface DashboardHeaderProps {
-  role: 'homeowner' | 'cleaner' | 'manager' | 'admin';
+  role: "homeowner" | "cleaner" | "manager" | "admin";
   tabs?: Tab[];
   activeTab?: string;
   onTabChange?: (tabId: string) => void;
 }
 
-const DashboardHeader: React.FC<DashboardHeaderProps> = ({ role, tabs = [], activeTab, onTabChange }) => {
+const DashboardHeader: React.FC<DashboardHeaderProps> = ({
+  role,
+  tabs = [],
+  activeTab,
+  onTabChange,
+}) => {
   const { user, signOut } = useAuth();
+  const router = useRouter();
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const handleLogout = async () => {
-    // Don't close dropdown - signOut will redirect anyway
-    // Closing dropdown first can cause the click event to be lost
-    await signOut();
+  const handleLogout = () => {
+    // Close dropdown immediately
+    setIsUserDropdownOpen(false);
+
+    // Redirect immediately for instant UI feedback
+    router.push("/login");
+
+    // Sign out in background (fire and forget)
+    // Don't wait for it - user already sees the redirect
+    signOut().catch((error) => {
+      // signOut is designed to always clear local state, so even on error
+      // the user should be logged out locally
+      console.error("Logout error:", error);
+    });
   };
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
         setIsUserDropdownOpen(false);
       }
     };
 
     if (isUserDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isUserDropdownOpen]);
 
   // Get dashboard link based on role
   const getDashboardLink = () => {
     switch (role) {
-      case 'homeowner':
-        return '/homeowner-dashboard';
-      case 'cleaner':
-        return '/cleaner-dashboard';
-      case 'manager':
-        return '/manager-dashboard';
-      case 'admin':
-        return '/admin-dashboard';
+      case "homeowner":
+        return "/homeowner-dashboard";
+      case "cleaner":
+        return "/cleaner-dashboard";
+      case "manager":
+        return "/manager-dashboard";
+      case "admin":
+        return "/admin-dashboard";
       default:
-        return '/';
+        return "/";
     }
   };
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50 hidden md:block">
+    <header className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
             <Link href={getDashboardLink()} className="flex items-center">
-              <div className="text-2xl font-bold text-primary-600">
-                Nexxus
-              </div>
-              <div className="ml-2 text-sm text-gray-600 font-medium">
+              <div className="text-2xl font-bold text-primary-600">Nexxus</div>
+              <div className="ml-2 text-sm text-gray-600 font-medium hidden sm:block">
                 Cleaning Solutions
               </div>
             </Link>
           </div>
 
-          {/* Navigation Tabs - Desktop Only, Text Only */}
+          {/* Navigation Tabs */}
           {tabs.length > 0 && (
-            <nav className="flex items-center space-x-1 flex-1 justify-center px-8">
+            <nav className="hidden md:flex items-center space-x-1 flex-1 justify-center px-8">
               {tabs.map((tab) => {
+                const Icon = tab.icon;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => onTabChange?.(tab.id)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
                       activeTab === tab.id
-                        ? 'text-primary-600 bg-primary-50'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                        ? "text-primary-600 bg-primary-50"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                     }`}
                   >
-                    {tab.label}
+                    <Icon className="w-5 h-5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+
+          {/* Mobile Navigation Tabs */}
+          {tabs.length > 0 && (
+            <nav className="flex md:hidden items-center space-x-1 flex-1 justify-center px-2 overflow-x-auto">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => onTabChange?.(tab.id)}
+                    className={`flex items-center justify-center p-2 rounded-lg transition-all duration-200 ${
+                      activeTab === tab.id
+                        ? "text-primary-600 bg-primary-50"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                    }`}
+                    title={tab.label}
+                  >
+                    <Icon className="w-5 h-5" />
                   </button>
                 );
               })}
@@ -152,4 +195,3 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({ role, tabs = [], acti
 };
 
 export default DashboardHeader;
-

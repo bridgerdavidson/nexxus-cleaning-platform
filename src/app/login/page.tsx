@@ -13,7 +13,7 @@ function LoginContent() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { signIn, user, loading } = useAuth();
+  const { signIn, user, loading, isCleaningUp } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -153,13 +153,18 @@ function LoginContent() {
             <div>
               <button
                 type="submit"
-                disabled={isLoading}
-                className="btn-primary w-full flex justify-center items-center space-x-2"
+                disabled={isLoading || isCleaningUp}
+                className="btn-primary w-full flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin" />
                     <span>Signing in...</span>
+                  </>
+                ) : isCleaningUp ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span>Please wait...</span>
                   </>
                 ) : (
                   <span>Sign in</span>
