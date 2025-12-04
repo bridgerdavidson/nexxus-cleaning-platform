@@ -13,12 +13,14 @@ import {
   CheckCircle,
   Clock,
   AlertTriangle,
+  AlertCircle,
   TrendingUp,
   UserCheck,
   Home,
   Loader2,
   Search,
   Trash2,
+  Star,
 } from "lucide-react";
 import {
   useAdminAppointments,
@@ -580,8 +582,8 @@ export default function AdminDashboard() {
     });
 
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
+      <div className="card">
+        <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
             Cleaner Management
           </h2>
@@ -594,7 +596,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Search and Filter Controls */}
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
           {/* Search Input */}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -626,81 +628,104 @@ export default function AdminDashboard() {
         {cleanersLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading cleaners...</span>
+          </div>
+        ) : cleanersError ? (
+          <div className="text-center py-12">
+            <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <p className="text-gray-600">{cleanersError}</p>
           </div>
         ) : (
-          <div className="grid gap-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredCleaners.map((cleaner) => (
-              <div key={cleaner.id} className="card">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                      <UserCheck className="w-6 h-6 text-primary-600" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {getCleanerFullName(cleaner)}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        {cleaner.total_jobs} completed jobs • {cleaner.rating}★
-                        rating
-                      </p>
-                      {cleaner.experience_years && (
-                        <p className="text-sm text-gray-600">
-                          {cleaner.experience_years} years experience
-                        </p>
-                      )}
-                      {cleaner.hourly_rate && (
-                        <p className="text-sm text-gray-600">
-                          ${cleaner.hourly_rate}/hour
-                        </p>
-                      )}
-                    </div>
+              <div
+                key={cleaner.id}
+                className="border border-gray-200 rounded-lg p-6"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {getCleanerFullName(cleaner)}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {cleaner.user_profile?.email}
+                    </p>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <span
-                        className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                          cleaner.is_available
-                            ? "text-green-600 bg-green-100"
-                            : "text-gray-600 bg-gray-100"
-                        }`}
-                      >
-                        {cleaner.is_available ? "Available" : "Unavailable"}
+                  <div className="flex items-center space-x-1">
+                    <Star className="w-5 h-5 text-yellow-400 fill-current" />
+                    <span className="text-sm font-medium text-gray-900">
+                      {cleaner.rating.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Total Jobs:</span>
+                    <span className="font-medium text-gray-900">
+                      {cleaner.total_jobs}
+                    </span>
+                  </div>
+                  {cleaner.experience_years && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Experience:</span>
+                      <span className="font-medium text-gray-900">
+                        {cleaner.experience_years} years
                       </span>
-                      <div className="mt-1 text-xs text-gray-500">
-                        {cleaner.background_check_verified &&
-                          "✓ Background Check "}
-                        {cleaner.insurance_verified && "✓ Insured"}
-                      </div>
                     </div>
-                    <div className="flex space-x-2">
-                      <button className="btn-secondary text-sm">
-                        View Profile
-                      </button>
-                      <button className="btn-primary text-sm">
-                        Assign Job
-                      </button>
-                      <button
-                        className="bg-red-100 text-red-600 hover:bg-red-200 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1"
-                        onClick={() =>
-                          setDeleteConfirmModal({
-                            isOpen: true,
-                            cleanerId: cleaner.id,
-                            cleanerName: getCleanerFullName(cleaner),
-                          })
-                        }
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span>Delete</span>
-                      </button>
+                  )}
+                  {cleaner.hourly_rate && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Hourly Rate:</span>
+                      <span className="font-medium text-gray-900">
+                        ${cleaner.hourly_rate}
+                      </span>
                     </div>
-                  </div>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2 mb-4">
+                  {cleaner.background_check_verified && (
+                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Background Check
+                    </span>
+                  )}
+                  {cleaner.insurance_verified && (
+                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Insured
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                      cleaner.is_available
+                        ? "bg-green-100 text-green-700 hover:bg-green-200"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {cleaner.is_available ? "Available" : "Unavailable"}
+                  </button>
+                  <button
+                    className="w-full bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                    onClick={() =>
+                      setDeleteConfirmModal({
+                        isOpen: true,
+                        cleanerId: cleaner.id,
+                        cleanerName: getCleanerFullName(cleaner),
+                      })
+                    }
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             ))}
             {filteredCleaners.length === 0 && (
-              <div className="text-center py-12">
+              <div className="col-span-full text-center py-12">
                 <Users className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">
                   {cleaners.length === 0

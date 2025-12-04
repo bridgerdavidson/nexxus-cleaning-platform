@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../../hooks/useAuth";
 import { Eye, EyeOff, Loader, ArrowLeft, Sparkles } from "lucide-react";
@@ -19,6 +19,12 @@ export default function CleanerSignup() {
   const [isLoading, setIsLoading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [waitingForUser, setWaitingForUser] = useState(false);
+  const isInSignupFlowRef = useRef(false);
+  const fallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Refs to track current state values for timeout callback (avoid closure issues)
+  const waitingForUserRef = useRef(false);
+  const showProfileModalRef = useRef(false);
+  const userRef = useRef<typeof user>(null);
 
   const { signUp, signIn, user, loading, accessToken } = useAuth();
   const router = useRouter();
@@ -26,30 +32,118 @@ export default function CleanerSignup() {
   // Note: Tab visibility handling is in LayoutWrapper (global)
   // No need to add it here - would cause multiple listeners
 
-  // Watch for user state after successful sign-in
+  // Keep refs in sync with state
   useEffect(() => {
-    // Open modal when we're waiting and user is loaded
-    if (waitingForUser && user?.id && !loading) {
-      console.log("[CleanerSignup] Opening profile modal for new user");
-      setWaitingForUser(false);
+    waitingForUserRef.current = waitingForUser;
+  }, [waitingForUser]);
+
+  useEffect(() => {
+    showProfileModalRef.current = showProfileModal;
+  }, [showProfileModal]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Watch for user state after successful sign-in
+  // Show modal as soon as user is available during signup flow, regardless of loading state
+  useEffect(() => {
+    // Open modal when we're waiting and user is available
+    // Removed strict !loading requirement to make it more reliable
+    if (waitingForUser && user?.id) {
+      console.log("[CleanerSignup] Opening profile modal for new user", {
+        userId: user.id,
+        loading,
+        waitingForUser,
+        isInSignupFlow: isInSignupFlowRef.current,
+      });
+      // Clear any pending fallback timeout
+      if (fallbackTimeoutRef.current) {
+        clearTimeout(fallbackTimeoutRef.current);
+        fallbackTimeoutRef.current = null;
+      }
+      // Set modal first, then clear waiting flag
+      // The ref prevents redirect during this transition
       setShowProfileModal(true);
+      setWaitingForUser(false);
+    } else if (waitingForUser) {
+      // Log when we're waiting but conditions aren't met yet
+      console.log("[CleanerSignup] Waiting for user after signup", {
+        hasUser: !!user?.id,
+        userId: user?.id,
+        loading,
+        waitingForUser,
+      });
     }
   }, [user, loading, waitingForUser]);
 
-  // Separate effect for redirection - only check when user or loading state changes
-  // This handles the case where an already-logged-in user visits the signup page
+  // Fallback effect: If we're waiting for user and it's been a while, check again
+  // This handles cases where user state might not update immediately
+  useEffect(() => {
+    if (waitingForUser && isInSignupFlowRef.current) {
+      // Set up a fallback timeout to ensure modal shows even if user state is delayed
+      if (fallbackTimeoutRef.current) {
+        clearTimeout(fallbackTimeoutRef.current);
+      }
+      fallbackTimeoutRef.current = setTimeout(() => {
+        // Use refs to get current state values (avoid closure issues)
+        const currentWaiting = waitingForUserRef.current;
+        const currentUser = userRef.current;
+        const currentModal = showProfileModalRef.current;
+        
+        // Check current state - if we still have user and are waiting, show modal
+        if (currentWaiting && currentUser?.id && !currentModal && isInSignupFlowRef.current) {
+          console.log("[CleanerSignup] Fallback: Opening modal after timeout", {
+            hasUser: !!currentUser?.id,
+            userId: currentUser?.id,
+            waiting: currentWaiting,
+            modal: currentModal,
+          });
+          setShowProfileModal(true);
+          setWaitingForUser(false);
+        } else {
+          console.log("[CleanerSignup] Fallback timeout: Conditions not met", {
+            hasUser: !!currentUser?.id,
+            userId: currentUser?.id,
+            waiting: currentWaiting,
+            modal: currentModal,
+            inSignupFlow: isInSignupFlowRef.current,
+          });
+        }
+        fallbackTimeoutRef.current = null;
+      }, 2000); // 2 second fallback
+
+      return () => {
+        if (fallbackTimeoutRef.current) {
+          clearTimeout(fallbackTimeoutRef.current);
+          fallbackTimeoutRef.current = null;
+        }
+      };
+    }
+  }, [waitingForUser, user, showProfileModal]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (fallbackTimeoutRef.current) {
+        clearTimeout(fallbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Separate effect for redirection - handles the case where an already-logged-in user visits the signup page
+  // This should NOT run during the signup flow (when waitingForUser is true or modal is showing)
   useEffect(() => {
     // Only redirect if user exists and we're not in the signup flow
-    // By not including showProfileModal and waitingForUser in dependencies,
-    // we prevent this from re-running when the modal opens/closes
+    // Use ref to prevent redirect during signup-to-modal transition (avoids race condition)
     // The modal's onClose handler will handle the redirect after profile completion
-    if (user && !showProfileModal && !waitingForUser && !loading) {
+    if (user && !showProfileModal && !waitingForUser && !loading && !isInSignupFlowRef.current) {
       console.log(
         "[CleanerSignup] User already logged in, redirecting to dashboard"
       );
       router.push("/cleaner-dashboard");
     }
-  }, [user, loading]); // Intentionally omitting showProfileModal and waitingForUser
+  }, [user, loading, showProfileModal, waitingForUser, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,12 +172,25 @@ export default function CleanerSignup() {
 
       if (result.error) {
         setError(result.error);
+        isInSignupFlowRef.current = false; // Clear ref on error
+        setWaitingForUser(false);
+        // Clear any pending timeout
+        if (fallbackTimeoutRef.current) {
+          clearTimeout(fallbackTimeoutRef.current);
+          fallbackTimeoutRef.current = null;
+        }
       } else {
+        console.log("[CleanerSignup] Signup successful, waiting for user state", {
+          role: result.role,
+        });
         // Set waiting flag to show loading state while profile loads
+        // Set ref to prevent redirect during signup flow
+        isInSignupFlowRef.current = true;
         setWaitingForUser(true);
 
         // signUp now automatically signs in the user
-        // The useEffect will detect the user and show profile modal or redirect
+        // The useEffect will detect the user and show profile modal
+        // Note: Fallback timeout is handled in a separate useEffect below
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
@@ -98,6 +205,7 @@ export default function CleanerSignup() {
         isOpen={showProfileModal && !!user?.id}
         onClose={() => {
           setShowProfileModal(false);
+          isInSignupFlowRef.current = false; // Clear ref when modal closes
           router.push("/cleaner-dashboard");
         }}
         userId={user?.id || ""}
