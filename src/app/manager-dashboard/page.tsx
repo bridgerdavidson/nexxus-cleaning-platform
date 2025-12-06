@@ -17,30 +17,38 @@ import {
   Home,
   Search,
   Trash2,
+  UserCheck,
+  TrendingUp,
+  Building,
+  Settings,
+  HelpCircle,
+  LayoutGrid,
+  BarChart3,
 } from "lucide-react";
 import {
   useManagerAppointments,
   useManagerCleaners,
   useManagerPayments,
   useManagerMessages,
-  updateAppointmentStatus,
-  assignCleanerToAppointment,
-  updateCleanerAvailability,
   deleteCleaner,
 } from "../../hooks/useManagerData";
-import DashboardHeader from "../../components/DashboardHeader";
+import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
+import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 
 export default function ManagerDashboard() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
+  const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "available" | "unavailable">("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<
+    "all" | "available" | "unavailable"
+  >("all");
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
     isOpen: boolean;
     cleanerId: string | null;
@@ -95,13 +103,75 @@ export default function ManagerDashboard() {
     );
   }
 
-  const tabs = [
-    { id: "home", label: "Overview", icon: Home },
-    { id: "appointments", label: "Appointments", icon: MapPin },
-    { id: "cleaners", label: "Cleaners", icon: Users },
-    { id: "payments", label: "Payments", icon: DollarSign },
-    { id: "messages", label: "Messages", icon: MessageCircle },
-  ];
+  const handleLogout = async () => {
+    await signOut();
+  };
+
+  // Hierarchical navigation structure (no Team Members for managers)
+  const navigationGroups = {
+    operations: {
+      id: "operations" as const,
+      label: "Operations",
+      icon: LayoutGrid,
+      tabs: [
+        { id: "home", label: "Overview", icon: Home },
+        { id: "bookings", label: "Bookings", icon: Calendar },
+        { id: "messages", label: "Messages", icon: MessageCircle },
+      ],
+    },
+    accounts: {
+      id: "accounts" as const,
+      label: "Accounts",
+      icon: Users,
+      tabs: [
+        { id: "customers", label: "Customers", icon: Users },
+        { id: "properties", label: "Properties", icon: Building },
+      ],
+    },
+    team: {
+      id: "team" as const,
+      label: "Team",
+      icon: UserCheck,
+      tabs: [{ id: "cleaners", label: "Cleaners", icon: UserCheck }],
+    },
+    business: {
+      id: "business" as const,
+      label: "Business",
+      icon: TrendingUp,
+      tabs: [
+        { id: "payments", label: "Finance", icon: DollarSign },
+        { id: "analytics", label: "Analytics", icon: BarChart3 },
+      ],
+    },
+    admin: {
+      id: "admin" as const,
+      label: "Administration",
+      icon: Settings,
+      tabs: [
+        { id: "settings", label: "Settings", icon: Settings },
+        { id: "support", label: "Support", icon: HelpCircle },
+      ],
+    },
+  };
+
+  // Get groups array for sidebar
+  const groups = Object.values(navigationGroups);
+
+  // Get tabs for current group
+  const currentGroupTabs =
+    navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [];
+
+  // Get all tabs for mobile
+  const allTabs = groups.flatMap((g) => g.tabs);
+
+  // Handle group change - switch to first tab of new group
+  const handleGroupChange = (groupId: string) => {
+    setActiveGroup(groupId);
+    const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
+    if (newGroup && newGroup.tabs.length > 0) {
+      setActiveTab(newGroup.tabs[0].id);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -131,7 +201,8 @@ export default function ManagerDashboard() {
           </span>
         </div>
         <p className="text-gray-600">
-          Manage your team operations and oversee cleaning services from one central location.
+          Manage your team operations and oversee cleaning services from one
+          central location.
         </p>
       </div>
 
@@ -273,7 +344,7 @@ export default function ManagerDashboard() {
     </div>
   );
 
-  const renderAppointments = () => (
+  const renderBookings = () => (
     <div className="card">
       <h2 className="text-2xl font-bold text-gray-900 mb-6">
         All Appointments
@@ -362,7 +433,11 @@ export default function ManagerDashboard() {
     setIsDeleting(false);
 
     if (result.success) {
-      setDeleteConfirmModal({ isOpen: false, cleanerId: null, cleanerName: "" });
+      setDeleteConfirmModal({
+        isOpen: false,
+        cleanerId: null,
+        cleanerName: "",
+      });
       await refetchCleaners();
     } else {
       alert("Failed to delete cleaner: " + result.error);
@@ -379,7 +454,9 @@ export default function ManagerDashboard() {
       const matchesSearch =
         searchQuery === "" ||
         fullName.includes(searchQuery.toLowerCase()) ||
-        cleaner.user_profile?.email?.toLowerCase().includes(searchQuery.toLowerCase());
+        cleaner.user_profile?.email
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase());
 
       // Availability filter
       const matchesAvailability =
@@ -396,7 +473,7 @@ export default function ManagerDashboard() {
           <h2 className="text-2xl font-bold text-gray-900">
             Cleaner Management
           </h2>
-          <button 
+          <button
             className="btn-primary"
             onClick={() => setShowAddCleanerModal(true)}
           >
@@ -421,7 +498,11 @@ export default function ManagerDashboard() {
           {/* Availability Filter Dropdown */}
           <select
             value={availabilityFilter}
-            onChange={(e) => setAvailabilityFilter(e.target.value as "all" | "available" | "unavailable")}
+            onChange={(e) =>
+              setAvailabilityFilter(
+                e.target.value as "all" | "available" | "unavailable"
+              )
+            }
             className="input-field w-full sm:w-auto sm:min-w-[140px] text-sm"
           >
             <option value="all">All Cleaners</option>
@@ -442,96 +523,96 @@ export default function ManagerDashboard() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredCleaners.map((cleaner) => (
-            <div
-              key={cleaner.id}
-              className="border border-gray-200 rounded-lg p-6"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {cleaner.user_profile
-                      ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
-                      : "Unknown"}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {cleaner.user_profile?.email}
-                  </p>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Star className="w-5 h-5 text-yellow-400 fill-current" />
-                  <span className="text-sm font-medium text-gray-900">
-                    {cleaner.rating.toFixed(1)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Total Jobs:</span>
-                  <span className="font-medium text-gray-900">
-                    {cleaner.total_jobs}
-                  </span>
-                </div>
-                {cleaner.experience_years && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Experience:</span>
-                    <span className="font-medium text-gray-900">
-                      {cleaner.experience_years} years
-                    </span>
-                  </div>
-                )}
-                {cleaner.hourly_rate && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Hourly Rate:</span>
-                    <span className="font-medium text-gray-900">
-                      ${cleaner.hourly_rate}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center space-x-2 mb-4">
-                {cleaner.background_check_verified && (
-                  <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Background Check
-                  </span>
-                )}
-                {cleaner.insurance_verified && (
-                  <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Insured
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <button
-                  className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                    cleaner.is_available
-                      ? "bg-green-100 text-green-700 hover:bg-green-200"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {cleaner.is_available ? "Available" : "Unavailable"}
-                </button>
-                <button
-                  className="w-full bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
-                  onClick={() =>
-                    setDeleteConfirmModal({
-                      isOpen: true,
-                      cleanerId: cleaner.id,
-                      cleanerName: cleaner.user_profile
+              <div
+                key={cleaner.id}
+                className="border border-gray-200 rounded-lg p-6"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {cleaner.user_profile
                         ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
-                        : "Unknown",
-                    })
-                  }
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete</span>
-                </button>
+                        : "Unknown"}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {cleaner.user_profile?.email}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Star className="w-5 h-5 text-yellow-400 fill-current" />
+                    <span className="text-sm font-medium text-gray-900">
+                      {cleaner.rating.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Total Jobs:</span>
+                    <span className="font-medium text-gray-900">
+                      {cleaner.total_jobs}
+                    </span>
+                  </div>
+                  {cleaner.experience_years && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Experience:</span>
+                      <span className="font-medium text-gray-900">
+                        {cleaner.experience_years} years
+                      </span>
+                    </div>
+                  )}
+                  {cleaner.hourly_rate && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Hourly Rate:</span>
+                      <span className="font-medium text-gray-900">
+                        ${cleaner.hourly_rate}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-2 mb-4">
+                  {cleaner.background_check_verified && (
+                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Background Check
+                    </span>
+                  )}
+                  {cleaner.insurance_verified && (
+                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Insured
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                      cleaner.is_available
+                        ? "bg-green-100 text-green-700 hover:bg-green-200"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {cleaner.is_available ? "Available" : "Unavailable"}
+                  </button>
+                  <button
+                    className="w-full bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                    onClick={() =>
+                      setDeleteConfirmModal({
+                        isOpen: true,
+                        cleanerId: cleaner.id,
+                        cleanerName: cleaner.user_profile
+                          ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
+                          : "Unknown",
+                      })
+                    }
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete</span>
+                  </button>
+                </div>
               </div>
-            </div>
             ))}
             {filteredCleaners.length === 0 && (
               <div className="col-span-full text-center py-12">
@@ -680,56 +761,118 @@ export default function ManagerDashboard() {
     </div>
   );
 
+  const renderPlaceholder = (title: string, description: string) => (
+    <div className="card text-center py-16">
+      <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100">
+        <Settings className="w-8 h-8 text-primary-600" />
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+      <p className="text-gray-600 max-w-md mx-auto">{description}</p>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeTab) {
       case "home":
         return renderOverview();
-      case "appointments":
-        return renderAppointments();
+      case "bookings":
+        return renderBookings();
+      case "messages":
+        return renderMessages();
+      case "customers":
+        return renderPlaceholder(
+          "Customers Management",
+          "View and manage customer profiles and history."
+        );
       case "cleaners":
         return renderCleaners();
       case "payments":
         return renderPayments();
-      case "messages":
-        return renderMessages();
+      case "analytics":
+        return renderPlaceholder(
+          "Analytics",
+          "View performance metrics and reports."
+        );
+      case "properties":
+        return renderPlaceholder(
+          "Property Management",
+          "Manage properties and access details."
+        );
+      case "settings":
+        return renderPlaceholder(
+          "Settings",
+          "Configure your dashboard preferences."
+        );
+      case "support":
+        return renderPlaceholder(
+          "Support",
+          "Access help resources and contact support."
+        );
       default:
         return renderOverview();
     }
   };
 
   return (
-    <>
-      <DashboardHeader
-        role="manager"
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+    <div className="min-h-screen bg-gray-50">
+      {/* Persistent Desktop Sidebar - Shows Groups */}
+      <DesktopSidebar
+        groups={groups}
+        activeGroup={activeGroup}
+        onGroupChange={handleGroupChange}
+        onLogout={handleLogout}
       />
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
-          {/* Tab Content */}
+
+      {/* Main Content Wrapper with Sidebar Offset */}
+      <div className="md:ml-[260px]">
+        {/* Top Bar - Shows Tabs Within Selected Group */}
+        <TopBar
+          role="manager"
+          user={user}
+          tabs={currentGroupTabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onMobileMenuClick={() => setIsSidebarOpen(true)}
+        />
+
+        {/* Main Content Area */}
+        <main className="p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
           {renderContent()}
-        </div>
+        </main>
       </div>
+
+      {/* Mobile Bottom Navigation - Show first 4 tabs */}
       <MobileNavigation
-        tabs={tabs}
+        tabs={navigationGroups.operations.tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
       />
+
+      {/* Mobile Sidebar Menu - Show All Tabs */}
       <MobileSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="manager"
+        tabs={allTabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
+
+      {/* Modals */}
       <AddCleanerModal
         isOpen={showAddCleanerModal}
         onClose={() => setShowAddCleanerModal(false)}
       />
+
       <DeleteConfirmModal
         isOpen={deleteConfirmModal.isOpen}
         onClose={() =>
-          setDeleteConfirmModal({ isOpen: false, cleanerId: null, cleanerName: "" })
+          setDeleteConfirmModal({
+            isOpen: false,
+            cleanerId: null,
+            cleanerName: "",
+          })
         }
         onConfirm={handleDeleteCleaner}
         title="Delete Cleaner"
@@ -737,6 +880,6 @@ export default function ManagerDashboard() {
         itemName={deleteConfirmModal.cleanerName}
         isLoading={isDeleting}
       />
-    </>
+    </div>
   );
 }

@@ -11,7 +11,6 @@ import {
   BarChart3,
   Settings,
   CheckCircle,
-  Clock,
   AlertTriangle,
   AlertCircle,
   TrendingUp,
@@ -21,6 +20,9 @@ import {
   Search,
   Trash2,
   Star,
+  Building,
+  HelpCircle,
+  LayoutGrid,
 } from "lucide-react";
 import {
   useAdminAppointments,
@@ -29,17 +31,18 @@ import {
   useAdminPayments,
   useAdminMessages,
   updateAppointmentStatus,
-  assignCleanerToAppointment,
   deleteCleaner,
 } from "../../hooks/useAdminData";
-import DashboardHeader from "../../components/DashboardHeader";
+import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
+import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 
 export default function AdminDashboard() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
+  const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
@@ -63,7 +66,6 @@ export default function AdminDashboard() {
   const {
     appointments,
     loading: appointmentsLoading,
-    error: appointmentsError,
     refetch: refetchAppointments,
   } = useAdminAppointments();
   const {
@@ -72,17 +74,9 @@ export default function AdminDashboard() {
     error: cleanersError,
     refetch: refetchCleaners,
   } = useAdminCleaners();
-  const { stats, loading: statsLoading, error: statsError } = useAdminStats();
-  const {
-    payments,
-    loading: paymentsLoading,
-    error: paymentsError,
-  } = useAdminPayments();
-  const {
-    messages,
-    loading: messagesLoading,
-    error: messagesError,
-  } = useAdminMessages();
+  const { stats, loading: statsLoading } = useAdminStats();
+  const { payments, loading: paymentsLoading } = useAdminPayments();
+  const { messages, loading: messagesLoading } = useAdminMessages();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -166,14 +160,78 @@ export default function AdminDashboard() {
     }
   };
 
-  const tabs = [
-    { id: "home", label: "Overview", icon: Home },
-    { id: "bookings", label: "Bookings", icon: Calendar },
-    { id: "cleaners", label: "Cleaners", icon: Users },
-    { id: "messages", label: "Messages", icon: MessageCircle },
-    { id: "payments", label: "Finance", icon: DollarSign },
-    { id: "analytics", label: "Analytics", icon: TrendingUp },
-  ];
+  const handleLogout = async () => {
+    await signOut();
+  };
+
+  // Hierarchical navigation structure
+  const navigationGroups = {
+    operations: {
+      id: "operations" as const,
+      label: "Operations",
+      icon: LayoutGrid,
+      tabs: [
+        { id: "home", label: "Overview", icon: Home },
+        { id: "bookings", label: "Bookings", icon: Calendar },
+        { id: "messages", label: "Messages", icon: MessageCircle },
+      ],
+    },
+    accounts: {
+      id: "accounts" as const,
+      label: "Accounts",
+      icon: Users,
+      tabs: [
+        { id: "customers", label: "Customers", icon: Users },
+        { id: "properties", label: "Properties", icon: Building },
+      ],
+    },
+    team: {
+      id: "team" as const,
+      label: "Team",
+      icon: UserCheck,
+      tabs: [
+        { id: "cleaners", label: "Cleaners", icon: UserCheck },
+        { id: "team", label: "Team Members", icon: Users },
+      ],
+    },
+    business: {
+      id: "business" as const,
+      label: "Business",
+      icon: TrendingUp,
+      tabs: [
+        { id: "payments", label: "Finance", icon: DollarSign },
+        { id: "analytics", label: "Analytics", icon: BarChart3 },
+      ],
+    },
+    admin: {
+      id: "admin" as const,
+      label: "Administration",
+      icon: Settings,
+      tabs: [
+        { id: "settings", label: "Settings", icon: Settings },
+        { id: "support", label: "Support", icon: HelpCircle },
+      ],
+    },
+  };
+
+  // Get groups array for sidebar
+  const groups = Object.values(navigationGroups);
+
+  // Get tabs for current group
+  const currentGroupTabs =
+    navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [];
+
+  // Get all tabs for mobile
+  const allTabs = groups.flatMap((g) => g.tabs);
+
+  // Handle group change - switch to first tab of new group
+  const handleGroupChange = (groupId: string) => {
+    setActiveGroup(groupId);
+    const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
+    if (newGroup && newGroup.tabs.length > 0) {
+      setActiveTab(newGroup.tabs[0].id);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -977,54 +1035,112 @@ export default function AdminDashboard() {
     </div>
   );
 
+  const renderPlaceholder = (title: string, description: string) => (
+    <div className="card text-center py-16">
+      <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100">
+        <Settings className="w-8 h-8 text-primary-600" />
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+      <p className="text-gray-600 max-w-md mx-auto">{description}</p>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeTab) {
       case "home":
         return renderOverview();
       case "bookings":
         return renderBookings();
-      case "cleaners":
-        return renderCleaners();
       case "messages":
         return renderMessages();
+      case "customers":
+        return renderPlaceholder(
+          "Customers Management",
+          "View and manage customer profiles, history, and preferences."
+        );
+      case "cleaners":
+        return renderCleaners();
       case "payments":
         return renderPayments();
       case "analytics":
         return renderAnalytics();
+      case "properties":
+        return renderPlaceholder(
+          "Property Management",
+          "Manage properties, access codes, and specific cleaning instructions."
+        );
+      case "team":
+        return renderPlaceholder(
+          "Team Management",
+          "Manage your administrative and managerial team members."
+        );
+      case "settings":
+        return renderPlaceholder(
+          "Settings",
+          "Configure system settings, notifications, and preferences."
+        );
+      case "support":
+        return renderPlaceholder(
+          "Support Center",
+          "Access help resources and contact support."
+        );
       default:
         return renderOverview();
     }
   };
 
   return (
-    <>
-      <DashboardHeader
-        role="admin"
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+    <div className="min-h-screen bg-gray-50">
+      {/* Persistent Desktop Sidebar - Shows Groups */}
+      <DesktopSidebar
+        groups={groups}
+        activeGroup={activeGroup}
+        onGroupChange={handleGroupChange}
+        onLogout={handleLogout}
       />
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
-          {/* Tab Content */}
+
+      {/* Main Content Wrapper with Sidebar Offset */}
+      <div className="md:ml-[260px]">
+        {/* Top Bar - Shows Tabs Within Selected Group */}
+        <TopBar
+          role="admin"
+          user={user}
+          tabs={currentGroupTabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onMobileMenuClick={() => setIsSidebarOpen(true)}
+        />
+
+        {/* Main Content Area */}
+        <main className="p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
           {renderContent()}
-        </div>
+        </main>
       </div>
+
+      {/* Mobile Bottom Navigation - Show first 4 tabs */}
       <MobileNavigation
-        tabs={tabs}
+        tabs={navigationGroups.operations.tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
       />
+
+      {/* Mobile Sidebar Menu - Show All Tabs */}
       <MobileSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="admin"
+        tabs={allTabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
+
+      {/* Modals */}
       <AddCleanerModal
         isOpen={showAddCleanerModal}
         onClose={() => setShowAddCleanerModal(false)}
       />
+
       <DeleteConfirmModal
         isOpen={deleteConfirmModal.isOpen}
         onClose={() =>
@@ -1040,6 +1156,6 @@ export default function AdminDashboard() {
         itemName={deleteConfirmModal.cleanerName}
         isLoading={isDeleting}
       />
-    </>
+    </div>
   );
 }

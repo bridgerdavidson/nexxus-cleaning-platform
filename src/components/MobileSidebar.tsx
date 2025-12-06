@@ -2,16 +2,32 @@
 
 import React, { useEffect } from 'react';
 import Link from 'next/link';
-import { X, User, Settings, HelpCircle, LogOut } from 'lucide-react';
+import { X, User, LogOut, LucideIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+
+interface Tab {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+}
 
 interface MobileSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   role: 'homeowner' | 'cleaner' | 'manager' | 'admin';
+  tabs?: Tab[];
+  activeTab?: string;
+  onTabChange?: (tabId: string) => void;
 }
 
-const MobileSidebar: React.FC<MobileSidebarProps> = ({ isOpen, onClose, role }) => {
+const MobileSidebar: React.FC<MobileSidebarProps> = ({
+  isOpen,
+  onClose,
+  role,
+  tabs = [],
+  activeTab,
+  onTabChange,
+}) => {
   const { user, signOut } = useAuth();
 
   // Close sidebar on escape key
@@ -68,7 +84,11 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({ isOpen, onClose, role }) 
         <div className="flex flex-col h-full">
           {/* Header with Logo and Close Button */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <Link href={getDashboardLink()} className="flex items-center" onClick={onClose}>
+            <Link
+              href={getDashboardLink()}
+              className="flex items-center"
+              onClick={onClose}
+            >
               <div className="text-2xl font-bold text-primary-600">Nexxus</div>
               <div className="ml-2 text-sm text-gray-600 font-medium">
                 Cleaning Solutions
@@ -103,21 +123,38 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({ isOpen, onClose, role }) 
           )}
 
           {/* Navigation Links */}
-          <div className="flex-1 p-6 space-y-2">
-            <button
-              onClick={onClose}
-              className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
-            >
-              <Settings className="w-5 h-5 text-gray-600" />
-              <span className="font-medium text-gray-700">Settings</span>
-            </button>
-            <button
-              onClick={onClose}
-              className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
-            >
-              <HelpCircle className="w-5 h-5 text-gray-600" />
-              <span className="font-medium text-gray-700">Help & Support</span>
-            </button>
+          <div className="flex-1 p-6 space-y-2 overflow-y-auto">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    onTabChange?.(tab.id);
+                    onClose();
+                  }}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors text-left ${
+                    isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon
+                    className={`w-5 h-5 ${
+                      isActive ? 'text-primary-600' : 'text-gray-400'
+                    }`}
+                  />
+                  <span
+                    className={`font-medium text-base ${
+                      isActive ? 'font-semibold' : ''
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Sign Out Button */}
@@ -137,4 +174,3 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({ isOpen, onClose, role }) 
 };
 
 export default MobileSidebar;
-
