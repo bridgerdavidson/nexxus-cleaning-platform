@@ -93,75 +93,79 @@ export function useManagerAppointments() {
   const [error, setError] = useState<string | null>(null);
   const { user, currentOrganizationId } = useAuth();
 
-  useEffect(() => {
+  const fetchAppointments = useCallback(async () => {
     if (!user?.id || !currentOrganizationId) return;
 
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('appointments')
-          .select(`
-            id,
-            scheduled_date,
-            scheduled_time,
-            status,
-            total_price,
-            homeowner:user_profiles!homeowner_id(
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          scheduled_date,
+          scheduled_time,
+          status,
+          total_price,
+          homeowner:user_profiles!homeowner_id(
+            first_name,
+            last_name,
+            email
+          ),
+          cleaner_profile:cleaner_profiles(
+            user_profile:user_profiles!id(
               first_name,
-              last_name,
-              email
-            ),
-            cleaner_profile:cleaner_profiles(
-              user_profile:user_profiles!id(
-                first_name,
-                last_name
-              )
-            ),
-            property:properties(
-              name,
-              address,
-              city,
-              state
-            ),
-            service_type:service_types(
-              name,
-              description
+              last_name
             )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .order('scheduled_date', { ascending: false });
+          ),
+          property:properties(
+            name,
+            address,
+            city,
+            state
+          ),
+          service_type:service_types(
+            name,
+            description
+          )
+        `)
+        .eq('organization_id', currentOrganizationId)
+        .order('scheduled_date', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(appointment => ({
-          ...appointment,
-          homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
-          property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
-          cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
-            ? {
-                ...appointment.cleaner_profile[0],
-                user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
-                  ? appointment.cleaner_profile[0].user_profile[0] 
-                  : appointment.cleaner_profile[0]?.user_profile
-              }
-            : appointment.cleaner_profile
-        }));
-        
-        setAppointments(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAppointments();
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(appointment => ({
+        ...appointment,
+        homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
+        property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
+        service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
+          ? {
+              ...appointment.cleaner_profile[0],
+              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
+                ? appointment.cleaner_profile[0].user_profile[0] 
+                : appointment.cleaner_profile[0]?.user_profile
+            }
+          : appointment.cleaner_profile
+      }));
+      
+      setAppointments(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id, currentOrganizationId]);
 
-  return { appointments, loading, error };
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  const refetch = useCallback(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  return { appointments, loading, error, refetch };
 }
 
 export function useManagerCleaners() {
@@ -412,6 +416,36 @@ export async function deleteCleaner(cleanerId: string) {
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to delete cleaner' 
     };
+  }
+}
+
+// Helper function to cancel an appointment (soft delete - changes status to cancelled)
+export async function cancelAppointment(appointmentId: string) {
+  try {
+    const { error } = await supabase
+      .from('appointments')
+      .update({ status: 'cancelled' })
+      .eq('id', appointmentId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to cancel appointment' };
+  }
+}
+
+// Helper function to permanently delete an appointment (hard delete)
+export async function deleteAppointment(appointmentId: string) {
+  try {
+    const { error } = await supabase
+      .from('appointments')
+      .delete()
+      .eq('id', appointmentId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete appointment' };
   }
 }
 

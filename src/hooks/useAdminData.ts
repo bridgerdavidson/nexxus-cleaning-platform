@@ -530,3 +530,33 @@ export async function deleteCleaner(cleanerId: string) {
     };
   }
 }
+
+// Helper function to cancel an appointment (soft delete - changes status to cancelled)
+export async function cancelAppointment(appointmentId: string) {
+  try {
+    const { error } = await supabase
+      .from('appointments')
+      .update({ status: 'cancelled' })
+      .eq('id', appointmentId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to cancel appointment' };
+  }
+}
+
+// Helper function to permanently delete an appointment (hard delete)
+export async function deleteAppointment(appointmentId: string) {
+  try {
+    const { error } = await supabase
+      .from('appointments')
+      .delete()
+      .eq('id', appointmentId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete appointment' };
+  }
+}

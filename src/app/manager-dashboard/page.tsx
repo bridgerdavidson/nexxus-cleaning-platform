@@ -31,6 +31,9 @@ import {
   useManagerPayments,
   useManagerMessages,
   deleteCleaner,
+  cancelAppointment,
+  deleteAppointment,
+  updateAppointmentStatus,
 } from "../../hooks/useManagerData";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
@@ -38,6 +41,7 @@ import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
+import BookingsPage from "../../components/BookingsPage";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -66,6 +70,7 @@ export default function ManagerDashboard() {
     appointments,
     loading: appointmentsLoading,
     error: appointmentsError,
+    refetch: refetchAppointments,
   } = useManagerAppointments();
   const {
     cleaners,
@@ -344,85 +349,42 @@ export default function ManagerDashboard() {
     </div>
   );
 
+  const handleCancelAppointment = async (appointmentId: string) => {
+    const result = await cancelAppointment(appointmentId);
+    if (result.success) {
+      await refetchAppointments();
+    } else {
+      alert("Failed to cancel appointment: " + result.error);
+    }
+  };
+
+  const handleDeleteAppointment = async (appointmentId: string) => {
+    const result = await deleteAppointment(appointmentId);
+    if (result.success) {
+      await refetchAppointments();
+    } else {
+      alert("Failed to delete appointment: " + result.error);
+    }
+  };
+
+  const handleMarkComplete = async (appointmentId: string) => {
+    const result = await updateAppointmentStatus(appointmentId, "completed");
+    if (result.success) {
+      await refetchAppointments();
+    } else {
+      alert("Failed to mark appointment as complete: " + result.error);
+    }
+  };
+
   const renderBookings = () => (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">
-        All Appointments
-      </h2>
-      {appointmentsLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
-      ) : appointmentsError ? (
-        <div className="text-center py-12">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <p className="text-gray-600">{appointmentsError}</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date/Time
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Homeowner
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cleaner
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Service
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Price
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {appointments.map((appointment) => (
-                <tr key={appointment.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(appointment.scheduled_date).toLocaleDateString()}
-                    <br />
-                    {appointment.scheduled_time}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {appointment.homeowner
-                      ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-                      : "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {appointment.cleaner_profile?.user_profile
-                      ? `${appointment.cleaner_profile.user_profile.first_name} ${appointment.cleaner_profile.user_profile.last_name}`
-                      : "Unassigned"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {appointment.service_type?.name || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
-                        appointment.status
-                      )}`}
-                    >
-                      {appointment.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    ${appointment.total_price}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <BookingsPage
+      appointments={appointments}
+      loading={appointmentsLoading}
+      onCancelAppointment={handleCancelAppointment}
+      onDeleteAppointment={handleDeleteAppointment}
+      onMarkComplete={handleMarkComplete}
+      role="manager"
+    />
   );
 
   const handleDeleteCleaner = async () => {
