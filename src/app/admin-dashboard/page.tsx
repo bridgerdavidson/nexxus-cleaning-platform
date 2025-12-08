@@ -522,6 +522,7 @@ export default function AdminDashboard() {
       onCancelAppointment={handleCancelAppointment}
       onDeleteAppointment={handleDeleteAppointment}
       onMarkComplete={handleMarkComplete}
+      onRefreshAppointments={refetchAppointments}
       role="admin"
     />
   );

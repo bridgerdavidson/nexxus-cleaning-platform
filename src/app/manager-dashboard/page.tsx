@@ -383,6 +383,7 @@ export default function ManagerDashboard() {
       onCancelAppointment={handleCancelAppointment}
       onDeleteAppointment={handleDeleteAppointment}
       onMarkComplete={handleMarkComplete}
+      onRefreshAppointments={refetchAppointments}
       role="manager"
     />
   );

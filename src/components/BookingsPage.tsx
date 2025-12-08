@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from "react";
-import { Search, Loader2, Calendar, CheckSquare, Square, Trash2, XCircle } from "lucide-react";
+import { Search, Loader2, Calendar, CheckSquare, Square, Trash2, XCircle, Plus } from "lucide-react";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import AppointmentSidePanel from "./AppointmentSidePanel";
 import CancelConfirmModal from "./CancelConfirmModal";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
+import AddAppointmentModal from "./AddAppointmentModal";
 
 type TabType = "upcoming" | "all" | "completed" | "cancelled";
 
@@ -14,6 +15,7 @@ interface BookingsPageProps {
   onDeleteAppointment: (appointmentId: string) => Promise<void>;
   onMarkComplete: (appointmentId: string) => Promise<void>;
   onEdit?: (appointmentId: string) => void;
+  onRefreshAppointments?: () => void;
   role: "admin" | "manager";
 }
 
@@ -24,6 +26,7 @@ export default function BookingsPage({
   onDeleteAppointment,
   onMarkComplete,
   onEdit,
+  onRefreshAppointments,
   role,
 }: BookingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
@@ -36,6 +39,7 @@ export default function BookingsPage({
   const [cancellingAppointmentId, setCancellingAppointmentId] = useState<
     string | null
   >(null);
+  const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   
   // Selection state
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -270,6 +274,13 @@ export default function BookingsPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Bookings</h2>
+        <button
+          onClick={() => setShowAddAppointmentModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          New Appointment
+        </button>
       </div>
 
       {/* Tabs */}
@@ -472,6 +483,17 @@ export default function BookingsPage({
         count={selectedIds.size}
         action={bulkAction}
         isLoading={isBulkActionLoading}
+      />
+
+      {/* Add Appointment Modal */}
+      <AddAppointmentModal
+        isOpen={showAddAppointmentModal}
+        onClose={() => setShowAddAppointmentModal(false)}
+        onAppointmentCreated={() => {
+          if (onRefreshAppointments) {
+            onRefreshAppointments();
+          }
+        }}
       />
     </div>
   );
