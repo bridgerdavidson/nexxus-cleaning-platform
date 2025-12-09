@@ -951,7 +951,11 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className={`min-h-screen ${
+        activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
+      }`}
+    >
       {/* Persistent Desktop Sidebar - Shows Groups */}
       <DesktopSidebar
         groups={groups}
@@ -962,18 +966,26 @@ export default function AdminDashboard() {
 
       {/* Main Content Wrapper with Sidebar Offset */}
       <div className="md:ml-[260px]">
-        {/* Top Bar - Shows Tabs Within Selected Group */}
-        <TopBar
-          role="admin"
-          user={user}
-          tabs={currentGroupTabs}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onMobileMenuClick={() => setIsSidebarOpen(true)}
-        />
+        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile when messages tab is active */}
+        <div className={activeTab === "messages" ? "hidden md:block" : ""}>
+          <TopBar
+            role="admin"
+            user={user}
+            tabs={currentGroupTabs}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            onMobileMenuClick={() => setIsSidebarOpen(true)}
+          />
+        </div>
 
         {/* Main Content Area */}
-        <main className="p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+        <main
+          className={`${
+            activeTab === "messages"
+              ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
+              : "p-4 sm:p-6 lg:p-8"
+          } pb-24 md:pb-8`}
+        >
           {renderContent()}
         </main>
       </div>

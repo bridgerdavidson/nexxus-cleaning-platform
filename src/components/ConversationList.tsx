@@ -57,14 +57,16 @@ export default function ConversationList({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white border-r border-gray-200">
+    <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 p-4 border-b border-gray-200">
+      <div className="flex-shrink-0 p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-bold text-gray-900">Messages</h2>
+          <h2 className="text-2xl md:text-xl font-bold text-gray-900">
+            Messages
+          </h2>
           <button
             onClick={() => setShowSearch(!showSearch)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
           >
             <Search className="w-5 h-5 text-gray-600" />
           </button>

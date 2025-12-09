@@ -88,7 +88,7 @@ export default function MessagesPage({ userId, userRole }: MessagesPageProps) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-12rem)] md:h-[calc(100vh-8rem)] bg-white rounded-lg shadow-sm overflow-hidden relative">
+    <div className="flex h-[calc(100vh-6rem)] md:h-[calc(100vh-8rem)] overflow-hidden relative">
       {/* Conversation list - left panel */}
       <div
         className={`w-full md:w-96 lg:w-[400px] flex-shrink-0 transition-transform duration-300 ease-in-out ${

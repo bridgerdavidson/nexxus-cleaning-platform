@@ -143,7 +143,8 @@ export default function HomeownerDashboard() {
           </span>
         </div>
         <p className="text-gray-600">
-          Manage your cleaning appointments and properties from one central location.
+          Manage your cleaning appointments and properties from one central
+          location.
         </p>
       </div>
 
@@ -588,14 +589,29 @@ export default function HomeownerDashboard() {
 
   return (
     <>
-      <DashboardHeader
-        role="homeowner"
-        tabs={tabs}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-      />
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
+      {/* Hide header on mobile when messages tab is active */}
+      <div className={activeTab === "messages" ? "hidden md:block" : ""}>
+        <DashboardHeader
+          role="homeowner"
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+      </div>
+      <div
+        className={`min-h-screen ${
+          activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
+        }`}
+      >
+        <div
+          className={`max-w-7xl mx-auto ${
+            activeTab === "messages"
+              ? "px-0 md:px-4 md:sm:px-6 md:lg:px-8"
+              : "px-4 sm:px-6 lg:px-8"
+          } pb-24 md:pb-8 ${
+            activeTab === "messages" ? "py-0 md:py-8" : "py-8"
+          }`}
+        >
           {/* Tab Content */}
           {renderContent()}
         </div>

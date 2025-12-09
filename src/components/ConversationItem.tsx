@@ -75,7 +75,7 @@ export default function ConversationItem({
     <div
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`flex items-start space-x-3 p-4 cursor-pointer transition-colors border-b border-gray-100 ${
+      className={`flex items-start space-x-3 p-4 cursor-pointer transition-colors ${
         isSelected ? "bg-gray-100" : "hover:bg-gray-50"
       }`}
     >
