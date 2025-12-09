@@ -26,6 +26,7 @@ import {
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
+import MessagesPage from "../../components/MessagesPage";
 
 export default function HomeownerDashboard() {
   const { user, loading } = useAuth();
@@ -415,91 +416,7 @@ export default function HomeownerDashboard() {
   );
 
   const renderMessages = () => (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
-      {messagesLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          <span className="ml-2 text-gray-600">Loading messages...</span>
-        </div>
-      ) : messagesError ? (
-        <div className="text-center py-12">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Failed to load messages
-          </h3>
-          <p className="text-gray-600">{messagesError}</p>
-        </div>
-      ) : messages.length === 0 ? (
-        <div className="text-center py-12">
-          <MessageCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No messages yet
-          </h3>
-          <p className="text-gray-600">
-            Messages with your cleaners and support team will appear here.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {messages.map((message) => {
-            const isSent = message.sender_id === user?.id;
-            const displayPerson = isSent ? message.recipient : message.sender;
-            const direction = isSent ? "To" : "From";
-
-            return (
-              <div
-                key={message.id}
-                className={`p-4 rounded-lg border ${
-                  isSent
-                    ? "bg-green-50 border-green-200"
-                    : message.is_read
-                    ? "bg-white"
-                    : "bg-primary-50 border-primary-200"
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <MessageCircle
-                      className={`w-5 h-5 ${
-                        isSent ? "text-green-600" : "text-primary-600"
-                      }`}
-                    />
-                    <span className="text-xs text-gray-500 font-medium">
-                      {direction}:
-                    </span>
-                    {displayPerson && (
-                      <span className="font-medium text-gray-900">
-                        {displayPerson.first_name} {displayPerson.last_name}
-                      </span>
-                    )}
-                    {displayPerson?.role && (
-                      <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-                        {displayPerson.role}
-                      </span>
-                    )}
-                    {isSent && (
-                      <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
-                        Sent
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    {new Date(message.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                {message.subject && (
-                  <h4 className="font-medium text-gray-900 mb-1">
-                    {message.subject}
-                  </h4>
-                )}
-                <p className="text-gray-700">{message.content}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <MessagesPage userId={user.id} userRole="homeowner" />
   );
 
   const renderPayments = () => (

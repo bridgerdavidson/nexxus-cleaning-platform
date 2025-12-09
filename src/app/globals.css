@@ -132,3 +132,190 @@ input[type="range"].slider::-moz-range-thumb:hover {
 .animate-slide-up {
   animation: slide-up 0.3s ease-out;
 }
+
+/* Slide in from right animation for mobile message thread */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Slide out to right animation for mobile message thread */
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Slide in from left animation for conversation list */
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Airbnb-inspired Messaging Styles */
+
+/* Conversation list item styles */
+.conversation-item {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+.conversation-item:hover {
+  @apply bg-gray-50;
+}
+
+.conversation-item.selected {
+  @apply bg-gray-100;
+}
+
+/* Message bubble styles */
+.message-bubble-sent {
+  @apply bg-primary-600 text-white rounded-2xl px-4 py-2 max-w-[70%] ml-auto;
+}
+
+.message-bubble-received {
+  @apply bg-gray-200 text-gray-900 rounded-2xl px-4 py-2 max-w-[70%] mr-auto;
+}
+
+/* Search bar styling - Airbnb aesthetic */
+.messages-search-input {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg text-sm;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  @apply transition-all duration-200;
+}
+
+.messages-search-input::placeholder {
+  @apply text-gray-400;
+}
+
+/* Two-panel layout responsive breakpoints */
+@media (max-width: 768px) {
+  .messages-panel-left {
+    @apply w-full;
+  }
+  
+  .messages-panel-right {
+    @apply hidden;
+  }
+  
+  .messages-panel-right.active {
+    @apply block fixed inset-0 z-50;
+  }
+}
+
+@media (min-width: 769px) {
+  .messages-panel-left {
+    @apply w-96 flex-shrink-0;
+  }
+  
+  .messages-panel-right {
+    @apply flex-1;
+  }
+}
+
+/* Conversation list hover states */
+.conversation-list-item {
+  @apply cursor-pointer transition-colors duration-150;
+}
+
+.conversation-list-item:hover {
+  @apply bg-gray-50;
+}
+
+.conversation-list-item.active {
+  @apply bg-gray-100;
+}
+
+/* Unread badge */
+.unread-badge {
+  @apply bg-primary-600 text-white text-xs font-bold rounded-full;
+  @apply w-5 h-5 flex items-center justify-center;
+}
+
+/* Avatar styles */
+.message-avatar {
+  @apply w-10 h-10 rounded-full object-cover;
+}
+
+.message-avatar-placeholder {
+  @apply w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center;
+  @apply text-white font-semibold text-sm;
+}
+
+/* Message timestamp */
+.message-timestamp {
+  @apply text-xs text-gray-500 mt-1;
+}
+
+/* Message input area */
+.message-input-container {
+  @apply border-t border-gray-200 bg-white p-4;
+}
+
+.message-input-textarea {
+  @apply flex-1 resize-none border border-gray-300 rounded-lg px-4 py-2;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed max-h-32 overflow-y-auto;
+}
+
+/* Attachment preview */
+.attachment-preview {
+  @apply relative w-20 h-20 rounded-lg border border-gray-200 overflow-hidden;
+}
+
+.attachment-preview img {
+  @apply w-full h-full object-cover;
+}
+
+/* Send button */
+.send-button {
+  @apply flex-shrink-0 p-2 rounded-lg transition-colors;
+}
+
+.send-button.enabled {
+  @apply bg-primary-600 text-white hover:bg-primary-700;
+}
+
+.send-button.disabled {
+  @apply bg-gray-200 text-gray-400 cursor-not-allowed;
+}
+
+/* Context menu */
+.context-menu {
+  @apply fixed bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[180px];
+}
+
+.context-menu-item {
+  @apply w-full px-4 py-2 text-left text-sm flex items-center space-x-2;
+  @apply hover:bg-gray-100 transition-colors;
+}
+
+.context-menu-item.danger {
+  @apply text-red-600 hover:bg-red-50;
+}
+
+/* Smooth scroll for messages */
+.messages-scroll-container {
+  scroll-behavior: smooth;
+}
+
+/* Message thread header */
+.message-thread-header {
+  @apply flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white;
+}
+
+/* Role filter dropdown */
+.role-filter-select {
+  @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm;
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+}

@@ -120,10 +120,20 @@ export interface Payment {
   created_at: string;
 }
 
+// CONVERSATIONS
+export interface Conversation {
+  id: string;
+  participant_1_id: string; // References user_profiles(id)
+  participant_2_id: string; // References user_profiles(id)
+  last_message_at: string;
+  created_at: string;
+}
+
 // MESSAGES
 export interface Message {
   id: string;
   organization_id: string | null;
+  conversation_id: string | null; // References conversations(id)
   sender_id: string; // References user_profiles(id)
   recipient_id: string; // References user_profiles(id)
   appointment_id: string | null;
@@ -131,6 +141,29 @@ export interface Message {
   content: string;
   is_read: boolean; // default false
   created_at: string;
+}
+
+// MESSAGE ATTACHMENTS
+export interface MessageAttachment {
+  id: string;
+  message_id: string; // References messages(id)
+  file_url: string;
+  file_type: string;
+  file_size: number | null;
+  created_at: string;
+}
+
+// MESSAGING UI TYPES (with joined data)
+export interface ConversationWithDetails extends Conversation {
+  other_participant: UserProfile;
+  last_message: Message | null;
+  unread_count: number;
+}
+
+export interface MessageWithDetails extends Message {
+  sender: UserProfile;
+  recipient: UserProfile;
+  attachments?: MessageAttachment[];
 }
 
 // REVIEWS

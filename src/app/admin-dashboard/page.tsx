@@ -42,6 +42,7 @@ import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
+import MessagesPage from "../../components/MessagesPage";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -729,77 +730,7 @@ export default function AdminDashboard() {
   };
 
   const renderMessages = () => (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Message Center</h2>
-      {messagesLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          <span className="ml-2 text-gray-600">Loading messages...</span>
-        </div>
-      ) : messages.length > 0 ? (
-        <div className="space-y-4">
-          {messages.slice(0, 10).map((message) => (
-            <div key={message.id} className="border-b border-gray-200 pb-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2">
-                    <p className="font-medium text-gray-900">
-                      {message.sender
-                        ? `${message.sender.first_name} ${message.sender.last_name}`
-                        : "Unknown"}
-                    </p>
-                    <span className="text-sm text-gray-500">→</span>
-                    <p className="text-sm text-gray-600">
-                      {message.recipient
-                        ? `${message.recipient.first_name} ${message.recipient.last_name}`
-                        : "Unknown"}
-                    </p>
-                  </div>
-                  {message.subject && (
-                    <p className="text-sm font-medium text-gray-800 mt-1">
-                      {message.subject}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-600 mt-1">
-                    {message.content}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {new Date(message.created_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-                <div className="ml-4">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      message.is_read
-                        ? "text-gray-600 bg-gray-100"
-                        : "text-primary-600 bg-primary-100"
-                    }`}
-                  >
-                    {message.is_read ? "Read" : "Unread"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <MessageCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No messages
-          </h3>
-          <p className="text-gray-600">
-            All conversations between homeowners and cleaners will appear here.
-          </p>
-        </div>
-      )}
-    </div>
+    <MessagesPage userId={user.id} userRole="admin" />
   );
 
   const renderPayments = () => (

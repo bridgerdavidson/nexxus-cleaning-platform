@@ -42,6 +42,7 @@ import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
+import MessagesPage from "../../components/MessagesPage";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -669,59 +670,7 @@ export default function ManagerDashboard() {
   );
 
   const renderMessages = () => (
-    <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Messages</h2>
-      {messagesLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
-      ) : messagesError ? (
-        <div className="text-center py-12">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <p className="text-gray-600">{messagesError}</p>
-        </div>
-      ) : messages.length === 0 ? (
-        <div className="text-center py-12">
-          <MessageCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">No messages</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {messages.map((message) => (
-            <div key={message.id} className="border-b border-gray-200 pb-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <p className="font-medium text-gray-900">
-                      {message.sender
-                        ? `${message.sender.first_name} ${message.sender.last_name}`
-                        : "Unknown"}
-                    </p>
-                    <span className="text-xs text-gray-500">→</span>
-                    <p className="font-medium text-gray-900">
-                      {message.recipient
-                        ? `${message.recipient.first_name} ${message.recipient.last_name}`
-                        : "Unknown"}
-                    </p>
-                  </div>
-                  {message.subject && (
-                    <p className="text-sm font-medium text-gray-800 mt-1">
-                      {message.subject}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-600 mt-1">
-                    {message.content}
-                  </p>
-                </div>
-                <span className="text-xs text-gray-500">
-                  {new Date(message.created_at).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <MessagesPage userId={user.id} userRole="manager" />
   );
 
   const renderPlaceholder = (title: string, description: string) => (
