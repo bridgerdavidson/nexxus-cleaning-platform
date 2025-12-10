@@ -50,7 +50,16 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
           filter: `conversation_id=eq.${conversationId}`
         },
         (payload) => {
-          addNewMessage(payload.new as { id: string; sender_id: string; recipient_id: string; is_read: boolean; conversation_id: string | null });
+          const newMessage = payload.new as { 
+            id: string; 
+            sender_id: string; 
+            recipient_id: string; 
+            is_read: boolean; 
+            conversation_id: string | null;
+            content?: string;
+            created_at?: string;
+          };
+          addNewMessage(newMessage);
         }
       )
       .on(
@@ -65,7 +74,14 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
           updateMessage(payload.new as { id: string; [key: string]: unknown });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`Subscribed to messages for conversation ${conversationId}`);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error(`Error subscribing to messages for conversation ${conversationId}`);
+          // Could implement retry logic here if needed
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -233,107 +249,168 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     }
   };
 
-  const addNewMessage = async (newMessage: { id: string; sender_id: string; recipient_id: string; is_read: boolean; conversation_id: string | null }) => {
+  const addNewMessage = async (newMessage: { id: string; sender_id: string; recipient_id: string; is_read: boolean; conversation_id: string | null; content?: string; created_at?: string }) => {
     // Skip if this is a temporary optimistic message (will be replaced by real one)
     if (newMessage.id.startsWith('temp-')) {
       return;
     }
 
-    // Fetch message without joins
-    const { data: messageData, error: messageError } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('id', newMessage.id)
-      .single();
+    // Check if message already exists to avoid duplicates
+    setMessages(prev => {
+      if (prev.some(msg => msg.id === newMessage.id)) {
+        return prev; // Already exists
+      }
+      return prev;
+    });
 
-    if (messageError) {
-      console.error('Error fetching new message:', messageError);
-      return;
-    }
+    // Fetch profiles immediately (fast, non-blocking for instant appearance)
+    // Fetch in parallel for speed
+    const [messageResult, profilesResult] = await Promise.all([
+      supabase
+        .from('messages')
+        .select('*')
+        .eq('id', newMessage.id)
+        .single(),
+      supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', [newMessage.sender_id, newMessage.recipient_id].filter(Boolean))
+    ]);
 
-    // Fetch sender and recipient profiles
-    const profileIds = [messageData.sender_id, messageData.recipient_id].filter(Boolean);
-    const { data: profilesData } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .in('id', profileIds);
-
-    const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
-
-    // Fetch attachments
-    const { data: attachmentsData } = await supabase
-      .from('message_attachments')
-      .select('*')
-      .eq('message_id', newMessage.id);
-
-    const enrichedMessage: MessageWithDetails = {
-      ...messageData,
-      sender: profilesMap.get(messageData.sender_id) || null,
-      recipient: profilesMap.get(messageData.recipient_id) || null,
-      attachments: attachmentsData || []
+    // If message fetch failed, try to use payload data
+    const messageData = messageResult.data || {
+      id: newMessage.id,
+      organization_id: null,
+      conversation_id: newMessage.conversation_id,
+      sender_id: newMessage.sender_id,
+      recipient_id: newMessage.recipient_id,
+      appointment_id: null,
+      subject: null,
+      content: newMessage.content || '',
+      is_read: newMessage.is_read || false,
+      created_at: newMessage.created_at || new Date().toISOString()
     };
 
-    // Check if message already exists (from optimistic update with temp ID)
-    // Or if we have a temp message from the same sender with similar content
+    if (messageResult.error && !messageResult.data) {
+      console.error('Error fetching new message:', messageResult.error);
+      // Still try to show message with basic data
+    }
+
+    const profilesMap = new Map(profilesResult.data?.map(p => [p.id, p]) || []);
+
+    // Get profiles - use existing messages' profiles as fallback if not found
+    let senderProfile = profilesMap.get(newMessage.sender_id);
+    let recipientProfile = profilesMap.get(newMessage.recipient_id);
+
+    // If profiles not found, try to get from existing messages in this conversation
+    if (!senderProfile || !recipientProfile) {
+      setMessages(prev => {
+        const existingMsg = prev.find(m => 
+          m.sender_id === newMessage.sender_id || m.recipient_id === newMessage.recipient_id
+        );
+        if (existingMsg) {
+          if (!senderProfile && existingMsg.sender_id === newMessage.sender_id) {
+            senderProfile = existingMsg.sender;
+          }
+          if (!recipientProfile && existingMsg.recipient_id === newMessage.recipient_id) {
+            recipientProfile = existingMsg.recipient;
+          }
+        }
+        return prev;
+      });
+    }
+
+    // If still no profiles, fetch them (shouldn't happen often)
+    if (!senderProfile || !recipientProfile) {
+      const { data: missingProfiles } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', [newMessage.sender_id, newMessage.recipient_id].filter(Boolean));
+      
+      missingProfiles?.forEach(p => {
+        if (p.id === newMessage.sender_id && !senderProfile) {
+          senderProfile = p;
+        }
+        if (p.id === newMessage.recipient_id && !recipientProfile) {
+          recipientProfile = p;
+        }
+      });
+    }
+
+    // Fetch attachments in background (non-blocking)
+    const attachmentsPromise = supabase
+      .from('message_attachments')
+      .select('*')
+      .eq('message_id', newMessage.id)
+      .then(({ data }) => data || []);
+
+    // Create enriched message
+    const enrichedMessage: MessageWithDetails = {
+      ...messageData,
+      sender: senderProfile!,
+      recipient: recipientProfile!,
+      attachments: [] // Will be updated when attachments load
+    };
+
+    // Add message immediately (instant UI update)
     setMessages(prev => {
-      // Remove any temp messages from this sender around the same time
+      // Check if message already exists
+      if (prev.some(msg => msg.id === newMessage.id)) {
+        return prev;
+      }
+
+      // Remove any temp messages from this sender with similar content
       const tempMessages = prev.filter(msg => 
         msg.id.startsWith('temp-') && 
-        msg.sender_id === enrichedMessage.sender_id &&
+        msg.sender_id === newMessage.sender_id &&
         msg.content === enrichedMessage.content
       );
       
-      // If we have temp messages, remove them and add the real one
-      if (tempMessages.length > 0) {
-        const filtered = prev.filter(msg => !tempMessages.includes(msg));
-        const updated = [...filtered, enrichedMessage];
-        const sorted = updated.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        
-        // Update cache for this conversation
-        if (conversationId) {
-          messagesCacheRef.current.set(conversationId, sorted);
-        }
-        
-        return sorted;
+      const filtered = prev.filter(msg => !tempMessages.includes(msg));
+      const updated = [...filtered, enrichedMessage];
+      const sorted = updated.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      
+      // Update cache
+      if (conversationId) {
+        messagesCacheRef.current.set(conversationId, sorted);
       }
-
-      // Check if message with same ID already exists
-      const existingIndex = prev.findIndex(msg => msg.id === enrichedMessage.id);
-      if (existingIndex >= 0) {
-        // Update existing message
-        const updated = [...prev];
-        updated[existingIndex] = enrichedMessage;
-        const sorted = updated.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        
-        // Update cache for this conversation
-        if (conversationId) {
-          messagesCacheRef.current.set(conversationId, sorted);
-        }
-        
-        return sorted;
-      } else {
-        // Add new message
-        const updated = [...prev, enrichedMessage];
-        const sorted = updated.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        
-        // Update cache for this conversation
-        if (conversationId) {
-          messagesCacheRef.current.set(conversationId, sorted);
-        }
-        
-        return sorted;
-      }
+      
+      return sorted;
     });
+
+    // Scroll to bottom immediately
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+
+    // Update with attachments when they load
+    try {
+      const attachments = await attachmentsPromise;
+      if (attachments.length > 0) {
+        setMessages(prev => {
+          const updated = prev.map(msg => 
+            msg.id === newMessage.id
+              ? { ...msg, attachments }
+              : msg
+          );
+          
+          // Update cache
+          if (conversationId) {
+            messagesCacheRef.current.set(conversationId, updated);
+          }
+          
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching attachments:', err);
+      // Message already shown, so continue
+    }
 
     // Mark as read if not sent by current user
     if (newMessage.recipient_id === userId && !newMessage.is_read) {
       markMessageAsRead(newMessage.id);
     }
-
-    // Scroll to bottom
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
   };
 
   // Add message optimistically (for instant UI feedback when sending)

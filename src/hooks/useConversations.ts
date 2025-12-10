@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { ConversationWithDetails, UserRole } from '../types';
+import { ConversationWithDetails, UserRole, Message } from '../types';
 
 interface UseConversationsOptions {
   userId: string;
@@ -12,6 +12,8 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Cache profiles to avoid refetching when updating conversations
+  const profilesCacheRef = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
     if (!userId) {
@@ -46,10 +48,20 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           schema: 'public',
           table: 'messages'
         },
-        (payload) => {
-          // Refresh if message involves this user
-          if (payload.new.sender_id === userId || payload.new.recipient_id === userId) {
-            fetchConversations();
+        async (payload) => {
+          // Optimistically update if message involves this user
+          const newMessage = payload.new as { 
+            id: string; 
+            conversation_id: string | null; 
+            sender_id: string; 
+            recipient_id: string; 
+            content: string; 
+            created_at: string;
+            is_read: boolean;
+          };
+          
+          if (newMessage.sender_id === userId || newMessage.recipient_id === userId) {
+            await optimisticallyUpdateConversationWithMessage(newMessage);
           }
         }
       )
@@ -61,14 +73,18 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           table: 'messages'
         },
         (payload) => {
-          // Refresh when messages are marked as read (updates unread count)
-          // This is a backup - optimistic updates handle instant UI feedback
-          const updatedMessage = payload.new as { recipient_id: string; is_read: boolean; conversation_id: string | null };
-          if (updatedMessage.recipient_id === userId && updatedMessage.is_read === true && updatedMessage.conversation_id) {
-            // Reduced delay since optimistic updates handle instant feedback
-            setTimeout(() => {
-              fetchConversations();
-            }, 100);
+          // Optimistically update unread count when messages are marked as read
+          const updatedMessage = payload.new as { 
+            recipient_id: string; 
+            is_read: boolean; 
+            conversation_id: string | null;
+          };
+          
+          if (updatedMessage.recipient_id === userId && 
+              updatedMessage.is_read === true && 
+              updatedMessage.conversation_id) {
+            // Optimistically decrement unread count
+            optimisticallyUpdateUnreadCount(updatedMessage.conversation_id, -1);
           }
         }
       )
@@ -142,8 +158,11 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
         // Continue without unread counts rather than failing
       }
 
-      // Map profiles by ID
-      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+      // Map profiles by ID and cache them
+      const profilesMap = new Map(profilesData?.map(p => {
+        profilesCacheRef.current.set(p.id, p);
+        return [p.id, p];
+      }) || []);
 
       // Map last message by conversation_id
       const lastMessageMap = new Map();
@@ -200,6 +219,117 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           : conv
       )
     );
+  };
+
+  // Optimistically update unread count by delta (increment/decrement)
+  const optimisticallyUpdateUnreadCount = (conversationId: string, delta: number) => {
+    setConversations(prev => 
+      prev.map(conv => 
+        conv.id === conversationId
+          ? { ...conv, unread_count: Math.max(0, conv.unread_count + delta) }
+          : conv
+      )
+    );
+  };
+
+  // Optimistically update conversation when a new message arrives
+  const optimisticallyUpdateConversationWithMessage = async (newMessage: {
+    id: string;
+    conversation_id: string | null;
+    sender_id: string;
+    recipient_id: string;
+    content: string;
+    created_at: string;
+    is_read: boolean;
+  }) => {
+    if (!newMessage.conversation_id) {
+      // New conversation - need to fetch it
+      fetchConversations();
+      return;
+    }
+
+    setConversations(prev => {
+      // Find the conversation
+      const convIndex = prev.findIndex(c => c.id === newMessage.conversation_id);
+      
+      if (convIndex === -1) {
+        // Conversation not in list yet - might be a new conversation
+        // Fetch to get the full conversation data
+        fetchConversations();
+        return prev;
+      }
+
+      // Get sender profile from cache or fetch it
+      let senderProfile = profilesCacheRef.current.get(newMessage.sender_id);
+      
+      if (!senderProfile) {
+        // Fetch sender profile in background (non-blocking)
+        supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', newMessage.sender_id)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              profilesCacheRef.current.set(newMessage.sender_id, data);
+              // Update conversation again with profile
+              setConversations(current => {
+                const updated = [...current];
+                const idx = updated.findIndex(c => c.id === newMessage.conversation_id);
+                if (idx >= 0 && updated[idx].last_message) {
+                  updated[idx] = {
+                    ...updated[idx],
+                    last_message: {
+                      ...updated[idx].last_message!,
+                      sender: data
+                    } as Message
+                  };
+                }
+                return updated;
+              });
+            }
+          });
+      }
+
+      // Create message object for last_message
+      const messageAsLastMessage: Message = {
+        id: newMessage.id,
+        organization_id: null,
+        conversation_id: newMessage.conversation_id,
+        sender_id: newMessage.sender_id,
+        recipient_id: newMessage.recipient_id,
+        appointment_id: null,
+        subject: null,
+        content: newMessage.content,
+        is_read: newMessage.is_read,
+        created_at: newMessage.created_at
+      };
+
+      // Update the conversation
+      const updated = [...prev];
+      const conv = updated[convIndex];
+      
+      const isRecipient = newMessage.recipient_id === userId;
+      const newUnreadCount = isRecipient && !newMessage.is_read
+        ? conv.unread_count + 1
+        : conv.unread_count;
+
+      updated[convIndex] = {
+        ...conv,
+        last_message: messageAsLastMessage,
+        last_message_at: newMessage.created_at,
+        unread_count: newUnreadCount
+      };
+
+      // Re-sort by last_message_at (most recent first)
+      const sorted = updated.sort((a, b) => {
+        const timeA = new Date(a.last_message_at).getTime();
+        const timeB = new Date(b.last_message_at).getTime();
+        return timeB - timeA;
+      });
+
+      return sorted;
+    });
   };
 
   // Apply filters
