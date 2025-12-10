@@ -29,12 +29,13 @@ import {
   useManagerAppointments,
   useManagerCleaners,
   useManagerPayments,
-  useManagerMessages,
   deleteCleaner,
   cancelAppointment,
   deleteAppointment,
   updateAppointmentStatus,
 } from "../../hooks/useManagerData";
+import { useAdminCustomers } from "../../hooks/useAdminData";
+import { useConversations } from "../../hooks/useConversations";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -43,6 +44,7 @@ import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
+import CustomersPage from "../../components/CustomersPage";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -80,15 +82,23 @@ export default function ManagerDashboard() {
     refetch: refetchCleaners,
   } = useManagerCleaners();
   const {
+    customers,
+    loading: customersLoading,
+    error: customersError,
+    refetch: refetchCustomers,
+  } = useAdminCustomers();
+  const {
     payments,
     loading: paymentsLoading,
     error: paymentsError,
   } = useManagerPayments();
   const {
-    messages,
-    loading: messagesLoading,
-    error: messagesError,
-  } = useManagerMessages();
+    conversations,
+    loading: conversationsLoading,
+    error: conversationsError,
+    refetch: refetchConversations,
+    updateUnreadCount,
+  } = useConversations({ userId: user?.id || "" });
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -670,7 +680,15 @@ export default function ManagerDashboard() {
   );
 
   const renderMessages = () => (
-    <MessagesPage userId={user.id} userRole="manager" />
+    <MessagesPage
+      userId={user.id}
+      userRole="manager"
+      conversations={conversations}
+      loading={conversationsLoading}
+      error={conversationsError}
+      onRefresh={refetchConversations}
+      onUpdateUnreadCount={updateUnreadCount}
+    />
   );
 
   const renderPlaceholder = (title: string, description: string) => (
@@ -692,9 +710,14 @@ export default function ManagerDashboard() {
       case "messages":
         return renderMessages();
       case "customers":
-        return renderPlaceholder(
-          "Customers Management",
-          "View and manage customer profiles and history."
+        return (
+          <CustomersPage
+            customers={customers}
+            loading={customersLoading}
+            error={customersError}
+            onRefreshCustomers={refetchCustomers}
+            role="manager"
+          />
         );
       case "cleaners":
         return renderCleaners();

@@ -27,14 +27,15 @@ import {
 import {
   useAdminAppointments,
   useAdminCleaners,
+  useAdminCustomers,
   useAdminStats,
   useAdminPayments,
-  useAdminMessages,
   updateAppointmentStatus,
   deleteCleaner,
   cancelAppointment,
   deleteAppointment,
 } from "../../hooks/useAdminData";
+import { useConversations } from "../../hooks/useConversations";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -43,6 +44,7 @@ import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
+import CustomersPage from "../../components/CustomersPage";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -78,9 +80,21 @@ export default function AdminDashboard() {
     error: cleanersError,
     refetch: refetchCleaners,
   } = useAdminCleaners();
+  const {
+    customers,
+    loading: customersLoading,
+    error: customersError,
+    refetch: refetchCustomers,
+  } = useAdminCustomers();
   const { stats, loading: statsLoading } = useAdminStats();
   const { payments, loading: paymentsLoading } = useAdminPayments();
-  const { messages, loading: messagesLoading } = useAdminMessages();
+  const {
+    conversations,
+    loading: conversationsLoading,
+    error: conversationsError,
+    refetch: refetchConversations,
+    updateUnreadCount,
+  } = useConversations({ userId: user?.id || "" });
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -730,7 +744,15 @@ export default function AdminDashboard() {
   };
 
   const renderMessages = () => (
-    <MessagesPage userId={user.id} userRole="admin" />
+    <MessagesPage
+      userId={user.id}
+      userRole="admin"
+      conversations={conversations}
+      loading={conversationsLoading}
+      error={conversationsError}
+      onRefresh={refetchConversations}
+      onUpdateUnreadCount={updateUnreadCount}
+    />
   );
 
   const renderPayments = () => (
@@ -915,9 +937,14 @@ export default function AdminDashboard() {
       case "messages":
         return renderMessages();
       case "customers":
-        return renderPlaceholder(
-          "Customers Management",
-          "View and manage customer profiles, history, and preferences."
+        return (
+          <CustomersPage
+            customers={customers}
+            loading={customersLoading}
+            error={customersError}
+            onRefreshCustomers={refetchCustomers}
+            role="admin"
+          />
         );
       case "cleaners":
         return renderCleaners();

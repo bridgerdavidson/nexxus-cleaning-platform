@@ -560,3 +560,289 @@ export async function deleteAppointment(appointmentId: string) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete appointment' };
   }
 }
+
+// ==========================================
+// CUSTOMER (HOMEOWNER) MANAGEMENT
+// ==========================================
+
+export interface AdminCustomer {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+  properties_count: number;
+  appointments_count: number;
+  total_spent: number;
+  last_appointment_date: string | null;
+}
+
+export interface CustomerAppointment {
+  id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  total_price: number;
+  service_type: {
+    name: string;
+  } | null;
+  property: {
+    name: string;
+    address: string;
+  } | null;
+}
+
+export interface CustomerProperty {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  square_feet: number | null;
+}
+
+export function useAdminCustomers() {
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchCustomers = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+      
+      // Get homeowners in the organization via organization_members
+      const { data: orgMembers, error: membersError } = await supabase
+        .from('organization_members')
+        .select('user_id')
+        .eq('organization_id', currentOrganizationId)
+        .eq('role', 'homeowner');
+
+      if (membersError) throw membersError;
+
+      if (!orgMembers || orgMembers.length === 0) {
+        setCustomers([]);
+        setLoading(false);
+        return;
+      }
+
+      const homeownerIds = orgMembers.map(m => m.user_id);
+
+      // Get user profiles for these homeowners
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          phone,
+          avatar_url,
+          created_at,
+          updated_at
+        `)
+        .in('id', homeownerIds)
+        .order('created_at', { ascending: false });
+
+      if (profilesError) throw profilesError;
+
+      // Get properties count for each homeowner
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from('properties')
+        .select('owner_id')
+        .eq('organization_id', currentOrganizationId)
+        .in('owner_id', homeownerIds);
+
+      if (propertiesError) throw propertiesError;
+
+      // Get appointments data for each homeowner
+      const { data: appointmentsData, error: appointmentsError } = await supabase
+        .from('appointments')
+        .select('homeowner_id, total_price, scheduled_date')
+        .eq('organization_id', currentOrganizationId)
+        .in('homeowner_id', homeownerIds);
+
+      if (appointmentsError) throw appointmentsError;
+
+      // Calculate counts and totals for each customer
+      const propertiesCount: Record<string, number> = {};
+      const appointmentsCount: Record<string, number> = {};
+      const totalSpent: Record<string, number> = {};
+      const lastAppointment: Record<string, string | null> = {};
+
+      propertiesData?.forEach(p => {
+        propertiesCount[p.owner_id] = (propertiesCount[p.owner_id] || 0) + 1;
+      });
+
+      appointmentsData?.forEach(a => {
+        appointmentsCount[a.homeowner_id] = (appointmentsCount[a.homeowner_id] || 0) + 1;
+        totalSpent[a.homeowner_id] = (totalSpent[a.homeowner_id] || 0) + Number(a.total_price);
+        
+        const currentDate = lastAppointment[a.homeowner_id];
+        if (!currentDate || a.scheduled_date > currentDate) {
+          lastAppointment[a.homeowner_id] = a.scheduled_date;
+        }
+      });
+
+      // Combine all data
+      const customersData: AdminCustomer[] = (profiles || []).map(profile => ({
+        ...profile,
+        properties_count: propertiesCount[profile.id] || 0,
+        appointments_count: appointmentsCount[profile.id] || 0,
+        total_spent: totalSpent[profile.id] || 0,
+        last_appointment_date: lastAppointment[profile.id] || null,
+      }));
+
+      setCustomers(customersData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch customers');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [fetchCustomers]);
+
+  return { customers, loading, error, refetch: fetchCustomers };
+}
+
+export function useCustomerDetails(customerId: string | null) {
+  const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
+  const [properties, setProperties] = useState<CustomerProperty[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { currentOrganizationId } = useAuth();
+
+  const fetchDetails = useCallback(async () => {
+    if (!customerId || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+
+      // Fetch customer's appointments
+      const { data: appointmentsData, error: appointmentsError } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          scheduled_date,
+          scheduled_time,
+          status,
+          total_price,
+          service_type:service_types(name),
+          property:properties(name, address)
+        `)
+        .eq('organization_id', currentOrganizationId)
+        .eq('homeowner_id', customerId)
+        .order('scheduled_date', { ascending: false });
+
+      if (appointmentsError) throw appointmentsError;
+
+      // Transform appointments data
+      const transformedAppointments = (appointmentsData || []).map(apt => ({
+        ...apt,
+        service_type: Array.isArray(apt.service_type) ? apt.service_type[0] : apt.service_type,
+        property: Array.isArray(apt.property) ? apt.property[0] : apt.property,
+      }));
+
+      setAppointments(transformedAppointments);
+
+      // Fetch customer's properties
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from('properties')
+        .select(`
+          id,
+          name,
+          address,
+          city,
+          state,
+          zip_code,
+          bedrooms,
+          bathrooms,
+          square_feet
+        `)
+        .eq('organization_id', currentOrganizationId)
+        .eq('owner_id', customerId)
+        .order('created_at', { ascending: false });
+
+      if (propertiesError) throw propertiesError;
+
+      setProperties(propertiesData || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch customer details');
+    } finally {
+      setLoading(false);
+    }
+  }, [customerId, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
+
+  return { appointments, properties, loading, error, refetch: fetchDetails };
+}
+
+// Helper function to update a customer profile
+export async function updateCustomer(
+  customerId: string, 
+  data: { first_name?: string; last_name?: string; email?: string; phone?: string }
+) {
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', customerId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update customer' };
+  }
+}
+
+// Helper function to delete a customer (removes from organization)
+export async function deleteCustomer(customerId: string, organizationId: string) {
+  try {
+    // Remove from organization_members (soft delete - keeps their user profile)
+    const { error } = await supabase
+      .from('organization_members')
+      .delete()
+      .eq('user_id', customerId)
+      .eq('organization_id', organizationId)
+      .eq('role', 'homeowner');
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete customer' };
+  }
+}
+
+// Helper function to delete multiple customers
+export async function deleteCustomers(customerIds: string[], organizationId: string) {
+  try {
+    const { error } = await supabase
+      .from('organization_members')
+      .delete()
+      .in('user_id', customerIds)
+      .eq('organization_id', organizationId)
+      .eq('role', 'homeowner');
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete customers' };
+  }
+}

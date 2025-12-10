@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
 import { UserRole, ConversationWithDetails } from "../types";
-import { useConversations } from "../hooks/useConversations";
 import { useDeleteConversation } from "../hooks/useDeleteConversation";
 import ConversationList from "./ConversationList";
 import MessageThread from "./MessageThread";
@@ -9,9 +8,22 @@ import MessageThread from "./MessageThread";
 interface MessagesPageProps {
   userId: string;
   userRole: UserRole;
+  conversations: ConversationWithDetails[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onUpdateUnreadCount: (conversationId: string, newCount: number) => void;
 }
 
-export default function MessagesPage({ userId, userRole }: MessagesPageProps) {
+export default function MessagesPage({
+  userId,
+  userRole,
+  conversations: allConversations,
+  loading,
+  error,
+  onRefresh,
+  onUpdateUnreadCount,
+}: MessagesPageProps) {
   const [selectedConversation, setSelectedConversation] =
     useState<ConversationWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,12 +31,37 @@ export default function MessagesPage({ userId, userRole }: MessagesPageProps) {
   const [isSlidingIn, setIsSlidingIn] = useState(false);
   const [isSlidingOut, setIsSlidingOut] = useState(false);
 
-  const { conversations, loading, error, refetch, updateUnreadCount } =
-    useConversations({
-      userId,
-      searchQuery,
-      roleFilter,
+  // Apply client-side filtering (same logic as useConversations)
+  const conversations = useMemo(() => {
+    return allConversations.filter((conv) => {
+      // Skip if participant is missing
+      if (!conv.other_participant) {
+        return false;
+      }
+
+      // Search filter
+      if (searchQuery) {
+        const searchLower = searchQuery.toLowerCase();
+        const name = `${conv.other_participant.first_name || ""} ${
+          conv.other_participant.last_name || ""
+        }`.toLowerCase();
+        const email = conv.other_participant.email?.toLowerCase() || "";
+
+        if (!name.includes(searchLower) && !email.includes(searchLower)) {
+          return false;
+        }
+      }
+
+      // Role filter
+      if (roleFilter && roleFilter !== "all") {
+        if (conv.other_participant.role !== roleFilter) {
+          return false;
+        }
+      }
+
+      return true;
     });
+  }, [allConversations, searchQuery, roleFilter]);
 
   const { deleteConversation, deleting } = useDeleteConversation();
 
@@ -81,7 +118,7 @@ export default function MessagesPage({ userId, userRole }: MessagesPageProps) {
         setSelectedConversation(null);
       }
       // Refresh conversations list
-      refetch();
+      onRefresh();
     } else {
       alert(`Failed to delete conversation: ${result.error}`);
     }
@@ -118,7 +155,7 @@ export default function MessagesPage({ userId, userRole }: MessagesPageProps) {
         <MessageThread
           conversation={selectedConversation}
           currentUserId={userId}
-          onUnreadCountUpdate={updateUnreadCount}
+          onUnreadCountUpdate={onUpdateUnreadCount}
         />
       </div>
 
