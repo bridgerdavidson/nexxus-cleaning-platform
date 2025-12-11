@@ -54,7 +54,9 @@ export default function BookingsPage({
 
   // Filter appointments by tab
   const filterByTab = (appointment: AppointmentCardData): boolean => {
-    const appointmentDate = new Date(appointment.scheduled_date);
+    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
+    const [year, month, day] = appointment.scheduled_date.split('-').map(Number);
+    const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
     appointmentDate.setHours(0, 0, 0, 0);
 
     switch (activeTab) {
@@ -126,12 +128,17 @@ export default function BookingsPage({
     {
       id: "upcoming",
       label: "Upcoming",
-      count: appointments.filter(
-        (apt) =>
-          new Date(apt.scheduled_date) >= today &&
+      count: appointments.filter((apt) => {
+        // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
+        const [year, month, day] = apt.scheduled_date.split('-').map(Number);
+        const aptDate = new Date(year, month - 1, day); // month is 0-indexed
+        aptDate.setHours(0, 0, 0, 0);
+        return (
+          aptDate >= today &&
           apt.status !== "completed" &&
           apt.status !== "cancelled"
-      ).length,
+        );
+      }).length,
     },
     {
       id: "all",
@@ -254,14 +261,16 @@ export default function BookingsPage({
   );
   const cancelModalInfo = cancellingAppointment
     ? {
-        date: new Date(cancellingAppointment.scheduled_date).toLocaleDateString(
-          "en-US",
-          {
+        date: (() => {
+          // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
+          const [year, month, day] = cancellingAppointment.scheduled_date.split('-').map(Number);
+          const localDate = new Date(year, month - 1, day); // month is 0-indexed
+          return localDate.toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
-          }
-        ),
+          });
+        })(),
         time: cancellingAppointment.scheduled_time,
         homeowner: cancellingAppointment.homeowner
           ? `${cancellingAppointment.homeowner.first_name} ${cancellingAppointment.homeowner.last_name}`

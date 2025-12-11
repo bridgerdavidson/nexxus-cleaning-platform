@@ -32,6 +32,8 @@ interface CustomersPageProps {
   loading: boolean;
   error?: string | null;
   onRefreshCustomers?: () => void;
+  onRefreshAppointments?: () => void;
+  onRefreshProperties?: () => void;
   role: "admin" | "manager";
 }
 
@@ -40,6 +42,8 @@ export default function CustomersPage({
   loading,
   error,
   onRefreshCustomers,
+  onRefreshAppointments,
+  onRefreshProperties,
 }: CustomersPageProps) {
   const { currentOrganizationId } = useAuth();
 
@@ -221,7 +225,19 @@ export default function CustomersPage({
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-US", {
+    // Handle both date-only strings (YYYY-MM-DD) and full ISO timestamps
+    // Extract just the date part (YYYY-MM-DD) from the string
+    const dateOnly = date.split("T")[0]; // Get date part before 'T' if it exists
+    const [year, month, day] = dateOnly.split("-").map(Number);
+
+    // Validate that we have valid numbers
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return "Invalid Date";
+    }
+
+    // Parse date string as local date to avoid timezone issues
+    const localDate = new Date(year, month - 1, day); // month is 0-indexed
+    return localDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -521,6 +537,18 @@ export default function CustomersPage({
       <AddCustomerModal
         isOpen={showAddCustomerModal}
         onClose={() => setShowAddCustomerModal(false)}
+        onCustomerCreated={() => {
+          // Refresh customers, appointments, and properties when customer is created
+          if (onRefreshCustomers) {
+            onRefreshCustomers();
+          }
+          if (onRefreshAppointments) {
+            onRefreshAppointments();
+          }
+          if (onRefreshProperties) {
+            onRefreshProperties();
+          }
+        }}
       />
 
       <CustomerDetailModal
@@ -530,7 +558,20 @@ export default function CustomersPage({
           setSelectedCustomer(null);
         }}
         customer={selectedCustomer}
-        onCustomerUpdated={onRefreshCustomers}
+        onCustomerUpdated={() => {
+          // Refresh customers, appointments, and properties when customer is updated
+          if (onRefreshCustomers) {
+            onRefreshCustomers();
+          }
+          if (onRefreshAppointments) {
+            onRefreshAppointments();
+          }
+          if (onRefreshProperties) {
+            onRefreshProperties();
+          }
+        }}
+        onRefreshAppointments={onRefreshAppointments}
+        onRefreshProperties={onRefreshProperties}
       />
 
       <DeleteConfirmModal

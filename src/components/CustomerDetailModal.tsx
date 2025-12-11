@@ -15,6 +15,7 @@ import {
   MapPin,
   Clock,
   ChevronRight,
+  Plus,
 } from "lucide-react";
 import {
   AdminCustomer,
@@ -23,12 +24,16 @@ import {
   useCustomerDetails,
   updateCustomer,
 } from "../hooks/useAdminData";
+import AddPropertyModal from "./AddPropertyModal";
+import AddAppointmentModal from "./AddAppointmentModal";
 
 interface CustomerDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   customer: AdminCustomer | null;
   onCustomerUpdated?: () => void;
+  onRefreshAppointments?: () => void;
+  onRefreshProperties?: () => void;
 }
 
 export default function CustomerDetailModal({
@@ -36,6 +41,8 @@ export default function CustomerDetailModal({
   onClose,
   customer,
   onCustomerUpdated,
+  onRefreshAppointments,
+  onRefreshProperties,
 }: CustomerDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -46,8 +53,10 @@ export default function CustomerDetailModal({
     phone: "",
   });
   const [activeTab, setActiveTab] = useState<"details" | "appointments" | "properties">("details");
+  const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
+  const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
 
-  const { appointments, properties, loading } = useCustomerDetails(
+  const { appointments, properties, loading, refetch: refetchDetails } = useCustomerDetails(
     isOpen ? customer?.id || null : null
   );
 
@@ -118,7 +127,19 @@ export default function CustomerDetailModal({
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-US", {
+    // Handle both date-only strings (YYYY-MM-DD) and full ISO timestamps
+    // Extract just the date part (YYYY-MM-DD) from the string
+    const dateOnly = date.split('T')[0]; // Get date part before 'T' if it exists
+    const [year, month, day] = dateOnly.split('-').map(Number);
+    
+    // Validate that we have valid numbers
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return "Invalid Date";
+    }
+    
+    // Parse date string as local date to avoid timezone issues
+    const localDate = new Date(year, month - 1, day); // month is 0-indexed
+    return localDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -432,6 +453,17 @@ export default function CustomerDetailModal({
                   {/* Appointments Tab */}
                   {activeTab === "appointments" && (
                     <div className="p-6">
+                      {/* Add Appointment Button */}
+                      <div className="mb-4">
+                        <button
+                          onClick={() => setShowAddAppointmentModal(true)}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add New Appointment
+                        </button>
+                      </div>
+
                       {appointments.length === 0 ? (
                         <div className="text-center py-12">
                           <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -486,6 +518,17 @@ export default function CustomerDetailModal({
                   {/* Properties Tab */}
                   {activeTab === "properties" && (
                     <div className="p-6">
+                      {/* Add Property Button */}
+                      <div className="mb-4">
+                        <button
+                          onClick={() => setShowAddPropertyModal(true)}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add New Property
+                        </button>
+                      </div>
+
                       {properties.length === 0 ? (
                         <div className="text-center py-12">
                           <Home className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -542,6 +585,42 @@ export default function CustomerDetailModal({
           </div>
         </div>
       </div>
+
+      {/* Add Property Modal */}
+      <AddPropertyModal
+        isOpen={showAddPropertyModal}
+        onClose={() => setShowAddPropertyModal(false)}
+        onPropertyCreated={(newProperty) => {
+          setShowAddPropertyModal(false);
+          // Immediately refetch customer details to show the new property
+          if (refetchDetails) {
+            refetchDetails();
+          }
+          if (onRefreshProperties) {
+            onRefreshProperties();
+          }
+          if (onCustomerUpdated) {
+            onCustomerUpdated(); // Refresh customer data to update counts
+          }
+        }}
+        preSelectedHomeownerId={customer?.id}
+      />
+
+      {/* Add Appointment Modal */}
+      <AddAppointmentModal
+        isOpen={showAddAppointmentModal}
+        onClose={() => setShowAddAppointmentModal(false)}
+        onAppointmentCreated={() => {
+          setShowAddAppointmentModal(false);
+          if (onRefreshAppointments) {
+            onRefreshAppointments();
+          }
+          if (onCustomerUpdated) {
+            onCustomerUpdated(); // Refresh customer data to update counts
+          }
+        }}
+        preSelectedHomeownerId={customer?.id}
+      />
     </div>
   );
 }

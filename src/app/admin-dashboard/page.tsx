@@ -28,6 +28,7 @@ import {
   useAdminAppointments,
   useAdminCleaners,
   useAdminCustomers,
+  useAdminProperties,
   useAdminStats,
   useAdminPayments,
   updateAppointmentStatus,
@@ -45,6 +46,7 @@ import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
+import PropertiesPage from "../../components/PropertiesPage";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -86,6 +88,12 @@ export default function AdminDashboard() {
     error: customersError,
     refetch: refetchCustomers,
   } = useAdminCustomers();
+  const {
+    properties,
+    loading: propertiesLoading,
+    error: propertiesError,
+    refetch: refetchProperties,
+  } = useAdminProperties();
   const { stats, loading: statsLoading } = useAdminStats();
   const { payments, loading: paymentsLoading } = useAdminPayments();
   const {
@@ -117,7 +125,10 @@ export default function AdminDashboard() {
 
   // Helper functions
   const formatDateTime = (date: string, time: string) => {
-    const formattedDate = new Date(date).toLocaleDateString("en-US", {
+    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
+    const [year, month, day] = date.split("-").map(Number);
+    const localDate = new Date(year, month - 1, day); // month is 0-indexed
+    const formattedDate = localDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -755,6 +766,17 @@ export default function AdminDashboard() {
     />
   );
 
+  const renderProperties = () => (
+    <PropertiesPage
+      properties={properties}
+      loading={propertiesLoading}
+      error={propertiesError}
+      onRefreshProperties={refetchProperties}
+      onRefreshAppointments={refetchAppointments}
+      role="admin"
+    />
+  );
+
   const renderPayments = () => (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900">Payment Management</h2>
@@ -943,6 +965,8 @@ export default function AdminDashboard() {
             loading={customersLoading}
             error={customersError}
             onRefreshCustomers={refetchCustomers}
+            onRefreshAppointments={refetchAppointments}
+            onRefreshProperties={refetchProperties}
             role="admin"
           />
         );
@@ -953,10 +977,7 @@ export default function AdminDashboard() {
       case "analytics":
         return renderAnalytics();
       case "properties":
-        return renderPlaceholder(
-          "Property Management",
-          "Manage properties, access codes, and specific cleaning instructions."
-        );
+        return renderProperties();
       case "team":
         return renderPlaceholder(
           "Team Management",

@@ -846,3 +846,238 @@ export async function deleteCustomers(customerIds: string[], organizationId: str
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete customers' };
   }
 }
+
+// ==========================================
+// PROPERTY MANAGEMENT
+// ==========================================
+
+export interface AdminProperty {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  square_feet: number | null;
+  special_instructions: string | null;
+  access_instructions: string | null;
+  created_at: string;
+  updated_at: string;
+  owner_id: string;
+  homeowner: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+  } | null;
+}
+
+export function useAdminProperties() {
+  const [properties, setProperties] = useState<AdminProperty[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchProperties = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+      
+      // First, get all homeowners in this organization
+      const { data: orgMembers, error: membersError } = await supabase
+        .from('organization_members')
+        .select('user_id')
+        .eq('organization_id', currentOrganizationId)
+        .eq('role', 'homeowner');
+
+      if (membersError) throw membersError;
+
+      if (!orgMembers || orgMembers.length === 0) {
+        setProperties([]);
+        setLoading(false);
+        return;
+      }
+
+      const homeownerIds = orgMembers.map(m => m.user_id);
+
+      // Then, get properties owned by these homeowners
+      const { data, error } = await supabase
+        .from('properties')
+        .select(`
+          id,
+          name,
+          address,
+          city,
+          state,
+          zip_code,
+          bedrooms,
+          bathrooms,
+          square_feet,
+          special_instructions,
+          access_instructions,
+          created_at,
+          updated_at,
+          owner_id,
+          homeowner:user_profiles!owner_id(
+            id,
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .in('owner_id', homeownerIds)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(property => ({
+        ...property,
+        homeowner: Array.isArray(property.homeowner) ? property.homeowner[0] : property.homeowner
+      }));
+      
+      setProperties(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch properties');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchProperties();
+  }, [fetchProperties]);
+
+  const refetch = useCallback(() => {
+    fetchProperties();
+  }, [fetchProperties]);
+
+  return { properties, loading, error, refetch };
+}
+
+// Helper function to update a property
+export async function updateProperty(
+  propertyId: string,
+  data: {
+    name?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+    bedrooms?: number | null;
+    bathrooms?: number | null;
+    square_feet?: number | null;
+    special_instructions?: string | null;
+    access_instructions?: string | null;
+  }
+) {
+  try {
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', propertyId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update property' };
+  }
+}
+
+// Helper function to delete a property
+export async function deleteProperty(propertyId: string, organizationId: string) {
+  try {
+    // First verify the property belongs to a homeowner in this organization
+    const { data: orgMembers } = await supabase
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', organizationId)
+      .eq('role', 'homeowner');
+
+    if (!orgMembers || orgMembers.length === 0) {
+      return { success: false, error: 'No homeowners found in organization' };
+    }
+
+    const homeownerIds = orgMembers.map(m => m.user_id);
+
+    // Check if property belongs to a homeowner in this organization
+    const { data: property, error: checkError } = await supabase
+      .from('properties')
+      .select('owner_id')
+      .eq('id', propertyId)
+      .single();
+
+    if (checkError) throw checkError;
+
+    if (!property || !homeownerIds.includes(property.owner_id)) {
+      return { success: false, error: 'Property not found or does not belong to this organization' };
+    }
+
+    // Delete the property
+    const { error } = await supabase
+      .from('properties')
+      .delete()
+      .eq('id', propertyId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete property' };
+  }
+}
+
+// Helper function to delete multiple properties
+export async function deleteProperties(propertyIds: string[], organizationId: string) {
+  try {
+    // First verify the properties belong to homeowners in this organization
+    const { data: orgMembers } = await supabase
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', organizationId)
+      .eq('role', 'homeowner');
+
+    if (!orgMembers || orgMembers.length === 0) {
+      return { success: false, error: 'No homeowners found in organization' };
+    }
+
+    const homeownerIds = orgMembers.map(m => m.user_id);
+
+    // Check if properties belong to homeowners in this organization
+    const { data: properties, error: checkError } = await supabase
+      .from('properties')
+      .select('id, owner_id')
+      .in('id', propertyIds);
+
+    if (checkError) throw checkError;
+
+    if (!properties) {
+      return { success: false, error: 'Properties not found' };
+    }
+
+    // Filter to only delete properties that belong to this organization
+    const validPropertyIds = properties
+      .filter(p => homeownerIds.includes(p.owner_id))
+      .map(p => p.id);
+
+    if (validPropertyIds.length === 0) {
+      return { success: false, error: 'No valid properties found to delete' };
+    }
+
+    // Delete the properties
+    const { error } = await supabase
+      .from('properties')
+      .delete()
+      .in('id', validPropertyIds);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete properties' };
+  }
+}

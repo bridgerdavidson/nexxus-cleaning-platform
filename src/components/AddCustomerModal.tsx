@@ -6,11 +6,13 @@ import { X, Users, Phone } from "lucide-react";
 interface AddCustomerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onCustomerCreated?: () => void;
 }
 
 export default function AddCustomerModal({
   isOpen,
   onClose,
+  onCustomerCreated,
 }: AddCustomerModalProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -118,6 +120,13 @@ export default function AddCustomerModal({
     // Placeholder for future AWS SES integration
     // For now, this button does nothing except log the data
     console.log("Send sign up link clicked", { firstName, lastName, email, phone });
+    
+    // If customer creation callback is provided, call it
+    if (onCustomerCreated) {
+      onCustomerCreated();
+    }
+    
+    handleClose();
   };
 
   const isEmailValid = emailRegex.test(email) && email.trim() !== "";

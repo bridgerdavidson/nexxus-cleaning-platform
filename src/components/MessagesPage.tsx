@@ -180,7 +180,7 @@ export default function MessagesPage({
           <MessageThread
             conversation={selectedConversation}
             currentUserId={userId}
-            onUnreadCountUpdate={updateUnreadCount}
+            onUnreadCountUpdate={onUpdateUnreadCount}
           />
         </div>
       )}

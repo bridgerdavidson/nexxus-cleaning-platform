@@ -82,7 +82,10 @@ export default function HomeownerDashboard() {
 
   // Helper function to format date and time
   const formatDateTime = (date: string, time: string) => {
-    const formattedDate = new Date(date).toLocaleDateString("en-US", {
+    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
+    const [year, month, day] = date.split('-').map(Number);
+    const localDate = new Date(year, month - 1, day); // month is 0-indexed
+    const formattedDate = localDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
