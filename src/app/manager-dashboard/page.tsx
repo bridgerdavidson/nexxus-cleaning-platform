@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -36,6 +36,7 @@ import {
 } from "../../hooks/useManagerData";
 import { useAdminCustomers } from "../../hooks/useAdminData";
 import { useConversations } from "../../hooks/useConversations";
+import { useManagerPermissions } from "../../hooks/useManagerPermissions";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -99,6 +100,191 @@ export default function ManagerDashboard() {
     refetch: refetchConversations,
     updateUnreadCount,
   } = useConversations({ userId: user?.id || "" });
+  const { permissions, loading: permissionsLoading } = useManagerPermissions();
+
+  // Check if a tab is accessible based on permissions - MUST be a hook and defined before early returns
+  const isTabAccessible = useCallback((tabId: string): boolean => {
+    if (!permissions) return false;
+    
+    switch (tabId) {
+      case "home":
+      case "settings":
+      case "support":
+        return true;
+      case "bookings":
+        return permissions.can_view_bookings || false;
+      case "messages":
+        return permissions.can_view_messages || false;
+      case "customers":
+        return permissions.can_view_customers || false;
+      case "properties":
+        return permissions.can_view_properties || false;
+      case "cleaners":
+        return permissions.can_manage_cleaners || false;
+      case "payments":
+        return permissions.can_view_payments || false;
+      case "analytics":
+        return permissions.can_view_analytics || false;
+      default:
+        return false;
+    }
+  }, [permissions]);
+
+  // Build navigation groups based on permissions - using useMemo to ensure consistent hook order
+  const navigationGroups = useMemo(() => {
+    // Debug: Log permissions to help diagnose
+    if (permissions) {
+      console.log('Manager Permissions:', {
+        can_view_bookings: permissions.can_view_bookings,
+        can_view_messages: permissions.can_view_messages,
+        can_view_customers: permissions.can_view_customers,
+        can_view_properties: permissions.can_view_properties,
+        can_manage_cleaners: permissions.can_manage_cleaners,
+        can_view_payments: permissions.can_view_payments,
+        can_view_analytics: permissions.can_view_analytics,
+      });
+    }
+    
+    // If permissions are still loading, return minimal groups
+    if (permissionsLoading || !permissions) {
+      return {
+        operations: {
+          id: "operations" as const,
+          label: "Operations",
+          icon: LayoutGrid,
+          tabs: [{ id: "home", label: "Overview", icon: Home }],
+        },
+        admin: {
+          id: "admin" as const,
+          label: "Administration",
+          icon: Settings,
+          tabs: [
+            { id: "settings", label: "Settings", icon: Settings },
+            { id: "support", label: "Support", icon: HelpCircle },
+          ],
+        },
+      };
+    }
+
+    const opsTabs = [
+      { id: "home", label: "Overview", icon: Home },
+    ];
+    
+    // Add bookings if permitted - check explicitly for true
+    if (permissions.can_view_bookings === true) {
+      opsTabs.push({ id: "bookings", label: "Bookings", icon: Calendar });
+    }
+    
+    // Add messages if permitted
+    if (permissions.can_view_messages === true) {
+      opsTabs.push({ id: "messages", label: "Messages", icon: MessageCircle });
+    }
+
+    const accountsTabs = [];
+    // Add customers if permitted
+    if (permissions.can_view_customers === true) {
+      accountsTabs.push({ id: "customers", label: "Customers", icon: Users });
+    }
+    // Add properties if permitted
+    if (permissions.can_view_properties === true) {
+      accountsTabs.push({ id: "properties", label: "Properties", icon: Building });
+    }
+
+    const businessTabs = [];
+    // Add payments if permitted
+    if (permissions.can_view_payments === true) {
+      businessTabs.push({ id: "payments", label: "Finance", icon: DollarSign });
+    }
+    // Add analytics if permitted
+    if (permissions.can_view_analytics === true) {
+      businessTabs.push({ id: "analytics", label: "Analytics", icon: BarChart3 });
+    }
+
+    const groups: any = {
+      operations: {
+        id: "operations" as const,
+        label: "Operations",
+        icon: LayoutGrid,
+        tabs: opsTabs,
+      },
+    };
+
+    // Only add accounts group if it has tabs
+    if (accountsTabs.length > 0) {
+      groups.accounts = {
+        id: "accounts" as const,
+        label: "Accounts",
+        icon: Users,
+        tabs: accountsTabs,
+      };
+    }
+
+    // Only add team group if permitted
+    if (permissions.can_manage_cleaners === true) {
+      groups.team = {
+        id: "team" as const,
+        label: "Team",
+        icon: UserCheck,
+        tabs: [{ id: "cleaners", label: "Cleaners", icon: UserCheck }],
+      };
+    }
+
+    // Only add business group if it has tabs
+    if (businessTabs.length > 0) {
+      groups.business = {
+        id: "business" as const,
+        label: "Business",
+        icon: TrendingUp,
+        tabs: businessTabs,
+      };
+    }
+
+    // Always add admin group
+    groups.admin = {
+      id: "admin" as const,
+      label: "Administration",
+      icon: Settings,
+      tabs: [
+        { id: "settings", label: "Settings", icon: Settings },
+        { id: "support", label: "Support", icon: HelpCircle },
+      ],
+    };
+
+    return groups;
+  }, [permissions, permissionsLoading]);
+
+  // Get groups array for sidebar
+  const groups = useMemo(() => Object.values(navigationGroups), [navigationGroups]);
+
+  // Get tabs for current group
+  const currentGroupTabs = useMemo(
+    () => navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [],
+    [navigationGroups, activeGroup]
+  );
+
+  // Get all tabs for mobile
+  const allTabs = useMemo(() => groups.flatMap((g) => g.tabs), [groups]);
+
+  // Handle group change - switch to first tab of new group
+  const handleGroupChange = useCallback((groupId: string) => {
+    setActiveGroup(groupId);
+    const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
+    if (newGroup && newGroup.tabs.length > 0) {
+      const firstTab = newGroup.tabs[0].id;
+      // Check if tab is accessible
+      if (isTabAccessible(firstTab)) {
+        setActiveTab(firstTab);
+      } else {
+        // Find first accessible tab
+        const accessibleTab = newGroup.tabs.find(tab => isTabAccessible(tab.id));
+        if (accessibleTab) {
+          setActiveTab(accessibleTab.id);
+        } else {
+          setActiveTab("home");
+        }
+      }
+    }
+  }, [navigationGroups, isTabAccessible]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -107,7 +293,17 @@ export default function ManagerDashboard() {
     }
   }, [user, loading, router]);
 
-  // Show loading while checking auth
+  // Redirect to home if current tab is not accessible (only after permissions have loaded)
+  useEffect(() => {
+    if (!permissionsLoading && permissions) {
+      if (!isTabAccessible(activeTab)) {
+        setActiveTab("home");
+        setActiveGroup("operations");
+      }
+    }
+  }, [permissions, permissionsLoading, activeTab, isTabAccessible]);
+
+  // Show loading while checking auth - MUST be after all hooks
   if (loading || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -121,72 +317,6 @@ export default function ManagerDashboard() {
 
   const handleLogout = async () => {
     await signOut();
-  };
-
-  // Hierarchical navigation structure (no Team Members for managers)
-  const navigationGroups = {
-    operations: {
-      id: "operations" as const,
-      label: "Operations",
-      icon: LayoutGrid,
-      tabs: [
-        { id: "home", label: "Overview", icon: Home },
-        { id: "bookings", label: "Bookings", icon: Calendar },
-        { id: "messages", label: "Messages", icon: MessageCircle },
-      ],
-    },
-    accounts: {
-      id: "accounts" as const,
-      label: "Accounts",
-      icon: Users,
-      tabs: [
-        { id: "customers", label: "Customers", icon: Users },
-        { id: "properties", label: "Properties", icon: Building },
-      ],
-    },
-    team: {
-      id: "team" as const,
-      label: "Team",
-      icon: UserCheck,
-      tabs: [{ id: "cleaners", label: "Cleaners", icon: UserCheck }],
-    },
-    business: {
-      id: "business" as const,
-      label: "Business",
-      icon: TrendingUp,
-      tabs: [
-        { id: "payments", label: "Finance", icon: DollarSign },
-        { id: "analytics", label: "Analytics", icon: BarChart3 },
-      ],
-    },
-    admin: {
-      id: "admin" as const,
-      label: "Administration",
-      icon: Settings,
-      tabs: [
-        { id: "settings", label: "Settings", icon: Settings },
-        { id: "support", label: "Support", icon: HelpCircle },
-      ],
-    },
-  };
-
-  // Get groups array for sidebar
-  const groups = Object.values(navigationGroups);
-
-  // Get tabs for current group
-  const currentGroupTabs =
-    navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [];
-
-  // Get all tabs for mobile
-  const allTabs = groups.flatMap((g) => g.tabs);
-
-  // Handle group change - switch to first tab of new group
-  const handleGroupChange = (groupId: string) => {
-    setActiveGroup(groupId);
-    const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
-    if (newGroup && newGroup.tabs.length > 0) {
-      setActiveTab(newGroup.tabs[0].id);
-    }
   };
 
   const getStatusColor = (status: string) => {
@@ -419,6 +549,11 @@ export default function ManagerDashboard() {
   };
 
   const renderCleaners = () => {
+    // Check permission
+    if (!permissions?.can_manage_cleaners) {
+      return renderAccessDenied("cleaner management");
+    }
+
     // Filter cleaners based on search and availability
     const filteredCleaners = cleaners.filter((cleaner) => {
       // Search filter
@@ -447,12 +582,14 @@ export default function ManagerDashboard() {
           <h2 className="text-2xl font-bold text-gray-900">
             Cleaner Management
           </h2>
-          <button
-            className="btn-primary"
-            onClick={() => setShowAddCleanerModal(true)}
-          >
-            Add New Cleaner
-          </button>
+          {permissions?.can_manage_cleaners && (
+            <button
+              className="btn-primary"
+              onClick={() => setShowAddCleanerModal(true)}
+            >
+              Add New Cleaner
+            </button>
+          )}
         </div>
 
         {/* Search and Filter Controls */}
@@ -701,15 +838,50 @@ export default function ManagerDashboard() {
     </div>
   );
 
+  const renderAccessDenied = (feature: string) => (
+    <div className="card text-center py-16">
+      <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100">
+        <AlertCircle className="w-8 h-8 text-red-600" />
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+      <p className="text-gray-600 max-w-md mx-auto mb-6">
+        You don't have permission to access {feature}. Please contact your administrator to request access.
+      </p>
+      <button
+        onClick={() => {
+          setActiveTab("home");
+          setActiveGroup("operations");
+        }}
+        className="btn-primary"
+      >
+        Go to Overview
+      </button>
+    </div>
+  );
+
   const renderContent = () => {
+    // Check permissions before rendering
+    if (!permissionsLoading && permissions && !isTabAccessible(activeTab)) {
+      return renderAccessDenied("this feature");
+    }
+
     switch (activeTab) {
       case "home":
         return renderOverview();
       case "bookings":
+        if (!permissions?.can_view_bookings) {
+          return renderAccessDenied("bookings");
+        }
         return renderBookings();
       case "messages":
+        if (!permissions?.can_view_messages) {
+          return renderAccessDenied("messages");
+        }
         return renderMessages();
       case "customers":
+        if (!permissions?.can_view_customers) {
+          return renderAccessDenied("customers");
+        }
         return (
           <CustomersPage
             customers={customers}
@@ -717,18 +889,31 @@ export default function ManagerDashboard() {
             error={customersError}
             onRefreshCustomers={refetchCustomers}
             role="manager"
+            canEdit={permissions?.can_edit_customers || false}
           />
         );
       case "cleaners":
+        if (!permissions?.can_manage_cleaners) {
+          return renderAccessDenied("cleaner management");
+        }
         return renderCleaners();
       case "payments":
+        if (!permissions?.can_view_payments) {
+          return renderAccessDenied("payments");
+        }
         return renderPayments();
       case "analytics":
+        if (!permissions?.can_view_analytics) {
+          return renderAccessDenied("analytics");
+        }
         return renderPlaceholder(
           "Analytics",
           "View performance metrics and reports."
         );
       case "properties":
+        if (!permissions?.can_view_properties) {
+          return renderAccessDenied("properties");
+        }
         return renderPlaceholder(
           "Property Management",
           "Manage properties and access details."

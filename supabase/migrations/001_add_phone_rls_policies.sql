@@ -94,3 +94,4 @@ CREATE POLICY "Admins and managers can insert homeowners" ON user_profiles
         )
     );
 
+

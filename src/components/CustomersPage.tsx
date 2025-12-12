@@ -35,6 +35,7 @@ interface CustomersPageProps {
   onRefreshAppointments?: () => void;
   onRefreshProperties?: () => void;
   role: "admin" | "manager";
+  canEdit?: boolean;
 }
 
 export default function CustomersPage({
@@ -44,6 +45,8 @@ export default function CustomersPage({
   onRefreshCustomers,
   onRefreshAppointments,
   onRefreshProperties,
+  role,
+  canEdit = true,
 }: CustomersPageProps) {
   const { currentOrganizationId } = useAuth();
 
@@ -254,13 +257,15 @@ export default function CustomersPage({
             Manage your customer profiles and view their information
           </p>
         </div>
-        <button
-          onClick={() => setShowAddCustomerModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Add New Customer
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setShowAddCustomerModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add New Customer
+          </button>
+        )}
       </div>
 
       {/* Search, Filter and Select Bar */}
@@ -290,17 +295,19 @@ export default function CustomersPage({
           <option value="spent">Highest Spent</option>
         </select>
 
-        {/* Select Many Button */}
-        <button
-          onClick={toggleSelectMode}
-          className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
-            isSelectMode
-              ? "bg-gray-600 text-white hover:bg-gray-700"
-              : "bg-primary-600 text-white hover:bg-primary-700"
-          }`}
-        >
-          {isSelectMode ? "Cancel Selection" : "Select Many"}
-        </button>
+        {/* Select Many Button - Only show if can edit */}
+        {canEdit && (
+          <button
+            onClick={toggleSelectMode}
+            className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
+              isSelectMode
+                ? "bg-gray-600 text-white hover:bg-gray-700"
+                : "bg-primary-600 text-white hover:bg-primary-700"
+            }`}
+          >
+            {isSelectMode ? "Cancel Selection" : "Select Many"}
+          </button>
+        )}
       </div>
 
       {/* Bulk Action Bar */}
@@ -518,7 +525,7 @@ export default function CustomersPage({
                     {formatCurrency(customer.total_spent)} spent
                   </span>
                 </div>
-                {!isSelectMode && (
+                {!isSelectMode && canEdit && (
                   <button
                     onClick={(e) => handleDeleteClick(customer, e)}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"

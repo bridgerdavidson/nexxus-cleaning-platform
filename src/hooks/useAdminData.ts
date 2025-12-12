@@ -1081,3 +1081,272 @@ export async function deleteProperties(propertyIds: string[], organizationId: st
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete properties' };
   }
 }
+
+// ==========================================
+// TEAM MEMBERS MANAGEMENT (CLEANERS & MANAGERS)
+// ==========================================
+
+export interface TeamMember {
+  id: string;
+  user_profile: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+    avatar_url: string | null;
+  } | null;
+  role: 'cleaner' | 'manager';
+  // Cleaner-specific fields
+  cleaner_profile?: {
+    rating: number;
+    total_jobs: number;
+    is_available: boolean;
+  } | null;
+  // Manager-specific fields
+  permissions?: {
+    can_view_customers: boolean;
+    can_edit_customers: boolean;
+    can_view_bookings: boolean;
+    can_edit_bookings: boolean;
+    can_manage_cleaners: boolean;
+    can_view_properties: boolean;
+    can_edit_properties: boolean;
+    can_view_analytics: boolean;
+    can_view_payments: boolean;
+    can_manage_payments: boolean;
+    can_view_messages: boolean;
+  } | null;
+}
+
+export interface ManagerPermissions {
+  can_view_customers: boolean;
+  can_edit_customers: boolean;
+  can_view_bookings: boolean;
+  can_edit_bookings: boolean;
+  can_manage_cleaners: boolean;
+  can_view_properties: boolean;
+  can_edit_properties: boolean;
+  can_view_analytics: boolean;
+  can_view_payments: boolean;
+  can_manage_payments: boolean;
+  can_view_messages: boolean;
+}
+
+export function useAdminTeamMembers() {
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchTeamMembers = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+
+      // Get all cleaners and managers from organization_members
+      const { data: orgMembers, error: membersError } = await supabase
+        .from('organization_members')
+        .select('user_id, role')
+        .eq('organization_id', currentOrganizationId)
+        .in('role', ['cleaner', 'manager']);
+
+      if (membersError) throw membersError;
+
+      if (!orgMembers || orgMembers.length === 0) {
+        setTeamMembers([]);
+        setLoading(false);
+        return;
+      }
+
+      const userIds = orgMembers.map(m => m.user_id);
+      const cleanerIds = orgMembers.filter(m => m.role === 'cleaner').map(m => m.user_id);
+      const managerIds = orgMembers.filter(m => m.role === 'manager').map(m => m.user_id);
+
+      // Get user profiles
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('id, first_name, last_name, email, phone, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Get cleaner profiles
+      const { data: cleanerProfiles, error: cleanerError } = await supabase
+        .from('cleaner_profiles')
+        .select('id, rating, total_jobs, is_available')
+        .in('id', cleanerIds)
+        .eq('organization_id', currentOrganizationId);
+
+      if (cleanerError) throw cleanerError;
+
+      // Get manager permissions
+      const { data: managerPermissions, error: permissionsError } = await supabase
+        .from('manager_permissions')
+        .select('manager_id, can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages')
+        .in('manager_id', managerIds)
+        .eq('organization_id', currentOrganizationId);
+
+      if (permissionsError) throw permissionsError;
+
+      // Combine all data
+      const teamMembersData: TeamMember[] = orgMembers.map(member => {
+        const profile = profiles?.find(p => p.id === member.user_id);
+        const cleanerProfile = member.role === 'cleaner' 
+          ? cleanerProfiles?.find(cp => cp.id === member.user_id)
+          : null;
+        const permissions = member.role === 'manager'
+          ? managerPermissions?.find(mp => mp.manager_id === member.user_id)
+          : null;
+
+        return {
+          id: member.user_id,
+          user_profile: profile ? {
+            first_name: profile.first_name || '',
+            last_name: profile.last_name || '',
+            email: profile.email || '',
+            phone: profile.phone,
+            avatar_url: profile.avatar_url,
+          } : null,
+          role: member.role as 'cleaner' | 'manager',
+          cleaner_profile: cleanerProfile ? {
+            rating: Number(cleanerProfile.rating) || 0,
+            total_jobs: cleanerProfile.total_jobs || 0,
+            is_available: cleanerProfile.is_available || false,
+          } : null,
+          permissions: permissions ? {
+            can_view_customers: permissions.can_view_customers || false,
+            can_edit_customers: permissions.can_edit_customers || false,
+            can_view_bookings: permissions.can_view_bookings || false,
+            can_edit_bookings: permissions.can_edit_bookings || false,
+            can_manage_cleaners: permissions.can_manage_cleaners || false,
+            can_view_properties: permissions.can_view_properties || false,
+            can_edit_properties: permissions.can_edit_properties || false,
+            can_view_analytics: permissions.can_view_analytics || false,
+            can_view_payments: permissions.can_view_payments || false,
+            can_manage_payments: permissions.can_manage_payments || false,
+            can_view_messages: permissions.can_view_messages || false,
+          } : null,
+        };
+      });
+
+      setTeamMembers(teamMembersData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch team members');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  const refetch = useCallback(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  return { teamMembers, loading, error, refetch };
+}
+
+// Helper function to update manager permissions
+export async function updateManagerPermissions(
+  managerId: string,
+  organizationId: string,
+  permissions: ManagerPermissions
+) {
+  try {
+    const response = await fetch('/api/admin/update-manager-permissions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        managerId,
+        organizationId,
+        ...permissions,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || 'Failed to update manager permissions',
+      };
+    }
+
+    return { success: true, message: data.message };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update manager permissions',
+    };
+  }
+}
+
+// Helper function to delete a team member
+export async function deleteTeamMember(userId: string, organizationId: string) {
+  try {
+    const response = await fetch(`/api/admin/delete-team-member`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, organizationId }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || 'Failed to delete team member',
+      };
+    }
+
+    return { success: true, message: data.message };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete team member',
+    };
+  }
+}
+
+// Helper function to create a team member
+export async function createTeamMember(data: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  role: 'cleaner' | 'manager';
+  organizationId: string;
+}) {
+  try {
+    const response = await fetch('/api/admin/create-team-member', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      return {
+        success: false,
+        error: result.error || 'Failed to create team member',
+      };
+    }
+
+    return { success: true, data: result.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create team member',
+    };
+  }
+}

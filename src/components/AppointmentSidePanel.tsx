@@ -23,11 +23,12 @@ interface AppointmentSidePanelProps {
   isOpen: boolean;
   onClose: () => void;
   appointment: AppointmentCardData | null;
-  onCancel: (appointmentId: string) => void;
-  onMarkComplete: (appointmentId: string) => void;
+  onCancel?: (appointmentId: string) => void;
+  onMarkComplete?: (appointmentId: string) => void;
   onEdit?: (appointmentId: string) => void;
   onDelete?: (appointmentId: string) => void;
   role: "admin" | "manager";
+  canEdit?: boolean;
 }
 
 export default function AppointmentSidePanel({
@@ -39,6 +40,7 @@ export default function AppointmentSidePanel({
   onEdit,
   onDelete,
   role, // eslint-disable-line @typescript-eslint/no-unused-vars
+  canEdit = true,
 }: AppointmentSidePanelProps) {
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -116,12 +118,14 @@ export default function AppointmentSidePanel({
   const property = getPropertyAddress();
 
   const handleCancel = async () => {
+    if (!onCancel) return;
     setIsActionLoading(true);
     await onCancel(appointment.id);
     setIsActionLoading(false);
   };
 
   const handleMarkComplete = async () => {
+    if (!onMarkComplete) return;
     setIsActionLoading(true);
     await onMarkComplete(appointment.id);
     setIsActionLoading(false);
@@ -287,7 +291,7 @@ export default function AppointmentSidePanel({
 
           <div className="flex flex-col lg:flex-row gap-2">
             {/* For Cancelled Appointments - Show Delete Only */}
-            {isCancelled && onDelete ? (
+            {isCancelled && canEdit && onDelete ? (
               <button
                 onClick={() => onDelete(appointment.id)}
                 disabled={isActionLoading}
@@ -298,7 +302,7 @@ export default function AppointmentSidePanel({
               </button>
             ) : (
               <>
-                {canMarkComplete && (
+                {canMarkComplete && canEdit && onMarkComplete && (
                   <button
                     onClick={handleMarkComplete}
                     disabled={isActionLoading}
@@ -309,7 +313,7 @@ export default function AppointmentSidePanel({
                   </button>
                 )}
 
-                {canCancel && (
+                {canCancel && canEdit && onCancel && (
                   <button
                     onClick={handleCancel}
                     disabled={isActionLoading}

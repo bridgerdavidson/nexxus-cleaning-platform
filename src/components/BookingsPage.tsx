@@ -17,6 +17,7 @@ interface BookingsPageProps {
   onEdit?: (appointmentId: string) => void;
   onRefreshAppointments?: () => void;
   role: "admin" | "manager";
+  canEdit?: boolean;
 }
 
 export default function BookingsPage({
@@ -28,6 +29,7 @@ export default function BookingsPage({
   onEdit,
   onRefreshAppointments,
   role,
+  canEdit = true,
 }: BookingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
   const [searchQuery, setSearchQuery] = useState("");
@@ -283,13 +285,15 @@ export default function BookingsPage({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Bookings</h2>
-        <button
-          onClick={() => setShowAddAppointmentModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          New Appointment
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setShowAddAppointmentModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            New Appointment
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -354,17 +358,19 @@ export default function BookingsPage({
           </select>
         )}
 
-        {/* Select Many Button */}
-        <button
-          onClick={toggleSelectMode}
-          className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
-            isSelectMode
-              ? "bg-gray-600 text-white hover:bg-gray-700"
-              : "bg-primary-600 text-white hover:bg-primary-700"
-          }`}
-        >
-          {isSelectMode ? "Cancel Selection" : "Select Many"}
-        </button>
+        {/* Select Many Button - Only show if can edit */}
+        {canEdit && (
+          <button
+            onClick={toggleSelectMode}
+            className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
+              isSelectMode
+                ? "bg-gray-600 text-white hover:bg-gray-700"
+                : "bg-primary-600 text-white hover:bg-primary-700"
+            }`}
+          >
+            {isSelectMode ? "Cancel Selection" : "Select Many"}
+          </button>
+        )}
       </div>
 
       {/* Bulk Action Bar */}
@@ -400,7 +406,7 @@ export default function BookingsPage({
             {selectedIds.size > 0 && (
               <div className="flex gap-2">
                 {/* Cancel Selected - Only for upcoming/all tabs, not for completed/cancelled */}
-                {activeTab !== "completed" && activeTab !== "cancelled" && (
+                {canEdit && activeTab !== "completed" && activeTab !== "cancelled" && (
                   <button
                     onClick={handleBulkCancel}
                     className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
@@ -411,13 +417,15 @@ export default function BookingsPage({
                 )}
                 
                 {/* Delete Selected */}
-                <button
-                  onClick={handleBulkDelete}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Selected
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={handleBulkDelete}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Selected
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -462,14 +470,15 @@ export default function BookingsPage({
         isOpen={showSidePanel}
         onClose={() => setShowSidePanel(false)}
         appointment={selectedAppointment}
-        onCancel={handleCancelFromPanel}
-        onMarkComplete={handleMarkComplete}
-        onEdit={onEdit}
-        onDelete={async (id) => {
+        onCancel={canEdit ? handleCancelFromPanel : undefined}
+        onMarkComplete={canEdit ? handleMarkComplete : undefined}
+        onEdit={canEdit ? onEdit : undefined}
+        onDelete={canEdit ? async (id) => {
           await onDeleteAppointment(id);
           setShowSidePanel(false);
-        }}
+        } : undefined}
         role={role}
+        canEdit={canEdit}
       />
 
       {/* Cancel Confirmation Modal */}

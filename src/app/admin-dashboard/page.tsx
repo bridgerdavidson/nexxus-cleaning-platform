@@ -31,6 +31,7 @@ import {
   useAdminProperties,
   useAdminStats,
   useAdminPayments,
+  useAdminTeamMembers,
   updateAppointmentStatus,
   deleteCleaner,
   cancelAppointment,
@@ -47,6 +48,7 @@ import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
 import PropertiesPage from "../../components/PropertiesPage";
+import TeamMembersPage from "../../components/TeamMembersPage";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -103,6 +105,12 @@ export default function AdminDashboard() {
     refetch: refetchConversations,
     updateUnreadCount,
   } = useConversations({ userId: user?.id || "" });
+  const {
+    teamMembers,
+    loading: teamMembersLoading,
+    error: teamMembersError,
+    refetch: refetchTeamMembers,
+  } = useAdminTeamMembers();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -979,9 +987,13 @@ export default function AdminDashboard() {
       case "properties":
         return renderProperties();
       case "team":
-        return renderPlaceholder(
-          "Team Management",
-          "Manage your administrative and managerial team members."
+        return (
+          <TeamMembersPage
+            teamMembers={teamMembers}
+            loading={teamMembersLoading}
+            error={teamMembersError}
+            onRefresh={refetchTeamMembers}
+          />
         );
       case "settings":
         return renderPlaceholder(

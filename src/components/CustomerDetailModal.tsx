@@ -24,6 +24,7 @@ import {
   useCustomerDetails,
   updateCustomer,
 } from "../hooks/useAdminData";
+import { createPortal } from "react-dom";
 import AddPropertyModal from "./AddPropertyModal";
 import AddAppointmentModal from "./AddAppointmentModal";
 
@@ -55,6 +56,8 @@ export default function CustomerDetailModal({
   const [activeTab, setActiveTab] = useState<"details" | "appointments" | "properties">("details");
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const { appointments, properties, loading, refetch: refetchDetails } = useCustomerDetails(
     isOpen ? customer?.id || null : null
@@ -71,6 +74,18 @@ export default function CustomerDetailModal({
       });
     }
   }, [customer]);
+
+  // Mount component
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Start animating when opened
+  useEffect(() => {
+    if (isOpen) {
+      setIsAnimating(true);
+    }
+  }, [isOpen]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -153,148 +168,170 @@ export default function CustomerDetailModal({
     }).format(amount);
   };
 
-  if (!isOpen || !customer) return null;
+  if (!mounted || (!isOpen && !isAnimating) || !customer) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-      />
+  const handleClose = () => {
+    // Don't close if modals are open or if editing
+    if (showAddPropertyModal || showAddAppointmentModal || isEditing) return;
+    
+    setIsAnimating(false);
+    setTimeout(() => {
+      onClose();
+    }, 300); // match duration-300
+  };
 
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    // Don't close if clicking on modals or if editing
+    if (showAddPropertyModal || showAddAppointmentModal || isEditing) return;
+    
+    // Only close if clicking directly on the backdrop (not on children)
+    if (e.target === e.currentTarget) {
+      handleClose();
+    }
+  };
+
+  const panel = (
+    <div
+      className={`fixed inset-0 z-[200] flex justify-end transition-colors duration-300 ${
+        isOpen && isAnimating ? "bg-black/50" : "bg-transparent"
+      }`}
+      onClick={handleBackdropClick}
+    >
       {/* Side Panel */}
-      <div className="fixed inset-y-0 right-0 flex max-w-full">
-        <div className="w-screen max-w-lg">
-          <div className="flex h-full flex-col bg-white shadow-xl">
-            {/* Header */}
-            <div className="bg-primary-600 px-6 py-5">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center">
-                    {customer.avatar_url ? (
-                      <img
-                        src={customer.avatar_url}
-                        alt=""
-                        className="w-14 h-14 rounded-full object-cover"
-                      />
-                    ) : (
-                      <User className="w-7 h-7 text-white" />
-                    )}
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-white">
-                      {customer.first_name} {customer.last_name}
-                    </h2>
-                    <p className="text-primary-100 text-sm">
-                      Customer since {formatDate(customer.created_at)}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={onClose}
-                  className="text-white/80 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`h-screen w-full sm:w-[450px] lg:w-[600px] bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${
+          isOpen && isAnimating ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        {/* Header */}
+        <div className="bg-primary-600 px-6 py-5">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center">
+                {customer.avatar_url ? (
+                  <img
+                    src={customer.avatar_url}
+                    alt=""
+                    className="w-14 h-14 rounded-full object-cover"
+                  />
+                ) : (
+                  <User className="w-7 h-7 text-white" />
+                )}
               </div>
-
-              {/* Quick Stats */}
-              <div className="mt-5 grid grid-cols-3 gap-4">
-                <div className="bg-white/10 rounded-lg px-3 py-2">
-                  <p className="text-primary-100 text-xs">Properties</p>
-                  <p className="text-white font-semibold text-lg">
-                    {customer.properties_count}
-                  </p>
-                </div>
-                <div className="bg-white/10 rounded-lg px-3 py-2">
-                  <p className="text-primary-100 text-xs">Appointments</p>
-                  <p className="text-white font-semibold text-lg">
-                    {customer.appointments_count}
-                  </p>
-                </div>
-                <div className="bg-white/10 rounded-lg px-3 py-2">
-                  <p className="text-primary-100 text-xs">Total Spent</p>
-                  <p className="text-white font-semibold text-lg">
-                    {formatCurrency(customer.total_spent)}
-                  </p>
-                </div>
+              <div>
+                <h2 className="text-xl font-semibold text-white">
+                  {customer.first_name} {customer.last_name}
+                </h2>
+                <p className="text-primary-100 text-sm">
+                  Customer since {formatDate(customer.created_at)}
+                </p>
               </div>
             </div>
+            <button
+              onClick={handleClose}
+              className="text-white/80 hover:text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
 
-            {/* Tabs */}
-            <div className="border-b border-gray-200">
-              <div className="flex">
-                {(["details", "appointments", "properties"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                      activeTab === tab
-                        ? "text-primary-600 border-b-2 border-primary-600"
-                        : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    {tab === "appointments" && (
-                      <span className="ml-1 text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">
-                        {appointments.length}
-                      </span>
-                    )}
-                    {tab === "properties" && (
-                      <span className="ml-1 text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">
-                        {properties.length}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+          {/* Quick Stats */}
+          <div className="mt-5 grid grid-cols-3 gap-4">
+            <div className="bg-white/10 rounded-lg px-3 py-2">
+              <p className="text-primary-100 text-xs">Properties</p>
+              <p className="text-white font-semibold text-lg">
+                {customer.properties_count}
+              </p>
             </div>
+            <div className="bg-white/10 rounded-lg px-3 py-2">
+              <p className="text-primary-100 text-xs">Appointments</p>
+              <p className="text-white font-semibold text-lg">
+                {customer.appointments_count}
+              </p>
+            </div>
+            <div className="bg-white/10 rounded-lg px-3 py-2">
+              <p className="text-primary-100 text-xs">Total Spent</p>
+              <p className="text-white font-semibold text-lg">
+                {formatCurrency(customer.total_spent)}
+              </p>
+            </div>
+          </div>
+        </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                </div>
-              ) : (
-                <>
-                  {/* Details Tab */}
-                  {activeTab === "details" && (
-                    <div className="p-6 space-y-6">
-                      {/* Edit Toggle */}
-                      <div className="flex justify-end">
-                        {!isEditing ? (
-                          <button
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            {(["details", "appointments", "properties"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
+                  activeTab === tab
+                    ? "text-primary-600 border-b-2 border-primary-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "appointments" && (
+                  <span className="ml-1 text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">
+                    {appointments.length}
+                  </span>
+                )}
+                {tab === "properties" && (
+                  <span className="ml-1 text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">
+                    {properties.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <>
+              {/* Details Tab */}
+              {activeTab === "details" && (
+                <div className="p-6 space-y-6">
+                  {/* Edit Toggle */}
+                  <div className="flex justify-end">
+                    {!isEditing ? (
+                      <button
                             onClick={() => setIsEditing(true)}
                             className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
                           >
                             <Edit2 className="w-4 h-4" />
                             Edit Profile
                           </button>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleCancel}
-                              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 font-medium"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={handleSave}
-                              disabled={isSaving}
-                              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"
-                            >
-                              {isSaving ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Save className="w-4 h-4" />
-                              )}
-                              Save
-                            </button>
-                          </div>
-                        )}
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCancel}
+                          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSave}
+                          disabled={isSaving}
+                          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"
+                        >
+                          {isSaving ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Save className="w-4 h-4" />
+                          )}
+                          Save
+                        </button>
                       </div>
+                    )}
+                  </div>
 
                       {/* Contact Information */}
                       <div>
@@ -582,9 +619,7 @@ export default function CustomerDetailModal({
                 </>
               )}
             </div>
-          </div>
         </div>
-      </div>
 
       {/* Add Property Modal */}
       <AddPropertyModal
@@ -623,5 +658,7 @@ export default function CustomerDetailModal({
       />
     </div>
   );
+
+  return createPortal(panel, document.body);
 }
 
