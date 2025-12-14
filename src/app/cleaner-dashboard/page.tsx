@@ -25,6 +25,7 @@ import {
   updateAppointmentStatus,
   uploadJobPhoto,
 } from "../../hooks/useCleanerData";
+import { useConversations } from "../../hooks/useConversations";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -49,6 +50,13 @@ export default function CleanerDashboard() {
     loading: messagesLoading,
     error: messagesError,
   } = useCleanerMessages();
+  const {
+    conversations,
+    loading: conversationsLoading,
+    error: conversationsError,
+    refetch: refetchConversations,
+    updateUnreadCount,
+  } = useConversations({ userId: user?.id || "" });
   const {
     payouts,
     loading: payoutsLoading,
@@ -214,7 +222,7 @@ export default function CleanerDashboard() {
       {/* Welcome Section */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
           <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
             Cleaner Dashboard
           </span>
@@ -542,7 +550,7 @@ export default function CleanerDashboard() {
   const renderJobs = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Job Details</h2>
+        <h2 className="text-4xl font-bold text-gray-900">Job Details</h2>
       </div>
 
       {appointmentsLoading ? (
@@ -643,12 +651,20 @@ export default function CleanerDashboard() {
   );
 
   const renderMessages = () => (
-    <MessagesPage userId={user.id} userRole="cleaner" />
+    <MessagesPage
+      userId={user.id}
+      userRole="cleaner"
+      conversations={conversations}
+      loading={conversationsLoading}
+      error={conversationsError}
+      onRefresh={refetchConversations}
+      onUpdateUnreadCount={updateUnreadCount}
+    />
   );
 
   const renderEarnings = () => (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Earnings & Payouts</h2>
+      <h2 className="text-4xl font-bold text-gray-900">Earnings & Payouts</h2>
 
       {/* Earnings Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -756,7 +772,7 @@ export default function CleanerDashboard() {
 
   const renderPhotos = () => (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Photo Management</h2>
+      <h2 className="text-4xl font-bold text-gray-900">Photo Management</h2>
 
       {/* Upload Section */}
       <div className="card">
@@ -841,8 +857,8 @@ export default function CleanerDashboard() {
 
   return (
     <>
-      {/* Hide header on mobile when messages tab is active */}
-      <div className={activeTab === "messages" ? "hidden md:block" : ""}>
+      {/* Hide header on mobile for all tabs */}
+      <div className="hidden md:block">
         <DashboardHeader
           role="cleaner"
           tabs={tabs}
@@ -853,7 +869,7 @@ export default function CleanerDashboard() {
       <div
         className={`min-h-screen ${
           activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
-        } ${activeTab === "messages" ? "pt-0 md:pt-16" : "pt-16"}`}
+        } pt-0 md:pt-16`}
       >
         <div
           className={`max-w-7xl mx-auto ${

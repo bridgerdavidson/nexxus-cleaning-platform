@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { MessageWithDetails, MessageAttachment } from '../types';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseMessagesOptions {
   conversationId: string | null;
@@ -9,21 +10,119 @@ interface UseMessagesOptions {
   onUnreadCountUpdate?: (conversationId: string, newCount: number) => void;
 }
 
+type SubscriptionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
 export function useMessages({ conversationId, userId, limit = 50, onUnreadCountUpdate }: UseMessagesOptions) {
   const [messages, setMessages] = useState<MessageWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('disconnected');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasMarkedAsReadRef = useRef<string | null>(null); // Track which conversation we've marked as read
   // Cache messages by conversation ID for instant switching
   const messagesCacheRef = useRef<Map<string, MessageWithDetails[]>>(new Map());
   const hasMoreCacheRef = useRef<Map<string, boolean>>(new Map());
+  // Track current channel for cleanup
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  // Track retry attempts
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
+
+  // Memoized message checker to avoid duplicates
+  const messageExistsRef = useRef<Set<string>>(new Set());
+
+  // Update the message existence set when messages change
+  useEffect(() => {
+    messageExistsRef.current = new Set(messages.map(m => m.id));
+  }, [messages]);
+
+  // Subscribe to realtime with retry logic
+  const setupSubscription = useCallback((convId: string) => {
+    // Clean up existing channel
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
+    setSubscriptionStatus('connecting');
+
+    // Create unique channel name with timestamp to avoid conflicts
+    const channelName = `messages-${convId}-${Date.now()}`;
+    
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${convId}`
+        },
+        (payload) => {
+          console.log('[Realtime] New message received:', payload.new);
+          const newMessage = payload.new as { 
+            id: string; 
+            sender_id: string; 
+            recipient_id: string; 
+            is_read: boolean; 
+            conversation_id: string | null;
+            content?: string;
+            created_at?: string;
+          };
+          handleNewMessage(newMessage);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${convId}`
+        },
+        (payload) => {
+          console.log('[Realtime] Message updated:', payload.new);
+          updateMessage(payload.new as { id: string; [key: string]: unknown });
+        }
+      )
+      .subscribe((status, err) => {
+        console.log(`[Realtime] Subscription status for ${convId}:`, status, err || '');
+        
+        if (status === 'SUBSCRIBED') {
+          setSubscriptionStatus('connected');
+          retryCountRef.current = 0; // Reset retry count on success
+          console.log(`[Realtime] Successfully subscribed to messages for conversation ${convId}`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setSubscriptionStatus('error');
+          console.error(`[Realtime] Error subscribing to messages for conversation ${convId}:`, err);
+          
+          // Retry logic
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current++;
+            console.log(`[Realtime] Retrying subscription (attempt ${retryCountRef.current}/${maxRetries})...`);
+            setTimeout(() => {
+              setupSubscription(convId);
+            }, 1000 * retryCountRef.current); // Exponential backoff
+          } else {
+            console.error('[Realtime] Max retries reached. Subscription failed.');
+          }
+        } else if (status === 'CLOSED') {
+          setSubscriptionStatus('disconnected');
+        }
+      });
+
+    channelRef.current = channel;
+    return channel;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!conversationId || !userId) {
       setMessages([]);
       setLoading(false);
+      setSubscriptionStatus('disconnected');
       return;
     }
 
@@ -38,56 +137,21 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     // Always fetch fresh messages (will update cache and state)
     fetchMessages();
 
-    // Set up real-time subscription
-    const channel = supabase
-      .channel(`messages-${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          const newMessage = payload.new as { 
-            id: string; 
-            sender_id: string; 
-            recipient_id: string; 
-            is_read: boolean; 
-            conversation_id: string | null;
-            content?: string;
-            created_at?: string;
-          };
-          addNewMessage(newMessage);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          updateMessage(payload.new as { id: string; [key: string]: unknown });
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`Subscribed to messages for conversation ${conversationId}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error(`Error subscribing to messages for conversation ${conversationId}`);
-          // Could implement retry logic here if needed
-        }
-      });
+    // Set up real-time subscription with retry logic
+    retryCountRef.current = 0;
+    setupSubscription(conversationId);
 
     return () => {
-      supabase.removeChannel(channel);
+      // Clean up channel on unmount or conversation change
+      if (channelRef.current) {
+        console.log(`[Realtime] Cleaning up subscription for conversation ${conversationId}`);
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      setSubscriptionStatus('disconnected');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, userId]);
+  }, [conversationId, userId, setupSubscription]);
 
   // Reset flag when conversation changes
   useEffect(() => {
@@ -249,22 +313,26 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     }
   };
 
-  const addNewMessage = async (newMessage: { id: string; sender_id: string; recipient_id: string; is_read: boolean; conversation_id: string | null; content?: string; created_at?: string }) => {
+  // Handle new message from realtime subscription
+  const handleNewMessage = async (newMessage: { id: string; sender_id: string; recipient_id: string; is_read: boolean; conversation_id: string | null; content?: string; created_at?: string }) => {
     // Skip if this is a temporary optimistic message (will be replaced by real one)
     if (newMessage.id.startsWith('temp-')) {
+      console.log('[Realtime] Skipping temp message:', newMessage.id);
       return;
     }
 
-    // Check if message already exists to avoid duplicates
-    setMessages(prev => {
-      if (prev.some(msg => msg.id === newMessage.id)) {
-        return prev; // Already exists
-      }
-      return prev;
-    });
+    // Early duplicate check using the ref (fast, synchronous)
+    if (messageExistsRef.current.has(newMessage.id)) {
+      console.log('[Realtime] Message already exists, skipping:', newMessage.id);
+      return;
+    }
 
-    // Fetch profiles immediately (fast, non-blocking for instant appearance)
-    // Fetch in parallel for speed
+    // Add to tracking set immediately to prevent race conditions
+    messageExistsRef.current.add(newMessage.id);
+
+    console.log('[Realtime] Processing new message:', newMessage.id);
+
+    // Fetch message details and profiles in parallel for speed
     const [messageResult, profilesResult] = await Promise.all([
       supabase
         .from('messages')
@@ -292,7 +360,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     };
 
     if (messageResult.error && !messageResult.data) {
-      console.error('Error fetching new message:', messageResult.error);
+      console.error('[Realtime] Error fetching new message details:', messageResult.error);
       // Still try to show message with basic data
     }
 
@@ -304,20 +372,19 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
 
     // If profiles not found, try to get from existing messages in this conversation
     if (!senderProfile || !recipientProfile) {
-      setMessages(prev => {
-        const existingMsg = prev.find(m => 
-          m.sender_id === newMessage.sender_id || m.recipient_id === newMessage.recipient_id
-        );
-        if (existingMsg) {
-          if (!senderProfile && existingMsg.sender_id === newMessage.sender_id) {
-            senderProfile = existingMsg.sender;
-          }
-          if (!recipientProfile && existingMsg.recipient_id === newMessage.recipient_id) {
-            recipientProfile = existingMsg.recipient;
-          }
+      // Get current messages synchronously to find profiles
+      const currentMessages = messagesCacheRef.current.get(conversationId || '') || [];
+      const existingMsg = currentMessages.find(m => 
+        m.sender_id === newMessage.sender_id || m.recipient_id === newMessage.recipient_id
+      );
+      if (existingMsg) {
+        if (!senderProfile && existingMsg.sender_id === newMessage.sender_id) {
+          senderProfile = existingMsg.sender;
         }
-        return prev;
-      });
+        if (!recipientProfile && existingMsg.recipient_id === newMessage.recipient_id) {
+          recipientProfile = existingMsg.recipient;
+        }
+      }
     }
 
     // If still no profiles, fetch them (shouldn't happen often)
@@ -354,19 +421,25 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
 
     // Add message immediately (instant UI update)
     setMessages(prev => {
-      // Check if message already exists
+      // Final duplicate check (state might have updated since our ref check)
       if (prev.some(msg => msg.id === newMessage.id)) {
+        console.log('[Realtime] Message already in state, skipping:', newMessage.id);
         return prev;
       }
 
-      // Remove any temp messages from this sender with similar content
-      const tempMessages = prev.filter(msg => 
+      // Find and remove any temp messages from this sender with similar content
+      // This handles the optimistic update replacement
+      const tempMessagesToRemove = prev.filter(msg => 
         msg.id.startsWith('temp-') && 
         msg.sender_id === newMessage.sender_id &&
         msg.content === enrichedMessage.content
       );
       
-      const filtered = prev.filter(msg => !tempMessages.includes(msg));
+      if (tempMessagesToRemove.length > 0) {
+        console.log('[Realtime] Replacing optimistic message(s):', tempMessagesToRemove.map(m => m.id));
+      }
+      
+      const filtered = prev.filter(msg => !tempMessagesToRemove.includes(msg));
       const updated = [...filtered, enrichedMessage];
       const sorted = updated.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
       
@@ -375,6 +448,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
         messagesCacheRef.current.set(conversationId, sorted);
       }
       
+      console.log('[Realtime] Message added to state:', newMessage.id);
       return sorted;
     });
 
@@ -403,7 +477,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
         });
       }
     } catch (err) {
-      console.error('Error fetching attachments:', err);
+      console.error('[Realtime] Error fetching attachments:', err);
       // Message already shown, so continue
     }
 
@@ -578,7 +652,8 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     loadMoreMessages,
     markMessagesAsRead,
     addMessage,
-    refetch: () => fetchMessages(0)
+    refetch: () => fetchMessages(0),
+    subscriptionStatus // Expose subscription status for UI indicators
   };
 }
 

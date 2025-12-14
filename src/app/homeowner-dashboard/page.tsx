@@ -23,6 +23,7 @@ import {
   useHomeownerMessages,
   useHomeownerPayments,
 } from "../../hooks/useHomeownerData";
+import { useConversations } from "../../hooks/useConversations";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -60,6 +61,13 @@ export default function HomeownerDashboard() {
     loading: paymentsLoading,
     error: paymentsError,
   } = useHomeownerPayments();
+  const {
+    conversations,
+    loading: conversationsLoading,
+    error: conversationsError,
+    refetch: refetchConversations,
+    updateUnreadCount,
+  } = useConversations({ userId: user?.id || "" });
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -88,7 +96,7 @@ export default function HomeownerDashboard() {
   // Helper function to format date and time
   const formatDateTime = (date: string, time: string) => {
     // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-    const [year, month, day] = date.split('-').map(Number);
+    const [year, month, day] = date.split("-").map(Number);
     const localDate = new Date(year, month - 1, day); // month is 0-indexed
     const formattedDate = localDate.toLocaleDateString("en-US", {
       month: "short",
@@ -145,7 +153,7 @@ export default function HomeownerDashboard() {
       {/* Welcome Section */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
           <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
             Homeowner Dashboard
           </span>
@@ -332,7 +340,7 @@ export default function HomeownerDashboard() {
   const renderBookings = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">My Bookings</h2>
+        <h2 className="text-4xl font-bold text-gray-900">My Bookings</h2>
         <button className="btn-primary flex items-center space-x-2">
           <Plus className="w-5 h-5" />
           <span>New Booking</span>
@@ -425,12 +433,20 @@ export default function HomeownerDashboard() {
   );
 
   const renderMessages = () => (
-    <MessagesPage userId={user.id} userRole="homeowner" />
+    <MessagesPage
+      userId={user.id}
+      userRole="homeowner"
+      conversations={conversations}
+      loading={conversationsLoading}
+      error={conversationsError}
+      onRefresh={refetchConversations}
+      onUpdateUnreadCount={updateUnreadCount}
+    />
   );
 
   const renderPayments = () => (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Payment History</h2>
+      <h2 className="text-4xl font-bold text-gray-900 mb-6">Payment History</h2>
       {paymentsLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -509,7 +525,7 @@ export default function HomeownerDashboard() {
 
   const renderProperties = () => (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">My Properties</h2>
+      <h2 className="text-4xl font-bold text-gray-900 mb-6">My Properties</h2>
       {propertiesLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -597,8 +613,8 @@ export default function HomeownerDashboard() {
 
   return (
     <>
-      {/* Hide header on mobile when messages tab is active */}
-      <div className={activeTab === "messages" ? "hidden md:block" : ""}>
+      {/* Hide header on mobile for all tabs */}
+      <div className="hidden md:block">
         <DashboardHeader
           role="homeowner"
           tabs={tabs}
@@ -609,7 +625,7 @@ export default function HomeownerDashboard() {
       <div
         className={`min-h-screen ${
           activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
-        } ${activeTab === "messages" ? "pt-0 md:pt-16" : "pt-16"}`}
+        } pt-0 md:pt-16`}
       >
         <div
           className={`max-w-7xl mx-auto ${

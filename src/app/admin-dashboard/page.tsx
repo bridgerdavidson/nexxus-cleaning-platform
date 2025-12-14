@@ -216,6 +216,7 @@ export default function AdminDashboard() {
         { id: "home", label: "Overview", icon: Home },
         { id: "bookings", label: "Bookings", icon: Calendar },
         { id: "messages", label: "Messages", icon: MessageCircle },
+        { id: "customers", label: "Customers", icon: Users },
       ],
     },
     accounts: {
@@ -263,8 +264,16 @@ export default function AdminDashboard() {
   const currentGroupTabs =
     navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [];
 
-  // Get all tabs for mobile
-  const allTabs = groups.flatMap((g) => g.tabs);
+  // Filter out "customers" from top navigation when in operations group (it appears in Accounts sidebar instead)
+  const topNavTabs =
+    activeGroup === "operations"
+      ? currentGroupTabs.filter((tab) => tab.id !== "customers")
+      : currentGroupTabs;
+
+  // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
+  const allTabs = Array.from(
+    new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values()
+  );
 
   // Handle group change - switch to first tab of new group
   const handleGroupChange = (groupId: string) => {
@@ -295,7 +304,7 @@ export default function AdminDashboard() {
       {/* Welcome Section */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
           <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
             Admin Dashboard
           </span>
@@ -611,7 +620,7 @@ export default function AdminDashboard() {
     return (
       <div className="card">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-4xl font-bold text-gray-900">
             Cleaner Management
           </h2>
           <button
@@ -792,7 +801,7 @@ export default function AdminDashboard() {
 
   const renderPayments = () => (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Payment Management</h2>
+      <h2 className="text-4xl font-bold text-gray-900">Payment Management</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="card">
@@ -888,7 +897,7 @@ export default function AdminDashboard() {
 
   const renderAnalytics = () => (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Analytics & Reports</h2>
+      <h2 className="text-4xl font-bold text-gray-900">Analytics & Reports</h2>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
@@ -958,7 +967,7 @@ export default function AdminDashboard() {
       <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100">
         <Settings className="w-8 h-8 text-primary-600" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+      <h2 className="text-4xl font-bold text-gray-900 mb-2">{title}</h2>
       <p className="text-gray-600 max-w-md mx-auto">{description}</p>
     </div>
   );
@@ -1030,17 +1039,13 @@ export default function AdminDashboard() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div
-        className={`md:ml-[260px] ${
-          activeTab === "messages" ? "pt-0 md:pt-16" : "pt-16"
-        }`}
-      >
-        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile when messages tab is active */}
-        <div className={activeTab === "messages" ? "hidden md:block" : ""}>
+      <div className="md:ml-[260px] pt-0 md:pt-16">
+        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
+        <div className="hidden md:block">
           <TopBar
             role="admin"
             user={user}
-            tabs={currentGroupTabs}
+            tabs={topNavTabs}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onMobileMenuClick={() => setIsSidebarOpen(true)}

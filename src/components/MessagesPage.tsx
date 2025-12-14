@@ -2,8 +2,11 @@ import React, { useState, useMemo } from "react";
 import { ArrowLeft } from "lucide-react";
 import { UserRole, ConversationWithDetails } from "../types";
 import { useDeleteConversation } from "../hooks/useDeleteConversation";
+import { useStartConversation } from "../hooks/useStartConversation";
+import { OrganizationMember } from "../hooks/useOrganizationMembers";
 import ConversationList from "./ConversationList";
 import MessageThread from "./MessageThread";
+import NewConversationModal from "./NewConversationModal";
 
 interface MessagesPageProps {
   userId: string;
@@ -30,9 +33,15 @@ export default function MessagesPage({
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
   const [isSlidingIn, setIsSlidingIn] = useState(false);
   const [isSlidingOut, setIsSlidingOut] = useState(false);
+  const [showNewConversationModal, setShowNewConversationModal] =
+    useState(false);
 
   // Apply client-side filtering (same logic as useConversations)
   const conversations = useMemo(() => {
+    // Safety check: ensure allConversations is an array
+    if (!allConversations || !Array.isArray(allConversations)) {
+      return [];
+    }
     return allConversations.filter((conv) => {
       // Skip if participant is missing
       if (!conv.other_participant) {
@@ -64,6 +73,7 @@ export default function MessagesPage({
   }, [allConversations, searchQuery, roleFilter]);
 
   const { deleteConversation, deleting } = useDeleteConversation();
+  const { startConversation, starting } = useStartConversation();
 
   // Determine which roles to show in filter based on user's role
   const getAvailableRoles = (): UserRole[] => {
@@ -124,6 +134,42 @@ export default function MessagesPage({
     }
   };
 
+  const handleNewConversation = () => {
+    setShowNewConversationModal(true);
+  };
+
+  const handleSelectNewConversationUser = async (user: OrganizationMember) => {
+    if (starting) return;
+
+    // Close the modal
+    setShowNewConversationModal(false);
+
+    // Start/get conversation with selected user
+    const result = await startConversation(user.id);
+
+    if (result.success) {
+      // Refresh conversations list to include the new conversation
+      onRefresh();
+
+      // If we got the full conversation object, select it
+      if (result.conversation) {
+        handleSelectConversation(result.conversation);
+      } else if (result.conversationId) {
+        // Otherwise, find it in the refreshed list after a short delay
+        setTimeout(() => {
+          const conv = allConversations.find(
+            (c) => c.id === result.conversationId
+          );
+          if (conv) {
+            handleSelectConversation(conv);
+          }
+        }, 500);
+      }
+    } else {
+      alert(`Failed to start conversation: ${result.error}`);
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-6rem)] md:h-[calc(100vh-8rem)] overflow-hidden relative">
       {/* Conversation list - left panel */}
@@ -142,6 +188,7 @@ export default function MessagesPage({
           selectedConversationId={selectedConversation?.id || null}
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
+          onNewConversation={handleNewConversation}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           roleFilter={roleFilter}
@@ -184,6 +231,14 @@ export default function MessagesPage({
           />
         </div>
       )}
+
+      {/* New Conversation Modal */}
+      <NewConversationModal
+        isOpen={showNewConversationModal}
+        onClose={() => setShowNewConversationModal(false)}
+        onSelectUser={handleSelectNewConversationUser}
+        currentUserId={userId}
+      />
     </div>
   );
 }

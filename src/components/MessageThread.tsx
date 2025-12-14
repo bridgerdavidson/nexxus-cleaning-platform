@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { Loader2, ArrowUp, MessageSquare } from "lucide-react";
 import { ConversationWithDetails, MessageWithDetails } from "../types";
 import { useMessages } from "../hooks/useMessages";
@@ -19,6 +19,13 @@ export default function MessageThread({
   onUnreadCountUpdate,
 }: MessageThreadProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Track if user is near bottom for smart auto-scroll
+  const isNearBottomRef = useRef(true);
+  // Track previous conversation to detect conversation changes
+  const prevConversationIdRef = useRef<string | null>(null);
+  // Track previous message count to detect new messages
+  const prevMessageCountRef = useRef(0);
+  
   const {
     messages,
     loading,
@@ -35,23 +42,65 @@ export default function MessageThread({
   const { sendMessage, sending } = useSendMessage();
   const { user } = useAuth();
 
-  // Auto-scroll to bottom when new messages arrive or conversation changes
-  useEffect(() => {
-    if (scrollContainerRef.current && messages.length > 0) {
-      // Use requestAnimationFrame to ensure DOM has updated
+  // Helper to check if user is near the bottom of the scroll container
+  const checkIfNearBottom = useCallback(() => {
+    if (!scrollContainerRef.current) return true;
+    
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    // Consider "near bottom" if within 150px of the bottom
+    const threshold = 150;
+    return scrollHeight - scrollTop - clientHeight < threshold;
+  }, []);
+
+  // Update the isNearBottom ref on scroll
+  const updateScrollPosition = useCallback(() => {
+    isNearBottomRef.current = checkIfNearBottom();
+  }, [checkIfNearBottom]);
+
+  // Scroll to bottom helper
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    if (scrollContainerRef.current) {
       requestAnimationFrame(() => {
         if (scrollContainerRef.current) {
-          // Scroll within the container, not the page
           scrollContainerRef.current.scrollTo({
             top: scrollContainerRef.current.scrollHeight,
-            behavior: "smooth",
+            behavior,
           });
         }
       });
     }
-  }, [conversation?.id, messages.length]);
+  }, []);
+
+  // Auto-scroll logic:
+  // - Always scroll when switching conversations
+  // - Only scroll on new messages if user is already near bottom
+  useEffect(() => {
+    const conversationChanged = prevConversationIdRef.current !== conversation?.id;
+    const newMessagesArrived = messages.length > prevMessageCountRef.current;
+    
+    // Update refs for next comparison
+    prevConversationIdRef.current = conversation?.id || null;
+    prevMessageCountRef.current = messages.length;
+    
+    if (messages.length === 0) return;
+    
+    if (conversationChanged) {
+      // Always scroll to bottom when switching conversations
+      // Use instant scroll for conversation changes to avoid awkward animation
+      scrollToBottom("instant");
+      isNearBottomRef.current = true;
+    } else if (newMessagesArrived && isNearBottomRef.current) {
+      // Only scroll if user was already near the bottom
+      scrollToBottom("smooth");
+    }
+    // If user scrolled up and new messages arrive, don't auto-scroll
+    // This lets them read history without being interrupted
+  }, [conversation?.id, messages.length, scrollToBottom]);
 
   const handleScroll = () => {
+    // Update scroll position tracking for smart auto-scroll
+    updateScrollPosition();
+    
     if (!scrollContainerRef.current || loading || !hasMore) return;
 
     const { scrollTop } = scrollContainerRef.current;

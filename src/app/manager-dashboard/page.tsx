@@ -179,9 +179,14 @@ export default function ManagerDashboard() {
     if (permissions.can_view_messages === true) {
       opsTabs.push({ id: "messages", label: "Messages", icon: MessageCircle });
     }
+    
+    // Add customers to opsTabs for mobile navigation
+    if (permissions.can_view_customers === true) {
+      opsTabs.push({ id: "customers", label: "Customers", icon: Users });
+    }
 
     const accountsTabs = [];
-    // Add customers if permitted
+    // Add customers if permitted (in accounts group for desktop sidebar)
     if (permissions.can_view_customers === true) {
       accountsTabs.push({ id: "customers", label: "Customers", icon: Users });
     }
@@ -261,9 +266,25 @@ export default function ManagerDashboard() {
     () => navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [],
     [navigationGroups, activeGroup]
   );
+  
+  // Filter out "customers" from top navigation when in operations group (it appears in Accounts sidebar instead)
+  const topNavTabs = useMemo(
+    () => activeGroup === "operations" 
+      ? currentGroupTabs.filter((tab) => tab.id !== "customers")
+      : currentGroupTabs,
+    [currentGroupTabs, activeGroup]
+  );
 
-  // Get all tabs for mobile
-  const allTabs = useMemo(() => groups.flatMap((g) => g.tabs), [groups]);
+  // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
+  const allTabs = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])
+        ).values()
+      ),
+    [groups]
+  );
 
   // Handle group change - switch to first tab of new group
   const handleGroupChange = useCallback((groupId: string) => {
@@ -346,7 +367,7 @@ export default function ManagerDashboard() {
       {/* Welcome Section */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-3xl font-bold text-gray-900">Overview</h2>
+          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
           <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
             Manager Dashboard
           </span>
@@ -584,7 +605,7 @@ export default function ManagerDashboard() {
     return (
       <div className="card">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-4xl font-bold text-gray-900">
             Cleaner Management
           </h2>
           {permissions?.can_manage_cleaners && (
@@ -748,7 +769,7 @@ export default function ManagerDashboard() {
 
   const renderPayments = () => (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">
+      <h2 className="text-4xl font-bold text-gray-900 mb-6">
         Payment Management
       </h2>
       {paymentsLoading ? (
@@ -838,7 +859,7 @@ export default function ManagerDashboard() {
       <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100">
         <Settings className="w-8 h-8 text-primary-600" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+      <h2 className="text-4xl font-bold text-gray-900 mb-2">{title}</h2>
       <p className="text-gray-600 max-w-md mx-auto">{description}</p>
     </div>
   );
@@ -848,7 +869,7 @@ export default function ManagerDashboard() {
       <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100">
         <AlertCircle className="w-8 h-8 text-red-600" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
+      <h2 className="text-4xl font-bold text-gray-900 mb-2">Access Denied</h2>
       <p className="text-gray-600 max-w-md mx-auto mb-6">
         You don't have permission to access {feature}. Please contact your administrator to request access.
       </p>
@@ -953,13 +974,13 @@ export default function ManagerDashboard() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className={`md:ml-[260px] ${activeTab === "messages" ? "pt-0 md:pt-16" : "pt-16"}`}>
-        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile when messages tab is active */}
-        <div className={activeTab === "messages" ? "hidden md:block" : ""}>
+      <div className="md:ml-[260px] pt-0 md:pt-16">
+        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
+        <div className="hidden md:block">
           <TopBar
             role="manager"
             user={user}
-            tabs={currentGroupTabs}
+            tabs={topNavTabs}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             onMobileMenuClick={() => setIsSidebarOpen(true)}

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Loader2, MessageCircle, Trash2 } from "lucide-react";
+import { Search, Loader2, MessageCircle, Trash2, Plus } from "lucide-react";
 import { ConversationWithDetails, UserRole } from "../types";
 import ConversationItem from "./ConversationItem";
 import ContextMenu from "./ContextMenu";
@@ -12,6 +12,7 @@ interface ConversationListProps {
   selectedConversationId: string | null;
   onSelectConversation: (conversation: ConversationWithDetails) => void;
   onDeleteConversation: (conversationId: string) => void;
+  onNewConversation: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   roleFilter: UserRole | "all";
@@ -27,6 +28,7 @@ export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
   onDeleteConversation,
+  onNewConversation,
   searchQuery,
   onSearchChange,
   roleFilter,
@@ -61,13 +63,26 @@ export default function ConversationList({
       {/* Header */}
       <div className="flex-shrink-0 p-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-4xl md:text-3xl font-bold text-gray-900">Messages</h2>
-          <button
-            onClick={() => setShowSearch(!showSearch)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Search className="w-5 h-5 text-gray-600" />
-          </button>
+          <h2 className="text-4xl font-bold text-gray-900">
+            Messages
+          </h2>
+          <div className="flex items-center gap-2">
+            {/* New Conversation Button */}
+            <button
+              onClick={onNewConversation}
+              className="w-8 h-8 rounded-full bg-primary-600 text-white hover:bg-primary-700 flex items-center justify-center transition-colors"
+              aria-label="New conversation"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            {/* Search Toggle Button */}
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <Search className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
         </div>
 
         {/* Search input */}
@@ -78,7 +93,7 @@ export default function ConversationList({
               placeholder="Search conversations..."
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+              className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
             />
           </div>
         )}
@@ -89,7 +104,7 @@ export default function ConversationList({
           onChange={(e) =>
             onRoleFilterChange(e.target.value as UserRole | "all")
           }
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+          className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm appearance-none bg-white"
         >
           <option value="all">All conversations</option>
           {availableRoles.map((role) => (

@@ -284,7 +284,7 @@ export default function BookingsPage({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">Bookings</h2>
+        <h2 className="text-4xl font-bold text-gray-900">Bookings</h2>
         {canEdit && (
           <button
             onClick={() => setShowAddAppointmentModal(true)}
