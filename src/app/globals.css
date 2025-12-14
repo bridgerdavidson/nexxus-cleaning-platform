@@ -319,3 +319,10 @@ input[type="range"].slider::-moz-range-thumb:hover {
   @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm;
   @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
 }
+
+/* Ensure sticky positioning works for navigation bars */
+header.sticky,
+nav.sticky {
+  position: -webkit-sticky !important;
+  position: sticky !important;
+}

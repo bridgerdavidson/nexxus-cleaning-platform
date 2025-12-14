@@ -303,6 +303,11 @@ export default function ManagerDashboard() {
     }
   }, [permissions, permissionsLoading, activeTab, isTabAccessible]);
 
+  // Scroll to top when tab changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
+
   // Show loading while checking auth - MUST be after all hooks
   if (loading || !user) {
     return (
@@ -948,7 +953,7 @@ export default function ManagerDashboard() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px]">
+      <div className={`md:ml-[260px] ${activeTab === "messages" ? "pt-0 md:pt-16" : "pt-16"}`}>
         {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile when messages tab is active */}
         <div className={activeTab === "messages" ? "hidden md:block" : ""}>
           <TopBar

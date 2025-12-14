@@ -56,7 +56,9 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     <>
       {/* Dashboard pages render their own header with tabs */}
       {!isDashboard && <Navbar />}
-      {children}
+      <div className={!isDashboard ? 'pt-16' : ''}>
+        {children}
+      </div>
     </>
   );
 }

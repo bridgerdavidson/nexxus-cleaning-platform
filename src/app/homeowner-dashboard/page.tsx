@@ -68,6 +68,11 @@ export default function HomeownerDashboard() {
     }
   }, [user, loading, router]);
 
+  // Scroll to top when tab changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
+
   // Show loading while checking auth
   if (loading || !user) {
     return (
@@ -604,7 +609,7 @@ export default function HomeownerDashboard() {
       <div
         className={`min-h-screen ${
           activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
-        }`}
+        } ${activeTab === "messages" ? "pt-0 md:pt-16" : "pt-16"}`}
       >
         <div
           className={`max-w-7xl mx-auto ${

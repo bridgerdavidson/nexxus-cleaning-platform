@@ -50,7 +50,7 @@ const TopBar: React.FC<TopBarProps> = ({
   }, [isUserDropdownOpen]);
 
   return (
-    <header className="bg-white shadow-md sticky top-0 z-30">
+    <header className="bg-white shadow-md fixed top-0 left-0 md:left-[260px] right-0 z-50">
       <div className="h-16 px-4 sm:px-6 lg:px-8 relative flex items-center">
         {/* Mobile Menu Button - Left */}
         <button
