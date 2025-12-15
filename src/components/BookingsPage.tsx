@@ -1,5 +1,15 @@
 import React, { useState, useMemo } from "react";
-import { Search, Loader2, Calendar, CheckSquare, Square, Trash2, XCircle, Plus } from "lucide-react";
+import {
+  Search,
+  Loader2,
+  Calendar,
+  CheckSquare,
+  Square,
+  Trash2,
+  XCircle,
+  Plus,
+  ChevronDown,
+} from "lucide-react";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import AppointmentSidePanel from "./AppointmentSidePanel";
 import CancelConfirmModal from "./CancelConfirmModal";
@@ -42,7 +52,7 @@ export default function BookingsPage({
     string | null
   >(null);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
-  
+
   // Selection state
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -57,7 +67,9 @@ export default function BookingsPage({
   // Filter appointments by tab
   const filterByTab = (appointment: AppointmentCardData): boolean => {
     // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-    const [year, month, day] = appointment.scheduled_date.split('-').map(Number);
+    const [year, month, day] = appointment.scheduled_date
+      .split("-")
+      .map(Number);
     const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
     appointmentDate.setHours(0, 0, 0, 0);
 
@@ -132,7 +144,7 @@ export default function BookingsPage({
       label: "Upcoming",
       count: appointments.filter((apt) => {
         // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-        const [year, month, day] = apt.scheduled_date.split('-').map(Number);
+        const [year, month, day] = apt.scheduled_date.split("-").map(Number);
         const aptDate = new Date(year, month - 1, day); // month is 0-indexed
         aptDate.setHours(0, 0, 0, 0);
         return (
@@ -233,7 +245,7 @@ export default function BookingsPage({
   const confirmBulkAction = async () => {
     setIsBulkActionLoading(true);
     const selectedAppointments = Array.from(selectedIds);
-    
+
     try {
       if (bulkAction === "cancel") {
         await Promise.all(
@@ -253,7 +265,8 @@ export default function BookingsPage({
   };
 
   // Check if all are selected
-  const isAllSelected = filteredAppointments.length > 0 && 
+  const isAllSelected =
+    filteredAppointments.length > 0 &&
     selectedIds.size === filteredAppointments.length;
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
 
@@ -265,7 +278,9 @@ export default function BookingsPage({
     ? {
         date: (() => {
           // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-          const [year, month, day] = cancellingAppointment.scheduled_date.split('-').map(Number);
+          const [year, month, day] = cancellingAppointment.scheduled_date
+            .split("-")
+            .map(Number);
           const localDate = new Date(year, month - 1, day); // month is 0-indexed
           return localDate.toLocaleDateString("en-US", {
             month: "short",
@@ -280,65 +295,69 @@ export default function BookingsPage({
       }
     : undefined;
 
+  // Get current tab label and count for dropdown display
+  const currentTab = tabs.find((tab) => tab.id === activeTab);
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <h2 className="text-4xl font-bold text-gray-900">Bookings</h2>
+        {/* Add New Appointment Button */}
         {canEdit && (
           <button
             onClick={() => setShowAddAppointmentModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
           >
             <Plus className="w-5 h-5" />
-            New Appointment
+            <span>New</span>
           </button>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <div className="flex space-x-1 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                setStatusFilter("all");
-              }}
-              className={`px-4 py-3 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? "border-primary-600 text-primary-600"
-                  : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
-              }`}
-            >
-              {tab.label}
-              <span
-                className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-                  activeTab === tab.id
-                    ? "bg-primary-100 text-primary-700"
-                    : "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {tab.count}
-              </span>
-            </button>
-          ))}
-        </div>
+      {/* Search Input - Own line on mobile */}
+      <div className="flex-1 relative md:hidden">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          placeholder="Search by homeowner, cleaner, property, or service..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+        />
       </div>
 
-      {/* Search, Filter and Select Bar */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        {/* Search Input */}
-        <div className="flex-1 relative">
+      {/* Filters Row - Mobile: Filters and Select Many inline, Desktop: All in one line with search */}
+      <div className="flex flex-row gap-3 overflow-x-auto">
+        {/* Search Input - Desktop only (in same line as filters) */}
+        <div className="hidden md:flex flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
             placeholder="Search by homeowner, cleaner, property, or service..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
           />
+        </div>
+
+        {/* Tab Dropdown */}
+        <div className="relative flex-shrink-0 min-w-[140px]">
+          <select
+            value={activeTab}
+            onChange={(e) => {
+              setActiveTab(e.target.value as TabType);
+              setStatusFilter("all");
+            }}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white appearance-none pr-10 font-medium text-sm"
+          >
+            {tabs.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.label} ({tab.count})
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
 
         {/* Status Filter Dropdown */}
@@ -346,7 +365,7 @@ export default function BookingsPage({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+            className="px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm flex-shrink-0"
           >
             <option value="all">All Statuses</option>
             {availableStatuses.map((status) => (
@@ -362,10 +381,10 @@ export default function BookingsPage({
         {canEdit && (
           <button
             onClick={toggleSelectMode}
-            className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
+            className={`px-4 py-2.5 rounded-full font-medium transition-colors whitespace-nowrap border border-gray-300 flex-shrink-0 ${
               isSelectMode
-                ? "bg-gray-600 text-white hover:bg-gray-700"
-                : "bg-primary-600 text-white hover:bg-primary-700"
+                ? "bg-gray-600 text-white hover:bg-gray-700 border-gray-600"
+                : "bg-white text-gray-700 hover:bg-gray-50"
             }`}
           >
             {isSelectMode ? "Cancel Selection" : "Select Many"}
@@ -396,9 +415,10 @@ export default function BookingsPage({
                   {isAllSelected ? "Deselect All" : "Select All"}
                 </span>
               </button>
-              
+
               <span className="text-sm text-gray-600">
-                {selectedIds.size} appointment{selectedIds.size !== 1 ? "s" : ""} selected
+                {selectedIds.size} appointment
+                {selectedIds.size !== 1 ? "s" : ""} selected
               </span>
             </div>
 
@@ -406,16 +426,18 @@ export default function BookingsPage({
             {selectedIds.size > 0 && (
               <div className="flex gap-2">
                 {/* Cancel Selected - Only for upcoming/all tabs, not for completed/cancelled */}
-                {canEdit && activeTab !== "completed" && activeTab !== "cancelled" && (
-                  <button
-                    onClick={handleBulkCancel}
-                    className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Cancel Selected
-                  </button>
-                )}
-                
+                {canEdit &&
+                  activeTab !== "completed" &&
+                  activeTab !== "cancelled" && (
+                    <button
+                      onClick={handleBulkCancel}
+                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Cancel Selected
+                    </button>
+                  )}
+
                 {/* Delete Selected */}
                 {canEdit && (
                   <button
@@ -473,10 +495,14 @@ export default function BookingsPage({
         onCancel={canEdit ? handleCancelFromPanel : undefined}
         onMarkComplete={canEdit ? handleMarkComplete : undefined}
         onEdit={canEdit ? onEdit : undefined}
-        onDelete={canEdit ? async (id) => {
-          await onDeleteAppointment(id);
-          setShowSidePanel(false);
-        } : undefined}
+        onDelete={
+          canEdit
+            ? async (id) => {
+                await onDeleteAppointment(id);
+                setShowSidePanel(false);
+              }
+            : undefined
+        }
         role={role}
         canEdit={canEdit}
       />
@@ -516,4 +542,3 @@ export default function BookingsPage({
     </div>
   );
 }
-

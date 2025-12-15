@@ -10,8 +10,8 @@ import {
   DollarSign,
   CheckCircle,
   Clock,
-  MapPin,
   AlertCircle,
+  AlertTriangle,
   Star,
   Loader2,
   Home,
@@ -24,6 +24,8 @@ import {
   HelpCircle,
   LayoutGrid,
   BarChart3,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -67,6 +69,7 @@ export default function ManagerDashboard() {
     cleanerName: "",
   });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -383,10 +386,38 @@ export default function ManagerDashboard() {
     }
   };
 
+  // Get upcoming appointments (confirmed or pending, sorted by date)
+  const upcomingAppointments = appointments
+    .filter((a) => a.status === "confirmed" || a.status === "pending")
+    .sort((a, b) => {
+      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
+      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
+      return dateA.getTime() - dateB.getTime();
+    })
+    .slice(0, 5);
+
+  const pendingAppointments = appointments.filter(
+    (a) => a.status === "pending"
+  );
+  const activeCleanersCount = cleaners.filter((c) => c.is_available).length;
+  const pendingPaymentsCount = payments.filter(
+    (p) => p.status === "pending"
+  ).length;
+
   const renderOverview = () => (
-    <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="mb-6">
+    <div className="space-y-4 md:space-y-6">
+      {/* Mobile Header - Compact */}
+      <div className="md:hidden">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
+          <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+            Manager
+          </span>
+        </div>
+      </div>
+
+      {/* Desktop Header - Original */}
+      <div className="hidden md:block mb-6">
         <div className="flex items-center gap-3 mb-2">
           <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
           <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
@@ -399,8 +430,204 @@ export default function ManagerDashboard() {
         </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Mobile Quick Stats Bar */}
+      <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+        <div className="flex items-center justify-between">
+          {appointmentsLoading ? (
+            <div className="flex items-center justify-center w-full py-2">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 text-center border-r border-gray-200">
+                <p className="text-xl font-bold text-amber-600">
+                  {pendingAppointments.length}
+                </p>
+                <p className="text-xs text-gray-500">Pending</p>
+              </div>
+              <div className="flex-1 text-center border-r border-gray-200">
+                <p className="text-xl font-bold text-primary-600">
+                  {appointments.length}
+                </p>
+                <p className="text-xs text-gray-500">Total</p>
+              </div>
+              <div className="flex-1 text-center">
+                <p className="text-xl font-bold text-green-600">
+                  {activeCleanersCount}
+                </p>
+                <p className="text-xs text-gray-500">Cleaners</p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Pending Alert - Only show if there are pending appointments */}
+      {pendingAppointments.length > 0 && (
+        <div className="md:hidden">
+          <button
+            onClick={() => setActiveTab("bookings")}
+            className="w-full bg-white rounded-xl shadow-sm border border-amber-200 p-4 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-full">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium text-gray-900">
+                  {pendingAppointments.length} Pending Approval
+                  {pendingAppointments.length !== 1 ? "s" : ""}
+                </p>
+                <p className="text-sm text-gray-500">Tap to review</p>
+              </div>
+            </div>
+            <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              {pendingAppointments.length}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Mobile Collapsible All Stats Section */}
+      <div className="md:hidden">
+        <button
+          onClick={() => setIsStatsExpanded(!isStatsExpanded)}
+          className="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary-100 rounded-lg">
+              <BarChart3 className="w-5 h-5 text-primary-600" />
+            </div>
+            <span className="font-medium text-gray-900">All Statistics</span>
+          </div>
+          {isStatsExpanded ? (
+            <ChevronUp className="w-5 h-5 text-gray-400" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-gray-400" />
+          )}
+        </button>
+        {isStatsExpanded && (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Calendar className="w-4 h-4 text-primary-600" />
+                <span className="text-xs text-gray-500">Total</span>
+              </div>
+              <p className="text-2xl font-bold text-gray-900">
+                {appointments.length}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-green-600" />
+                <span className="text-xs text-gray-500">Cleaners</span>
+              </div>
+              <p className="text-2xl font-bold text-gray-900">
+                {activeCleanersCount}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 text-amber-600" />
+                <span className="text-xs text-gray-500">Pending</span>
+              </div>
+              <p className="text-2xl font-bold text-gray-900">
+                {pendingAppointments.length}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4 text-purple-600" />
+                <span className="text-xs text-gray-500">Payments</span>
+              </div>
+              <p className="text-2xl font-bold text-gray-900">
+                {pendingPaymentsCount}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Upcoming Appointments */}
+      <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary-600" />
+              <h3 className="font-semibold text-gray-900">Upcoming</h3>
+            </div>
+            <button
+              onClick={() => setActiveTab("bookings")}
+              className="text-sm font-medium text-primary-600"
+            >
+              View all
+            </button>
+          </div>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {appointmentsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : upcomingAppointments.length > 0 ? (
+            upcomingAppointments.map((appointment) => (
+              <div key={appointment.id} className="p-4 flex items-center gap-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
+                  <span className="text-xs font-medium text-primary-600">
+                    {new Date(appointment.scheduled_date).toLocaleDateString(
+                      "en-US",
+                      { month: "short" }
+                    )}
+                  </span>
+                  <span className="text-lg font-bold text-primary-700">
+                    {new Date(appointment.scheduled_date).getDate()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 truncate">
+                    {appointment.homeowner
+                      ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
+                      : "Unknown"}
+                  </p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{appointment.scheduled_time}</span>
+                    </div>
+                    {appointment.service_type && (
+                      <span className="text-sm text-gray-500 truncate">
+                        {appointment.service_type.name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      appointment.status === "confirmed"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {appointment.status}
+                  </span>
+                  <span className="text-sm font-semibold text-gray-900">
+                    ${appointment.total_price}
+                  </span>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8">
+              <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-500 text-sm">No upcoming appointments</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Stats Cards - Original Layout */}
+      <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="card">
           <div className="flex items-center">
             <div className="p-2 bg-primary-100 rounded-lg">
@@ -434,7 +661,7 @@ export default function ManagerDashboard() {
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900">
-                  {cleaners.filter((c) => c.is_available).length}
+                  {activeCleanersCount}
                 </p>
               )}
             </div>
@@ -454,7 +681,7 @@ export default function ManagerDashboard() {
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900">
-                  {appointments.filter((a) => a.status === "pending").length}
+                  {pendingAppointments.length}
                 </p>
               )}
             </div>
@@ -474,7 +701,7 @@ export default function ManagerDashboard() {
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               ) : (
                 <p className="text-2xl font-bold text-gray-900">
-                  {payments.filter((p) => p.status === "pending").length}
+                  {pendingPaymentsCount}
                 </p>
               )}
             </div>
@@ -482,8 +709,8 @@ export default function ManagerDashboard() {
         </div>
       </div>
 
-      {/* Recent Appointments */}
-      <div className="card">
+      {/* Desktop Recent Appointments - Original Layout */}
+      <div className="hidden md:block card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Recent Appointments
         </h3>
