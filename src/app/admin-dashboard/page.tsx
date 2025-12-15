@@ -1039,7 +1039,7 @@ export default function AdminDashboard() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px] pt-0 md:pt-16">
+      <div className="md:ml-[260px] pt-4 md:pt-16">
         {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
         <div className="hidden md:block">
           <TopBar

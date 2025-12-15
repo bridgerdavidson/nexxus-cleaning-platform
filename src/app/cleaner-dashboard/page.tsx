@@ -869,7 +869,7 @@ export default function CleanerDashboard() {
       <div
         className={`min-h-screen ${
           activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
-        } pt-0 md:pt-16`}
+        } pt-4 md:pt-16`}
       >
         <div
           className={`max-w-7xl mx-auto ${

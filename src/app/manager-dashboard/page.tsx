@@ -103,38 +103,41 @@ export default function ManagerDashboard() {
   const { permissions, loading: permissionsLoading } = useManagerPermissions();
 
   // Check if a tab is accessible based on permissions - MUST be a hook and defined before early returns
-  const isTabAccessible = useCallback((tabId: string): boolean => {
-    if (!permissions) return false;
-    
-    switch (tabId) {
-      case "home":
-      case "settings":
-      case "support":
-        return true;
-      case "bookings":
-        return permissions.can_view_bookings || false;
-      case "messages":
-        return permissions.can_view_messages || false;
-      case "customers":
-        return permissions.can_view_customers || false;
-      case "properties":
-        return permissions.can_view_properties || false;
-      case "cleaners":
-        return permissions.can_manage_cleaners || false;
-      case "payments":
-        return permissions.can_view_payments || false;
-      case "analytics":
-        return permissions.can_view_analytics || false;
-      default:
-        return false;
-    }
-  }, [permissions]);
+  const isTabAccessible = useCallback(
+    (tabId: string): boolean => {
+      if (!permissions) return false;
+
+      switch (tabId) {
+        case "home":
+        case "settings":
+        case "support":
+          return true;
+        case "bookings":
+          return permissions.can_view_bookings || false;
+        case "messages":
+          return permissions.can_view_messages || false;
+        case "customers":
+          return permissions.can_view_customers || false;
+        case "properties":
+          return permissions.can_view_properties || false;
+        case "cleaners":
+          return permissions.can_manage_cleaners || false;
+        case "payments":
+          return permissions.can_view_payments || false;
+        case "analytics":
+          return permissions.can_view_analytics || false;
+        default:
+          return false;
+      }
+    },
+    [permissions]
+  );
 
   // Build navigation groups based on permissions - using useMemo to ensure consistent hook order
   const navigationGroups = useMemo(() => {
     // Debug: Log permissions to help diagnose
     if (permissions) {
-      console.log('Manager Permissions:', {
+      console.log("Manager Permissions:", {
         can_view_bookings: permissions.can_view_bookings,
         can_view_messages: permissions.can_view_messages,
         can_view_customers: permissions.can_view_customers,
@@ -144,7 +147,7 @@ export default function ManagerDashboard() {
         can_view_analytics: permissions.can_view_analytics,
       });
     }
-    
+
     // If permissions are still loading, return minimal groups
     if (permissionsLoading || !permissions) {
       return {
@@ -166,20 +169,18 @@ export default function ManagerDashboard() {
       };
     }
 
-    const opsTabs = [
-      { id: "home", label: "Overview", icon: Home },
-    ];
-    
+    const opsTabs = [{ id: "home", label: "Overview", icon: Home }];
+
     // Add bookings if permitted - check explicitly for true
     if (permissions.can_view_bookings === true) {
       opsTabs.push({ id: "bookings", label: "Bookings", icon: Calendar });
     }
-    
+
     // Add messages if permitted
     if (permissions.can_view_messages === true) {
       opsTabs.push({ id: "messages", label: "Messages", icon: MessageCircle });
     }
-    
+
     // Add customers to opsTabs for mobile navigation
     if (permissions.can_view_customers === true) {
       opsTabs.push({ id: "customers", label: "Customers", icon: Users });
@@ -192,7 +193,11 @@ export default function ManagerDashboard() {
     }
     // Add properties if permitted
     if (permissions.can_view_properties === true) {
-      accountsTabs.push({ id: "properties", label: "Properties", icon: Building });
+      accountsTabs.push({
+        id: "properties",
+        label: "Properties",
+        icon: Building,
+      });
     }
 
     const businessTabs = [];
@@ -202,7 +207,11 @@ export default function ManagerDashboard() {
     }
     // Add analytics if permitted
     if (permissions.can_view_analytics === true) {
-      businessTabs.push({ id: "analytics", label: "Analytics", icon: BarChart3 });
+      businessTabs.push({
+        id: "analytics",
+        label: "Analytics",
+        icon: BarChart3,
+      });
     }
 
     const groups: any = {
@@ -259,19 +268,25 @@ export default function ManagerDashboard() {
   }, [permissions, permissionsLoading]);
 
   // Get groups array for sidebar
-  const groups = useMemo(() => Object.values(navigationGroups), [navigationGroups]);
+  const groups = useMemo(
+    () => Object.values(navigationGroups),
+    [navigationGroups]
+  );
 
   // Get tabs for current group
   const currentGroupTabs = useMemo(
-    () => navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [],
+    () =>
+      navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs ||
+      [],
     [navigationGroups, activeGroup]
   );
-  
+
   // Filter out "customers" from top navigation when in operations group (it appears in Accounts sidebar instead)
   const topNavTabs = useMemo(
-    () => activeGroup === "operations" 
-      ? currentGroupTabs.filter((tab) => tab.id !== "customers")
-      : currentGroupTabs,
+    () =>
+      activeGroup === "operations"
+        ? currentGroupTabs.filter((tab) => tab.id !== "customers")
+        : currentGroupTabs,
     [currentGroupTabs, activeGroup]
   );
 
@@ -287,25 +302,31 @@ export default function ManagerDashboard() {
   );
 
   // Handle group change - switch to first tab of new group
-  const handleGroupChange = useCallback((groupId: string) => {
-    setActiveGroup(groupId);
-    const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
-    if (newGroup && newGroup.tabs.length > 0) {
-      const firstTab = newGroup.tabs[0].id;
-      // Check if tab is accessible
-      if (isTabAccessible(firstTab)) {
-        setActiveTab(firstTab);
-      } else {
-        // Find first accessible tab
-        const accessibleTab = newGroup.tabs.find(tab => isTabAccessible(tab.id));
-        if (accessibleTab) {
-          setActiveTab(accessibleTab.id);
+  const handleGroupChange = useCallback(
+    (groupId: string) => {
+      setActiveGroup(groupId);
+      const newGroup =
+        navigationGroups[groupId as keyof typeof navigationGroups];
+      if (newGroup && newGroup.tabs.length > 0) {
+        const firstTab = newGroup.tabs[0].id;
+        // Check if tab is accessible
+        if (isTabAccessible(firstTab)) {
+          setActiveTab(firstTab);
         } else {
-          setActiveTab("home");
+          // Find first accessible tab
+          const accessibleTab = newGroup.tabs.find((tab) =>
+            isTabAccessible(tab.id)
+          );
+          if (accessibleTab) {
+            setActiveTab(accessibleTab.id);
+          } else {
+            setActiveTab("home");
+          }
         }
       }
-    }
-  }, [navigationGroups, isTabAccessible]);
+    },
+    [navigationGroups, isTabAccessible]
+  );
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -871,7 +892,8 @@ export default function ManagerDashboard() {
       </div>
       <h2 className="text-4xl font-bold text-gray-900 mb-2">Access Denied</h2>
       <p className="text-gray-600 max-w-md mx-auto mb-6">
-        You don't have permission to access {feature}. Please contact your administrator to request access.
+        You don't have permission to access {feature}. Please contact your
+        administrator to request access.
       </p>
       <button
         onClick={() => {
@@ -974,7 +996,7 @@ export default function ManagerDashboard() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px] pt-0 md:pt-16">
+      <div className="md:ml-[260px] pt-4 md:pt-16">
         {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
         <div className="hidden md:block">
           <TopBar
