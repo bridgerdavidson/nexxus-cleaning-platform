@@ -8,6 +8,8 @@ export interface AppointmentCardData {
   scheduled_time: string;
   status: string;
   total_price: number;
+  special_requests?: string | null;
+  notes?: string | null;
   homeowner?: {
     first_name: string;
     last_name: string;

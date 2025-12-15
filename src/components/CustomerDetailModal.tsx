@@ -32,7 +32,7 @@ interface CustomerDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   customer: AdminCustomer | null;
-  onCustomerUpdated?: () => void;
+  onCustomerUpdated?: (updatedCustomer: AdminCustomer) => void;
   onRefreshAppointments?: () => void;
   onRefreshProperties?: () => void;
 }
@@ -53,15 +53,20 @@ export default function CustomerDetailModal({
     email: "",
     phone: "",
   });
-  const [activeTab, setActiveTab] = useState<"details" | "appointments" | "properties">("details");
+  const [activeTab, setActiveTab] = useState<
+    "details" | "appointments" | "properties"
+  >("details");
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  const { appointments, properties, loading, refetch: refetchDetails } = useCustomerDetails(
-    isOpen ? customer?.id || null : null
-  );
+  const {
+    appointments,
+    properties,
+    loading,
+    refetch: refetchDetails,
+  } = useCustomerDetails(isOpen ? customer?.id || null : null);
 
   // Update edited customer when customer prop changes
   useEffect(() => {
@@ -102,10 +107,19 @@ export default function CustomerDetailModal({
     const result = await updateCustomer(customer.id, editedCustomer);
     setIsSaving(false);
 
-    if (result.success) {
+    if (result.success && result.data) {
+      // Merge updated data with existing customer data to preserve computed fields
+      const updatedCustomer: AdminCustomer = {
+        ...customer,
+        first_name: result.data.first_name,
+        last_name: result.data.last_name,
+        email: result.data.email,
+        phone: result.data.phone,
+      };
+
       setIsEditing(false);
       if (onCustomerUpdated) {
-        onCustomerUpdated();
+        onCustomerUpdated(updatedCustomer);
       }
     } else {
       alert("Failed to update customer: " + result.error);
@@ -144,14 +158,14 @@ export default function CustomerDetailModal({
   const formatDate = (date: string) => {
     // Handle both date-only strings (YYYY-MM-DD) and full ISO timestamps
     // Extract just the date part (YYYY-MM-DD) from the string
-    const dateOnly = date.split('T')[0]; // Get date part before 'T' if it exists
-    const [year, month, day] = dateOnly.split('-').map(Number);
-    
+    const dateOnly = date.split("T")[0]; // Get date part before 'T' if it exists
+    const [year, month, day] = dateOnly.split("-").map(Number);
+
     // Validate that we have valid numbers
     if (isNaN(year) || isNaN(month) || isNaN(day)) {
       return "Invalid Date";
     }
-    
+
     // Parse date string as local date to avoid timezone issues
     const localDate = new Date(year, month - 1, day); // month is 0-indexed
     return localDate.toLocaleDateString("en-US", {
@@ -173,7 +187,7 @@ export default function CustomerDetailModal({
   const handleClose = () => {
     // Don't close if modals are open or if editing
     if (showAddPropertyModal || showAddAppointmentModal || isEditing) return;
-    
+
     setIsAnimating(false);
     setTimeout(() => {
       onClose();
@@ -183,7 +197,7 @@ export default function CustomerDetailModal({
   const handleBackdropClick = (e: React.MouseEvent) => {
     // Don't close if clicking on modals or if editing
     if (showAddPropertyModal || showAddAppointmentModal || isEditing) return;
-    
+
     // Only close if clicking directly on the backdrop (not on children)
     if (e.target === e.currentTarget) {
       handleClose();
@@ -303,12 +317,12 @@ export default function CustomerDetailModal({
                   <div className="flex justify-end">
                     {!isEditing ? (
                       <button
-                            onClick={() => setIsEditing(true)}
-                            className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                            Edit Profile
-                          </button>
+                        onClick={() => setIsEditing(true)}
+                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        Edit Profile
+                      </button>
                     ) : (
                       <div className="flex gap-2">
                         <button
@@ -333,293 +347,301 @@ export default function CustomerDetailModal({
                     )}
                   </div>
 
-                      {/* Contact Information */}
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                          Contact Information
-                        </h3>
-                        <div className="space-y-4">
-                          {/* First Name */}
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                              <User className="w-5 h-5 text-gray-500" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">First Name</p>
-                              {isEditing ? (
-                                <input
-                                  type="text"
-                                  value={editedCustomer.first_name}
-                                  onChange={(e) =>
-                                    setEditedCustomer({
-                                      ...editedCustomer,
-                                      first_name: e.target.value,
-                                    })
-                                  }
-                                  className="input-field mt-1 py-1.5"
-                                />
-                              ) : (
-                                <p className="text-gray-900 font-medium">
-                                  {customer.first_name || "—"}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Last Name */}
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                              <User className="w-5 h-5 text-gray-500" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">Last Name</p>
-                              {isEditing ? (
-                                <input
-                                  type="text"
-                                  value={editedCustomer.last_name}
-                                  onChange={(e) =>
-                                    setEditedCustomer({
-                                      ...editedCustomer,
-                                      last_name: e.target.value,
-                                    })
-                                  }
-                                  className="input-field mt-1 py-1.5"
-                                />
-                              ) : (
-                                <p className="text-gray-900 font-medium">
-                                  {customer.last_name || "—"}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Email */}
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                              <Mail className="w-5 h-5 text-gray-500" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">Email</p>
-                              {isEditing ? (
-                                <input
-                                  type="email"
-                                  value={editedCustomer.email}
-                                  onChange={(e) =>
-                                    setEditedCustomer({
-                                      ...editedCustomer,
-                                      email: e.target.value,
-                                    })
-                                  }
-                                  className="input-field mt-1 py-1.5"
-                                />
-                              ) : (
-                                <p className="text-gray-900 font-medium">
-                                  {customer.email}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Phone */}
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                              <Phone className="w-5 h-5 text-gray-500" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">Phone</p>
-                              {isEditing ? (
-                                <input
-                                  type="tel"
-                                  value={editedCustomer.phone}
-                                  onChange={(e) =>
-                                    setEditedCustomer({
-                                      ...editedCustomer,
-                                      phone: e.target.value,
-                                    })
-                                  }
-                                  className="input-field mt-1 py-1.5"
-                                  placeholder="(555) 123-4567"
-                                />
-                              ) : (
-                                <p className="text-gray-900 font-medium">
-                                  {customer.phone || "—"}
-                                </p>
-                              )}
-                            </div>
-                          </div>
+                  {/* Contact Information */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                      Contact Information
+                    </h3>
+                    <div className="space-y-4">
+                      {/* First Name */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <User className="w-5 h-5 text-gray-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">First Name</p>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editedCustomer.first_name}
+                              onChange={(e) =>
+                                setEditedCustomer({
+                                  ...editedCustomer,
+                                  first_name: e.target.value,
+                                })
+                              }
+                              className="input-field mt-1 py-1.5"
+                            />
+                          ) : (
+                            <p className="text-gray-900 font-medium">
+                              {customer.first_name || "—"}
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Activity Summary */}
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                          Activity Summary
-                        </h3>
-                        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-600 text-sm">Last Appointment</span>
-                            <span className="text-gray-900 font-medium text-sm">
-                              {customer.last_appointment_date
-                                ? formatDate(customer.last_appointment_date)
-                                : "No appointments yet"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-600 text-sm">Total Appointments</span>
-                            <span className="text-gray-900 font-medium text-sm">
-                              {customer.appointments_count}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-600 text-sm">Properties Registered</span>
-                            <span className="text-gray-900 font-medium text-sm">
-                              {customer.properties_count}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-600 text-sm">Total Spent</span>
-                            <span className="text-green-600 font-semibold text-sm">
-                              {formatCurrency(customer.total_spent)}
-                            </span>
-                          </div>
+                      {/* Last Name */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <User className="w-5 h-5 text-gray-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">Last Name</p>
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editedCustomer.last_name}
+                              onChange={(e) =>
+                                setEditedCustomer({
+                                  ...editedCustomer,
+                                  last_name: e.target.value,
+                                })
+                              }
+                              className="input-field mt-1 py-1.5"
+                            />
+                          ) : (
+                            <p className="text-gray-900 font-medium">
+                              {customer.last_name || "—"}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Email */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <Mail className="w-5 h-5 text-gray-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">Email</p>
+                          {isEditing ? (
+                            <input
+                              type="email"
+                              value={editedCustomer.email}
+                              onChange={(e) =>
+                                setEditedCustomer({
+                                  ...editedCustomer,
+                                  email: e.target.value,
+                                })
+                              }
+                              className="input-field mt-1 py-1.5"
+                            />
+                          ) : (
+                            <p className="text-gray-900 font-medium">
+                              {customer.email}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Phone */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                          <Phone className="w-5 h-5 text-gray-500" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500">Phone</p>
+                          {isEditing ? (
+                            <input
+                              type="tel"
+                              value={editedCustomer.phone}
+                              onChange={(e) =>
+                                setEditedCustomer({
+                                  ...editedCustomer,
+                                  phone: e.target.value,
+                                })
+                              }
+                              className="input-field mt-1 py-1.5"
+                              placeholder="(555) 123-4567"
+                            />
+                          ) : (
+                            <p className="text-gray-900 font-medium">
+                              {customer.phone || "—"}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Appointments Tab */}
-                  {activeTab === "appointments" && (
-                    <div className="p-6">
-                      {/* Add Appointment Button */}
-                      <div className="mb-4">
-                        <button
-                          onClick={() => setShowAddAppointmentModal(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Add New Appointment
-                        </button>
+                  {/* Activity Summary */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                      Activity Summary
+                    </h3>
+                    <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 text-sm">
+                          Last Appointment
+                        </span>
+                        <span className="text-gray-900 font-medium text-sm">
+                          {customer.last_appointment_date
+                            ? formatDate(customer.last_appointment_date)
+                            : "No appointments yet"}
+                        </span>
                       </div>
-
-                      {appointments.length === 0 ? (
-                        <div className="text-center py-12">
-                          <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                          <p className="text-gray-500">No appointments found</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {appointments.map((appointment) => (
-                            <div
-                              key={appointment.id}
-                              className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
-                            >
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="w-4 h-4 text-gray-400" />
-                                  <span className="text-gray-900 font-medium text-sm">
-                                    {formatDate(appointment.scheduled_date)}
-                                  </span>
-                                  <Clock className="w-4 h-4 text-gray-400 ml-2" />
-                                  <span className="text-gray-600 text-sm">
-                                    {appointment.scheduled_time}
-                                  </span>
-                                </div>
-                                <span
-                                  className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(
-                                    appointment.status
-                                  )}`}
-                                >
-                                  {appointment.status.replace("_", " ")}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="text-gray-900 text-sm">
-                                    {appointment.service_type?.name || "Service"}
-                                  </p>
-                                  <p className="text-gray-500 text-xs">
-                                    {appointment.property?.address || "No address"}
-                                  </p>
-                                </div>
-                                <span className="text-gray-900 font-semibold">
-                                  {formatCurrency(appointment.total_price)}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Properties Tab */}
-                  {activeTab === "properties" && (
-                    <div className="p-6">
-                      {/* Add Property Button */}
-                      <div className="mb-4">
-                        <button
-                          onClick={() => setShowAddPropertyModal(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Add New Property
-                        </button>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 text-sm">
+                          Total Appointments
+                        </span>
+                        <span className="text-gray-900 font-medium text-sm">
+                          {customer.appointments_count}
+                        </span>
                       </div>
-
-                      {properties.length === 0 ? (
-                        <div className="text-center py-12">
-                          <Home className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                          <p className="text-gray-500">No properties found</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {properties.map((property) => (
-                            <div
-                              key={property.id}
-                              className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h4 className="text-gray-900 font-medium">
-                                    {property.name}
-                                  </h4>
-                                  <div className="flex items-start gap-1 mt-1">
-                                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                                    <p className="text-gray-600 text-sm">
-                                      {property.address}, {property.city},{" "}
-                                      {property.state} {property.zip_code}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-4 mt-2">
-                                    {property.bedrooms && (
-                                      <span className="text-xs text-gray-500">
-                                        {property.bedrooms} bed
-                                      </span>
-                                    )}
-                                    {property.bathrooms && (
-                                      <span className="text-xs text-gray-500">
-                                        {property.bathrooms} bath
-                                      </span>
-                                    )}
-                                    {property.square_feet && (
-                                      <span className="text-xs text-gray-500">
-                                        {property.square_feet.toLocaleString()} sqft
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <ChevronRight className="w-5 h-5 text-gray-400" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 text-sm">
+                          Properties Registered
+                        </span>
+                        <span className="text-gray-900 font-medium text-sm">
+                          {customer.properties_count}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 text-sm">
+                          Total Spent
+                        </span>
+                        <span className="text-green-600 font-semibold text-sm">
+                          {formatCurrency(customer.total_spent)}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </>
+                  </div>
+                </div>
               )}
-            </div>
+
+              {/* Appointments Tab */}
+              {activeTab === "appointments" && (
+                <div className="p-6">
+                  {/* Add Appointment Button */}
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setShowAddAppointmentModal(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add New Appointment
+                    </button>
+                  </div>
+
+                  {appointments.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No appointments found</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {appointments.map((appointment) => (
+                        <div
+                          key={appointment.id}
+                          className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-gray-400" />
+                              <span className="text-gray-900 font-medium text-sm">
+                                {formatDate(appointment.scheduled_date)}
+                              </span>
+                              <Clock className="w-4 h-4 text-gray-400 ml-2" />
+                              <span className="text-gray-600 text-sm">
+                                {appointment.scheduled_time}
+                              </span>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(
+                                appointment.status
+                              )}`}
+                            >
+                              {appointment.status.replace("_", " ")}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-gray-900 text-sm">
+                                {appointment.service_type?.name || "Service"}
+                              </p>
+                              <p className="text-gray-500 text-xs">
+                                {appointment.property?.address || "No address"}
+                              </p>
+                            </div>
+                            <span className="text-gray-900 font-semibold">
+                              {formatCurrency(appointment.total_price)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Properties Tab */}
+              {activeTab === "properties" && (
+                <div className="p-6">
+                  {/* Add Property Button */}
+                  <div className="mb-4">
+                    <button
+                      onClick={() => setShowAddPropertyModal(true)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add New Property
+                    </button>
+                  </div>
+
+                  {properties.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Home className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500">No properties found</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {properties.map((property) => (
+                        <div
+                          key={property.id}
+                          className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="text-gray-900 font-medium">
+                                {property.name}
+                              </h4>
+                              <div className="flex items-start gap-1 mt-1">
+                                <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                <p className="text-gray-600 text-sm">
+                                  {property.address}, {property.city},{" "}
+                                  {property.state} {property.zip_code}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-4 mt-2">
+                                {property.bedrooms && (
+                                  <span className="text-xs text-gray-500">
+                                    {property.bedrooms} bed
+                                  </span>
+                                )}
+                                {property.bathrooms && (
+                                  <span className="text-xs text-gray-500">
+                                    {property.bathrooms} bath
+                                  </span>
+                                )}
+                                {property.square_feet && (
+                                  <span className="text-xs text-gray-500">
+                                    {property.square_feet.toLocaleString()} sqft
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-400" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
+      </div>
 
       {/* Add Property Modal */}
       <AddPropertyModal
@@ -634,9 +656,6 @@ export default function CustomerDetailModal({
           if (onRefreshProperties) {
             onRefreshProperties();
           }
-          if (onCustomerUpdated) {
-            onCustomerUpdated(); // Refresh customer data to update counts
-          }
         }}
         preSelectedHomeownerId={customer?.id}
       />
@@ -650,9 +669,6 @@ export default function CustomerDetailModal({
           if (onRefreshAppointments) {
             onRefreshAppointments();
           }
-          if (onCustomerUpdated) {
-            onCustomerUpdated(); // Refresh customer data to update counts
-          }
         }}
         preSelectedHomeownerId={customer?.id}
       />
@@ -661,4 +677,3 @@ export default function CustomerDetailModal({
 
   return createPortal(panel, document.body);
 }
-

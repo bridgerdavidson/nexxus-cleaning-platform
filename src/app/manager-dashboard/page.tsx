@@ -26,6 +26,7 @@ import {
   BarChart3,
   ChevronDown,
   ChevronUp,
+  Mail,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -48,6 +49,7 @@ import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
+import CleanerSidePanel from "../../components/CleanerSidePanel";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -70,6 +72,8 @@ export default function ManagerDashboard() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+  const [selectedCleaner, setSelectedCleaner] = useState<any | null>(null);
+  const [isCleanerSidePanelOpen, setIsCleanerSidePanelOpen] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -78,18 +82,21 @@ export default function ManagerDashboard() {
     loading: appointmentsLoading,
     error: appointmentsError,
     refetch: refetchAppointments,
+    updateAppointmentInState,
   } = useManagerAppointments();
   const {
     cleaners,
     loading: cleanersLoading,
     error: cleanersError,
     refetch: refetchCleaners,
+    updateCleanerInState,
   } = useManagerCleaners();
   const {
     customers,
     loading: customersLoading,
     error: customersError,
     refetch: refetchCustomers,
+    updateCustomerInState,
   } = useAdminCustomers();
   const {
     payments,
@@ -799,6 +806,7 @@ export default function ManagerDashboard() {
       onDeleteAppointment={handleDeleteAppointment}
       onMarkComplete={handleMarkComplete}
       onRefreshAppointments={refetchAppointments}
+      onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
       role="manager"
     />
   );
@@ -834,12 +842,15 @@ export default function ManagerDashboard() {
       const fullName = cleaner.user_profile
         ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`.toLowerCase()
         : "";
+      const email = (cleaner.user_profile?.email || "").toLowerCase();
+      const phone = (cleaner.user_profile?.phone || "").toLowerCase();
+      const query = searchQuery.toLowerCase();
+      
       const matchesSearch =
         searchQuery === "" ||
-        fullName.includes(searchQuery.toLowerCase()) ||
-        cleaner.user_profile?.email
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase());
+        fullName.includes(query) ||
+        email.includes(query) ||
+        phone.includes(query);
 
       // Availability filter
       const matchesAvailability =
@@ -850,13 +861,38 @@ export default function ManagerDashboard() {
       return matchesSearch && matchesAvailability;
     });
 
+    // Calculate stats
+    const availableCleaners = cleaners.filter((c) => c.is_available).length;
+    const avgRating =
+      cleaners.length > 0
+        ? cleaners.reduce((sum, c) => sum + c.rating, 0) / cleaners.length
+        : 0;
+
+    // Get cleaner initials for avatar
+    const getCleanerInitials = (cleaner: any) => {
+      const first = cleaner.user_profile?.first_name?.[0] || "";
+      const last = cleaner.user_profile?.last_name?.[0] || "";
+      return `${first}${last}`.toUpperCase() || "?";
+    };
+
+    // Get full name helper
+    const getCleanerFullName = (cleaner: any) => {
+      if (cleaner.user_profile) {
+        return `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`;
+      }
+      return "Unknown";
+    };
+
     return (
-      <div className="card">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <h2 className="text-4xl font-bold text-gray-900">
-            Cleaner Management
-          </h2>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-4xl font-bold text-gray-900">Cleaners</h2>
+            <p className="text-gray-600 mt-1 hidden md:block">
+              Manage your cleaning team members
+            </p>
+          </div>
           {permissions?.can_manage_cleaners && (
             <button
               onClick={() => setShowAddCleanerModal(true)}
@@ -869,11 +905,11 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Search Input - Own line on mobile */}
-        <div className="flex-1 relative md:hidden mb-4">
+        <div className="flex-1 relative md:hidden">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search by name or email..."
+            placeholder="Search by name, email, or phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
@@ -881,13 +917,13 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Filters Row - Mobile: Filters inline, Desktop: All in one line with search */}
-        <div className="flex flex-row gap-3 overflow-x-auto mb-6">
+        <div className="flex flex-row gap-3 overflow-x-auto">
           {/* Search Input - Desktop only (in same line as filters) */}
           <div className="hidden md:flex flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search by name or email..."
+              placeholder="Search by name, email, or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
@@ -913,119 +949,192 @@ export default function ManagerDashboard() {
           </div>
         </div>
 
+        {/* Stats Summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary-100 rounded-lg">
+                <Users className="w-5 h-5 text-primary-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Total Cleaners</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {cleaners.length}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Available</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {availableCleaners}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <Star className="w-5 h-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Avg Rating</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {avgRating.toFixed(1)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Cleaners List */}
         {cleanersLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-600">Loading cleaners...</span>
           </div>
         ) : cleanersError ? (
-          <div className="text-center py-12">
+          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
             <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Error loading cleaners
+            </h3>
             <p className="text-gray-600">{cleanersError}</p>
           </div>
+        ) : filteredCleaners.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+            <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchQuery || availabilityFilter !== "all"
+                ? "No cleaners found"
+                : "No cleaners yet"}
+            </h3>
+            <p className="text-gray-600">
+              {searchQuery || availabilityFilter !== "all"
+                ? "Try adjusting your search or filter criteria"
+                : "Add your first cleaner to get started"}
+            </p>
+            {!searchQuery &&
+              availabilityFilter === "all" &&
+              permissions?.can_manage_cleaners && (
+                <button
+                  onClick={() => setShowAddCleanerModal(true)}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                >
+                  <UserCheck className="w-5 h-5" />
+                  Add Cleaner
+                </button>
+              )}
+          </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredCleaners.map((cleaner) => (
               <div
                 key={cleaner.id}
-                className="border border-gray-200 rounded-lg p-6"
+                onClick={() => {
+                  setSelectedCleaner(cleaner);
+                  setIsCleanerSidePanelOpen(true);
+                }}
+                className="bg-white border rounded-lg p-5 hover:shadow-md transition-shadow relative cursor-pointer"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {cleaner.user_profile
-                        ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
-                        : "Unknown"}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {cleaner.user_profile?.email}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Star className="w-5 h-5 text-yellow-400 fill-current" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {cleaner.rating.toFixed(1)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Total Jobs:</span>
-                    <span className="font-medium text-gray-900">
-                      {cleaner.total_jobs}
-                    </span>
-                  </div>
-                  {cleaner.experience_years && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Experience:</span>
-                      <span className="font-medium text-gray-900">
-                        {cleaner.experience_years} years
-                      </span>
-                    </div>
-                  )}
-                  {cleaner.hourly_rate && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Hourly Rate:</span>
-                      <span className="font-medium text-gray-900">
-                        ${cleaner.hourly_rate}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center space-x-2 mb-4">
-                  {cleaner.background_check_verified && (
-                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Background Check
-                    </span>
-                  )}
-                  {cleaner.insurance_verified && (
-                    <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Insured
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-2">
+                {/* Delete button - top right */}
+                <div
+                  className="absolute top-4 right-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button
-                    className={`w-full py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                      cleaner.is_available
-                        ? "bg-green-100 text-green-700 hover:bg-green-200"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    {cleaner.is_available ? "Available" : "Unavailable"}
-                  </button>
-                  <button
-                    className="w-full bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center space-x-2"
                     onClick={() =>
                       setDeleteConfirmModal({
                         isOpen: true,
                         cleanerId: cleaner.id,
-                        cleanerName: cleaner.user_profile
-                          ? `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`
-                          : "Unknown",
+                        cleanerName: getCleanerFullName(cleaner),
                       })
                     }
+                    className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center min-w-[44px] min-h-[44px]"
+                    aria-label="Delete Cleaner"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Delete</span>
+                    <Trash2 className="w-5 h-5" />
                   </button>
+                </div>
+
+                {/* Avatar and Name */}
+                <div className="flex items-start gap-3 mb-4 pr-14">
+                  <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-primary-600 font-semibold text-sm">
+                      {getCleanerInitials(cleaner)}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base font-semibold text-gray-900 truncate">
+                      {getCleanerFullName(cleaner)}
+                    </h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          cleaner.is_available
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {cleaner.is_available ? "Available" : "Unavailable"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail className="w-4 h-4 text-gray-400" />
+                    <span className="truncate">
+                      {cleaner.user_profile?.email}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Verification Badges */}
+                {(cleaner.background_check_verified ||
+                  cleaner.insurance_verified) && (
+                  <div className="flex items-center flex-wrap gap-2 mb-4">
+                    {cleaner.background_check_verified && (
+                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Background Check
+                      </span>
+                    )}
+                    {cleaner.insurance_verified && (
+                      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Insured
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Stats */}
+                <div className="flex items-center flex-wrap gap-3 pt-4 border-t border-gray-100">
+                  <div className="flex items-center gap-1.5">
+                    <Star className="w-4 h-4 text-yellow-400 fill-current flex-shrink-0" />
+                    <span className="text-sm font-medium text-gray-900">
+                      {cleaner.rating.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {cleaner.total_jobs} jobs
+                  </div>
+                  {cleaner.hourly_rate && (
+                    <div className="text-sm text-gray-600">
+                      ${cleaner.hourly_rate}/hr
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
-            {filteredCleaners.length === 0 && (
-              <div className="col-span-full text-center py-12">
-                <Users className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">
-                  {cleaners.length === 0
-                    ? "No cleaners found"
-                    : "No cleaners match your search or filter criteria"}
-                </p>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -1180,6 +1289,7 @@ export default function ManagerDashboard() {
             loading={customersLoading}
             error={customersError}
             onRefreshCustomers={refetchCustomers}
+            onCustomerUpdated={updateCustomerInState}
             role="manager"
             canEdit={permissions?.can_edit_customers || false}
           />
@@ -1303,6 +1413,29 @@ export default function ManagerDashboard() {
         message="Are you sure you want to delete this cleaner? This action cannot be undone."
         itemName={deleteConfirmModal.cleanerName}
         isLoading={isDeleting}
+      />
+
+      <CleanerSidePanel
+        isOpen={isCleanerSidePanelOpen}
+        onClose={() => {
+          setIsCleanerSidePanelOpen(false);
+          setSelectedCleaner(null);
+        }}
+        cleaner={selectedCleaner}
+        onDelete={(cleaner) => {
+          setIsCleanerSidePanelOpen(false);
+          setDeleteConfirmModal({
+            isOpen: true,
+            cleanerId: cleaner.id,
+            cleanerName: getCleanerFullName(cleaner),
+          });
+        }}
+        onCleanerUpdated={(updatedCleaner) => {
+          // Update selected cleaner immediately
+          setSelectedCleaner(updatedCleaner);
+          // Update in list state without refetch
+          updateCleanerInState(updatedCleaner.id, updatedCleaner);
+        }}
       />
     </div>
   );

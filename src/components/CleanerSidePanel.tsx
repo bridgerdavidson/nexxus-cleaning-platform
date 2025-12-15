@@ -6,44 +6,57 @@ import {
   User,
   Mail,
   Phone,
-  Edit,
   Edit2,
   Trash2,
-  Settings,
   Star,
   CheckCircle,
   UserCheck,
   Save,
   Loader2,
+  Clock,
+  DollarSign,
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import { TeamMember } from "../hooks/useAdminData";
 import { supabase } from "../lib/supabase";
 
-interface TeamMemberSidePanelProps {
-  isOpen: boolean;
-  onClose: () => void;
-  member: TeamMember | null;
-  onEdit?: (member: TeamMember) => void;
-  onDelete?: (member: TeamMember) => void;
-  onManagePermissions?: (member: TeamMember) => void;
-  onMemberUpdated?: (updatedMember: TeamMember) => void;
+interface CleanerProfile {
+  id: string;
+  user_profile: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone?: string;
+    avatar_url?: string;
+  } | null;
+  rating: number;
+  total_jobs: number;
+  is_available: boolean;
+  experience_years?: number;
+  hourly_rate?: number;
+  background_check_verified: boolean;
+  insurance_verified: boolean;
 }
 
-export default function TeamMemberSidePanel({
+interface CleanerSidePanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+  cleaner: CleanerProfile | null;
+  onDelete?: (cleaner: CleanerProfile) => void;
+  onCleanerUpdated?: (updatedCleaner: CleanerProfile) => void;
+}
+
+export default function CleanerSidePanel({
   isOpen,
   onClose,
-  member,
-  onEdit,
+  cleaner,
   onDelete,
-  onManagePermissions,
-  onMemberUpdated,
-}: TeamMemberSidePanelProps) {
+  onCleanerUpdated,
+}: CleanerSidePanelProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [editedMember, setEditedMember] = useState({
+  const [editedCleaner, setEditedCleaner] = useState({
     first_name: "",
     last_name: "",
     email: "",
@@ -61,17 +74,17 @@ export default function TeamMemberSidePanel({
     }
   }, [isOpen]);
 
-  // Update edited member when member prop changes
+  // Update edited cleaner when cleaner prop changes
   useEffect(() => {
-    if (member) {
-      setEditedMember({
-        first_name: member.user_profile?.first_name || "",
-        last_name: member.user_profile?.last_name || "",
-        email: member.user_profile?.email || "",
-        phone: member.user_profile?.phone || "",
+    if (cleaner) {
+      setEditedCleaner({
+        first_name: cleaner.user_profile?.first_name || "",
+        last_name: cleaner.user_profile?.last_name || "",
+        email: cleaner.user_profile?.email || "",
+        phone: cleaner.user_profile?.phone || "",
       });
     }
-  }, [member]);
+  }, [cleaner]);
 
   // Reset editing state when modal closes
   useEffect(() => {
@@ -80,19 +93,19 @@ export default function TeamMemberSidePanel({
     }
   }, [isOpen]);
 
-  if (!mounted || (!isOpen && !isAnimating) || !member) return null;
+  if (!mounted || (!isOpen && !isAnimating) || !cleaner) return null;
 
   const getInitials = () => {
-    const first = member.user_profile?.first_name?.[0] || "";
-    const last = member.user_profile?.last_name?.[0] || "";
+    const first = cleaner.user_profile?.first_name?.[0] || "";
+    const last = cleaner.user_profile?.last_name?.[0] || "";
     return `${first}${last}`.toUpperCase() || "?";
   };
 
-  const getPermissionsCount = () => {
-    if (member.role !== "manager" || !member.permissions) return null;
-    const enabled = Object.values(member.permissions).filter(Boolean).length;
-    const total = Object.keys(member.permissions).length;
-    return { enabled, total };
+  const getName = () => {
+    if (cleaner.user_profile) {
+      return `${cleaner.user_profile.first_name} ${cleaner.user_profile.last_name}`;
+    }
+    return "Unknown";
   };
 
   const handleClose = () => {
@@ -107,57 +120,55 @@ export default function TeamMemberSidePanel({
   };
 
   const handleSave = async () => {
-    if (!member) return;
+    if (!cleaner || !cleaner.user_profile) return;
 
     setIsSaving(true);
     try {
       const { error, data: updateData } = await supabase
         .from("user_profiles")
         .update({
-          first_name: editedMember.first_name,
-          last_name: editedMember.last_name,
-          email: editedMember.email,
-          phone: editedMember.phone || null,
+          first_name: editedCleaner.first_name,
+          last_name: editedCleaner.last_name,
+          email: editedCleaner.email,
+          phone: editedCleaner.phone || null,
         })
-        .eq("id", member.id)
+        .eq("id", cleaner.id)
         .select()
         .single();
 
       if (error) {
-        console.error("Error updating team member:", error);
+        console.error("Error updating cleaner:", error);
         throw error;
       }
 
       if (!updateData) {
-        console.warn("No rows updated for team member:", member.id);
+        console.warn("No rows updated for cleaner:", cleaner.id);
         alert(
-          "Failed to update team member: No rows were updated. This may be due to RLS policies."
+          "Failed to update cleaner: No rows were updated. This may be due to RLS policies."
         );
         return;
       }
 
-      // Merge updated data with existing member data
-      const updatedMember: TeamMember = {
-        ...member,
-        user_profile: member.user_profile
-          ? {
-              ...member.user_profile,
-              first_name: updateData.first_name,
-              last_name: updateData.last_name,
-              email: updateData.email,
-              phone: updateData.phone,
-            }
-          : null,
+      // Merge updated data with existing cleaner data
+      const updatedCleaner: CleanerProfile = {
+        ...cleaner,
+        user_profile: {
+          ...cleaner.user_profile,
+          first_name: updateData.first_name,
+          last_name: updateData.last_name,
+          email: updateData.email,
+          phone: updateData.phone,
+        },
       };
 
       setIsEditing(false);
-      if (onMemberUpdated) {
-        onMemberUpdated(updatedMember);
+      if (onCleanerUpdated) {
+        onCleanerUpdated(updatedCleaner);
       }
     } catch (error) {
-      console.error("Failed to update team member:", error);
+      console.error("Failed to update cleaner:", error);
       alert(
-        "Failed to update team member: " +
+        "Failed to update cleaner: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
     } finally {
@@ -166,12 +177,12 @@ export default function TeamMemberSidePanel({
   };
 
   const handleCancel = () => {
-    if (member) {
-      setEditedMember({
-        first_name: member.user_profile?.first_name || "",
-        last_name: member.user_profile?.last_name || "",
-        email: member.user_profile?.email || "",
-        phone: member.user_profile?.phone || "",
+    if (cleaner) {
+      setEditedCleaner({
+        first_name: cleaner.user_profile?.first_name || "",
+        last_name: cleaner.user_profile?.last_name || "",
+        email: cleaner.user_profile?.email || "",
+        phone: cleaner.user_profile?.phone || "",
       });
     }
     setIsEditing(false);
@@ -179,17 +190,9 @@ export default function TeamMemberSidePanel({
 
   const handleDelete = () => {
     if (onDelete) {
-      onDelete(member);
+      onDelete(cleaner);
     }
   };
-
-  const handleManagePermissions = () => {
-    if (onManagePermissions) {
-      onManagePermissions(member);
-    }
-  };
-
-  const permissionsCount = getPermissionsCount();
 
   const panel = (
     <div
@@ -208,7 +211,7 @@ export default function TeamMemberSidePanel({
         {/* Header */}
         <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4 sm:p-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">
-            Team Member Details
+            {getName()}'s Profile
           </h2>
           <button
             onClick={handleClose}
@@ -223,9 +226,9 @@ export default function TeamMemberSidePanel({
           {/* Avatar and Name */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4 flex-1">
-              {member.user_profile?.avatar_url ? (
+              {cleaner.user_profile?.avatar_url ? (
                 <img
-                  src={member.user_profile.avatar_url}
+                  src={cleaner.user_profile.avatar_url}
                   alt=""
                   className="w-20 h-20 rounded-full object-cover"
                 />
@@ -243,8 +246,8 @@ export default function TeamMemberSidePanel({
                       <span className="text-gray-400">Editing...</span>
                     ) : (
                       <>
-                        {member.user_profile?.first_name}{" "}
-                        {member.user_profile?.last_name}
+                        {cleaner.user_profile?.first_name}{" "}
+                        {cleaner.user_profile?.last_name}
                       </>
                     )}
                   </h3>
@@ -282,12 +285,12 @@ export default function TeamMemberSidePanel({
                 <div className="flex items-center gap-2 mt-2">
                   <span
                     className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                      member.role === "manager"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-green-100 text-green-700"
+                      cleaner.is_available
+                        ? "bg-green-100 text-green-700"
+                        : "bg-gray-100 text-gray-700"
                     }`}
                   >
-                    {member.role === "manager" ? "Manager" : "Cleaner"}
+                    {cleaner.is_available ? "Available" : "Unavailable"}
                   </span>
                 </div>
               </div>
@@ -310,10 +313,10 @@ export default function TeamMemberSidePanel({
                 {isEditing ? (
                   <input
                     type="text"
-                    value={editedMember.first_name}
+                    value={editedCleaner.first_name}
                     onChange={(e) =>
-                      setEditedMember({
-                        ...editedMember,
+                      setEditedCleaner({
+                        ...editedCleaner,
                         first_name: e.target.value,
                       })
                     }
@@ -321,7 +324,7 @@ export default function TeamMemberSidePanel({
                   />
                 ) : (
                   <p className="text-gray-900 font-medium mt-1">
-                    {member.user_profile?.first_name || "—"}
+                    {cleaner.user_profile?.first_name || "—"}
                   </p>
                 )}
               </div>
@@ -337,10 +340,10 @@ export default function TeamMemberSidePanel({
                 {isEditing ? (
                   <input
                     type="text"
-                    value={editedMember.last_name}
+                    value={editedCleaner.last_name}
                     onChange={(e) =>
-                      setEditedMember({
-                        ...editedMember,
+                      setEditedCleaner({
+                        ...editedCleaner,
                         last_name: e.target.value,
                       })
                     }
@@ -348,7 +351,7 @@ export default function TeamMemberSidePanel({
                   />
                 ) : (
                   <p className="text-gray-900 font-medium mt-1">
-                    {member.user_profile?.last_name || "—"}
+                    {cleaner.user_profile?.last_name || "—"}
                   </p>
                 )}
               </div>
@@ -364,10 +367,10 @@ export default function TeamMemberSidePanel({
                 {isEditing ? (
                   <input
                     type="email"
-                    value={editedMember.email}
+                    value={editedCleaner.email}
                     onChange={(e) =>
-                      setEditedMember({
-                        ...editedMember,
+                      setEditedCleaner({
+                        ...editedCleaner,
                         email: e.target.value,
                       })
                     }
@@ -375,7 +378,7 @@ export default function TeamMemberSidePanel({
                   />
                 ) : (
                   <p className="text-gray-900 font-medium mt-1">
-                    {member.user_profile?.email || "Not provided"}
+                    {cleaner.user_profile?.email || "Not provided"}
                   </p>
                 )}
               </div>
@@ -391,10 +394,10 @@ export default function TeamMemberSidePanel({
                 {isEditing ? (
                   <input
                     type="tel"
-                    value={editedMember.phone}
+                    value={editedCleaner.phone}
                     onChange={(e) =>
-                      setEditedMember({
-                        ...editedMember,
+                      setEditedCleaner({
+                        ...editedCleaner,
                         phone: e.target.value,
                       })
                     }
@@ -403,99 +406,113 @@ export default function TeamMemberSidePanel({
                   />
                 ) : (
                   <p className="text-gray-900 font-medium mt-1">
-                    {member.user_profile?.phone || "Not provided"}
+                    {cleaner.user_profile?.phone || "Not provided"}
                   </p>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Role-specific Information */}
-          {member.role === "cleaner" && member.cleaner_profile && (
-            <div className="space-y-4">
-              <h4 className="text-lg font-semibold text-gray-900">
-                Cleaner Profile
-              </h4>
+          {/* Cleaner Profile Information */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-gray-900">
+              Cleaner Profile
+            </h4>
 
+            {/* Rating */}
+            <div className="flex items-center gap-3">
+              <Star className="w-5 h-5 text-yellow-400 fill-current flex-shrink-0" />
+              <div>
+                <p className="text-sm text-gray-500">Rating</p>
+                <p className="font-medium text-gray-900">
+                  {cleaner.rating.toFixed(1)} / 5.0
+                </p>
+              </div>
+            </div>
+
+            {/* Total Jobs */}
+            <div className="flex items-center gap-3">
+              <UserCheck className="w-5 h-5 text-gray-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-gray-500">Total Jobs</p>
+                <p className="font-medium text-gray-900">
+                  {cleaner.total_jobs}
+                </p>
+              </div>
+            </div>
+
+            {/* Experience */}
+            {cleaner.experience_years && (
               <div className="flex items-center gap-3">
-                <Star className="w-5 h-5 text-yellow-400 fill-current flex-shrink-0" />
+                <Clock className="w-5 h-5 text-gray-500 flex-shrink-0" />
                 <div>
-                  <p className="text-sm text-gray-500">Rating</p>
+                  <p className="text-sm text-gray-500">Experience</p>
                   <p className="font-medium text-gray-900">
-                    {member.cleaner_profile.rating.toFixed(1)} / 5.0
+                    {cleaner.experience_years} years
                   </p>
                 </div>
               </div>
+            )}
 
+            {/* Hourly Rate */}
+            {cleaner.hourly_rate && (
               <div className="flex items-center gap-3">
-                <UserCheck className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                <DollarSign className="w-5 h-5 text-gray-500 flex-shrink-0" />
                 <div>
-                  <p className="text-sm text-gray-500">Total Jobs</p>
+                  <p className="text-sm text-gray-500">Hourly Rate</p>
                   <p className="font-medium text-gray-900">
-                    {member.cleaner_profile.total_jobs}
+                    ${cleaner.hourly_rate}/hr
                   </p>
                 </div>
               </div>
+            )}
 
-              <div className="flex items-center gap-3">
-                <CheckCircle
-                  className={`w-5 h-5 flex-shrink-0 ${
-                    member.cleaner_profile.is_available
-                      ? "text-green-600"
-                      : "text-gray-400"
+            {/* Status */}
+            <div className="flex items-center gap-3">
+              <CheckCircle
+                className={`w-5 h-5 flex-shrink-0 ${
+                  cleaner.is_available ? "text-green-600" : "text-gray-400"
+                }`}
+              />
+              <div>
+                <p className="text-sm text-gray-500">Status</p>
+                <p
+                  className={`font-medium ${
+                    cleaner.is_available ? "text-green-600" : "text-gray-600"
                   }`}
-                />
-                <div>
-                  <p className="text-sm text-gray-500">Status</p>
-                  <p
-                    className={`font-medium ${
-                      member.cleaner_profile.is_available
-                        ? "text-green-600"
-                        : "text-gray-600"
-                    }`}
-                  >
-                    {member.cleaner_profile.is_available
-                      ? "Available"
-                      : "Unavailable"}
-                  </p>
-                </div>
+                >
+                  {cleaner.is_available ? "Available" : "Unavailable"}
+                </p>
               </div>
             </div>
-          )}
 
-          {member.role === "manager" && permissionsCount && (
-            <div className="space-y-4">
-              <h4 className="text-lg font-semibold text-gray-900">
-                Permissions
-              </h4>
-
-              <div className="flex items-center gap-3">
-                <Settings className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-gray-500">Access Level</p>
-                  <p className="font-medium text-gray-900">
-                    {permissionsCount.enabled} of {permissionsCount.total}{" "}
-                    permissions enabled
-                  </p>
+            {/* Verification Badges */}
+            {(cleaner.background_check_verified ||
+              cleaner.insurance_verified) && (
+              <div className="space-y-2 pt-2 border-t border-gray-200">
+                <p className="text-sm text-gray-500">Verification</p>
+                <div className="flex flex-wrap gap-2">
+                  {cleaner.background_check_verified && (
+                    <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Background Check
+                    </span>
+                  )}
+                  {cleaner.insurance_verified && (
+                    <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Insured
+                    </span>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Action Footer */}
         <div className="flex-shrink-0 bg-white border-t border-gray-200 p-4 sm:p-6 shadow-lg space-y-2">
           <div className="flex flex-col lg:flex-row gap-2">
-            {member.role === "manager" && onManagePermissions && (
-              <button
-                onClick={handleManagePermissions}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-blue-500 text-blue-700 bg-transparent rounded-lg hover:bg-blue-50 transition-colors font-medium"
-              >
-                <Settings className="w-4 h-4" />
-                Manage Permissions
-              </button>
-            )}
-
             {onDelete && (
               <button
                 onClick={handleDelete}

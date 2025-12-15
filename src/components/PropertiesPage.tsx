@@ -30,6 +30,10 @@ interface PropertiesPageProps {
   loading: boolean;
   error?: string | null;
   onRefreshProperties?: () => void;
+  onPropertyUpdated?: (
+    propertyId: string,
+    updatedData: Partial<AdminProperty>
+  ) => void;
   onRefreshAppointments?: () => void;
   role: "admin" | "manager";
 }
@@ -39,6 +43,7 @@ export default function PropertiesPage({
   loading,
   error,
   onRefreshProperties,
+  onPropertyUpdated,
   onRefreshAppointments,
   role,
 }: PropertiesPageProps) {
@@ -481,7 +486,26 @@ export default function PropertiesPage({
           setSelectedProperty(null);
         }}
         property={selectedProperty}
-        onRefreshProperties={onRefreshProperties}
+        onPropertyUpdated={(updatedProperty) => {
+          // Update selected property immediately for side panel display
+          setSelectedProperty(updatedProperty);
+          // Update the property in the parent list without refetch
+          if (onPropertyUpdated) {
+            onPropertyUpdated(updatedProperty.id, updatedProperty);
+          } else if (onRefreshProperties) {
+            // Fallback to full refresh if selective update not available
+            onRefreshProperties();
+          }
+          // Only refresh appointments if address changed (appointments show property address)
+          const addressChanged =
+            selectedProperty &&
+            (selectedProperty.address !== updatedProperty.address ||
+              selectedProperty.city !== updatedProperty.city ||
+              selectedProperty.state !== updatedProperty.state);
+          if (addressChanged && onRefreshAppointments) {
+            onRefreshAppointments();
+          }
+        }}
         onRefreshAppointments={onRefreshAppointments}
         role={role}
       />

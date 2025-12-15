@@ -9,6 +9,10 @@ export type OrgRole = 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 export type ServiceType = 'regular' | 'deep' | 'move_out' | 'custom';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+export type PaymentType = 'revenue' | 'expense' | 'refund';
+export type PaymentMethod = 'card' | 'ach' | 'manual';
+export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed';
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 
 // USER PROFILES
 export interface UserProfile {
@@ -115,9 +119,45 @@ export interface Payment {
   appointment_id: string;
   amount: number; // numeric(10,2)
   status: PaymentStatus;
+  payment_type: PaymentType;
+  payment_method: PaymentMethod;
   stripe_payment_intent_id: string | null;
+  notes: string | null;
+  reference: string | null;
   paid_at: string | null;
   created_at: string;
+}
+
+// PAYOUTS
+export interface Payout {
+  id: string;
+  organization_id: string | null;
+  cleaner_id: string; // References cleaner_profiles(id)
+  appointment_id: string; // References appointments(id)
+  amount: number; // numeric(10,2)
+  status: PayoutStatus;
+  stripe_transfer_id: string | null;
+  notes: string | null;
+  approved_at: string | null;
+  paid_at: string | null;
+  created_at: string;
+}
+
+// INVOICES
+export interface Invoice {
+  id: string;
+  organization_id: string | null;
+  payment_id: string | null; // References payments(id)
+  appointment_id: string | null; // References appointments(id)
+  homeowner_id: string; // References user_profiles(id)
+  invoice_number: string;
+  amount: number; // numeric(10,2)
+  status: InvoiceStatus;
+  due_date: string | null; // date
+  paid_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // CONVERSATIONS

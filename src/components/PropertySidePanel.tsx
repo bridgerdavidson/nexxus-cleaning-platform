@@ -25,7 +25,7 @@ interface PropertySidePanelProps {
   isOpen: boolean;
   onClose: () => void;
   property: PropertyCardData | null;
-  onRefreshProperties?: () => void;
+  onPropertyUpdated?: (updatedProperty: PropertyCardData) => void;
   onRefreshAppointments?: () => void;
   role: "admin" | "manager";
 }
@@ -34,7 +34,7 @@ export default function PropertySidePanel({
   isOpen,
   onClose,
   property,
-  onRefreshProperties,
+  onPropertyUpdated,
   onRefreshAppointments,
   role, // eslint-disable-line @typescript-eslint/no-unused-vars
 }: PropertySidePanelProps) {
@@ -105,7 +105,7 @@ export default function PropertySidePanel({
   const handleClose = () => {
     // Don't close if modal is open or if editing
     if (showAddAppointmentModal || isEditing) return;
-    
+
     setIsAnimating(false);
     setTimeout(() => {
       onClose();
@@ -115,7 +115,7 @@ export default function PropertySidePanel({
   const handleBackdropClick = (e: React.MouseEvent) => {
     // Don't close if clicking on the modal or if modal is open
     if (showAddAppointmentModal || isEditing) return;
-    
+
     // Only close if clicking directly on the backdrop (not on children)
     if (e.target === e.currentTarget) {
       handleClose();
@@ -129,10 +129,35 @@ export default function PropertySidePanel({
     const result = await updateProperty(property.id, editedProperty);
     setIsSaving(false);
 
-    if (result.success) {
+    if (result.success && result.data) {
+      // Merge updated data with existing property data to preserve homeowner info
+      const updatedProperty: PropertyCardData = {
+        ...property,
+        name: result.data.name,
+        address: result.data.address,
+        city: result.data.city,
+        state: result.data.state,
+        zip_code: result.data.zip_code,
+        bedrooms: result.data.bedrooms,
+        bathrooms: result.data.bathrooms,
+        square_feet: result.data.square_feet,
+      };
+
+      // Update local edited state immediately
+      setEditedProperty({
+        name: updatedProperty.name || "",
+        address: updatedProperty.address || "",
+        city: updatedProperty.city || "",
+        state: updatedProperty.state || "",
+        zip_code: updatedProperty.zip_code || "",
+        bedrooms: updatedProperty.bedrooms,
+        bathrooms: updatedProperty.bathrooms,
+        square_feet: updatedProperty.square_feet,
+      });
+
       setIsEditing(false);
-      if (onRefreshProperties) {
-        onRefreshProperties();
+      if (onPropertyUpdated) {
+        onPropertyUpdated(updatedProperty);
       }
     } else {
       alert("Failed to update property: " + result.error);
@@ -172,7 +197,9 @@ export default function PropertySidePanel({
         {/* Header */}
         <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Property Details</h2>
+            <h2 className="text-xl font-bold text-gray-900">
+              Property Details
+            </h2>
             <button
               onClick={handleClose}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -228,12 +255,17 @@ export default function PropertySidePanel({
                     type="text"
                     value={editedProperty.name}
                     onChange={(e) =>
-                      setEditedProperty({ ...editedProperty, name: e.target.value })
+                      setEditedProperty({
+                        ...editedProperty,
+                        name: e.target.value,
+                      })
                     }
                     className="input-field mt-1 py-1.5"
                   />
                 ) : (
-                  <p className="font-medium text-gray-900 text-lg">{property.name}</p>
+                  <p className="font-medium text-gray-900 text-lg">
+                    {property.name}
+                  </p>
                 )}
               </div>
             </div>
@@ -249,7 +281,10 @@ export default function PropertySidePanel({
                     type="text"
                     value={editedProperty.address}
                     onChange={(e) =>
-                      setEditedProperty({ ...editedProperty, address: e.target.value })
+                      setEditedProperty({
+                        ...editedProperty,
+                        address: e.target.value,
+                      })
                     }
                     placeholder="Street address"
                     className="input-field py-1.5"
@@ -261,7 +296,10 @@ export default function PropertySidePanel({
                       type="text"
                       value={editedProperty.city}
                       onChange={(e) =>
-                        setEditedProperty({ ...editedProperty, city: e.target.value })
+                        setEditedProperty({
+                          ...editedProperty,
+                          city: e.target.value,
+                        })
                       }
                       placeholder="City"
                       className="input-field py-1.5"
@@ -272,7 +310,10 @@ export default function PropertySidePanel({
                       type="text"
                       value={editedProperty.state}
                       onChange={(e) =>
-                        setEditedProperty({ ...editedProperty, state: e.target.value })
+                        setEditedProperty({
+                          ...editedProperty,
+                          state: e.target.value,
+                        })
                       }
                       placeholder="State"
                       className="input-field py-1.5"
@@ -284,7 +325,10 @@ export default function PropertySidePanel({
                     type="text"
                     value={editedProperty.zip_code}
                     onChange={(e) =>
-                      setEditedProperty({ ...editedProperty, zip_code: e.target.value })
+                      setEditedProperty({
+                        ...editedProperty,
+                        zip_code: e.target.value,
+                      })
                     }
                     placeholder="ZIP Code"
                     className="input-field py-1.5"
@@ -295,7 +339,9 @@ export default function PropertySidePanel({
               <div className="flex items-start gap-2">
                 <MapPin className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium text-gray-900">{getFullAddress()}</p>
+                  <p className="font-medium text-gray-900">
+                    {getFullAddress()}
+                  </p>
                 </div>
               </div>
             )}
@@ -318,7 +364,9 @@ export default function PropertySidePanel({
                       onChange={(e) =>
                         setEditedProperty({
                           ...editedProperty,
-                          bedrooms: e.target.value ? parseInt(e.target.value) : null,
+                          bedrooms: e.target.value
+                            ? parseInt(e.target.value)
+                            : null,
                         })
                       }
                       placeholder="—"
@@ -333,7 +381,9 @@ export default function PropertySidePanel({
                       onChange={(e) =>
                         setEditedProperty({
                           ...editedProperty,
-                          bathrooms: e.target.value ? parseInt(e.target.value) : null,
+                          bathrooms: e.target.value
+                            ? parseInt(e.target.value)
+                            : null,
                         })
                       }
                       placeholder="—"
@@ -348,7 +398,9 @@ export default function PropertySidePanel({
                       onChange={(e) =>
                         setEditedProperty({
                           ...editedProperty,
-                          square_feet: e.target.value ? parseInt(e.target.value) : null,
+                          square_feet: e.target.value
+                            ? parseInt(e.target.value)
+                            : null,
                         })
                       }
                       placeholder="—"
@@ -403,7 +455,9 @@ export default function PropertySidePanel({
               <div className="flex items-start gap-2">
                 <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium text-gray-900">{getHomeownerName()}</p>
+                  <p className="font-medium text-gray-900">
+                    {getHomeownerName()}
+                  </p>
                   {property.homeowner.email && (
                     <div className="flex items-center gap-1 mt-1">
                       <Mail className="w-4 h-4 text-gray-400" />
@@ -437,10 +491,7 @@ export default function PropertySidePanel({
           onClose={() => setShowAddAppointmentModal(false)}
           onAppointmentCreated={() => {
             setShowAddAppointmentModal(false);
-            // Refresh both properties and appointments
-            if (onRefreshProperties) {
-              onRefreshProperties();
-            }
+            // Refresh appointments
             if (onRefreshAppointments) {
               onRefreshAppointments();
             }
@@ -454,4 +505,3 @@ export default function PropertySidePanel({
 
   return createPortal(panel, document.body);
 }
-

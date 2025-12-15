@@ -24,8 +24,9 @@ interface BookingsPageProps {
   onCancelAppointment: (appointmentId: string) => Promise<void>;
   onDeleteAppointment: (appointmentId: string) => Promise<void>;
   onMarkComplete: (appointmentId: string) => Promise<void>;
-  onEdit?: (appointmentId: string) => void;
   onRefreshAppointments?: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
   role: "admin" | "manager";
   canEdit?: boolean;
 }
@@ -36,8 +37,8 @@ export default function BookingsPage({
   onCancelAppointment,
   onDeleteAppointment,
   onMarkComplete,
-  onEdit,
   onRefreshAppointments,
+  onAppointmentUpdated,
   role,
   canEdit = true,
 }: BookingsPageProps) {
@@ -497,7 +498,17 @@ export default function BookingsPage({
         appointment={selectedAppointment}
         onCancel={canEdit ? handleCancelFromPanel : undefined}
         onMarkComplete={canEdit ? handleMarkComplete : undefined}
-        onEdit={canEdit ? onEdit : undefined}
+        onAppointmentUpdated={(updatedAppointment) => {
+          // Update selected appointment immediately for side panel display
+          setSelectedAppointment(updatedAppointment);
+          // Update the appointment in the parent list without refetch
+          if (onAppointmentUpdated) {
+            onAppointmentUpdated(updatedAppointment.id, updatedAppointment);
+          } else if (onRefreshAppointments) {
+            // Fallback to full refresh if selective update not available
+            onRefreshAppointments();
+          }
+        }}
         onDelete={
           canEdit
             ? async (id) => {

@@ -11,6 +11,8 @@ export interface ManagerAppointment {
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   total_price: number;
+  special_requests?: string | null;
+  notes?: string | null;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -40,6 +42,7 @@ export interface ManagerCleaner {
     first_name: string;
     last_name: string;
     email: string;
+    phone?: string;
   } | null;
   rating: number;
   total_jobs: number;
@@ -106,6 +109,8 @@ export function useManagerAppointments() {
           scheduled_time,
           status,
           total_price,
+          special_requests,
+          notes,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -165,7 +170,18 @@ export function useManagerAppointments() {
     fetchAppointments();
   }, [fetchAppointments]);
 
-  return { appointments, loading, error, refetch };
+  // Update a single appointment in state without refetching
+  const updateAppointmentInState = useCallback((appointmentId: string, updatedData: Partial<ManagerAppointment>) => {
+    setAppointments(prevAppointments => 
+      prevAppointments.map(appointment => 
+        appointment.id === appointmentId 
+          ? { ...appointment, ...updatedData }
+          : appointment
+      )
+    );
+  }, []);
+
+  return { appointments, loading, error, refetch, updateAppointmentInState };
 }
 
 export function useManagerCleaners() {
@@ -193,7 +209,8 @@ export function useManagerCleaners() {
           user_profile:user_profiles!id(
             first_name,
             last_name,
-            email
+            email,
+            phone
           )
         `)
         .eq('organization_id', currentOrganizationId)
@@ -219,7 +236,18 @@ export function useManagerCleaners() {
     fetchCleaners();
   }, [fetchCleaners]);
 
-  return { cleaners, loading, error, refetch: fetchCleaners };
+  // Update a single cleaner in state without refetching
+  const updateCleanerInState = useCallback((cleanerId: string, updatedData: Partial<ManagerCleaner>) => {
+    setCleaners(prevCleaners => 
+      prevCleaners.map(cleaner => 
+        cleaner.id === cleanerId 
+          ? { ...cleaner, ...updatedData }
+          : cleaner
+      )
+    );
+  }, []);
+
+  return { cleaners, loading, error, refetch: fetchCleaners, updateCleanerInState };
 }
 
 export function useManagerPayments() {
@@ -357,6 +385,94 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     if (error) throw error;
     return { success: true };
   } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };
+  }
+}
+
+// Helper function to update a full appointment
+export async function updateAppointment(
+  appointmentId: string,
+  data: {
+    scheduled_date?: string;
+    scheduled_time?: string;
+    service_type_id?: string;
+    property_id?: string;
+    cleaner_id?: string | null;
+    total_price?: number;
+    special_requests?: string | null;
+    notes?: string | null;
+    status?: string;
+  }
+): Promise<{ success: boolean; data?: ManagerAppointment; error?: string }> {
+  try {
+    const { error, data: updateData } = await supabase
+      .from('appointments')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', appointmentId)
+      .select(`
+        id,
+        scheduled_date,
+        scheduled_time,
+        status,
+        total_price,
+        special_requests,
+        notes,
+        homeowner:user_profiles!homeowner_id(
+          first_name,
+          last_name,
+          email
+        ),
+        cleaner_profile:cleaner_profiles(
+          user_profile:user_profiles!id(
+            first_name,
+            last_name
+          )
+        ),
+        property:properties(
+          name,
+          address,
+          city,
+          state
+        ),
+        service_type:service_types(
+          name,
+          description
+        )
+      `)
+      .single();
+
+    if (error) {
+      console.error('Error updating appointment:', error);
+      throw error;
+    }
+    
+    if (!updateData) {
+      console.warn('No rows updated for appointment:', appointmentId);
+      return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
+    }
+    
+    // Transform the data to match our interface
+    const transformedData = {
+      ...updateData,
+      homeowner: Array.isArray(updateData.homeowner) ? updateData.homeowner[0] : updateData.homeowner,
+      property: Array.isArray(updateData.property) ? updateData.property[0] : updateData.property,
+      service_type: Array.isArray(updateData.service_type) ? updateData.service_type[0] : updateData.service_type,
+      cleaner_profile: updateData.cleaner_profile && Array.isArray(updateData.cleaner_profile) 
+        ? {
+            ...updateData.cleaner_profile[0],
+            user_profile: Array.isArray(updateData.cleaner_profile[0]?.user_profile) 
+              ? updateData.cleaner_profile[0].user_profile[0] 
+              : updateData.cleaner_profile[0]?.user_profile
+          }
+        : updateData.cleaner_profile
+    };
+    
+    return { success: true, data: transformedData as ManagerAppointment };
+  } catch (error) {
+    console.error('Failed to update appointment:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };
   }
 }

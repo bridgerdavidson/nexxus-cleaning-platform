@@ -33,6 +33,10 @@ interface CustomersPageProps {
   loading: boolean;
   error?: string | null;
   onRefreshCustomers?: () => void;
+  onCustomerUpdated?: (
+    customerId: string,
+    updatedData: Partial<AdminCustomer>
+  ) => void;
   onRefreshAppointments?: () => void;
   onRefreshProperties?: () => void;
   role: "admin" | "manager";
@@ -44,6 +48,7 @@ export default function CustomersPage({
   loading,
   error,
   onRefreshCustomers,
+  onCustomerUpdated,
   onRefreshAppointments,
   onRefreshProperties,
   role,
@@ -581,16 +586,28 @@ export default function CustomersPage({
           setSelectedCustomer(null);
         }}
         customer={selectedCustomer}
-        onCustomerUpdated={() => {
-          // Refresh customers, appointments, and properties when customer is updated
-          if (onRefreshCustomers) {
+        onCustomerUpdated={(updatedCustomer) => {
+          // Update selected customer immediately for side panel display
+          setSelectedCustomer(updatedCustomer);
+          // Update the customer in the parent list without refetch
+          if (onCustomerUpdated) {
+            onCustomerUpdated(updatedCustomer.id, updatedCustomer);
+          } else if (onRefreshCustomers) {
+            // Fallback to full refresh if selective update not available
             onRefreshCustomers();
           }
-          if (onRefreshAppointments) {
-            onRefreshAppointments();
-          }
-          if (onRefreshProperties) {
-            onRefreshProperties();
+          // Only refresh related data if name changed (appointments/properties show customer name)
+          const nameChanged =
+            selectedCustomer &&
+            (selectedCustomer.first_name !== updatedCustomer.first_name ||
+              selectedCustomer.last_name !== updatedCustomer.last_name);
+          if (nameChanged) {
+            if (onRefreshAppointments) {
+              onRefreshAppointments();
+            }
+            if (onRefreshProperties) {
+              onRefreshProperties();
+            }
           }
         }}
         onRefreshAppointments={onRefreshAppointments}

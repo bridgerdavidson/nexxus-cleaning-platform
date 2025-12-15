@@ -98,18 +98,13 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           }
         }
       )
-      .subscribe((status, err) => {
-        console.log(`[useConversations] Subscription status: ${status}`, err ? err : '');
+      .subscribe((status) => {
+        console.log(`[useConversations] Subscription status: ${status}`);
         if (status === 'SUBSCRIBED') {
           console.log('[useConversations] Successfully subscribed to conversations and messages');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          if (err) {
-            console.error('[useConversations] Subscription error:', err);
-            setError(`Subscription error: ${err instanceof Error ? err.message : String(err)}`);
-          } else {
-            console.error(`[useConversations] Subscription error: ${status}`);
-            setError(`Subscription error: ${status}`);
-          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.error(`[useConversations] Subscription error: ${status}`);
+          setError(`Subscription error: ${status}`);
         }
       });
 

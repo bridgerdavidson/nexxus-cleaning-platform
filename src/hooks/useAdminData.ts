@@ -10,6 +10,8 @@ export interface AdminAppointment {
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   total_price: number;
+  special_requests?: string | null;
+  notes?: string | null;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -39,6 +41,7 @@ export interface AdminCleaner {
     first_name: string;
     last_name: string;
     email: string;
+    phone?: string;
   } | null;
   rating: number;
   total_jobs: number;
@@ -117,6 +120,8 @@ export function useAdminAppointments() {
           scheduled_time,
           status,
           total_price,
+          special_requests,
+          notes,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -176,7 +181,18 @@ export function useAdminAppointments() {
     fetchAppointments();
   }, [fetchAppointments]);
 
-  return { appointments, loading, error, refetch };
+  // Update a single appointment in state without refetching
+  const updateAppointmentInState = useCallback((appointmentId: string, updatedData: Partial<AdminAppointment>) => {
+    setAppointments(prevAppointments => 
+      prevAppointments.map(appointment => 
+        appointment.id === appointmentId 
+          ? { ...appointment, ...updatedData }
+          : appointment
+      )
+    );
+  }, []);
+
+  return { appointments, loading, error, refetch, updateAppointmentInState };
 }
 
 export function useAdminCleaners() {
@@ -204,7 +220,8 @@ export function useAdminCleaners() {
           user_profile:user_profiles!id(
             first_name,
             last_name,
-            email
+            email,
+            phone
           )
         `)
         .eq('organization_id', currentOrganizationId)
@@ -230,7 +247,18 @@ export function useAdminCleaners() {
     fetchCleaners();
   }, [fetchCleaners]);
 
-  return { cleaners, loading, error, refetch: fetchCleaners };
+  // Update a single cleaner in state without refetching
+  const updateCleanerInState = useCallback((cleanerId: string, updatedData: Partial<AdminCleaner>) => {
+    setCleaners(prevCleaners => 
+      prevCleaners.map(cleaner => 
+        cleaner.id === cleanerId 
+          ? { ...cleaner, ...updatedData }
+          : cleaner
+      )
+    );
+  }, []);
+
+  return { cleaners, loading, error, refetch: fetchCleaners, updateCleanerInState };
 }
 
 export function useAdminStats() {
@@ -355,64 +383,298 @@ export function useAdminPayments() {
   const [error, setError] = useState<string | null>(null);
   const { user, currentOrganizationId } = useAuth();
 
+  const fetchPayments = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('payments')
+        .select(`
+          id,
+          amount,
+          status,
+          payment_type,
+          payment_method,
+          reference,
+          notes,
+          paid_at,
+          created_at,
+          appointment:appointments(
+            scheduled_date,
+            homeowner:user_profiles!homeowner_id(
+              first_name,
+              last_name
+            ),
+            service_type:service_types(
+              name
+            )
+          )
+        `)
+        .eq('organization_id', currentOrganizationId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(payment => ({
+        ...payment,
+        appointment: Array.isArray(payment.appointment) 
+          ? {
+              ...payment.appointment[0],
+              homeowner: Array.isArray(payment.appointment[0]?.homeowner) 
+                ? payment.appointment[0].homeowner[0] 
+                : payment.appointment[0]?.homeowner,
+              service_type: Array.isArray(payment.appointment[0]?.service_type) 
+                ? payment.appointment[0].service_type[0] 
+                : payment.appointment[0]?.service_type
+            }
+          : payment.appointment
+      }));
+      
+      setPayments(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch payments');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
+
+  return { payments, loading, error, refetch: fetchPayments };
+}
+
+export interface AdminPayout {
+  id: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'paid' | 'failed';
+  approved_at?: string;
+  paid_at?: string;
+  created_at: string;
+  notes?: string;
+  cleaner: {
+    first_name: string;
+    last_name: string;
+  } | null;
+  appointment: {
+    scheduled_date: string;
+    id: string;
+  } | null;
+}
+
+export function useAdminPayouts() {
+  const [payouts, setPayouts] = useState<AdminPayout[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchPayouts = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('payouts')
+        .select(`
+          id,
+          amount,
+          status,
+          approved_at,
+          paid_at,
+          created_at,
+          notes,
+          cleaner:cleaner_profiles!cleaner_id(
+            user_profile:user_profiles(
+              first_name,
+              last_name
+            )
+          ),
+          appointment:appointments(
+            id,
+            scheduled_date
+          )
+        `)
+        .eq('organization_id', currentOrganizationId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(payout => {
+        const cleanerData = Array.isArray(payout.cleaner) ? payout.cleaner[0] : payout.cleaner;
+        const userProfile = cleanerData?.user_profile;
+        const userProfileData = Array.isArray(userProfile) ? userProfile[0] : userProfile;
+        
+        return {
+          ...payout,
+          cleaner: userProfileData || null,
+          appointment: Array.isArray(payout.appointment) 
+            ? payout.appointment[0] 
+            : payout.appointment
+        };
+      });
+      
+      setPayouts(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch payouts');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchPayouts();
+  }, [fetchPayouts]);
+
+  return { payouts, loading, error, refetch: fetchPayouts };
+}
+
+export interface AdminInvoice {
+  id: string;
+  invoice_number: string;
+  amount: number;
+  status: 'draft' | 'sent' | 'paid' | 'cancelled';
+  due_date?: string;
+  paid_at?: string;
+  created_at: string;
+  notes?: string;
+  homeowner: {
+    first_name: string;
+    last_name: string;
+    email: string;
+  } | null;
+}
+
+export function useAdminInvoices() {
+  const [invoices, setInvoices] = useState<AdminInvoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchInvoices = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) return;
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          id,
+          invoice_number,
+          amount,
+          status,
+          due_date,
+          paid_at,
+          created_at,
+          notes,
+          homeowner:user_profiles!homeowner_id(
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .eq('organization_id', currentOrganizationId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(invoice => ({
+        ...invoice,
+        homeowner: Array.isArray(invoice.homeowner) 
+          ? invoice.homeowner[0] 
+          : invoice.homeowner
+      }));
+      
+      setInvoices(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch invoices');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
+
+  return { invoices, loading, error, refetch: fetchInvoices };
+}
+
+export interface PaymentStats {
+  totalRevenue: number;
+  pendingPayouts: number;
+  thisMonthRevenue: number;
+}
+
+export function usePaymentStats() {
+  const [stats, setStats] = useState<PaymentStats>({
+    totalRevenue: 0,
+    pendingPayouts: 0,
+    thisMonthRevenue: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const { user, currentOrganizationId } = useAuth();
+
   useEffect(() => {
     if (!user?.id || !currentOrganizationId) return;
 
-    const fetchPayments = async () => {
+    const fetchStats = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase
-          .from('payments')
-          .select(`
-            id,
-            amount,
-            status,
-            paid_at,
-            created_at,
-            appointment:appointments(
-              scheduled_date,
-              homeowner:user_profiles!homeowner_id(
-                first_name,
-                last_name
-              ),
-              service_type:service_types(
-                name
-              )
-            )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        // Get total revenue from payments (status = 'paid' and type = 'revenue')
+        const { data: revenueData } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('organization_id', currentOrganizationId)
+          .eq('status', 'paid')
+          .eq('payment_type', 'revenue');
+
+        const totalRevenue = (revenueData || []).reduce((sum, p) => sum + Number(p.amount), 0);
+
+        // Get pending payouts
+        const { data: payoutsData } = await supabase
+          .from('payouts')
+          .select('amount')
+          .eq('organization_id', currentOrganizationId)
+          .eq('status', 'pending');
+
+        const pendingPayouts = (payoutsData || []).reduce((sum, p) => sum + Number(p.amount), 0);
+
+        // Get this month's revenue
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(payment => ({
-          ...payment,
-          appointment: Array.isArray(payment.appointment) 
-            ? {
-                ...payment.appointment[0],
-                homeowner: Array.isArray(payment.appointment[0]?.homeowner) 
-                  ? payment.appointment[0].homeowner[0] 
-                  : payment.appointment[0]?.homeowner,
-                service_type: Array.isArray(payment.appointment[0]?.service_type) 
-                  ? payment.appointment[0].service_type[0] 
-                  : payment.appointment[0]?.service_type
-              }
-            : payment.appointment
-        }));
-        
-        setPayments(transformedData);
+        const { data: monthData } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('organization_id', currentOrganizationId)
+          .eq('status', 'paid')
+          .eq('payment_type', 'revenue')
+          .gte('created_at', firstDayOfMonth);
+
+        const thisMonthRevenue = (monthData || []).reduce((sum, p) => sum + Number(p.amount), 0);
+
+        setStats({
+          totalRevenue: Math.round(totalRevenue),
+          pendingPayouts: Math.round(pendingPayouts),
+          thisMonthRevenue: Math.round(thisMonthRevenue),
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch payments');
+        console.error('Failed to fetch payment stats:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPayments();
+    fetchStats();
   }, [user?.id, currentOrganizationId]);
 
-  return { payments, loading, error };
+  return { stats, loading };
 }
 
 export function useAdminMessages() {
@@ -484,6 +746,94 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
     if (error) throw error;
     return { success: true };
   } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };
+  }
+}
+
+// Helper function to update a full appointment
+export async function updateAppointment(
+  appointmentId: string,
+  data: {
+    scheduled_date?: string;
+    scheduled_time?: string;
+    service_type_id?: string;
+    property_id?: string;
+    cleaner_id?: string | null;
+    total_price?: number;
+    special_requests?: string | null;
+    notes?: string | null;
+    status?: string;
+  }
+): Promise<{ success: boolean; data?: AdminAppointment; error?: string }> {
+  try {
+    const { error, data: updateData } = await supabase
+      .from('appointments')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', appointmentId)
+      .select(`
+        id,
+        scheduled_date,
+        scheduled_time,
+        status,
+        total_price,
+        special_requests,
+        notes,
+        homeowner:user_profiles!homeowner_id(
+          first_name,
+          last_name,
+          email
+        ),
+        cleaner_profile:cleaner_profiles(
+          user_profile:user_profiles!id(
+            first_name,
+            last_name
+          )
+        ),
+        property:properties(
+          name,
+          address,
+          city,
+          state
+        ),
+        service_type:service_types(
+          name,
+          description
+        )
+      `)
+      .single();
+
+    if (error) {
+      console.error('Error updating appointment:', error);
+      throw error;
+    }
+    
+    if (!updateData) {
+      console.warn('No rows updated for appointment:', appointmentId);
+      return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
+    }
+    
+    // Transform the data to match our interface
+    const transformedData = {
+      ...updateData,
+      homeowner: Array.isArray(updateData.homeowner) ? updateData.homeowner[0] : updateData.homeowner,
+      property: Array.isArray(updateData.property) ? updateData.property[0] : updateData.property,
+      service_type: Array.isArray(updateData.service_type) ? updateData.service_type[0] : updateData.service_type,
+      cleaner_profile: updateData.cleaner_profile && Array.isArray(updateData.cleaner_profile) 
+        ? {
+            ...updateData.cleaner_profile[0],
+            user_profile: Array.isArray(updateData.cleaner_profile[0]?.user_profile) 
+              ? updateData.cleaner_profile[0].user_profile[0] 
+              : updateData.cleaner_profile[0]?.user_profile
+          }
+        : updateData.cleaner_profile
+    };
+    
+    return { success: true, data: transformedData as AdminAppointment };
+  } catch (error) {
+    console.error('Failed to update appointment:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };
   }
 }
@@ -713,7 +1063,18 @@ export function useAdminCustomers() {
     fetchCustomers();
   }, [fetchCustomers]);
 
-  return { customers, loading, error, refetch: fetchCustomers };
+  // Update a single customer in state without refetching
+  const updateCustomerInState = useCallback((customerId: string, updatedData: Partial<AdminCustomer>) => {
+    setCustomers(prevCustomers => 
+      prevCustomers.map(customer => 
+        customer.id === customerId 
+          ? { ...customer, ...updatedData }
+          : customer
+      )
+    );
+  }, []);
+
+  return { customers, loading, error, refetch: fetchCustomers, updateCustomerInState };
 }
 
 export function useCustomerDetails(customerId: string | null) {
@@ -795,19 +1156,35 @@ export function useCustomerDetails(customerId: string | null) {
 export async function updateCustomer(
   customerId: string, 
   data: { first_name?: string; last_name?: string; email?: string; phone?: string }
-) {
+): Promise<{ success: boolean; data?: AdminCustomer; error?: string }> {
   try {
-    const { error } = await supabase
+    const { error, data: updateData } = await supabase
       .from('user_profiles')
       .update({
         ...data,
         updated_at: new Date().toISOString()
       })
-      .eq('id', customerId);
+      .eq('id', customerId)
+      .select('id, first_name, last_name, email, phone, created_at')
+      .single();
 
-    if (error) throw error;
-    return { success: true };
+    if (error) {
+      console.error('Error updating customer:', error);
+      throw error;
+    }
+    
+    if (!updateData) {
+      console.warn('No rows updated for customer:', customerId);
+      return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
+    }
+    
+    // Return full customer data
+    return { 
+      success: true, 
+      data: updateData as AdminCustomer 
+    };
   } catch (error) {
+    console.error('Failed to update customer:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update customer' };
   }
 }
@@ -955,7 +1332,18 @@ export function useAdminProperties() {
     fetchProperties();
   }, [fetchProperties]);
 
-  return { properties, loading, error, refetch };
+  // Update a single property in state without refetching
+  const updatePropertyInState = useCallback((propertyId: string, updatedData: Partial<AdminProperty>) => {
+    setProperties(prevProperties => 
+      prevProperties.map(property => 
+        property.id === propertyId 
+          ? { ...property, ...updatedData }
+          : property
+      )
+    );
+  }, []);
+
+  return { properties, loading, error, refetch, updatePropertyInState };
 }
 
 // Helper function to update a property
@@ -973,19 +1361,58 @@ export async function updateProperty(
     special_instructions?: string | null;
     access_instructions?: string | null;
   }
-) {
+): Promise<{ success: boolean; data?: AdminProperty; error?: string }> {
   try {
-    const { error } = await supabase
+    const { error, data: updateData } = await supabase
       .from('properties')
       .update({
         ...data,
         updated_at: new Date().toISOString()
       })
-      .eq('id', propertyId);
+      .eq('id', propertyId)
+      .select(`
+        id,
+        name,
+        address,
+        city,
+        state,
+        zip_code,
+        bedrooms,
+        bathrooms,
+        square_feet,
+        special_instructions,
+        access_instructions,
+        created_at,
+        updated_at,
+        owner_id,
+        homeowner:user_profiles!owner_id(
+          id,
+          first_name,
+          last_name,
+          email
+        )
+      `)
+      .single();
 
-    if (error) throw error;
-    return { success: true };
+    if (error) {
+      console.error('Error updating property:', error);
+      throw error;
+    }
+    
+    if (!updateData) {
+      console.warn('No rows updated for property:', propertyId);
+      return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
+    }
+    
+    // Transform homeowner if it's an array
+    const transformedData = {
+      ...updateData,
+      homeowner: Array.isArray(updateData.homeowner) ? updateData.homeowner[0] : updateData.homeowner
+    };
+    
+    return { success: true, data: transformedData as AdminProperty };
   } catch (error) {
+    console.error('Failed to update property:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update property' };
   }
 }
@@ -1246,7 +1673,18 @@ export function useAdminTeamMembers() {
     fetchTeamMembers();
   }, [fetchTeamMembers]);
 
-  return { teamMembers, loading, error, refetch };
+  // Update a single team member in state without refetching
+  const updateTeamMemberInState = useCallback((memberId: string, updatedData: Partial<TeamMember>) => {
+    setTeamMembers(prevMembers => 
+      prevMembers.map(member => 
+        member.id === memberId 
+          ? { ...member, ...updatedData }
+          : member
+      )
+    );
+  }, []);
+
+  return { teamMembers, loading, error, refetch, updateTeamMemberInState };
 }
 
 // Helper function to update manager permissions

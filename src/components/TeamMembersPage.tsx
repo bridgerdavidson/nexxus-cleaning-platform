@@ -28,6 +28,7 @@ interface TeamMembersPageProps {
   loading: boolean;
   error?: string | null;
   onRefresh?: () => void;
+  onMemberUpdated?: (memberId: string, updatedData: Partial<TeamMember>) => void;
 }
 
 export default function TeamMembersPage({
@@ -35,6 +36,7 @@ export default function TeamMembersPage({
   loading,
   error,
   onRefresh,
+  onMemberUpdated,
 }: TeamMembersPageProps) {
   const { currentOrganizationId } = useAuth();
 
@@ -495,8 +497,16 @@ export default function TeamMembersPage({
         member={selectedMember}
         onDelete={(member) => handleDeleteClick(member)}
         onManagePermissions={(member) => handleManagePermissions(member)}
-        onMemberUpdated={() => {
-          if (onRefresh) onRefresh();
+        onMemberUpdated={(updatedMember) => {
+          // Update selected member immediately for side panel display
+          setSelectedMember(updatedMember);
+          // Update the member in the parent list without refetch
+          if (onMemberUpdated) {
+            onMemberUpdated(updatedMember.id, updatedMember);
+          } else if (onRefresh) {
+            // Fallback to full refresh if selective update not available
+            onRefresh();
+          }
         }}
       />
     </div>
