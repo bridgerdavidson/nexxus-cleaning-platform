@@ -16,6 +16,7 @@ import {
   DollarSign,
   ChevronRight,
   AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 import {
   AdminCustomer,
@@ -250,59 +251,74 @@ export default function CustomersPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-4xl font-bold text-gray-900">Customers</h2>
-          <p className="text-gray-600 mt-1">
+          <p className="text-gray-600 mt-1 hidden md:block">
             Manage your customer profiles and view their information
           </p>
         </div>
         {canEdit && (
           <button
             onClick={() => setShowAddCustomerModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
           >
             <Plus className="w-5 h-5" />
-            Add New Customer
+            <span>New</span>
           </button>
         )}
       </div>
 
-      {/* Search, Filter and Select Bar */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        {/* Search Input */}
-        <div className="flex-1 relative">
+      {/* Search Input - Own line on mobile */}
+      <div className="flex-1 relative md:hidden">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          placeholder="Search by name, email, or phone..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+        />
+      </div>
+
+      {/* Filters Row - Mobile: Filters and Select Many inline, Desktop: All in one line with search */}
+      <div className="flex flex-row gap-3 overflow-x-auto">
+        {/* Search Input - Desktop only (in same line as filters) */}
+        <div className="hidden md:flex flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
             placeholder="Search by name, email, or phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
           />
         </div>
 
         {/* Sort Dropdown */}
-        <select
-          value={sortBy}
-          onChange={(e) =>
-            setSortBy(e.target.value as "name" | "recent" | "spent")
-          }
-          className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-        >
-          <option value="recent">Most Recent</option>
-          <option value="name">Name (A-Z)</option>
-          <option value="spent">Highest Spent</option>
-        </select>
+        <div className="relative flex-shrink-0 min-w-[140px]">
+          <select
+            value={sortBy}
+            onChange={(e) =>
+              setSortBy(e.target.value as "name" | "recent" | "spent")
+            }
+            className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+          >
+            <option value="recent">Most Recent</option>
+            <option value="name">Name (A-Z)</option>
+            <option value="spent">Highest Spent</option>
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
 
         {/* Select Many Button - Only show if can edit */}
         {canEdit && (
           <button
             onClick={toggleSelectMode}
-            className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
+            className={`px-4 py-2.5 rounded-full font-medium transition-colors whitespace-nowrap border border-gray-300 flex-shrink-0 ${
               isSelectMode
-                ? "bg-gray-600 text-white hover:bg-gray-700"
-                : "bg-primary-600 text-white hover:bg-primary-700"
+                ? "bg-gray-600 text-white hover:bg-gray-700 border-gray-600"
+                : "bg-white text-gray-700 hover:bg-gray-50"
             }`}
           >
             {isSelectMode ? "Cancel Selection" : "Select Many"}

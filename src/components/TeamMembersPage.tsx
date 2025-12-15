@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Star,
   CheckCircle,
+  ChevronDown,
 } from "lucide-react";
 import { TeamMember, deleteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
@@ -180,48 +181,63 @@ export default function TeamMembersPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Team Members</h2>
-          <p className="text-gray-600 mt-1">
+          <h2 className="text-4xl font-bold text-gray-900">Team Members</h2>
+          <p className="text-gray-600 mt-1 hidden md:block">
             Manage your team of cleaners and managers
           </p>
         </div>
         <button
           onClick={() => setShowAddTeamMemberModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
         >
           <Plus className="w-5 h-5" />
-          Add Team Member
+          <span>New</span>
         </button>
       </div>
 
-      {/* Search and Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        {/* Search Input */}
-        <div className="flex-1 relative">
+      {/* Search Input - Own line on mobile */}
+      <div className="flex-1 relative md:hidden">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          placeholder="Search by name, email, or phone..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+        />
+      </div>
+
+      {/* Filters Row - Mobile: Filters inline, Desktop: All in one line with search */}
+      <div className="flex flex-row gap-3 overflow-x-auto">
+        {/* Search Input - Desktop only (in same line as filters) */}
+        <div className="hidden md:flex flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
             placeholder="Search by name, email, or phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
           />
         </div>
 
         {/* Role Filter Dropdown */}
-        <select
-          value={roleFilter}
-          onChange={(e) =>
-            setRoleFilter(e.target.value as "all" | "cleaner" | "manager")
-          }
-          className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-        >
-          <option value="all">All Roles</option>
-          <option value="cleaner">Cleaners</option>
-          <option value="manager">Managers</option>
-        </select>
+        <div className="relative flex-shrink-0 min-w-[140px]">
+          <select
+            value={roleFilter}
+            onChange={(e) =>
+              setRoleFilter(e.target.value as "all" | "cleaner" | "manager")
+            }
+            className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+          >
+            <option value="all">All Roles</option>
+            <option value="cleaner">Cleaners</option>
+            <option value="manager">Managers</option>
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
       </div>
 
       {/* Stats Summary */}

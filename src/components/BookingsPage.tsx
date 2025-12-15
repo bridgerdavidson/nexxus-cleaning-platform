@@ -362,19 +362,22 @@ export default function BookingsPage({
 
         {/* Status Filter Dropdown */}
         {availableStatuses.length > 0 && (
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm flex-shrink-0"
-          >
-            <option value="all">All Statuses</option>
-            {availableStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status.charAt(0).toUpperCase() +
-                  status.slice(1).replace("_", " ")}
-              </option>
-            ))}
-          </select>
+          <div className="relative flex-shrink-0 min-w-[140px]">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+            >
+              <option value="all">All Statuses</option>
+              {availableStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status.charAt(0).toUpperCase() +
+                    status.slice(1).replace("_", " ")}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
         )}
 
         {/* Select Many Button - Only show if can edit */}

@@ -11,13 +11,18 @@ import {
   Trash2,
   Home,
   AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 import PropertyCard, { PropertyCardData } from "./PropertyCard";
 import PropertySidePanel from "./PropertySidePanel";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddPropertyModal from "./AddPropertyModal";
-import { AdminProperty, deleteProperty, deleteProperties } from "../hooks/useAdminData";
+import {
+  AdminProperty,
+  deleteProperty,
+  deleteProperties,
+} from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 
 interface PropertiesPageProps {
@@ -81,7 +86,8 @@ export default function PropertiesPage({
       const query = searchQuery.toLowerCase();
       result = result.filter((property) => {
         const propertyName = (property.name || "").toLowerCase();
-        const fullAddress = `${property.address} ${property.city} ${property.state}`.toLowerCase();
+        const fullAddress =
+          `${property.address} ${property.city} ${property.state}`.toLowerCase();
         const homeownerName = property.homeowner
           ? `${property.homeowner.first_name} ${property.homeowner.last_name}`.toLowerCase()
           : "";
@@ -176,7 +182,10 @@ export default function PropertiesPage({
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
 
   // Delete handlers
-  const handleDeleteClick = (property: PropertyCardData, e: React.MouseEvent) => {
+  const handleDeleteClick = (
+    property: PropertyCardData,
+    e: React.MouseEvent
+  ) => {
     e.stopPropagation();
     setDeleteConfirmModal({
       isOpen: true,
@@ -244,84 +253,105 @@ export default function PropertiesPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900">Properties</h2>
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="text-4xl font-bold text-gray-900">Properties</h2>
         <button
           onClick={() => setShowAddPropertyModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
         >
           <Plus className="w-5 h-5" />
-          Create New Property
+          <span>New</span>
         </button>
       </div>
 
-      {/* Search, Filter and Select Bar */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        {/* Search Input */}
-        <div className="flex-1 relative">
+      {/* Search Input - Own line on mobile */}
+      <div className="flex-1 relative md:hidden">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          placeholder="Search by property name, address, homeowner name, or email..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+        />
+      </div>
+
+      {/* Filters Row - Mobile: Filters and Select Many inline, Desktop: All in one line with search */}
+      <div className="flex flex-row gap-3 overflow-x-auto">
+        {/* Search Input - Desktop only (in same line as filters) */}
+        <div className="hidden md:flex flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
             placeholder="Search by property name, address, homeowner name, or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
           />
         </div>
 
         {/* Filter Dropdowns */}
         {uniqueHomeowners.length > 0 && (
-          <select
-            value={homeownerFilter}
-            onChange={(e) => setHomeownerFilter(e.target.value)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-          >
-            <option value="all">All Homeowners</option>
-            {uniqueHomeowners.map((homeowner) => (
-              <option key={homeowner.id} value={homeowner.id}>
-                {homeowner.first_name} {homeowner.last_name}
-              </option>
-            ))}
-          </select>
+          <div className="relative flex-shrink-0 min-w-[140px]">
+            <select
+              value={homeownerFilter}
+              onChange={(e) => setHomeownerFilter(e.target.value)}
+              className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+            >
+              <option value="all">All Homeowners</option>
+              {uniqueHomeowners.map((homeowner) => (
+                <option key={homeowner.id} value={homeowner.id}>
+                  {homeowner.first_name} {homeowner.last_name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
         )}
 
         {uniqueCities.length > 0 && (
-          <select
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-          >
-            <option value="all">All Cities</option>
-            {uniqueCities.map((city) => (
-              <option key={city} value={city}>
-                {city}
-              </option>
-            ))}
-          </select>
+          <div className="relative flex-shrink-0 min-w-[140px]">
+            <select
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+            >
+              <option value="all">All Cities</option>
+              {uniqueCities.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
         )}
 
         {uniqueStates.length > 0 && (
-          <select
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value)}
-            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-          >
-            <option value="all">All States</option>
-            {uniqueStates.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </select>
+          <div className="relative flex-shrink-0 min-w-[140px]">
+            <select
+              value={stateFilter}
+              onChange={(e) => setStateFilter(e.target.value)}
+              className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+            >
+              <option value="all">All States</option>
+              {uniqueStates.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
         )}
 
         {/* Select Many Button */}
         <button
           onClick={toggleSelectMode}
-          className={`px-4 py-2.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
+          className={`px-4 py-2.5 rounded-full font-medium transition-colors whitespace-nowrap border border-gray-300 flex-shrink-0 ${
             isSelectMode
-              ? "bg-gray-600 text-white hover:bg-gray-700"
-              : "bg-primary-600 text-white hover:bg-primary-700"
+              ? "bg-gray-600 text-white hover:bg-gray-700 border-gray-600"
+              : "bg-white text-gray-700 hover:bg-gray-50"
           }`}
         >
           {isSelectMode ? "Cancel Selection" : "Select Many"}
@@ -390,24 +420,33 @@ export default function PropertiesPage({
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            {searchQuery || homeownerFilter !== "all" || cityFilter !== "all" || stateFilter !== "all"
+            {searchQuery ||
+            homeownerFilter !== "all" ||
+            cityFilter !== "all" ||
+            stateFilter !== "all"
               ? "No properties found"
               : "No properties yet"}
           </h3>
           <p className="text-gray-600">
-            {searchQuery || homeownerFilter !== "all" || cityFilter !== "all" || stateFilter !== "all"
+            {searchQuery ||
+            homeownerFilter !== "all" ||
+            cityFilter !== "all" ||
+            stateFilter !== "all"
               ? "Try adjusting your search or filters"
               : "Create your first property to get started"}
           </p>
-          {!searchQuery && homeownerFilter === "all" && cityFilter === "all" && stateFilter === "all" && (
-            <button
-              onClick={() => setShowAddPropertyModal(true)}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Create Property
-            </button>
-          )}
+          {!searchQuery &&
+            homeownerFilter === "all" &&
+            cityFilter === "all" &&
+            stateFilter === "all" && (
+              <button
+                onClick={() => setShowAddPropertyModal(true)}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                Create Property
+              </button>
+            )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -420,9 +459,13 @@ export default function PropertiesPage({
               isSelected={selectedIds.has(property.id)}
               onToggleSelect={() => toggleSelection(property.id)}
               onDelete={(propertyId) => {
-                const prop = filteredProperties.find((p) => p.id === propertyId);
+                const prop = filteredProperties.find(
+                  (p) => p.id === propertyId
+                );
                 if (prop) {
-                  handleDeleteClick(prop, { stopPropagation: () => {} } as React.MouseEvent);
+                  handleDeleteClick(prop, {
+                    stopPropagation: () => {},
+                  } as React.MouseEvent);
                 }
               }}
             />
@@ -487,4 +530,3 @@ export default function PropertiesPage({
     </div>
   );
 }
-
