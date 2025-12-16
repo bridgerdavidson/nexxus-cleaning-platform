@@ -1,4 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 import {
   Search,
   Loader2,
@@ -9,14 +15,21 @@ import {
   XCircle,
   Plus,
   ChevronDown,
+  List,
+  CalendarDays,
 } from "lucide-react";
+import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import AppointmentSidePanel from "./AppointmentSidePanel";
 import CancelConfirmModal from "./CancelConfirmModal";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
+import CalendarView, { PendingDragUpdate } from "./CalendarView";
+import DayDetailSidebar from "./DayDetailSidebar";
+import { updateAppointment } from "../hooks/useAdminData";
 
 type TabType = "upcoming" | "all" | "completed" | "cancelled";
+type ViewType = "list" | "calendar";
 
 interface BookingsPageProps {
   appointments: AppointmentCardData[];
@@ -43,6 +56,7 @@ export default function BookingsPage({
   canEdit = true,
 }: BookingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
+  const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedAppointment, setSelectedAppointment] =
@@ -54,12 +68,116 @@ export default function BookingsPage({
   >(null);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
 
+  // Calendar-specific state
+  const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>(
+    []
+  );
+  const [preFilledDate, setPreFilledDate] = useState<string | undefined>();
+  const [preFilledTime, setPreFilledTime] = useState<string | undefined>();
+
   // Selection state
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkAction, setBulkAction] = useState<"cancel" | "delete">("delete");
   const [isBulkActionLoading, setIsBulkActionLoading] = useState(false);
+
+  // Pending drag updates for deferred DB sync
+  const [pendingDragUpdates, setPendingDragUpdates] = useState<
+    Map<string, PendingDragUpdate>
+  >(new Map());
+  const pendingDragUpdatesRef = useRef<Map<string, PendingDragUpdate>>(
+    new Map()
+  );
+
+  // Local appointments state for optimistic updates
+  const [localAppointments, setLocalAppointments] =
+    useState<AppointmentCardData[]>(appointments);
+
+  // Keep local appointments in sync with prop changes (but preserve local modifications)
+  useEffect(() => {
+    setLocalAppointments((prevLocal) => {
+      // Merge prop appointments with any local modifications from pending updates
+      const pendingIds = new Set(pendingDragUpdates.keys());
+
+      return appointments.map((apt) => {
+        // If this appointment has a pending update, keep the local version
+        if (pendingIds.has(apt.id)) {
+          const existingLocal = prevLocal.find((l) => l.id === apt.id);
+          if (existingLocal) return existingLocal;
+        }
+        return apt;
+      });
+    });
+  }, [appointments, pendingDragUpdates]);
+
+  // Keep ref in sync with state for use in cleanup
+  useEffect(() => {
+    pendingDragUpdatesRef.current = pendingDragUpdates;
+  }, [pendingDragUpdates]);
+
+  // Function to flush pending updates to the database
+  const flushPendingUpdates = useCallback(async () => {
+    const updates = pendingDragUpdatesRef.current;
+    if (updates.size === 0) return;
+
+    const updatePromises = Array.from(updates.values()).map(async (update) => {
+      try {
+        const result = await updateAppointment(update.appointmentId, {
+          scheduled_date: update.newDate,
+          scheduled_time: update.newTime,
+        });
+
+        if (result.success && result.data && onAppointmentUpdated) {
+          onAppointmentUpdated(update.appointmentId, result.data);
+        }
+
+        return { success: true, id: update.appointmentId };
+      } catch (error) {
+        console.error(
+          `Failed to update appointment ${update.appointmentId}:`,
+          error
+        );
+        return { success: false, id: update.appointmentId, error };
+      }
+    });
+
+    await Promise.all(updatePromises);
+
+    // Clear pending updates
+    setPendingDragUpdates(new Map());
+  }, [onAppointmentUpdated]);
+
+  // Tab visibility change listener - flush pending updates when user switches tabs
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        // User switched away - flush pending updates
+        flushPendingUpdates();
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      // Page is about to close - try to flush pending updates synchronously
+      if (pendingDragUpdatesRef.current.size > 0) {
+        flushPendingUpdates();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      // Flush on unmount as well
+      if (pendingDragUpdatesRef.current.size > 0) {
+        flushPendingUpdates();
+      }
+    };
+  }, [flushPendingUpdates]);
 
   // Get today's date for filtering
   const today = new Date();
@@ -123,27 +241,29 @@ export default function BookingsPage({
     return appointment.status === statusFilter;
   };
 
-  // Apply all filters
+  // Apply all filters - use localAppointments for optimistic updates
   const filteredAppointments = useMemo(() => {
-    return appointments.filter(
+    return localAppointments.filter(
       (apt) => filterByTab(apt) && filterBySearch(apt) && filterByStatus(apt)
     );
-  }, [appointments, activeTab, searchQuery, statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAppointments, activeTab, searchQuery, statusFilter]);
 
   // Get unique statuses for filter dropdown
   const availableStatuses = useMemo(() => {
     const statuses = new Set(
-      appointments.filter(filterByTab).map((apt) => apt.status)
+      localAppointments.filter(filterByTab).map((apt) => apt.status)
     );
     return Array.from(statuses);
-  }, [appointments, activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAppointments, activeTab]);
 
-  // Tab configuration
+  // Tab configuration - use localAppointments for accurate counts with optimistic updates
   const tabs: { id: TabType; label: string; count: number }[] = [
     {
       id: "upcoming",
       label: "Upcoming",
-      count: appointments.filter((apt) => {
+      count: localAppointments.filter((apt) => {
         // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
         const [year, month, day] = apt.scheduled_date.split("-").map(Number);
         const aptDate = new Date(year, month - 1, day); // month is 0-indexed
@@ -158,17 +278,19 @@ export default function BookingsPage({
     {
       id: "all",
       label: "All",
-      count: appointments.length,
+      count: localAppointments.length,
     },
     {
       id: "completed",
       label: "Completed",
-      count: appointments.filter((apt) => apt.status === "completed").length,
+      count: localAppointments.filter((apt) => apt.status === "completed")
+        .length,
     },
     {
       id: "cancelled",
       label: "Cancelled",
-      count: appointments.filter((apt) => apt.status === "cancelled").length,
+      count: localAppointments.filter((apt) => apt.status === "cancelled")
+        .length,
     },
   ];
 
@@ -265,6 +387,112 @@ export default function BookingsPage({
     }
   };
 
+  // Calendar handlers
+  const handleCalendarAppointmentClick = useCallback(
+    (appointment: AppointmentCardData) => {
+      setSelectedAppointment(appointment);
+      setShowSidePanel(true);
+    },
+    []
+  );
+
+  const handleDayClick = useCallback(
+    (date: Date, appointments: AppointmentCardData[]) => {
+      setSelectedDate(date);
+      setDayAppointments(appointments);
+      setShowDayDetailSidebar(true);
+    },
+    []
+  );
+
+  const handleSlotSelect = useCallback((date: Date, time: string) => {
+    // Pre-fill date and time for quick add
+    setPreFilledDate(format(date, "yyyy-MM-dd"));
+    setPreFilledTime(time);
+    setShowAddAppointmentModal(true);
+  }, []);
+
+  // Immediate DB reschedule (legacy fallback)
+  const handleReschedule = useCallback(
+    async (appointmentId: string, newDate: string, newTime: string) => {
+      const result = await updateAppointment(appointmentId, {
+        scheduled_date: newDate,
+        scheduled_time: newTime,
+      });
+
+      if (result.success) {
+        // Update the appointment in state
+        if (onAppointmentUpdated && result.data) {
+          onAppointmentUpdated(appointmentId, result.data);
+        } else if (onRefreshAppointments) {
+          onRefreshAppointments();
+        }
+      } else {
+        alert("Failed to reschedule appointment: " + result.error);
+      }
+    },
+    [onAppointmentUpdated, onRefreshAppointments]
+  );
+
+  // Local reschedule handler for deferred DB sync
+  const handleLocalReschedule = useCallback(
+    (
+      appointmentId: string,
+      newDate: string,
+      newTime: string,
+      originalDate: string,
+      originalTime: string
+    ) => {
+      // Update local appointments state immediately (optimistic update)
+      setLocalAppointments((prev) =>
+        prev.map((apt) =>
+          apt.id === appointmentId
+            ? { ...apt, scheduled_date: newDate, scheduled_time: newTime }
+            : apt
+        )
+      );
+
+      // Add to pending updates for later DB sync
+      setPendingDragUpdates((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(appointmentId, {
+          appointmentId,
+          newDate,
+          newTime,
+          originalDate,
+          originalTime,
+        });
+        return newMap;
+      });
+    },
+    []
+  );
+
+  const handleDayDetailAppointmentClick = useCallback(
+    (appointment: AppointmentCardData) => {
+      setShowDayDetailSidebar(false);
+      setSelectedAppointment(appointment);
+      setShowSidePanel(true);
+    },
+    []
+  );
+
+  const handleDayDetailAddAppointment = useCallback(() => {
+    if (selectedDate) {
+      setPreFilledDate(format(selectedDate, "yyyy-MM-dd"));
+      setPreFilledTime(undefined); // Will use default time
+      setShowDayDetailSidebar(false);
+      setShowAddAppointmentModal(true);
+    }
+  }, [selectedDate]);
+
+  const handleOpenAddAppointmentModal = useCallback(() => {
+    // Clear pre-filled values when opening normally
+    setPreFilledDate(undefined);
+    setPreFilledTime(undefined);
+    setShowAddAppointmentModal(true);
+  }, []);
+
   // Check if all are selected
   const isAllSelected =
     filteredAppointments.length > 0 &&
@@ -272,7 +500,7 @@ export default function BookingsPage({
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
 
   // Get appointment info for cancel modal
-  const cancellingAppointment = appointments.find(
+  const cancellingAppointment = localAppointments.find(
     (apt) => apt.id === cancellingAppointmentId
   );
   const cancelModalInfo = cancellingAppointment
@@ -296,24 +524,48 @@ export default function BookingsPage({
       }
     : undefined;
 
-  // Get current tab label and count for dropdown display
-  const currentTab = tabs.find((tab) => tab.id === activeTab);
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-4xl font-bold text-gray-900">Bookings</h2>
-        {/* Add New Appointment Button */}
-        {canEdit && (
-          <button
-            onClick={() => setShowAddAppointmentModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
-          >
-            <Plus className="w-5 h-5" />
-            <span>New</span>
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* View Toggle Buttons */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewType("list")}
+              className={`p-2 rounded-md transition-colors ${
+                viewType === "list"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="List View"
+            >
+              <List className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewType("calendar")}
+              className={`p-2 rounded-md transition-colors ${
+                viewType === "calendar"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="Calendar View"
+            >
+              <CalendarDays className="w-5 h-5" />
+            </button>
+          </div>
+          {/* Add New Appointment Button */}
+          {canEdit && (
+            <button
+              onClick={handleOpenAddAppointmentModal}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
+            >
+              <Plus className="w-5 h-5" />
+              <span>New</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Search Input - Own line on mobile */}
@@ -396,100 +648,132 @@ export default function BookingsPage({
         )}
       </div>
 
-      {/* Bulk Action Bar */}
-      {isSelectMode && (
-        <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              {/* Select All Checkbox */}
-              <button
-                onClick={toggleSelectAll}
-                className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                {isAllSelected ? (
-                  <CheckSquare className="w-5 h-5 text-primary-600" />
-                ) : isSomeSelected ? (
-                  <div className="w-5 h-5 border-2 border-primary-600 rounded bg-primary-100 flex items-center justify-center">
-                    <div className="w-2.5 h-0.5 bg-primary-600" />
-                  </div>
-                ) : (
-                  <Square className="w-5 h-5 text-gray-400" />
-                )}
-                <span className="font-medium text-gray-700">
-                  {isAllSelected ? "Deselect All" : "Select All"}
-                </span>
-              </button>
-
-              <span className="text-sm text-gray-600">
-                {selectedIds.size} appointment
-                {selectedIds.size !== 1 ? "s" : ""} selected
-              </span>
-            </div>
-
-            {/* Bulk Actions */}
-            {selectedIds.size > 0 && (
-              <div className="flex gap-2">
-                {/* Cancel Selected - Only for upcoming/all tabs, not for completed/cancelled */}
-                {canEdit &&
-                  activeTab !== "completed" &&
-                  activeTab !== "cancelled" && (
-                    <button
-                      onClick={handleBulkCancel}
-                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Cancel Selected
-                    </button>
-                  )}
-
-                {/* Delete Selected */}
-                {canEdit && (
+      {/* List View Content */}
+      {viewType === "list" && (
+        <>
+          {/* Bulk Action Bar */}
+          {isSelectMode && (
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  {/* Select All Checkbox */}
                   <button
-                    onClick={handleBulkDelete}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    Delete Selected
+                    {isAllSelected ? (
+                      <CheckSquare className="w-5 h-5 text-primary-600" />
+                    ) : isSomeSelected ? (
+                      <div className="w-5 h-5 border-2 border-primary-600 rounded bg-primary-100 flex items-center justify-center">
+                        <div className="w-2.5 h-0.5 bg-primary-600" />
+                      </div>
+                    ) : (
+                      <Square className="w-5 h-5 text-gray-400" />
+                    )}
+                    <span className="font-medium text-gray-700">
+                      {isAllSelected ? "Deselect All" : "Select All"}
+                    </span>
                   </button>
+
+                  <span className="text-sm text-gray-600">
+                    {selectedIds.size} appointment
+                    {selectedIds.size !== 1 ? "s" : ""} selected
+                  </span>
+                </div>
+
+                {/* Bulk Actions */}
+                {selectedIds.size > 0 && (
+                  <div className="flex gap-2">
+                    {/* Cancel Selected - Only for upcoming/all tabs, not for completed/cancelled */}
+                    {canEdit &&
+                      activeTab !== "completed" &&
+                      activeTab !== "cancelled" && (
+                        <button
+                          onClick={handleBulkCancel}
+                          className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Cancel Selected
+                        </button>
+                      )}
+
+                    {/* Delete Selected */}
+                    {canEdit && (
+                      <button
+                        onClick={handleBulkDelete}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Selected
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+
+          {/* Appointments List */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              <span className="ml-2 text-gray-600">
+                Loading appointments...
+              </span>
+            </div>
+          ) : filteredAppointments.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No appointments found
+              </h3>
+              <p className="text-gray-600">
+                {searchQuery || statusFilter !== "all"
+                  ? "Try adjusting your search or filters"
+                  : `No ${activeTab} appointments at this time`}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredAppointments.map((appointment) => (
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  onClick={() => handleAppointmentClick(appointment)}
+                  isSelectMode={isSelectMode}
+                  isSelected={selectedIds.has(appointment.id)}
+                  onToggleSelect={() => toggleSelection(appointment.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Appointments List */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          <span className="ml-2 text-gray-600">Loading appointments...</span>
-        </div>
-      ) : filteredAppointments.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No appointments found
-          </h3>
-          <p className="text-gray-600">
-            {searchQuery || statusFilter !== "all"
-              ? "Try adjusting your search or filters"
-              : `No ${activeTab} appointments at this time`}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredAppointments.map((appointment) => (
-            <AppointmentCard
-              key={appointment.id}
-              appointment={appointment}
-              onClick={() => handleAppointmentClick(appointment)}
-              isSelectMode={isSelectMode}
-              isSelected={selectedIds.has(appointment.id)}
-              onToggleSelect={() => toggleSelection(appointment.id)}
-            />
-          ))}
-        </div>
+      {/* Calendar View Content */}
+      {viewType === "calendar" && (
+        <CalendarView
+          appointments={filteredAppointments}
+          loading={loading}
+          onAppointmentClick={handleCalendarAppointmentClick}
+          onDayClick={handleDayClick}
+          onSlotSelect={handleSlotSelect}
+          onReschedule={handleReschedule}
+          onLocalReschedule={handleLocalReschedule}
+          canEdit={canEdit}
+        />
       )}
+
+      {/* Day Detail Sidebar (for calendar view) */}
+      <DayDetailSidebar
+        isOpen={showDayDetailSidebar}
+        onClose={() => setShowDayDetailSidebar(false)}
+        selectedDate={selectedDate}
+        appointments={dayAppointments}
+        onAppointmentClick={handleDayDetailAppointmentClick}
+        onAddAppointment={handleDayDetailAddAppointment}
+        canEdit={canEdit}
+      />
 
       {/* Side Panel */}
       <AppointmentSidePanel
@@ -546,12 +830,18 @@ export default function BookingsPage({
       {/* Add Appointment Modal */}
       <AddAppointmentModal
         isOpen={showAddAppointmentModal}
-        onClose={() => setShowAddAppointmentModal(false)}
+        onClose={() => {
+          setShowAddAppointmentModal(false);
+          setPreFilledDate(undefined);
+          setPreFilledTime(undefined);
+        }}
         onAppointmentCreated={() => {
           if (onRefreshAppointments) {
             onRefreshAppointments();
           }
         }}
+        preFilledDate={preFilledDate}
+        preFilledTime={preFilledTime}
       />
     </div>
   );

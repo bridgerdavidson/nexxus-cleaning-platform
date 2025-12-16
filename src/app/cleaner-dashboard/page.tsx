@@ -358,7 +358,7 @@ export default function CleanerDashboard() {
                       : appointment.status === "in_progress"
                       ? "#f59e0b"
                       : appointment.status === "pending"
-                      ? "#3b82f6"
+                      ? "#eab308"
                       : "#6b7280",
                 }}
               >
@@ -378,7 +378,7 @@ export default function CleanerDashboard() {
                             : appointment.status === "in_progress"
                             ? "bg-yellow-100 text-yellow-800"
                             : appointment.status === "pending"
-                            ? "bg-primary-100 text-primary-800"
+                            ? "bg-yellow-100 text-yellow-800"
                             : "bg-gray-100 text-gray-800"
                         }`}
                       >
@@ -391,7 +391,7 @@ export default function CleanerDashboard() {
                                 : appointment.status === "in_progress"
                                 ? "#f59e0b"
                                 : appointment.status === "pending"
-                                ? "#3b82f6"
+                                ? "#eab308"
                                 : "#6b7280",
                           }}
                         ></span>
@@ -464,7 +464,7 @@ export default function CleanerDashboard() {
                       : appointment.status === "in_progress"
                       ? "#f59e0b"
                       : appointment.status === "pending"
-                      ? "#3b82f6"
+                      ? "#eab308"
                       : "#6b7280",
                 }}
               >
@@ -485,7 +485,7 @@ export default function CleanerDashboard() {
                             : appointment.status === "in_progress"
                             ? "bg-yellow-100 text-yellow-800"
                             : appointment.status === "pending"
-                            ? "bg-primary-100 text-primary-800"
+                            ? "bg-yellow-100 text-yellow-800"
                             : "bg-gray-100 text-gray-800"
                         }`}
                       >
@@ -498,7 +498,7 @@ export default function CleanerDashboard() {
                                 : appointment.status === "in_progress"
                                 ? "#f59e0b"
                                 : appointment.status === "pending"
-                                ? "#3b82f6"
+                                ? "#eab308"
                                 : "#6b7280",
                           }}
                         ></span>

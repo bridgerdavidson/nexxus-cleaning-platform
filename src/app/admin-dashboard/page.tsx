@@ -321,7 +321,7 @@ export default function AdminDashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
-        return "text-yellow-600 bg-yellow-100";
+        return "text-yellow-700 bg-yellow-100";
       case "confirmed":
         return "text-primary-600 bg-primary-100";
       case "completed":
@@ -636,7 +636,7 @@ export default function AdminDashboard() {
                     className={`px-2 py-1 text-xs font-medium rounded-full ${
                       appointment.status === "confirmed"
                         ? "bg-green-100 text-green-700"
-                        : "bg-amber-100 text-amber-700"
+                        : "bg-yellow-100 text-yellow-700"
                     }`}
                   >
                     {appointment.status}
@@ -865,7 +865,7 @@ export default function AdminDashboard() {
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         appointment.status === "confirmed"
                           ? "text-green-600 bg-green-100"
-                          : "text-amber-600 bg-amber-100"
+                          : "text-yellow-700 bg-yellow-100"
                       }`}
                     >
                       {appointment.status}

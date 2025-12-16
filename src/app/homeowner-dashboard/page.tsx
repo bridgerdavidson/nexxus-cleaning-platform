@@ -138,7 +138,7 @@ export default function HomeownerDashboard() {
       case "confirmed":
         return "text-green-600 bg-green-100";
       case "pending":
-        return "text-yellow-600 bg-yellow-100";
+        return "text-yellow-700 bg-yellow-100";
       case "completed":
         return "text-primary-600 bg-primary-100";
       case "cancelled":

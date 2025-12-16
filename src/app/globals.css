@@ -58,7 +58,7 @@
   background: #a8a8a8;
 }
 
-/* Calendar custom styles */
+/* Calendar custom styles (react-calendar) */
 .react-calendar {
   @apply w-full bg-white border border-gray-200 rounded-lg shadow-sm;
 }
@@ -73,6 +73,210 @@
 
 .react-calendar__tile--now {
   @apply bg-primary-100 text-primary-800;
+}
+
+/* React Big Calendar Custom Styles */
+.rbc-calendar {
+  font-family: inherit;
+}
+
+.rbc-header {
+  padding: 8px 4px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.rbc-month-view {
+  border: none;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rbc-month-row {
+  border: none;
+}
+
+.rbc-day-bg {
+  border-left: 1px solid #f3f4f6;
+}
+
+.rbc-day-bg:first-child {
+  border-left: none;
+}
+
+.rbc-off-range-bg {
+  background-color: #fafafa;
+}
+
+.rbc-today {
+  background-color: #ecfdf5;
+}
+
+.rbc-date-cell {
+  padding: 4px 8px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rbc-date-cell.rbc-now {
+  font-weight: 700;
+}
+
+.rbc-date-cell > a,
+.rbc-date-cell > button {
+  color: #374151;
+  cursor: pointer;
+}
+
+.rbc-date-cell > a:hover,
+.rbc-date-cell > button:hover {
+  color: #059669;
+}
+
+.rbc-date-cell.rbc-off-range > a,
+.rbc-date-cell.rbc-off-range > button {
+  color: #9ca3af;
+}
+
+.rbc-event {
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.rbc-event:focus {
+  outline: 2px solid #059669;
+  outline-offset: 1px;
+}
+
+.rbc-event.rbc-selected {
+  background-color: #059669 !important;
+  color: white !important;
+}
+
+.rbc-show-more {
+  color: #059669;
+  font-weight: 500;
+  font-size: 11px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rbc-show-more:hover {
+  color: #047857;
+}
+
+/* Week and Day view styles */
+.rbc-time-view {
+  border: none;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rbc-time-header {
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.rbc-time-content {
+  border-top: none;
+}
+
+.rbc-timeslot-group {
+  border-bottom: 1px solid #f3f4f6;
+  min-height: 40px;
+}
+
+.rbc-time-slot {
+  border-top: none;
+}
+
+.rbc-label {
+  font-size: 11px;
+  color: #6b7280;
+  padding: 4px 8px;
+}
+
+.rbc-current-time-indicator {
+  background-color: #ef4444;
+  height: 2px;
+}
+
+/* Agenda view styles */
+.rbc-agenda-view {
+  border: none;
+}
+
+.rbc-agenda-table {
+  border: none;
+}
+
+.rbc-agenda-date-cell,
+.rbc-agenda-time-cell {
+  padding: 12px;
+  font-size: 13px;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.rbc-agenda-event-cell {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+/* Drag and drop styles */
+.rbc-addons-dnd-row-body {
+  position: relative;
+}
+
+.rbc-addons-dnd-drag-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.rbc-addons-dnd-dragged-event {
+  opacity: 0.5;
+}
+
+.rbc-addons-dnd-drag-preview {
+  position: fixed;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Mobile responsiveness for React Big Calendar */
+@media (max-width: 640px) {
+  .rbc-toolbar {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .rbc-header {
+    font-size: 10px;
+    padding: 6px 2px;
+  }
+
+  .rbc-date-cell {
+    font-size: 12px;
+    padding: 2px 4px;
+  }
+
+  .rbc-event {
+    font-size: 10px;
+    padding: 1px 3px;
+  }
+
+  .rbc-show-more {
+    font-size: 10px;
+  }
 }
 
 /* Range slider styling */

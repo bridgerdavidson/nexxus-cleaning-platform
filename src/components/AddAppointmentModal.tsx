@@ -57,6 +57,8 @@ interface AddAppointmentModalProps {
   onAppointmentCreated: () => void;
   preSelectedHomeownerId?: string;
   preSelectedPropertyId?: string;
+  preFilledDate?: string; // YYYY-MM-DD format
+  preFilledTime?: string; // HH:mm format
 }
 
 export default function AddAppointmentModal({
@@ -65,6 +67,8 @@ export default function AddAppointmentModal({
   onAppointmentCreated,
   preSelectedHomeownerId,
   preSelectedPropertyId,
+  preFilledDate,
+  preFilledTime,
 }: AddAppointmentModalProps) {
   const { currentOrganizationId } = useAuth();
 
@@ -178,6 +182,14 @@ export default function AddAppointmentModal({
         // Otherwise, fetch all homeowners
         fetchHomeowners();
       }
+
+      // Pre-fill date and time if provided (from calendar quick-add)
+      if (preFilledDate) {
+        setScheduledDate(preFilledDate);
+      }
+      if (preFilledTime) {
+        setScheduledTime(preFilledTime);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -185,6 +197,8 @@ export default function AddAppointmentModal({
     currentOrganizationId,
     preSelectedHomeownerId,
     preSelectedPropertyId,
+    preFilledDate,
+    preFilledTime,
   ]);
 
   // Fetch properties when homeowner is selected (only when not pre-selected)
@@ -352,6 +366,15 @@ export default function AddAppointmentModal({
       return;
     }
 
+    // Validate that the appointment is not in the past
+    const appointmentDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
+    const now = new Date();
+    
+    if (appointmentDateTime <= now) {
+      setError("Cannot create appointments in the past. Please select a future date and time.");
+      return;
+    }
+
     try {
       setIsCreating(true);
       setError(null);
@@ -480,6 +503,17 @@ export default function AddAppointmentModal({
 
   // Get today's date for min date validation
   const today = new Date().toISOString().split("T")[0];
+  
+  // Get current time for min time validation when date is today
+  const getMinTime = () => {
+    if (scheduledDate === today) {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      return `${hours}:${minutes}`;
+    }
+    return "00:00";
+  };
 
   if (!isOpen) return null;
 
@@ -859,7 +893,25 @@ export default function AddAppointmentModal({
                     <input
                       type="date"
                       value={scheduledDate}
-                      onChange={(e) => setScheduledDate(e.target.value)}
+                      onChange={(e) => {
+                        setScheduledDate(e.target.value);
+                        // Clear time if date changed to today and time is in the past
+                        if (e.target.value === today && scheduledTime) {
+                          const [hours, minutes] = scheduledTime.split(":").map(Number);
+                          const selectedDateTime = new Date();
+                          selectedDateTime.setHours(hours, minutes, 0, 0);
+                          const now = new Date();
+                          
+                          if (selectedDateTime <= now) {
+                            setScheduledTime("");
+                            setError("Please select a future time for today.");
+                          } else {
+                            setError(null);
+                          }
+                        } else {
+                          setError(null);
+                        }
+                      }}
                       min={today}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       required
@@ -872,10 +924,32 @@ export default function AddAppointmentModal({
                     <input
                       type="time"
                       value={scheduledTime}
-                      onChange={(e) => setScheduledTime(e.target.value)}
+                      onChange={(e) => {
+                        setScheduledTime(e.target.value);
+                        // Validate time if date is today
+                        if (scheduledDate === today) {
+                          const selectedTime = e.target.value;
+                          const now = new Date();
+                          const [hours, minutes] = selectedTime.split(":").map(Number);
+                          const selectedDateTime = new Date(now);
+                          selectedDateTime.setHours(hours, minutes, 0, 0);
+                          
+                          if (selectedDateTime <= now) {
+                            setError("Cannot select a time in the past. Please choose a future time.");
+                          } else {
+                            setError(null);
+                          }
+                        }
+                      }}
+                      min={scheduledDate === today ? getMinTime() : undefined}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       required
                     />
+                    {scheduledDate === today && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Select a time after {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    )}
                   </div>
                 </div>
 

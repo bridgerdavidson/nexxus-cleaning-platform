@@ -380,7 +380,7 @@ export default function ManagerDashboard() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
-        return "text-primary-600 bg-primary-100";
+        return "text-yellow-700 bg-yellow-100";
       case "confirmed":
         return "text-green-600 bg-green-100";
       case "in_progress":
@@ -618,7 +618,7 @@ export default function ManagerDashboard() {
                       className={`px-2 py-1 text-xs font-medium rounded-full ${
                         appointment.status === "confirmed"
                           ? "bg-green-100 text-green-700"
-                          : "bg-amber-100 text-amber-700"
+                          : "bg-yellow-100 text-yellow-700"
                       }`}
                     >
                       {appointment.status}
