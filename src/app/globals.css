@@ -326,3 +326,23 @@ nav.sticky {
   position: -webkit-sticky !important;
   position: sticky !important;
 }
+
+/* Remove focus outlines from Recharts elements */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-cartesian-axis,
+.recharts-cartesian-grid,
+.recharts-line,
+.recharts-area,
+.recharts-dot,
+.recharts-active-dot {
+  outline: none !important;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-wrapper *:focus,
+.recharts-wrapper *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

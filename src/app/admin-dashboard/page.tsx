@@ -58,6 +58,7 @@ import PropertiesPage from "../../components/PropertiesPage";
 import TeamMembersPage from "../../components/TeamMembersPage";
 import PaymentsPage from "../../components/PaymentsPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
+import AnalyticsPage from "../../components/AnalyticsPage";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -1263,72 +1264,7 @@ export default function AdminDashboard() {
     />
   );
 
-  const renderAnalytics = () => (
-    <div className="space-y-6">
-      <h2 className="text-4xl font-bold text-gray-900">Analytics & Reports</h2>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Booking Trends
-          </h3>
-          <div className="text-center py-12">
-            <BarChart3 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">Chart visualization coming soon</p>
-          </div>
-        </div>
-
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Revenue Growth
-          </h3>
-          <div className="text-center py-12">
-            <TrendingUp className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">Revenue chart coming soon</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Key Metrics
-        </h3>
-        {statsLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading analytics...</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <p className="text-2xl font-bold text-gray-900">
-                {stats.completionRate}%
-              </p>
-              <p className="text-sm text-gray-600">Completion Rate</p>
-            </div>
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <p className="text-2xl font-bold text-gray-900">
-                {stats.avgRating}
-              </p>
-              <p className="text-sm text-gray-600">Avg Rating</p>
-            </div>
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <p className="text-2xl font-bold text-gray-900">
-                {stats.avgJobsPerDay}
-              </p>
-              <p className="text-sm text-gray-600">Avg Jobs/Day</p>
-            </div>
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <p className="text-2xl font-bold text-gray-900">
-                ${stats.avgJobValue}
-              </p>
-              <p className="text-sm text-gray-600">Avg Job Value</p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const renderAnalytics = () => <AnalyticsPage role="admin" />;
 
   const renderPlaceholder = (title: string, description: string) => (
     <div className="card text-center py-16">

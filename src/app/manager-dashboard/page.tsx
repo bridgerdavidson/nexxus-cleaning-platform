@@ -50,6 +50,7 @@ import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
+import AnalyticsPage from "../../components/AnalyticsPage";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -1308,10 +1309,7 @@ export default function ManagerDashboard() {
         if (!permissions?.can_view_analytics) {
           return renderAccessDenied("analytics");
         }
-        return renderPlaceholder(
-          "Analytics",
-          "View performance metrics and reports."
-        );
+        return <AnalyticsPage role="manager" />;
       case "properties":
         if (!permissions?.can_view_properties) {
           return renderAccessDenied("properties");
