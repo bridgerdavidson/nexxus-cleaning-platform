@@ -5,6 +5,7 @@ import { X, Home, Search, Plus, User, CheckCircle, Loader2 } from "lucide-react"
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { CustomerProperty } from "../hooks/useAdminData";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface Homeowner {
   id: string;
@@ -27,6 +28,9 @@ export default function AddPropertyModal({
   preSelectedHomeownerId,
 }: AddPropertyModalProps) {
   const { currentOrganizationId } = useAuth();
+
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   // Step management - always start at step 1
   // When homeowner is pre-selected: step 1 = property info, step 2 = optional details

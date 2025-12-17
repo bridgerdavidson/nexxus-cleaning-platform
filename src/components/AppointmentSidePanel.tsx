@@ -22,6 +22,7 @@ import { createPortal } from "react-dom";
 import StatusBadge from "./StatusBadge";
 import { AppointmentCardData } from "./AppointmentCard";
 import { updateAppointment } from "../hooks/useAdminData";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface AppointmentSidePanelProps {
   isOpen: boolean;
@@ -46,6 +47,9 @@ export default function AppointmentSidePanel({
   role, // eslint-disable-line @typescript-eslint/no-unused-vars
   canEdit = true,
 }: AppointmentSidePanelProps) {
+  // Lock body scroll when panel is open
+  useBodyScrollLock(isOpen);
+
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);

@@ -19,6 +19,7 @@ import {
 import { createPortal } from "react-dom";
 import { TeamMember } from "../hooks/useAdminData";
 import { supabase } from "../lib/supabase";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface TeamMemberSidePanelProps {
   isOpen: boolean;
@@ -39,6 +40,9 @@ export default function TeamMemberSidePanel({
   onManagePermissions,
   onMemberUpdated,
 }: TeamMemberSidePanelProps) {
+  // Lock body scroll when panel is open
+  useBodyScrollLock(isOpen);
+
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);

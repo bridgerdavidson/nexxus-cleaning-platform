@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertTriangle, Trash2, XCircle } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface BulkActionConfirmModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export default function BulkActionConfirmModal({
   action,
   isLoading = false,
 }: BulkActionConfirmModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const actionText = action === "cancel" ? "Cancel" : "Delete";

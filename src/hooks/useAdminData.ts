@@ -12,6 +12,7 @@ export interface AdminAppointment {
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
+  series_id?: string | null;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -122,6 +123,7 @@ export function useAdminAppointments() {
           total_price,
           special_requests,
           notes,
+          series_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -781,6 +783,7 @@ export async function updateAppointment(
         total_price,
         special_requests,
         notes,
+        series_id,
         homeowner:user_profiles!homeowner_id(
           first_name,
           last_name,

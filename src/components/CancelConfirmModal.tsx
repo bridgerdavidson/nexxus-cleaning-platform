@@ -1,5 +1,6 @@
 import React from "react";
 import { XCircle, Trash2, AlertTriangle } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface CancelConfirmModalProps {
   isOpen: boolean;
@@ -22,6 +23,9 @@ export default function CancelConfirmModal({
   appointmentInfo,
   isLoading = false,
 }: CancelConfirmModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   return (

@@ -5,6 +5,7 @@ import { X, Settings, Loader2, Check } from "lucide-react";
 import { updateManagerPermissions, ManagerPermissions } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import { TeamMember } from "../hooks/useAdminData";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface ManagerPermissionsModalProps {
   isOpen: boolean;
@@ -20,6 +21,10 @@ export default function ManagerPermissionsModal({
   onPermissionsUpdated,
 }: ManagerPermissionsModalProps) {
   const { currentOrganizationId } = useAuth();
+
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   const [permissions, setPermissions] = useState<ManagerPermissions>({
     can_view_customers: false,
     can_edit_customers: false,

@@ -13,6 +13,7 @@ export type PaymentType = 'revenue' | 'expense' | 'refund';
 export type PaymentMethod = 'card' | 'ach' | 'manual';
 export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
+export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
 
 // USER PROFILES
 export interface UserProfile {
@@ -108,6 +109,30 @@ export interface Appointment {
   total_price: number; // numeric(10,2)
   special_requests: string | null; // NOT special_instructions!
   notes: string | null;
+  series_id: string | null; // References recurring_appointment_series(id)
+  created_at: string;
+  updated_at: string;
+}
+
+// RECURRING APPOINTMENT SERIES
+export interface RecurringAppointmentSeries {
+  id: string;
+  organization_id: string;
+  homeowner_id: string; // References user_profiles(id)
+  cleaner_id: string | null; // References cleaner_profiles(id)
+  property_id: string;
+  service_type_id: string;
+  start_date: string; // date
+  start_time: string; // time
+  duration_minutes: number;
+  total_price: number; // numeric(10,2)
+  special_requests: string | null;
+  recurrence_type: 'daily' | 'weekly' | 'monthly';
+  interval: number; // every N days/weeks/months
+  days_of_week: number[] | null; // for weekly patterns; 0=Sunday..6=Saturday
+  end_date: string | null; // date
+  max_occurrences: number | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

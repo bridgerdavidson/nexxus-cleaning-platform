@@ -11,9 +11,12 @@ import {
   Star,
   CheckCircle,
   Loader2,
+  Repeat,
 } from "lucide-react";
+import type { RecurrenceType } from "../types";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface Homeowner {
   id: string;
@@ -72,6 +75,9 @@ export default function AddAppointmentModal({
 }: AddAppointmentModalProps) {
   const { currentOrganizationId } = useAuth();
 
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   // Step management - always start at step 1
   // When homeowner only is pre-selected: step 1 = select property, step 2 = appointment details, step 3 = cleaner
   // When homeowner and property are pre-selected: step 1 = appointment details, step 2 = cleaner
@@ -101,6 +107,14 @@ export default function AddAppointmentModal({
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
+
+  // Recurrence state
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>("none");
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
+  const [recurrenceEndType, setRecurrenceEndType] = useState<"date" | "occurrences">("date");
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
+  const [recurrenceMaxOccurrences, setRecurrenceMaxOccurrences] = useState(10);
 
   // Step 3 state
   const [cleaners, setCleaners] = useState<Cleaner[]>([]);
@@ -375,10 +389,67 @@ export default function AddAppointmentModal({
       return;
     }
 
+    // Validate recurrence end settings
+    if (recurrenceType !== "none") {
+      if (recurrenceEndType === "date" && !recurrenceEndDate) {
+        setError("Please select an end date for the recurring appointments.");
+        return;
+      }
+      if (recurrenceEndType === "occurrences" && (!recurrenceMaxOccurrences || recurrenceMaxOccurrences < 1)) {
+        setError("Please enter a valid number of occurrences.");
+        return;
+      }
+      if (recurrenceType === "weekly" && selectedDaysOfWeek.length === 0) {
+        setError("Please select at least one day of the week for weekly recurrence.");
+        return;
+      }
+    }
+
     try {
       setIsCreating(true);
       setError(null);
 
+      // Handle recurring appointments
+      if (recurrenceType !== "none") {
+        const response = await fetch("/api/recurring-appointments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            organizationId: currentOrganizationId,
+            homeownerId: selectedHomeowner.id,
+            cleanerId: skipCleaner ? null : selectedCleaner?.id,
+            propertyId: selectedProperty.id,
+            serviceTypeId: selectedServiceType.id,
+            startDate: scheduledDate,
+            startTime: scheduledTime,
+            durationMinutes: selectedServiceType.duration_minutes,
+            totalPrice: selectedServiceType.base_price,
+            recurrenceType: recurrenceType,
+            interval: recurrenceInterval,
+            daysOfWeek: recurrenceType === "weekly" ? selectedDaysOfWeek : undefined,
+            endDate: recurrenceEndType === "date" ? recurrenceEndDate : null,
+            maxOccurrences: recurrenceEndType === "occurrences" ? recurrenceMaxOccurrences : null,
+            specialRequests: specialRequests || null,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || "Failed to create recurring appointments");
+        }
+
+        console.log("Recurring appointments created:", result.data);
+
+        // Success! Close modal and refresh
+        onAppointmentCreated();
+        handleClose();
+        return;
+      }
+
+      // Handle single appointment (existing logic)
       const { data: insertData, error: insertError } = await supabase
         .from("appointments")
         .insert({
@@ -454,6 +525,13 @@ export default function AddAppointmentModal({
     setHomeownerSearch("");
     setPropertySearch("");
     setCleanerSearch("");
+    // Reset recurrence state
+    setRecurrenceType("none");
+    setRecurrenceInterval(1);
+    setSelectedDaysOfWeek([]);
+    setRecurrenceEndType("date");
+    setRecurrenceEndDate("");
+    setRecurrenceMaxOccurrences(10);
     setError(null);
     onClose();
   };
@@ -966,6 +1044,158 @@ export default function AddAppointmentModal({
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
                   />
                 </div>
+
+                {/* Recurrence Section */}
+                <div className="border-t border-gray-200 pt-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Repeat className="w-5 h-5 text-primary-600" />
+                    <h4 className="text-md font-semibold text-gray-900">
+                      Repeat Appointment
+                    </h4>
+                  </div>
+
+                  {/* Recurrence Type */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Recurrence
+                    </label>
+                    <select
+                      value={recurrenceType}
+                      onChange={(e) => {
+                        setRecurrenceType(e.target.value as RecurrenceType);
+                        // Reset days of week when changing type
+                        if (e.target.value !== "weekly") {
+                          setSelectedDaysOfWeek([]);
+                        } else if (scheduledDate) {
+                          // Pre-select the day of the scheduled date for weekly
+                          const dayOfWeek = new Date(scheduledDate).getDay();
+                          setSelectedDaysOfWeek([dayOfWeek]);
+                        }
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="none">Does not repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+
+                  {/* Show recurrence options only when recurring */}
+                  {recurrenceType !== "none" && (
+                    <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+                      {/* Interval */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Repeat every
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={12}
+                            value={recurrenceInterval}
+                            onChange={(e) => setRecurrenceInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          />
+                          <span className="text-gray-600">
+                            {recurrenceType === "daily" && (recurrenceInterval === 1 ? "day" : "days")}
+                            {recurrenceType === "weekly" && (recurrenceInterval === 1 ? "week" : "weeks")}
+                            {recurrenceType === "monthly" && (recurrenceInterval === 1 ? "month" : "months")}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Days of Week (for weekly) */}
+                      {recurrenceType === "weekly" && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            On these days *
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDaysOfWeek((prev) =>
+                                    prev.includes(index)
+                                      ? prev.filter((d) => d !== index)
+                                      : [...prev, index]
+                                  );
+                                }}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-full transition-colors ${
+                                  selectedDaysOfWeek.includes(index)
+                                    ? "bg-primary-600 text-white"
+                                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                }`}
+                              >
+                                {day}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* End Condition */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Ends
+                        </label>
+                        <div className="space-y-3">
+                          {/* End on date option */}
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="recurrenceEnd"
+                              checked={recurrenceEndType === "date"}
+                              onChange={() => setRecurrenceEndType("date")}
+                              className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                            />
+                            <span className="text-gray-700">On date</span>
+                            {recurrenceEndType === "date" && (
+                              <input
+                                type="date"
+                                value={recurrenceEndDate}
+                                onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                                min={scheduledDate || today}
+                                className="px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                              />
+                            )}
+                          </label>
+
+                          {/* End after occurrences option */}
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="recurrenceEnd"
+                              checked={recurrenceEndType === "occurrences"}
+                              onChange={() => setRecurrenceEndType("occurrences")}
+                              className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                            />
+                            <span className="text-gray-700">After</span>
+                            {recurrenceEndType === "occurrences" && (
+                              <>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={50}
+                                  value={recurrenceMaxOccurrences}
+                                  onChange={(e) => setRecurrenceMaxOccurrences(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                                  className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                />
+                                <span className="text-gray-700">occurrences</span>
+                              </>
+                            )}
+                          </label>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Maximum 50 appointments will be created, up to 6 months in advance.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1153,10 +1383,13 @@ export default function AddAppointmentModal({
                   {isCreating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Creating...
+                      {recurrenceType !== "none" ? "Creating Series..." : "Creating..."}
                     </>
                   ) : (
-                    "Create Appointment"
+                    <>
+                      {recurrenceType !== "none" && <Repeat className="w-4 h-4" />}
+                      {recurrenceType !== "none" ? "Create Recurring Appointments" : "Create Appointment"}
+                    </>
                   )}
                 </button>
               )}

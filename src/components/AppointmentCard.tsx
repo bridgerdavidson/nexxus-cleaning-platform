@@ -1,5 +1,5 @@
 import React from "react";
-import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square } from "lucide-react";
+import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 
 export interface AppointmentCardData {
@@ -10,6 +10,7 @@ export interface AppointmentCardData {
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
+  series_id?: string | null;
   homeowner?: {
     first_name: string;
     last_name: string;
@@ -182,8 +183,13 @@ export default function AppointmentCard({
         </div>
 
         {/* Status */}
-        <div className="col-span-2 flex items-center justify-center">
+        <div className="col-span-2 flex items-center justify-center gap-1.5">
           <StatusBadge status={appointment.status} size="sm" />
+          {appointment.series_id && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full" title="Recurring appointment">
+              <Repeat className="w-3 h-3" />
+            </span>
+          )}
         </div>
 
         {/* Price */}
@@ -245,7 +251,14 @@ export default function AppointmentCard({
 
         {/* Status and Price */}
         <div className="sm:col-span-2 flex sm:flex-row items-center justify-between gap-3">
-          <StatusBadge status={appointment.status} size="md" />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={appointment.status} size="md" />
+            {appointment.series_id && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full" title="Recurring appointment">
+                <Repeat className="w-3 h-3" />
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1 text-right">
             <DollarSign className="w-5 h-5 text-green-600" />
             <span className="text-lg font-bold text-gray-900">

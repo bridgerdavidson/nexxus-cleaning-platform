@@ -27,6 +27,7 @@ import {
 import { createPortal } from "react-dom";
 import AddPropertyModal from "./AddPropertyModal";
 import AddAppointmentModal from "./AddAppointmentModal";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface CustomerDetailModalProps {
   isOpen: boolean;
@@ -45,6 +46,9 @@ export default function CustomerDetailModal({
   onRefreshAppointments,
   onRefreshProperties,
 }: CustomerDetailModalProps) {
+  // Lock body scroll when panel is open
+  useBodyScrollLock(isOpen);
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editedCustomer, setEditedCustomer] = useState({

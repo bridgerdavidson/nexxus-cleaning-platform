@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, DollarSign, Search, Calendar, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface Homeowner {
   id: string;
@@ -37,6 +38,9 @@ export default function RecordPaymentModal({
   onPaymentRecorded,
 }: RecordPaymentModalProps) {
   const { currentOrganizationId } = useAuth();
+
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   // State
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);

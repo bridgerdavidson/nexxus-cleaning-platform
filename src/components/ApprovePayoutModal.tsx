@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X, DollarSign, CheckCircle, Loader2, Calendar, User } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface Payout {
   id: string;
@@ -31,6 +32,9 @@ export default function ApprovePayoutModal({
   onPayoutApproved,
   payout,
 }: ApprovePayoutModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);

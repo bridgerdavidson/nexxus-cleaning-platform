@@ -20,6 +20,7 @@ import { createPortal } from "react-dom";
 import { PropertyCardData } from "./PropertyCard";
 import AddAppointmentModal from "./AddAppointmentModal";
 import { updateProperty } from "../hooks/useAdminData";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface PropertySidePanelProps {
   isOpen: boolean;
@@ -38,6 +39,9 @@ export default function PropertySidePanel({
   onRefreshAppointments,
   role, // eslint-disable-line @typescript-eslint/no-unused-vars
 }: PropertySidePanelProps) {
+  // Lock body scroll when panel is open
+  useBodyScrollLock(isOpen);
+
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);

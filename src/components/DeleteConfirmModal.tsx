@@ -2,6 +2,7 @@
 
 import React from "react";
 import { X, AlertTriangle, Loader2 } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
@@ -22,6 +23,9 @@ export default function DeleteConfirmModal({
   itemName,
   isLoading = false,
 }: DeleteConfirmModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   return (

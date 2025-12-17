@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface CleanerProfile {
   id: string;
@@ -52,6 +53,9 @@ export default function CleanerSidePanel({
   onDelete,
   onCleanerUpdated,
 }: CleanerSidePanelProps) {
+  // Lock body scroll when panel is open
+  useBodyScrollLock(isOpen);
+
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);

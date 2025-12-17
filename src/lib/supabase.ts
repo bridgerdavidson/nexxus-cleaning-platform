@@ -192,6 +192,7 @@ export type Database = {
           status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           total_price: number
           notes: string | null
+          series_id: string | null
           created_at: string
           updated_at: string
         }
@@ -207,6 +208,7 @@ export type Database = {
           status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           total_price: number
           notes?: string | null
+          series_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -222,6 +224,72 @@ export type Database = {
           status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           total_price?: number
           notes?: string | null
+          series_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      recurring_appointment_series: {
+        Row: {
+          id: string
+          organization_id: string
+          homeowner_id: string
+          cleaner_id: string | null
+          property_id: string
+          service_type_id: string
+          start_date: string
+          start_time: string
+          duration_minutes: number
+          total_price: number
+          special_requests: string | null
+          recurrence_type: 'daily' | 'weekly' | 'monthly'
+          interval: number
+          days_of_week: number[] | null
+          end_date: string | null
+          max_occurrences: number | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          homeowner_id: string
+          cleaner_id?: string | null
+          property_id: string
+          service_type_id: string
+          start_date: string
+          start_time: string
+          duration_minutes: number
+          total_price: number
+          special_requests?: string | null
+          recurrence_type: 'daily' | 'weekly' | 'monthly'
+          interval?: number
+          days_of_week?: number[] | null
+          end_date?: string | null
+          max_occurrences?: number | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          homeowner_id?: string
+          cleaner_id?: string | null
+          property_id?: string
+          service_type_id?: string
+          start_date?: string
+          start_time?: string
+          duration_minutes?: number
+          total_price?: number
+          special_requests?: string | null
+          recurrence_type?: 'daily' | 'weekly' | 'monthly'
+          interval?: number
+          days_of_week?: number[] | null
+          end_date?: string | null
+          max_occurrences?: number | null
+          is_active?: boolean
           created_at?: string
           updated_at?: string
         }

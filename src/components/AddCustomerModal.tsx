@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X, Users, Phone } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface AddCustomerModalProps {
   isOpen: boolean;
@@ -14,6 +15,9 @@ export default function AddCustomerModal({
   onClose,
   onCustomerCreated,
 }: AddCustomerModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");

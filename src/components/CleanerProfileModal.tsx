@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader, ArrowRight, X, Sparkles } from "lucide-react";
 import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface CleanerProfileModalProps {
   isOpen: boolean;
@@ -23,6 +24,9 @@ export default function CleanerProfileModal({
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
 
   // Note: Tab visibility handling is in LayoutWrapper (global)
   // No need to add it here - would cause multiple listeners

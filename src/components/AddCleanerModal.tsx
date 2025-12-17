@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { X, Users } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface AddCleanerModalProps {
   isOpen: boolean;
@@ -12,6 +13,9 @@ export default function AddCleanerModal({
   isOpen,
   onClose,
 }: AddCleanerModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");

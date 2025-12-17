@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Users, UserCheck, Loader2 } from "lucide-react";
 import { createTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface AddTeamMemberModalProps {
   isOpen: boolean;
@@ -17,6 +18,10 @@ export default function AddTeamMemberModal({
   onTeamMemberCreated,
 }: AddTeamMemberModalProps) {
   const { currentOrganizationId } = useAuth();
+
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");

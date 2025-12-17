@@ -4,6 +4,7 @@ import {
   useOrganizationMembers,
   OrganizationMember,
 } from "../hooks/useOrganizationMembers";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface NewConversationModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export default function NewConversationModal({
   onSelectUser,
   currentUserId,
 }: NewConversationModalProps) {
+  // Lock body scroll when modal is open
+  useBodyScrollLock(isOpen);
+
   const [searchQuery, setSearchQuery] = useState("");
   const { members, loading, error } = useOrganizationMembers({
     excludeCurrentUser: true,
