@@ -10,8 +10,6 @@ import {
   DollarSign,
   Clock,
   Mail,
-  CheckCircle,
-  XCircle,
   Edit2,
   Trash2,
   Save,
@@ -40,8 +38,8 @@ export default function AppointmentSidePanel({
   isOpen,
   onClose,
   appointment,
-  onCancel,
-  onMarkComplete,
+  onCancel, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onMarkComplete, // eslint-disable-line @typescript-eslint/no-unused-vars
   onDelete,
   onAppointmentUpdated,
   role, // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -154,20 +152,6 @@ export default function AppointmentSidePanel({
   );
   const property = getPropertyAddress();
 
-  const handleCancel = async () => {
-    if (!onCancel) return;
-    setIsActionLoading(true);
-    await onCancel(appointment.id);
-    setIsActionLoading(false);
-  };
-
-  const handleMarkComplete = async () => {
-    if (!onMarkComplete) return;
-    setIsActionLoading(true);
-    await onMarkComplete(appointment.id);
-    setIsActionLoading(false);
-  };
-
   const handleSave = async () => {
     if (!appointment) return;
 
@@ -243,11 +227,6 @@ export default function AppointmentSidePanel({
     }
   };
 
-  const canMarkComplete =
-    appointment.status !== "completed" && appointment.status !== "cancelled";
-  const canCancelAppointment = appointment.status !== "cancelled";
-  const isCancelled = appointment.status === "cancelled";
-
   const panel = (
     <div
       className={`fixed inset-0 z-[200] flex justify-end transition-colors duration-300 ${
@@ -264,7 +243,7 @@ export default function AppointmentSidePanel({
       >
         {/* Header */}
         <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900">
               Appointment Details
             </h2>
@@ -275,49 +254,59 @@ export default function AppointmentSidePanel({
               <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
-          {/* Edit Toggle */}
-          {canEdit && (
-            <div className="flex justify-end">
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Edit Appointment
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCancelEdit}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    Save
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 pb-6">
-          {/* Status */}
-          <div>
-            <p className="text-sm text-gray-500 mb-2">Status</p>
-            <StatusBadge status={appointment.status} size="lg" />
+          {/* Status with Edit and Delete actions */}
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-gray-500 mb-2">Status</p>
+              <StatusBadge status={appointment.status} size="lg" />
+            </div>
+            {canEdit && !isEditing && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 text-gray-400 hover:text-primary-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Edit appointment"
+                >
+                  <Edit2 className="w-5 h-5" />
+                </button>
+                {onDelete && (
+                  <button
+                    onClick={() => onDelete(appointment.id)}
+                    disabled={isActionLoading}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                    title="Delete appointment"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            )}
+            {canEdit && isEditing && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  Save
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Date & Time */}
@@ -516,49 +505,6 @@ export default function AppointmentSidePanel({
             </div>
           )}
         </div>
-
-        {/* Floating Action Footer - Only show when not editing */}
-        {!isEditing && (
-          <div className="flex-shrink-0 bg-white border-t border-gray-200 p-4 sm:p-6 shadow-lg">
-            <div className="flex flex-col lg:flex-row gap-2">
-              {/* For Cancelled Appointments - Show Delete Only */}
-              {isCancelled && canEdit && onDelete ? (
-                <button
-                  onClick={() => onDelete(appointment.id)}
-                  disabled={isActionLoading}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-red-600 text-red-700 bg-transparent rounded-lg hover:bg-red-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Permanently
-                </button>
-              ) : (
-                <>
-                  {canMarkComplete && canEdit && onMarkComplete && (
-                    <button
-                      onClick={handleMarkComplete}
-                      disabled={isActionLoading}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-green-500 text-green-700 bg-transparent rounded-lg hover:bg-green-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Mark as Complete
-                    </button>
-                  )}
-
-                  {canCancelAppointment && canEdit && onCancel && (
-                    <button
-                      onClick={handleCancel}
-                      disabled={isActionLoading}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-red-500 text-red-700 bg-transparent rounded-lg hover:bg-red-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Cancel Appointment
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
