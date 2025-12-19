@@ -7,6 +7,7 @@ interface Tab {
   id: string;
   label: string;
   icon: LucideIcon;
+  hasNotification?: boolean;
 }
 
 interface MobileNavigationProps {
@@ -39,11 +40,16 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
                   : "text-gray-600 hover:text-gray-900"
               }`}
             >
-              <Icon
-                className={`w-6 h-6 mb-1 ${
-                  isActive ? "text-primary-600" : "text-gray-600"
-                }`}
-              />
+              <div className="relative">
+                <Icon
+                  className={`w-6 h-6 mb-1 ${
+                    isActive ? "text-primary-600" : "text-gray-600"
+                  }`}
+                />
+                {tab.hasNotification && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full border-2 border-white" />
+                )}
+              </div>
               <span
                 className={`text-xs font-medium ${
                   isActive ? "text-primary-600" : "text-gray-600"

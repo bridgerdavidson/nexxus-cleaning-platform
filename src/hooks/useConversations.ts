@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { ConversationWithDetails, UserRole, Message } from '../types';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface UseConversationsOptions {
   userId: string;
@@ -8,23 +9,35 @@ interface UseConversationsOptions {
   roleFilter?: UserRole | 'all';
 }
 
+type SubscriptionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
 export function useConversations({ userId, searchQuery = '', roleFilter = 'all' }: UseConversationsOptions) {
   const [conversations, setConversations] = useState<ConversationWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('disconnected');
   // Cache profiles to avoid refetching when updating conversations
   const profilesCacheRef = useRef<Map<string, any>>(new Map());
+  // Track current channel for cleanup
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  // Track retry attempts
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
+  // Store fetch function in ref so it can be called from subscription callbacks
+  const fetchConversationsRef = useRef<(() => Promise<void>) | null>(null);
 
-  useEffect(() => {
-    if (!userId) {
-      setLoading(false);
-      return;
+  // Subscribe to realtime with retry logic
+  const setupSubscription = useCallback((currentUserId: string) => {
+    // Clean up existing channel
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
     }
 
-    fetchConversations();
+    setSubscriptionStatus('connecting');
 
     // Set up real-time subscription with unique channel name
-    const channelName = `conversations-${userId}-${Date.now()}`;
+    const channelName = `conversations-${currentUserId}-${Date.now()}`;
     console.log('[useConversations] Setting up subscription:', channelName);
     
     const channel = supabase
@@ -40,8 +53,11 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           console.log('[useConversations] Conversation changed:', payload);
           // Only refresh if the conversation involves this user
           const conv = payload.new as any;
-          if (conv.participant_1_id === userId || conv.participant_2_id === userId) {
-            fetchConversations();
+          if (conv.participant_1_id === currentUserId || conv.participant_2_id === currentUserId) {
+            // Use ref to call fetchConversations
+            if (fetchConversationsRef.current) {
+              fetchConversationsRef.current();
+            }
           }
         }
       )
@@ -66,7 +82,7 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           };
           
           // Update for both sender and recipient
-          if (newMessage.sender_id === userId || newMessage.recipient_id === userId) {
+          if (newMessage.sender_id === currentUserId || newMessage.recipient_id === currentUserId) {
             console.log('[useConversations] Message involves current user, updating conversation list');
             await optimisticallyUpdateConversationWithMessage(newMessage);
           } else {
@@ -90,7 +106,7 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
             conversation_id: string | null;
           };
           
-          if (updatedMessage.recipient_id === userId && 
+          if (updatedMessage.recipient_id === currentUserId && 
               updatedMessage.is_read === true && 
               updatedMessage.conversation_id) {
             // Optimistically decrement unread count
@@ -98,23 +114,83 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           }
         }
       )
-      .subscribe((status) => {
-        console.log(`[useConversations] Subscription status: ${status}`);
+      .subscribe((status, err) => {
+        console.log(`[useConversations] Subscription status: ${status}`, err || '');
+        
         if (status === 'SUBSCRIBED') {
+          setSubscriptionStatus('connected');
+          retryCountRef.current = 0; // Reset retry count on success
+          setError(null); // Clear any previous errors
           console.log('[useConversations] Successfully subscribed to conversations and messages');
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          console.error(`[useConversations] Subscription error: ${status}`);
-          setError(`Subscription error: ${status}`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setSubscriptionStatus('error');
+          console.error(`[useConversations] Subscription error: ${status}`, err);
+          
+          // Don't set error state for transient issues - only log
+          // This prevents showing error messages to users for temporary network issues
+          
+          // Retry logic
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current++;
+            console.log(`[useConversations] Retrying subscription (attempt ${retryCountRef.current}/${maxRetries})...`);
+            setTimeout(() => {
+              setupSubscription(currentUserId);
+            }, 1000 * retryCountRef.current); // Exponential backoff
+          } else {
+            console.error('[useConversations] Max retries reached. Subscription failed.');
+            // Only set error after max retries
+            setError(`Unable to establish real-time connection. Messages will still work, but updates may be delayed.`);
+          }
+        } else if (status === 'CLOSED') {
+          setSubscriptionStatus('disconnected');
         }
       });
 
-    return () => {
-      console.log('[useConversations] Cleaning up subscription:', channelName);
-      supabase.removeChannel(channel);
-    };
-  }, [userId]);
+    channelRef.current = channel;
+    return channel;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const fetchConversations = async () => {
+  useEffect(() => {
+    if (!userId) {
+      setLoading(false);
+      setSubscriptionStatus('disconnected');
+      return;
+    }
+
+    // Check if user is authenticated before setting up subscription
+    const checkAuthAndSubscribe = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.log('[useConversations] No session found, skipping subscription');
+        setLoading(false);
+        return;
+      }
+
+      // Fetch conversations first, then set up subscription
+      if (fetchConversationsRef.current) {
+        await fetchConversationsRef.current();
+      }
+
+      // Set up real-time subscription with retry logic
+      retryCountRef.current = 0;
+      setupSubscription(userId);
+    };
+
+    checkAuthAndSubscribe();
+
+    return () => {
+      // Clean up channel on unmount or userId change
+      if (channelRef.current) {
+        console.log('[useConversations] Cleaning up subscription');
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      setSubscriptionStatus('disconnected');
+    };
+  }, [userId, setupSubscription]);
+
+  const fetchConversations = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -227,7 +303,12 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
+
+  // Store fetch function in ref
+  useEffect(() => {
+    fetchConversationsRef.current = fetchConversations;
+  }, [fetchConversations]);
 
   // Optimistically update unread count for a conversation
   const updateUnreadCount = (conversationId: string, newCount: number) => {
@@ -271,7 +352,9 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
     if (!newMessage.conversation_id) {
       // New conversation - need to fetch it
       console.log('[useConversations] No conversation_id, fetching conversations...');
-      fetchConversations();
+      if (fetchConversationsRef.current) {
+        fetchConversationsRef.current();
+      }
       return;
     }
 
@@ -316,7 +399,9 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
         // Conversation not in list yet - might be a new conversation
         console.log('[useConversations] Conversation not found in list, fetching...');
         // Fetch to get the full conversation data
-        fetchConversations();
+        if (fetchConversationsRef.current) {
+          fetchConversationsRef.current();
+        }
         return prev;
       }
 
@@ -393,7 +478,8 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
     loading,
     error,
     refetch: fetchConversations,
-    updateUnreadCount
+    updateUnreadCount,
+    subscriptionStatus // Expose subscription status for UI indicators
   };
 }
 

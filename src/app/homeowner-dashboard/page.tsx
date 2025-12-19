@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -125,10 +125,15 @@ export default function HomeownerDashboard() {
     return "Address not available";
   };
 
+  // Calculate if there are any unread messages
+  const hasUnreadMessages = useMemo(() => {
+    return conversations.some((conv) => conv.unread_count > 0);
+  }, [conversations]);
+
   const tabs = [
     { id: "home", label: "Overview", icon: Home },
     { id: "bookings", label: "My Bookings", icon: Calendar },
-    { id: "messages", label: "Messages", icon: MessageCircle },
+    { id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "properties", label: "Properties", icon: Camera },
   ];

@@ -144,6 +144,11 @@ export default function ManagerDashboard() {
     [permissions]
   );
 
+  // Calculate if there are any unread messages
+  const hasUnreadMessages = useMemo(() => {
+    return conversations.some((conv) => conv.unread_count > 0);
+  }, [conversations]);
+
   // Build navigation groups based on permissions - using useMemo to ensure consistent hook order
   const navigationGroups = useMemo(() => {
     // Debug: Log permissions to help diagnose
@@ -189,7 +194,7 @@ export default function ManagerDashboard() {
 
     // Add messages if permitted
     if (permissions.can_view_messages === true) {
-      opsTabs.push({ id: "messages", label: "Messages", icon: MessageCircle });
+      opsTabs.push({ id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages });
     }
 
     // Add customers to opsTabs for mobile navigation
@@ -276,7 +281,7 @@ export default function ManagerDashboard() {
     };
 
     return groups;
-  }, [permissions, permissionsLoading]);
+  }, [permissions, permissionsLoading, hasUnreadMessages]);
 
   // Get groups array for sidebar
   const groups = useMemo(

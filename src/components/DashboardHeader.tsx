@@ -7,6 +7,7 @@ interface Tab {
   id: string;
   label: string;
   icon: LucideIcon;
+  hasNotification?: boolean;
 }
 
 interface DashboardHeaderProps {
@@ -49,13 +50,18 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   <button
                     key={tab.id}
                     onClick={() => onTabChange?.(tab.id)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 relative ${
                       activeTab === tab.id
                         ? "text-primary-600 bg-primary-50"
                         : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
+                    <div className="relative">
+                      <Icon className="w-5 h-5" />
+                      {tab.hasNotification && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full border-2 border-white" />
+                      )}
+                    </div>
                     <span>{tab.label}</span>
                   </button>
                 );

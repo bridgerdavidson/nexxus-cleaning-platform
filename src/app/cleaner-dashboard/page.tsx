@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -194,10 +194,15 @@ export default function CleanerDashboard() {
     }
   };
 
+  // Calculate if there are any unread messages
+  const hasUnreadMessages = useMemo(() => {
+    return conversations.some((conv) => conv.unread_count > 0);
+  }, [conversations]);
+
   const tabs = [
     { id: "home", label: "Overview", icon: Home },
     { id: "jobs", label: "Job Details", icon: MapPin },
-    { id: "messages", label: "Messages", icon: MessageCircle },
+    { id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages },
     { id: "earnings", label: "Earnings", icon: DollarSign },
     { id: "photos", label: "Photos", icon: Camera },
   ];

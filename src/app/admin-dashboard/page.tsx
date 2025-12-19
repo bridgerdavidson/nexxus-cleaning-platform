@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -158,6 +158,62 @@ export default function AdminDashboard() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
+  // Calculate if there are any unread messages (must be before early return)
+  const hasUnreadMessages = useMemo(() => {
+    return conversations.some((conv) => conv.unread_count > 0);
+  }, [conversations]);
+
+  // Hierarchical navigation structure (must be before early return)
+  const navigationGroups = useMemo(() => ({
+    operations: {
+      id: "operations" as const,
+      label: "Operations",
+      icon: LayoutGrid,
+      tabs: [
+        { id: "home", label: "Overview", icon: Home },
+        { id: "bookings", label: "Bookings", icon: Calendar },
+        { id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages },
+        { id: "customers", label: "Customers", icon: Users },
+      ],
+    },
+    accounts: {
+      id: "accounts" as const,
+      label: "Accounts",
+      icon: Users,
+      tabs: [
+        { id: "customers", label: "Customers", icon: Users },
+        { id: "properties", label: "Properties", icon: Building },
+      ],
+    },
+    team: {
+      id: "team" as const,
+      label: "Team",
+      icon: UserCheck,
+      tabs: [
+        { id: "cleaners", label: "Cleaners", icon: UserCheck },
+        { id: "team", label: "Team Members", icon: Users },
+      ],
+    },
+    business: {
+      id: "business" as const,
+      label: "Business",
+      icon: TrendingUp,
+      tabs: [
+        { id: "payments", label: "Finance", icon: DollarSign },
+        { id: "analytics", label: "Analytics", icon: BarChart3 },
+      ],
+    },
+    admin: {
+      id: "admin" as const,
+      label: "Administration",
+      icon: Settings,
+      tabs: [
+        { id: "settings", label: "Settings", icon: Settings },
+        { id: "support", label: "Support", icon: HelpCircle },
+      ],
+    },
+  }), [hasUnreadMessages]);
+
   // Show loading while checking auth
   if (loading || !user) {
     return (
@@ -238,57 +294,6 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     await signOut();
-  };
-
-  // Hierarchical navigation structure
-  const navigationGroups = {
-    operations: {
-      id: "operations" as const,
-      label: "Operations",
-      icon: LayoutGrid,
-      tabs: [
-        { id: "home", label: "Overview", icon: Home },
-        { id: "bookings", label: "Bookings", icon: Calendar },
-        { id: "messages", label: "Messages", icon: MessageCircle },
-        { id: "customers", label: "Customers", icon: Users },
-      ],
-    },
-    accounts: {
-      id: "accounts" as const,
-      label: "Accounts",
-      icon: Users,
-      tabs: [
-        { id: "customers", label: "Customers", icon: Users },
-        { id: "properties", label: "Properties", icon: Building },
-      ],
-    },
-    team: {
-      id: "team" as const,
-      label: "Team",
-      icon: UserCheck,
-      tabs: [
-        { id: "cleaners", label: "Cleaners", icon: UserCheck },
-        { id: "team", label: "Team Members", icon: Users },
-      ],
-    },
-    business: {
-      id: "business" as const,
-      label: "Business",
-      icon: TrendingUp,
-      tabs: [
-        { id: "payments", label: "Finance", icon: DollarSign },
-        { id: "analytics", label: "Analytics", icon: BarChart3 },
-      ],
-    },
-    admin: {
-      id: "admin" as const,
-      label: "Administration",
-      icon: Settings,
-      tabs: [
-        { id: "settings", label: "Settings", icon: Settings },
-        { id: "support", label: "Support", icon: HelpCircle },
-      ],
-    },
   };
 
   // Get groups array for sidebar
