@@ -366,8 +366,8 @@ export default function ManagerDashboard() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
-  // Show loading while checking auth - MUST be after all hooks
-  if (loading || !user) {
+  // Show loading while checking auth and permissions - MUST be after all hooks
+  if (loading || !user || permissionsLoading || !permissions) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

@@ -226,6 +226,46 @@ export default function CalendarView({
     [currentView]
   );
 
+  // Custom month date cell wrapper to show "+X more" indicator
+  const MonthDateCellWrapper = useCallback(
+    ({ value, children }: { value: Date; children: React.ReactNode }) => {
+      // Get all appointments for this date
+      const dayAppointments = getAppointmentsForDate(value);
+      const totalAppointments = dayAppointments.length;
+
+      // react-big-calendar's month view typically shows about 2 events before overflow
+      // Based on typical month cell height, we can fit ~2 events (each ~20-24px tall)
+      // This is a conservative estimate to ensure we show the indicator when needed
+      const visibleThreshold = 2;
+      const hiddenCount = totalAppointments - visibleThreshold;
+
+      // Only show indicator if there are more appointments than can typically fit
+      const shouldShowIndicator =
+        totalAppointments > visibleThreshold &&
+        currentView === Views.MONTH;
+
+      return (
+        <div className="rbc-date-cell-wrapper">
+          {children}
+          {shouldShowIndicator && (
+            <div
+              className="rbc-overflow-indicator text-xs font-medium text-primary-600 hover:text-primary-700 cursor-pointer mt-0.5 px-1 py-0.5 rounded transition-colors"
+              onClick={(e) => {
+                // Stop propagation to avoid triggering the day click handler twice
+                e.stopPropagation();
+                const dayAppointments = getAppointmentsForDate(value);
+                onDayClick(value, dayAppointments);
+              }}
+            >
+              +{hiddenCount} more
+            </div>
+          )}
+        </div>
+      );
+    },
+    [getAppointmentsForDate, currentView, onDayClick]
+  );
+
   // Handle event click
   const handleSelectEvent = useCallback(
     (event: CalendarEvent) => {
@@ -513,6 +553,9 @@ export default function CalendarView({
           eventPropGetter={eventStyleGetter}
           components={{
             event: EventComponent,
+            month: {
+              dateCellWrapper: MonthDateCellWrapper,
+            },
             toolbar: () => null, // Using custom toolbar above
           }}
           views={[Views.MONTH, Views.WEEK, Views.DAY, Views.AGENDA]}
@@ -546,21 +589,71 @@ export default function CalendarView({
           outline: none !important;
           border: none !important;
           border-right: none !important;
+          box-shadow: none !important;
         }
 
-        .calendar-container .rbc-event:focus {
+        .calendar-container .rbc-event:focus,
+        .calendar-container .rbc-event:focus-visible,
+        .calendar-container .rbc-event:active {
           outline: none !important;
           border: none !important;
+          box-shadow: none !important;
         }
 
-        .calendar-container .rbc-selected {
+        .calendar-container .rbc-selected,
+        .calendar-container .rbc-event.rbc-selected {
           outline: none !important;
           border: none !important;
+          box-shadow: none !important;
+          background-color: transparent !important;
+        }
+
+        .calendar-container .rbc-selected:focus,
+        .calendar-container .rbc-event.rbc-selected:focus {
+          outline: none !important;
+          border: none !important;
+          box-shadow: none !important;
         }
 
         .calendar-container .rbc-event-content {
           outline: none !important;
           border: none !important;
+          box-shadow: none !important;
+        }
+
+        .calendar-container .rbc-event-content:focus,
+        .calendar-container .rbc-event-content:focus-visible,
+        .calendar-container .rbc-event-content:active {
+          outline: none !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
+
+        /* Remove any green focus box from react-big-calendar default styles */
+        .calendar-container .rbc-event:focus-within {
+          outline: none !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
+
+        /* Remove focus styles from event wrapper and all nested elements */
+        .calendar-container .rbc-event * {
+          outline: none !important;
+        }
+
+        .calendar-container .rbc-event *:focus,
+        .calendar-container .rbc-event *:focus-visible,
+        .calendar-container .rbc-event *:active {
+          outline: none !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+
+        /* Ensure no default browser focus rings appear */
+        .calendar-container button.rbc-event,
+        .calendar-container div.rbc-event {
+          outline: none !important;
+          box-shadow: none !important;
         }
 
         /* Completely hide drag preview - doesn't work properly */
@@ -613,6 +706,37 @@ export default function CalendarView({
 
         .calendar-container.is-dragging * {
           cursor: grabbing !important;
+        }
+
+        /* Overflow indicator styling */
+        .calendar-container .rbc-overflow-indicator {
+          display: block;
+          width: 100%;
+          text-align: center;
+          margin-top: 2px;
+          padding: 2px 4px;
+          background-color: rgba(59, 130, 246, 0.1);
+          border-radius: 4px;
+          user-select: none;
+        }
+
+        .calendar-container .rbc-overflow-indicator:hover {
+          background-color: rgba(59, 130, 246, 0.2);
+        }
+
+        /* Position the overflow indicator in month view cells */
+        .calendar-container .rbc-month-view .rbc-date-cell-wrapper {
+          position: relative;
+          width: 100%;
+          height: 100%;
+        }
+
+        .calendar-container .rbc-month-view .rbc-date-cell-wrapper .rbc-overflow-indicator {
+          position: absolute;
+          bottom: 2px;
+          left: 2px;
+          right: 2px;
+          z-index: 5;
         }
       `}</style>
     </div>
