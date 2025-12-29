@@ -65,6 +65,8 @@ export default function AdminDashboard() {
   const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showPendingFilter, setShowPendingFilter] = useState(false);
+  const [showAllFilter, setShowAllFilter] = useState(false);
   const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<
@@ -321,6 +323,19 @@ export default function AdminDashboard() {
     const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
     if (newGroup && newGroup.tabs.length > 0) {
       setActiveTab(newGroup.tabs[0].id);
+      // Reset filters when switching groups
+      setShowPendingFilter(false);
+      setShowAllFilter(false);
+    }
+  };
+
+  // Handle tab change - reset filters if not navigating from specific sections
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    // Only keep filters if we're staying on bookings tab
+    if (tabId !== "bookings") {
+      setShowPendingFilter(false);
+      setShowAllFilter(false);
     }
   };
 
@@ -339,15 +354,32 @@ export default function AdminDashboard() {
     }
   };
 
-  // Get upcoming appointments (confirmed, not completed)
-  const upcomingAppointments = appointments
-    .filter((a) => a.status === "confirmed" || a.status === "pending")
+  // Get upcoming appointments (future appointments, excluding completed/cancelled)
+  // This matches the BookingsPage "upcoming" tab definition
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const allUpcomingAppointments = appointments
+    .filter((a) => {
+      // Parse appointment date
+      const [year, month, day] = a.scheduled_date.split("-").map(Number);
+      const appointmentDate = new Date(year, month - 1, day);
+      appointmentDate.setHours(0, 0, 0, 0);
+      
+      // Future appointments, excluding completed/cancelled
+      return (
+        appointmentDate >= today &&
+        a.status !== "completed" &&
+        a.status !== "cancelled"
+      );
+    })
     .sort((a, b) => {
       const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
-    })
-    .slice(0, 5);
+    });
+  
+  const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
 
   const pendingAppointments = appointments.filter(
     (a) => a.status === "pending"
@@ -492,7 +524,10 @@ export default function AdminDashboard() {
                   {pendingAppointments.length > 3 && (
                     <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
                       <button
-                        onClick={() => setActiveTab("bookings")}
+                        onClick={() => {
+                          setShowPendingFilter(true);
+                          setActiveTab("bookings");
+                        }}
                         className="w-full text-center text-sm font-medium text-primary-600"
                       >
                         View all {pendingAppointments.length} pending
@@ -836,6 +871,19 @@ export default function AdminDashboard() {
                     <p className="text-gray-600">No pending approvals</p>
                   </div>
                 )}
+                {pendingAppointments.length > 3 && (
+                  <div className="pt-3 border-t border-gray-200">
+                    <button
+                      onClick={() => {
+                        setShowPendingFilter(true);
+                        setActiveTab("bookings");
+                      }}
+                      className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                    >
+                      View all {pendingAppointments.length} pending
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -858,26 +906,24 @@ export default function AdminDashboard() {
                     key={appointment.id}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                        <Calendar className="w-5 h-5 text-primary-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {getHomeownerName(appointment)}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {formatDateTime(
-                            appointment.scheduled_date,
-                            appointment.scheduled_time
-                          )}
-                        </p>
-                        {appointment.service_type && (
-                          <p className="text-sm text-gray-500">
-                            {appointment.service_type.name}
-                          </p>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {getHomeownerName(appointment)}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {formatDateTime(
+                          appointment.scheduled_date,
+                          appointment.scheduled_time
                         )}
-                      </div>
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {getPropertyAddress(appointment)}
+                      </p>
+                      {appointment.service_type && (
+                        <p className="text-sm text-gray-600">
+                          Service: {appointment.service_type.name}
+                        </p>
+                      )}
                     </div>
                     <span
                       className={`px-2 py-1 text-xs font-semibold rounded-full ${
@@ -894,6 +940,19 @@ export default function AdminDashboard() {
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-600">No upcoming appointments</p>
+                  </div>
+                )}
+                {allUpcomingAppointments.length > 3 && (
+                  <div className="pt-3 border-t border-gray-200">
+                    <button
+                      onClick={() => {
+                        setShowAllFilter(true);
+                        setActiveTab("bookings");
+                      }}
+                      className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                    >
+                      View all {allUpcomingAppointments.length} upcoming
+                    </button>
                   </div>
                 )}
               </div>
@@ -931,18 +990,31 @@ export default function AdminDashboard() {
     }
   };
 
-  const renderBookings = () => (
-    <BookingsPage
-      appointments={appointments}
-      loading={appointmentsLoading}
-      onCancelAppointment={handleCancelAppointment}
-      onDeleteAppointment={handleDeleteAppointment}
-      onMarkComplete={handleMarkComplete}
-      onRefreshAppointments={refetchAppointments}
-      onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
-      role="admin"
-    />
-  );
+  const renderBookings = () => {
+    // Determine initial status filter based on which "View All" was clicked
+    let initialFilter: string | undefined;
+    if (showPendingFilter) {
+      initialFilter = "pending";
+    } else if (showAllFilter) {
+      initialFilter = "all";
+    }
+    
+    return (
+      <BookingsPage
+        appointments={appointments}
+        loading={appointmentsLoading}
+        onCancelAppointment={handleCancelAppointment}
+        onDeleteAppointment={handleDeleteAppointment}
+        onMarkComplete={handleMarkComplete}
+        onApproveAppointment={handleApproveAppointment}
+        onDeclineAppointment={handleDeclineAppointment}
+        onRefreshAppointments={refetchAppointments}
+        onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
+        role="admin"
+        initialStatusFilter={initialFilter}
+      />
+    );
+  };
 
   const handleDeleteCleaner = async () => {
     if (!deleteConfirmModal.cleanerId) return;
@@ -1386,7 +1458,7 @@ export default function AdminDashboard() {
             user={user}
             tabs={topNavTabs}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
           />
         </div>

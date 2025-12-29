@@ -1,5 +1,5 @@
 import React from "react";
-import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat } from "lucide-react";
+import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 
 export interface AppointmentCardData {
@@ -40,6 +40,9 @@ interface AppointmentCardProps {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
+  onApprove?: (appointmentId: string) => void;
+  onDecline?: (appointmentId: string) => void;
+  role?: "admin" | "manager";
 }
 
 export default function AppointmentCard({
@@ -48,6 +51,9 @@ export default function AppointmentCard({
   isSelectMode = false,
   isSelected = false,
   onToggleSelect,
+  onApprove,
+  onDecline,
+  role,
 }: AppointmentCardProps) {
   const formatDateTime = (date: string, time: string) => {
     // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
@@ -112,6 +118,20 @@ export default function AppointmentCard({
     e.stopPropagation();
     if (onToggleSelect) {
       onToggleSelect();
+    }
+  };
+
+  const handleApproveClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onApprove) {
+      onApprove(appointment.id);
+    }
+  };
+
+  const handleDeclineClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDecline) {
+      onDecline(appointment.id);
     }
   };
 
@@ -190,6 +210,28 @@ export default function AppointmentCard({
               <Repeat className="w-3 h-3" />
             </span>
           )}
+          {role === "admin" && appointment.status === "pending" && (onApprove || onDecline) && (
+            <div className="ml-2 flex items-center gap-1.5">
+              {onApprove && (
+                <button
+                  onClick={handleApproveClick}
+                  className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                  title="Approve appointment"
+                >
+                  Approve
+                </button>
+              )}
+              {onDecline && (
+                <button
+                  onClick={handleDeclineClick}
+                  className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                  title="Decline appointment"
+                >
+                  Decline
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Price */}
@@ -251,12 +293,34 @@ export default function AppointmentCard({
 
         {/* Status and Price */}
         <div className="sm:col-span-2 flex sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={appointment.status} size="md" />
             {appointment.series_id && (
               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full" title="Recurring appointment">
                 <Repeat className="w-3 h-3" />
               </span>
+            )}
+            {role === "admin" && appointment.status === "pending" && (onApprove || onDecline) && (
+              <div className="flex items-center gap-1.5">
+                {onApprove && (
+                  <button
+                    onClick={handleApproveClick}
+                    className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                    title="Approve appointment"
+                  >
+                    Approve
+                  </button>
+                )}
+                {onDecline && (
+                  <button
+                    onClick={handleDeclineClick}
+                    className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                    title="Decline appointment"
+                  >
+                    Decline
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1 text-right">

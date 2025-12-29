@@ -37,11 +37,14 @@ interface BookingsPageProps {
   onCancelAppointment: (appointmentId: string) => Promise<void>;
   onDeleteAppointment: (appointmentId: string) => Promise<void>;
   onMarkComplete: (appointmentId: string) => Promise<void>;
+  onApproveAppointment?: (appointmentId: string) => Promise<void>;
+  onDeclineAppointment?: (appointmentId: string) => Promise<void>;
   onRefreshAppointments?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
   role: "admin" | "manager";
   canEdit?: boolean;
+  initialStatusFilter?: string;
 }
 
 export default function BookingsPage({
@@ -50,15 +53,20 @@ export default function BookingsPage({
   onCancelAppointment,
   onDeleteAppointment,
   onMarkComplete,
+  onApproveAppointment,
+  onDeclineAppointment,
   onRefreshAppointments,
   onAppointmentUpdated,
   role,
   canEdit = true,
+  initialStatusFilter,
 }: BookingsPageProps) {
   const [activeTab, setActiveTab] = useState<TabType>("upcoming");
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(
+    initialStatusFilter || "all"
+  );
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
@@ -743,6 +751,9 @@ export default function BookingsPage({
                   isSelectMode={isSelectMode}
                   isSelected={selectedIds.has(appointment.id)}
                   onToggleSelect={() => toggleSelection(appointment.id)}
+                  onApprove={onApproveAppointment}
+                  onDecline={onDeclineAppointment}
+                  role={role}
                 />
               ))}
             </div>
@@ -782,6 +793,8 @@ export default function BookingsPage({
         appointment={selectedAppointment}
         onCancel={canEdit ? handleCancelFromPanel : undefined}
         onMarkComplete={canEdit ? handleMarkComplete : undefined}
+        onApprove={onApproveAppointment}
+        onDecline={onDeclineAppointment}
         onAppointmentUpdated={(updatedAppointment) => {
           // Update selected appointment immediately for side panel display
           setSelectedAppointment(updatedAppointment);

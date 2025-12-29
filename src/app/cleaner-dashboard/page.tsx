@@ -68,6 +68,11 @@ export default function CleanerDashboard() {
     error: photosError,
   } = useCleanerPhotos();
 
+  // Calculate if there are any unread messages
+  const hasUnreadMessages = useMemo(() => {
+    return conversations.some((conv) => conv.unread_count > 0);
+  }, [conversations]);
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!loading && !user) {
@@ -194,18 +199,23 @@ export default function CleanerDashboard() {
     }
   };
 
-  // Calculate if there are any unread messages
-  const hasUnreadMessages = useMemo(() => {
-    return conversations.some((conv) => conv.unread_count > 0);
-  }, [conversations]);
-
   const tabs = [
     { id: "home", label: "Overview", icon: Home },
     { id: "jobs", label: "Job Details", icon: MapPin },
-    { id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageCircle,
+      hasNotification: hasUnreadMessages,
+    },
     { id: "earnings", label: "Earnings", icon: DollarSign },
     { id: "photos", label: "Photos", icon: Camera },
   ];
+
+  // Filter tabs for top navigation (exclude earnings and photos)
+  const topNavTabs = tabs.filter(
+    (tab) => tab.id !== "earnings" && tab.id !== "photos"
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -866,7 +876,8 @@ export default function CleanerDashboard() {
       <div className="hidden md:block">
         <DashboardHeader
           role="cleaner"
-          tabs={tabs}
+          tabs={topNavTabs}
+          sidebarTabs={tabs}
           activeTab={activeTab}
           onTabChange={setActiveTab}
         />
@@ -890,7 +901,7 @@ export default function CleanerDashboard() {
         </div>
       </div>
       <MobileNavigation
-        tabs={tabs}
+        tabs={topNavTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
@@ -899,6 +910,9 @@ export default function CleanerDashboard() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="cleaner"
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
     </>
   );
