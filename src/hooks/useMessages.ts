@@ -28,6 +28,8 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
   // Track retry attempts
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+  // Track if retry is in progress to prevent concurrent retries
+  const isRetryingRef = useRef(false);
 
   // Memoized message checker to avoid duplicates
   const messageExistsRef = useRef<Set<string>>(new Set());
@@ -38,11 +40,22 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
   }, [messages]);
 
   // Subscribe to realtime with retry logic
-  const setupSubscription = useCallback((convId: string) => {
-    // Clean up existing channel
+  const setupSubscription = useCallback(async (convId: string) => {
+    // Validate session before subscribing
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.warn('[Realtime] No valid session, skipping subscription');
+      setSubscriptionStatus('disconnected');
+      return;
+    }
+
+    // Clean up existing channel with proper verification
     if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
+      const channelToRemove = channelRef.current;
       channelRef.current = null;
+      supabase.removeChannel(channelToRemove);
+      // Small delay to ensure cleanup completes before creating new channel
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     setSubscriptionStatus('connecting');
@@ -87,29 +100,68 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
           updateMessage(payload.new as { id: string; [key: string]: unknown });
         }
       )
-      .subscribe((status, err) => {
+      .subscribe(async (status, err) => {
         console.log(`[Realtime] Subscription status for ${convId}:`, status, err || '');
         
         if (status === 'SUBSCRIBED') {
           setSubscriptionStatus('connected');
           retryCountRef.current = 0; // Reset retry count on success
+          isRetryingRef.current = false; // Reset retry flag
           console.log(`[Realtime] Successfully subscribed to messages for conversation ${convId}`);
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           setSubscriptionStatus('error');
-          console.error(`[Realtime] Error subscribing to messages for conversation ${convId}:`, err);
           
-          // Retry logic
+          // Safely handle undefined err parameter
+          const errorMessage = err?.message || (err && typeof err === 'object' ? JSON.stringify(err) : String(err)) || 'Unknown error';
+          const errorDetails = err ? JSON.stringify(err, null, 2) : 'No error details available';
+          
+          console.error(`[Realtime] Error subscribing to messages for conversation ${convId}:`, {
+            status,
+            error: errorMessage,
+            details: errorDetails,
+            channelName,
+            conversationId: convId,
+            retryCount: retryCountRef.current
+          });
+          
+          // Prevent concurrent retry attempts
+          if (isRetryingRef.current) {
+            console.log('[Realtime] Retry already in progress, skipping');
+            return;
+          }
+          
+          // Retry logic with exponential backoff and jitter
           if (retryCountRef.current < maxRetries) {
+            isRetryingRef.current = true;
             retryCountRef.current++;
-            console.log(`[Realtime] Retrying subscription (attempt ${retryCountRef.current}/${maxRetries})...`);
-            setTimeout(() => {
-              setupSubscription(convId);
-            }, 1000 * retryCountRef.current); // Exponential backoff
+            
+            // Exponential backoff with jitter: base delay * 2^attempt + random(0-1000ms)
+            const baseDelay = 1000 * Math.pow(2, retryCountRef.current - 1);
+            const jitter = Math.random() * 1000;
+            const delay = baseDelay + jitter;
+            
+            console.log(`[Realtime] Retrying subscription (attempt ${retryCountRef.current}/${maxRetries}) in ${Math.round(delay)}ms...`);
+            
+            setTimeout(async () => {
+              // Re-check session before retrying
+              const { data: { session: retrySession } } = await supabase.auth.getSession();
+              if (!retrySession) {
+                console.warn('[Realtime] Session expired during retry, aborting');
+                isRetryingRef.current = false;
+                setSubscriptionStatus('disconnected');
+                return;
+              }
+              
+              isRetryingRef.current = false;
+              await setupSubscription(convId);
+            }, delay);
           } else {
+            isRetryingRef.current = false;
             console.error('[Realtime] Max retries reached. Subscription failed.');
           }
         } else if (status === 'CLOSED') {
           setSubscriptionStatus('disconnected');
+          isRetryingRef.current = false; // Reset retry flag on close
         }
       });
 
@@ -139,16 +191,26 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
 
     // Set up real-time subscription with retry logic
     retryCountRef.current = 0;
+    isRetryingRef.current = false;
     setupSubscription(conversationId);
 
     return () => {
       // Clean up channel on unmount or conversation change
       if (channelRef.current) {
         console.log(`[Realtime] Cleaning up subscription for conversation ${conversationId}`);
-        supabase.removeChannel(channelRef.current);
+        const channelToRemove = channelRef.current;
         channelRef.current = null;
+        supabase.removeChannel(channelToRemove);
+        // Small delay to ensure cleanup completes
+        setTimeout(() => {
+          setSubscriptionStatus('disconnected');
+        }, 100);
+      } else {
+        setSubscriptionStatus('disconnected');
       }
-      setSubscriptionStatus('disconnected');
+      // Reset retry state on cleanup
+      isRetryingRef.current = false;
+      retryCountRef.current = 0;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, userId, setupSubscription]);
