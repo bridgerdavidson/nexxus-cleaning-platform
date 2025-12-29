@@ -81,6 +81,7 @@ export default function AdminDashboard() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] = useState(true);
   const [selectedCleaner, setSelectedCleaner] = useState<any | null>(null);
   const [isCleanerSidePanelOpen, setIsCleanerSidePanelOpen] = useState(false);
   const router = useRouter();
@@ -379,7 +380,7 @@ export default function AdminDashboard() {
 
       <div className="space-y-6">
         {/* Mobile Quick Stats Bar */}
-        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
           <div className="flex items-center justify-between">
             {statsLoading ? (
               <div className="flex items-center justify-center w-full py-2">
@@ -414,20 +415,31 @@ export default function AdminDashboard() {
         <div className="md:hidden">
           {pendingAppointments.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
-              <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)}
+                className="w-full bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center justify-between hover:bg-amber-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg">
                     <AlertTriangle className="w-5 h-5 text-amber-600" />
-                    <h3 className="font-semibold text-gray-900">
-                      Pending Approvals
-                    </h3>
                   </div>
+                  <span className="font-medium text-gray-900">
+                    Pending Approvals
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
                   <span className="bg-amber-600 text-white text-xs font-bold px-2 py-1 rounded-full">
                     {pendingAppointments.length}
                   </span>
+                  {isPendingApprovalsExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-amber-600" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-amber-600" />
+                  )}
                 </div>
-              </div>
-              <div className="divide-y divide-gray-100">
+              </button>
+              {isPendingApprovalsExpanded && (
+                <div className="divide-y divide-gray-100">
                 {appointmentsLoading ? (
                   <div className="flex items-center justify-center py-6">
                     <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -477,15 +489,16 @@ export default function AdminDashboard() {
                     </div>
                   ))
                 )}
-              </div>
-              {pendingAppointments.length > 3 && (
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
-                  <button
-                    onClick={() => setActiveTab("bookings")}
-                    className="w-full text-center text-sm font-medium text-primary-600"
-                  >
-                    View all {pendingAppointments.length} pending
-                  </button>
+                  {pendingAppointments.length > 3 && (
+                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                      <button
+                        onClick={() => setActiveTab("bookings")}
+                        className="w-full text-center text-sm font-medium text-primary-600"
+                      >
+                        View all {pendingAppointments.length} pending
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -509,7 +522,7 @@ export default function AdminDashboard() {
         <div className="md:hidden">
           <button
             onClick={() => setIsStatsExpanded(!isStatsExpanded)}
-            className="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between"
+            className="w-full bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3 flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary-100 rounded-lg">
@@ -662,8 +675,8 @@ export default function AdminDashboard() {
         {/* Desktop Stats Cards - Original Layout */}
         <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           <div className="card flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-primary-600" />
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Calendar className="w-6 h-6 text-purple-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">
@@ -680,8 +693,8 @@ export default function AdminDashboard() {
           </div>
 
           <div className="card flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <Users className="w-6 h-6 text-primary-600" />
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Users className="w-6 h-6 text-indigo-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">
@@ -698,8 +711,8 @@ export default function AdminDashboard() {
           </div>
 
           <div className="card flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-primary-600" />
+            <div className="p-2 bg-green-100 rounded-lg">
+              <DollarSign className="w-6 h-6 text-green-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
@@ -714,8 +727,8 @@ export default function AdminDashboard() {
           </div>
 
           <div className="card flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-primary-600" />
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <AlertTriangle className="w-6 h-6 text-yellow-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Pending</p>
@@ -730,8 +743,8 @@ export default function AdminDashboard() {
           </div>
 
           <div className="card flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-primary-600" />
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-blue-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Growth</p>
@@ -746,8 +759,8 @@ export default function AdminDashboard() {
           </div>
 
           <div className="card flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-primary-600" />
+            <div className="p-2 bg-teal-100 rounded-lg">
+              <CheckCircle className="w-6 h-6 text-teal-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Completion</p>
