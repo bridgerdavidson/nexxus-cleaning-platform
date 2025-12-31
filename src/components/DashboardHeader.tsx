@@ -49,7 +49,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     <>
       <header className="bg-white shadow-sm fixed top-0 left-0 right-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 md:pt-0">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-16 relative">
             {/* Logo */}
             <div className="flex-shrink-0">
               <button
@@ -63,9 +63,9 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               </button>
             </div>
 
-            {/* Navigation Tabs */}
+            {/* Navigation Tabs - Centered */}
             {tabs.length > 0 && (
-              <nav className="hidden md:flex items-center space-x-1 flex-1 justify-center px-8">
+              <nav className="hidden md:flex items-center space-x-1 absolute left-1/2 transform -translate-x-1/2">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
                   return (

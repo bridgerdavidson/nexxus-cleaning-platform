@@ -17,6 +17,8 @@ import {
   ChevronDown,
   List,
   CalendarDays,
+  Clock,
+  MapPin,
 } from "lucide-react";
 import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
@@ -28,7 +30,6 @@ import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
 
-type TabType = "upcoming" | "all" | "completed" | "cancelled";
 type ViewType = "list" | "calendar";
 
 interface BookingsPageProps {
@@ -61,12 +62,12 @@ export default function BookingsPage({
   canEdit = true,
   initialStatusFilter,
 }: BookingsPageProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("upcoming");
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>(
     initialStatusFilter || "all"
   );
+  const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
@@ -187,36 +188,13 @@ export default function BookingsPage({
     };
   }, [flushPendingUpdates]);
 
-  // Get today's date for filtering
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Filter appointments by tab
-  const filterByTab = (appointment: AppointmentCardData): boolean => {
-    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-    const [year, month, day] = appointment.scheduled_date
-      .split("-")
-      .map(Number);
-    const appointmentDate = new Date(year, month - 1, day); // month is 0-indexed
-    appointmentDate.setHours(0, 0, 0, 0);
-
-    switch (activeTab) {
-      case "upcoming":
-        // Future appointments, excluding completed/cancelled
-        return (
-          appointmentDate >= today &&
-          appointment.status !== "completed" &&
-          appointment.status !== "cancelled"
-        );
-      case "all":
-        return true;
-      case "completed":
-        return appointment.status === "completed";
-      case "cancelled":
-        return appointment.status === "cancelled";
-      default:
-        return true;
-    }
+  // Get today's date string in YYYY-MM-DD format
+  const getTodayString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
 
   // Filter by search query
@@ -249,57 +227,77 @@ export default function BookingsPage({
     return appointment.status === statusFilter;
   };
 
-  // Apply all filters - use localAppointments for optimistic updates
-  const filteredAppointments = useMemo(() => {
-    return localAppointments.filter(
-      (apt) => filterByTab(apt) && filterBySearch(apt) && filterByStatus(apt)
-    );
+  // Get filtered today's appointments
+  const filteredTodaysAppointments = useMemo(() => {
+    const today = getTodayString();
+    return localAppointments
+      .filter(
+        (apt) =>
+          apt.scheduled_date === today &&
+          filterBySearch(apt) &&
+          filterByStatus(apt)
+      )
+      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, activeTab, searchQuery, statusFilter]);
+  }, [localAppointments, searchQuery, statusFilter]);
+
+  // Get filtered upcoming appointments within time frame
+  const filteredUpcomingAppointments = useMemo(() => {
+    const today = getTodayString();
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    // Calculate end date based on filter
+    const endDate = new Date(todayDate);
+    if (upcomingDaysFilter !== -1) {
+      endDate.setDate(endDate.getDate() + upcomingDaysFilter);
+    }
+
+    return localAppointments
+      .filter((apt) => {
+        // Must be after today
+        if (apt.scheduled_date <= today) return false;
+
+        // Check time frame filter (if not "All")
+        if (upcomingDaysFilter !== -1) {
+          const [year, month, day] = apt.scheduled_date.split("-").map(Number);
+          const aptDate = new Date(year, month - 1, day);
+          if (aptDate > endDate) return false;
+        }
+
+        // Must not be completed/cancelled for upcoming view
+        if (apt.status === "completed" || apt.status === "cancelled")
+          return false;
+
+        return filterBySearch(apt) && filterByStatus(apt);
+      })
+      .sort((a, b) => {
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAppointments, searchQuery, statusFilter, upcomingDaysFilter]);
+
+  // Combined appointments for selection and calendar view
+  const allFilteredAppointments = useMemo(() => {
+    return [...filteredTodaysAppointments, ...filteredUpcomingAppointments];
+  }, [filteredTodaysAppointments, filteredUpcomingAppointments]);
 
   // Get unique statuses for filter dropdown
   const availableStatuses = useMemo(() => {
-    const statuses = new Set(
-      localAppointments.filter(filterByTab).map((apt) => apt.status)
-    );
+    const statuses = new Set(localAppointments.map((apt) => apt.status));
     return Array.from(statuses);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, activeTab]);
+  }, [localAppointments]);
 
-  // Tab configuration - use localAppointments for accurate counts with optimistic updates
-  const tabs: { id: TabType; label: string; count: number }[] = [
-    {
-      id: "upcoming",
-      label: "Upcoming",
-      count: localAppointments.filter((apt) => {
-        // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-        const [year, month, day] = apt.scheduled_date.split("-").map(Number);
-        const aptDate = new Date(year, month - 1, day); // month is 0-indexed
-        aptDate.setHours(0, 0, 0, 0);
-        return (
-          aptDate >= today &&
-          apt.status !== "completed" &&
-          apt.status !== "cancelled"
-        );
-      }).length,
-    },
-    {
-      id: "all",
-      label: "All",
-      count: localAppointments.length,
-    },
-    {
-      id: "completed",
-      label: "Completed",
-      count: localAppointments.filter((apt) => apt.status === "completed")
-        .length,
-    },
-    {
-      id: "cancelled",
-      label: "Cancelled",
-      count: localAppointments.filter((apt) => apt.status === "cancelled")
-        .length,
-    },
+  // Time frame filter options
+  const timeFrameOptions = [
+    { value: 7, label: "7 Days" },
+    { value: 14, label: "14 Days" },
+    { value: 30, label: "30 Days" },
+    { value: 60, label: "60 Days" },
+    { value: 90, label: "90 Days" },
+    { value: -1, label: "All" },
   ];
 
   // Handle appointment card click
@@ -356,10 +354,10 @@ export default function BookingsPage({
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredAppointments.length) {
+    if (selectedIds.size === allFilteredAppointments.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredAppointments.map((apt) => apt.id)));
+      setSelectedIds(new Set(allFilteredAppointments.map((apt) => apt.id)));
     }
   };
 
@@ -503,8 +501,8 @@ export default function BookingsPage({
 
   // Check if all are selected
   const isAllSelected =
-    filteredAppointments.length > 0 &&
-    selectedIds.size === filteredAppointments.length;
+    allFilteredAppointments.length > 0 &&
+    selectedIds.size === allFilteredAppointments.length;
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
 
   // Get appointment info for cancel modal
@@ -588,7 +586,7 @@ export default function BookingsPage({
         />
       </div>
 
-      {/* Filters Row - Mobile: Filters and Select Many inline, Desktop: All in one line with search */}
+      {/* Filters Row */}
       <div className="flex flex-row gap-3 overflow-x-auto">
         {/* Search Input - Desktop only (in same line as filters) */}
         <div className="hidden md:flex flex-1 min-w-[200px] relative">
@@ -600,25 +598,6 @@ export default function BookingsPage({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
           />
-        </div>
-
-        {/* Tab Dropdown */}
-        <div className="relative flex-shrink-0 min-w-[140px]">
-          <select
-            value={activeTab}
-            onChange={(e) => {
-              setActiveTab(e.target.value as TabType);
-              setStatusFilter("all");
-            }}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white appearance-none pr-10 font-medium text-sm"
-          >
-            {tabs.map((tab) => (
-              <option key={tab.id} value={tab.id}>
-                {tab.label} ({tab.count})
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
 
         {/* Status Filter Dropdown */}
@@ -692,18 +671,16 @@ export default function BookingsPage({
                 {/* Bulk Actions */}
                 {selectedIds.size > 0 && (
                   <div className="flex gap-2">
-                    {/* Cancel Selected - Only for upcoming/all tabs, not for completed/cancelled */}
-                    {canEdit &&
-                      activeTab !== "completed" &&
-                      activeTab !== "cancelled" && (
-                        <button
-                          onClick={handleBulkCancel}
-                          className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Cancel Selected
-                        </button>
-                      )}
+                    {/* Cancel Selected */}
+                    {canEdit && (
+                      <button
+                        onClick={handleBulkCancel}
+                        className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Cancel Selected
+                      </button>
+                    )}
 
                     {/* Delete Selected */}
                     {canEdit && (
@@ -721,7 +698,7 @@ export default function BookingsPage({
             </div>
           )}
 
-          {/* Appointments List */}
+          {/* Appointments Sections */}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -729,33 +706,99 @@ export default function BookingsPage({
                 Loading appointments...
               </span>
             </div>
-          ) : filteredAppointments.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No appointments found
-              </h3>
-              <p className="text-gray-600">
-                {searchQuery || statusFilter !== "all"
-                  ? "Try adjusting your search or filters"
-                  : `No ${activeTab} appointments at this time`}
-              </p>
-            </div>
           ) : (
-            <div className="space-y-4">
-              {filteredAppointments.map((appointment) => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  onClick={() => handleAppointmentClick(appointment)}
-                  isSelectMode={isSelectMode}
-                  isSelected={selectedIds.has(appointment.id)}
-                  onToggleSelect={() => toggleSelection(appointment.id)}
-                  onApprove={onApproveAppointment}
-                  onDecline={onDeclineAppointment}
-                  role={role}
-                />
-              ))}
+            <div className="space-y-8">
+              {/* Today's Appointments Section */}
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-primary-600" />
+                  Today&apos;s Appointments
+                  <span className="text-sm font-normal text-gray-500">
+                    ({filteredTodaysAppointments.length})
+                  </span>
+                </h3>
+                {filteredTodaysAppointments.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredTodaysAppointments.map((appointment) => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        onClick={() => handleAppointmentClick(appointment)}
+                        isSelectMode={isSelectMode}
+                        isSelected={selectedIds.has(appointment.id)}
+                        onToggleSelect={() => toggleSelection(appointment.id)}
+                        onApprove={onApproveAppointment}
+                        onDecline={onDeclineAppointment}
+                        role={role}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">
+                      No appointments scheduled for today
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Upcoming Appointments Section */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-primary-600" />
+                    Upcoming Appointments
+                    <span className="text-sm font-normal text-gray-500">
+                      ({filteredUpcomingAppointments.length})
+                    </span>
+                  </h3>
+                  {/* Time Frame Filter */}
+                  <div className="relative flex-shrink-0 min-w-[120px]">
+                    <select
+                      value={upcomingDaysFilter}
+                      onChange={(e) =>
+                        setUpcomingDaysFilter(Number(e.target.value))
+                      }
+                      className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+                    >
+                      {timeFrameOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+                {filteredUpcomingAppointments.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredUpcomingAppointments.map((appointment) => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        onClick={() => handleAppointmentClick(appointment)}
+                        isSelectMode={isSelectMode}
+                        isSelected={selectedIds.has(appointment.id)}
+                        onToggleSelect={() => toggleSelection(appointment.id)}
+                        onApprove={onApproveAppointment}
+                        onDecline={onDeclineAppointment}
+                        role={role}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                    <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">
+                      No upcoming appointments
+                      {upcomingDaysFilter !== -1
+                        ? ` in the next ${upcomingDaysFilter} days`
+                        : ""}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </>
@@ -764,7 +807,7 @@ export default function BookingsPage({
       {/* Calendar View Content */}
       {viewType === "calendar" && (
         <CalendarView
-          appointments={filteredAppointments}
+          appointments={allFilteredAppointments}
           loading={loading}
           onAppointmentClick={handleCalendarAppointmentClick}
           onDayClick={handleDayClick}

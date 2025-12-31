@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -15,6 +15,10 @@ import {
   Upload,
   Loader2,
   Home,
+  Search,
+  List,
+  CalendarDays,
+  ChevronDown,
 } from "lucide-react";
 import {
   useCleanerAppointments,
@@ -30,12 +34,30 @@ import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
+import AppointmentCard, { AppointmentCardData } from "../../components/AppointmentCard";
+import AppointmentSidePanel from "../../components/AppointmentSidePanel";
+import CalendarView from "../../components/CalendarView";
+import DayDetailSidebar from "../../components/DayDetailSidebar";
+import { format } from "date-fns";
+
+type ViewType = "list" | "calendar";
 
 export default function CleanerDashboard() {
   const { user, loading, currentOrganizationId } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const router = useRouter();
+
+  // Jobs tab state
+  const [viewType, setViewType] = useState<ViewType>("list");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentCardData | null>(null);
+  const [showSidePanel, setShowSidePanel] = useState(false);
+  const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>([]);
 
   // Real data hooks - must be called at top level
   // These hooks handle currentOrganizationId internally, but we need to ensure it's available
@@ -72,6 +94,155 @@ export default function CleanerDashboard() {
   const hasUnreadMessages = useMemo(() => {
     return conversations.some((conv) => conv.unread_count > 0);
   }, [conversations]);
+
+  // Helper function for converting appointments (must be defined before hooks)
+  const convertToCardData = (appointment: any): AppointmentCardData => ({
+    ...appointment,
+    special_requests: appointment.special_requests || null,
+    notes: null,
+    series_id: null,
+    cleaner_profile: null,
+  });
+
+  // Get filtered today's jobs
+  const filteredTodaysJobs = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${day}`;
+
+    const query = searchQuery.toLowerCase();
+    
+    return appointments
+      .filter((apt) => {
+        // Must be today
+        if (apt.scheduled_date !== today) return false;
+
+        // Filter by status
+        if (statusFilter !== "all" && apt.status !== statusFilter) return false;
+
+        // Filter by search query
+        if (query) {
+          const homeownerName = apt.homeowner
+            ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`.toLowerCase()
+            : "";
+          const propertyAddress = apt.property
+            ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
+            : "";
+          const serviceName = apt.service_type?.name.toLowerCase() || "";
+          
+          if (
+            !homeownerName.includes(query) &&
+            !propertyAddress.includes(query) &&
+            !serviceName.includes(query)
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+  }, [appointments, searchQuery, statusFilter]);
+
+  // Get filtered upcoming jobs within time frame
+  const filteredUpcomingJobs = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${day}`;
+    
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    // Calculate end date based on filter
+    const endDate = new Date(todayDate);
+    if (upcomingDaysFilter !== -1) {
+      endDate.setDate(endDate.getDate() + upcomingDaysFilter);
+    }
+
+    const query = searchQuery.toLowerCase();
+
+    return appointments
+      .filter((apt) => {
+        // Must be after today
+        if (apt.scheduled_date <= today) return false;
+
+        // Check time frame filter (if not "All")
+        if (upcomingDaysFilter !== -1) {
+          const [aptYear, aptMonth, aptDay] = apt.scheduled_date.split("-").map(Number);
+          const aptDate = new Date(aptYear, aptMonth - 1, aptDay);
+          if (aptDate > endDate) return false;
+        }
+
+        // Must not be completed/cancelled
+        if (apt.status === "completed" || apt.status === "cancelled") return false;
+
+        // Filter by status
+        if (statusFilter !== "all" && apt.status !== statusFilter) return false;
+
+        // Filter by search query
+        if (query) {
+          const homeownerName = apt.homeowner
+            ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`.toLowerCase()
+            : "";
+          const propertyAddress = apt.property
+            ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
+            : "";
+          const serviceName = apt.service_type?.name.toLowerCase() || "";
+          
+          if (
+            !homeownerName.includes(query) &&
+            !propertyAddress.includes(query) &&
+            !serviceName.includes(query)
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+  }, [appointments, searchQuery, statusFilter, upcomingDaysFilter]);
+
+  // Combined appointments for calendar view
+  const allFilteredAppointments = useMemo(() => {
+    return [...filteredTodaysJobs, ...filteredUpcomingJobs].map(convertToCardData);
+  }, [filteredTodaysJobs, filteredUpcomingJobs]);
+
+  // Get available statuses for filter dropdown
+  const availableStatuses = useMemo(() => {
+    const statuses = new Set(appointments.map((apt) => apt.status));
+    return Array.from(statuses);
+  }, [appointments]);
+
+  // Calendar handlers
+  const handleCalendarAppointmentClick = useCallback((appointment: AppointmentCardData) => {
+    setSelectedAppointment(appointment);
+    setShowSidePanel(true);
+  }, []);
+
+  const handleDayClick = useCallback((date: Date, appts: AppointmentCardData[]) => {
+    setSelectedDate(date);
+    setDayAppointments(appts);
+    setShowDayDetailSidebar(true);
+  }, []);
+
+  const handleSlotSelect = useCallback((date: Date, time: string) => {
+    // Cleaners can't create appointments, so this is a no-op
+  }, []);
+
+  const handleDayDetailAppointmentClick = useCallback((appointment: AppointmentCardData) => {
+    setShowDayDetailSidebar(false);
+    setSelectedAppointment(appointment);
+    setShowSidePanel(true);
+  }, []);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -201,7 +372,7 @@ export default function CleanerDashboard() {
 
   const tabs = [
     { id: "home", label: "Overview", icon: Home },
-    { id: "jobs", label: "Job Details", icon: MapPin },
+    { id: "jobs", label: "Jobs", icon: MapPin },
     {
       id: "messages",
       label: "Messages",
@@ -448,112 +619,8 @@ export default function CleanerDashboard() {
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">No jobs scheduled for today</p>
                 <p className="text-sm text-gray-500 mt-2">
-                  Check "Upcoming Jobs" below
+                  Check the Jobs tab for upcoming appointments
                 </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Upcoming Jobs */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Upcoming Jobs
-        </h3>
-        {appointmentsLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading jobs...</span>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {getUpcomingJobs().map((appointment) => (
-              <div
-                key={appointment.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative"
-                style={{
-                  borderLeftColor:
-                    appointment.status === "confirmed"
-                      ? "#10b981"
-                      : appointment.status === "in_progress"
-                      ? "#f59e0b"
-                      : appointment.status === "pending"
-                      ? "#eab308"
-                      : "#6b7280",
-                }}
-              >
-                <div className="flex items-center space-x-4 flex-1">
-                  <div className="flex-shrink-0">
-                    <Calendar className="w-8 h-8 text-primary-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-gray-900 text-lg">
-                        {formatDate(appointment.scheduled_date)} at{" "}
-                        {formatTime(appointment.scheduled_time)}
-                      </p>
-                      <span
-                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                          appointment.status === "confirmed"
-                            ? "bg-green-100 text-green-800"
-                            : appointment.status === "in_progress"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : appointment.status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full mr-1"
-                          style={{
-                            backgroundColor:
-                              appointment.status === "confirmed"
-                                ? "#10b981"
-                                : appointment.status === "in_progress"
-                                ? "#f59e0b"
-                                : appointment.status === "pending"
-                                ? "#eab308"
-                                : "#6b7280",
-                          }}
-                        ></span>
-                        {appointment.status}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 mt-1">
-                      {appointment.homeowner
-                        ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-                        : "Unknown Homeowner"}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {appointment.property
-                        ? `${appointment.property.address}, ${appointment.property.city}, ${appointment.property.state}`
-                        : "Address not available"}
-                    </p>
-                    {appointment.service_type && (
-                      <p className="text-sm text-gray-600">
-                        {appointment.service_type.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right ml-4">
-                  <p className="text-lg font-bold text-gray-900">
-                    ${Number(appointment.total_price).toFixed(0)}
-                  </p>
-                  <button
-                    onClick={() => setActiveTab("jobs")}
-                    className="btn-primary text-sm mt-2"
-                  >
-                    View Details
-                  </button>
-                </div>
-              </div>
-            ))}
-            {getUpcomingJobs().length === 0 && (
-              <div className="text-center py-8">
-                <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No upcoming jobs</p>
               </div>
             )}
           </div>
@@ -562,106 +629,221 @@ export default function CleanerDashboard() {
     </div>
   );
 
+  // Time frame filter options
+  const timeFrameOptions = [
+    { value: 7, label: "7 Days" },
+    { value: 14, label: "14 Days" },
+    { value: 30, label: "30 Days" },
+    { value: 60, label: "60 Days" },
+    { value: 90, label: "90 Days" },
+    { value: -1, label: "All" },
+  ];
+
+  const handleAppointmentCardClick = (appointment: any) => {
+    setSelectedAppointment(convertToCardData(appointment));
+    setShowSidePanel(true);
+  };
+
   const renderJobs = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-4xl font-bold text-gray-900">Job Details</h2>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="text-4xl font-bold text-gray-900">Jobs</h2>
+        <div className="flex items-center gap-3">
+          {/* View Toggle Buttons */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewType("list")}
+              className={`p-2 rounded-md transition-colors ${
+                viewType === "list"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="List View"
+            >
+              <List className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewType("calendar")}
+              className={`p-2 rounded-md transition-colors ${
+                viewType === "calendar"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+              title="Calendar View"
+            >
+              <CalendarDays className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {appointmentsLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          <span className="ml-2 text-gray-600">Loading jobs...</span>
+      {/* Search Input - Own line on mobile */}
+      <div className="flex-1 relative md:hidden">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          placeholder="Search by homeowner, property, or service..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+        />
+      </div>
+
+      {/* Filters Row */}
+      <div className="flex flex-row gap-3 overflow-x-auto">
+        {/* Search Input - Desktop only */}
+        <div className="hidden md:flex flex-1 min-w-[200px] relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search by homeowner, property, or service..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+          />
         </div>
-      ) : (
-        <div className="grid gap-6">
-          {getUpcomingJobs().map((appointment) => (
-            <div key={appointment.id} className="card">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <MapPin className="w-6 h-6 text-primary-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">
-                      {formatDateTime(
-                        appointment.scheduled_date,
-                        appointment.scheduled_time
-                      )}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {getHomeownerName(appointment)}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {getPropertyAddress(appointment)}
-                    </p>
-                    {appointment.service_type && (
-                      <p className="text-sm text-gray-600">
-                        {appointment.service_type.name}
-                      </p>
-                    )}
+
+        {/* Status Filter Dropdown */}
+        {availableStatuses.length > 0 && (
+          <div className="relative flex-shrink-0 min-w-[140px]">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+            >
+              <option value="all">All Statuses</option>
+              {availableStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ")}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+        )}
+      </div>
+
+      {/* List View Content */}
+      {viewType === "list" && (
+        <>
+          {appointmentsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              <span className="ml-2 text-gray-600">Loading jobs...</span>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* Today's Jobs Section */}
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-primary-600" />
+                  Today's Jobs
+                  <span className="text-sm font-normal text-gray-500">
+                    ({filteredTodaysJobs.length})
+                  </span>
+                </h3>
+                {filteredTodaysJobs.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredTodaysJobs.map((appointment) => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={convertToCardData(appointment)}
+                        onClick={() => handleAppointmentCardClick(appointment)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">No jobs scheduled for today</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Upcoming Jobs Section */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-primary-600" />
+                    Upcoming Jobs
+                    <span className="text-sm font-normal text-gray-500">
+                      ({filteredUpcomingJobs.length})
+                    </span>
+                  </h3>
+                  {/* Time Frame Filter */}
+                  <div className="relative flex-shrink-0 min-w-[120px]">
+                    <select
+                      value={upcomingDaysFilter}
+                      onChange={(e) => setUpcomingDaysFilter(Number(e.target.value))}
+                      className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+                    >
+                      {timeFrameOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
-                <span
-                  className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(
-                    appointment.status
-                  )}`}
-                >
-                  {appointment.status}
-                </span>
+                {filteredUpcomingJobs.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredUpcomingJobs.map((appointment) => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={convertToCardData(appointment)}
+                        onClick={() => handleAppointmentCardClick(appointment)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                    <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">
+                      No upcoming jobs in the next {upcomingDaysFilter === -1 ? "" : `${upcomingDaysFilter} days`}
+                    </p>
+                  </div>
+                )}
               </div>
-
-              {appointment.special_requests && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
-                    <strong>Special Requests:</strong>{" "}
-                    {appointment.special_requests}
-                  </p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <div className="text-lg font-semibold text-gray-900">
-                  ${appointment.total_price}
-                </div>
-                <div className="flex space-x-2">
-                  {appointment.status === "confirmed" && (
-                    <button
-                      onClick={() => handleStartJob(appointment.id)}
-                      className="btn-primary text-sm"
-                    >
-                      Start Job
-                    </button>
-                  )}
-                  {appointment.status === "in_progress" && (
-                    <button
-                      onClick={() => handleCompleteJob(appointment.id)}
-                      className="btn-primary text-sm"
-                    >
-                      Complete Job
-                    </button>
-                  )}
-                  {appointment.status === "completed" && (
-                    <button
-                      onClick={() => setActiveTab("photos")}
-                      className="btn-secondary text-sm"
-                    >
-                      View Photos
-                    </button>
-                  )}
-                  <button className="btn-secondary text-sm">
-                    Contact Homeowner
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-          {getUpcomingJobs().length === 0 && (
-            <div className="text-center py-12">
-              <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600">No upcoming jobs</p>
             </div>
           )}
-        </div>
+        </>
       )}
+
+      {/* Calendar View Content */}
+      {viewType === "calendar" && (
+        <CalendarView
+          appointments={allFilteredAppointments}
+          loading={appointmentsLoading}
+          onAppointmentClick={handleCalendarAppointmentClick}
+          onDayClick={handleDayClick}
+          onSlotSelect={handleSlotSelect}
+          onReschedule={async () => {}}
+          onLocalReschedule={() => {}}
+          canEdit={false}
+        />
+      )}
+
+      {/* Day Detail Sidebar (for calendar view) */}
+      <DayDetailSidebar
+        isOpen={showDayDetailSidebar}
+        onClose={() => setShowDayDetailSidebar(false)}
+        selectedDate={selectedDate}
+        appointments={dayAppointments}
+        onAppointmentClick={handleDayDetailAppointmentClick}
+        onAddAppointment={() => {}}
+        canEdit={false}
+      />
+
+      {/* Side Panel */}
+      <AppointmentSidePanel
+        isOpen={showSidePanel}
+        onClose={() => setShowSidePanel(false)}
+        appointment={selectedAppointment}
+        role="manager"
+        canEdit={false}
+      />
     </div>
   );
 
