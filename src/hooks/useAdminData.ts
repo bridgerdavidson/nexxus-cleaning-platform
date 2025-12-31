@@ -281,7 +281,25 @@ export function useAdminAppointments() {
         .eq('organization_id', currentOrganizationId)
         .order('scheduled_date', { ascending: false });
 
-      if (error) throw error;
+      // Debug logging
+      console.log('🔍 Admin Appointments Query Debug:', {
+        currentOrganizationId,
+        userId: user?.id,
+        error,
+        dataLength: data?.length,
+        data: data,
+        errorDetails: error ? {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        } : null
+      });
+
+      if (error) {
+        console.error('❌ Appointments query error:', error);
+        throw error;
+      }
       
       // Transform the data to match our interface
       const transformedData = (data || []).map(appointment => ({
@@ -1665,19 +1683,7 @@ export interface TeamMember {
     is_available: boolean;
   } | null;
   // Manager-specific fields
-  permissions?: {
-    can_view_customers: boolean;
-    can_edit_customers: boolean;
-    can_view_bookings: boolean;
-    can_edit_bookings: boolean;
-    can_manage_cleaners: boolean;
-    can_view_properties: boolean;
-    can_edit_properties: boolean;
-    can_view_analytics: boolean;
-    can_view_payments: boolean;
-    can_manage_payments: boolean;
-    can_view_messages: boolean;
-  } | null;
+  permissions?: ManagerPermissions | null;
 }
 
 export interface ManagerPermissions {
@@ -1685,6 +1691,7 @@ export interface ManagerPermissions {
   can_edit_customers: boolean;
   can_view_bookings: boolean;
   can_edit_bookings: boolean;
+  can_approve_decline_bookings: boolean;
   can_manage_cleaners: boolean;
   can_view_properties: boolean;
   can_edit_properties: boolean;
@@ -1745,7 +1752,7 @@ export function useAdminTeamMembers() {
       // Get manager permissions
       const { data: managerPermissions, error: permissionsError } = await supabase
         .from('manager_permissions')
-        .select('manager_id, can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages')
+        .select('manager_id, can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages')
         .in('manager_id', managerIds)
         .eq('organization_id', currentOrganizationId);
 
@@ -1781,6 +1788,7 @@ export function useAdminTeamMembers() {
             can_edit_customers: permissions.can_edit_customers || false,
             can_view_bookings: permissions.can_view_bookings || false,
             can_edit_bookings: permissions.can_edit_bookings || false,
+            can_approve_decline_bookings: permissions.can_approve_decline_bookings || false,
             can_manage_cleaners: permissions.can_manage_cleaners || false,
             can_view_properties: permissions.can_view_properties || false,
             can_edit_properties: permissions.can_edit_properties || false,

@@ -59,6 +59,7 @@ import TeamMembersPage from "../../components/TeamMembersPage";
 import PaymentsPage from "../../components/PaymentsPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
+import StatusBadge from "../../components/StatusBadge";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -700,15 +701,7 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   </div>
-                  <span
-                    className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      appointment.status === "confirmed"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
-                    }`}
-                  >
-                    {appointment.status}
-                  </span>
+                  <StatusBadge status={appointment.status} size="sm" />
                 </div>
               ))
             ) : (
@@ -940,15 +933,7 @@ export default function AdminDashboard() {
                         </p>
                       )}
                     </div>
-                    <span
-                      className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        appointment.status === "confirmed"
-                          ? "text-green-600 bg-green-100"
-                          : "text-yellow-700 bg-yellow-100"
-                      }`}
-                    >
-                      {appointment.status}
-                    </span>
+                    <StatusBadge status={appointment.status} size="sm" />
                   </div>
                 ))}
                 {upcomingAppointments.length === 0 && (

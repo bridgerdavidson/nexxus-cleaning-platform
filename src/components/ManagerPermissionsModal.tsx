@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Settings, Loader2, Check } from "lucide-react";
-import { updateManagerPermissions, ManagerPermissions } from "../hooks/useAdminData";
+import {
+  updateManagerPermissions,
+  ManagerPermissions,
+} from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import { TeamMember } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
@@ -30,6 +33,7 @@ export default function ManagerPermissionsModal({
     can_edit_customers: false,
     can_view_bookings: false,
     can_edit_bookings: false,
+    can_approve_decline_bookings: false,
     can_manage_cleaners: false,
     can_view_properties: false,
     can_edit_properties: false,
@@ -45,7 +49,22 @@ export default function ManagerPermissionsModal({
   // Load permissions when modal opens
   useEffect(() => {
     if (isOpen && manager?.permissions) {
-      setPermissions(manager.permissions);
+      // Ensure all permission fields are defined, defaulting missing ones to false
+      setPermissions({
+        can_view_customers: manager.permissions.can_view_customers ?? false,
+        can_edit_customers: manager.permissions.can_edit_customers ?? false,
+        can_view_bookings: manager.permissions.can_view_bookings ?? false,
+        can_edit_bookings: manager.permissions.can_edit_bookings ?? false,
+        can_approve_decline_bookings:
+          manager.permissions.can_approve_decline_bookings ?? false,
+        can_manage_cleaners: manager.permissions.can_manage_cleaners ?? false,
+        can_view_properties: manager.permissions.can_view_properties ?? false,
+        can_edit_properties: manager.permissions.can_edit_properties ?? false,
+        can_view_analytics: manager.permissions.can_view_analytics ?? false,
+        can_view_payments: manager.permissions.can_view_payments ?? false,
+        can_manage_payments: manager.permissions.can_manage_payments ?? false,
+        can_view_messages: manager.permissions.can_view_messages ?? false,
+      });
       setHasChanges(false);
       setError("");
     }
@@ -139,6 +158,11 @@ export default function ManagerPermissionsModal({
           key: "can_edit_bookings" as keyof ManagerPermissions,
           label: "Edit Bookings",
           description: "Create, update, and manage appointments",
+        },
+        {
+          key: "can_approve_decline_bookings" as keyof ManagerPermissions,
+          label: "Approve/Decline Bookings",
+          description: "Approve or decline pending appointment requests",
         },
       ],
     },
@@ -255,7 +279,10 @@ export default function ManagerPermissionsModal({
           {/* Permissions List */}
           <div className="space-y-6 mb-6">
             {permissionGroups.map((group) => (
-              <div key={group.title} className="border-b border-gray-200 pb-6 last:border-0 last:pb-0">
+              <div
+                key={group.title}
+                className="border-b border-gray-200 pb-6 last:border-0 last:pb-0"
+              >
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">
                   {group.title}
                 </h3>
@@ -269,7 +296,9 @@ export default function ManagerPermissionsModal({
                         <input
                           type="checkbox"
                           checked={permissions[permission.key]}
-                          onChange={() => handlePermissionChange(permission.key)}
+                          onChange={() =>
+                            handlePermissionChange(permission.key)
+                          }
                           className="sr-only"
                         />
                         <div
@@ -335,4 +364,3 @@ export default function ManagerPermissionsModal({
     </div>
   );
 }
-

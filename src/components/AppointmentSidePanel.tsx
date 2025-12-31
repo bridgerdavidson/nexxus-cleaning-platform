@@ -36,6 +36,7 @@ interface AppointmentSidePanelProps {
   onAppointmentUpdated?: (updatedAppointment: AppointmentCardData) => void;
   role: "admin" | "manager" | "cleaner";
   canEdit?: boolean;
+  canApproveDecline?: boolean;
 }
 
 export default function AppointmentSidePanel({
@@ -52,6 +53,7 @@ export default function AppointmentSidePanel({
   onAppointmentUpdated,
   role,
   canEdit = true,
+  canApproveDecline = false,
 }: AppointmentSidePanelProps) {
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
@@ -518,10 +520,9 @@ export default function AppointmentSidePanel({
             (onStartJob || onCompleteJob) &&
             !isEditing && (
               <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
-                {/* Start Job button - shows when status is confirmed or pending */}
+                {/* Start Job button - shows when status is confirmed */}
                 {onStartJob &&
-                  (appointment.status === "confirmed" ||
-                    appointment.status === "pending") && (
+                  appointment.status === "confirmed" && (
                     <button
                       onClick={async () => {
                         setIsActionLoading(true);
@@ -559,11 +560,11 @@ export default function AppointmentSidePanel({
               </div>
             )}
 
-          {/* Approve/Decline buttons for pending appointments (admin only) */}
-          {role === "admin" &&
+          {/* Approve/Decline buttons for pending appointments (admin or manager with permission) */}
+          {((role === "admin" || (role === "manager" && canApproveDecline)) &&
             appointment.status === "pending" &&
             (onApprove || onDecline) &&
-            !isEditing && (
+            !isEditing) && (
               <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
                 {onApprove && (
                   <button

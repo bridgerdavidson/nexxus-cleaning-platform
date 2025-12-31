@@ -631,9 +631,8 @@ export default function CleanerDashboard() {
                     ${Number(appointment.total_price).toFixed(0)}
                   </p>
                   <div className="flex flex-col gap-2 items-end">
-                    {/* Start Job button - shows when status is confirmed or pending */}
-                    {(appointment.status === "confirmed" ||
-                      appointment.status === "pending") && (
+                    {/* Start Job button - shows when status is confirmed */}
+                    {appointment.status === "confirmed" && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

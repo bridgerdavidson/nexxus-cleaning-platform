@@ -194,7 +194,12 @@ export default function ManagerDashboard() {
 
     // Add messages if permitted
     if (permissions.can_view_messages === true) {
-      opsTabs.push({ id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages });
+      opsTabs.push({
+        id: "messages",
+        label: "Messages",
+        icon: MessageCircle,
+        hasNotification: hasUnreadMessages,
+      });
     }
 
     // Add customers to opsTabs for mobile navigation
@@ -811,6 +816,26 @@ export default function ManagerDashboard() {
     }
   };
 
+  const handleApproveAppointment = async (appointmentId: string) => {
+    const result = await updateAppointmentStatus(appointmentId, "confirmed");
+    if (result.success) {
+      // Refresh appointments data (pending approvals and bookings table)
+      await refetchAppointments();
+    } else {
+      alert("Failed to approve appointment: " + result.error);
+    }
+  };
+
+  const handleDeclineAppointment = async (appointmentId: string) => {
+    const result = await updateAppointmentStatus(appointmentId, "cancelled");
+    if (result.success) {
+      // Refresh appointments data (pending approvals and bookings table)
+      await refetchAppointments();
+    } else {
+      alert("Failed to decline appointment: " + result.error);
+    }
+  };
+
   const renderBookings = () => (
     <BookingsPage
       appointments={appointments}
@@ -818,9 +843,20 @@ export default function ManagerDashboard() {
       onCancelAppointment={handleCancelAppointment}
       onDeleteAppointment={handleDeleteAppointment}
       onMarkComplete={handleMarkComplete}
+      onApproveAppointment={
+        permissions?.can_approve_decline_bookings
+          ? handleApproveAppointment
+          : undefined
+      }
+      onDeclineAppointment={
+        permissions?.can_approve_decline_bookings
+          ? handleDeclineAppointment
+          : undefined
+      }
       onRefreshAppointments={refetchAppointments}
       onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
       role="manager"
+      canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
     />
   );
 

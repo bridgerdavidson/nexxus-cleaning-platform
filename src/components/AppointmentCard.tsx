@@ -43,6 +43,7 @@ interface AppointmentCardProps {
   onApprove?: (appointmentId: string) => void;
   onDecline?: (appointmentId: string) => void;
   role?: "admin" | "manager";
+  canApproveDecline?: boolean;
 }
 
 export default function AppointmentCard({
@@ -54,6 +55,7 @@ export default function AppointmentCard({
   onApprove,
   onDecline,
   role,
+  canApproveDecline = false,
 }: AppointmentCardProps) {
   const formatDateTime = (date: string, time: string) => {
     // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
@@ -210,7 +212,7 @@ export default function AppointmentCard({
               <Repeat className="w-3 h-3" />
             </span>
           )}
-          {role === "admin" && appointment.status === "pending" && (onApprove || onDecline) && (
+          {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && (onApprove || onDecline)) && (
             <div className="ml-2 flex items-center gap-1.5">
               {onApprove && (
                 <button
@@ -300,7 +302,7 @@ export default function AppointmentCard({
                 <Repeat className="w-3 h-3" />
               </span>
             )}
-            {role === "admin" && appointment.status === "pending" && (onApprove || onDecline) && (
+            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && (onApprove || onDecline)) && (
               <div className="flex items-center gap-1.5">
                 {onApprove && (
                   <button

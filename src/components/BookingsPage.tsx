@@ -46,6 +46,7 @@ interface BookingsPageProps {
   role: "admin" | "manager";
   canEdit?: boolean;
   initialStatusFilter?: string;
+  canApproveDecline?: boolean;
 }
 
 export default function BookingsPage({
@@ -61,6 +62,7 @@ export default function BookingsPage({
   role,
   canEdit = true,
   initialStatusFilter,
+  canApproveDecline = false,
 }: BookingsPageProps) {
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -765,6 +767,7 @@ export default function BookingsPage({
                         onApprove={onApproveAppointment}
                         onDecline={onDeclineAppointment}
                         role={role}
+                        canApproveDecline={canApproveDecline}
                       />
                     ))}
                   </div>
@@ -819,6 +822,7 @@ export default function BookingsPage({
                         onApprove={onApproveAppointment}
                         onDecline={onDeclineAppointment}
                         role={role}
+                        canApproveDecline={canApproveDecline}
                       />
                     ))}
                   </div>
@@ -894,6 +898,7 @@ export default function BookingsPage({
         }
         role={role}
         canEdit={canEdit}
+        canApproveDecline={canApproveDecline}
       />
 
       {/* Cancel Confirmation Modal */}
