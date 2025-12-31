@@ -34,10 +34,13 @@ import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
-import AppointmentCard, { AppointmentCardData } from "../../components/AppointmentCard";
+import AppointmentCard, {
+  AppointmentCardData,
+} from "../../components/AppointmentCard";
 import AppointmentSidePanel from "../../components/AppointmentSidePanel";
 import CalendarView from "../../components/CalendarView";
 import DayDetailSidebar from "../../components/DayDetailSidebar";
+import StatusBadge from "../../components/StatusBadge";
 import { format } from "date-fns";
 
 type ViewType = "list" | "calendar";
@@ -53,11 +56,14 @@ export default function CleanerDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
-  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentCardData | null>(null);
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<AppointmentCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>([]);
+  const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>(
+    []
+  );
 
   // Real data hooks - must be called at top level
   // These hooks handle currentOrganizationId internally, but we need to ensure it's available
@@ -113,7 +119,7 @@ export default function CleanerDashboard() {
     const today = `${year}-${month}-${day}`;
 
     const query = searchQuery.toLowerCase();
-    
+
     return appointments
       .filter((apt) => {
         // Must be today
@@ -131,7 +137,7 @@ export default function CleanerDashboard() {
             ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
             : "";
           const serviceName = apt.service_type?.name.toLowerCase() || "";
-          
+
           if (
             !homeownerName.includes(query) &&
             !propertyAddress.includes(query) &&
@@ -153,7 +159,7 @@ export default function CleanerDashboard() {
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     const today = `${year}-${month}-${day}`;
-    
+
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
 
@@ -172,13 +178,16 @@ export default function CleanerDashboard() {
 
         // Check time frame filter (if not "All")
         if (upcomingDaysFilter !== -1) {
-          const [aptYear, aptMonth, aptDay] = apt.scheduled_date.split("-").map(Number);
+          const [aptYear, aptMonth, aptDay] = apt.scheduled_date
+            .split("-")
+            .map(Number);
           const aptDate = new Date(aptYear, aptMonth - 1, aptDay);
           if (aptDate > endDate) return false;
         }
 
         // Must not be completed/cancelled
-        if (apt.status === "completed" || apt.status === "cancelled") return false;
+        if (apt.status === "completed" || apt.status === "cancelled")
+          return false;
 
         // Filter by status
         if (statusFilter !== "all" && apt.status !== statusFilter) return false;
@@ -192,7 +201,7 @@ export default function CleanerDashboard() {
             ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
             : "";
           const serviceName = apt.service_type?.name.toLowerCase() || "";
-          
+
           if (
             !homeownerName.includes(query) &&
             !propertyAddress.includes(query) &&
@@ -213,7 +222,9 @@ export default function CleanerDashboard() {
 
   // Combined appointments for calendar view
   const allFilteredAppointments = useMemo(() => {
-    return [...filteredTodaysJobs, ...filteredUpcomingJobs].map(convertToCardData);
+    return [...filteredTodaysJobs, ...filteredUpcomingJobs].map(
+      convertToCardData
+    );
   }, [filteredTodaysJobs, filteredUpcomingJobs]);
 
   // Get available statuses for filter dropdown
@@ -223,26 +234,35 @@ export default function CleanerDashboard() {
   }, [appointments]);
 
   // Calendar handlers
-  const handleCalendarAppointmentClick = useCallback((appointment: AppointmentCardData) => {
-    setSelectedAppointment(appointment);
-    setShowSidePanel(true);
-  }, []);
+  const handleCalendarAppointmentClick = useCallback(
+    (appointment: AppointmentCardData) => {
+      setSelectedAppointment(appointment);
+      setShowSidePanel(true);
+    },
+    []
+  );
 
-  const handleDayClick = useCallback((date: Date, appts: AppointmentCardData[]) => {
-    setSelectedDate(date);
-    setDayAppointments(appts);
-    setShowDayDetailSidebar(true);
-  }, []);
+  const handleDayClick = useCallback(
+    (date: Date, appts: AppointmentCardData[]) => {
+      setSelectedDate(date);
+      setDayAppointments(appts);
+      setShowDayDetailSidebar(true);
+    },
+    []
+  );
 
   const handleSlotSelect = useCallback((date: Date, time: string) => {
     // Cleaners can't create appointments, so this is a no-op
   }, []);
 
-  const handleDayDetailAppointmentClick = useCallback((appointment: AppointmentCardData) => {
-    setShowDayDetailSidebar(false);
-    setSelectedAppointment(appointment);
-    setShowSidePanel(true);
-  }, []);
+  const handleDayDetailAppointmentClick = useCallback(
+    (appointment: AppointmentCardData) => {
+      setShowDayDetailSidebar(false);
+      setSelectedAppointment(appointment);
+      setShowSidePanel(true);
+    },
+    []
+  );
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -355,7 +375,8 @@ export default function CleanerDashboard() {
   const handleStartJob = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "in_progress");
     if (result.success) {
-      window.location.reload(); // Simple refresh for now
+      // Realtime subscription will automatically update the UI
+      // No need to reload the page
     } else {
       alert("Failed to start job: " + result.error);
     }
@@ -364,7 +385,8 @@ export default function CleanerDashboard() {
   const handleCompleteJob = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "completed");
     if (result.success) {
-      window.location.reload(); // Simple refresh for now
+      // Realtime subscription will automatically update the UI
+      // No need to reload the page
     } else {
       alert("Failed to complete job: " + result.error);
     }
@@ -401,6 +423,34 @@ export default function CleanerDashboard() {
       default:
         return "text-gray-600 bg-gray-100";
     }
+  };
+
+  // Get border color for status badge (matches StatusBadge component colors)
+  const getStatusBorderColor = (status: string): string => {
+    switch (status.toLowerCase()) {
+      case "pending":
+        return "#ca8a04"; // yellow-600
+      case "confirmed":
+        return "#2563eb"; // blue-600
+      case "in_progress":
+        return "#9333ea"; // purple-600
+      case "completed":
+        return "#16a34a"; // green-600
+      case "cancelled":
+        return "#dc2626"; // red-600
+      default:
+        return "#6b7280"; // gray-500
+    }
+  };
+
+  // Handle appointment card click - navigate to jobs tab and open side panel
+  const handleTodayScheduleAppointmentClick = (appointment: any) => {
+    setSelectedAppointment(convertToCardData(appointment));
+    setActiveTab("jobs");
+    // Use setTimeout to ensure tab switch happens before opening panel
+    setTimeout(() => {
+      setShowSidePanel(true);
+    }, 0);
   };
 
   const renderSchedule = () => (
@@ -536,53 +586,28 @@ export default function CleanerDashboard() {
             {getTodaysJobs().map((appointment) => (
               <div
                 key={appointment.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative"
+                onClick={(e) => {
+                  // Don't trigger if clicking on a button
+                  if ((e.target as HTMLElement).closest("button")) {
+                    return;
+                  }
+                  handleTodayScheduleAppointmentClick(appointment);
+                }}
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative cursor-pointer hover:bg-gray-100 transition-colors"
                 style={{
-                  borderLeftColor:
-                    appointment.status === "confirmed"
-                      ? "#10b981"
-                      : appointment.status === "in_progress"
-                      ? "#f59e0b"
-                      : appointment.status === "pending"
-                      ? "#eab308"
-                      : "#6b7280",
+                  borderLeftColor: getStatusBorderColor(appointment.status),
                 }}
               >
                 <div className="flex items-center space-x-4 flex-1">
                   <div className="flex-shrink-0">
-                    <Clock className="w-8 h-8 text-primary-600" />
+                    <Calendar className="w-8 h-8 text-primary-600" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-gray-900 text-lg">
                         {formatTime(appointment.scheduled_time)}
                       </p>
-                      <span
-                        className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
-                          appointment.status === "confirmed"
-                            ? "bg-green-100 text-green-800"
-                            : appointment.status === "in_progress"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : appointment.status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full mr-1"
-                          style={{
-                            backgroundColor:
-                              appointment.status === "confirmed"
-                                ? "#10b981"
-                                : appointment.status === "in_progress"
-                                ? "#f59e0b"
-                                : appointment.status === "pending"
-                                ? "#eab308"
-                                : "#6b7280",
-                          }}
-                        ></span>
-                        {appointment.status}
-                      </span>
+                      <StatusBadge status={appointment.status} size="sm" />
                     </div>
                     <p className="text-sm font-medium text-gray-800 mt-1">
                       {appointment.homeowner
@@ -601,16 +626,37 @@ export default function CleanerDashboard() {
                     )}
                   </div>
                 </div>
-                <div className="text-right ml-4">
+                <div className="text-right ml-4 flex flex-col items-end gap-2">
                   <p className="text-lg font-bold text-gray-900">
                     ${Number(appointment.total_price).toFixed(0)}
                   </p>
-                  <button
-                    onClick={() => setActiveTab("jobs")}
-                    className="btn-primary text-sm mt-2"
-                  >
-                    View Details
-                  </button>
+                  <div className="flex flex-col gap-2 items-end">
+                    {/* Start Job button - shows when status is confirmed or pending */}
+                    {(appointment.status === "confirmed" ||
+                      appointment.status === "pending") && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartJob(appointment.id);
+                        }}
+                        className="px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                      >
+                        Start Job
+                      </button>
+                    )}
+                    {/* Complete Job button - shows when status is in_progress */}
+                    {appointment.status === "in_progress" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCompleteJob(appointment.id);
+                        }}
+                        className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        Complete Job
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -715,7 +761,8 @@ export default function CleanerDashboard() {
               <option value="all">All Statuses</option>
               {availableStatuses.map((status) => (
                 <option key={status} value={status}>
-                  {status.charAt(0).toUpperCase() + status.slice(1).replace("_", " ")}
+                  {status.charAt(0).toUpperCase() +
+                    status.slice(1).replace("_", " ")}
                 </option>
               ))}
             </select>
@@ -775,7 +822,9 @@ export default function CleanerDashboard() {
                   <div className="relative flex-shrink-0 min-w-[120px]">
                     <select
                       value={upcomingDaysFilter}
-                      onChange={(e) => setUpcomingDaysFilter(Number(e.target.value))}
+                      onChange={(e) =>
+                        setUpcomingDaysFilter(Number(e.target.value))
+                      }
                       className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
                     >
                       {timeFrameOptions.map((option) => (
@@ -801,7 +850,10 @@ export default function CleanerDashboard() {
                   <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
                     <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-600">
-                      No upcoming jobs in the next {upcomingDaysFilter === -1 ? "" : `${upcomingDaysFilter} days`}
+                      No upcoming jobs in the next{" "}
+                      {upcomingDaysFilter === -1
+                        ? ""
+                        : `${upcomingDaysFilter} days`}
                     </p>
                   </div>
                 )}
@@ -841,8 +893,10 @@ export default function CleanerDashboard() {
         isOpen={showSidePanel}
         onClose={() => setShowSidePanel(false)}
         appointment={selectedAppointment}
-        role="manager"
+        role="cleaner"
         canEdit={false}
+        onStartJob={handleStartJob}
+        onCompleteJob={handleCompleteJob}
       />
     </div>
   );

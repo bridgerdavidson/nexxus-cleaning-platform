@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { useRealtimeAppointments } from './useRealtimeAppointments';
 
 export interface CleanerAppointment {
   id: string;
@@ -94,6 +95,126 @@ export function useCleanerAppointments() {
   const auth = useAuth();
   const { user, currentOrganizationId } = auth || {};
   const orgId = currentOrganizationId ?? null;
+
+  // Helper function to fetch a single appointment with all relations
+  const fetchSingleAppointment = useCallback(async (appointmentId: string): Promise<CleanerAppointment | null> => {
+    if (!user?.id || !orgId) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          scheduled_date,
+          scheduled_time,
+          status,
+          total_price,
+          special_requests,
+          homeowner:user_profiles!homeowner_id(
+            first_name,
+            last_name,
+            email,
+            phone
+          ),
+          property:properties(
+            name,
+            address,
+            city,
+            state,
+            zip_code
+          ),
+          service_type:service_types(
+            name,
+            description,
+            duration_minutes
+          )
+        `)
+        .eq('id', appointmentId)
+        .eq('cleaner_id', user.id)
+        .eq('organization_id', orgId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching appointment:', error);
+        return null;
+      }
+
+      if (!data) return null;
+
+      // Transform the data to match our interface
+      return {
+        ...data,
+        homeowner: Array.isArray(data.homeowner) ? data.homeowner[0] : data.homeowner,
+        property: Array.isArray(data.property) ? data.property[0] : data.property,
+        service_type: Array.isArray(data.service_type) ? data.service_type[0] : data.service_type
+      } as CleanerAppointment;
+    } catch (err) {
+      console.error('Error in fetchSingleAppointment:', err);
+      return null;
+    }
+  }, [user?.id, orgId]);
+
+  // Realtime callbacks
+  const handleAppointmentInsert = useCallback(async (appointmentId: string) => {
+    const appointment = await fetchSingleAppointment(appointmentId);
+    if (appointment) {
+      setAppointments(prev => {
+        // Check if appointment already exists (avoid duplicates)
+        if (prev.some(apt => apt.id === appointmentId)) {
+          return prev;
+        }
+        // Add new appointment and sort by date
+        return [...prev, appointment].sort((a, b) => {
+          const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+          if (dateCompare !== 0) return dateCompare;
+          return a.scheduled_time.localeCompare(b.scheduled_time);
+        });
+      });
+    }
+  }, [fetchSingleAppointment]);
+
+  const handleAppointmentUpdate = useCallback(async (appointmentId: string) => {
+    const appointment = await fetchSingleAppointment(appointmentId);
+    if (appointment) {
+      setAppointments(prev => {
+        // Update existing appointment or add if not found
+        const existingIndex = prev.findIndex(apt => apt.id === appointmentId);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = appointment;
+          // Re-sort after update
+          return updated.sort((a, b) => {
+            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+            if (dateCompare !== 0) return dateCompare;
+            return a.scheduled_time.localeCompare(b.scheduled_time);
+          });
+        } else {
+          // Appointment not in list, add it (might have been assigned to this cleaner)
+          return [...prev, appointment].sort((a, b) => {
+            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+            if (dateCompare !== 0) return dateCompare;
+            return a.scheduled_time.localeCompare(b.scheduled_time);
+          });
+        }
+      });
+    }
+  }, [fetchSingleAppointment]);
+
+  const handleAppointmentDelete = useCallback((appointmentId: string) => {
+    setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
+  }, []);
+
+  // Set up realtime subscription
+  useRealtimeAppointments({
+    filters: {
+      organizationId: orgId || '',
+      cleanerId: user?.id,
+    },
+    onInsert: handleAppointmentInsert,
+    onUpdate: handleAppointmentUpdate,
+    onDelete: handleAppointmentDelete,
+    enabled: !!user?.id && !!orgId,
+  });
 
   useEffect(() => {
     if (!user?.id || !orgId) {

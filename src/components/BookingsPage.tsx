@@ -101,6 +101,9 @@ export default function BookingsPage({
     new Map()
   );
 
+  // Debounce timer for flushing pending updates
+  const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Local appointments state for optimistic updates
   const [localAppointments, setLocalAppointments] =
     useState<AppointmentCardData[]>(appointments);
@@ -159,17 +162,41 @@ export default function BookingsPage({
     setPendingDragUpdates(new Map());
   }, [onAppointmentUpdated]);
 
+  // Debounced flush function - automatically saves pending updates after user stops dragging
+  const debouncedFlushPendingUpdates = useCallback(() => {
+    // Clear existing timer
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+    }
+
+    // Set new timer - flush after 750ms of inactivity
+    flushTimerRef.current = setTimeout(() => {
+      flushPendingUpdates();
+      flushTimerRef.current = null;
+    }, 750);
+  }, [flushPendingUpdates]);
+
   // Tab visibility change listener - flush pending updates when user switches tabs
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        // User switched away - flush pending updates
+        // User switched away - flush pending updates immediately
+        // Clear any pending debounce timer since we're flushing now
+        if (flushTimerRef.current) {
+          clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
         flushPendingUpdates();
       }
     };
 
     const handleBeforeUnload = () => {
       // Page is about to close - try to flush pending updates synchronously
+      // Clear any pending debounce timer since we're flushing now
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       if (pendingDragUpdatesRef.current.size > 0) {
         flushPendingUpdates();
       }
@@ -181,6 +208,11 @@ export default function BookingsPage({
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      // Clear debounce timer on unmount
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       // Flush on unmount as well
       if (pendingDragUpdatesRef.current.size > 0) {
         flushPendingUpdates();
@@ -470,8 +502,11 @@ export default function BookingsPage({
         });
         return newMap;
       });
+
+      // Trigger debounced flush - will save to DB after 750ms of inactivity
+      debouncedFlushPendingUpdates();
     },
-    []
+    [debouncedFlushPendingUpdates]
   );
 
   const handleDayDetailAppointmentClick = useCallback(

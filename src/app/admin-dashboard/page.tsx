@@ -381,9 +381,24 @@ export default function AdminDashboard() {
   
   const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
 
-  const pendingAppointments = appointments.filter(
-    (a) => a.status === "pending"
-  );
+  const pendingAppointments = appointments
+    .filter((a) => {
+      // Only include pending appointments that are today or in the future
+      if (a.status !== "pending") return false;
+      
+      // Parse appointment date
+      const [year, month, day] = a.scheduled_date.split("-").map(Number);
+      const appointmentDate = new Date(year, month - 1, day);
+      appointmentDate.setHours(0, 0, 0, 0);
+      
+      // Only include today and future appointments
+      return appointmentDate >= today;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
+      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
 
   const renderOverview = () => (
     <>

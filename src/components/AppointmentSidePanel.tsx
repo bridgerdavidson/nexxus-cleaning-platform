@@ -31,8 +31,10 @@ interface AppointmentSidePanelProps {
   onDelete?: (appointmentId: string) => void;
   onApprove?: (appointmentId: string) => void;
   onDecline?: (appointmentId: string) => void;
+  onStartJob?: (appointmentId: string) => void;
+  onCompleteJob?: (appointmentId: string) => void;
   onAppointmentUpdated?: (updatedAppointment: AppointmentCardData) => void;
-  role: "admin" | "manager";
+  role: "admin" | "manager" | "cleaner";
   canEdit?: boolean;
 }
 
@@ -45,6 +47,8 @@ export default function AppointmentSidePanel({
   onDelete,
   onApprove,
   onDecline,
+  onStartJob,
+  onCompleteJob,
   onAppointmentUpdated,
   role,
   canEdit = true,
@@ -509,45 +513,94 @@ export default function AppointmentSidePanel({
             </div>
           )}
 
+          {/* Start/Complete Job buttons for cleaners */}
+          {role === "cleaner" &&
+            (onStartJob || onCompleteJob) &&
+            !isEditing && (
+              <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
+                {/* Start Job button - shows when status is confirmed or pending */}
+                {onStartJob &&
+                  (appointment.status === "confirmed" ||
+                    appointment.status === "pending") && (
+                    <button
+                      onClick={async () => {
+                        setIsActionLoading(true);
+                        try {
+                          await onStartJob(appointment.id);
+                          // Don't close panel - let user see the status change
+                        } finally {
+                          setIsActionLoading(false);
+                        }
+                      }}
+                      disabled={isActionLoading}
+                      className="flex-1 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isActionLoading ? "Starting..." : "Start Job"}
+                    </button>
+                  )}
+                {/* Complete Job button - shows when status is in_progress */}
+                {onCompleteJob && appointment.status === "in_progress" && (
+                  <button
+                    onClick={async () => {
+                      setIsActionLoading(true);
+                      try {
+                        await onCompleteJob(appointment.id);
+                        // Don't close panel - let user see the status change
+                      } finally {
+                        setIsActionLoading(false);
+                      }
+                    }}
+                    disabled={isActionLoading}
+                    className="flex-1 px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isActionLoading ? "Completing..." : "Complete Job"}
+                  </button>
+                )}
+              </div>
+            )}
+
           {/* Approve/Decline buttons for pending appointments (admin only) */}
-          {role === "admin" && appointment.status === "pending" && (onApprove || onDecline) && !isEditing && (
-            <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
-              {onApprove && (
-                <button
-                  onClick={async () => {
-                    setIsActionLoading(true);
-                    try {
-                      await onApprove(appointment.id);
-                      handleClose();
-                    } finally {
-                      setIsActionLoading(false);
-                    }
-                  }}
-                  disabled={isActionLoading}
-                  className="flex-1 px-4 py-2 text-sm font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
-                >
-                  Approve
-                </button>
-              )}
-              {onDecline && (
-                <button
-                  onClick={async () => {
-                    setIsActionLoading(true);
-                    try {
-                      await onDecline(appointment.id);
-                      handleClose();
-                    } finally {
-                      setIsActionLoading(false);
-                    }
-                  }}
-                  disabled={isActionLoading}
-                  className="flex-1 px-4 py-2 text-sm font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
-                >
-                  Decline
-                </button>
-              )}
-            </div>
-          )}
+          {role === "admin" &&
+            appointment.status === "pending" &&
+            (onApprove || onDecline) &&
+            !isEditing && (
+              <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
+                {onApprove && (
+                  <button
+                    onClick={async () => {
+                      setIsActionLoading(true);
+                      try {
+                        await onApprove(appointment.id);
+                        handleClose();
+                      } finally {
+                        setIsActionLoading(false);
+                      }
+                    }}
+                    disabled={isActionLoading}
+                    className="flex-1 px-4 py-2 text-sm font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                )}
+                {onDecline && (
+                  <button
+                    onClick={async () => {
+                      setIsActionLoading(true);
+                      try {
+                        await onDecline(appointment.id);
+                        handleClose();
+                      } finally {
+                        setIsActionLoading(false);
+                      }
+                    }}
+                    disabled={isActionLoading}
+                    className="flex-1 px-4 py-2 text-sm font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
+                )}
+              </div>
+            )}
         </div>
       </div>
     </div>
