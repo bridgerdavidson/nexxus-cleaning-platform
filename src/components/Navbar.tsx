@@ -98,7 +98,9 @@ const Navbar: React.FC = () => {
                     <User className="w-4 h-4 text-primary-600" />
                   </div>
                   <span className="font-medium">
-                    {user.profile.firstName} {user.profile.lastName}
+                    {user.profile.firstName || user.profile.lastName
+                      ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
+                      : user.email}
                   </span>
                   <ChevronDown className="w-4 h-4" />
                 </button>
@@ -196,8 +198,9 @@ const Navbar: React.FC = () => {
               {user ? (
                 <div className="border-t border-gray-200 pt-3">
                   <div className="px-3 py-2 text-sm text-gray-500">
-                    Signed in as {user.profile.firstName}{" "}
-                    {user.profile.lastName}
+                    Signed in as {user.profile.firstName || user.profile.lastName
+                      ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
+                      : user.email}
                   </div>
                   <Link
                     href={getDashboardLink()}

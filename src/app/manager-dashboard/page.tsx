@@ -37,7 +37,7 @@ import {
   deleteAppointment,
   updateAppointmentStatus,
 } from "../../hooks/useManagerData";
-import { useAdminCustomers } from "../../hooks/useAdminData";
+import { useAdminCustomers, useAdminStats } from "../../hooks/useAdminData";
 import { useConversations } from "../../hooks/useConversations";
 import { useManagerPermissions } from "../../hooks/useManagerPermissions";
 import TopBar from "../../components/TopBar";
@@ -51,12 +51,15 @@ import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
+import StatusBadge from "../../components/StatusBadge";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
   const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showPendingFilter, setShowPendingFilter] = useState(false);
+  const [showAllFilter, setShowAllFilter] = useState(false);
   const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<
@@ -73,6 +76,7 @@ export default function ManagerDashboard() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] = useState(true);
   const [selectedCleaner, setSelectedCleaner] = useState<any | null>(null);
   const [isCleanerSidePanelOpen, setIsCleanerSidePanelOpen] = useState(false);
   const router = useRouter();
@@ -112,6 +116,16 @@ export default function ManagerDashboard() {
     updateUnreadCount,
   } = useConversations({ userId: user?.id || "" });
   const { permissions, loading: permissionsLoading } = useManagerPermissions();
+  const { stats, loading: statsLoading } = useAdminStats();
+
+  // Calculate number of visible stats cards for dynamic grid - MUST be a hook and defined before early returns
+  const visibleStatsCardsCount = useMemo(() => {
+    let count = 2; // Total Bookings and Active Cleaners are always visible
+    if (permissions?.can_view_payments) count++;
+    if (permissions?.can_approve_decline_bookings) count++;
+    if (permissions?.can_view_analytics) count += 2; // Growth and Completion
+    return count;
+  }, [permissions]);
 
   // Check if a tab is accessible based on permissions - MUST be a hook and defined before early returns
   const isTabAccessible = useCallback(
@@ -345,9 +359,22 @@ export default function ManagerDashboard() {
           }
         }
       }
+      // Reset filters when switching groups
+      setShowPendingFilter(false);
+      setShowAllFilter(false);
     },
     [navigationGroups, isTabAccessible]
   );
+
+  // Handle tab change - reset filters if not navigating from specific sections
+  const handleTabChange = useCallback((tabId: string) => {
+    setActiveTab(tabId);
+    // Only keep filters if we're staying on bookings tab
+    if (tabId !== "bookings") {
+      setShowPendingFilter(false);
+      setShowAllFilter(false);
+    }
+  }, []);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -404,23 +431,101 @@ export default function ManagerDashboard() {
     }
   };
 
-  // Get upcoming appointments (confirmed or pending, sorted by date)
-  const upcomingAppointments = appointments
-    .filter((a) => a.status === "confirmed" || a.status === "pending")
+  // Helper functions matching admin dashboard
+  const formatDateTime = (date: string, time: string) => {
+    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
+    const [year, month, day] = date.split("-").map(Number);
+    const localDate = new Date(year, month - 1, day); // month is 0-indexed
+    const formattedDate = localDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    return `${formattedDate} at ${time}`;
+  };
+
+  const getHomeownerName = (appointment: any) => {
+    if (appointment.homeowner) {
+      const { first_name, last_name } = appointment.homeowner;
+      return `${first_name} ${last_name}`;
+    }
+    return "Unknown";
+  };
+
+  const getPropertyAddress = (appointment: any) => {
+    if (appointment.property) {
+      const { address, city, state } = appointment.property;
+      return `${address}, ${city}, ${state}`;
+    }
+    return "Address not available";
+  };
+
+  const getCleanerName = (appointment: any) => {
+    if (appointment.cleaner_profile?.user_profile) {
+      const { first_name, last_name } =
+        appointment.cleaner_profile.user_profile;
+      return `${first_name} ${last_name}`;
+    }
+    return null;
+  };
+
+  // Get upcoming appointments (future appointments, excluding completed/cancelled)
+  // This matches the BookingsPage "upcoming" tab definition
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const allUpcomingAppointments = appointments
+    .filter((a) => {
+      // Parse appointment date
+      const [year, month, day] = a.scheduled_date.split("-").map(Number);
+      const appointmentDate = new Date(year, month - 1, day);
+      appointmentDate.setHours(0, 0, 0, 0);
+      
+      // Future appointments, excluding completed/cancelled
+      return (
+        appointmentDate >= today &&
+        a.status !== "completed" &&
+        a.status !== "cancelled"
+      );
+    })
     .sort((a, b) => {
       const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
-    })
-    .slice(0, 5);
+    });
+  
+  const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
 
-  const pendingAppointments = appointments.filter(
-    (a) => a.status === "pending"
-  );
-  const activeCleanersCount = cleaners.filter((c) => c.is_available).length;
-  const pendingPaymentsCount = payments.filter(
-    (p) => p.status === "pending"
-  ).length;
+  const pendingAppointments = appointments
+    .filter((a) => {
+      // Only include pending appointments that are today or in the future
+      if (a.status !== "pending") return false;
+      
+      // Parse appointment date
+      const [year, month, day] = a.scheduled_date.split("-").map(Number);
+      const appointmentDate = new Date(year, month - 1, day);
+      appointmentDate.setHours(0, 0, 0, 0);
+      
+      // Only include today and future appointments
+      return appointmentDate >= today;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
+      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+  // Get grid class based on visible cards count
+  const getStatsGridClass = (count: number) => {
+    // For responsive grid, we want cards to fill space evenly
+    // Adjust columns based on actual visible count
+    if (count === 1) return "md:grid-cols-1";
+    if (count === 2) return "md:grid-cols-2";
+    if (count === 3) return "md:grid-cols-2 lg:grid-cols-3";
+    if (count === 4) return "md:grid-cols-2 lg:grid-cols-4";
+    if (count === 5) return "md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5";
+    return "md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
+  };
 
   const renderOverview = () => (
     <>
@@ -443,67 +548,153 @@ export default function ManagerDashboard() {
           </span>
         </div>
         <p className="text-gray-600">
-          Manage your team operations and oversee cleaning services from one
-          central location.
+          Manage your cleaning business operations from one central location.
         </p>
       </div>
 
       <div className="space-y-6">
         {/* Mobile Quick Stats Bar */}
-        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 p-3">
+        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
           <div className="flex items-center justify-between">
-            {appointmentsLoading ? (
+            {statsLoading ? (
               <div className="flex items-center justify-center w-full py-2">
                 <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
               </div>
             ) : (
               <>
-                <div className="flex-1 text-center border-r border-gray-200">
-                  <p className="text-xl font-bold text-amber-600">
-                    {pendingAppointments.length}
-                  </p>
-                  <p className="text-xs text-gray-500">Pending</p>
-                </div>
-                <div className="flex-1 text-center border-r border-gray-200">
+                {permissions?.can_approve_decline_bookings && (
+                  <div className="flex-1 text-center border-r border-gray-200">
+                    <p className="text-xl font-bold text-amber-600">
+                      {stats.pendingApprovals}
+                    </p>
+                    <p className="text-xs text-gray-500">Pending</p>
+                  </div>
+                )}
+                <div className={`flex-1 text-center ${permissions?.can_approve_decline_bookings ? 'border-r border-gray-200' : ''}`}>
                   <p className="text-xl font-bold text-primary-600">
-                    {appointments.length}
+                    {stats.totalBookings}
                   </p>
-                  <p className="text-xs text-gray-500">Total</p>
+                  <p className="text-xs text-gray-500">Bookings</p>
                 </div>
-                <div className="flex-1 text-center">
-                  <p className="text-xl font-bold text-green-600">
-                    {activeCleanersCount}
-                  </p>
-                  <p className="text-xs text-gray-500">Cleaners</p>
-                </div>
+                {permissions?.can_view_payments && (
+                  <div className="flex-1 text-center border-l border-gray-200">
+                    <p className="text-xl font-bold text-green-600">
+                      ${stats.totalRevenue}
+                    </p>
+                    <p className="text-xs text-gray-500">Revenue</p>
+                  </div>
+                )}
               </>
             )}
           </div>
         </div>
 
-        {/* Mobile Pending Alert - Only show if there are pending appointments */}
-        {pendingAppointments.length > 0 && (
+        {/* Mobile Pending Approvals - Priority Section */}
+        {permissions?.can_approve_decline_bookings && (
           <div className="md:hidden">
-            <button
-              onClick={() => setActiveTab("bookings")}
-              className="w-full bg-white rounded-xl shadow-sm border border-amber-200 p-4 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-full">
-                  <AlertTriangle className="w-5 h-5 text-amber-600" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">
-                    {pendingAppointments.length} Pending Approval
-                    {pendingAppointments.length !== 1 ? "s" : ""}
-                  </p>
-                  <p className="text-sm text-gray-500">Tap to review</p>
+            {pendingAppointments.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
+                <button
+                  onClick={() => setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)}
+                  className="w-full bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center justify-between hover:bg-amber-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-100 rounded-lg">
+                      <AlertTriangle className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <span className="font-medium text-gray-900">
+                      Pending Approvals
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                      {pendingAppointments.length}
+                    </span>
+                    {isPendingApprovalsExpanded ? (
+                      <ChevronUp className="w-5 h-5 text-amber-600" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-amber-600" />
+                    )}
+                  </div>
+                </button>
+                {isPendingApprovalsExpanded && (
+                  <div className="divide-y divide-gray-100">
+                  {appointmentsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    </div>
+                  ) : (
+                    pendingAppointments.slice(0, 3).map((appointment) => (
+                      <div key={appointment.id} className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 truncate">
+                              {getHomeownerName(appointment)}
+                            </p>
+                            <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>
+                                {formatDateTime(
+                                  appointment.scheduled_date,
+                                  appointment.scheduled_time
+                                )}
+                              </span>
+                            </div>
+                            {appointment.service_type && (
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                {appointment.service_type.name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              handleApproveAppointment(appointment.id)
+                            }
+                            className="flex-1 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDeclineAppointment(appointment.id)
+                            }
+                            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                    {pendingAppointments.length > 3 && (
+                      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                        <button
+                          onClick={() => setActiveTab("bookings")}
+                          className="w-full text-center text-sm font-medium text-primary-600"
+                        >
+                          View all {pendingAppointments.length} pending
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {pendingAppointments.length === 0 && !appointmentsLoading && (
+              <div className="bg-white rounded-xl shadow-sm border border-green-200 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">All caught up!</p>
+                    <p className="text-sm text-gray-500">No pending approvals</p>
+                  </div>
                 </div>
               </div>
-              <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                {pendingAppointments.length}
-              </span>
-            </button>
+            )}
           </div>
         )}
 
@@ -511,7 +702,7 @@ export default function ManagerDashboard() {
         <div className="md:hidden">
           <button
             onClick={() => setIsStatsExpanded(!isStatsExpanded)}
-            className="w-full bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center justify-between"
+            className="w-full bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3 flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary-100 rounded-lg">
@@ -530,39 +721,65 @@ export default function ManagerDashboard() {
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Calendar className="w-4 h-4 text-primary-600" />
-                  <span className="text-xs text-gray-500">Total</span>
+                  <span className="text-xs text-gray-500">Bookings</span>
                 </div>
                 <p className="text-2xl font-bold text-gray-900">
-                  {appointments.length}
+                  {stats.totalBookings}
                 </p>
               </div>
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-green-600" />
+                  <Users className="w-4 h-4 text-primary-600" />
                   <span className="text-xs text-gray-500">Cleaners</span>
                 </div>
                 <p className="text-2xl font-bold text-gray-900">
-                  {activeCleanersCount}
+                  {stats.activeCleaners}
                 </p>
               </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs text-gray-500">Pending</span>
+              {permissions?.can_view_payments && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <DollarSign className="w-4 h-4 text-green-600" />
+                    <span className="text-xs text-gray-500">Revenue</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${stats.totalRevenue}
+                  </p>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {pendingAppointments.length}
-                </p>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs text-gray-500">Payments</span>
+              )}
+              {permissions?.can_view_analytics && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs text-gray-500">Growth</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {stats.monthlyGrowth}%
+                  </p>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {pendingPaymentsCount}
-                </p>
-              </div>
+              )}
+              {permissions?.can_view_analytics && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-xs text-gray-500">Completion</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {stats.completionRate}%
+                  </p>
+                </div>
+              )}
+              {permissions?.can_approve_decline_bookings && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs text-gray-500">Pending</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {stats.pendingApprovals}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -607,9 +824,7 @@ export default function ManagerDashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">
-                      {appointment.homeowner
-                        ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-                        : "Unknown"}
+                      {getHomeownerName(appointment)}
                     </p>
                     <div className="flex items-center gap-3 mt-1">
                       <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -617,26 +832,13 @@ export default function ManagerDashboard() {
                         <span>{appointment.scheduled_time}</span>
                       </div>
                       {appointment.service_type && (
-                        <span className="text-sm text-gray-500 truncate">
+                        <span className="text-sm text-gray-500">
                           {appointment.service_type.name}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        appointment.status === "confirmed"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {appointment.status}
-                    </span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      ${appointment.total_price}
-                    </span>
-                  </div>
+                  <StatusBadge status={appointment.status} size="sm" />
                 </div>
               ))
             ) : (
@@ -651,140 +853,322 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Desktop Stats Cards - Original Layout */}
-        <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="card">
-            <div className="flex items-center">
-              <div className="p-2 bg-primary-100 rounded-lg">
-                <Calendar className="w-6 h-6 text-primary-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Total Appointments
+        <div className={`hidden md:grid ${getStatsGridClass(visibleStatsCardsCount)} gap-6`}>
+          <div className="card flex items-center">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Calendar className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">
+                Total Bookings
+              </p>
+              {statsLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              ) : (
+                <p className="text-2xl font-bold text-gray-900">
+                  {stats.totalBookings}
                 </p>
-                {appointmentsLoading ? (
-                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold text-gray-900">
-                    {appointments.length}
-                  </p>
-                )}
-              </div>
+              )}
             </div>
           </div>
 
-          <div className="card">
-            <div className="flex items-center">
+          <div className="card flex items-center">
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Users className="w-6 h-6 text-indigo-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">
+                Active Cleaners
+              </p>
+              {statsLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              ) : (
+                <p className="text-2xl font-bold text-gray-900">
+                  {stats.activeCleaners}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {permissions?.can_view_payments && (
+            <div className="card flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
-                <Users className="w-6 h-6 text-green-600" />
+                <DollarSign className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Active Cleaners
-                </p>
-                {cleanersLoading ? (
+                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
+                {statsLoading ? (
                   <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                 ) : (
                   <p className="text-2xl font-bold text-gray-900">
-                    {activeCleanersCount}
+                    ${stats.totalRevenue}
                   </p>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="card">
-            <div className="flex items-center">
+          {permissions?.can_approve_decline_bookings && (
+            <div className="card flex items-center">
               <div className="p-2 bg-yellow-100 rounded-lg">
-                <Clock className="w-6 h-6 text-yellow-600" />
+                <AlertTriangle className="w-6 h-6 text-yellow-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Pending Appointments
-                </p>
-                {appointmentsLoading ? (
+                <p className="text-sm font-medium text-gray-600">Pending</p>
+                {statsLoading ? (
                   <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                 ) : (
                   <p className="text-2xl font-bold text-gray-900">
-                    {pendingAppointments.length}
+                    {stats.pendingApprovals}
                   </p>
                 )}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="card">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <DollarSign className="w-6 h-6 text-purple-600" />
+          {permissions?.can_view_analytics && (
+            <div className="card flex items-center">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">
-                  Pending Payments
-                </p>
-                {paymentsLoading ? (
+                <p className="text-sm font-medium text-gray-600">Growth</p>
+                {statsLoading ? (
                   <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                 ) : (
                   <p className="text-2xl font-bold text-gray-900">
-                    {pendingPaymentsCount}
+                    {stats.monthlyGrowth}%
                   </p>
                 )}
               </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Desktop Recent Appointments - Original Layout */}
-        <div className="hidden md:block card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Recent Appointments
-          </h3>
-          {appointmentsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {appointments.slice(0, 5).map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center space-x-4">
-                    <Calendar className="w-8 h-8 text-primary-600" />
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {appointment.homeowner
-                          ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-                          : "Unknown"}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {new Date(
-                          appointment.scheduled_date
-                        ).toLocaleDateString()}{" "}
-                        at {appointment.scheduled_time}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {appointment.service_type?.name}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <span
-                      className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(
-                        appointment.status
-                      )}`}
-                    >
-                      {appointment.status}
-                    </span>
-                    <p className="text-lg font-semibold text-gray-900">
-                      ${appointment.total_price}
-                    </p>
-                  </div>
-                </div>
-              ))}
+          {permissions?.can_view_analytics && (
+            <div className="card flex items-center">
+              <div className="p-2 bg-teal-100 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-teal-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Completion</p>
+                {statsLoading ? (
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold text-gray-900">
+                    {stats.completionRate}%
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>
+
+        {/* Desktop Quick Actions - Original Two Column Layout */}
+        {permissions?.can_approve_decline_bookings ? (
+          <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Pending Approvals
+              </h3>
+              {appointmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">
+                    Loading appointments...
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingAppointments.slice(0, 3).map((appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {getHomeownerName(appointment)}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {formatDateTime(
+                            appointment.scheduled_date,
+                            appointment.scheduled_time
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {getPropertyAddress(appointment)}
+                        </p>
+                        {appointment.service_type && (
+                          <p className="text-sm text-gray-600">
+                            Service: {appointment.service_type.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleApproveAppointment(appointment.id)}
+                          className="px-4 py-3 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors font-medium"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleDeclineAppointment(appointment.id)}
+                          className="px-4 py-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-medium"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {pendingAppointments.length === 0 && (
+                    <div className="text-center py-8">
+                      <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
+                      <p className="text-gray-600">No pending approvals</p>
+                    </div>
+                  )}
+                  {pendingAppointments.length > 3 && (
+                    <div className="pt-3 border-t border-gray-200">
+                      <button
+                        onClick={() => {
+                          setShowPendingFilter(true);
+                          setActiveTab("bookings");
+                        }}
+                        className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                      >
+                        View all {pendingAppointments.length} pending
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Upcoming Appointments
+              </h3>
+              {appointmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">
+                    Loading appointments...
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingAppointments.slice(0, 3).map((appointment) => (
+                    <div
+                      key={appointment.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {getHomeownerName(appointment)}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {formatDateTime(
+                            appointment.scheduled_date,
+                            appointment.scheduled_time
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {getPropertyAddress(appointment)}
+                        </p>
+                        {appointment.service_type && (
+                          <p className="text-sm text-gray-600">
+                            Service: {appointment.service_type.name}
+                          </p>
+                        )}
+                      </div>
+                      <StatusBadge status={appointment.status} size="sm" />
+                    </div>
+                  ))}
+                  {upcomingAppointments.length === 0 && (
+                    <div className="text-center py-8">
+                      <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-600">No upcoming appointments</p>
+                    </div>
+                  )}
+                  {allUpcomingAppointments.length > 3 && (
+                    <div className="pt-3 border-t border-gray-200">
+                      <button
+                        onClick={() => {
+                          setShowAllFilter(true);
+                          setActiveTab("bookings");
+                        }}
+                        className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                      >
+                        View all {allUpcomingAppointments.length} upcoming
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="hidden md:block card">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Upcoming Appointments
+            </h3>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">
+                  Loading appointments...
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingAppointments.slice(0, 3).map((appointment) => (
+                  <div
+                    key={appointment.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {getHomeownerName(appointment)}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {formatDateTime(
+                          appointment.scheduled_date,
+                          appointment.scheduled_time
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {getPropertyAddress(appointment)}
+                      </p>
+                      {appointment.service_type && (
+                        <p className="text-sm text-gray-600">
+                          Service: {appointment.service_type.name}
+                        </p>
+                      )}
+                    </div>
+                    <StatusBadge status={appointment.status} size="sm" />
+                  </div>
+                ))}
+                {upcomingAppointments.length === 0 && (
+                  <div className="text-center py-8">
+                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">No upcoming appointments</p>
+                  </div>
+                )}
+                {allUpcomingAppointments.length > 3 && (
+                  <div className="pt-3 border-t border-gray-200">
+                    <button
+                      onClick={() => {
+                        setShowAllFilter(true);
+                        setActiveTab("bookings");
+                      }}
+                      className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                    >
+                      View all {allUpcomingAppointments.length} upcoming
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
@@ -836,29 +1220,40 @@ export default function ManagerDashboard() {
     }
   };
 
-  const renderBookings = () => (
-    <BookingsPage
-      appointments={appointments}
-      loading={appointmentsLoading}
-      onCancelAppointment={handleCancelAppointment}
-      onDeleteAppointment={handleDeleteAppointment}
-      onMarkComplete={handleMarkComplete}
-      onApproveAppointment={
-        permissions?.can_approve_decline_bookings
-          ? handleApproveAppointment
-          : undefined
-      }
-      onDeclineAppointment={
-        permissions?.can_approve_decline_bookings
-          ? handleDeclineAppointment
-          : undefined
-      }
-      onRefreshAppointments={refetchAppointments}
-      onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
-      role="manager"
-      canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
-    />
-  );
+  const renderBookings = () => {
+    // Determine initial status filter based on which "View All" was clicked
+    let initialFilter: string | undefined;
+    if (showPendingFilter) {
+      initialFilter = "pending";
+    } else if (showAllFilter) {
+      initialFilter = "all";
+    }
+    
+    return (
+      <BookingsPage
+        appointments={appointments}
+        loading={appointmentsLoading}
+        onCancelAppointment={handleCancelAppointment}
+        onDeleteAppointment={handleDeleteAppointment}
+        onMarkComplete={handleMarkComplete}
+        onApproveAppointment={
+          permissions?.can_approve_decline_bookings
+            ? handleApproveAppointment
+            : undefined
+        }
+        onDeclineAppointment={
+          permissions?.can_approve_decline_bookings
+            ? handleDeclineAppointment
+            : undefined
+        }
+        onRefreshAppointments={refetchAppointments}
+        onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
+        role="manager"
+        canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
+        initialStatusFilter={initialFilter}
+      />
+    );
+  };
 
   const handleDeleteCleaner = async () => {
     if (!deleteConfirmModal.cleanerId) return;
@@ -1404,7 +1799,7 @@ export default function ManagerDashboard() {
             user={user}
             tabs={topNavTabs}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
           />
         </div>

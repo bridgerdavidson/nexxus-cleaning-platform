@@ -112,7 +112,9 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900 text-lg">
-                    {user.profile.firstName} {user.profile.lastName}
+                    {user.profile.firstName || user.profile.lastName
+                      ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
+                      : user.email}
                   </h3>
                   <p className="text-sm text-gray-600">{user.email}</p>
                   <span className="inline-block mt-1 px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-full capitalize">

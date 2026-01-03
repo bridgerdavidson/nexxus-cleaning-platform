@@ -108,7 +108,9 @@ const TopBar: React.FC<TopBarProps> = ({
               </div>
               <div className="text-left">
                 <p className="text-sm font-medium text-gray-900">
-                  {user.profile.firstName} {user.profile.lastName}
+                  {user.profile.firstName || user.profile.lastName
+                    ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
+                    : user.email}
                 </p>
                 <p className="text-xs text-gray-500 capitalize">{role}</p>
               </div>
@@ -119,7 +121,9 @@ const TopBar: React.FC<TopBarProps> = ({
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg py-1 z-50 border border-gray-200">
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-medium text-gray-900">
-                    {user.profile.firstName} {user.profile.lastName}
+                    {user.profile.firstName || user.profile.lastName
+                      ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
+                      : user.email}
                   </p>
                   <p className="text-xs text-gray-500">{user.email}</p>
                   <span className="inline-block mt-2 px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-full capitalize">
