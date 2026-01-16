@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   X,
   Calendar,
@@ -15,12 +15,15 @@ import {
   Save,
   Loader2,
   FileText,
+  CreditCard,
+  AlertCircle,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import StatusBadge from "./StatusBadge";
 import { AppointmentCardData } from "./AppointmentCard";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import PaymentMethodForm from "./PaymentMethodForm";
 
 interface AppointmentSidePanelProps {
   isOpen: boolean;
@@ -71,9 +74,62 @@ export default function AppointmentSidePanel({
     notes: "",
   });
 
+  // Payment method state
+  const [paymentMethodInfo, setPaymentMethodInfo] = useState<{
+    last4: string;
+    brand: string;
+  } | null>(null);
+  const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
+  const [paymentMethodError, setPaymentMethodError] = useState<string | null>(null);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Fetch payment method info when appointment changes
+  const fetchPaymentMethod = useCallback(async (homeownerId: string) => {
+    setPaymentMethodLoading(true);
+    setPaymentMethodError(null);
+    try {
+      const response = await fetch("/api/stripe/get-payment-method", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ homeowner_id: homeownerId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to fetch payment method");
+      }
+
+      if (data.has_card && data.payment_method) {
+        setPaymentMethodInfo({
+          last4: data.payment_method.last4,
+          brand: data.payment_method.brand,
+        });
+      } else {
+        setPaymentMethodInfo(null);
+      }
+    } catch (err) {
+      console.error("Error fetching payment method:", err);
+      setPaymentMethodError(err instanceof Error ? err.message : "Failed to fetch payment method");
+      setPaymentMethodInfo(null);
+    } finally {
+      setPaymentMethodLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (appointment?.homeowner_id && isOpen) {
+      fetchPaymentMethod(appointment.homeowner_id);
+    }
+    // Reset payment form state when appointment changes
+    setShowPaymentForm(false);
+  }, [appointment?.homeowner_id, isOpen, fetchPaymentMethod]);
 
   // Start animating when opened
   useEffect(() => {
@@ -458,6 +514,84 @@ export default function AppointmentSidePanel({
               )}
             </div>
           </div>
+
+          {/* Payment Method */}
+          {!isEditing && (
+            <div className="flex items-start gap-2">
+              <CreditCard className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-500 mb-2">Payment Method</p>
+                
+                {showPaymentForm && appointment.homeowner_id ? (
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <PaymentMethodForm
+                      homeownerId={appointment.homeowner_id}
+                      onSuccess={() => {
+                        setShowPaymentForm(false);
+                        if (appointment.homeowner_id) {
+                          fetchPaymentMethod(appointment.homeowner_id);
+                        }
+                      }}
+                      onError={(errorMsg) => {
+                        setPaymentMethodError(errorMsg);
+                      }}
+                      onCancel={() => setShowPaymentForm(false)}
+                    />
+                  </div>
+                ) : paymentMethodLoading ? (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading payment info...</span>
+                  </div>
+                ) : paymentMethodError ? (
+                  <div className="flex items-start gap-2 text-amber-600">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm">Could not load payment info</p>
+                      <button
+                        onClick={() => setShowPaymentForm(true)}
+                        className="text-sm text-primary-600 hover:text-primary-700 font-medium mt-1"
+                      >
+                        Add Card
+                      </button>
+                    </div>
+                  </div>
+                ) : paymentMethodInfo ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-gray-100 rounded-lg">
+                        <CreditCard className="w-5 h-5 text-gray-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 capitalize">
+                          {paymentMethodInfo.brand}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          •••• {paymentMethodInfo.last4}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowPaymentForm(true)}
+                      className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      Change Card
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <p className="text-gray-500 italic">No card on file</p>
+                    <button
+                      onClick={() => setShowPaymentForm(true)}
+                      className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      Add Card
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Special Requests */}
           {(isEditing || appointment.special_requests) && (

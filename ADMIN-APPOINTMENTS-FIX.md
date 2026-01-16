@@ -82,3 +82,6 @@ The policy allows access if:
 - Ensure appointments have `organization_id` set correctly
 - The functions must be owned by postgres (superuser) for SECURITY DEFINER to work properly
 
+
+
+

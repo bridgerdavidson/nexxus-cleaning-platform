@@ -1,0 +1,207 @@
+import Stripe from 'stripe';
+
+// Initialize Stripe with secret key
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+}
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2025-12-15.clover',
+  typescript: true,
+});
+
+// Helper function to create or retrieve a Stripe customer
+export async function getOrCreateStripeCustomer(
+  email: string,
+  name: string,
+  existingCustomerId?: string | null
+): Promise<Stripe.Customer> {
+  // If we have an existing customer ID, retrieve and verify it
+  if (existingCustomerId) {
+    try {
+      const existingCustomer = await stripe.customers.retrieve(existingCustomerId);
+      if (!existingCustomer.deleted) {
+        return existingCustomer as Stripe.Customer;
+      }
+    } catch {
+      // Customer doesn't exist or was deleted, create a new one
+      console.log('Existing Stripe customer not found, creating new one');
+    }
+  }
+
+  // Check if a customer with this email already exists
+  const existingCustomers = await stripe.customers.list({
+    email: email,
+    limit: 1,
+  });
+
+  if (existingCustomers.data.length > 0) {
+    return existingCustomers.data[0];
+  }
+
+  // Create a new customer
+  const newCustomer = await stripe.customers.create({
+    email: email,
+    name: name,
+    metadata: {
+      source: 'nexxus-cleaning-platform',
+    },
+  });
+
+  return newCustomer;
+}
+
+// Helper function to create a SetupIntent for collecting payment method
+export async function createSetupIntent(
+  customerId: string
+): Promise<Stripe.SetupIntent> {
+  const setupIntent = await stripe.setupIntents.create({
+    customer: customerId,
+    payment_method_types: ['card'],
+    usage: 'off_session', // Allow charging the customer when they're not present
+    metadata: {
+      source: 'nexxus-cleaning-platform',
+    },
+  });
+
+  return setupIntent;
+}
+
+// Helper function to create a PaymentIntent to charge a customer
+export async function createPaymentIntent(
+  customerId: string,
+  amount: number, // Amount in cents
+  appointmentId: string,
+  paymentMethodId?: string
+): Promise<Stripe.PaymentIntent> {
+  const paymentIntentData: Stripe.PaymentIntentCreateParams = {
+    amount: Math.round(amount * 100), // Convert dollars to cents
+    currency: 'usd',
+    customer: customerId,
+    off_session: true,
+    confirm: true,
+    metadata: {
+      appointment_id: appointmentId,
+      source: 'nexxus-cleaning-platform',
+    },
+  };
+
+  // If a specific payment method is provided, use it
+  if (paymentMethodId) {
+    paymentIntentData.payment_method = paymentMethodId;
+  }
+
+  const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
+
+  return paymentIntent;
+}
+
+// Helper function to get the default payment method for a customer
+export async function getDefaultPaymentMethod(
+  customerId: string
+): Promise<string | null> {
+  const customer = await stripe.customers.retrieve(customerId);
+  
+  if (customer.deleted) {
+    return null;
+  }
+
+  // Check for default payment method
+  if (customer.invoice_settings?.default_payment_method) {
+    return customer.invoice_settings.default_payment_method as string;
+  }
+
+  // If no default, get the first attached payment method
+  const paymentMethods = await stripe.paymentMethods.list({
+    customer: customerId,
+    type: 'card',
+    limit: 1,
+  });
+
+  if (paymentMethods.data.length > 0) {
+    return paymentMethods.data[0].id;
+  }
+
+  return null;
+}
+
+// Helper function to attach a payment method to a customer and set as default
+export async function attachPaymentMethodToCustomer(
+  paymentMethodId: string,
+  customerId: string
+): Promise<Stripe.PaymentMethod> {
+  // Attach the payment method to the customer
+  const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
+    customer: customerId,
+  });
+
+  // Set as default payment method
+  await stripe.customers.update(customerId, {
+    invoice_settings: {
+      default_payment_method: paymentMethodId,
+    },
+  });
+
+  return paymentMethod;
+}
+
+// Helper function to get payment method details for a customer
+export async function getPaymentMethodDetails(
+  customerId: string
+): Promise<{ last4: string; brand: string; paymentMethodId: string } | null> {
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    
+    if (customer.deleted) {
+      return null;
+    }
+
+    let paymentMethodId: string | null = null;
+
+    // Check for default payment method
+    if (customer.invoice_settings?.default_payment_method) {
+      paymentMethodId = customer.invoice_settings.default_payment_method as string;
+    } else {
+      // If no default, get the first attached payment method
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+        limit: 1,
+      });
+
+      if (paymentMethods.data.length > 0) {
+        paymentMethodId = paymentMethods.data[0].id;
+      }
+    }
+
+    if (!paymentMethodId) {
+      return null;
+    }
+
+    // Retrieve the payment method details
+    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+    if (paymentMethod.type !== 'card' || !paymentMethod.card) {
+      return null;
+    }
+
+    return {
+      last4: paymentMethod.card.last4,
+      brand: paymentMethod.card.brand,
+      paymentMethodId: paymentMethod.id,
+    };
+  } catch (error) {
+    console.error('Error getting payment method details:', error);
+    return null;
+  }
+}
+
+// Helper to verify webhook signature
+export function constructWebhookEvent(
+  payload: string | Buffer,
+  signature: string,
+  webhookSecret: string
+): Stripe.Event {
+  return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+}
+

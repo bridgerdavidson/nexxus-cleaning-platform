@@ -19,6 +19,7 @@ import {
   List,
   CalendarDays,
   ChevronDown,
+  History,
 } from "lucide-react";
 import {
   useCleanerAppointments,
@@ -56,6 +57,7 @@ export default function CleanerDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
+  const [jobsTab, setJobsTab] = useState<"upcoming" | "past" | "all">("upcoming");
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
@@ -152,7 +154,7 @@ export default function CleanerDashboard() {
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   }, [appointments, searchQuery, statusFilter]);
 
-  // Get filtered upcoming jobs within time frame
+  // Get filtered upcoming jobs within time frame (includes today)
   const filteredUpcomingJobs = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
@@ -173,8 +175,8 @@ export default function CleanerDashboard() {
 
     return appointments
       .filter((apt) => {
-        // Must be after today
-        if (apt.scheduled_date <= today) return false;
+        // Must be today or after today
+        if (apt.scheduled_date < today) return false;
 
         // Check time frame filter (if not "All")
         if (upcomingDaysFilter !== -1) {
@@ -220,12 +222,101 @@ export default function CleanerDashboard() {
       });
   }, [appointments, searchQuery, statusFilter, upcomingDaysFilter]);
 
+  // Get filtered past jobs
+  const filteredPastJobs = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${day}`;
+
+    const query = searchQuery.toLowerCase();
+
+    return appointments
+      .filter((apt) => {
+        // Must be before today OR completed/cancelled
+        if (apt.scheduled_date >= today) {
+          if (apt.status !== "completed" && apt.status !== "cancelled") {
+            return false;
+          }
+        }
+
+        // Filter by status
+        if (statusFilter !== "all" && apt.status !== statusFilter) return false;
+
+        // Filter by search query
+        if (query) {
+          const homeownerName = apt.homeowner
+            ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`.toLowerCase()
+            : "";
+          const propertyAddress = apt.property
+            ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
+            : "";
+          const serviceName = apt.service_type?.name.toLowerCase() || "";
+
+          if (
+            !homeownerName.includes(query) &&
+            !propertyAddress.includes(query) &&
+            !serviceName.includes(query)
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        // Reverse chronological (most recent first)
+        const dateCompare = b.scheduled_date.localeCompare(a.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return b.scheduled_time.localeCompare(a.scheduled_time);
+      });
+  }, [appointments, searchQuery, statusFilter]);
+
+  // Get filtered all jobs
+  const filteredAllJobs = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+
+    return appointments
+      .filter((apt) => {
+        // Filter by status
+        if (statusFilter !== "all" && apt.status !== statusFilter) return false;
+
+        // Filter by search query
+        if (query) {
+          const homeownerName = apt.homeowner
+            ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`.toLowerCase()
+            : "";
+          const propertyAddress = apt.property
+            ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
+            : "";
+          const serviceName = apt.service_type?.name.toLowerCase() || "";
+
+          if (
+            !homeownerName.includes(query) &&
+            !propertyAddress.includes(query) &&
+            !serviceName.includes(query)
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        // Chronological (oldest to newest)
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+  }, [appointments, searchQuery, statusFilter]);
+
   // Combined appointments for calendar view
   const allFilteredAppointments = useMemo(() => {
-    return [...filteredTodaysJobs, ...filteredUpcomingJobs].map(
+    return [...filteredTodaysJobs, ...filteredUpcomingJobs, ...filteredPastJobs].map(
       convertToCardData
     );
-  }, [filteredTodaysJobs, filteredUpcomingJobs]);
+  }, [filteredTodaysJobs, filteredUpcomingJobs, filteredPastJobs]);
 
   // Get available statuses for filter dropdown
   const availableStatuses = useMemo(() => {
@@ -583,32 +674,33 @@ export default function CleanerDashboard() {
           </div>
         ) : (
           <div className="space-y-4">
-            {getTodaysJobs().map((appointment) => (
-              <div
-                key={appointment.id}
-                onClick={(e) => {
-                  // Don't trigger if clicking on a button
-                  if ((e.target as HTMLElement).closest("button")) {
-                    return;
-                  }
-                  handleTodayScheduleAppointmentClick(appointment);
-                }}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative cursor-pointer hover:bg-gray-100 transition-colors"
-                style={{
-                  borderLeftColor: getStatusBorderColor(appointment.status),
-                }}
-              >
-                <div className="flex items-center space-x-4 flex-1">
-                  <div className="flex-shrink-0">
-                    <Calendar className="w-8 h-8 text-primary-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-gray-900 text-lg">
-                        {formatTime(appointment.scheduled_time)}
-                      </p>
-                      <StatusBadge status={appointment.status} size="sm" />
+            {getTodaysJobs().map((appointment) => {
+              return (
+                <div
+                  key={appointment.id}
+                  onClick={(e) => {
+                    // Don't trigger if clicking on a button
+                    if ((e.target as HTMLElement).closest("button")) {
+                      return;
+                    }
+                    handleTodayScheduleAppointmentClick(appointment);
+                  }}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative cursor-pointer hover:bg-gray-100 transition-colors overflow-hidden"
+                  style={{
+                    borderLeftColor: getStatusBorderColor(appointment.status),
+                  }}
+                >
+                  <div className="flex items-center space-x-4 flex-1">
+                    <div className="flex-shrink-0">
+                      <Calendar className="w-8 h-8 text-primary-600" />
                     </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-gray-900 text-lg">
+                          {formatTime(appointment.scheduled_time)}
+                        </p>
+                        <StatusBadge status={appointment.status} size="sm" />
+                      </div>
                     <p className="text-sm font-medium text-gray-800 mt-1">
                       {appointment.homeowner
                         ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
@@ -657,8 +749,9 @@ export default function CleanerDashboard() {
                     )}
                   </div>
                 </div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
             {getTodaysJobs().length === 0 && (
               <div className="text-center py-8">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
@@ -796,6 +889,7 @@ export default function CleanerDashboard() {
                         key={appointment.id}
                         appointment={convertToCardData(appointment)}
                         onClick={() => handleAppointmentCardClick(appointment)}
+                        role="cleaner"
                       />
                     ))}
                   </div>
@@ -807,53 +901,151 @@ export default function CleanerDashboard() {
                 )}
               </div>
 
-              {/* Upcoming Jobs Section */}
+              {/* Jobs Tabs Section */}
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-primary-600" />
-                    Upcoming Jobs
-                    <span className="text-sm font-normal text-gray-500">
+                {/* Tabs */}
+                <div className="flex gap-2 border-b border-gray-200 mb-4">
+                  <button
+                    onClick={() => setJobsTab("upcoming")}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      jobsTab === "upcoming"
+                        ? "border-primary-600 text-primary-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Upcoming
+                    <span className="ml-2 text-gray-500 font-normal">
                       ({filteredUpcomingJobs.length})
                     </span>
-                  </h3>
-                  {/* Time Frame Filter */}
-                  <div className="relative flex-shrink-0 min-w-[120px]">
-                    <select
-                      value={upcomingDaysFilter}
-                      onChange={(e) =>
-                        setUpcomingDaysFilter(Number(e.target.value))
-                      }
-                      className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
-                    >
-                      {timeFrameOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
+                  </button>
+                  <button
+                    onClick={() => setJobsTab("past")}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      jobsTab === "past"
+                        ? "border-primary-600 text-primary-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Past
+                    <span className="ml-2 text-gray-500 font-normal">
+                      ({filteredPastJobs.length})
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setJobsTab("all")}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      jobsTab === "all"
+                        ? "border-primary-600 text-primary-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    All
+                    <span className="ml-2 text-gray-500 font-normal">
+                      ({filteredAllJobs.length})
+                    </span>
+                  </button>
                 </div>
-                {filteredUpcomingJobs.length > 0 ? (
-                  <div className="space-y-4">
-                    {filteredUpcomingJobs.map((appointment) => (
-                      <AppointmentCard
-                        key={appointment.id}
-                        appointment={convertToCardData(appointment)}
-                        onClick={() => handleAppointmentCardClick(appointment)}
-                      />
-                    ))}
+
+                {/* Tab Content */}
+                {jobsTab === "upcoming" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-primary-600" />
+                        Upcoming Jobs
+                      </h3>
+                      {/* Time Frame Filter */}
+                      <div className="relative flex-shrink-0 min-w-[120px]">
+                        <select
+                          value={upcomingDaysFilter}
+                          onChange={(e) =>
+                            setUpcomingDaysFilter(Number(e.target.value))
+                          }
+                          className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+                        >
+                          {timeFrameOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    {filteredUpcomingJobs.length > 0 ? (
+                      <div className="space-y-4">
+                        {filteredUpcomingJobs.map((appointment) => (
+                          <AppointmentCard
+                            key={appointment.id}
+                            appointment={convertToCardData(appointment)}
+                            onClick={() => handleAppointmentCardClick(appointment)}
+                            role="cleaner"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                        <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">
+                          No upcoming jobs
+                          {upcomingDaysFilter !== -1
+                            ? ` in the next ${upcomingDaysFilter} days`
+                            : ""}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-                    <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">
-                      No upcoming jobs in the next{" "}
-                      {upcomingDaysFilter === -1
-                        ? ""
-                        : `${upcomingDaysFilter} days`}
-                    </p>
+                )}
+
+                {jobsTab === "past" && (
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                      <History className="w-5 h-5 text-primary-600" />
+                      Past Jobs
+                    </h3>
+                    {filteredPastJobs.length > 0 ? (
+                      <div className="space-y-4">
+                        {filteredPastJobs.map((appointment) => (
+                          <AppointmentCard
+                            key={appointment.id}
+                            appointment={convertToCardData(appointment)}
+                            onClick={() => handleAppointmentCardClick(appointment)}
+                            role="cleaner"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                        <History className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">No past jobs</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {jobsTab === "all" && (
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                      <Calendar className="w-5 h-5 text-primary-600" />
+                      All Jobs
+                    </h3>
+                    {filteredAllJobs.length > 0 ? (
+                      <div className="space-y-4">
+                        {filteredAllJobs.map((appointment) => (
+                          <AppointmentCard
+                            key={appointment.id}
+                            appointment={convertToCardData(appointment)}
+                            onClick={() => handleAppointmentCardClick(appointment)}
+                            role="cleaner"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                        <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">No jobs found</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -25,6 +25,7 @@ export type Database = {
           phone: string | null
           role: 'homeowner' | 'cleaner' | 'admin'
           avatar_url: string | null
+          stripe_customer_id: string | null
           created_at: string
           updated_at: string
         }
@@ -36,6 +37,7 @@ export type Database = {
           phone?: string | null
           role?: 'homeowner' | 'cleaner' | 'admin'
           avatar_url?: string | null
+          stripe_customer_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -47,6 +49,7 @@ export type Database = {
           phone?: string | null
           role?: 'homeowner' | 'cleaner' | 'admin'
           avatar_url?: string | null
+          stripe_customer_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -350,6 +353,7 @@ export type Database = {
           status: 'pending' | 'paid' | 'failed' | 'refunded'
           payment_method: string | null
           stripe_payment_intent_id: string | null
+          stripe_setup_intent_id: string | null
           created_at: string
           updated_at: string
         }
@@ -361,6 +365,7 @@ export type Database = {
           status?: 'pending' | 'paid' | 'failed' | 'refunded'
           payment_method?: string | null
           stripe_payment_intent_id?: string | null
+          stripe_setup_intent_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -372,6 +377,7 @@ export type Database = {
           status?: 'pending' | 'paid' | 'failed' | 'refunded'
           payment_method?: string | null
           stripe_payment_intent_id?: string | null
+          stripe_setup_intent_id?: string | null
           created_at?: string
           updated_at?: string
         }

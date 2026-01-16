@@ -77,3 +77,6 @@ LEFT JOIN appointments a ON a.organization_id = uo.organization_id
 GROUP BY uo.organization_id, uo.role
 ORDER BY appointment_count DESC;
 
+
+
+

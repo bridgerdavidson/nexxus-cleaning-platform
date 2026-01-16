@@ -12,11 +12,14 @@ import {
   CheckCircle,
   Loader2,
   Repeat,
+  CreditCard,
+  DollarSign,
 } from "lucide-react";
 import type { RecurrenceType } from "../types";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import PaymentMethodForm from "./PaymentMethodForm";
 
 interface Homeowner {
   id: string;
@@ -62,6 +65,7 @@ interface AddAppointmentModalProps {
   preSelectedPropertyId?: string;
   preFilledDate?: string; // YYYY-MM-DD format
   preFilledTime?: string; // HH:mm format
+  hidePriceOverride?: boolean; // Hide price override UI for homeowner role
 }
 
 export default function AddAppointmentModal({
@@ -72,8 +76,13 @@ export default function AddAppointmentModal({
   preSelectedPropertyId,
   preFilledDate,
   preFilledTime,
+  hidePriceOverride = false,
 }: AddAppointmentModalProps) {
-  const { currentOrganizationId } = useAuth();
+  const { currentOrganizationId, user } = useAuth();
+
+  // Calculate initial status based on creator role
+  // Admin creates confirmed appointments, others create pending appointments
+  const initialStatus = user?.role === "admin" ? "confirmed" : "pending";
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
@@ -112,7 +121,9 @@ export default function AddAppointmentModal({
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>("none");
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [selectedDaysOfWeek, setSelectedDaysOfWeek] = useState<number[]>([]);
-  const [recurrenceEndType, setRecurrenceEndType] = useState<"date" | "occurrences">("date");
+  const [recurrenceEndType, setRecurrenceEndType] = useState<
+    "date" | "occurrences"
+  >("date");
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [recurrenceMaxOccurrences, setRecurrenceMaxOccurrences] = useState(10);
 
@@ -122,6 +133,15 @@ export default function AddAppointmentModal({
   const [cleanerSearch, setCleanerSearch] = useState("");
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
   const [skipCleaner, setSkipCleaner] = useState(false);
+
+  // Step 2 - Price override state
+  const [customPrice, setCustomPrice] = useState<string>("");
+  const [priceOverrideEnabled, setPriceOverrideEnabled] = useState(false);
+
+  // Step 4 - Payment method state
+  const [paymentMethodSaved, setPaymentMethodSaved] = useState(false);
+  const [stripeCustomerId, setStripeCustomerId] = useState<string | null>(null);
+  const [skipPaymentMethod, setSkipPaymentMethod] = useState(false);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -381,11 +401,25 @@ export default function AddAppointmentModal({
     }
 
     // Validate that the appointment is not in the past
+    // Allow today's date, but ensure the time is in the future
     const appointmentDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
     const now = new Date();
-    
-    if (appointmentDateTime <= now) {
-      setError("Cannot create appointments in the past. Please select a future date and time.");
+
+    // Get today's date string in local timezone for comparison
+    const todayLocalStr = getTodayLocal();
+
+    // Allow appointments today as long as the time is in the future
+    // Compare date strings directly to avoid timezone issues
+    if (scheduledDate < todayLocalStr) {
+      setError(
+        "Cannot create appointments in the past. Please select today or a future date."
+      );
+      return;
+    }
+
+    // If the appointment is today, ensure the time is in the future
+    if (scheduledDate === todayLocalStr && appointmentDateTime <= now) {
+      setError("Please select a future time for today's appointment.");
       return;
     }
 
@@ -395,12 +429,17 @@ export default function AddAppointmentModal({
         setError("Please select an end date for the recurring appointments.");
         return;
       }
-      if (recurrenceEndType === "occurrences" && (!recurrenceMaxOccurrences || recurrenceMaxOccurrences < 1)) {
+      if (
+        recurrenceEndType === "occurrences" &&
+        (!recurrenceMaxOccurrences || recurrenceMaxOccurrences < 1)
+      ) {
         setError("Please enter a valid number of occurrences.");
         return;
       }
       if (recurrenceType === "weekly" && selectedDaysOfWeek.length === 0) {
-        setError("Please select at least one day of the week for weekly recurrence.");
+        setError(
+          "Please select at least one day of the week for weekly recurrence."
+        );
         return;
       }
     }
@@ -408,6 +447,12 @@ export default function AddAppointmentModal({
     try {
       setIsCreating(true);
       setError(null);
+
+      // Calculate final price (custom price or base price)
+      const finalPrice =
+        priceOverrideEnabled && customPrice
+          ? parseFloat(customPrice)
+          : selectedServiceType.base_price;
 
       // Handle recurring appointments
       if (recurrenceType !== "none") {
@@ -425,20 +470,27 @@ export default function AddAppointmentModal({
             startDate: scheduledDate,
             startTime: scheduledTime,
             durationMinutes: selectedServiceType.duration_minutes,
-            totalPrice: selectedServiceType.base_price,
+            totalPrice: finalPrice,
             recurrenceType: recurrenceType,
             interval: recurrenceInterval,
-            daysOfWeek: recurrenceType === "weekly" ? selectedDaysOfWeek : undefined,
+            daysOfWeek:
+              recurrenceType === "weekly" ? selectedDaysOfWeek : undefined,
             endDate: recurrenceEndType === "date" ? recurrenceEndDate : null,
-            maxOccurrences: recurrenceEndType === "occurrences" ? recurrenceMaxOccurrences : null,
+            maxOccurrences:
+              recurrenceEndType === "occurrences"
+                ? recurrenceMaxOccurrences
+                : null,
             specialRequests: specialRequests || null,
+            status: initialStatus,
           }),
         });
 
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-          throw new Error(result.error || "Failed to create recurring appointments");
+          throw new Error(
+            result.error || "Failed to create recurring appointments"
+          );
         }
 
         console.log("Recurring appointments created:", result.data);
@@ -461,9 +513,9 @@ export default function AddAppointmentModal({
           scheduled_date: scheduledDate,
           scheduled_time: scheduledTime,
           duration_minutes: selectedServiceType.duration_minutes,
-          total_price: selectedServiceType.base_price,
+          total_price: finalPrice,
           special_requests: specialRequests || null,
-          status: "pending",
+          status: initialStatus,
         });
 
       if (insertError) {
@@ -532,6 +584,13 @@ export default function AddAppointmentModal({
     setRecurrenceEndType("date");
     setRecurrenceEndDate("");
     setRecurrenceMaxOccurrences(10);
+    // Reset price override state
+    setCustomPrice("");
+    setPriceOverrideEnabled(false);
+    // Reset payment state
+    setPaymentMethodSaved(false);
+    setStripeCustomerId(null);
+    setSkipPaymentMethod(false);
     setError(null);
     onClose();
   };
@@ -576,12 +635,26 @@ export default function AddAppointmentModal({
 
   // Validation
   const isStep1Valid = selectedHomeowner && selectedProperty;
-  const isStep2Valid = selectedServiceType && scheduledDate && scheduledTime;
+  const isStep2Valid =
+    selectedServiceType &&
+    scheduledDate &&
+    scheduledTime &&
+    (hidePriceOverride ||
+      !priceOverrideEnabled ||
+      (customPrice && parseFloat(customPrice) > 0));
   const isStep3Valid = selectedCleaner || skipCleaner;
+  const isStep4Valid = paymentMethodSaved || skipPaymentMethod;
 
-  // Get today's date for min date validation
-  const today = new Date().toISOString().split("T")[0];
-  
+  // Get today's date for min date validation (using local timezone, not UTC)
+  const getTodayLocal = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+  const today = getTodayLocal();
+
   // Get current time for min time validation when date is today
   const getMinTime = () => {
     if (scheduledDate === today) {
@@ -631,44 +704,54 @@ export default function AddAppointmentModal({
             <p className="text-primary-100 text-center text-sm">
               Step {currentStep} of{" "}
               {preSelectedHomeownerId && preSelectedPropertyId
-                ? 2
-                : preSelectedHomeownerId
                 ? 3
-                : 3}
+                : preSelectedHomeownerId
+                ? 4
+                : 4}
             </p>
 
             {/* Step indicator */}
             <div className="flex justify-center gap-2 mt-4">
               {preSelectedHomeownerId && preSelectedPropertyId ? (
-                // 2 steps: appointment details, cleaner
+                // 3 steps: appointment details, cleaner, payment
                 <>
                   <div
-                    className={`h-1 w-16 rounded-full transition-colors ${
+                    className={`h-1 w-12 rounded-full transition-colors ${
                       currentStep >= 1 ? "bg-white" : "bg-white/30"
                     }`}
                   />
                   <div
-                    className={`h-1 w-16 rounded-full transition-colors ${
+                    className={`h-1 w-12 rounded-full transition-colors ${
                       currentStep >= 2 ? "bg-white" : "bg-white/30"
+                    }`}
+                  />
+                  <div
+                    className={`h-1 w-12 rounded-full transition-colors ${
+                      currentStep >= 3 ? "bg-white" : "bg-white/30"
                     }`}
                   />
                 </>
               ) : (
-                // 3 steps: homeowner/property OR property selection, appointment details, cleaner
+                // 4 steps: homeowner/property OR property selection, appointment details, cleaner, payment
                 <>
                   <div
-                    className={`h-1 w-16 rounded-full transition-colors ${
+                    className={`h-1 w-10 rounded-full transition-colors ${
                       currentStep >= 1 ? "bg-white" : "bg-white/30"
                     }`}
                   />
                   <div
-                    className={`h-1 w-16 rounded-full transition-colors ${
+                    className={`h-1 w-10 rounded-full transition-colors ${
                       currentStep >= 2 ? "bg-white" : "bg-white/30"
                     }`}
                   />
                   <div
-                    className={`h-1 w-16 rounded-full transition-colors ${
+                    className={`h-1 w-10 rounded-full transition-colors ${
                       currentStep >= 3 ? "bg-white" : "bg-white/30"
+                    }`}
+                  />
+                  <div
+                    className={`h-1 w-10 rounded-full transition-colors ${
+                      currentStep >= 4 ? "bg-white" : "bg-white/30"
                     }`}
                   />
                 </>
@@ -962,6 +1045,85 @@ export default function AddAppointmentModal({
                   )}
                 </div>
 
+                {/* Price Display (with optional override for admin/manager) */}
+                {selectedServiceType && (
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-5 h-5 text-primary-600" />
+                        <span className="font-medium text-gray-900">Price</span>
+                      </div>
+                      {!hidePriceOverride && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={priceOverrideEnabled}
+                            onChange={(e) => {
+                              setPriceOverrideEnabled(e.target.checked);
+                              if (!e.target.checked) {
+                                setCustomPrice("");
+                              } else {
+                                setCustomPrice(
+                                  selectedServiceType.base_price.toString()
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                          />
+                          <span className="text-sm text-gray-600">
+                            Override price
+                          </span>
+                        </label>
+                      )}
+                    </div>
+
+                    {!hidePriceOverride && priceOverrideEnabled ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-medium text-gray-700">
+                          $
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={customPrice}
+                          onChange={(e) => setCustomPrice(e.target.value)}
+                          placeholder="Enter custom price"
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-2xl font-bold text-gray-900">
+                        ${selectedServiceType.base_price.toFixed(2)}
+                        <span className="text-sm font-normal text-gray-500 ml-2">
+                          (base price)
+                        </span>
+                      </div>
+                    )}
+
+                    {!hidePriceOverride &&
+                      priceOverrideEnabled &&
+                      customPrice &&
+                      parseFloat(customPrice) !==
+                        selectedServiceType.base_price && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Original base price: $
+                          {selectedServiceType.base_price.toFixed(2)}
+                          {parseFloat(customPrice) >
+                          selectedServiceType.base_price
+                            ? ` (+$${(
+                                parseFloat(customPrice) -
+                                selectedServiceType.base_price
+                              ).toFixed(2)})`
+                            : ` (-$${(
+                                selectedServiceType.base_price -
+                                parseFloat(customPrice)
+                              ).toFixed(2)})`}
+                        </p>
+                      )}
+                  </div>
+                )}
+
                 {/* Date and Time */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -975,11 +1137,13 @@ export default function AddAppointmentModal({
                         setScheduledDate(e.target.value);
                         // Clear time if date changed to today and time is in the past
                         if (e.target.value === today && scheduledTime) {
-                          const [hours, minutes] = scheduledTime.split(":").map(Number);
+                          const [hours, minutes] = scheduledTime
+                            .split(":")
+                            .map(Number);
                           const selectedDateTime = new Date();
                           selectedDateTime.setHours(hours, minutes, 0, 0);
                           const now = new Date();
-                          
+
                           if (selectedDateTime <= now) {
                             setScheduledTime("");
                             setError("Please select a future time for today.");
@@ -1008,12 +1172,16 @@ export default function AddAppointmentModal({
                         if (scheduledDate === today) {
                           const selectedTime = e.target.value;
                           const now = new Date();
-                          const [hours, minutes] = selectedTime.split(":").map(Number);
+                          const [hours, minutes] = selectedTime
+                            .split(":")
+                            .map(Number);
                           const selectedDateTime = new Date(now);
                           selectedDateTime.setHours(hours, minutes, 0, 0);
-                          
+
                           if (selectedDateTime <= now) {
-                            setError("Cannot select a time in the past. Please choose a future time.");
+                            setError(
+                              "Cannot select a time in the past. Please choose a future time."
+                            );
                           } else {
                             setError(null);
                           }
@@ -1025,7 +1193,11 @@ export default function AddAppointmentModal({
                     />
                     {scheduledDate === today && (
                       <p className="mt-1 text-xs text-gray-500">
-                        Select a time after {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                        Select a time after{" "}
+                        {new Date().toLocaleTimeString("en-US", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </p>
                     )}
                   </div>
@@ -1095,13 +1267,20 @@ export default function AddAppointmentModal({
                             min={1}
                             max={12}
                             value={recurrenceInterval}
-                            onChange={(e) => setRecurrenceInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                            onChange={(e) =>
+                              setRecurrenceInterval(
+                                Math.max(1, parseInt(e.target.value) || 1)
+                              )
+                            }
                             className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                           />
                           <span className="text-gray-600">
-                            {recurrenceType === "daily" && (recurrenceInterval === 1 ? "day" : "days")}
-                            {recurrenceType === "weekly" && (recurrenceInterval === 1 ? "week" : "weeks")}
-                            {recurrenceType === "monthly" && (recurrenceInterval === 1 ? "month" : "months")}
+                            {recurrenceType === "daily" &&
+                              (recurrenceInterval === 1 ? "day" : "days")}
+                            {recurrenceType === "weekly" &&
+                              (recurrenceInterval === 1 ? "week" : "weeks")}
+                            {recurrenceType === "monthly" &&
+                              (recurrenceInterval === 1 ? "month" : "months")}
                           </span>
                         </div>
                       </div>
@@ -1113,7 +1292,15 @@ export default function AddAppointmentModal({
                             On these days *
                           </label>
                           <div className="flex flex-wrap gap-2">
-                            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => (
+                            {[
+                              "Sun",
+                              "Mon",
+                              "Tue",
+                              "Wed",
+                              "Thu",
+                              "Fri",
+                              "Sat",
+                            ].map((day, index) => (
                               <button
                                 key={day}
                                 type="button"
@@ -1157,7 +1344,9 @@ export default function AddAppointmentModal({
                               <input
                                 type="date"
                                 value={recurrenceEndDate}
-                                onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                                onChange={(e) =>
+                                  setRecurrenceEndDate(e.target.value)
+                                }
                                 min={scheduledDate || today}
                                 className="px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                               />
@@ -1170,7 +1359,9 @@ export default function AddAppointmentModal({
                               type="radio"
                               name="recurrenceEnd"
                               checked={recurrenceEndType === "occurrences"}
-                              onChange={() => setRecurrenceEndType("occurrences")}
+                              onChange={() =>
+                                setRecurrenceEndType("occurrences")
+                              }
                               className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-primary-500"
                             />
                             <span className="text-gray-700">After</span>
@@ -1181,16 +1372,29 @@ export default function AddAppointmentModal({
                                   min={1}
                                   max={50}
                                   value={recurrenceMaxOccurrences}
-                                  onChange={(e) => setRecurrenceMaxOccurrences(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                                  onChange={(e) =>
+                                    setRecurrenceMaxOccurrences(
+                                      Math.max(
+                                        1,
+                                        Math.min(
+                                          50,
+                                          parseInt(e.target.value) || 1
+                                        )
+                                      )
+                                    )
+                                  }
                                   className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                 />
-                                <span className="text-gray-700">occurrences</span>
+                                <span className="text-gray-700">
+                                  occurrences
+                                </span>
                               </>
                             )}
                           </label>
                         </div>
                         <p className="mt-2 text-xs text-gray-500">
-                          Maximum 50 appointments will be created, up to 6 months in advance.
+                          Maximum 50 appointments will be created, up to 6
+                          months in advance.
                         </p>
                       </div>
                     </div>
@@ -1309,6 +1513,104 @@ export default function AddAppointmentModal({
                 </div>
               </div>
             )}
+
+            {/* Step 4: Payment Method (or Step 3 when homeowner/property pre-selected) */}
+            {((preSelectedHomeownerId &&
+              preSelectedPropertyId &&
+              currentStep === 3) ||
+              (preSelectedHomeownerId &&
+                !preSelectedPropertyId &&
+                currentStep === 4) ||
+              (!preSelectedHomeownerId &&
+                !preSelectedPropertyId &&
+                currentStep === 4)) &&
+              selectedHomeowner && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <CreditCard className="w-5 h-5 text-primary-600" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Payment Method
+                    </h3>
+                  </div>
+
+                  <p className="text-gray-600 mb-4">
+                    Collect payment information from{" "}
+                    {selectedHomeowner.first_name} {selectedHomeowner.last_name}
+                    . The card will be charged automatically when the cleaning
+                    job is completed.
+                  </p>
+
+                  {paymentMethodSaved ? (
+                    <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                          <CheckCircle className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-green-800">
+                            Payment Method Saved
+                          </p>
+                          <p className="text-sm text-green-600">
+                            Card on file for {selectedHomeowner.email}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : skipPaymentMethod ? (
+                    <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                          <CreditCard className="w-6 h-6 text-yellow-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-yellow-800">
+                            Payment Collection Skipped
+                          </p>
+                          <p className="text-sm text-yellow-600">
+                            You can collect payment information later
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <PaymentMethodForm
+                      homeownerId={selectedHomeowner.id}
+                      onSuccess={(customerId, paymentMethodId) => {
+                        setStripeCustomerId(customerId);
+                        setPaymentMethodSaved(true);
+                      }}
+                      onError={(errorMsg) => {
+                        setError(errorMsg);
+                      }}
+                    />
+                  )}
+
+                  {/* Skip payment option */}
+                  {!paymentMethodSaved && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={skipPaymentMethod}
+                          onChange={(e) => {
+                            setSkipPaymentMethod(e.target.checked);
+                          }}
+                          className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                        />
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            Skip payment collection
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Collect payment information later or use manual
+                            payment
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
           </div>
 
           {/* Footer */}
@@ -1334,13 +1636,13 @@ export default function AddAppointmentModal({
 
               {(preSelectedHomeownerId &&
                 preSelectedPropertyId &&
-                currentStep < 2) ||
+                currentStep < 3) ||
               (preSelectedHomeownerId &&
                 !preSelectedPropertyId &&
-                currentStep < 3) ||
+                currentStep < 4) ||
               (!preSelectedHomeownerId &&
                 !preSelectedPropertyId &&
-                currentStep < 3) ? (
+                currentStep < 4) ? (
                 <button
                   type="button"
                   onClick={handleNext}
@@ -1367,7 +1669,21 @@ export default function AddAppointmentModal({
                       (currentStep === 2 &&
                         preSelectedHomeownerId &&
                         !preSelectedPropertyId &&
-                        !isStep2Valid)
+                        !isStep2Valid) ||
+                      // Step 2: Both pre-selected flow needs cleaner selection
+                      (currentStep === 2 &&
+                        preSelectedHomeownerId &&
+                        preSelectedPropertyId &&
+                        !isStep3Valid) ||
+                      // Step 3: Regular flow and homeowner-only flow need cleaner selection
+                      (currentStep === 3 &&
+                        !preSelectedHomeownerId &&
+                        !preSelectedPropertyId &&
+                        !isStep3Valid) ||
+                      (currentStep === 3 &&
+                        preSelectedHomeownerId &&
+                        !preSelectedPropertyId &&
+                        !isStep3Valid)
                   )}
                   className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -1377,18 +1693,24 @@ export default function AddAppointmentModal({
                 <button
                   type="button"
                   onClick={handleCreateAppointment}
-                  disabled={!isStep3Valid || isCreating}
+                  disabled={!isStep4Valid || isCreating}
                   className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isCreating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      {recurrenceType !== "none" ? "Creating Series..." : "Creating..."}
+                      {recurrenceType !== "none"
+                        ? "Creating Series..."
+                        : "Creating..."}
                     </>
                   ) : (
                     <>
-                      {recurrenceType !== "none" && <Repeat className="w-4 h-4" />}
-                      {recurrenceType !== "none" ? "Create Recurring Appointments" : "Create Appointment"}
+                      {recurrenceType !== "none" && (
+                        <Repeat className="w-4 h-4" />
+                      )}
+                      {recurrenceType !== "none"
+                        ? "Create Recurring Appointments"
+                        : "Create Appointment"}
                     </>
                   )}
                 </button>

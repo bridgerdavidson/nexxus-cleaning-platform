@@ -30,6 +30,7 @@ export interface CleanerAppointment {
     description: string;
     duration_minutes: number;
   } | null;
+  payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
 }
 
 export interface CleanerStats {
@@ -275,12 +276,31 @@ export function useCleanerAppointments() {
         
         if (error) throw error;
         
+        // Fetch payment statuses for all appointments
+        const appointmentIds = (data || []).map(a => a.id);
+        let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
+        
+        if (appointmentIds.length > 0) {
+          const { data: payments } = await supabase
+            .from('payments')
+            .select('appointment_id, status')
+            .in('appointment_id', appointmentIds);
+          
+          if (payments) {
+            paymentStatusMap = payments.reduce((acc, p) => {
+              acc[p.appointment_id] = p.status;
+              return acc;
+            }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
+          }
+        }
+
         // Transform the data to match our interface
         const transformedData = (data || []).map(appointment => ({
           ...appointment,
           homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
           property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type
+          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+          payment_status: paymentStatusMap[appointment.id] || null,
         }));
         
         setAppointments(transformedData);
@@ -672,6 +692,57 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       .eq('id', appointmentId);
 
     if (error) throw error;
+
+    // If status changed to 'completed', trigger automatic payment
+    if (status === 'completed') {
+      try {
+        // Get appointment details for organization_id
+        const { data: appointment } = await supabase
+          .from('appointments')
+          .select('organization_id')
+          .eq('id', appointmentId)
+          .single();
+
+        const response = await fetch('/api/stripe/create-payment-intent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            appointment_id: appointmentId,
+            organization_id: appointment?.organization_id,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error('Payment failed:', result.error);
+          // Don't fail the status update, just log the payment error
+          // The payment can be retried manually
+          return { 
+            success: true, 
+            paymentStatus: 'failed',
+            paymentError: result.error || 'Payment processing failed'
+          };
+        }
+
+        return { 
+          success: true, 
+          paymentStatus: result.payment_intent_status === 'succeeded' ? 'paid' : 'pending',
+          paymentIntentId: result.payment_intent_id
+        };
+      } catch (paymentError) {
+        console.error('Error processing payment:', paymentError);
+        // Don't fail the status update, just log the payment error
+        return { 
+          success: true, 
+          paymentStatus: 'failed',
+          paymentError: paymentError instanceof Error ? paymentError.message : 'Payment processing failed'
+        };
+      }
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };

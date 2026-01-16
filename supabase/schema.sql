@@ -16,6 +16,7 @@ CREATE TABLE user_profiles (
     phone TEXT,
     role user_role NOT NULL DEFAULT 'homeowner',
     avatar_url TEXT,
+    stripe_customer_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -90,6 +91,7 @@ CREATE TABLE payments (
     amount DECIMAL(10,2) NOT NULL,
     status payment_status DEFAULT 'pending',
     stripe_payment_intent_id TEXT,
+    stripe_setup_intent_id TEXT,
     paid_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

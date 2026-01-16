@@ -54,3 +54,6 @@ supabase db diff --db-url "prod_connection_string" --schema public
 
 This will show you the SQL differences between the databases.
 
+
+
+

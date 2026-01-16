@@ -19,6 +19,7 @@ import {
   CalendarDays,
   Clock,
   MapPin,
+  History,
 } from "lucide-react";
 import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
@@ -70,6 +71,7 @@ export default function BookingsPage({
     initialStatusFilter || "all"
   );
   const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
+  const [appointmentsTab, setAppointmentsTab] = useState<"upcoming" | "past" | "all">("upcoming");
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
@@ -313,10 +315,47 @@ export default function BookingsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localAppointments, searchQuery, statusFilter, upcomingDaysFilter]);
 
-  // Combined appointments for selection and calendar view
+  // Get filtered past appointments
+  const filteredPastAppointments = useMemo(() => {
+    const today = getTodayString();
+
+    return localAppointments
+      .filter((apt) => {
+        // Must be before today OR completed/cancelled
+        if (apt.scheduled_date >= today) {
+          if (apt.status !== "completed" && apt.status !== "cancelled") {
+            return false;
+          }
+        }
+
+        return filterBySearch(apt) && filterByStatus(apt);
+      })
+      .sort((a, b) => {
+        // Reverse chronological (most recent first)
+        const dateCompare = b.scheduled_date.localeCompare(a.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return b.scheduled_time.localeCompare(a.scheduled_time);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAppointments, searchQuery, statusFilter]);
+
+  // Get filtered all appointments
+  const filteredAllAppointments = useMemo(() => {
+    return localAppointments
+      .filter((apt) => filterBySearch(apt) && filterByStatus(apt))
+      .sort((a, b) => {
+        // Chronological (oldest to newest)
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAppointments, searchQuery, statusFilter]);
+
+  // Combined appointments for selection and calendar view (used by calendar view)
   const allFilteredAppointments = useMemo(() => {
-    return [...filteredTodaysAppointments, ...filteredUpcomingAppointments];
-  }, [filteredTodaysAppointments, filteredUpcomingAppointments]);
+    return [...filteredTodaysAppointments, ...filteredUpcomingAppointments, ...filteredPastAppointments];
+  }, [filteredTodaysAppointments, filteredUpcomingAppointments, filteredPastAppointments]);
 
   // Get unique statuses for filter dropdown
   const availableStatuses = useMemo(() => {
@@ -781,60 +820,169 @@ export default function BookingsPage({
                 )}
               </div>
 
-              {/* Upcoming Appointments Section */}
+              {/* Appointments Tabs Section */}
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-primary-600" />
-                    Upcoming Appointments
-                    <span className="text-sm font-normal text-gray-500">
+                {/* Tabs */}
+                <div className="flex gap-2 border-b border-gray-200 mb-4">
+                  <button
+                    onClick={() => setAppointmentsTab("upcoming")}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      appointmentsTab === "upcoming"
+                        ? "border-primary-600 text-primary-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Upcoming
+                    <span className="ml-2 text-gray-500 font-normal">
                       ({filteredUpcomingAppointments.length})
                     </span>
-                  </h3>
-                  {/* Time Frame Filter */}
-                  <div className="relative flex-shrink-0 min-w-[120px]">
-                    <select
-                      value={upcomingDaysFilter}
-                      onChange={(e) =>
-                        setUpcomingDaysFilter(Number(e.target.value))
-                      }
-                      className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
-                    >
-                      {timeFrameOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
+                  </button>
+                  <button
+                    onClick={() => setAppointmentsTab("past")}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      appointmentsTab === "past"
+                        ? "border-primary-600 text-primary-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    Past
+                    <span className="ml-2 text-gray-500 font-normal">
+                      ({filteredPastAppointments.length})
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setAppointmentsTab("all")}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      appointmentsTab === "all"
+                        ? "border-primary-600 text-primary-600"
+                        : "border-transparent text-gray-600 hover:text-gray-900"
+                    }`}
+                  >
+                    All
+                    <span className="ml-2 text-gray-500 font-normal">
+                      ({filteredAllAppointments.length})
+                    </span>
+                  </button>
                 </div>
-                {filteredUpcomingAppointments.length > 0 ? (
-                  <div className="space-y-4">
-                    {filteredUpcomingAppointments.map((appointment) => (
-                      <AppointmentCard
-                        key={appointment.id}
-                        appointment={appointment}
-                        onClick={() => handleAppointmentClick(appointment)}
-                        isSelectMode={isSelectMode}
-                        isSelected={selectedIds.has(appointment.id)}
-                        onToggleSelect={() => toggleSelection(appointment.id)}
-                        onApprove={onApproveAppointment}
-                        onDecline={onDeclineAppointment}
-                        role={role}
-                        canApproveDecline={canApproveDecline}
-                      />
-                    ))}
+
+                {/* Tab Content */}
+                {appointmentsTab === "upcoming" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                        <MapPin className="w-5 h-5 text-primary-600" />
+                        Upcoming Appointments
+                      </h3>
+                      {/* Time Frame Filter */}
+                      <div className="relative flex-shrink-0 min-w-[120px]">
+                        <select
+                          value={upcomingDaysFilter}
+                          onChange={(e) =>
+                            setUpcomingDaysFilter(Number(e.target.value))
+                          }
+                          className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+                        >
+                          {timeFrameOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    {filteredUpcomingAppointments.length > 0 ? (
+                      <div className="space-y-4">
+                        {filteredUpcomingAppointments.map((appointment) => (
+                          <AppointmentCard
+                            key={appointment.id}
+                            appointment={appointment}
+                            onClick={() => handleAppointmentClick(appointment)}
+                            isSelectMode={isSelectMode}
+                            isSelected={selectedIds.has(appointment.id)}
+                            onToggleSelect={() => toggleSelection(appointment.id)}
+                            onApprove={onApproveAppointment}
+                            onDecline={onDeclineAppointment}
+                            role={role}
+                            canApproveDecline={canApproveDecline}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                        <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">
+                          No upcoming appointments
+                          {upcomingDaysFilter !== -1
+                            ? ` in the next ${upcomingDaysFilter} days`
+                            : ""}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-                    <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">
-                      No upcoming appointments
-                      {upcomingDaysFilter !== -1
-                        ? ` in the next ${upcomingDaysFilter} days`
-                        : ""}
-                    </p>
+                )}
+
+                {appointmentsTab === "past" && (
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                      <History className="w-5 h-5 text-primary-600" />
+                      Past Appointments
+                    </h3>
+                    {filteredPastAppointments.length > 0 ? (
+                      <div className="space-y-4">
+                        {filteredPastAppointments.map((appointment) => (
+                          <AppointmentCard
+                            key={appointment.id}
+                            appointment={appointment}
+                            onClick={() => handleAppointmentClick(appointment)}
+                            isSelectMode={isSelectMode}
+                            isSelected={selectedIds.has(appointment.id)}
+                            onToggleSelect={() => toggleSelection(appointment.id)}
+                            onApprove={onApproveAppointment}
+                            onDecline={onDeclineAppointment}
+                            role={role}
+                            canApproveDecline={canApproveDecline}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                        <History className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">No past appointments</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {appointmentsTab === "all" && (
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2 mb-4">
+                      <Calendar className="w-5 h-5 text-primary-600" />
+                      All Appointments
+                    </h3>
+                    {filteredAllAppointments.length > 0 ? (
+                      <div className="space-y-4">
+                        {filteredAllAppointments.map((appointment) => (
+                          <AppointmentCard
+                            key={appointment.id}
+                            appointment={appointment}
+                            onClick={() => handleAppointmentClick(appointment)}
+                            isSelectMode={isSelectMode}
+                            isSelected={selectedIds.has(appointment.id)}
+                            onToggleSelect={() => toggleSelection(appointment.id)}
+                            onApprove={onApproveAppointment}
+                            onDecline={onDeclineAppointment}
+                            role={role}
+                            canApproveDecline={canApproveDecline}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                        <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">No appointments found</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

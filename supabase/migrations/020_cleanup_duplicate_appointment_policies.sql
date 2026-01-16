@@ -99,3 +99,6 @@ END $$;
 COMMENT ON TABLE appointments IS 
     'Appointments table. RLS policies: Homeowners, Cleaners, and function-based Admin/Manager policies.';
 
+
+
+

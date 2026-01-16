@@ -15,6 +15,8 @@ import {
   AlertCircle,
   Star,
   Loader2,
+  History,
+  MapPin,
 } from "lucide-react";
 import {
   useHomeownerAppointments,
@@ -28,11 +30,15 @@ import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
-
+import AddAppointmentModal from "../../components/AddAppointmentModal";
 export default function HomeownerDashboard() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [appointmentsTab, setAppointmentsTab] = useState<
+    "upcoming" | "past" | "all"
+  >("upcoming");
+  const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -40,6 +46,7 @@ export default function HomeownerDashboard() {
     appointments,
     loading: appointmentsLoading,
     error: appointmentsError,
+    refetch: refetchAppointments,
   } = useHomeownerAppointments();
   const {
     properties,
@@ -80,6 +87,79 @@ export default function HomeownerDashboard() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [activeTab]);
+
+  // Calculate if there are any unread messages
+  const hasUnreadMessages = useMemo(() => {
+    return conversations.some((conv) => conv.unread_count > 0);
+  }, [conversations]);
+
+  // Filter appointments based on active tab for bookings view
+  // Calculate today's date using local timezone (not UTC)
+  const today = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
+  const filteredBookingsAppointments = useMemo(() => {
+    if (appointmentsTab === "upcoming") {
+      return appointments
+        .filter((apt) => {
+          return (
+            apt.scheduled_date >= today &&
+            apt.status !== "completed" &&
+            apt.status !== "cancelled"
+          );
+        })
+        .sort((a, b) => {
+          const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+          if (dateCompare !== 0) return dateCompare;
+          return a.scheduled_time.localeCompare(b.scheduled_time);
+        });
+    } else if (appointmentsTab === "past") {
+      return appointments
+        .filter((apt) => {
+          return (
+            apt.scheduled_date < today ||
+            apt.status === "completed" ||
+            apt.status === "cancelled"
+          );
+        })
+        .sort((a, b) => {
+          const dateCompare = b.scheduled_date.localeCompare(a.scheduled_date);
+          if (dateCompare !== 0) return dateCompare;
+          return b.scheduled_time.localeCompare(a.scheduled_time);
+        });
+    } else {
+      return appointments.sort((a, b) => {
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+    }
+  }, [appointments, appointmentsTab, today]);
+
+  const upcomingBookingsCount = useMemo(
+    () =>
+      appointments.filter(
+        (apt) =>
+          apt.scheduled_date >= today &&
+          apt.status !== "completed" &&
+          apt.status !== "cancelled"
+      ).length,
+    [appointments, today]
+  );
+  const pastBookingsCount = useMemo(
+    () =>
+      appointments.filter(
+        (apt) =>
+          apt.scheduled_date < today ||
+          apt.status === "completed" ||
+          apt.status === "cancelled"
+      ).length,
+    [appointments, today]
+  );
 
   // Show loading while checking auth
   if (loading || !user) {
@@ -125,15 +205,15 @@ export default function HomeownerDashboard() {
     return "Address not available";
   };
 
-  // Calculate if there are any unread messages
-  const hasUnreadMessages = useMemo(() => {
-    return conversations.some((conv) => conv.unread_count > 0);
-  }, [conversations]);
-
   const tabs = [
     { id: "home", label: "Overview", icon: Home },
     { id: "bookings", label: "My Bookings", icon: Calendar },
-    { id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageCircle,
+      hasNotification: hasUnreadMessages,
+    },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "properties", label: "Properties", icon: Camera },
   ];
@@ -150,6 +230,43 @@ export default function HomeownerDashboard() {
         return "text-red-600 bg-red-100";
       default:
         return "text-gray-600 bg-gray-100";
+    }
+  };
+
+  const getPaymentStatusTabConfig = (
+    paymentStatus: "pending" | "paid" | "failed" | "refunded" | null
+  ) => {
+    switch (paymentStatus) {
+      case "paid":
+        return {
+          label: "Paid",
+          bgColor: "bg-green-100",
+          textColor: "text-green-700",
+        };
+      case "failed":
+        return {
+          label: "Failed",
+          bgColor: "bg-red-100",
+          textColor: "text-red-700",
+        };
+      case "pending":
+        return {
+          label: "Unpaid",
+          bgColor: "bg-gray-100",
+          textColor: "text-gray-700",
+        };
+      case "refunded":
+        return {
+          label: "Refunded",
+          bgColor: "bg-blue-100",
+          textColor: "text-blue-700",
+        };
+      default:
+        return {
+          label: "Unpaid",
+          bgColor: "bg-gray-100",
+          textColor: "text-gray-700",
+        };
     }
   };
 
@@ -254,7 +371,10 @@ export default function HomeownerDashboard() {
           Quick Actions
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button className="btn-primary flex items-center justify-center space-x-2">
+          <button
+            onClick={() => setShowAddAppointmentModal(true)}
+            className="btn-primary flex items-center justify-center space-x-2"
+          >
             <Plus className="w-5 h-5" />
             <span>Book New Cleaning</span>
           </button>
@@ -291,51 +411,66 @@ export default function HomeownerDashboard() {
           </div>
         ) : (
           <div className="space-y-4">
-            {appointments.slice(0, 3).map((appointment) => (
-              <div
-                key={appointment.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="flex-shrink-0">
-                    <Calendar className="w-8 h-8 text-primary-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {formatDateTime(
-                        appointment.scheduled_date,
-                        appointment.scheduled_time
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {getPropertyAddress(appointment)}
-                    </p>
-                    {getCleanerName(appointment) && (
-                      <p className="text-sm text-gray-600">
-                        Cleaner: {getCleanerName(appointment)}
-                      </p>
-                    )}
-                    {appointment.service_type && (
-                      <p className="text-sm text-gray-600">
-                        Service: {appointment.service_type.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
-                      appointment.status
-                    )}`}
+            {appointments.slice(0, 3).map((appointment) => {
+              const paymentStatusConfig = getPaymentStatusTabConfig(
+                appointment.payment_status
+              );
+              return (
+                <div
+                  key={appointment.id}
+                  className="relative flex items-center justify-between p-4 bg-gray-50 rounded-lg overflow-hidden pr-24"
+                >
+                  {/* Payment Status Tab */}
+                  <div
+                    className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
                   >
-                    {appointment.status}
-                  </span>
-                  <p className="text-sm font-medium text-gray-900 mt-1">
-                    ${appointment.total_price}
-                  </p>
+                    <span className="font-semibold text-xs whitespace-nowrap">
+                      {paymentStatusConfig.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0">
+                      <Calendar className="w-8 h-8 text-primary-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {formatDateTime(
+                          appointment.scheduled_date,
+                          appointment.scheduled_time
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {getPropertyAddress(appointment)}
+                      </p>
+                      {getCleanerName(appointment) && (
+                        <p className="text-sm text-gray-600">
+                          Cleaner: {getCleanerName(appointment)}
+                        </p>
+                      )}
+                      {appointment.service_type && (
+                        <p className="text-sm text-gray-600">
+                          Service: {appointment.service_type.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(
+                          appointment.status
+                        )}`}
+                      >
+                        {appointment.status}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900">
+                      ${appointment.total_price}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -346,9 +481,55 @@ export default function HomeownerDashboard() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-4xl font-bold text-gray-900">My Bookings</h2>
-        <button className="btn-primary flex items-center space-x-2">
+        <button
+          onClick={() => setShowAddAppointmentModal(true)}
+          className="btn-primary flex items-center space-x-2"
+        >
           <Plus className="w-5 h-5" />
           <span>New Booking</span>
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          onClick={() => setAppointmentsTab("upcoming")}
+          className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+            appointmentsTab === "upcoming"
+              ? "border-primary-600 text-primary-600"
+              : "border-transparent text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          Upcoming
+          <span className="ml-2 text-gray-500 font-normal">
+            ({upcomingBookingsCount})
+          </span>
+        </button>
+        <button
+          onClick={() => setAppointmentsTab("past")}
+          className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+            appointmentsTab === "past"
+              ? "border-primary-600 text-primary-600"
+              : "border-transparent text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          Past
+          <span className="ml-2 text-gray-500 font-normal">
+            ({pastBookingsCount})
+          </span>
+        </button>
+        <button
+          onClick={() => setAppointmentsTab("all")}
+          className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+            appointmentsTab === "all"
+              ? "border-primary-600 text-primary-600"
+              : "border-transparent text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          All
+          <span className="ml-2 text-gray-500 font-normal">
+            ({appointments.length})
+          </span>
         </button>
       </div>
 
@@ -365,73 +546,105 @@ export default function HomeownerDashboard() {
           </h3>
           <p className="text-gray-600">{appointmentsError}</p>
         </div>
-      ) : appointments.length === 0 ? (
+      ) : filteredBookingsAppointments.length === 0 ? (
         <div className="text-center py-12">
-          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          {appointmentsTab === "past" ? (
+            <History className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          ) : appointmentsTab === "upcoming" ? (
+            <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          ) : (
+            <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          )}
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No appointments yet
+            {appointmentsTab === "past"
+              ? "No past appointments"
+              : appointmentsTab === "upcoming"
+              ? "No upcoming appointments"
+              : "No appointments yet"}
           </h3>
           <p className="text-gray-600">
-            Book your first cleaning to get started!
+            {appointmentsTab === "all"
+              ? "Book your first cleaning to get started!"
+              : appointmentsTab === "upcoming"
+              ? "You don't have any upcoming appointments."
+              : "You don't have any past appointments."}
           </p>
         </div>
       ) : (
         <div className="grid gap-6">
-          {appointments.map((appointment) => (
-            <div key={appointment.id} className="card">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <Calendar className="w-6 h-6 text-primary-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">
-                      {formatDateTime(
-                        appointment.scheduled_date,
-                        appointment.scheduled_time
-                      )}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      {getPropertyAddress(appointment)}
-                    </p>
-                    {appointment.service_type && (
+          {filteredBookingsAppointments.map((appointment) => {
+            const paymentStatusConfig = getPaymentStatusTabConfig(
+              appointment.payment_status
+            );
+            return (
+              <div
+                key={appointment.id}
+                className="card relative overflow-hidden pr-24"
+              >
+                {/* Payment Status Tab */}
+                <div
+                  className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
+                >
+                  <span className="font-semibold text-xs whitespace-nowrap">
+                    {paymentStatusConfig.label}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <Calendar className="w-6 h-6 text-primary-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-900">
+                        {formatDateTime(
+                          appointment.scheduled_date,
+                          appointment.scheduled_time
+                        )}
+                      </h3>
                       <p className="text-sm text-gray-600">
-                        Service: {appointment.service_type.name}
+                        {getPropertyAddress(appointment)}
                       </p>
+                      {appointment.service_type && (
+                        <p className="text-sm text-gray-600">
+                          Service: {appointment.service_type.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(
+                        appointment.status
+                      )}`}
+                    >
+                      {appointment.status}
+                    </span>
+                  </div>
+                </div>
+
+                {getCleanerName(appointment) && (
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-600">
+                      <strong>Assigned Cleaner:</strong>{" "}
+                      {getCleanerName(appointment)}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="text-lg font-semibold text-gray-900">
+                    ${appointment.total_price}
+                  </div>
+                  <div className="flex space-x-2">
+                    <button className="btn-secondary text-sm">
+                      View Details
+                    </button>
+                    {appointment.status === "pending" && (
+                      <button className="btn-primary text-sm">Modify</button>
                     )}
                   </div>
                 </div>
-                <span
-                  className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${getStatusColor(
-                    appointment.status
-                  )}`}
-                >
-                  {appointment.status}
-                </span>
               </div>
-
-              {getCleanerName(appointment) && (
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600">
-                    <strong>Assigned Cleaner:</strong>{" "}
-                    {getCleanerName(appointment)}
-                  </p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <div className="text-lg font-semibold text-gray-900">
-                  ${appointment.total_price}
-                </div>
-                <div className="flex space-x-2">
-                  <button className="btn-secondary text-sm">
-                    View Details
-                  </button>
-                  {appointment.status === "pending" && (
-                    <button className="btn-primary text-sm">Modify</button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -655,6 +868,15 @@ export default function HomeownerDashboard() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="homeowner"
+      />
+      <AddAppointmentModal
+        isOpen={showAddAppointmentModal}
+        onClose={() => setShowAddAppointmentModal(false)}
+        onAppointmentCreated={() => {
+          refetchAppointments();
+        }}
+        preSelectedHomeownerId={user.id}
+        hidePriceOverride={true}
       />
     </>
   );

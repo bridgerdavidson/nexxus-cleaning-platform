@@ -45,3 +45,6 @@ LIMIT 5;
 -- This tests if the function works
 -- SELECT public.users_share_organization(auth.uid(), 'USER_ID_HERE'::uuid);
 
+
+
+

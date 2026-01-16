@@ -30,6 +30,7 @@ interface CreateRecurringAppointmentInput {
   endDate?: string | null;
   maxOccurrences?: number | null;
   specialRequests?: string | null;
+  status?: string; // Optional status - defaults to 'pending' if not provided
 }
 
 export async function POST(request: NextRequest) {
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
       endDate,
       maxOccurrences,
       specialRequests,
+      status,
     } = body;
 
     if (!organizationId || !homeownerId || !propertyId || !serviceTypeId) {
@@ -144,6 +146,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Bulk insert appointments
+    // Use provided status or default to 'pending' for backward compatibility
+    const appointmentStatus: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' = (status as 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled') || 'pending';
     const appointmentRows = occurrences.map((occ) => ({
       organization_id: organizationId,
       homeowner_id: homeownerId,
@@ -155,7 +159,7 @@ export async function POST(request: NextRequest) {
       duration_minutes: occ.duration_minutes,
       total_price: totalPrice,
       special_requests: specialRequests ?? null,
-      status: 'pending' as const,
+      status: appointmentStatus,
       series_id: series.id,
     }));
 

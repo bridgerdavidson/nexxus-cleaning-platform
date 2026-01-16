@@ -24,6 +24,7 @@ export interface UserProfile {
   phone: string | null;
   role: UserRole;
   avatar_url: string | null;
+  stripe_customer_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -147,6 +148,7 @@ export interface Payment {
   payment_type: PaymentType;
   payment_method: PaymentMethod;
   stripe_payment_intent_id: string | null;
+  stripe_setup_intent_id: string | null;
   notes: string | null;
   reference: string | null;
   paid_at: string | null;

@@ -38,9 +38,6 @@ export function useAuth(): AuthState & AuthActions {
   const lastSignOutTimeRef = useRef<number>(0);
   const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isCleaningUpRef = useRef(false);
-  const lastProfileLoadTimeRef = useRef<number>(0);
-  const lastProfileLoadUserIdRef = useRef<string | null>(null);
-  const pendingProfileLoadRef = useRef<Promise<void> | null>(null);
   
   // Keep refs in sync with state
   useEffect(() => {
@@ -57,34 +54,6 @@ export function useAuth(): AuthState & AuthActions {
       return;
     }
 
-    // Check if we have a recent successful load for this user (within last 30 seconds)
-    // This prevents rapid re-queries on token refreshes
-    const now = Date.now();
-    const timeSinceLastLoad = now - lastProfileLoadTimeRef.current;
-    const isSameUser = lastProfileLoadUserIdRef.current === supabaseUser.id;
-    const CACHE_WINDOW_MS = 30000; // 30 seconds
-
-    if (isSameUser && timeSinceLastLoad < CACHE_WINDOW_MS && userRef.current) {
-      // We have recent data for this user, skip the query
-      // Only skip if we have valid profile data (not just auth metadata)
-      const hasValidProfile = userRef.current.profile.firstName || userRef.current.profile.lastName;
-      if (hasValidProfile) {
-        console.log(`[useAuth] Skipping profile reload - recent data available (${Math.round(timeSinceLastLoad / 1000)}s ago)`);
-        return;
-      }
-    }
-
-    // If there's already a pending profile load for this user, wait for it instead of starting a new one
-    if (pendingProfileLoadRef.current && isSameUser) {
-      console.log(`[useAuth] Profile load already in progress, waiting...`);
-      try {
-        await pendingProfileLoadRef.current;
-        return;
-      } catch {
-        // If the pending load failed, continue with a new attempt
-      }
-    }
-
     const callId = Math.random().toString(36).substring(7);
 
     // Helper functions (defined inside callback to avoid dependency issues)
@@ -96,44 +65,40 @@ export function useAuth(): AuthState & AuthActions {
       );
     };
 
-    const buildUserFromAuthOnly = (user: SupabaseUser, existingUser?: User | null): User => {
+    const buildUserFromAuthOnly = (user: SupabaseUser): User => {
       const role = getRoleFromAuth(user);
-      const existingProfile = existingUser?.profile;
 
-      // Merge with existing user data if available, preserving valid fields
       return {
         id: user.id,
-        email: user.email || existingUser?.email || '',
-        role: role || existingUser?.role || 'homeowner',
+        email: user.email || '',
+        role,
         profile: {
-          firstName: (user.user_metadata?.firstName as string) || existingProfile?.firstName || '',
-          lastName: (user.user_metadata?.lastName as string) || existingProfile?.lastName || '',
-          phone: (user.user_metadata?.phone as string) || existingProfile?.phone || '',
-          avatarUrl: existingProfile?.avatarUrl || undefined,
+          firstName: (user.user_metadata?.firstName as string) || '',
+          lastName: (user.user_metadata?.lastName as string) || '',
+          phone: (user.user_metadata?.phone as string) || '',
+          avatarUrl: undefined,
         },
-        createdAt: user.created_at || existingUser?.createdAt || new Date().toISOString(),
-        updatedAt: existingUser?.updatedAt || user.created_at || new Date().toISOString(),
+        createdAt: user.created_at,
+        updatedAt: user.created_at,
       };
     };
 
-    // Create the promise and store it so other calls can wait for it
-    const loadPromise = (async () => {
-      try {
-        console.log(`[${callId}] Loading profile for user:`, supabaseUser.id, supabaseUser.email);
+    try {
+      console.log(`[${callId}] Loading profile for user:`, supabaseUser.id, supabaseUser.email);
 
-        // Retry logic for 406 errors and timeouts
-        interface ProfileData {
-          id: string;
-          first_name: string | null;
-          last_name: string | null;
-          phone: string | null;
-          role: string;
-          avatar_url: string | null;
-          updated_at: string;
-        }
-        let profileResult: { data: ProfileData | null; error: { code?: string; status?: number; message?: string } | null } | null = null;
-        let retryCount = 0;
-        const maxRetries = 2; // Retry twice for timeouts and 406 errors
+      // Retry logic for 406 errors (session token may not be ready immediately)
+      interface ProfileData {
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        phone: string | null;
+        role: string;
+        avatar_url: string | null;
+        updated_at: string;
+      }
+      let profileResult: { data: ProfileData | null; error: { code?: string; status?: number; message?: string } | null } | null = null;
+      let retryCount = 0;
+      const maxRetries = 1; // Retry once for 406 errors
 
       while (retryCount <= maxRetries) {
         // Check if signing out before starting query
@@ -145,19 +110,17 @@ export function useAuth(): AuthState & AuthActions {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        // Wrap database query in timeout to prevent hanging (increased to 10s)
+        // Wrap database query in timeout to prevent hanging
         const profileQuery = supabase
           .from('user_profiles')
           .select('*')
           .eq('id', supabaseUser.id)
           .single();
 
-        const timeoutMs = 10000; // Increased from 5s to 10s
         const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Profile query timeout')), timeoutMs)
+          setTimeout(() => reject(new Error('Profile query timeout')), 5000)
         );
 
-        let isTimeout = false;
         try {
           profileResult = await Promise.race([profileQuery, timeoutPromise]);
           
@@ -165,34 +128,14 @@ export function useAuth(): AuthState & AuthActions {
           if (isSigningOutRef.current) {
             return;
           }
-        } catch (error) {
+        } catch {
           // Check again if signing out before logging warning
           if (isSigningOutRef.current) {
             return;
           }
-          
-          // Check if this is a timeout error
-          isTimeout = error instanceof Error && error.message === 'Profile query timeout';
-          
-          if (isTimeout && retryCount < maxRetries) {
-            // Retry timeout errors with exponential backoff
-            retryCount++;
-            const backoffDelay = Math.min(300 * Math.pow(2, retryCount - 1), 2000); // 300ms, 600ms, 1200ms max
-            console.log(`[${callId}] Profile query timed out (attempt ${retryCount}/${maxRetries + 1}). Retrying after ${backoffDelay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, backoffDelay));
-            
-            // Check again if signing out before retry
-            if (isSigningOutRef.current) {
-              return;
-            }
-            continue; // Retry the query
-          }
-          
-          // Timeout occurred and we're out of retries - fall back to auth metadata
-          // But preserve existing user data if available
-          console.warn(`[${callId}] Profile query timed out after ${retryCount + 1} attempts, using auth metadata with existing data preservation`);
-          const existingUser = userRef.current;
-          const userData = buildUserFromAuthOnly(supabaseUser, existingUser);
+          // Timeout occurred - fall back to auth metadata
+          console.warn(`[${callId}] Profile query timed out, using auth metadata only`);
+          const userData = buildUserFromAuthOnly(supabaseUser);
           setUser(userData);
           return;
         }
@@ -219,9 +162,8 @@ export function useAuth(): AuthState & AuthActions {
           
           if (isProfileNotFound) {
             // No profile exists - don't retry
-            console.log(`[${callId}] No profile row found (PGRST116). Using auth metadata with existing data preservation.`);
-            const existingUser = userRef.current;
-            const userData = buildUserFromAuthOnly(supabaseUser, existingUser);
+            console.log(`[${callId}] No profile row found (PGRST116). Using auth metadata only.`);
+            const userData = buildUserFromAuthOnly(supabaseUser);
             setUser(userData);
             return;
           }
@@ -241,13 +183,12 @@ export function useAuth(): AuthState & AuthActions {
 
           // 406 on last retry or other error - fall back to auth metadata
           if (isNotAcceptable) {
-            console.log(`[${callId}] Profile query returned 406 after retry. Using auth metadata with existing data preservation.`);
+            console.log(`[${callId}] Profile query returned 406 after retry. Using auth metadata only.`);
           } else {
             console.error(`[${callId}] Error loading user profile:`, error);
-            console.warn(`[${callId}] Falling back to auth metadata with existing data preservation`);
+            console.warn(`[${callId}] Falling back to auth metadata due to profile error`);
           }
-          const existingUser = userRef.current;
-          const userData = buildUserFromAuthOnly(supabaseUser, existingUser);
+          const userData = buildUserFromAuthOnly(supabaseUser);
           setUser(userData);
           return;
         }
@@ -265,8 +206,7 @@ export function useAuth(): AuthState & AuthActions {
       if (!profileResult || profileResult.error || !profileResult.data) {
         // This shouldn't happen, but handle it anyway
         console.error(`[${callId}] Unexpected state after retry`);
-        const existingUser = userRef.current;
-        const userData = buildUserFromAuthOnly(supabaseUser, existingUser);
+        const userData = buildUserFromAuthOnly(supabaseUser);
         setUser(userData);
         return;
       }
@@ -289,28 +229,14 @@ export function useAuth(): AuthState & AuthActions {
 
       console.log(`[${callId}] Successfully loaded user profile:`, userData);
       setUser(userData);
-      
-      // Update cache tracking on successful load
-      lastProfileLoadTimeRef.current = Date.now();
-      lastProfileLoadUserIdRef.current = supabaseUser.id;
     } catch (err) {
       console.error(`[${callId}] Unexpected error loading user profile:`, err);
       // Always fall back to auth metadata - never leave user as null if we have a session
       // This ensures sign-in can complete even if profile loading fails
-      // But preserve existing user data if available
       console.warn(`[${callId}] Falling back to auth metadata due to unexpected error`);
-      const existingUser = userRef.current;
-      const userData = buildUserFromAuthOnly(supabaseUser, existingUser);
+      const userData = buildUserFromAuthOnly(supabaseUser);
       setUser(userData);
-    } finally {
-      // Clear pending load reference
-      pendingProfileLoadRef.current = null;
     }
-    })();
-
-    // Store the promise so concurrent calls can wait for it
-    pendingProfileLoadRef.current = loadPromise;
-    return loadPromise;
   }, []);
 
   // Load organization membership after user is loaded
@@ -462,24 +388,6 @@ export function useAuth(): AuthState & AuthActions {
         // Don't load profile if we're signing out
         if (isSigningOutRef.current) {
           return;
-        }
-
-        // For TOKEN_REFRESHED events, skip profile reload if we have recent data
-        // This prevents unnecessary queries on every token refresh (which happens periodically)
-        if (event === 'TOKEN_REFRESHED') {
-          const now = Date.now();
-          const timeSinceLastLoad = now - lastProfileLoadTimeRef.current;
-          const isSameUser = lastProfileLoadUserIdRef.current === session.user.id;
-          const CACHE_WINDOW_MS = 30000; // 30 seconds
-          
-          if (isSameUser && timeSinceLastLoad < CACHE_WINDOW_MS && userRef.current) {
-            // We have recent data for this user, skip the reload
-            const hasValidProfile = userRef.current.profile.firstName || userRef.current.profile.lastName;
-            if (hasValidProfile) {
-              // Just update the session, don't reload profile
-              return;
-            }
-          }
         }
 
         // 🔹 Auth state changes (sign in / token refresh) update the user,

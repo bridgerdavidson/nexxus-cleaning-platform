@@ -75,3 +75,6 @@ const { data, error } = await supabase
 
 If this works, the issue is with the joins and RLS policies on user_profiles/properties/etc.
 
+
+
+

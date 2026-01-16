@@ -431,6 +431,41 @@ export default function ManagerDashboard() {
     }
   };
 
+  const getPaymentStatusTabConfig = (paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded' | null | undefined) => {
+    switch (paymentStatus) {
+      case "paid":
+        return {
+          label: "Paid",
+          bgColor: "bg-green-100",
+          textColor: "text-green-700",
+        };
+      case "failed":
+        return {
+          label: "Failed",
+          bgColor: "bg-red-100",
+          textColor: "text-red-700",
+        };
+      case "pending":
+        return {
+          label: "Unpaid",
+          bgColor: "bg-gray-100",
+          textColor: "text-gray-700",
+        };
+      case "refunded":
+        return {
+          label: "Refunded",
+          bgColor: "bg-blue-100",
+          textColor: "text-blue-700",
+        };
+      default:
+        return {
+          label: "Unpaid",
+          bgColor: "bg-gray-100",
+          textColor: "text-gray-700",
+        };
+    }
+  };
+
   // Helper functions matching admin dashboard
   const formatDateTime = (date: string, time: string) => {
     // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
@@ -806,41 +841,54 @@ export default function ManagerDashboard() {
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               </div>
             ) : upcomingAppointments.length > 0 ? (
-              upcomingAppointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="p-4 flex items-center gap-4"
-                >
-                  <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
-                    <span className="text-xs font-medium text-primary-600">
-                      {new Date(appointment.scheduled_date).toLocaleDateString(
-                        "en-US",
-                        { month: "short" }
-                      )}
-                    </span>
-                    <span className="text-lg font-bold text-primary-700">
-                      {new Date(appointment.scheduled_date).getDate()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {getHomeownerName(appointment)}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <div className="flex items-center gap-1 text-sm text-gray-500">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{appointment.scheduled_time}</span>
+              upcomingAppointments.map((appointment) => {
+                const paymentStatusConfig = getPaymentStatusTabConfig(appointment.payment_status);
+                return (
+                  <div
+                    key={appointment.id}
+                    className="relative p-4 flex items-center gap-4 overflow-hidden pr-24"
+                  >
+                    {/* Payment Status Tab */}
+                    <div
+                      className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
+                    >
+                      <span className="font-semibold text-xs whitespace-nowrap">
+                        {paymentStatusConfig.label}
+                      </span>
+                    </div>
+                    <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
+                      <span className="text-xs font-medium text-primary-600">
+                        {new Date(appointment.scheduled_date).toLocaleDateString(
+                          "en-US",
+                          { month: "short" }
+                        )}
+                      </span>
+                      <span className="text-lg font-bold text-primary-700">
+                        {new Date(appointment.scheduled_date).getDate()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {getHomeownerName(appointment)}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{appointment.scheduled_time}</span>
+                        </div>
+                        {appointment.service_type && (
+                          <span className="text-sm text-gray-500">
+                            {appointment.service_type.name}
+                          </span>
+                        )}
                       </div>
-                      {appointment.service_type && (
-                        <span className="text-sm text-gray-500">
-                          {appointment.service_type.name}
-                        </span>
-                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={appointment.status} size="sm" />
                     </div>
                   </div>
-                  <StatusBadge status={appointment.status} size="sm" />
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="text-center py-8">
                 <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-2" />
@@ -1055,33 +1103,46 @@ export default function ManagerDashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {upcomingAppointments.slice(0, 3).map((appointment) => (
-                    <div
-                      key={appointment.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {getHomeownerName(appointment)}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {formatDateTime(
-                            appointment.scheduled_date,
-                            appointment.scheduled_time
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {getPropertyAddress(appointment)}
-                        </p>
-                        {appointment.service_type && (
-                          <p className="text-sm text-gray-600">
-                            Service: {appointment.service_type.name}
+                  {upcomingAppointments.slice(0, 3).map((appointment) => {
+                    const paymentStatusConfig = getPaymentStatusTabConfig(appointment.payment_status);
+                    return (
+                      <div
+                        key={appointment.id}
+                        className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg overflow-hidden pr-24"
+                      >
+                        {/* Payment Status Tab */}
+                        <div
+                          className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
+                        >
+                          <span className="font-semibold text-xs whitespace-nowrap">
+                            {paymentStatusConfig.label}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {getHomeownerName(appointment)}
                           </p>
-                        )}
+                          <p className="text-sm text-gray-600">
+                            {formatDateTime(
+                              appointment.scheduled_date,
+                              appointment.scheduled_time
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {getPropertyAddress(appointment)}
+                          </p>
+                          {appointment.service_type && (
+                            <p className="text-sm text-gray-600">
+                              Service: {appointment.service_type.name}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={appointment.status} size="sm" />
+                        </div>
                       </div>
-                      <StatusBadge status={appointment.status} size="sm" />
-                    </div>
-                  ))}
+                    );
+                  })}
                   {upcomingAppointments.length === 0 && (
                     <div className="text-center py-8">
                       <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
@@ -1119,33 +1180,46 @@ export default function ManagerDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingAppointments.slice(0, 3).map((appointment) => (
-                  <div
-                    key={appointment.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {getHomeownerName(appointment)}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {formatDateTime(
-                          appointment.scheduled_date,
-                          appointment.scheduled_time
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {getPropertyAddress(appointment)}
-                      </p>
-                      {appointment.service_type && (
-                        <p className="text-sm text-gray-600">
-                          Service: {appointment.service_type.name}
+                {upcomingAppointments.slice(0, 3).map((appointment) => {
+                  const paymentStatusConfig = getPaymentStatusTabConfig(appointment.payment_status);
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg overflow-hidden pr-24"
+                    >
+                      {/* Payment Status Tab */}
+                      <div
+                        className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
+                      >
+                        <span className="font-semibold text-xs whitespace-nowrap">
+                          {paymentStatusConfig.label}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {getHomeownerName(appointment)}
                         </p>
-                      )}
+                        <p className="text-sm text-gray-600">
+                          {formatDateTime(
+                            appointment.scheduled_date,
+                            appointment.scheduled_time
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {getPropertyAddress(appointment)}
+                        </p>
+                        {appointment.service_type && (
+                          <p className="text-sm text-gray-600">
+                            Service: {appointment.service_type.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={appointment.status} size="sm" />
+                      </div>
                     </div>
-                    <StatusBadge status={appointment.status} size="sm" />
-                  </div>
-                ))}
+                  );
+                })}
                 {upcomingAppointments.length === 0 && (
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />

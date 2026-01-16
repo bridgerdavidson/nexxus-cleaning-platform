@@ -84,7 +84,8 @@ export default function AdminDashboard() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
-  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] = useState(true);
+  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] =
+    useState(true);
   const [selectedCleaner, setSelectedCleaner] = useState<any | null>(null);
   const [isCleanerSidePanelOpen, setIsCleanerSidePanelOpen] = useState(false);
   const router = useRouter();
@@ -168,55 +169,63 @@ export default function AdminDashboard() {
   }, [conversations]);
 
   // Hierarchical navigation structure (must be before early return)
-  const navigationGroups = useMemo(() => ({
-    operations: {
-      id: "operations" as const,
-      label: "Operations",
-      icon: LayoutGrid,
-      tabs: [
-        { id: "home", label: "Overview", icon: Home },
-        { id: "bookings", label: "Bookings", icon: Calendar },
-        { id: "messages", label: "Messages", icon: MessageCircle, hasNotification: hasUnreadMessages },
-        { id: "customers", label: "Customers", icon: Users },
-      ],
-    },
-    accounts: {
-      id: "accounts" as const,
-      label: "Accounts",
-      icon: Users,
-      tabs: [
-        { id: "customers", label: "Customers", icon: Users },
-        { id: "properties", label: "Properties", icon: Building },
-      ],
-    },
-    team: {
-      id: "team" as const,
-      label: "Team",
-      icon: UserCheck,
-      tabs: [
-        { id: "cleaners", label: "Cleaners", icon: UserCheck },
-        { id: "team", label: "Team Members", icon: Users },
-      ],
-    },
-    business: {
-      id: "business" as const,
-      label: "Business",
-      icon: TrendingUp,
-      tabs: [
-        { id: "payments", label: "Finance", icon: DollarSign },
-        { id: "analytics", label: "Analytics", icon: BarChart3 },
-      ],
-    },
-    admin: {
-      id: "admin" as const,
-      label: "Administration",
-      icon: Settings,
-      tabs: [
-        { id: "settings", label: "Settings", icon: Settings },
-        { id: "support", label: "Support", icon: HelpCircle },
-      ],
-    },
-  }), [hasUnreadMessages]);
+  const navigationGroups = useMemo(
+    () => ({
+      operations: {
+        id: "operations" as const,
+        label: "Operations",
+        icon: LayoutGrid,
+        tabs: [
+          { id: "home", label: "Overview", icon: Home },
+          { id: "bookings", label: "Bookings", icon: Calendar },
+          {
+            id: "messages",
+            label: "Messages",
+            icon: MessageCircle,
+            hasNotification: hasUnreadMessages,
+          },
+          { id: "customers", label: "Customers", icon: Users },
+        ],
+      },
+      accounts: {
+        id: "accounts" as const,
+        label: "Accounts",
+        icon: Users,
+        tabs: [
+          { id: "customers", label: "Customers", icon: Users },
+          { id: "properties", label: "Properties", icon: Building },
+        ],
+      },
+      team: {
+        id: "team" as const,
+        label: "Team",
+        icon: UserCheck,
+        tabs: [
+          { id: "cleaners", label: "Cleaners", icon: UserCheck },
+          { id: "team", label: "Team Members", icon: Users },
+        ],
+      },
+      business: {
+        id: "business" as const,
+        label: "Business",
+        icon: TrendingUp,
+        tabs: [
+          { id: "payments", label: "Finance", icon: DollarSign },
+          { id: "analytics", label: "Analytics", icon: BarChart3 },
+        ],
+      },
+      admin: {
+        id: "admin" as const,
+        label: "Administration",
+        icon: Settings,
+        tabs: [
+          { id: "settings", label: "Settings", icon: Settings },
+          { id: "support", label: "Support", icon: HelpCircle },
+        ],
+      },
+    }),
+    [hasUnreadMessages]
+  );
 
   // Show loading while checking auth
   if (loading || !user) {
@@ -355,18 +364,55 @@ export default function AdminDashboard() {
     }
   };
 
+  const getPaymentStatusTabConfig = (
+    paymentStatus: "pending" | "paid" | "failed" | "refunded" | null | undefined
+  ) => {
+    switch (paymentStatus) {
+      case "paid":
+        return {
+          label: "Paid",
+          bgColor: "bg-green-100",
+          textColor: "text-green-700",
+        };
+      case "failed":
+        return {
+          label: "Failed",
+          bgColor: "bg-red-100",
+          textColor: "text-red-700",
+        };
+      case "pending":
+        return {
+          label: "Unpaid",
+          bgColor: "bg-gray-100",
+          textColor: "text-gray-700",
+        };
+      case "refunded":
+        return {
+          label: "Refunded",
+          bgColor: "bg-blue-100",
+          textColor: "text-blue-700",
+        };
+      default:
+        return {
+          label: "Unpaid",
+          bgColor: "bg-gray-100",
+          textColor: "text-gray-700",
+        };
+    }
+  };
+
   // Get upcoming appointments (future appointments, excluding completed/cancelled)
   // This matches the BookingsPage "upcoming" tab definition
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   const allUpcomingAppointments = appointments
     .filter((a) => {
       // Parse appointment date
       const [year, month, day] = a.scheduled_date.split("-").map(Number);
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
-      
+
       // Future appointments, excluding completed/cancelled
       return (
         appointmentDate >= today &&
@@ -379,19 +425,19 @@ export default function AdminDashboard() {
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
     });
-  
+
   const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
 
   const pendingAppointments = appointments
     .filter((a) => {
       // Only include pending appointments that are today or in the future
       if (a.status !== "pending") return false;
-      
+
       // Parse appointment date
       const [year, month, day] = a.scheduled_date.split("-").map(Number);
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
-      
+
       // Only include today and future appointments
       return appointmentDate >= today;
     })
@@ -464,7 +510,9 @@ export default function AdminDashboard() {
           {pendingAppointments.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
               <button
-                onClick={() => setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)}
+                onClick={() =>
+                  setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)
+                }
                 className="w-full bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center justify-between hover:bg-amber-100 transition-colors"
               >
                 <div className="flex items-center gap-3">
@@ -488,55 +536,55 @@ export default function AdminDashboard() {
               </button>
               {isPendingApprovalsExpanded && (
                 <div className="divide-y divide-gray-100">
-                {appointmentsLoading ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                  </div>
-                ) : (
-                  pendingAppointments.slice(0, 3).map((appointment) => (
-                    <div key={appointment.id} className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
-                            {getHomeownerName(appointment)}
-                          </p>
-                          <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>
-                              {formatDateTime(
-                                appointment.scheduled_date,
-                                appointment.scheduled_time
-                              )}
-                            </span>
-                          </div>
-                          {appointment.service_type && (
-                            <p className="text-sm text-gray-500 mt-0.5">
-                              {appointment.service_type.name}
+                  {appointmentsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    </div>
+                  ) : (
+                    pendingAppointments.slice(0, 3).map((appointment) => (
+                      <div key={appointment.id} className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 truncate">
+                              {getHomeownerName(appointment)}
                             </p>
-                          )}
+                            <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>
+                                {formatDateTime(
+                                  appointment.scheduled_date,
+                                  appointment.scheduled_time
+                                )}
+                              </span>
+                            </div>
+                            {appointment.service_type && (
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                {appointment.service_type.name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              handleApproveAppointment(appointment.id)
+                            }
+                            className="flex-1 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDeclineAppointment(appointment.id)
+                            }
+                            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                          >
+                            Decline
+                          </button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            handleApproveAppointment(appointment.id)
-                          }
-                          className="flex-1 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleDeclineAppointment(appointment.id)
-                          }
-                          className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
                   {pendingAppointments.length > 3 && (
                     <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
                       <button
@@ -669,41 +717,55 @@ export default function AdminDashboard() {
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               </div>
             ) : upcomingAppointments.length > 0 ? (
-              upcomingAppointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="p-4 flex items-center gap-4"
-                >
-                  <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
-                    <span className="text-xs font-medium text-primary-600">
-                      {new Date(appointment.scheduled_date).toLocaleDateString(
-                        "en-US",
-                        { month: "short" }
-                      )}
-                    </span>
-                    <span className="text-lg font-bold text-primary-700">
-                      {new Date(appointment.scheduled_date).getDate()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {getHomeownerName(appointment)}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <div className="flex items-center gap-1 text-sm text-gray-500">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{appointment.scheduled_time}</span>
+              upcomingAppointments.map((appointment) => {
+                const paymentStatusConfig = getPaymentStatusTabConfig(
+                  appointment.payment_status
+                );
+                return (
+                  <div
+                    key={appointment.id}
+                    className="relative p-4 flex items-center gap-4 overflow-hidden pr-24"
+                  >
+                    {/* Payment Status Tab */}
+                    <div
+                      className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
+                    >
+                      <span className="font-semibold text-xs whitespace-nowrap">
+                        {paymentStatusConfig.label}
+                      </span>
+                    </div>
+                    <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
+                      <span className="text-xs font-medium text-primary-600">
+                        {new Date(
+                          appointment.scheduled_date
+                        ).toLocaleDateString("en-US", { month: "short" })}
+                      </span>
+                      <span className="text-lg font-bold text-primary-700">
+                        {new Date(appointment.scheduled_date).getDate()}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {getHomeownerName(appointment)}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{appointment.scheduled_time}</span>
+                        </div>
+                        {appointment.service_type && (
+                          <span className="text-sm text-gray-500">
+                            {appointment.service_type.name}
+                          </span>
+                        )}
                       </div>
-                      {appointment.service_type && (
-                        <span className="text-sm text-gray-500">
-                          {appointment.service_type.name}
-                        </span>
-                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={appointment.status} size="sm" />
                     </div>
                   </div>
-                  <StatusBadge status={appointment.status} size="sm" />
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="text-center py-8">
                 <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-2" />
@@ -909,33 +971,48 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingAppointments.slice(0, 3).map((appointment) => (
-                  <div
-                    key={appointment.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {getHomeownerName(appointment)}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {formatDateTime(
-                          appointment.scheduled_date,
-                          appointment.scheduled_time
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {getPropertyAddress(appointment)}
-                      </p>
-                      {appointment.service_type && (
-                        <p className="text-sm text-gray-600">
-                          Service: {appointment.service_type.name}
+                {upcomingAppointments.slice(0, 3).map((appointment) => {
+                  const paymentStatusConfig = getPaymentStatusTabConfig(
+                    appointment.payment_status
+                  );
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg overflow-hidden pr-24"
+                    >
+                      {/* Payment Status Tab */}
+                      <div
+                        className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
+                      >
+                        <span className="font-semibold text-xs whitespace-nowrap">
+                          {paymentStatusConfig.label}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {getHomeownerName(appointment)}
                         </p>
-                      )}
+                        <p className="text-sm text-gray-600">
+                          {formatDateTime(
+                            appointment.scheduled_date,
+                            appointment.scheduled_time
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {getPropertyAddress(appointment)}
+                        </p>
+                        {appointment.service_type && (
+                          <p className="text-sm text-gray-600">
+                            Service: {appointment.service_type.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={appointment.status} size="sm" />
+                      </div>
                     </div>
-                    <StatusBadge status={appointment.status} size="sm" />
-                  </div>
-                ))}
+                  );
+                })}
                 {upcomingAppointments.length === 0 && (
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
@@ -998,7 +1075,7 @@ export default function AdminDashboard() {
     } else if (showAllFilter) {
       initialFilter = "all";
     }
-    
+
     return (
       <BookingsPage
         appointments={appointments}

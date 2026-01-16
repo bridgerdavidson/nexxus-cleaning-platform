@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
@@ -26,6 +26,7 @@ export interface Appointment {
       last_name: string;
     } | null;
   } | null;
+  payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
 }
 
 export interface Property {
@@ -87,70 +88,89 @@ export function useHomeownerAppointments() {
   const [error, setError] = useState<string | null>(null);
   const { user, currentOrganizationId } = useAuth();
 
-  useEffect(() => {
+  const fetchAppointments = useCallback(async () => {
     if (!user?.id || !currentOrganizationId) return;
 
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('appointments')
-          .select(`
-            id,
-            scheduled_date,
-            scheduled_time,
-            status,
-            total_price,
-            property:properties(
-              name,
-              address,
-              city,
-              state
-            ),
-            service_type:service_types(
-              name,
-              description
-            ),
-            cleaner_profile:cleaner_profiles(
-              user_profile:user_profiles(
-                first_name,
-                last_name
-              )
+    try {
+      setLoading(true);
+      const { data, error: fetchError } = await supabase
+        .from('appointments')
+        .select(`
+          id,
+          scheduled_date,
+          scheduled_time,
+          status,
+          total_price,
+          property:properties(
+            name,
+            address,
+            city,
+            state
+          ),
+          service_type:service_types(
+            name,
+            description
+          ),
+          cleaner_profile:cleaner_profiles(
+            user_profile:user_profiles(
+              first_name,
+              last_name
             )
-          `)
-          .eq('homeowner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
-          .order('scheduled_date', { ascending: true });
+          )
+        `)
+        .eq('homeowner_id', user.id)
+        .eq('organization_id', currentOrganizationId)
+        .order('scheduled_date', { ascending: true });
 
-        if (error) throw error;
+      if (fetchError) throw fetchError;
+      
+      // Fetch payment statuses for all appointments
+      const appointmentIds = (data || []).map(a => a.id);
+      let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
+      
+      if (appointmentIds.length > 0) {
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('appointment_id, status')
+          .in('appointment_id', appointmentIds);
         
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(appointment => ({
-          ...appointment,
-          property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
-          cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
-            ? {
-                ...appointment.cleaner_profile[0],
-                user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
-                  ? appointment.cleaner_profile[0].user_profile[0] 
-                  : appointment.cleaner_profile[0]?.user_profile
-              }
-            : appointment.cleaner_profile
-        }));
-        
-        setAppointments(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
-      } finally {
-        setLoading(false);
+        if (payments) {
+          paymentStatusMap = payments.reduce((acc, p) => {
+            acc[p.appointment_id] = p.status;
+            return acc;
+          }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
+        }
       }
-    };
 
-    fetchAppointments();
+      // Transform the data to match our interface
+      const transformedData = (data || []).map(appointment => ({
+        ...appointment,
+        property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
+        service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
+          ? {
+              ...appointment.cleaner_profile[0],
+              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
+                ? appointment.cleaner_profile[0].user_profile[0] 
+                : appointment.cleaner_profile[0]?.user_profile
+            }
+          : appointment.cleaner_profile,
+        payment_status: paymentStatusMap[appointment.id] || null,
+      }));
+      
+      setAppointments(transformedData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id, currentOrganizationId]);
 
-  return { appointments, loading, error, refetch: () => {} };
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
+
+  return { appointments, loading, error, refetch: fetchAppointments };
 }
 
 export function useHomeownerProperties() {

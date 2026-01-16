@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeAppointments } from './useRealtimeAppointments';
+import { useRealtimePayments, PaymentUpdateData } from './useRealtimePayments';
 
 // Manager interfaces (same as admin but focused on operations management)
 export interface ManagerAppointment {
@@ -14,6 +15,7 @@ export interface ManagerAppointment {
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
+  homeowner_id?: string;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -35,6 +37,7 @@ export interface ManagerAppointment {
     name: string;
     description: string;
   } | null;
+  payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
 }
 
 export interface ManagerCleaner {
@@ -216,7 +219,18 @@ export function useManagerAppointments() {
     setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
   }, []);
 
-  // Set up realtime subscription
+  // Handle payment status updates from realtime subscription
+  const handlePaymentUpdate = useCallback((data: PaymentUpdateData) => {
+    setAppointments(prev => 
+      prev.map(apt => 
+        apt.id === data.appointmentId 
+          ? { ...apt, payment_status: data.status }
+          : apt
+      )
+    );
+  }, []);
+
+  // Set up realtime subscription for appointments
   useRealtimeAppointments({
     filters: {
       organizationId: currentOrganizationId || '',
@@ -224,6 +238,12 @@ export function useManagerAppointments() {
     onInsert: handleAppointmentInsert,
     onUpdate: handleAppointmentUpdate,
     onDelete: handleAppointmentDelete,
+    enabled: !!currentOrganizationId,
+  });
+
+  // Set up realtime subscription for payments
+  useRealtimePayments({
+    onPaymentUpdate: handlePaymentUpdate,
     enabled: !!currentOrganizationId,
   });
 
@@ -242,6 +262,7 @@ export function useManagerAppointments() {
           total_price,
           special_requests,
           notes,
+          homeowner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -269,6 +290,24 @@ export function useManagerAppointments() {
 
       if (error) throw error;
       
+      // Fetch payment statuses for all appointments
+      const appointmentIds = (data || []).map(a => a.id);
+      let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
+      
+      if (appointmentIds.length > 0) {
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('appointment_id, status')
+          .in('appointment_id', appointmentIds);
+        
+        if (payments) {
+          paymentStatusMap = payments.reduce((acc, p) => {
+            acc[p.appointment_id] = p.status;
+            return acc;
+          }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
+        }
+      }
+
       // Transform the data to match our interface
       const transformedData = (data || []).map(appointment => ({
         ...appointment,
@@ -282,7 +321,8 @@ export function useManagerAppointments() {
                 ? appointment.cleaner_profile[0].user_profile[0] 
                 : appointment.cleaner_profile[0]?.user_profile
             }
-          : appointment.cleaner_profile
+          : appointment.cleaner_profile,
+        payment_status: paymentStatusMap[appointment.id] || null,
       }));
       
       setAppointments(transformedData);
@@ -514,6 +554,57 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       .eq('id', appointmentId);
 
     if (error) throw error;
+
+    // If status changed to 'completed', trigger automatic payment
+    if (status === 'completed') {
+      try {
+        // Get appointment details for organization_id
+        const { data: appointment } = await supabase
+          .from('appointments')
+          .select('organization_id')
+          .eq('id', appointmentId)
+          .single();
+
+        const response = await fetch('/api/stripe/create-payment-intent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            appointment_id: appointmentId,
+            organization_id: appointment?.organization_id,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error('Payment failed:', result.error);
+          // Don't fail the status update, just log the payment error
+          // The payment can be retried manually
+          return { 
+            success: true, 
+            paymentStatus: 'failed',
+            paymentError: result.error || 'Payment processing failed'
+          };
+        }
+
+        return { 
+          success: true, 
+          paymentStatus: result.payment_intent_status === 'succeeded' ? 'paid' : 'pending',
+          paymentIntentId: result.payment_intent_id
+        };
+      } catch (paymentError) {
+        console.error('Error processing payment:', paymentError);
+        // Don't fail the status update, just log the payment error
+        return { 
+          success: true, 
+          paymentStatus: 'failed',
+          paymentError: paymentError instanceof Error ? paymentError.message : 'Payment processing failed'
+        };
+      }
+    }
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };
