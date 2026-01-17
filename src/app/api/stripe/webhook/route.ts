@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { constructWebhookEvent } from '@/lib/stripe';
+import { stripeEnabled } from '@/lib/stripe/flags';
 import Stripe from 'stripe';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 // Disable body parsing - we need the raw body for signature verification
 export const config = {
@@ -14,7 +14,22 @@ export const config = {
   },
 };
 
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
+  if (!stripeEnabled()) {
+    return new NextResponse('Stripe disabled', { status: 404 });
+  }
+
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('STRIPE_WEBHOOK_SECRET not configured');
+    return NextResponse.json(
+      { error: 'Webhook secret not configured' },
+      { status: 500 }
+    );
+  }
+
   try {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -32,14 +47,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Missing stripe-signature header' },
         { status: 400 }
-      );
-    }
-
-    if (!webhookSecret) {
-      console.error('STRIPE_WEBHOOK_SECRET not configured');
-      return NextResponse.json(
-        { error: 'Webhook secret not configured' },
-        { status: 500 }
       );
     }
 

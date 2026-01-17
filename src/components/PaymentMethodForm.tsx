@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Elements,
   CardElement,
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { CreditCard, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
-// Initialize Stripe
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
-);
+// Helper function to check if Stripe UI is enabled
+function stripeUiEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STRIPE_ENABLED === "true";
+}
 
 interface PaymentMethodFormProps {
   homeownerId: string;
@@ -258,6 +258,34 @@ function PaymentForm({
 
 // Main component with Elements provider
 export default function PaymentMethodForm(props: PaymentMethodFormProps) {
+  // Only load Stripe if UI is enabled
+  const stripePromise = useMemo<Promise<Stripe | null> | null>(() => {
+    if (!stripeUiEnabled()) {
+      return null;
+    }
+
+    const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+    if (!publishableKey) {
+      console.warn('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not set');
+      return null;
+    }
+
+    return loadStripe(publishableKey);
+  }, []);
+
+  // If Stripe UI is disabled, return null
+  if (!stripeUiEnabled() || !stripePromise) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8">
+        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <p className="text-sm text-gray-600 text-center">
+            Payment processing is currently unavailable.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Elements stripe={stripePromise}>
       <PaymentForm {...props} />

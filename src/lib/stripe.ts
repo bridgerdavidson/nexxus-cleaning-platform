@@ -1,14 +1,32 @@
 import Stripe from 'stripe';
+import { stripeEnabled } from './stripe/flags';
 
-// Initialize Stripe with secret key
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+// Lazy initialization - only create Stripe instance when needed and enabled
+let stripeInstance: Stripe | null = null;
+
+/**
+ * Get Stripe instance - lazily initializes only when Stripe is enabled
+ * @throws Error if Stripe is disabled or STRIPE_SECRET_KEY is missing
+ */
+export function getStripe(): Stripe {
+  if (!stripeEnabled()) {
+    throw new Error('Stripe is disabled. Set STRIPE_ENABLED=true to enable.');
+  }
+
+  if (!stripeInstance) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+    }
+
+    stripeInstance = new Stripe(key, {
+      apiVersion: '2025-12-15.clover',
+      typescript: true,
+    });
+  }
+
+  return stripeInstance;
 }
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-12-15.clover',
-  typescript: true,
-});
 
 // Helper function to create or retrieve a Stripe customer
 export async function getOrCreateStripeCustomer(
@@ -16,6 +34,8 @@ export async function getOrCreateStripeCustomer(
   name: string,
   existingCustomerId?: string | null
 ): Promise<Stripe.Customer> {
+  const stripe = getStripe();
+
   // If we have an existing customer ID, retrieve and verify it
   if (existingCustomerId) {
     try {
@@ -55,6 +75,8 @@ export async function getOrCreateStripeCustomer(
 export async function createSetupIntent(
   customerId: string
 ): Promise<Stripe.SetupIntent> {
+  const stripe = getStripe();
+
   const setupIntent = await stripe.setupIntents.create({
     customer: customerId,
     payment_method_types: ['card'],
@@ -74,6 +96,8 @@ export async function createPaymentIntent(
   appointmentId: string,
   paymentMethodId?: string
 ): Promise<Stripe.PaymentIntent> {
+  const stripe = getStripe();
+
   const paymentIntentData: Stripe.PaymentIntentCreateParams = {
     amount: Math.round(amount * 100), // Convert dollars to cents
     currency: 'usd',
@@ -100,6 +124,8 @@ export async function createPaymentIntent(
 export async function getDefaultPaymentMethod(
   customerId: string
 ): Promise<string | null> {
+  const stripe = getStripe();
+
   const customer = await stripe.customers.retrieve(customerId);
   
   if (customer.deleted) {
@@ -130,6 +156,8 @@ export async function attachPaymentMethodToCustomer(
   paymentMethodId: string,
   customerId: string
 ): Promise<Stripe.PaymentMethod> {
+  const stripe = getStripe();
+
   // Attach the payment method to the customer
   const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
     customer: customerId,
@@ -150,6 +178,8 @@ export async function getPaymentMethodDetails(
   customerId: string
 ): Promise<{ last4: string; brand: string; paymentMethodId: string } | null> {
   try {
+    const stripe = getStripe();
+
     const customer = await stripe.customers.retrieve(customerId);
     
     if (customer.deleted) {
@@ -202,6 +232,7 @@ export function constructWebhookEvent(
   signature: string,
   webhookSecret: string
 ): Stripe.Event {
+  const stripe = getStripe();
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
 }
 

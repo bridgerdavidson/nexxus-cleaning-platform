@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { stripe, attachPaymentMethodToCustomer } from '@/lib/stripe';
+import { getStripe, attachPaymentMethodToCustomer } from '@/lib/stripe';
+import { stripeEnabled } from '@/lib/stripe/flags';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function POST(request: NextRequest) {
+  if (!stripeEnabled()) {
+    return new NextResponse('Stripe disabled', { status: 404 });
+  }
   try {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -27,6 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Retrieve the SetupIntent from Stripe
+    const stripe = getStripe();
     const setupIntent = await stripe.setupIntents.retrieve(setup_intent_id);
 
     if (!setupIntent) {
