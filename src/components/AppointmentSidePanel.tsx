@@ -694,46 +694,16 @@ export default function AppointmentSidePanel({
               </div>
             )}
 
-          {/* Approve/Decline buttons for pending appointments (admin or manager with permission) */}
+          {/* Review button for pending appointments (admin or manager with permission) */}
           {((role === "admin" || (role === "manager" && canApproveDecline)) &&
             appointment.status === "pending" &&
-            (onApprove || onDecline) &&
             !isEditing) && (
               <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
-                {onApprove && (
-                  <button
-                    onClick={async () => {
-                      setIsActionLoading(true);
-                      try {
-                        await onApprove(appointment.id);
-                        handleClose();
-                      } finally {
-                        setIsActionLoading(false);
-                      }
-                    }}
-                    disabled={isActionLoading}
-                    className="flex-1 px-4 py-2 text-sm font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                )}
-                {onDecline && (
-                  <button
-                    onClick={async () => {
-                      setIsActionLoading(true);
-                      try {
-                        await onDecline(appointment.id);
-                        handleClose();
-                      } finally {
-                        setIsActionLoading(false);
-                      }
-                    }}
-                    disabled={isActionLoading}
-                    className="flex-1 px-4 py-2 text-sm font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
-                  >
-                    Decline
-                  </button>
-                )}
+                <button
+                  className="flex-1 px-4 py-2 text-sm font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+                >
+                  Review
+                </button>
               </div>
             )}
         </div>

@@ -156,7 +156,6 @@ export function useAdminAppointments() {
         .single();
 
       if (error) {
-        console.error('Error fetching appointment:', error);
         return null;
       }
 
@@ -178,7 +177,6 @@ export function useAdminAppointments() {
           : data.cleaner_profile
       } as AdminAppointment;
     } catch (err) {
-      console.error('Error in fetchSingleAppointment:', err);
       return null;
     }
   }, [currentOrganizationId]);
@@ -303,23 +301,7 @@ export function useAdminAppointments() {
         .eq('organization_id', currentOrganizationId)
         .order('scheduled_date', { ascending: false });
 
-      // Debug logging
-      console.log('🔍 Admin Appointments Query Debug:', {
-        currentOrganizationId,
-        userId: user?.id,
-        error,
-        dataLength: data?.length,
-        data: data,
-        errorDetails: error ? {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        } : null
-      });
-
       if (error) {
-        console.error('❌ Appointments query error:', error);
         throw error;
       }
       
@@ -858,7 +840,7 @@ export function usePaymentStats() {
           thisMonthRevenue: Math.round(thisMonthRevenue),
         });
       } catch (err) {
-        console.error('Failed to fetch payment stats:', err);
+        // Error handled silently
       } finally {
         setLoading(false);
       }
@@ -962,7 +944,6 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
         const result = await response.json();
 
         if (!response.ok) {
-          console.error('Payment failed:', result.error);
           // Don't fail the status update, just log the payment error
           // The payment can be retried manually
           return { 
@@ -978,7 +959,6 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
           paymentIntentId: result.payment_intent_id
         };
       } catch (paymentError) {
-        console.error('Error processing payment:', paymentError);
         // Don't fail the status update, just log the payment error
         return { 
           success: true, 
@@ -1051,12 +1031,10 @@ export async function updateAppointment(
       .single();
 
     if (error) {
-      console.error('Error updating appointment:', error);
       throw error;
     }
     
     if (!updateData) {
-      console.warn('No rows updated for appointment:', appointmentId);
       return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
     }
     
@@ -1078,7 +1056,6 @@ export async function updateAppointment(
     
     return { success: true, data: transformedData as AdminAppointment };
   } catch (error) {
-    console.error('Failed to update appointment:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update appointment' };
   }
 }
@@ -1414,12 +1391,10 @@ export async function updateCustomer(
       .single();
 
     if (error) {
-      console.error('Error updating customer:', error);
       throw error;
     }
     
     if (!updateData) {
-      console.warn('No rows updated for customer:', customerId);
       return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
     }
     
@@ -1429,7 +1404,6 @@ export async function updateCustomer(
       data: updateData as AdminCustomer 
     };
   } catch (error) {
-    console.error('Failed to update customer:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update customer' };
   }
 }
@@ -1640,12 +1614,10 @@ export async function updateProperty(
       .single();
 
     if (error) {
-      console.error('Error updating property:', error);
       throw error;
     }
     
     if (!updateData) {
-      console.warn('No rows updated for property:', propertyId);
       return { success: false, error: 'No rows were updated. This may be due to RLS policies.' };
     }
     
@@ -1657,7 +1629,6 @@ export async function updateProperty(
     
     return { success: true, data: transformedData as AdminProperty };
   } catch (error) {
-    console.error('Failed to update property:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to update property' };
   }
 }

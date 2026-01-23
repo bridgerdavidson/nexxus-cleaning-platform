@@ -214,7 +214,7 @@ export default function DayDetailSidebar({
                   <p className="text-xl font-bold text-yellow-700">
                     {appointmentsByStatus.pending.length}
                   </p>
-                  <p className="text-xs text-yellow-600">Pending</p>
+                  <p className="text-xs text-yellow-600">Pending Review</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3 text-center">
                   <p className="text-xl font-bold text-green-700">

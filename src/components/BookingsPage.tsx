@@ -39,8 +39,6 @@ interface BookingsPageProps {
   onCancelAppointment: (appointmentId: string) => Promise<void>;
   onDeleteAppointment: (appointmentId: string) => Promise<void>;
   onMarkComplete: (appointmentId: string) => Promise<void>;
-  onApproveAppointment?: (appointmentId: string) => Promise<void>;
-  onDeclineAppointment?: (appointmentId: string) => Promise<void>;
   onRefreshAppointments?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
@@ -56,8 +54,6 @@ export default function BookingsPage({
   onCancelAppointment,
   onDeleteAppointment,
   onMarkComplete,
-  onApproveAppointment,
-  onDeclineAppointment,
   onRefreshAppointments,
   onAppointmentUpdated,
   role,
@@ -803,8 +799,6 @@ export default function BookingsPage({
                         isSelectMode={isSelectMode}
                         isSelected={selectedIds.has(appointment.id)}
                         onToggleSelect={() => toggleSelection(appointment.id)}
-                        onApprove={onApproveAppointment}
-                        onDecline={onDeclineAppointment}
                         role={role}
                         canApproveDecline={canApproveDecline}
                       />
@@ -901,8 +895,6 @@ export default function BookingsPage({
                             isSelectMode={isSelectMode}
                             isSelected={selectedIds.has(appointment.id)}
                             onToggleSelect={() => toggleSelection(appointment.id)}
-                            onApprove={onApproveAppointment}
-                            onDecline={onDeclineAppointment}
                             role={role}
                             canApproveDecline={canApproveDecline}
                           />
@@ -938,8 +930,6 @@ export default function BookingsPage({
                             isSelectMode={isSelectMode}
                             isSelected={selectedIds.has(appointment.id)}
                             onToggleSelect={() => toggleSelection(appointment.id)}
-                            onApprove={onApproveAppointment}
-                            onDecline={onDeclineAppointment}
                             role={role}
                             canApproveDecline={canApproveDecline}
                           />
@@ -970,8 +960,6 @@ export default function BookingsPage({
                             isSelectMode={isSelectMode}
                             isSelected={selectedIds.has(appointment.id)}
                             onToggleSelect={() => toggleSelection(appointment.id)}
-                            onApprove={onApproveAppointment}
-                            onDecline={onDeclineAppointment}
                             role={role}
                             canApproveDecline={canApproveDecline}
                           />
@@ -1023,8 +1011,6 @@ export default function BookingsPage({
         appointment={selectedAppointment}
         onCancel={canEdit ? handleCancelFromPanel : undefined}
         onMarkComplete={canEdit ? handleMarkComplete : undefined}
-        onApprove={onApproveAppointment}
-        onDecline={onDeclineAppointment}
         onAppointmentUpdated={(updatedAppointment) => {
           // Update selected appointment immediately for side panel display
           setSelectedAppointment(updatedAppointment);

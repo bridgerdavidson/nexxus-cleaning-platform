@@ -21,3 +21,4 @@ export function stripeUiEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STRIPE_ENABLED === "true";
 }
 
+

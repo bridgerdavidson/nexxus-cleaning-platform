@@ -6,6 +6,16 @@ import { useAuth } from "../hooks/useAuth";
 import { Menu, X, ChevronDown, LogOut, User, Settings } from "lucide-react";
 
 const Navbar: React.FC = () => {
+  // #region agent log
+  const instanceId = useRef(Math.random().toString(36).substring(7));
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Navbar.tsx:8',message:'Navbar mounted',data:{instanceId:instanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    return () => {
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Navbar.tsx:8',message:'Navbar unmounted',data:{instanceId:instanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'F'})}).catch(()=>{});
+    };
+  }, []);
+  // #endregion
+  
   const { user, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);

@@ -42,8 +42,6 @@ interface AppointmentCardProps {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
-  onApprove?: (appointmentId: string) => void;
-  onDecline?: (appointmentId: string) => void;
   role?: "admin" | "manager" | "cleaner";
   canApproveDecline?: boolean;
 }
@@ -54,8 +52,6 @@ export default function AppointmentCard({
   isSelectMode = false,
   isSelected = false,
   onToggleSelect,
-  onApprove,
-  onDecline,
   role,
   canApproveDecline = false,
 }: AppointmentCardProps) {
@@ -162,19 +158,6 @@ export default function AppointmentCard({
     }
   };
 
-  const handleApproveClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onApprove) {
-      onApprove(appointment.id);
-    }
-  };
-
-  const handleDeclineClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onDecline) {
-      onDecline(appointment.id);
-    }
-  };
 
   const paymentStatusConfig = getPaymentStatusTabConfig();
 
@@ -194,6 +177,17 @@ export default function AppointmentCard({
         >
           <span className="font-semibold text-xs whitespace-nowrap">
             {paymentStatusConfig.label}
+          </span>
+        </div>
+      )}
+      {/* Recurring Icon - Positioned to the left of payment status tab */}
+      {appointment.series_id && (
+        <div
+          className={`absolute top-1/2 -translate-y-1/2 ${role === "cleaner" ? "right-0" : "right-[88px]"} z-10`}
+          title="Recurring appointment"
+        >
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full">
+            <Repeat className="w-3 h-3" />
           </span>
         </div>
       )}
@@ -262,31 +256,14 @@ export default function AppointmentCard({
           <div className="flex items-center gap-1.5">
             <StatusBadge status={appointment.status} size="sm" />
           </div>
-          {appointment.series_id && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full" title="Recurring appointment">
-              <Repeat className="w-3 h-3" />
-            </span>
-          )}
-          {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && (onApprove || onDecline)) && (
+          {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
             <div className="ml-2 flex items-center gap-1.5">
-              {onApprove && (
-                <button
-                  onClick={handleApproveClick}
-                  className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                  title="Approve appointment"
-                >
-                  Approve
-                </button>
-              )}
-              {onDecline && (
-                <button
-                  onClick={handleDeclineClick}
-                  className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                  title="Decline appointment"
-                >
-                  Decline
-                </button>
-              )}
+              <button
+                className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+                title="Review appointment"
+              >
+                Review
+              </button>
             </div>
           )}
         </div>
@@ -355,31 +332,14 @@ export default function AppointmentCard({
         <div className="sm:col-span-2 flex sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={appointment.status} size="md" />
-            {appointment.series_id && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full" title="Recurring appointment">
-                <Repeat className="w-3 h-3" />
-              </span>
-            )}
-            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && (onApprove || onDecline)) && (
+            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
               <div className="flex items-center gap-1.5">
-                {onApprove && (
-                  <button
-                    onClick={handleApproveClick}
-                    className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                    title="Approve appointment"
-                  >
-                    Approve
-                  </button>
-                )}
-                {onDecline && (
-                  <button
-                    onClick={handleDeclineClick}
-                    className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                    title="Decline appointment"
-                  >
-                    Decline
-                  </button>
-                )}
+                <button
+                  className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+                  title="Review appointment"
+                >
+                  Review
+                </button>
               </div>
             )}
           </div>

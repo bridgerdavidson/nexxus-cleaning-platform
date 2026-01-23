@@ -14,7 +14,7 @@ export default function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
           bgColor: "bg-yellow-100",
           textColor: "text-yellow-700",
           icon: Clock,
-          label: "Pending",
+          label: "Pending Review",
         };
       case "confirmed":
         return {

@@ -24,6 +24,16 @@ export interface AuthActions {
 }
 
 export function useAuth(): AuthState & AuthActions {
+  // #region agent log
+  const hookInstanceId = useRef(Math.random().toString(36).substring(7));
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook mounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    return () => {
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook unmounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    };
+  }, []);
+  // #endregion
+  
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -73,8 +83,8 @@ export function useAuth(): AuthState & AuthActions {
         email: user.email || '',
         role,
         profile: {
-          firstName: (user.user_metadata?.firstName as string) || '',
-          lastName: (user.user_metadata?.lastName as string) || '',
+          firstName: ((user.user_metadata?.firstName || user.user_metadata?.first_name) as string) || '',
+          lastName: ((user.user_metadata?.lastName || user.user_metadata?.last_name) as string) || '',
           phone: (user.user_metadata?.phone as string) || '',
           avatarUrl: undefined,
         },
@@ -84,8 +94,6 @@ export function useAuth(): AuthState & AuthActions {
     };
 
     try {
-      console.log(`[${callId}] Loading profile for user:`, supabaseUser.id, supabaseUser.email);
-
       // Retry logic for 406 errors (session token may not be ready immediately)
       interface ProfileData {
         id: string;
@@ -107,41 +115,51 @@ export function useAuth(): AuthState & AuthActions {
         }
 
         // Create new AbortController for this query attempt
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
+        const ac = new AbortController();
+        abortControllerRef.current = ac; // Allow signOut to cancel in-flight loads
+        const timeoutId = setTimeout(() => ac.abort(), 5000);
 
-        // Wrap database query in timeout to prevent hanging
+        // Create profile query
         const profileQuery = supabase
           .from('user_profiles')
           .select('*')
           .eq('id', supabaseUser.id)
           .single();
 
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Profile query timeout')), 5000)
-        );
+        // Create promise that rejects when aborted
+        const abortPromise = new Promise<never>((_, reject) => {
+          ac.signal.addEventListener('abort', () => {
+            reject(new Error('Profile query aborted'));
+          });
+        });
 
         try {
-          profileResult = await Promise.race([profileQuery, timeoutPromise]);
+          // Race between query and abort signal
+          profileResult = await Promise.race([profileQuery, abortPromise]);
+          
+          clearTimeout(timeoutId);
+          abortControllerRef.current = null; // Clear ref on completion
           
           // Check again if signing out after query completes
           if (isSigningOutRef.current) {
             return;
           }
-        } catch {
+        } catch (err) {
+          clearTimeout(timeoutId);
+          abortControllerRef.current = null; // Clear ref on error
+          
           // Check again if signing out before logging warning
           if (isSigningOutRef.current) {
             return;
           }
-          // Timeout occurred - fall back to auth metadata
-          console.warn(`[${callId}] Profile query timed out, using auth metadata only`);
+          
+          // Only log "timed out" if the signal was actually aborted
+          // (Logging removed)
+          
           const userData = buildUserFromAuthOnly(supabaseUser);
-          setUser(userData);
+          if (!isSigningOutRef.current) setUser(userData);
           return;
         }
-
-        // Clear abort controller on success
-        abortControllerRef.current = null;
 
         // Check if query returned an error
         if (profileResult.error) {
@@ -162,16 +180,14 @@ export function useAuth(): AuthState & AuthActions {
           
           if (isProfileNotFound) {
             // No profile exists - don't retry
-            console.log(`[${callId}] No profile row found (PGRST116). Using auth metadata only.`);
             const userData = buildUserFromAuthOnly(supabaseUser);
-            setUser(userData);
+            if (!isSigningOutRef.current) setUser(userData);
             return;
           }
 
           if (isNotAcceptable && retryCount < maxRetries) {
             // 406 error - retry once after a short delay
             retryCount++;
-            console.log(`[${callId}] Profile query returned 406 (attempt ${retryCount}/${maxRetries + 1}). Retrying after delay...`);
             await new Promise(resolve => setTimeout(resolve, 300));
             
             // Check again if signing out before retry
@@ -182,14 +198,8 @@ export function useAuth(): AuthState & AuthActions {
           }
 
           // 406 on last retry or other error - fall back to auth metadata
-          if (isNotAcceptable) {
-            console.log(`[${callId}] Profile query returned 406 after retry. Using auth metadata only.`);
-          } else {
-            console.error(`[${callId}] Error loading user profile:`, error);
-            console.warn(`[${callId}] Falling back to auth metadata due to profile error`);
-          }
           const userData = buildUserFromAuthOnly(supabaseUser);
-          setUser(userData);
+          if (!isSigningOutRef.current) setUser(userData);
           return;
         }
 
@@ -205,9 +215,8 @@ export function useAuth(): AuthState & AuthActions {
       // If we get here, profileResult should have data
       if (!profileResult || profileResult.error || !profileResult.data) {
         // This shouldn't happen, but handle it anyway
-        console.error(`[${callId}] Unexpected state after retry`);
         const userData = buildUserFromAuthOnly(supabaseUser);
-        setUser(userData);
+        if (!isSigningOutRef.current) setUser(userData);
         return;
       }
 
@@ -227,15 +236,12 @@ export function useAuth(): AuthState & AuthActions {
         updatedAt: profile.updated_at || supabaseUser.created_at,
       };
 
-      console.log(`[${callId}] Successfully loaded user profile:`, userData);
-      setUser(userData);
+      if (!isSigningOutRef.current) setUser(userData);
     } catch (err) {
-      console.error(`[${callId}] Unexpected error loading user profile:`, err);
       // Always fall back to auth metadata - never leave user as null if we have a session
       // This ensures sign-in can complete even if profile loading fails
-      console.warn(`[${callId}] Falling back to auth metadata due to unexpected error`);
       const userData = buildUserFromAuthOnly(supabaseUser);
-      setUser(userData);
+      if (!isSigningOutRef.current) setUser(userData);
     }
   }, []);
 
@@ -257,7 +263,6 @@ export function useAuth(): AuthState & AuthActions {
           .limit(1);
 
         if (error) {
-          console.error('[useAuth] Error loading organization:', error);
           setCurrentOrganizationId(null);
           setCurrentOrgRole(null);
           setCurrentOrganization(null);
@@ -265,7 +270,6 @@ export function useAuth(): AuthState & AuthActions {
         }
 
         if (!data || data.length === 0) {
-          console.warn('[useAuth] No organization membership found for user');
           setCurrentOrganizationId(null);
           setCurrentOrgRole(null);
           setCurrentOrganization(null);
@@ -290,7 +294,6 @@ export function useAuth(): AuthState & AuthActions {
           setCurrentOrganization(null);
         }
       } catch (err) {
-        console.error('[useAuth] Unexpected error loading organization:', err);
         setCurrentOrganizationId(null);
         setCurrentOrgRole(null);
         setCurrentOrganization(null);
@@ -301,16 +304,23 @@ export function useAuth(): AuthState & AuthActions {
   }, [user]);
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:320',message:'Main useEffect running',data:{instanceId:hookInstanceId.current,hasLoadUserProfile:!!loadUserProfile},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
     let isMounted = true;
   
     const init = async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:325',message:'init() called',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
       try {
         const { data, error } = await supabase.auth.getSession();
   
         if (!isMounted) return;
-  
+
         if (error) {
-          console.error('[useAuth] getSession error:', error);
           setSession(null);
           setUser(null);
           return;
@@ -320,6 +330,10 @@ export function useAuth(): AuthState & AuthActions {
         setSession(session);
   
         if (session?.user) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:340',message:'init calling loadUserProfile',data:{instanceId:hookInstanceId.current,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          
           // 🔹 We DO await here so the initial "loading" covers profile fetch
           await loadUserProfile(session.user);
         } else {
@@ -328,7 +342,6 @@ export function useAuth(): AuthState & AuthActions {
         }
       } catch (err) {
         if (!isMounted) return;
-        console.error('[useAuth] init auth error:', err);
         setSession(null);
         setUser(null);
       } finally {
@@ -344,6 +357,10 @@ export function useAuth(): AuthState & AuthActions {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:365',message:'onAuthStateChange fired',data:{instanceId:hookInstanceId.current,event,userId:session?.user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
       if (!isMounted) return;
   
       // Handle SIGNED_OUT event explicitly
@@ -390,6 +407,10 @@ export function useAuth(): AuthState & AuthActions {
           return;
         }
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:410',message:'onAuthStateChange calling loadUserProfile',data:{instanceId:hookInstanceId.current,event,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+
         // 🔹 Auth state changes (sign in / token refresh) update the user,
         // but we DO NOT touch `loading` here
         try {
@@ -397,7 +418,6 @@ export function useAuth(): AuthState & AuthActions {
           // loadUserProfile always sets user (either from profile or auth metadata)
           // so user state should be set at this point
         } catch (err) {
-          console.error('[useAuth] Error loading profile in onAuthStateChange:', err);
           // loadUserProfile should have already set user from auth metadata as fallback in its catch block
           // If for some reason it didn't, loadUserProfile will be called again or user will be set
           // The important thing is we don't leave user as null if we have a session
@@ -482,11 +502,16 @@ export function useAuth(): AuthState & AuthActions {
     });
 
     return () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:505',message:'Main useEffect cleanup',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
       isMounted = false;
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [loadUserProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps: run once on mount, loadUserProfile is memoized and stable
   
 
   const signIn = async (email: string, password: string): Promise<{ error?: string }> => {
@@ -534,7 +559,6 @@ export function useAuth(): AuthState & AuthActions {
       return {};
     } catch (error) {
       isSigningInRef.current = false;
-      console.error('Sign in error:', error);
       return { error: 'An unexpected error occurred' };
     }
   };
@@ -548,8 +572,6 @@ export function useAuth(): AuthState & AuthActions {
     userData: { firstName: string; lastName: string; role: string }
   ): Promise<{ error?: string; role?: string }> => {
     try {
-      console.log('Signing up user:', { email, userData });
-      
       // Helper function to fetch with timeout
       const fetchWithTimeout = async (url: string, options: RequestInit, timeout = 30000) => {
         const controller = new AbortController();
@@ -574,8 +596,6 @@ export function useAuth(): AuthState & AuthActions {
       
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          console.log(`Signup attempt ${attempt + 1}/${maxRetries + 1}`);
-          
           // Call secure API route that uses admin client to set app_metadata
           // Use longer timeout on first attempt (cold start), shorter on retries
           const timeout = attempt === 0 ? 30000 : 15000;
@@ -600,24 +620,19 @@ export function useAuth(): AuthState & AuthActions {
             return { error: result.error || 'Signup failed' };
           }
 
-          console.log('Signup successful:', result);
-
           // Automatically sign in the user after successful signup
-          console.log('Auto-signing in user...');
           const signInResult = await supabase.auth.signInWithPassword({
             email,
             password,
           });
 
           if (signInResult.error) {
-            console.error('Auto sign-in failed:', signInResult.error);
             // Signup succeeded but auto sign-in failed - user can manually log in
             return { error: 'Account created. Please log in.' };
           }
 
           if (signInResult.data.session) {
             setSession(signInResult.data.session);
-            console.log('Auto sign-in successful');
             // Loading state will be managed by onAuthStateChange -> loadUserProfile
           }
 
@@ -625,11 +640,9 @@ export function useAuth(): AuthState & AuthActions {
           return { role: userData.role };
         } catch (error) {
           lastError = error as Error;
-          console.error(`Signup attempt ${attempt + 1} failed:`, error);
           
           // If it's an abort error (timeout) and we have retries left, try again
           if (error instanceof Error && error.name === 'AbortError' && attempt < maxRetries) {
-            console.log('Request timed out, retrying...');
             await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
             continue;
           }
@@ -642,7 +655,6 @@ export function useAuth(): AuthState & AuthActions {
       // If we get here, all retries failed
       throw lastError || new Error('All signup attempts failed');
     } catch (error) {
-      console.error('Signup error:', error);
       if (error instanceof Error && error.name === 'AbortError') {
         return { error: 'Request timed out. Please try again.' };
       }
@@ -687,7 +699,6 @@ export function useAuth(): AuthState & AuthActions {
       } catch (err) {
         // If signOut fails or times out, we still cleared local state above
         // This ensures logout always works even if Supabase is unresponsive
-        console.warn('[useAuth] supabase.signOut error or timeout:', err);
       } finally {
         // Reset flags after sign out completes
         isSigningOutRef.current = false;
@@ -719,7 +730,6 @@ export function useAuth(): AuthState & AuthActions {
       setLoading(false);
       isSigningOutRef.current = false;
       isSigningInRef.current = false;
-      console.warn('[useAuth] unexpected signOut error:', err);
     }
   };
   

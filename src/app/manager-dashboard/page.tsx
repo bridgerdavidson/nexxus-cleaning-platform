@@ -27,6 +27,7 @@ import {
   ChevronDown,
   ChevronUp,
   Mail,
+  FileText,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -635,10 +636,10 @@ export default function ManagerDashboard() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-amber-100 rounded-lg">
-                      <AlertTriangle className="w-5 h-5 text-amber-600" />
+                      <FileText className="w-5 h-5 text-amber-600" />
                     </div>
                     <span className="font-medium text-gray-900">
-                      Pending Approvals
+                      Appointments Pending Review
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -684,20 +685,9 @@ export default function ManagerDashboard() {
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() =>
-                              handleApproveAppointment(appointment.id)
-                            }
-                            className="flex-1 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                            className="flex-1 py-2.5 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors font-medium text-sm"
                           >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleDeclineAppointment(appointment.id)
-                            }
-                            className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
-                          >
-                            Decline
+                            Review
                           </button>
                         </div>
                       </div>
@@ -1015,8 +1005,9 @@ export default function ManagerDashboard() {
         {permissions?.can_approve_decline_bookings ? (
           <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Pending Approvals
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-amber-600" />
+                Appointments Pending Review
               </h3>
               {appointmentsLoading ? (
                 <div className="flex items-center justify-center py-8">
@@ -1053,16 +1044,9 @@ export default function ManagerDashboard() {
                       </div>
                       <div className="flex space-x-2">
                         <button
-                          onClick={() => handleApproveAppointment(appointment.id)}
-                          className="px-4 py-3 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors font-medium"
+                          className="px-4 py-3 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors font-medium"
                         >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleDeclineAppointment(appointment.id)}
-                          className="px-4 py-3 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-medium"
-                        >
-                          Decline
+                          Review
                         </button>
                       </div>
                     </div>
@@ -1274,25 +1258,6 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleApproveAppointment = async (appointmentId: string) => {
-    const result = await updateAppointmentStatus(appointmentId, "confirmed");
-    if (result.success) {
-      // Refresh appointments data (pending approvals and bookings table)
-      await refetchAppointments();
-    } else {
-      alert("Failed to approve appointment: " + result.error);
-    }
-  };
-
-  const handleDeclineAppointment = async (appointmentId: string) => {
-    const result = await updateAppointmentStatus(appointmentId, "cancelled");
-    if (result.success) {
-      // Refresh appointments data (pending approvals and bookings table)
-      await refetchAppointments();
-    } else {
-      alert("Failed to decline appointment: " + result.error);
-    }
-  };
 
   const renderBookings = () => {
     // Determine initial status filter based on which "View All" was clicked
@@ -1310,16 +1275,6 @@ export default function ManagerDashboard() {
         onCancelAppointment={handleCancelAppointment}
         onDeleteAppointment={handleDeleteAppointment}
         onMarkComplete={handleMarkComplete}
-        onApproveAppointment={
-          permissions?.can_approve_decline_bookings
-            ? handleApproveAppointment
-            : undefined
-        }
-        onDeclineAppointment={
-          permissions?.can_approve_decline_bookings
-            ? handleDeclineAppointment
-            : undefined
-        }
         onRefreshAppointments={refetchAppointments}
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
         role="manager"

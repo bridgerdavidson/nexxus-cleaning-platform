@@ -233,6 +233,13 @@ export default function HomeownerDashboard() {
     }
   };
 
+  const formatStatusForDisplay = (status: string) => {
+    if (status === "pending") {
+      return "Pending Review";
+    }
+    return status;
+  };
+
   const getPaymentStatusTabConfig = (
     paymentStatus: "pending" | "paid" | "failed" | "refunded" | null
   ) => {
@@ -461,7 +468,7 @@ export default function HomeownerDashboard() {
                           appointment.status
                         )}`}
                       >
-                        {appointment.status}
+                        {formatStatusForDisplay(appointment.status)}
                       </span>
                     </div>
                     <p className="text-sm font-medium text-gray-900">

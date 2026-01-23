@@ -159,6 +159,13 @@ export default function CustomerDetailModal({
     }
   };
 
+  const formatStatusForDisplay = (status: string) => {
+    if (status === "pending") {
+      return "Pending Review";
+    }
+    return status.replace("_", " ");
+  };
+
   const formatDate = (date: string) => {
     // Handle both date-only strings (YYYY-MM-DD) and full ISO timestamps
     // Extract just the date part (YYYY-MM-DD) from the string
@@ -555,7 +562,7 @@ export default function CustomerDetailModal({
                                 appointment.status
                               )}`}
                             >
-                              {appointment.status.replace("_", " ")}
+                              {formatStatusForDisplay(appointment.status)}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
