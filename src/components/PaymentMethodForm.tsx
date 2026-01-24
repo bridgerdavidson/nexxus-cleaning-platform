@@ -56,7 +56,12 @@ function PaymentForm({
           body: JSON.stringify({ homeowner_id: homeownerId }),
         });
 
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error("Failed to parse response from server");
+        }
 
         if (!response.ok || !data.success) {
           throw new Error(data.error || "Failed to initialize payment form");
@@ -127,7 +132,12 @@ function PaymentForm({
         }),
       });
 
-      const confirmData = await confirmResponse.json();
+      let confirmData;
+      try {
+        confirmData = await confirmResponse.json();
+      } catch {
+        throw new Error("Failed to parse response from server");
+      }
 
       if (!confirmResponse.ok || !confirmData.success) {
         throw new Error(confirmData.error || "Failed to confirm payment method");
@@ -303,7 +313,7 @@ export function SavedPaymentMethodDisplay({
   brand: string;
   onRemove?: () => void;
 }) {
-  const getBrandIcon = (brand: string) => {
+  const getBrandIcon = () => {
     // You can replace these with actual card brand icons
     return <CreditCard className="w-6 h-6 text-gray-600" />;
   };
@@ -311,7 +321,7 @@ export function SavedPaymentMethodDisplay({
   return (
     <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50">
       <div className="flex items-center gap-3">
-        {getBrandIcon(brand)}
+        {getBrandIcon()}
         <div>
           <p className="font-medium text-gray-900 capitalize">{brand}</p>
           <p className="text-sm text-gray-600">•••• •••• •••• {last4}</p>

@@ -28,7 +28,7 @@ interface PropertySidePanelProps {
   property: PropertyCardData | null;
   onPropertyUpdated?: (updatedProperty: PropertyCardData) => void;
   onRefreshAppointments?: () => void;
-  role: "admin" | "manager";
+  role: "admin" | "manager" | "homeowner";
 }
 
 export default function PropertySidePanel({
@@ -37,7 +37,7 @@ export default function PropertySidePanel({
   property,
   onPropertyUpdated,
   onRefreshAppointments,
-  role, // eslint-disable-line @typescript-eslint/no-unused-vars
+  role,
 }: PropertySidePanelProps) {
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
@@ -452,8 +452,8 @@ export default function PropertySidePanel({
             </div>
           )}
 
-          {/* Homeowner */}
-          {property.homeowner && (
+          {/* Homeowner - Only show for admin/manager */}
+          {role !== "homeowner" && property.homeowner && (
             <div>
               <p className="text-sm text-gray-500 mb-3">Homeowner</p>
               <div className="flex items-start gap-2">

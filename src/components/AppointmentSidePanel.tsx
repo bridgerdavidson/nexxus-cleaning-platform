@@ -37,7 +37,7 @@ interface AppointmentSidePanelProps {
   onStartJob?: (appointmentId: string) => void;
   onCompleteJob?: (appointmentId: string) => void;
   onAppointmentUpdated?: (updatedAppointment: AppointmentCardData) => void;
-  role: "admin" | "manager" | "cleaner";
+  role: "admin" | "manager" | "cleaner" | "homeowner";
   canEdit?: boolean;
   canApproveDecline?: boolean;
 }
@@ -100,7 +100,12 @@ export default function AppointmentSidePanel({
         body: JSON.stringify({ homeowner_id: homeownerId }),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Failed to parse response from server");
+      }
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || "Failed to fetch payment method");

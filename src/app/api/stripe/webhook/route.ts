@@ -18,7 +18,7 @@ export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
-    return new NextResponse('Stripe disabled', { status: 404 });
+    return NextResponse.json({ error: 'Stripe disabled' }, { status: 404 });
   }
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;

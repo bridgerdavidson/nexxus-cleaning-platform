@@ -8,7 +8,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
-    return new NextResponse('Stripe disabled', { status: 404 });
+    return NextResponse.json({ error: 'Stripe disabled' }, { status: 404 });
   }
   try {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {

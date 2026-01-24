@@ -42,7 +42,7 @@ interface AppointmentCardProps {
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
-  role?: "admin" | "manager" | "cleaner";
+  role?: "admin" | "manager" | "cleaner" | "homeowner";
   canApproveDecline?: boolean;
 }
 

@@ -941,7 +941,17 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
           }),
         });
 
-        const result = await response.json();
+        let result;
+        try {
+          result = await response.json();
+        } catch {
+          // Don't fail the status update, just log the payment error
+          return { 
+            success: true, 
+            paymentStatus: 'failed',
+            paymentError: 'Failed to parse payment response'
+          };
+        }
 
         if (!response.ok) {
           // Don't fail the status update, just log the payment error

@@ -35,7 +35,7 @@ interface PropertiesPageProps {
     updatedData: Partial<AdminProperty>
   ) => void;
   onRefreshAppointments?: () => void;
-  role: "admin" | "manager";
+  role: "admin" | "manager" | "homeowner";
 }
 
 export default function PropertiesPage({
@@ -274,7 +274,7 @@ export default function PropertiesPage({
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
         <input
           type="text"
-          placeholder="Search by property name, address, homeowner name, or email..."
+          placeholder="Search by property name or address..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
@@ -288,7 +288,7 @@ export default function PropertiesPage({
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Search by property name, address, homeowner name, or email..."
+            placeholder="Search by property name or address..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
@@ -296,7 +296,7 @@ export default function PropertiesPage({
         </div>
 
         {/* Filter Dropdowns */}
-        {uniqueHomeowners.length > 0 && (
+        {role !== "homeowner" && uniqueHomeowners.length > 0 && (
           <div className="relative flex-shrink-0 min-w-[140px]">
             <select
               value={homeownerFilter}
@@ -454,7 +454,7 @@ export default function PropertiesPage({
             )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProperties.map((property) => (
             <PropertyCard
               key={property.id}
@@ -463,6 +463,10 @@ export default function PropertiesPage({
               isSelectMode={isSelectMode}
               isSelected={selectedIds.has(property.id)}
               onToggleSelect={() => toggleSelection(property.id)}
+              onEdit={() => {
+                setSelectedProperty(property);
+                setShowSidePanel(true);
+              }}
               onDelete={(propertyId) => {
                 const prop = filteredProperties.find(
                   (p) => p.id === propertyId
@@ -473,6 +477,7 @@ export default function PropertiesPage({
                   } as React.MouseEvent);
                 }
               }}
+              role={role}
             />
           ))}
         </div>

@@ -1080,6 +1080,7 @@ export default function CleanerDashboard() {
           onReschedule={async () => {}}
           onLocalReschedule={() => {}}
           canEdit={false}
+          role="cleaner"
         />
       )}
 

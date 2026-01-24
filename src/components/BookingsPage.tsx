@@ -42,7 +42,7 @@ interface BookingsPageProps {
   onRefreshAppointments?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
-  role: "admin" | "manager";
+  role: "admin" | "manager" | "homeowner";
   canEdit?: boolean;
   initialStatusFilter?: string;
   canApproveDecline?: boolean;
@@ -634,13 +634,13 @@ export default function BookingsPage({
             </button>
           </div>
           {/* Add New Appointment Button */}
-          {canEdit && (
+          {(canEdit || role === "homeowner") && (
             <button
               onClick={handleOpenAddAppointmentModal}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
             >
               <Plus className="w-5 h-5" />
-              <span>New</span>
+              <span>{role === "homeowner" ? "Request New Cleaning" : "New"}</span>
             </button>
           )}
         </div>
@@ -990,6 +990,7 @@ export default function BookingsPage({
           onReschedule={handleReschedule}
           onLocalReschedule={handleLocalReschedule}
           canEdit={canEdit}
+          role={role}
         />
       )}
 
