@@ -54,7 +54,7 @@ export default function CleanerDashboard() {
   
   // #region agent log
   useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:50',message:'Dashboard render',data:{hasUser:!!user,loading,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:50',message:'Dashboard render',data:{hasUser:!!user,loading,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
   });
   // #endregion
   
@@ -375,12 +375,12 @@ export default function CleanerDashboard() {
   // Redirect to login if not authenticated
   useEffect(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:366',message:'Dashboard redirect useEffect',data:{hasUser:!!user,loading,willRedirect:!loading && !user},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:366',message:'Dashboard redirect useEffect',data:{hasUser:!!user,loading,willRedirect:!loading && !user},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
     // #endregion
     
     if (!loading && !user) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:368',message:'Dashboard redirecting to login',data:{loading,user},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:368',message:'Dashboard redirecting to login',data:{loading,user},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
       // #endregion
       
       router.push("/login");

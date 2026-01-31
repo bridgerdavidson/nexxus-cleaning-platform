@@ -27,9 +27,9 @@ export function useAuth(): AuthState & AuthActions {
   // #region agent log
   const hookInstanceId = useRef(Math.random().toString(36).substring(7));
   useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook mounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook mounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
     return () => {
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook unmounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook unmounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
     };
   }, []);
   // #endregion
@@ -305,14 +305,14 @@ export function useAuth(): AuthState & AuthActions {
 
   useEffect(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:320',message:'Main useEffect running',data:{instanceId:hookInstanceId.current,hasLoadUserProfile:!!loadUserProfile},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:320',message:'Main useEffect running',data:{instanceId:hookInstanceId.current,hasLoadUserProfile:!!loadUserProfile},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
     // #endregion
     
     let isMounted = true;
   
     const init = async () => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:325',message:'init() called',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:325',message:'init() called',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       
       try {
@@ -331,7 +331,7 @@ export function useAuth(): AuthState & AuthActions {
   
         if (session?.user) {
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:340',message:'init calling loadUserProfile',data:{instanceId:hookInstanceId.current,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+          if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:340',message:'init calling loadUserProfile',data:{instanceId:hookInstanceId.current,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
           // #endregion
           
           // 🔹 We DO await here so the initial "loading" covers profile fetch
@@ -358,7 +358,7 @@ export function useAuth(): AuthState & AuthActions {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:365',message:'onAuthStateChange fired',data:{instanceId:hookInstanceId.current,event,userId:session?.user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:365',message:'onAuthStateChange fired',data:{instanceId:hookInstanceId.current,event,userId:session?.user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       
       if (!isMounted) return;
@@ -408,7 +408,7 @@ export function useAuth(): AuthState & AuthActions {
         }
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:410',message:'onAuthStateChange calling loadUserProfile',data:{instanceId:hookInstanceId.current,event,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:410',message:'onAuthStateChange calling loadUserProfile',data:{instanceId:hookInstanceId.current,event,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
         // #endregion
 
         // 🔹 Auth state changes (sign in / token refresh) update the user,
@@ -503,7 +503,7 @@ export function useAuth(): AuthState & AuthActions {
 
     return () => {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:505',message:'Main useEffect cleanup',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:505',message:'Main useEffect cleanup',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
       // #endregion
       
       isMounted = false;

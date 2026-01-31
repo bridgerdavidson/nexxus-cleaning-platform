@@ -18,14 +18,14 @@ function LoginContent() {
 
   useEffect(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login:19',message:'Login redirect useEffect',data:{hasUser:!!user,loading,userId:user?.id,role:user?.role},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login:19',message:'Login redirect useEffect',data:{hasUser:!!user,loading,userId:user?.id,role:user?.role},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
     // #endregion
     
     // Redirect if already logged in
     if (user) {
       // #region agent log
       const dashboardPath = getDashboardPath(user.role);
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login:23',message:'Login redirecting to dashboard',data:{dashboardPath,userId:user.id,role:user.role},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'login:23',message:'Login redirecting to dashboard',data:{dashboardPath,userId:user.id,role:user.role},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
       // #endregion
       
       router.push(dashboardPath);
