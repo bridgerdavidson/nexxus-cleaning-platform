@@ -124,7 +124,10 @@ export default function ServiceFormModal({
 
       let result;
       if (isEditing && service) {
-        result = await updateService(service.id, data);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ServiceFormModal.tsx:handleSubmit:beforeUpdate', message: 'edit submit', data: { serviceId: service.id, serviceOrgId: service.organization_id, currentOrganizationId: currentOrganizationId ?? null, orgMatch: currentOrganizationId === service.organization_id }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'B' }) }).catch(() => {});
+        // #endregion
+        result = await updateService(service.id, data, currentOrganizationId ?? undefined);
       } else {
         result = await createService(currentOrganizationId, data);
       }

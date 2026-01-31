@@ -107,7 +107,7 @@ export default function ServicesPage({
     }
 
     try {
-      const result = await toggleServiceActive(service.id, newIsActive);
+      const result = await toggleServiceActive(service.id, newIsActive, service.organization_id);
       if (!result.success) {
         // Rollback on failure
         if (updateServiceInState) {
@@ -179,7 +179,7 @@ export default function ServicesPage({
     );
 
     try {
-      const result = await toggleServiceActive(service.id, newIsActive);
+      const result = await toggleServiceActive(service.id, newIsActive, service.organization_id);
       if (!result.success) {
         // Rollback on failure
         if (updateServiceInState) {
