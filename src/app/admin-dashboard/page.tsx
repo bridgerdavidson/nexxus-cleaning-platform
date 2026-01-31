@@ -28,6 +28,7 @@ import {
   Clock,
   Mail,
   FileText,
+  Briefcase,
 } from "lucide-react";
 import {
   useAdminAppointments,
@@ -45,6 +46,7 @@ import {
   cancelAppointment,
   deleteAppointment,
 } from "../../hooks/useAdminData";
+import { useServices } from "../../hooks/useServices";
 import { useConversations } from "../../hooks/useConversations";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
@@ -61,6 +63,7 @@ import PaymentsPage from "../../components/PaymentsPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
+import ServicesPage from "../../components/ServicesPage";
 
 export default function AdminDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -151,6 +154,13 @@ export default function AdminDashboard() {
     refetch: refetchTeamMembers,
     updateTeamMemberInState,
   } = useAdminTeamMembers();
+  const {
+    services,
+    loading: servicesLoading,
+    error: servicesError,
+    refetch: refetchServices,
+    updateServiceInState,
+  } = useServices();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -186,6 +196,7 @@ export default function AdminDashboard() {
             hasNotification: hasUnreadMessages,
           },
           { id: "customers", label: "Customers", icon: Users },
+          { id: "services", label: "Services", icon: Briefcase },
         ],
       },
       accounts: {
@@ -1460,6 +1471,17 @@ export default function AdminDashboard() {
             onMemberUpdated={updateTeamMemberInState}
           />
         );
+      case "services":
+        return (
+          <ServicesPage
+            services={services}
+            loading={servicesLoading}
+            error={servicesError}
+            refetch={refetchServices}
+            canManageServices={true}
+            updateServiceInState={updateServiceInState}
+          />
+        );
       case "settings":
         return renderPlaceholder(
           "Settings",
@@ -1517,7 +1539,7 @@ export default function AdminDashboard() {
 
       {/* Mobile Bottom Navigation - Show first 4 tabs */}
       <MobileNavigation
-        tabs={navigationGroups.operations.tabs}
+        tabs={navigationGroups.operations.tabs.filter((tab) => tab.id !== "services")}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}

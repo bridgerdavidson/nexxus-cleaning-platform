@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
       can_view_payments,
       can_manage_payments,
       can_view_messages,
+      can_view_services,
+      can_manage_services,
     } = body;
 
     // Validate inputs
@@ -64,6 +66,8 @@ export async function POST(request: NextRequest) {
           can_view_payments: can_view_payments || false,
           can_manage_payments: can_manage_payments || false,
           can_view_messages: can_view_messages || false,
+          can_view_services: can_view_services || false,
+          can_manage_services: can_manage_services || false,
           updated_at: new Date().toISOString(),
         },
         {

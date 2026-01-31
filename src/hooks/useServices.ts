@@ -1,0 +1,371 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './useAuth';
+import { useRealtimeServices } from './useRealtimeServices';
+
+export interface ServiceType {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  base_price: number;
+  duration_minutes: number;
+  service_type: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateServiceData {
+  name: string;
+  description?: string | null;
+  base_price: number;
+  duration_minutes: number;
+  service_type: string;
+  is_active?: boolean;
+}
+
+export interface UpdateServiceData {
+  name?: string;
+  description?: string | null;
+  base_price?: number;
+  duration_minutes?: number;
+  service_type?: string;
+  is_active?: boolean;
+}
+
+export function useServices() {
+  const [services, setServices] = useState<ServiceType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchServices = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId) {
+      setServices([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('service_types')
+        .select('*')
+        .eq('organization_id', currentOrganizationId)
+        .order('name', { ascending: true });
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      setServices(data || []);
+    } catch (err) {
+      console.error('Error fetching services:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch services');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId]);
+
+  // Realtime callback: Handle new service INSERT (receives full row from realtime payload)
+  const handleServiceInsert = useCallback((service: ServiceType) => {
+    // Add to state, maintaining alphabetical order by name
+    setServices((prev) => {
+      // Check if already exists to avoid duplicates
+      if (prev.some((s) => s.id === service.id)) {
+        return prev;
+      }
+      const updated = [...prev, service];
+      return updated.sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }, []);
+
+  // Realtime callback: Handle service UPDATE (receives full row from realtime payload)
+  const handleServiceUpdate = useCallback((service: ServiceType) => {
+    setServices((prev) => {
+      const updated = prev.map((s) =>
+        s.id === service.id ? service : s
+      );
+      // Re-sort in case name changed
+      return updated.sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }, []);
+
+  // Realtime callback: Handle service DELETE
+  const handleServiceDelete = useCallback((serviceId: string) => {
+    setServices((prev) => prev.filter((s) => s.id !== serviceId));
+  }, []);
+
+  // Set up realtime subscription
+  useRealtimeServices({
+    organizationId: currentOrganizationId || '',
+    onInsert: handleServiceInsert,
+    onUpdate: handleServiceUpdate,
+    onDelete: handleServiceDelete,
+    enabled: !!currentOrganizationId,
+  });
+
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
+
+  const refetch = useCallback(() => {
+    fetchServices();
+  }, [fetchServices]);
+
+  // Update a single service in state (merge partial fields)
+  const updateServiceInState = useCallback(
+    (serviceId: string, patch: Partial<ServiceType>) => {
+      setServices((prev) => {
+        const updated = prev.map((s) =>
+          s.id === serviceId ? { ...s, ...patch } : s
+        );
+        // Re-sort if name changed
+        if (patch.name !== undefined) {
+          return updated.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        return updated;
+      });
+    },
+    []
+  );
+
+  // Replace a single service in state (full replacement)
+  const replaceServiceInState = useCallback((service: ServiceType) => {
+    setServices((prev) => {
+      const updated = prev.map((s) => (s.id === service.id ? service : s));
+      return updated.sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }, []);
+
+  return {
+    services,
+    loading,
+    error,
+    refetch,
+    setServices,
+    updateServiceInState,
+    replaceServiceInState,
+  };
+}
+
+export function useService(serviceId: string | null) {
+  const [service, setService] = useState<ServiceType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { user, currentOrganizationId } = useAuth();
+
+  const fetchService = useCallback(async () => {
+    if (!user?.id || !currentOrganizationId || !serviceId) {
+      setService(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('service_types')
+        .select('*')
+        .eq('id', serviceId)
+        .eq('organization_id', currentOrganizationId)
+        .single();
+
+      if (fetchError) {
+        throw fetchError;
+      }
+
+      setService(data);
+    } catch (err) {
+      console.error('Error fetching service:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch service');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, currentOrganizationId, serviceId]);
+
+  useEffect(() => {
+    fetchService();
+  }, [fetchService]);
+
+  return { service, loading, error, refetch: fetchService };
+}
+
+// Create a new service
+export async function createService(
+  organizationId: string,
+  data: CreateServiceData
+): Promise<{ success: boolean; data?: ServiceType; error?: string }> {
+  try {
+    const { data: newService, error } = await supabase
+      .from('service_types')
+      .insert({
+        organization_id: organizationId,
+        name: data.name,
+        description: data.description || null,
+        base_price: data.base_price,
+        duration_minutes: data.duration_minutes,
+        service_type: data.service_type,
+        is_active: data.is_active ?? true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return { success: true, data: newService };
+  } catch (err) {
+    console.error('Error creating service:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to create service',
+    };
+  }
+}
+
+// Update an existing service
+export async function updateService(
+  serviceId: string,
+  data: UpdateServiceData
+): Promise<{ success: boolean; data?: ServiceType; error?: string }> {
+  try {
+    const { data: updatedService, error } = await supabase
+      .from('service_types')
+      .update({
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.base_price !== undefined && { base_price: data.base_price }),
+        ...(data.duration_minutes !== undefined && { duration_minutes: data.duration_minutes }),
+        ...(data.service_type !== undefined && { service_type: data.service_type }),
+        ...(data.is_active !== undefined && { is_active: data.is_active }),
+      })
+      .eq('id', serviceId)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return { success: true, data: updatedService };
+  } catch (err) {
+    console.error('Error updating service:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to update service',
+    };
+  }
+}
+
+// Delete a service
+export async function deleteService(
+  serviceId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // First check if service is used in any appointments
+    const { data: appointments, error: checkError } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('service_type_id', serviceId)
+      .limit(1);
+
+    if (checkError) {
+      throw checkError;
+    }
+
+    if (appointments && appointments.length > 0) {
+      return {
+        success: false,
+        error: 'Cannot delete service that is used in existing appointments. Consider disabling it instead.',
+      };
+    }
+
+    // Also check recurring appointment series
+    const { data: series, error: seriesCheckError } = await supabase
+      .from('recurring_appointment_series')
+      .select('id')
+      .eq('service_type_id', serviceId)
+      .limit(1);
+
+    if (seriesCheckError) {
+      throw seriesCheckError;
+    }
+
+    if (series && series.length > 0) {
+      return {
+        success: false,
+        error: 'Cannot delete service that is used in recurring appointment series. Consider disabling it instead.',
+      };
+    }
+
+    const { error } = await supabase
+      .from('service_types')
+      .delete()
+      .eq('id', serviceId);
+
+    if (error) {
+      throw error;
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('Error deleting service:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to delete service',
+    };
+  }
+}
+
+// Toggle service active status
+export async function toggleServiceActive(
+  serviceId: string,
+  isActive: boolean
+): Promise<{ success: boolean; data?: ServiceType; error?: string }> {
+  return updateService(serviceId, { is_active: isActive });
+}
+
+// Check if a service can be deleted (not used in appointments)
+export async function canDeleteService(
+  serviceId: string
+): Promise<{ canDelete: boolean; appointmentCount: number; seriesCount: number }> {
+  try {
+    // Check appointments
+    const { count: appointmentCount, error: appointmentError } = await supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('service_type_id', serviceId);
+
+    if (appointmentError) {
+      throw appointmentError;
+    }
+
+    // Check recurring series
+    const { count: seriesCount, error: seriesError } = await supabase
+      .from('recurring_appointment_series')
+      .select('id', { count: 'exact', head: true })
+      .eq('service_type_id', serviceId);
+
+    if (seriesError) {
+      throw seriesError;
+    }
+
+    return {
+      canDelete: (appointmentCount ?? 0) === 0 && (seriesCount ?? 0) === 0,
+      appointmentCount: appointmentCount ?? 0,
+      seriesCount: seriesCount ?? 0,
+    };
+  } catch (err) {
+    console.error('Error checking if service can be deleted:', err);
+    return { canDelete: false, appointmentCount: -1, seriesCount: -1 };
+  }
+}

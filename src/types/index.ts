@@ -7,7 +7,8 @@
 export type UserRole = 'homeowner' | 'cleaner' | 'admin' | 'manager';
 export type OrgRole = 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
-export type ServiceType = 'regular' | 'deep' | 'move_out' | 'custom';
+// ServiceType is now a string to allow custom service types (no longer an enum)
+// Common values: 'regular', 'deep', 'move_out', 'custom' but users can add their own
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 export type PaymentType = 'revenue' | 'expense' | 'refund';
 export type PaymentMethod = 'card' | 'ach' | 'manual';
@@ -85,14 +86,15 @@ export interface Property {
 // SERVICE TYPES
 export interface ServiceTypeRecord {
   id: string;
-  organization_id: string | null;
+  organization_id: string; // Required - NOT nullable
   name: string;
   description: string | null;
   base_price: number; // numeric(10,2)
   duration_minutes: number; // NOT estimated_duration!
-  service_type: ServiceType;
+  service_type: string; // Now a free-form string, not an enum
   is_active: boolean; // default true
   created_at: string;
+  updated_at: string;
 }
 
 // APPOINTMENTS

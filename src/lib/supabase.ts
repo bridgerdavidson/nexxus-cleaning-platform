@@ -150,34 +150,37 @@ export type Database = {
       service_types: {
         Row: {
           id: string
-          organization_id: string | null
+          organization_id: string
           name: string
           description: string | null
           base_price: number
-          price_per_sqft: number | null
-          duration_hours: number
+          duration_minutes: number
+          service_type: string
+          is_active: boolean
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
-          organization_id?: string | null
+          organization_id: string
           name: string
           description?: string | null
           base_price: number
-          price_per_sqft?: number | null
-          duration_hours: number
+          duration_minutes: number
+          service_type: string
+          is_active?: boolean
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
-          organization_id?: string | null
+          organization_id?: string
           name?: string
           description?: string | null
           base_price?: number
-          price_per_sqft?: number | null
-          duration_hours?: number
+          duration_minutes?: number
+          service_type?: string
+          is_active?: boolean
           created_at?: string
           updated_at?: string
         }

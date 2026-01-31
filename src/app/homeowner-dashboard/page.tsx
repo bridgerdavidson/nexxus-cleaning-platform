@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Star,
   Loader2,
+  Briefcase,
 } from "lucide-react";
 import {
   useHomeownerAppointments,
@@ -24,6 +25,7 @@ import {
   useHomeownerPayments,
 } from "../../hooks/useHomeownerData";
 import { useConversations } from "../../hooks/useConversations";
+import { useServices } from "../../hooks/useServices";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -32,6 +34,8 @@ import AddAppointmentModal from "../../components/AddAppointmentModal";
 import BookingsPage from "../../components/BookingsPage";
 import StatusBadge from "../../components/StatusBadge";
 import PropertiesPage from "../../components/PropertiesPage";
+import ServicesPage from "../../components/ServicesPage";
+
 export default function HomeownerDashboard() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
@@ -74,6 +78,13 @@ export default function HomeownerDashboard() {
     refetch: refetchConversations,
     updateUnreadCount,
   } = useConversations({ userId: user?.id || "" });
+  const {
+    services,
+    loading: servicesLoading,
+    error: servicesError,
+    refetch: refetchServices,
+    updateServiceInState,
+  } = useServices();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -204,6 +215,7 @@ export default function HomeownerDashboard() {
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
+    { id: "services", label: "Services", icon: Briefcase },
     { id: "properties", label: "Properties", icon: Building },
     { id: "payments", label: "Payments", icon: CreditCard },
   ];
@@ -608,6 +620,17 @@ export default function HomeownerDashboard() {
         return renderPayments();
       case "properties":
         return renderProperties();
+      case "services":
+        return (
+          <ServicesPage
+            services={services}
+            loading={servicesLoading}
+            error={servicesError}
+            refetch={refetchServices}
+            canManageServices={false}
+            updateServiceInState={updateServiceInState}
+          />
+        );
       default:
         return renderOverview();
     }

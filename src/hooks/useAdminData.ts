@@ -1772,6 +1772,8 @@ export interface ManagerPermissions {
   can_view_payments: boolean;
   can_manage_payments: boolean;
   can_view_messages: boolean;
+  can_view_services: boolean;
+  can_manage_services: boolean;
 }
 
 export function useAdminTeamMembers() {

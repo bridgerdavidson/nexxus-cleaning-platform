@@ -28,6 +28,7 @@ import {
   ChevronUp,
   Mail,
   FileText,
+  Briefcase,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -39,6 +40,7 @@ import {
   updateAppointmentStatus,
 } from "../../hooks/useManagerData";
 import { useAdminCustomers, useAdminStats } from "../../hooks/useAdminData";
+import { useServices } from "../../hooks/useServices";
 import { useConversations } from "../../hooks/useConversations";
 import { useManagerPermissions } from "../../hooks/useManagerPermissions";
 import TopBar from "../../components/TopBar";
@@ -53,6 +55,7 @@ import CustomersPage from "../../components/CustomersPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
+import ServicesPage from "../../components/ServicesPage";
 
 export default function ManagerDashboard() {
   const { user, loading, signOut } = useAuth();
@@ -118,6 +121,13 @@ export default function ManagerDashboard() {
   } = useConversations({ userId: user?.id || "" });
   const { permissions, loading: permissionsLoading } = useManagerPermissions();
   const { stats, loading: statsLoading } = useAdminStats();
+  const {
+    services,
+    loading: servicesLoading,
+    error: servicesError,
+    refetch: refetchServices,
+    updateServiceInState,
+  } = useServices();
 
   // Calculate number of visible stats cards for dynamic grid - MUST be a hook and defined before early returns
   const visibleStatsCardsCount = useMemo(() => {
@@ -220,6 +230,11 @@ export default function ManagerDashboard() {
     // Add customers to opsTabs for mobile navigation
     if (permissions.can_view_customers === true) {
       opsTabs.push({ id: "customers", label: "Customers", icon: Users });
+    }
+
+    // Add services if permitted
+    if (permissions.can_view_services === true) {
+      opsTabs.push({ id: "services", label: "Services", icon: Briefcase });
     }
 
     const accountsTabs = [];
@@ -1790,6 +1805,20 @@ export default function ManagerDashboard() {
           "Property Management",
           "Manage properties and access details."
         );
+      case "services":
+        if (!permissions?.can_view_services) {
+          return renderAccessDenied("services");
+        }
+        return (
+          <ServicesPage
+            services={services}
+            loading={servicesLoading}
+            error={servicesError}
+            refetch={refetchServices}
+            canManageServices={permissions?.can_manage_services || false}
+            updateServiceInState={updateServiceInState}
+          />
+        );
       case "settings":
         return renderPlaceholder(
           "Settings",
@@ -1847,7 +1876,7 @@ export default function ManagerDashboard() {
 
       {/* Mobile Bottom Navigation - Show first 4 tabs */}
       <MobileNavigation
-        tabs={navigationGroups.operations.tabs}
+        tabs={navigationGroups.operations.tabs.filter((tab) => tab.id !== "services")}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}

@@ -20,6 +20,7 @@ import {
   CalendarDays,
   ChevronDown,
   History,
+  Briefcase,
 } from "lucide-react";
 import {
   useCleanerAppointments,
@@ -31,6 +32,7 @@ import {
   uploadJobPhoto,
 } from "../../hooks/useCleanerData";
 import { useConversations } from "../../hooks/useConversations";
+import { useServices } from "../../hooks/useServices";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -42,6 +44,7 @@ import AppointmentSidePanel from "../../components/AppointmentSidePanel";
 import CalendarView from "../../components/CalendarView";
 import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
+import ServicesPage from "../../components/ServicesPage";
 import { format } from "date-fns";
 
 type ViewType = "list" | "calendar";
@@ -104,6 +107,13 @@ export default function CleanerDashboard() {
     loading: photosLoading,
     error: photosError,
   } = useCleanerPhotos();
+  const {
+    services,
+    loading: servicesLoading,
+    error: servicesError,
+    refetch: refetchServices,
+    updateServiceInState,
+  } = useServices();
 
   // Calculate if there are any unread messages
   const hasUnreadMessages = useMemo(() => {
@@ -507,14 +517,28 @@ export default function CleanerDashboard() {
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
+    { id: "services", label: "Services", icon: Briefcase },
     { id: "earnings", label: "Earnings", icon: DollarSign },
     { id: "photos", label: "Photos", icon: Camera },
   ];
 
-  // Filter tabs for top navigation (exclude earnings and photos)
+  // Filter tabs for top navigation (exclude earnings and photos - those are in mobile sidebar)
   const topNavTabs = tabs.filter(
     (tab) => tab.id !== "earnings" && tab.id !== "photos"
   );
+
+  // Mobile navigation tabs (services is included since cleaner needs it in mobile nav)
+  const mobileNavTabs = [
+    { id: "home", label: "Overview", icon: Home },
+    { id: "jobs", label: "Jobs", icon: MapPin },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageCircle,
+      hasNotification: hasUnreadMessages,
+    },
+    { id: "services", label: "Services", icon: Briefcase },
+  ];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1308,6 +1332,17 @@ export default function CleanerDashboard() {
         return renderEarnings();
       case "photos":
         return renderPhotos();
+      case "services":
+        return (
+          <ServicesPage
+            services={services}
+            loading={servicesLoading}
+            error={servicesError}
+            refetch={refetchServices}
+            canManageServices={false}
+            updateServiceInState={updateServiceInState}
+          />
+        );
       default:
         return renderSchedule();
     }

@@ -66,10 +66,10 @@ const Navbar: React.FC = () => {
 
   return (
     <nav className="bg-white shadow-lg fixed top-0 left-0 right-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+      <div className="w-full">
+        <div className="relative flex justify-between items-center h-16">
           {/* Logo */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 pl-4 sm:pl-6 lg:pl-8">
             <Link href="/" className="flex items-center">
               <div className="text-2xl font-bold text-primary-600">Nexxus</div>
               <div className="ml-2 text-sm text-gray-600 font-medium">
@@ -79,8 +79,8 @@ const Navbar: React.FC = () => {
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-8">
+          <div className="hidden md:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="flex items-baseline justify-center space-x-8">
               <Link href="/" className="nav-link">
                 Home
               </Link>
@@ -97,7 +97,7 @@ const Navbar: React.FC = () => {
           </div>
 
           {/* Auth Section */}
-          <div className="hidden md:block">
+          <div className="hidden md:block flex-shrink-0 pr-4 sm:pr-6 lg:pr-8">
             {user ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -158,7 +158,7 @@ const Navbar: React.FC = () => {
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden">
+          <div className="md:hidden pr-4 sm:pr-6 lg:pr-8">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="text-gray-700 hover:text-primary-600 transition-colors duration-200"

@@ -23,7 +23,7 @@ export function useManagerPermissions() {
       console.log('Fetching permissions for manager:', user.id, 'org:', currentOrganizationId);
       const { data, error: fetchError } = await supabase
         .from('manager_permissions')
-        .select('can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages')
+        .select('can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages, can_view_services, can_manage_services')
         .eq('manager_id', user.id)
         .eq('organization_id', currentOrganizationId)
         .single();
@@ -47,6 +47,8 @@ export function useManagerPermissions() {
             can_view_payments: false,
             can_manage_payments: false,
             can_view_messages: false,
+            can_view_services: false,
+            can_manage_services: false,
           });
         } else {
           console.error('Error fetching manager permissions:', fetchError);
@@ -68,6 +70,8 @@ export function useManagerPermissions() {
           can_view_payments: Boolean(data.can_view_payments),
           can_manage_payments: Boolean(data.can_manage_payments),
           can_view_messages: Boolean(data.can_view_messages),
+          can_view_services: Boolean(data.can_view_services),
+          can_manage_services: Boolean(data.can_manage_services),
         });
         console.log('Manager permissions after conversion:', {
           can_view_customers: Boolean(data.can_view_customers),
@@ -82,6 +86,8 @@ export function useManagerPermissions() {
           can_view_payments: Boolean(data.can_view_payments),
           can_manage_payments: Boolean(data.can_manage_payments),
           can_view_messages: Boolean(data.can_view_messages),
+          can_view_services: Boolean(data.can_view_services),
+          can_manage_services: Boolean(data.can_manage_services),
         });
       }
     } catch (err) {
@@ -92,6 +98,7 @@ export function useManagerPermissions() {
         can_edit_customers: false,
         can_view_bookings: false,
         can_edit_bookings: false,
+        can_approve_decline_bookings: false,
         can_manage_cleaners: false,
         can_view_properties: false,
         can_edit_properties: false,
@@ -99,6 +106,8 @@ export function useManagerPermissions() {
         can_view_payments: false,
         can_manage_payments: false,
         can_view_messages: false,
+        can_view_services: false,
+        can_manage_services: false,
       });
     } finally {
       setLoading(false);
