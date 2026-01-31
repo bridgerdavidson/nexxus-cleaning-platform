@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Loader2, AlertCircle } from "lucide-react";
+import { X, Loader2, AlertCircle, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import {
   ServiceType,
   CreateServiceData,
@@ -10,6 +10,18 @@ import {
 } from "../hooks/useServices";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { supabase } from "../lib/supabase";
+
+export const SERVICE_UPDATE_PERMISSION_ERROR =
+  "Service not found or you don't have permission to update it.";
+
+export type ServiceUpdateDiagnostic = {
+  userId: string | null;
+  memberships: Array<{ organization_id: string; role: string }>;
+  serviceRow: { id: string; organization_id: string } | null;
+  selectError: string | null;
+  currentOrganizationId: string | null;
+};
 
 interface ServiceFormModalProps {
   isOpen: boolean;
@@ -53,6 +65,8 @@ export default function ServiceFormModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [diagnostic, setDiagnostic] = useState<ServiceUpdateDiagnostic | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Reset form when modal opens/closes or service changes
   useEffect(() => {
@@ -73,8 +87,41 @@ export default function ServiceFormModal({
         setIsActive(true);
       }
       setError(null);
+      setDiagnostic(null);
+      setShowDebug(false);
     }
   }, [isOpen, service]);
+
+  async function runServiceUpdateDiagnostic(
+    serviceId: string,
+    currentOrgId: string | null
+  ): Promise<ServiceUpdateDiagnostic> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
+
+    let memberships: Array<{ organization_id: string; role: string }> = [];
+    if (userId) {
+      const { data: rows } = await supabase
+        .from("organization_members")
+        .select("organization_id, role")
+        .eq("user_id", userId);
+      memberships = rows ?? [];
+    }
+
+    const { data: serviceRow, error: selectError } = await supabase
+      .from("service_types")
+      .select("id, organization_id")
+      .eq("id", serviceId)
+      .maybeSingle();
+
+    return {
+      userId,
+      memberships,
+      serviceRow: serviceRow ?? null,
+      selectError: selectError?.message ?? null,
+      currentOrganizationId: currentOrgId,
+    };
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,9 +171,6 @@ export default function ServiceFormModal({
 
       let result;
       if (isEditing && service) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'ServiceFormModal.tsx:handleSubmit:beforeUpdate', message: 'edit submit', data: { serviceId: service.id, serviceOrgId: service.organization_id, currentOrganizationId: currentOrganizationId ?? null, orgMatch: currentOrganizationId === service.organization_id }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'B' }) }).catch(() => {});
-        // #endregion
         result = await updateService(service.id, data, currentOrganizationId ?? undefined);
       } else {
         result = await createService(currentOrganizationId, data);
@@ -136,7 +180,18 @@ export default function ServiceFormModal({
         onSuccess();
         onClose();
       } else {
-        setError(result.error || "Failed to save service");
+        const errMsg = result.error || "Failed to save service";
+        setError(errMsg);
+        if (
+          isEditing &&
+          service &&
+          (errMsg === SERVICE_UPDATE_PERMISSION_ERROR || errMsg.includes("permission"))
+        ) {
+          setDiagnostic(null);
+          runServiceUpdateDiagnostic(service.id, currentOrganizationId ?? null).then(
+            setDiagnostic
+          );
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save service");
@@ -186,9 +241,85 @@ export default function ServiceFormModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Error message */}
           {error && (
-            <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="space-y-2">
+              <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+              {diagnostic && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowDebug((d) => !d)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100"
+                  >
+                    Debug: why did this fail?
+                    {showDebug ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </button>
+                  {showDebug && (
+                    <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3 text-sm">
+                      <p className="text-gray-600">
+                        RLS allows update only if you have role owner/admin/manager in the
+                        service&apos;s organization. Run the SQL in{" "}
+                        <code className="bg-gray-200 px-1 rounded">docs/debug-service-update-rls.sql</code>{" "}
+                        in Supabase SQL Editor with the IDs below to verify.
+                      </p>
+                      <pre className="p-3 bg-white border border-gray-200 rounded overflow-x-auto text-xs text-gray-800 whitespace-pre-wrap">
+                        {JSON.stringify(diagnostic, null, 2)}
+                      </pre>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="font-medium text-gray-700">Checks:</span>
+                        {!diagnostic.userId && (
+                          <span className="text-amber-700">No user session (auth.uid() is null)</span>
+                        )}
+                        {diagnostic.userId && diagnostic.memberships.length === 0 && (
+                          <span className="text-amber-700">No organization_members rows for this user</span>
+                        )}
+                        {diagnostic.serviceRow === null && (
+                          <span className="text-amber-700">Cannot read service row (SELECT blocked by RLS?)</span>
+                        )}
+                        {diagnostic.serviceRow && diagnostic.currentOrganizationId && diagnostic.serviceRow.organization_id !== diagnostic.currentOrganizationId && (
+                          <span className="text-amber-700">Service org_id does not match current org</span>
+                        )}
+                        {diagnostic.serviceRow &&
+                          diagnostic.memberships.length > 0 &&
+                          !diagnostic.memberships.some(
+                            (m) =>
+                              m.organization_id === diagnostic.serviceRow?.organization_id &&
+                              ["owner", "admin", "manager"].includes(m.role)
+                          ) && (
+                            <span className="text-amber-700">
+                              No membership with role owner/admin/manager for service&apos;s org (role is case-sensitive)
+                            </span>
+                          )}
+                        {diagnostic.serviceRow &&
+                          diagnostic.memberships.some(
+                            (m) =>
+                              m.organization_id === diagnostic.serviceRow?.organization_id &&
+                              ["owner", "admin", "manager"].includes(m.role)
+                          ) && (
+                            <span className="text-green-700">Membership looks OK — check auth.uid() in Supabase or run SQL script</span>
+                          )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = JSON.stringify(diagnostic, null, 2);
+                          void navigator.clipboard.writeText(text);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        Copy debug info
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

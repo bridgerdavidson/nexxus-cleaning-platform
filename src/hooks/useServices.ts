@@ -240,16 +240,7 @@ export async function updateService(
   data: UpdateServiceData,
   organizationId?: string
 ): Promise<{ success: boolean; data?: ServiceType; error?: string }> {
-  // #region agent log
-  const payloadKeys = Object.keys(data).filter((k) => data[k as keyof UpdateServiceData] !== undefined);
-  fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'useServices.ts:updateService:entry', message: 'updateService called', data: { serviceId, payloadKeys, organizationId: organizationId ?? null }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A,B,E' }) }).catch(() => {});
-  // #endregion
   try {
-    // #region agent log
-    const { data: preRow, error: preError } = await supabase.from('service_types').select('id, organization_id').eq('id', serviceId).maybeSingle();
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'useServices.ts:updateService:preSelect', message: 'SELECT before update', data: { serviceId, canSelect: !preError && !!preRow, preErrorCode: preError?.code ?? null, orgId: preRow?.organization_id ?? null }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'B,C,D' }) }).catch(() => {});
-    // #endregion
-
     const updatePayload = {
       ...(data.name !== undefined && { name: data.name }),
       ...(data.description !== undefined && { description: data.description }),
@@ -268,11 +259,15 @@ export async function updateService(
     }
     const { data: updatedService, error } = await query.select().maybeSingle();
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'useServices.ts:updateService:result', message: 'update result', data: { serviceId, errorCode: error?.code ?? null, errorMessage: error?.message ?? null, hasData: !!updatedService, payloadKeyCount: Object.keys(updatePayload).length }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A,B,D' }) }).catch(() => {});
-    // #endregion
-
     if (error) {
+      // PGRST116 = 0 rows; show same friendly message as null result
+      const code = (error as { code?: string })?.code;
+      if (code === 'PGRST116') {
+        return {
+          success: false,
+          error: 'Service not found or you don\'t have permission to update it.',
+        };
+      }
       throw error;
     }
 
@@ -285,6 +280,13 @@ export async function updateService(
 
     return { success: true, data: updatedService };
   } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === 'PGRST116') {
+      return {
+        success: false,
+        error: 'Service not found or you don\'t have permission to update it.',
+      };
+    }
     console.error('Error updating service:', err);
     return {
       success: false,
