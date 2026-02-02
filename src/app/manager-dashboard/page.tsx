@@ -162,6 +162,8 @@ export default function ManagerDashboard() {
           return permissions.can_view_payments || false;
         case "analytics":
           return permissions.can_view_analytics || false;
+        case "services":
+          return permissions.can_view_services || false;
         default:
           return false;
       }

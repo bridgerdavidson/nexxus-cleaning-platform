@@ -206,7 +206,8 @@ export default function HomeownerDashboard() {
     return "Address not available";
   };
 
-  const tabs = [
+  // Main nav tabs (header + mobile bottom bar) — Payments is in side panel only
+  const headerTabs = [
     { id: "home", label: "Overview", icon: Home },
     { id: "bookings", label: "My Bookings", icon: Calendar },
     {
@@ -217,6 +218,11 @@ export default function HomeownerDashboard() {
     },
     { id: "services", label: "Services", icon: Briefcase },
     { id: "properties", label: "Properties", icon: Building },
+  ];
+
+  // Full tabs for side panel only (includes Payments)
+  const sidebarTabs = [
+    ...headerTabs,
     { id: "payments", label: "Payments", icon: CreditCard },
   ];
 
@@ -642,7 +648,8 @@ export default function HomeownerDashboard() {
       <div className="hidden md:block">
       <DashboardHeader
         role="homeowner"
-        tabs={tabs}
+        tabs={headerTabs}
+        sidebarTabs={sidebarTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
       />
@@ -653,7 +660,7 @@ export default function HomeownerDashboard() {
         } pt-4 md:pt-16`}
       >
         <div
-          className={`max-w-screen-2xl mx-auto ${
+          className={`${
             activeTab === "messages"
               ? "px-0 md:px-4 md:sm:px-6 md:lg:px-8"
               : "px-4 sm:px-6 lg:px-8"
@@ -666,7 +673,7 @@ export default function HomeownerDashboard() {
         </div>
       </div>
       <MobileNavigation
-        tabs={tabs}
+        tabs={headerTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
         onMenuClick={() => setIsSidebarOpen(true)}
@@ -675,6 +682,9 @@ export default function HomeownerDashboard() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="homeowner"
+        tabs={sidebarTabs}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
       />
       <AddAppointmentModal
         isOpen={showAddAppointmentModal}

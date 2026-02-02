@@ -1827,7 +1827,7 @@ export function useAdminTeamMembers() {
       // Get manager permissions
       const { data: managerPermissions, error: permissionsError } = await supabase
         .from('manager_permissions')
-        .select('manager_id, can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages')
+        .select('manager_id, can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages, can_view_services, can_manage_services')
         .in('manager_id', managerIds)
         .eq('organization_id', currentOrganizationId);
 
@@ -1871,6 +1871,8 @@ export function useAdminTeamMembers() {
             can_view_payments: permissions.can_view_payments || false,
             can_manage_payments: permissions.can_manage_payments || false,
             can_view_messages: permissions.can_view_messages || false,
+            can_view_services: permissions.can_view_services || false,
+            can_manage_services: permissions.can_manage_services || false,
           } : null,
         };
       });

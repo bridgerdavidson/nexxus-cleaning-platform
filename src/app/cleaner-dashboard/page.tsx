@@ -1366,7 +1366,7 @@ export default function CleanerDashboard() {
         } pt-4 md:pt-16`}
       >
         <div
-          className={`max-w-7xl mx-auto ${
+          className={`${
             activeTab === "messages"
               ? "px-0 md:px-4 md:sm:px-6 md:lg:px-8"
               : "px-4 sm:px-6 lg:px-8"

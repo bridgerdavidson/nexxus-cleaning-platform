@@ -41,6 +41,8 @@ export default function ManagerPermissionsModal({
     can_view_payments: false,
     can_manage_payments: false,
     can_view_messages: false,
+    can_view_services: false,
+    can_manage_services: false,
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -64,6 +66,8 @@ export default function ManagerPermissionsModal({
         can_view_payments: manager.permissions.can_view_payments ?? false,
         can_manage_payments: manager.permissions.can_manage_payments ?? false,
         can_view_messages: manager.permissions.can_view_messages ?? false,
+        can_view_services: manager.permissions.can_view_services ?? false,
+        can_manage_services: manager.permissions.can_manage_services ?? false,
       });
       setHasChanges(false);
       setError("");
@@ -223,6 +227,21 @@ export default function ManagerPermissionsModal({
           key: "can_view_messages" as keyof ManagerPermissions,
           label: "View Messages",
           description: "View and access messaging system",
+        },
+      ],
+    },
+    {
+      title: "Services",
+      permissions: [
+        {
+          key: "can_view_services" as keyof ManagerPermissions,
+          label: "View Services",
+          description: "View service types and offerings",
+        },
+        {
+          key: "can_manage_services" as keyof ManagerPermissions,
+          label: "Manage Services",
+          description: "Create, edit, and delete service types",
         },
       ],
     },
