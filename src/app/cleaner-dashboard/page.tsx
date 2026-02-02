@@ -171,6 +171,25 @@ export default function CleanerDashboard() {
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   }, [appointments, searchQuery, statusFilter]);
 
+  // Active jobs (in_progress) - shown in dedicated section when any exist
+  const activeJobs = useMemo(
+    () =>
+      appointments
+        .filter((apt) => apt.status === "in_progress")
+        .sort((a, b) => {
+          const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+          if (dateCompare !== 0) return dateCompare;
+          return a.scheduled_time.localeCompare(b.scheduled_time);
+        }),
+    [appointments]
+  );
+
+  // Today's jobs excluding in_progress (so they only appear in Active Jobs section)
+  const filteredTodaysJobsDisplay = useMemo(
+    () => filteredTodaysJobs.filter((apt) => apt.status !== "in_progress"),
+    [filteredTodaysJobs]
+  );
+
   // Get filtered upcoming jobs within time frame (includes today)
   const filteredUpcomingJobs = useMemo(() => {
     const now = new Date();
@@ -438,7 +457,7 @@ export default function CleanerDashboard() {
   };
 
   const getTodaysJobs = () => {
-    // Get today's date in local timezone (NOT UTC)
+    // Get today's date in local timezone (NOT UTC). Exclude in_progress so they show in Active Jobs.
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -448,7 +467,7 @@ export default function CleanerDashboard() {
     return appointments.filter(
       (appointment) =>
         appointment.scheduled_date === today &&
-        ["pending", "confirmed", "in_progress"].includes(appointment.status)
+        ["pending", "confirmed"].includes(appointment.status)
     );
   };
 
@@ -701,6 +720,67 @@ export default function CleanerDashboard() {
         </div>
       </div>
 
+      {/* Active Jobs - only shown when there are jobs in progress */}
+      {activeJobs.length > 0 && (
+        <div className="card">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Active Jobs
+          </h3>
+          <div className="space-y-4">
+            {activeJobs.map((appointment) => (
+              <div
+                key={appointment.id}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("button")) return;
+                  handleTodayScheduleAppointmentClick(appointment);
+                }}
+                className="flex items-center justify-between p-4 bg-purple-50/50 rounded-lg cursor-pointer hover:bg-purple-50 transition-colors overflow-hidden animate-pulse-glow"
+              >
+                <div className="flex items-center flex-1">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900 text-lg">
+                        {formatTime(appointment.scheduled_time)}
+                      </p>
+                      <StatusBadge status={appointment.status} size="sm" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-800 mt-1">
+                      {appointment.homeowner
+                        ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
+                        : "Unknown Homeowner"}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {appointment.property
+                        ? `${appointment.property.address}, ${appointment.property.city}, ${appointment.property.state}`
+                        : "Address not available"}
+                    </p>
+                    {appointment.service_type && (
+                      <p className="text-sm text-gray-600">
+                        {appointment.service_type.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right ml-4 flex flex-col items-end gap-2">
+                  <p className="text-lg font-bold text-gray-900">
+                    ${Number(appointment.total_price).toFixed(0)}
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCompleteJob(appointment.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-md"
+                  >
+                    Complete Job
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Today's Schedule */}
       <div className="card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -769,7 +849,7 @@ export default function CleanerDashboard() {
                           e.stopPropagation();
                           handleStartJob(appointment.id);
                         }}
-                        className="px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium bg-primary-600 text-white rounded-full hover:bg-primary-700 transition-colors shadow-md"
                       >
                         Start Job
                       </button>
@@ -781,7 +861,7 @@ export default function CleanerDashboard() {
                           e.stopPropagation();
                           handleCompleteJob(appointment.id);
                         }}
-                        className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-md"
                       >
                         Complete Job
                       </button>
@@ -912,18 +992,37 @@ export default function CleanerDashboard() {
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Today's Jobs Section */}
+              {/* Active Jobs Section - only when there are jobs in progress */}
+              {activeJobs.length > 0 && (
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                    Active Jobs
+                  </h3>
+                  <div className="space-y-4">
+                    {activeJobs.map((appointment) => (
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={convertToCardData(appointment)}
+                        onClick={() => handleAppointmentCardClick(appointment)}
+                        role="cleaner"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Today's Jobs Section - pending/confirmed only; in_progress show in Active Jobs */}
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary-600" />
                   Today's Jobs
                   <span className="text-sm font-normal text-gray-500">
-                    ({filteredTodaysJobs.length})
+                    ({filteredTodaysJobsDisplay.length})
                   </span>
                 </h3>
-                {filteredTodaysJobs.length > 0 ? (
+                {filteredTodaysJobsDisplay.length > 0 ? (
                   <div className="space-y-4">
-                    {filteredTodaysJobs.map((appointment) => (
+                    {filteredTodaysJobsDisplay.map((appointment) => (
                       <AppointmentCard
                         key={appointment.id}
                         appointment={convertToCardData(appointment)}

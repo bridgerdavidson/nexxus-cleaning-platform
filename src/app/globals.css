@@ -374,3 +374,17 @@ nav.sticky {
   outline: none !important;
   box-shadow: none !important;
 }
+
+/* Pulsing glow for Active Jobs cards */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgb(147 51 234 / 0.35), 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(147 51 234 / 0.55), 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
