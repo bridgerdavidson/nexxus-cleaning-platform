@@ -4,15 +4,20 @@ import React, { useState, useEffect } from "react";
 import { X, Loader2, AlertCircle } from "lucide-react";
 import {
   Checklist,
+  ChecklistWithItems,
   createChecklist,
   updateChecklist,
 } from "../hooks/useChecklists";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
+type ChecklistFormResult = 
+  | { type: 'created'; checklist: ChecklistWithItems }
+  | { type: 'updated'; checklistId: string; name: string };
+
 interface ChecklistFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (result: ChecklistFormResult) => void;
   checklist?: Checklist | null; // If provided, we're editing
   serviceTypeId?: string; // Required for creating new checklist
 }
@@ -63,18 +68,27 @@ export default function ChecklistFormModal({
     setError(null);
 
     try {
-      let result;
       if (isEditing && checklist) {
-        result = await updateChecklist(checklist.id, name.trim());
+        const result = await updateChecklist(checklist.id, name.trim());
+        if (result.success) {
+          onSuccess({ type: 'updated', checklistId: checklist.id, name: name.trim() });
+          onClose();
+        } else {
+          setError(result.error || "Failed to update checklist");
+        }
       } else {
-        result = await createChecklist(serviceTypeId!, name.trim());
-      }
-
-      if (result.success) {
-        onSuccess();
-        onClose();
-      } else {
-        setError(result.error || "Failed to save checklist");
+        const result = await createChecklist(serviceTypeId!, name.trim());
+        if (result.success && result.data) {
+          // Convert Checklist to ChecklistWithItems with empty items array
+          const checklistWithItems: ChecklistWithItems = {
+            ...result.data,
+            checklist_line_items: [],
+          };
+          onSuccess({ type: 'created', checklist: checklistWithItems });
+          onClose();
+        } else {
+          setError(result.error || "Failed to create checklist");
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save checklist");

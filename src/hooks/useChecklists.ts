@@ -9,6 +9,12 @@ interface UseChecklistsResult {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  applyLineItemUpdated: (lineItemId: string, task: string) => void;
+  applyLineItemAdded: (checklistId: string, item: ChecklistLineItem) => void;
+  applyLineItemRemoved: (lineItemId: string) => void;
+  applyLineItemsReordered: (checklistId: string, orderedItems: ChecklistLineItem[]) => void;
+  applyChecklistUpdated: (checklistId: string, name: string) => void;
+  applyChecklistAdded: (checklist: ChecklistWithItems) => void;
 }
 
 /**
@@ -48,12 +54,23 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
       // Type assertion since Supabase returns the nested data
       const checklistsWithItems = (data || []) as ChecklistWithItems[];
       
-      // Sort line items within each checklist by created_at
+      // Sort line items within each checklist by position (nulls last), then created_at
       checklistsWithItems.forEach((checklist) => {
         if (checklist.checklist_line_items) {
-          checklist.checklist_line_items.sort((a, b) => 
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
+          checklist.checklist_line_items.sort((a, b) => {
+            // Handle null positions - nulls sort last
+            if (a.position === null && b.position === null) {
+              return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            }
+            if (a.position === null) return 1;
+            if (b.position === null) return -1;
+            
+            // Both have positions - sort by position, then created_at for ties
+            if (a.position !== b.position) {
+              return a.position - b.position;
+            }
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          });
         }
       });
 
@@ -74,11 +91,78 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
     fetchChecklists();
   }, [fetchChecklists]);
 
+  // Local state updaters - update in-memory state without refetching
+  const applyLineItemUpdated = useCallback((lineItemId: string, task: string) => {
+    setChecklists((prev) =>
+      prev.map((checklist) => ({
+        ...checklist,
+        checklist_line_items: checklist.checklist_line_items?.map((item) =>
+          item.id === lineItemId ? { ...item, task } : item
+        ),
+      }))
+    );
+  }, []);
+
+  const applyLineItemAdded = useCallback((checklistId: string, item: ChecklistLineItem) => {
+    setChecklists((prev) =>
+      prev.map((checklist) =>
+        checklist.id === checklistId
+          ? {
+              ...checklist,
+              checklist_line_items: [...(checklist.checklist_line_items || []), item],
+            }
+          : checklist
+      )
+    );
+  }, []);
+
+  const applyLineItemRemoved = useCallback((lineItemId: string) => {
+    setChecklists((prev) =>
+      prev.map((checklist) => ({
+        ...checklist,
+        checklist_line_items: checklist.checklist_line_items?.filter(
+          (item) => item.id !== lineItemId
+        ),
+      }))
+    );
+  }, []);
+
+  const applyLineItemsReordered = useCallback((checklistId: string, orderedItems: ChecklistLineItem[]) => {
+    setChecklists((prev) =>
+      prev.map((checklist) =>
+        checklist.id === checklistId
+          ? {
+              ...checklist,
+              checklist_line_items: orderedItems,
+            }
+          : checklist
+      )
+    );
+  }, []);
+
+  const applyChecklistUpdated = useCallback((checklistId: string, name: string) => {
+    setChecklists((prev) =>
+      prev.map((checklist) =>
+        checklist.id === checklistId ? { ...checklist, name } : checklist
+      )
+    );
+  }, []);
+
+  const applyChecklistAdded = useCallback((checklist: ChecklistWithItems) => {
+    setChecklists((prev) => [...prev, checklist].sort((a, b) => a.name.localeCompare(b.name)));
+  }, []);
+
   return {
     checklists,
     loading,
     error,
     refetch,
+    applyLineItemUpdated,
+    applyLineItemAdded,
+    applyLineItemRemoved,
+    applyLineItemsReordered,
+    applyChecklistUpdated,
+    applyChecklistAdded,
   };
 }
 
@@ -270,6 +354,43 @@ export async function deleteLineItem(
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to delete line item',
+    };
+  }
+}
+
+/**
+ * Reorder line items in a checklist
+ * Updates the position of each line item based on the order of ids provided
+ */
+export async function reorderLineItems(
+  checklistId: string,
+  orderedIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Update each line item's position based on its index in orderedIds
+    const updates = orderedIds.map((id, index) =>
+      supabase
+        .from('checklist_line_items')
+        .update({ position: index })
+        .eq('id', id)
+        .eq('checklist_id', checklistId) // Ensure the item belongs to this checklist
+    );
+
+    // Execute all updates in parallel
+    const results = await Promise.all(updates);
+
+    // Check if any updates failed
+    const failedUpdate = results.find((result) => result.error);
+    if (failedUpdate?.error) {
+      throw failedUpdate.error;
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('Error reordering line items:', err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to reorder line items',
     };
   }
 }

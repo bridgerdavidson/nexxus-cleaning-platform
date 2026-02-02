@@ -261,6 +261,7 @@ export interface ChecklistLineItem {
   id: string;
   task: string;
   checklist_id: string; // References checklists(id)
+  position: number | null; // Sort order within checklist (0-indexed, NULL sorts last)
   created_at: string;
 }
 
