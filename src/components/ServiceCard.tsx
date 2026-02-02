@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Clock, DollarSign, Tag, Edit2, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Clock, DollarSign, Tag, Edit2, Trash2, ToggleLeft, ToggleRight, ClipboardList } from "lucide-react";
 import { ServiceType } from "../hooks/useServices";
 
 interface ServiceCardProps {
@@ -11,6 +11,7 @@ interface ServiceCardProps {
   onEdit?: (service: ServiceType) => void;
   onDelete?: (service: ServiceType) => void;
   onToggleActive?: (service: ServiceType) => void;
+  onViewChecklists?: (service: ServiceType) => void;
 }
 
 export default function ServiceCard({
@@ -20,6 +21,7 @@ export default function ServiceCard({
   onEdit,
   onDelete,
   onToggleActive,
+  onViewChecklists,
 }: ServiceCardProps) {
   const formatDuration = (minutes: number) => {
     if (minutes < 60) {
@@ -139,38 +141,57 @@ export default function ServiceCard({
         )}
 
         {/* Stats */}
-        <div className="flex items-center gap-4 pt-4 border-t border-gray-100">
-          {/* Price */}
-          <div className="flex items-center gap-1.5">
-            <DollarSign
-              className={`w-4 h-4 ${
-                service.is_active ? "text-green-600" : "text-gray-400"
-              }`}
-            />
-            <span
-              className={`font-semibold ${
-                service.is_active ? "text-gray-900" : "text-gray-500"
-              }`}
-            >
-              {formatPrice(service.base_price)}
-            </span>
+        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+          <div className="flex items-center gap-4">
+            {/* Price */}
+            <div className="flex items-center gap-1.5">
+              <DollarSign
+                className={`w-4 h-4 ${
+                  service.is_active ? "text-green-600" : "text-gray-400"
+                }`}
+              />
+              <span
+                className={`font-semibold ${
+                  service.is_active ? "text-gray-900" : "text-gray-500"
+                }`}
+              >
+                {formatPrice(service.base_price)}
+              </span>
+            </div>
+
+            {/* Duration */}
+            <div className="flex items-center gap-1.5">
+              <Clock
+                className={`w-4 h-4 ${
+                  service.is_active ? "text-blue-600" : "text-gray-400"
+                }`}
+              />
+              <span
+                className={`text-sm ${
+                  service.is_active ? "text-gray-600" : "text-gray-400"
+                }`}
+              >
+                {formatDuration(service.duration_minutes)}
+              </span>
+            </div>
           </div>
 
-          {/* Duration */}
-          <div className="flex items-center gap-1.5">
-            <Clock
-              className={`w-4 h-4 ${
-                service.is_active ? "text-blue-600" : "text-gray-400"
-              }`}
-            />
-            <span
-              className={`text-sm ${
-                service.is_active ? "text-gray-600" : "text-gray-400"
-              }`}
-            >
-              {formatDuration(service.duration_minutes)}
-            </span>
-          </div>
+          {/* Checklists Button - Bottom Right */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewChecklists?.(service);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              service.is_active
+                ? "text-primary-600 hover:bg-primary-50"
+                : "text-gray-400 hover:bg-gray-100"
+            }`}
+            title="View checklists"
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>Checklists</span>
+          </button>
         </div>
       </div>
     </div>

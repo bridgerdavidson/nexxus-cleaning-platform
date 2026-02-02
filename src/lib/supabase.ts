@@ -455,6 +455,49 @@ export type Database = {
           created_at?: string
         }
       }
+      checklists: {
+        Row: {
+          id: string
+          name: string
+          service_type_id: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name?: string
+          service_type_id: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          service_type_id?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      checklist_line_items: {
+        Row: {
+          id: string
+          task: string
+          checklist_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          task: string
+          checklist_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          task?: string
+          checklist_id?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

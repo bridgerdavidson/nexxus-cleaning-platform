@@ -247,6 +247,28 @@ export interface Review {
   created_at: string;
 }
 
+// CHECKLISTS
+export interface Checklist {
+  id: string;
+  name: string; // Defaults to 'checklist'
+  service_type_id: string; // References service_types(id)
+  created_at: string;
+  updated_at: string;
+}
+
+// CHECKLIST LINE ITEMS
+export interface ChecklistLineItem {
+  id: string;
+  task: string;
+  checklist_id: string; // References checklists(id)
+  created_at: string;
+}
+
+// Checklist with nested line items (for UI)
+export interface ChecklistWithItems extends Checklist {
+  checklist_line_items: ChecklistLineItem[];
+}
+
 // ==========================================
 // LEGACY TYPES (For backward compatibility)
 // TODO: Gradually migrate these to use database types above

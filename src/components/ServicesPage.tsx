@@ -8,12 +8,30 @@ import {
   Loader2,
   Briefcase,
   AlertCircle,
+  ChevronRight,
+  ArrowLeft,
+  ClipboardList,
+  CheckCircle,
+  Edit2,
+  Trash2,
+  X,
+  Check,
 } from "lucide-react";
 import { ServiceType, toggleServiceActive } from "../hooks/useServices";
+import {
+  useChecklists,
+  createLineItem,
+  updateLineItem,
+  deleteLineItem,
+  ChecklistWithItems,
+  ChecklistLineItem,
+} from "../hooks/useChecklists";
 import ServiceCard from "./ServiceCard";
 import ServiceFormModal from "./ServiceFormModal";
 import DeleteServiceModal from "./DeleteServiceModal";
 import ServiceDetailView from "./ServiceDetailView";
+import ChecklistFormModal from "./ChecklistFormModal";
+import DeleteChecklistModal from "./DeleteChecklistModal";
 
 interface ServicesPageProps {
   services: ServiceType[];
@@ -25,6 +43,466 @@ interface ServicesPageProps {
 }
 
 type StatusFilter = "active" | "all" | "disabled";
+
+// Internal Checklists View Component
+interface ChecklistsViewProps {
+  service: ServiceType;
+  canManageServices: boolean;
+  onBackToServices: () => void;
+  onBackToServiceDetail?: () => void;
+}
+
+function ChecklistsView({ service, canManageServices, onBackToServices, onBackToServiceDetail }: ChecklistsViewProps) {
+  const { checklists, loading, error, refetch } = useChecklists(service.id);
+
+  // Modal state for checklists
+  const [showChecklistFormModal, setShowChecklistFormModal] = useState(false);
+  const [showDeleteChecklistModal, setShowDeleteChecklistModal] = useState(false);
+  const [selectedChecklist, setSelectedChecklist] = useState<ChecklistWithItems | null>(null);
+
+  // Inline editing state for line items
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemText, setEditingItemText] = useState("");
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+
+  // Add new item state (per checklist)
+  const [addingToChecklistId, setAddingToChecklistId] = useState<string | null>(null);
+  const [newItemText, setNewItemText] = useState("");
+  const [addingItem, setAddingItem] = useState(false);
+
+  // Error state
+  const [itemError, setItemError] = useState<string | null>(null);
+
+  // Handlers for checklist CRUD
+  const handleAddChecklist = () => {
+    setSelectedChecklist(null);
+    setShowChecklistFormModal(true);
+  };
+
+  const handleEditChecklist = (checklist: ChecklistWithItems) => {
+    setSelectedChecklist(checklist);
+    setShowChecklistFormModal(true);
+  };
+
+  const handleDeleteChecklist = (checklist: ChecklistWithItems) => {
+    setSelectedChecklist(checklist);
+    setShowDeleteChecklistModal(true);
+  };
+
+  const handleChecklistFormSuccess = () => {
+    refetch();
+  };
+
+  const handleChecklistDeleteSuccess = () => {
+    refetch();
+  };
+
+  // Handlers for line item CRUD
+  const handleStartEditItem = (item: ChecklistLineItem) => {
+    setEditingItemId(item.id);
+    setEditingItemText(item.task);
+    setItemError(null);
+  };
+
+  const handleCancelEditItem = () => {
+    setEditingItemId(null);
+    setEditingItemText("");
+  };
+
+  const handleSaveEditItem = async (itemId: string) => {
+    if (!editingItemText.trim()) {
+      setItemError("Task cannot be empty");
+      return;
+    }
+
+    setSavingItemId(itemId);
+    setItemError(null);
+
+    const result = await updateLineItem(itemId, editingItemText.trim());
+    if (result.success) {
+      setEditingItemId(null);
+      setEditingItemText("");
+      refetch();
+    } else {
+      setItemError(result.error || "Failed to update item");
+    }
+
+    setSavingItemId(null);
+  };
+
+  const handleDeleteItem = async (itemId: string) => {
+    setSavingItemId(itemId);
+    setItemError(null);
+
+    const result = await deleteLineItem(itemId);
+    if (result.success) {
+      refetch();
+    } else {
+      setItemError(result.error || "Failed to delete item");
+    }
+
+    setSavingItemId(null);
+  };
+
+  const handleStartAddItem = (checklistId: string) => {
+    setAddingToChecklistId(checklistId);
+    setNewItemText("");
+    setItemError(null);
+  };
+
+  const handleCancelAddItem = () => {
+    setAddingToChecklistId(null);
+    setNewItemText("");
+  };
+
+  const handleAddItem = async (checklistId: string) => {
+    if (!newItemText.trim()) {
+      setItemError("Task cannot be empty");
+      return;
+    }
+
+    setAddingItem(true);
+    setItemError(null);
+
+    const result = await createLineItem(checklistId, newItemText.trim());
+    if (result.success) {
+      setAddingToChecklistId(null);
+      setNewItemText("");
+      refetch();
+    } else {
+      setItemError(result.error || "Failed to add item");
+    }
+
+    setAddingItem(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Breadcrumbs */}
+      <nav className="flex items-center text-sm flex-wrap gap-1">
+        <button
+          onClick={onBackToServices}
+          className="text-primary-600 hover:text-primary-700 font-medium transition-colors"
+        >
+          Services
+        </button>
+        <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        {onBackToServiceDetail ? (
+          <button
+            onClick={onBackToServiceDetail}
+            className="text-primary-600 hover:text-primary-700 font-medium transition-colors truncate max-w-[150px] sm:max-w-[200px]"
+          >
+            {service.name}
+          </button>
+        ) : (
+          <span className="text-gray-600 font-medium truncate max-w-[150px] sm:max-w-[200px]">
+            {service.name}
+          </span>
+        )}
+        <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <span className="text-gray-600 font-medium">Checklists</span>
+      </nav>
+
+      {/* Header with Back Button and Title */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <button
+            onClick={onBackToServiceDetail || onBackToServices}
+            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
+            title="Go back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">Checklists</h2>
+            <p className="text-gray-600 mt-1">
+              for <span className="font-medium">{service.name}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Add Checklist Button */}
+        {canManageServices && (
+          <button
+            onClick={handleAddChecklist}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Add Checklist</span>
+          </button>
+        )}
+      </div>
+
+      {/* Item Error Banner */}
+      {itemError && (
+        <div className="flex items-center justify-between gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{itemError}</span>
+          </div>
+          <button
+            onClick={() => setItemError(null)}
+            className="text-red-500 hover:text-red-700 text-sm font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+          <span className="ml-2 text-gray-600">Loading checklists...</span>
+        </div>
+      ) : error ? (
+        <div className="text-center py-12">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Failed to load checklists
+          </h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={refetch}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      ) : checklists.length === 0 ? (
+        <div className="text-center py-12">
+          <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No checklists yet
+          </h3>
+          <p className="text-gray-600 mb-4">
+            No checklists have been created for this service.
+          </p>
+          {canManageServices && (
+            <button
+              onClick={handleAddChecklist}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Add Checklist
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {checklists.map((checklist) => (
+            <div
+              key={checklist.id}
+              className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden"
+            >
+              {/* Checklist Header */}
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary-100 rounded-lg">
+                      <ClipboardList className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {checklist.name}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        {checklist.checklist_line_items?.length || 0} item
+                        {(checklist.checklist_line_items?.length || 0) !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Checklist Actions */}
+                  {canManageServices && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEditChecklist(checklist)}
+                        className="p-2 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors"
+                        title="Edit checklist name"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteChecklist(checklist)}
+                        className="p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                        title="Delete checklist"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Checklist Items */}
+              <div className="p-6">
+                {checklist.checklist_line_items && checklist.checklist_line_items.length > 0 ? (
+                  <ul className="space-y-3">
+                    {checklist.checklist_line_items.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-start gap-3 group"
+                      >
+                        {editingItemId === item.id ? (
+                          /* Editing Mode */
+                          <div className="flex-1 flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                            <input
+                              type="text"
+                              value={editingItemText}
+                              onChange={(e) => setEditingItemText(e.target.value)}
+                              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveEditItem(item.id);
+                                } else if (e.key === "Escape") {
+                                  handleCancelEditItem();
+                                }
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSaveEditItem(item.id)}
+                              disabled={savingItemId === item.id}
+                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"
+                              title="Save"
+                            >
+                              {savingItemId === item.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={handleCancelEditItem}
+                              className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                              title="Cancel"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          /* View Mode */
+                          <>
+                            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                            <span className="flex-1 text-gray-700">{item.task}</span>
+                            {canManageServices && (
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handleStartEditItem(item)}
+                                  disabled={savingItemId === item.id}
+                                  className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                  title="Edit item"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteItem(item.id)}
+                                  disabled={savingItemId === item.id}
+                                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                  title="Delete item"
+                                >
+                                  {savingItemId === item.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 text-sm italic mb-4">
+                    No items in this checklist.
+                  </p>
+                )}
+
+                {/* Add New Item */}
+                {canManageServices && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    {addingToChecklistId === checklist.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newItemText}
+                          onChange={(e) => setNewItemText(e.target.value)}
+                          placeholder="Enter new task..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleAddItem(checklist.id);
+                            } else if (e.key === "Escape") {
+                              handleCancelAddItem();
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={() => handleAddItem(checklist.id)}
+                          disabled={addingItem}
+                          className="px-3 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {addingItem ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4" />
+                          )}
+                          Add
+                        </button>
+                        <button
+                          onClick={handleCancelAddItem}
+                          className="px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleStartAddItem(checklist.id)}
+                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add item
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Checklist Form Modal */}
+      <ChecklistFormModal
+        isOpen={showChecklistFormModal}
+        onClose={() => {
+          setShowChecklistFormModal(false);
+          setSelectedChecklist(null);
+        }}
+        onSuccess={handleChecklistFormSuccess}
+        checklist={selectedChecklist}
+        serviceTypeId={service.id}
+      />
+
+      {/* Delete Checklist Modal */}
+      <DeleteChecklistModal
+        isOpen={showDeleteChecklistModal}
+        onClose={() => {
+          setShowDeleteChecklistModal(false);
+          setSelectedChecklist(null);
+        }}
+        onSuccess={handleChecklistDeleteSuccess}
+        checklist={selectedChecklist}
+        itemCount={selectedChecklist?.checklist_line_items?.length || 0}
+      />
+    </div>
+  );
+}
 
 export default function ServicesPage({
   services,
@@ -46,6 +524,9 @@ export default function ServicesPage({
 
   // Detail view state
   const [viewingService, setViewingService] = useState<ServiceType | null>(null);
+
+  // Checklists view state
+  const [viewingChecklistsForService, setViewingChecklistsForService] = useState<ServiceType | null>(null);
 
   // Toggle active loading state
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
@@ -231,6 +712,36 @@ export default function ServicesPage({
     // For now, just close the modal - the service list will refresh
   };
 
+  // Handle view checklists for a service
+  const handleViewChecklists = (service: ServiceType) => {
+    setViewingChecklistsForService(service);
+  };
+
+  // Handle back from checklists to service detail
+  const handleBackToServiceDetail = () => {
+    setViewingChecklistsForService(null);
+  };
+
+  // Handle back from checklists to services list
+  const handleBackToServicesFromChecklists = () => {
+    setViewingChecklistsForService(null);
+    setViewingService(null);
+  };
+
+  // If viewing checklists for a service, show the checklists view
+  if (viewingChecklistsForService) {
+    const latestService = services.find((s) => s.id === viewingChecklistsForService.id) || viewingChecklistsForService;
+    
+    return (
+      <ChecklistsView
+        service={latestService}
+        canManageServices={canManageServices}
+        onBackToServices={handleBackToServicesFromChecklists}
+        onBackToServiceDetail={viewingService ? handleBackToServiceDetail : undefined}
+      />
+    );
+  }
+
   // If viewing a service, show the detail view
   if (viewingService) {
     // Find the latest version of this service from the services array
@@ -245,6 +756,7 @@ export default function ServicesPage({
           onEdit={handleEditFromDetail}
           onDelete={handleDeleteFromDetail}
           onToggleActive={handleToggleActiveFromDetail}
+          onViewChecklists={handleViewChecklists}
         />
 
         {/* Service Form Modal */}
@@ -399,6 +911,7 @@ export default function ServicesPage({
               onEdit={handleEdit}
               onDelete={handleDelete}
               onToggleActive={handleToggleActive}
+              onViewChecklists={handleViewChecklists}
             />
           ))}
         </div>

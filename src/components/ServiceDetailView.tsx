@@ -14,6 +14,7 @@ import {
   CheckCircle,
   XCircle,
   Calendar,
+  ClipboardList,
 } from "lucide-react";
 import { ServiceType } from "../hooks/useServices";
 
@@ -24,6 +25,7 @@ interface ServiceDetailViewProps {
   onEdit?: (service: ServiceType) => void;
   onDelete?: (service: ServiceType) => void;
   onToggleActive?: (service: ServiceType) => void;
+  onViewChecklists?: (service: ServiceType) => void;
 }
 
 export default function ServiceDetailView({
@@ -33,6 +35,7 @@ export default function ServiceDetailView({
   onEdit,
   onDelete,
   onToggleActive,
+  onViewChecklists,
 }: ServiceDetailViewProps) {
   const formatDuration = (minutes: number) => {
     if (minutes < 60) {
@@ -98,44 +101,56 @@ export default function ServiceDetailView({
         </div>
 
         {/* Action Buttons */}
-        {canManage && (
-          <div className="flex items-center gap-2 sm:ml-auto">
-            <button
-              onClick={() => onToggleActive?.(service)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                service.is_active
-                  ? "text-orange-700 bg-orange-50 hover:bg-orange-100"
-                  : "text-green-700 bg-green-50 hover:bg-green-100"
-              }`}
-            >
-              {service.is_active ? (
-                <>
-                  <ToggleLeft className="w-5 h-5" />
-                  <span className="hidden sm:inline">Disable</span>
-                </>
-              ) : (
-                <>
-                  <ToggleRight className="w-5 h-5" />
-                  <span className="hidden sm:inline">Enable</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => onEdit?.(service)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Edit</span>
-            </button>
-            <button
-              onClick={() => onDelete?.(service)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Delete</span>
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 sm:ml-auto">
+          {/* Checklists Button - Always visible */}
+          <button
+            onClick={() => onViewChecklists?.(service)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors"
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span className="hidden sm:inline">Checklists</span>
+          </button>
+
+          {/* Manage buttons - only show for managers/admins with permissions */}
+          {canManage && (
+            <>
+              <button
+                onClick={() => onToggleActive?.(service)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  service.is_active
+                    ? "text-orange-700 bg-orange-50 hover:bg-orange-100"
+                    : "text-green-700 bg-green-50 hover:bg-green-100"
+                }`}
+              >
+                {service.is_active ? (
+                  <>
+                    <ToggleLeft className="w-5 h-5" />
+                    <span className="hidden sm:inline">Disable</span>
+                  </>
+                ) : (
+                  <>
+                    <ToggleRight className="w-5 h-5" />
+                    <span className="hidden sm:inline">Enable</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => onEdit?.(service)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                <Edit2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Edit</span>
+              </button>
+              <button
+                onClick={() => onDelete?.(service)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}
