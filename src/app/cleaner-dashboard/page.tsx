@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
+  SprayCan,
   Calendar,
   MapPin,
   MessageCircle,
@@ -19,6 +20,9 @@ import {
   List,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  ArrowLeft,
   History,
   Briefcase,
 } from "lucide-react";
@@ -45,6 +49,7 @@ import CalendarView from "../../components/CalendarView";
 import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
+import ActiveJobPage from "../../components/ActiveJobPage";
 import { format } from "date-fns";
 
 type ViewType = "list" | "calendar";
@@ -60,7 +65,13 @@ export default function CleanerDashboard() {
   
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [expandedActive, setExpandedActive] = useState(true);
+  const [expandedToday, setExpandedToday] = useState(true);
+  const [expandedUpcoming, setExpandedUpcoming] = useState(true);
   const router = useRouter();
+
+  // Active job view state - when non-null, shows ActiveJobPage for that appointment
+  const [activeJobView, setActiveJobView] = useState<string | null>(null);
 
   // Jobs tab state
   const [viewType, setViewType] = useState<ViewType>("list");
@@ -171,24 +182,60 @@ export default function CleanerDashboard() {
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   }, [appointments, searchQuery, statusFilter]);
 
-  // Active jobs (in_progress) - shown in dedicated section when any exist
+  // Today's jobs including in_progress, sorted with in_progress at the top
+  const filteredTodaysJobsDisplay = useMemo(
+    () => filteredTodaysJobs.sort((a, b) => {
+      // In-progress jobs first
+      if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+      if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+      // Then by time
+      return a.scheduled_time.localeCompare(b.scheduled_time);
+    }),
+    [filteredTodaysJobs]
+  );
+
+  // Active jobs (in_progress) - shown in Active Cleanings section
   const activeJobs = useMemo(
-    () =>
-      appointments
-        .filter((apt) => apt.status === "in_progress")
-        .sort((a, b) => {
-          const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
-          if (dateCompare !== 0) return dateCompare;
-          return a.scheduled_time.localeCompare(b.scheduled_time);
-        }),
+    () => appointments.filter((a) => a.status === "in_progress"),
     [appointments]
   );
 
-  // Today's jobs excluding in_progress (so they only appear in Active Jobs section)
-  const filteredTodaysJobsDisplay = useMemo(
-    () => filteredTodaysJobs.filter((apt) => apt.status !== "in_progress"),
-    [filteredTodaysJobs]
-  );
+  // Overview-only: today's jobs with no filters (includes in_progress; active also shown in Active Cleanings)
+  const overviewTodaysJobs = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${day}`;
+    return appointments
+      .filter((apt) => apt.scheduled_date === today)
+      .sort((a, b) => {
+        if (a.status === "in_progress" && b.status !== "in_progress") return -1;
+        if (b.status === "in_progress" && a.status !== "in_progress") return 1;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+  }, [appointments]);
+
+  // Overview-only: upcoming jobs (after today, no filters) for overview preview
+  const overviewUpcomingJobs = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${day}`;
+    return appointments
+      .filter(
+        (apt) =>
+          apt.scheduled_date > today &&
+          apt.status !== "completed" &&
+          apt.status !== "cancelled"
+      )
+      .sort((a, b) => {
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+  }, [appointments]);
 
   // Get filtered upcoming jobs within time frame (includes today)
   const filteredUpcomingJobs = useMemo(() => {
@@ -309,6 +356,38 @@ export default function CleanerDashboard() {
       });
   }, [appointments, searchQuery, statusFilter]);
 
+  // Get filtered active jobs for Jobs tab (in_progress with search/status filters)
+  const filteredActiveJobsForJobsTab = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return appointments
+      .filter((apt) => {
+        if (apt.status !== "in_progress") return false;
+        if (statusFilter !== "all" && apt.status !== statusFilter) return false;
+        if (query) {
+          const homeownerName = apt.homeowner
+            ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`.toLowerCase()
+            : "";
+          const propertyAddress = apt.property
+            ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
+            : "";
+          const serviceName = apt.service_type?.name.toLowerCase() || "";
+          if (
+            !homeownerName.includes(query) &&
+            !propertyAddress.includes(query) &&
+            !serviceName.includes(query)
+          ) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+  }, [appointments, searchQuery, statusFilter]);
+
   // Get filtered all jobs
   const filteredAllJobs = useMemo(() => {
     const query = searchQuery.toLowerCase();
@@ -411,6 +490,25 @@ export default function CleanerDashboard() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
+  // Auto-collapse empty sections only after data has loaded; keep expanded when section has items
+  useEffect(() => {
+    if (!appointmentsLoading) {
+      if (activeJobs.length > 0) setExpandedActive(true);
+      else setExpandedActive(false);
+    }
+  }, [appointmentsLoading, activeJobs.length]);
+  useEffect(() => {
+    if (!appointmentsLoading) {
+      if (overviewTodaysJobs.length > 0) setExpandedToday(true);
+      else setExpandedToday(false);
+    }
+  }, [appointmentsLoading, overviewTodaysJobs.length]);
+  useEffect(() => {
+    if (!appointmentsLoading) {
+      if (overviewUpcomingJobs.length > 0) setExpandedUpcoming(true);
+      else setExpandedUpcoming(false);
+    }
+  }, [appointmentsLoading, overviewUpcomingJobs.length]);
   // Show loading while checking auth
   if (loading || !user) {
     return (
@@ -457,18 +555,26 @@ export default function CleanerDashboard() {
   };
 
   const getTodaysJobs = () => {
-    // Get today's date in local timezone (NOT UTC). Exclude in_progress so they show in Active Jobs.
+    // Get today's date in local timezone - includes in_progress jobs
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     const today = `${year}-${month}-${day}`;
 
-    return appointments.filter(
-      (appointment) =>
-        appointment.scheduled_date === today &&
-        ["pending", "confirmed"].includes(appointment.status)
-    );
+    return appointments
+      .filter(
+        (appointment) =>
+          appointment.scheduled_date === today &&
+          ["pending", "confirmed", "in_progress"].includes(appointment.status)
+      )
+      .sort((a, b) => {
+        // In-progress jobs first
+        if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+        if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+        // Then by time
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
   };
 
   const getUpcomingJobs = () => {
@@ -510,8 +616,10 @@ export default function CleanerDashboard() {
   const handleStartJob = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "in_progress");
     if (result.success) {
+      // Navigate to jobs tab and active job view
+      setActiveTab("jobs");
+      setActiveJobView(appointmentId);
       // Realtime subscription will automatically update the UI
-      // No need to reload the page
     } else {
       alert("Failed to start job: " + result.error);
     }
@@ -594,6 +702,13 @@ export default function CleanerDashboard() {
 
   // Handle appointment card click - navigate to jobs tab and open side panel
   const handleTodayScheduleAppointmentClick = (appointment: any) => {
+    // If appointment is in_progress, go directly to active job view
+    if (appointment.status === "in_progress") {
+      setActiveTab("jobs");
+      setActiveJobView(appointment.id);
+      return;
+    }
+
     setSelectedAppointment(convertToCardData(appointment));
     setActiveTab("jobs");
     // Use setTimeout to ensure tab switch happens before opening panel
@@ -720,167 +835,144 @@ export default function CleanerDashboard() {
         </div>
       </div>
 
-      {/* Active Jobs - only shown when there are jobs in progress */}
-      {activeJobs.length > 0 && (
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Active Jobs
+      {/* Active Cleanings - collapsible; auto-collapsed when empty */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpandedActive((prev) => !prev)}
+          className="w-full text-left flex items-center gap-2 mb-4 group"
+        >
+          {(activeJobs.length > 0 ? expandedActive : false) ? (
+            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          )}
+          <SprayCan className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-gray-900">
+            Active Cleanings
           </h3>
+          <span className="text-sm font-normal text-gray-500">
+            ({activeJobs.length})
+          </span>
+        </button>
+        {(activeJobs.length > 0 ? expandedActive : false) && (
           <div className="space-y-4">
             {activeJobs.map((appointment) => (
-              <div
-                key={appointment.id}
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).closest("button")) return;
-                  handleTodayScheduleAppointmentClick(appointment);
-                }}
-                className="flex items-center justify-between p-4 bg-purple-50/50 rounded-lg cursor-pointer hover:bg-purple-50 transition-colors overflow-hidden animate-pulse-glow"
-              >
-                <div className="flex items-center flex-1">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-gray-900 text-lg">
-                        {formatTime(appointment.scheduled_time)}
-                      </p>
-                      <StatusBadge status={appointment.status} size="sm" />
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 mt-1">
-                      {appointment.homeowner
-                        ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-                        : "Unknown Homeowner"}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {appointment.property
-                        ? `${appointment.property.address}, ${appointment.property.city}, ${appointment.property.state}`
-                        : "Address not available"}
-                    </p>
-                    {appointment.service_type && (
-                      <p className="text-sm text-gray-600">
-                        {appointment.service_type.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right ml-4 flex flex-col items-end gap-2">
-                  <p className="text-lg font-bold text-gray-900">
-                    ${Number(appointment.total_price).toFixed(0)}
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCompleteJob(appointment.id);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-md"
-                  >
-                    Complete Job
-                  </button>
-                </div>
+              <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                <AppointmentCard
+                  appointment={convertToCardData(appointment)}
+                  onClick={() => handleAppointmentCardClick(appointment)}
+                  role="cleaner"
+                />
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Today's Schedule */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Today's Schedule
-        </h3>
-        {appointmentsLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading schedule...</span>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {getTodaysJobs().map((appointment) => {
-              return (
-                <div
-                  key={appointment.id}
-                  onClick={(e) => {
-                    // Don't trigger if clicking on a button
-                    if ((e.target as HTMLElement).closest("button")) {
-                      return;
-                    }
-                    handleTodayScheduleAppointmentClick(appointment);
-                  }}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 relative cursor-pointer hover:bg-gray-100 transition-colors overflow-hidden"
-                  style={{
-                    borderLeftColor: getStatusBorderColor(appointment.status),
-                  }}
-                >
-                  <div className="flex items-center space-x-4 flex-1">
-                    <div className="flex-shrink-0">
-                      <Calendar className="w-8 h-8 text-primary-600" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-gray-900 text-lg">
-                          {formatTime(appointment.scheduled_time)}
-                        </p>
-                        <StatusBadge status={appointment.status} size="sm" />
-                      </div>
-                    <p className="text-sm font-medium text-gray-800 mt-1">
-                      {appointment.homeowner
-                        ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-                        : "Unknown Homeowner"}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {appointment.property
-                        ? `${appointment.property.address}, ${appointment.property.city}, ${appointment.property.state}`
-                        : "Address not available"}
-                    </p>
-                    {appointment.service_type && (
-                      <p className="text-sm text-gray-600">
-                        {appointment.service_type.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right ml-4 flex flex-col items-end gap-2">
-                  <p className="text-lg font-bold text-gray-900">
-                    ${Number(appointment.total_price).toFixed(0)}
-                  </p>
-                  <div className="flex flex-col gap-2 items-end">
-                    {/* Start Job button - shows when status is confirmed */}
-                    {appointment.status === "confirmed" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartJob(appointment.id);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium bg-primary-600 text-white rounded-full hover:bg-primary-700 transition-colors shadow-md"
-                      >
-                        Start Job
-                      </button>
-                    )}
-                    {/* Complete Job button - shows when status is in_progress */}
-                    {appointment.status === "in_progress" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCompleteJob(appointment.id);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-md"
-                      >
-                        Complete Job
-                      </button>
-                    )}
-                  </div>
-                </div>
-                </div>
-              );
-            })}
-            {getTodaysJobs().length === 0 && (
-              <div className="text-center py-8">
+      {/* Today's Jobs - collapsible; auto-collapsed when empty */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpandedToday((prev) => !prev)}
+          className="w-full text-left flex items-center gap-2 mb-4 group"
+        >
+          {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) ? (
+            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          )}
+          <Clock className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-gray-900">
+            Today&apos;s Jobs
+          </h3>
+          <span className="text-sm font-normal text-gray-500">
+            ({overviewTodaysJobs.length})
+          </span>
+        </button>
+        {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) && (
+          <>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Loading schedule...</span>
+              </div>
+            ) : overviewTodaysJobs.length > 0 ? (
+              <div className="space-y-4">
+                {overviewTodaysJobs.map((appointment) => (
+                  <AppointmentCard
+                    key={appointment.id}
+                    appointment={convertToCardData(appointment)}
+                    onClick={() => handleAppointmentCardClick(appointment)}
+                    role="cleaner"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">No jobs scheduled for today</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  Check the Jobs tab for upcoming appointments
-                </p>
               </div>
             )}
-          </div>
+          </>
+        )}
+      </div>
+
+      {/* Upcoming Jobs - collapsible; auto-collapsed when empty */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpandedUpcoming((prev) => !prev)}
+          className="w-full text-left flex items-center gap-2 mb-4 group"
+        >
+          {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) ? (
+            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          )}
+          <Calendar className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-gray-900">
+            Upcoming Jobs
+          </h3>
+          <span className="text-sm font-normal text-gray-500">
+            ({overviewUpcomingJobs.length})
+          </span>
+        </button>
+        {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) && (
+          <>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Loading...</span>
+              </div>
+            ) : overviewUpcomingJobs.length > 0 ? (
+              <div className="space-y-4">
+                {overviewUpcomingJobs.slice(0, 3).map((appointment) => (
+                  <AppointmentCard
+                    key={appointment.id}
+                    appointment={convertToCardData(appointment)}
+                    onClick={() => handleAppointmentCardClick(appointment)}
+                    role="cleaner"
+                  />
+                ))}
+                {overviewUpcomingJobs.length > 3 && (
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveTab("jobs")}
+                      className="w-full text-center py-2.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors rounded-lg border border-primary-200 hover:bg-primary-50"
+                    >
+                      View all ({overviewUpcomingJobs.length})
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">No upcoming jobs</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -897,43 +989,117 @@ export default function CleanerDashboard() {
   ];
 
   const handleAppointmentCardClick = (appointment: any) => {
+    // If appointment is in_progress, go directly to active job view
+    if (appointment.status === "in_progress") {
+      setActiveTab("jobs");
+      setActiveJobView(appointment.id);
+      return;
+    }
+
     setSelectedAppointment(convertToCardData(appointment));
     setShowSidePanel(true);
   };
 
-  const renderJobs = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-4xl font-bold text-gray-900">Jobs</h2>
-        <div className="flex items-center gap-3">
-          {/* View Toggle Buttons */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewType("list")}
-              className={`p-2 rounded-md transition-colors ${
-                viewType === "list"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-              title="List View"
-            >
-              <List className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewType("calendar")}
-              className={`p-2 rounded-md transition-colors ${
-                viewType === "calendar"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-              title="Calendar View"
-            >
-              <CalendarDays className="w-5 h-5" />
-            </button>
-          </div>
+  const renderJobs = () => {
+    // Get appointment details if in active job view
+    const activeAppointment = activeJobView 
+      ? appointments.find(a => a.id === activeJobView) 
+      : null;
+
+    return (
+      <div className="space-y-6">
+        {/* Header - Shows either "Jobs" title or breadcrumb */}
+        <div className="flex items-center justify-between gap-4">
+          {activeJobView && activeAppointment ? (
+            <>
+              {/* Breadcrumb when viewing active job */}
+              <div className="flex items-center gap-2 text-sm">
+                <button
+                  onClick={() => setActiveJobView(null)}
+                  className="text-primary-600 hover:text-primary-700 font-medium transition-colors"
+                >
+                  Jobs
+                </button>
+                <ChevronLeft className="w-4 h-4 rotate-180 text-gray-400" />
+                <span className="text-gray-900 font-medium">
+                  {activeAppointment.homeowner
+                    ? `${activeAppointment.homeowner.first_name} ${activeAppointment.homeowner.last_name}`
+                    : "Unknown"} (
+                  {activeAppointment.service_type?.name || "Service"})
+                </span>
+              </div>
+            </>
+          ) : (
+            // Normal "Jobs" title
+            <>
+              <h2 className="text-4xl font-bold text-gray-900">Jobs</h2>
+              <div className="flex items-center gap-3">
+                {/* View Toggle Buttons */}
+                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewType("list")}
+                    className={`p-2 rounded-md transition-colors ${
+                      viewType === "list"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                    title="List View"
+                  >
+                    <List className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setViewType("calendar")}
+                    className={`p-2 rounded-md transition-colors ${
+                      viewType === "calendar"
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
+                    title="Calendar View"
+                  >
+                    <CalendarDays className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
-      </div>
+
+        {/* Page title with back arrow (when viewing active job) - same pattern as ServiceDetailView */}
+        {activeJobView && activeAppointment && (
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <button
+                onClick={() => setActiveJobView(null)}
+                className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
+                title="Back to jobs"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">
+                  {activeAppointment.homeowner
+                    ? `${activeAppointment.homeowner.first_name} ${activeAppointment.homeowner.last_name}`
+                    : "Unknown"}{" "}
+                  ({activeAppointment.service_type?.name || "Service"})
+                </h2>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* If viewing active job, render ActiveJobPage */}
+        {activeJobView ? (
+          <ActiveJobPage
+            appointmentId={activeJobView}
+            onExit={() => setActiveJobView(null)}
+            onComplete={async () => {
+              await handleCompleteJob(activeJobView);
+              setActiveJobView(null);
+            }}
+          />
+        ) : (
+          <>
+            {/* Normal Jobs List Content */}
 
       {/* Search Input - Own line on mobile */}
       <div className="flex-1 relative md:hidden">
@@ -992,26 +1158,31 @@ export default function CleanerDashboard() {
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Active Jobs Section - only when there are jobs in progress */}
-              {activeJobs.length > 0 && (
+              {/* Active Cleanings Section - always expanded on Jobs tab */}
+              {filteredActiveJobsForJobsTab.length > 0 && (
                 <div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                    Active Jobs
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <SprayCan className="w-5 h-5 text-primary-600" />
+                    Active Cleanings
+                    <span className="text-sm font-normal text-gray-500">
+                      ({filteredActiveJobsForJobsTab.length})
+                    </span>
                   </h3>
                   <div className="space-y-4">
-                    {activeJobs.map((appointment) => (
-                      <AppointmentCard
-                        key={appointment.id}
-                        appointment={convertToCardData(appointment)}
-                        onClick={() => handleAppointmentCardClick(appointment)}
-                        role="cleaner"
-                      />
+                    {filteredActiveJobsForJobsTab.map((appointment) => (
+                      <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                        <AppointmentCard
+                          appointment={convertToCardData(appointment)}
+                          onClick={() => handleAppointmentCardClick(appointment)}
+                          role="cleaner"
+                        />
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Today's Jobs Section - pending/confirmed only; in_progress show in Active Jobs */}
+              {/* Today's Jobs Section - includes in_progress jobs sorted at the top */}
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary-600" />
@@ -1216,6 +1387,7 @@ export default function CleanerDashboard() {
         onAppointmentClick={handleDayDetailAppointmentClick}
         onAddAppointment={() => {}}
         canEdit={false}
+        role="cleaner"
       />
 
       {/* Side Panel */}
@@ -1228,8 +1400,11 @@ export default function CleanerDashboard() {
         onStartJob={handleStartJob}
         onCompleteJob={handleCompleteJob}
       />
-    </div>
-  );
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderMessages = () => (
     <MessagesPage

@@ -10,6 +10,7 @@ export interface CleanerAppointment {
   scheduled_date: string;
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  job_progress?: 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
   total_price: number;
   special_requests?: string;
   homeowner: {
@@ -109,6 +110,7 @@ export function useCleanerAppointments() {
           scheduled_date,
           scheduled_time,
           status,
+          job_progress,
           total_price,
           special_requests,
           homeowner:user_profiles!homeowner_id(
@@ -249,6 +251,7 @@ export function useCleanerAppointments() {
             scheduled_date,
             scheduled_time,
             status,
+            job_progress,
             total_price,
             special_requests,
             homeowner:user_profiles!homeowner_id(
@@ -686,9 +689,19 @@ export function useCleanerPhotos() {
 // Helper function to update appointment status
 export async function updateAppointmentStatus(appointmentId: string, status: string) {
   try {
+    // Prepare update object
+    const updateData: { status: string; job_progress?: string } = { status };
+    
+    // If transitioning to in_progress, set job_progress to before_photos
+    if (status === 'in_progress') {
+      updateData.job_progress = 'before_photos';
+    } else if (status === 'completed') {
+      updateData.job_progress = 'completed';
+    }
+
     const { error } = await supabase
       .from('appointments')
-      .update({ status })
+      .update(updateData)
       .eq('id', appointmentId);
 
     if (error) throw error;
@@ -793,4 +806,96 @@ export async function uploadJobPhoto(appointmentId: string, file: File, photoTyp
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to upload photo' };
   }
+}
+
+// Helper function to update job progress
+export async function updateJobProgress(
+  appointmentId: string,
+  progress: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('appointments')
+      .update({ job_progress: progress })
+      .eq('id', appointmentId);
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update job progress',
+    };
+  }
+}
+
+// Hook to fetch checklist for a service type
+export function useChecklist(serviceTypeId: string | null) {
+  const [checklist, setChecklist] = useState<{
+    id: string;
+    name: string;
+    service_type_id: string;
+  } | null>(null);
+  const [lineItems, setLineItems] = useState<{
+    id: string;
+    task: string;
+    position: number | null;
+  }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!serviceTypeId) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchChecklist = async () => {
+      try {
+        setLoading(true);
+
+        // Get the checklist for this service type
+        // There might be multiple checklists, so we'll get the first one
+        const { data: checklistData, error: checklistError } = await supabase
+          .from('checklists')
+          .select('id, name, service_type_id')
+          .eq('service_type_id', serviceTypeId)
+          .limit(1)
+          .single();
+
+        if (checklistError) {
+          // If no checklist exists, that's okay - set empty state
+          if (checklistError.code === 'PGRST116') {
+            setChecklist(null);
+            setLineItems([]);
+            setLoading(false);
+            return;
+          }
+          throw checklistError;
+        }
+
+        setChecklist(checklistData);
+
+        // Get line items for this checklist
+        const { data: lineItemsData, error: lineItemsError } = await supabase
+          .from('checklist_line_items')
+          .select('id, task, position')
+          .eq('checklist_id', checklistData.id)
+          .order('position', { ascending: true, nullsFirst: false });
+
+        if (lineItemsError) throw lineItemsError;
+
+        setLineItems(lineItemsData || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch checklist');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChecklist();
+  }, [serviceTypeId]);
+
+  return { checklist, lineItems, loading, error };
 }

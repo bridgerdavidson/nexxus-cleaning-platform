@@ -20,6 +20,7 @@ import {
   Clock,
   MapPin,
   History,
+  SprayCan,
 } from "lucide-react";
 import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
@@ -259,6 +260,23 @@ export default function BookingsPage({
     return appointment.status === statusFilter;
   };
 
+  // Get filtered active appointments (in_progress)
+  const filteredActiveAppointments = useMemo(() => {
+    return localAppointments
+      .filter(
+        (apt) =>
+          apt.status === "in_progress" &&
+          filterBySearch(apt) &&
+          filterByStatus(apt)
+      )
+      .sort((a, b) => {
+        const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+        if (dateCompare !== 0) return dateCompare;
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localAppointments, searchQuery, statusFilter]);
+
   // Get filtered today's appointments
   const filteredTodaysAppointments = useMemo(() => {
     const today = getTodayString();
@@ -269,7 +287,13 @@ export default function BookingsPage({
           filterBySearch(apt) &&
           filterByStatus(apt)
       )
-      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+      .sort((a, b) => {
+        // In-progress jobs first
+        if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
+        if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
+        // Then by time
+        return a.scheduled_time.localeCompare(b.scheduled_time);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localAppointments, searchQuery, statusFilter]);
 
@@ -780,6 +804,34 @@ export default function BookingsPage({
             </div>
           ) : (
             <div className="space-y-8">
+              {/* Active Cleanings Section - always expanded on Bookings */}
+              {filteredActiveAppointments.length > 0 && (
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <SprayCan className="w-5 h-5 text-primary-600" />
+                    Active Cleanings
+                    <span className="text-sm font-normal text-gray-500">
+                      ({filteredActiveAppointments.length})
+                    </span>
+                  </h3>
+                  <div className="space-y-4">
+                    {filteredActiveAppointments.map((appointment) => (
+                      <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                        <AppointmentCard
+                          appointment={appointment}
+                          onClick={() => handleAppointmentClick(appointment)}
+                          isSelectMode={isSelectMode}
+                          isSelected={selectedIds.has(appointment.id)}
+                          onToggleSelect={() => toggleSelection(appointment.id)}
+                          role={role}
+                          canApproveDecline={canApproveDecline}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Today's Appointments Section */}
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">

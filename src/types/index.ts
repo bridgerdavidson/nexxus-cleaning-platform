@@ -15,6 +15,7 @@ export type PaymentMethod = 'card' | 'ach' | 'manual';
 export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
+export type JobProgress = 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
 
 // USER PROFILES
 export interface UserProfile {
@@ -109,6 +110,7 @@ export interface Appointment {
   scheduled_time: string; // time
   duration_minutes: number;
   status: AppointmentStatus;
+  job_progress: JobProgress; // Tracks cleaner workflow progress
   total_price: number; // numeric(10,2)
   special_requests: string | null; // NOT special_instructions!
   notes: string | null;
@@ -268,6 +270,26 @@ export interface ChecklistLineItem {
 // Checklist with nested line items (for UI)
 export interface ChecklistWithItems extends Checklist {
   checklist_line_items: ChecklistLineItem[];
+}
+
+// ==========================================
+// JOB WORKFLOW TYPES
+// ==========================================
+
+// Checklist item for job workflow (includes completion state)
+export interface ChecklistItem {
+  id: string;
+  task: string;
+  completed: boolean;
+}
+
+// Job workflow state for session storage
+export interface JobWorkflowState {
+  step: JobProgress;
+  checklistProgress: ChecklistItem[];
+  hasBeforePhotos: boolean;
+  hasAfterPhotos: boolean;
+  lastUpdated: string;
 }
 
 // ==========================================

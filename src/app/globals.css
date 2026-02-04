@@ -388,3 +388,33 @@ nav.sticky {
 .animate-pulse-glow {
   animation: pulse-glow 2.5s ease-in-out infinite;
 }
+
+/* Pulsing glow for Active Cleanings (primary gold) */
+@keyframes pulse-glow-gold {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgb(217 167 24 / 0.35), 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(217 167 24 / 0.55), 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
+}
+
+.animate-pulse-glow-gold {
+  animation: pulse-glow-gold 2.5s ease-in-out infinite;
+}
+
+/* Subtle pulse for job progress indicator */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}

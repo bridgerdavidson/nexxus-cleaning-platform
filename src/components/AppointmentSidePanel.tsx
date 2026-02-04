@@ -488,37 +488,39 @@ export default function AppointmentSidePanel({
             </div>
           </div>
 
-          {/* Price */}
-          <div className="flex items-start gap-2">
-            <DollarSign className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-gray-500">Total Amount</p>
-              {isEditing ? (
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editedAppointment.total_price}
-                    onChange={(e) =>
-                      setEditedAppointment({
-                        ...editedAppointment,
-                        total_price: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  ${appointment.total_price.toFixed(2)}
-                </p>
-              )}
+          {/* Price - Hide for cleaner role */}
+          {role !== "cleaner" && (
+            <div className="flex items-start gap-2">
+              <DollarSign className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-500">Total Amount</p>
+                {isEditing ? (
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editedAppointment.total_price}
+                      onChange={(e) =>
+                        setEditedAppointment({
+                          ...editedAppointment,
+                          total_price: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${appointment.total_price.toFixed(2)}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Payment Method */}
           {!isEditing && (

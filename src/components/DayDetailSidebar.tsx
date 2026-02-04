@@ -25,6 +25,7 @@ interface DayDetailSidebarProps {
   onAppointmentClick: (appointment: AppointmentCardData) => void;
   onAddAppointment: () => void;
   canEdit?: boolean;
+  role?: "admin" | "manager" | "cleaner" | "homeowner";
 }
 
 export default function DayDetailSidebar({
@@ -35,6 +36,7 @@ export default function DayDetailSidebar({
   onAppointmentClick,
   onAddAppointment,
   canEdit = true,
+  role,
 }: DayDetailSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAnimating, setIsAnimating] = useState(false);
@@ -246,6 +248,7 @@ export default function DayDetailSidebar({
                   appointment={appointment}
                   onClick={() => onAppointmentClick(appointment)}
                   formatTime={formatTime}
+                  hidePrice={role === "cleaner"}
                 />
               ))}
             </div>
@@ -276,12 +279,14 @@ interface AppointmentMiniCardProps {
   appointment: AppointmentCardData;
   onClick: () => void;
   formatTime: (time: string) => string;
+  hidePrice?: boolean;
 }
 
 function AppointmentMiniCard({
   appointment,
   onClick,
   formatTime,
+  hidePrice = false,
 }: AppointmentMiniCardProps) {
   const homeownerName = appointment.homeowner
     ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
@@ -333,7 +338,7 @@ function AppointmentMiniCard({
         <span className="text-sm text-gray-600 truncate">{propertyAddress}</span>
       </div>
 
-      {/* Cleaner and Price */}
+      {/* Cleaner and Price - hide price for cleaner role */}
       <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-2">
         <span
           className={`text-sm ${
@@ -344,12 +349,14 @@ function AppointmentMiniCard({
         >
           {cleanerName}
         </span>
-        <div className="flex items-center gap-1">
-          <DollarSign className="w-4 h-4 text-green-600" />
-          <span className="font-bold text-gray-900">
-            {appointment.total_price.toFixed(0)}
-          </span>
-        </div>
+        {!hidePrice && (
+          <div className="flex items-center gap-1">
+            <DollarSign className="w-4 h-4 text-green-600" />
+            <span className="font-bold text-gray-900">
+              {appointment.total_price.toFixed(0)}
+            </span>
+          </div>
+        )}
       </div>
     </button>
   );

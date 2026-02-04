@@ -1,12 +1,15 @@
 import React from "react";
 import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles } from "lucide-react";
 import StatusBadge from "./StatusBadge";
+import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
+import { JobProgress } from "../types";
 
 export interface AppointmentCardData {
   id: string;
   scheduled_date: string;
   scheduled_time: string;
   status: string;
+  job_progress?: string;
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
@@ -251,13 +254,18 @@ export default function AppointmentCard({
           </div>
         )}
 
-        {/* Status */}
-        <div className="col-span-2 flex items-center justify-center gap-1.5 flex-wrap">
-          <div className="flex items-center gap-1.5">
+        {/* Status with inline progress - hide progress bar for cleaner role */}
+        <div className="col-span-2 flex flex-col items-center justify-center gap-2">
+          <div className="flex items-center gap-2">
+            {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
+              <CompactJobProgressIndicator 
+                currentProgress={appointment.job_progress as JobProgress} 
+              />
+            )}
             <StatusBadge status={appointment.status} size="sm" />
           </div>
           {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
-            <div className="ml-2 flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5">
               <button
                 className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
                 title="Review appointment"
@@ -268,12 +276,15 @@ export default function AppointmentCard({
           )}
         </div>
 
-        {/* Price */}
-        <div className="col-span-1 flex items-center justify-end">
-          <span className="text-base font-bold text-gray-900">
-            ${appointment.total_price.toFixed(0)}
-          </span>
-        </div>
+        {/* Price - Hide for cleaner role */}
+        {role !== "cleaner" && (
+          <div className="col-span-1 flex items-center justify-end">
+            <span className="text-base font-bold text-gray-900">
+              ${appointment.total_price.toFixed(0)}
+            </span>
+          </div>
+        )}
+      </div>
       </div>
 
       {/* Tablet & Mobile Layout: Vertical cards */}
@@ -328,27 +339,35 @@ export default function AppointmentCard({
           </div>
         )}
 
-        {/* Status and Price */}
-        <div className="sm:col-span-2 flex sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={appointment.status} size="md" />
-            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
-                  title="Review appointment"
-                >
-                  Review
-                </button>
+        {/* Status and Price - hide progress bar for cleaner role */}
+        <div className="sm:col-span-2">
+          <div className="flex sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
+                <CompactJobProgressIndicator 
+                  currentProgress={appointment.job_progress as JobProgress} 
+                />
+              )}
+              <StatusBadge status={appointment.status} size="md" />
+              {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+                    title="Review appointment"
+                  >
+                    Review
+                  </button>
+                </div>
+              )}
+            </div>
+            {role !== "cleaner" && (
+              <div className="flex items-center gap-1 text-right">
+                <DollarSign className="w-5 h-5 text-green-600" />
+                <span className="text-lg font-bold text-gray-900">
+                  {appointment.total_price.toFixed(2)}
+                </span>
               </div>
             )}
-          </div>
-          <div className="flex items-center gap-1 text-right">
-            <DollarSign className="w-5 h-5 text-green-600" />
-            <span className="text-lg font-bold text-gray-900">
-              {appointment.total_price.toFixed(2)}
-            </span>
-          </div>
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
+  SprayCan,
   Calendar,
   Home,
   MessageCircle,
@@ -16,6 +17,9 @@ import {
   Star,
   Loader2,
   Briefcase,
+  MapPin,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import {
   useHomeownerAppointments,
@@ -32,6 +36,7 @@ import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
 import AddAppointmentModal from "../../components/AddAppointmentModal";
 import BookingsPage from "../../components/BookingsPage";
+import AppointmentCard from "../../components/AppointmentCard";
 import StatusBadge from "../../components/StatusBadge";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
@@ -42,6 +47,9 @@ export default function HomeownerDashboard() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
+  const [expandedActive, setExpandedActive] = useState(true);
+  const [expandedToday, setExpandedToday] = useState(true);
+  const [expandedUpcoming, setExpandedUpcoming] = useState(true);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -128,23 +136,37 @@ export default function HomeownerDashboard() {
     return conversations.some((conv) => conv.unread_count > 0);
   }, [conversations]);
 
-  // Get upcoming appointments (future appointments, excluding completed/cancelled)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Today's date string (YYYY-MM-DD) for filtering
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }, []);
 
+  // Active appointments (in_progress) - shown in Active Cleanings section
+  const activeAppointments = useMemo(
+    () => appointments.filter((a) => a.status === "in_progress"),
+    [appointments]
+  );
+
+  // Today's appointments only (includes in_progress; active also shown in Active Cleanings)
+  const todaysAppointments = useMemo(
+    () =>
+      appointments
+        .filter((a) => a.scheduled_date === todayStr)
+        .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)),
+    [appointments, todayStr]
+  );
+
+  // Upcoming = after today only (today is in Today's Appointments)
   const allUpcomingAppointments = appointments
     .filter((a) => {
-      // Parse appointment date
-      const [year, month, day] = a.scheduled_date.split("-").map(Number);
-      const appointmentDate = new Date(year, month - 1, day);
-      appointmentDate.setHours(0, 0, 0, 0);
-
-      // Future appointments, excluding completed/cancelled
-      return (
-        appointmentDate >= today &&
-        a.status !== "completed" &&
-        a.status !== "cancelled"
-      );
+      // After today only; excluding completed/cancelled
+      if (a.scheduled_date <= todayStr) return false;
+      if (a.status === "completed" || a.status === "cancelled") return false;
+      return true;
     })
     .sort((a, b) => {
       const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
@@ -153,6 +175,26 @@ export default function HomeownerDashboard() {
     });
 
   const upcomingAppointments = allUpcomingAppointments.slice(0, 3);
+
+  // Auto-collapse empty sections only after data has loaded; keep expanded when section has items
+  useEffect(() => {
+    if (!appointmentsLoading) {
+      if (activeAppointments.length > 0) setExpandedActive(true);
+      else setExpandedActive(false);
+    }
+  }, [appointmentsLoading, activeAppointments.length]);
+  useEffect(() => {
+    if (!appointmentsLoading) {
+      if (todaysAppointments.length > 0) setExpandedToday(true);
+      else setExpandedToday(false);
+    }
+  }, [appointmentsLoading, todaysAppointments.length]);
+  useEffect(() => {
+    if (!appointmentsLoading) {
+      if (allUpcomingAppointments.length > 0) setExpandedUpcoming(true);
+      else setExpandedUpcoming(false);
+    }
+  }, [appointmentsLoading, allUpcomingAppointments.length]);
 
   // Show loading while checking auth
   if (loading || !user) {
@@ -384,87 +426,152 @@ export default function HomeownerDashboard() {
         </div>
       </div>
 
-      {/* Upcoming Appointments */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Upcoming Appointments
-        </h3>
-        {appointmentsLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading appointments...</span>
+      {/* Active Cleanings - collapsible; auto-collapsed when empty */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpandedActive((prev) => !prev)}
+          className="w-full text-left flex items-center gap-2 mb-4 group"
+        >
+          {(activeAppointments.length > 0 ? expandedActive : false) ? (
+            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          )}
+          <SprayCan className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-gray-900">
+            Active Cleanings
+          </h3>
+          <span className="text-sm font-normal text-gray-500">
+            ({activeAppointments.length})
+          </span>
+        </button>
+        {(activeAppointments.length > 0 ? expandedActive : false) && (
+          <div className="space-y-4">
+            {activeAppointments.map((appointment) => (
+              <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                <AppointmentCard
+                  appointment={appointment as Parameters<typeof AppointmentCard>[0]["appointment"]}
+                  onClick={() => setActiveTab("bookings")}
+                  role="homeowner"
+                />
+              </div>
+            ))}
           </div>
-        ) : appointmentsError ? (
-          <div className="text-center py-8">
-            <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-2" />
-            <p className="text-red-600">Failed to load appointments</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {upcomingAppointments.map((appointment) => {
-              const paymentStatusConfig = getPaymentStatusTabConfig(
-                appointment.payment_status
-              );
-              return (
-                <div
-                  key={appointment.id}
-                  className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg overflow-hidden pr-24"
-                >
-                  {/* Payment Status Tab */}
-                  <div
-                    className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
-                  >
-                    <span className="font-semibold text-xs whitespace-nowrap">
-                      {paymentStatusConfig.label}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {formatDateTime(
-                        appointment.scheduled_date,
-                        appointment.scheduled_time
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {getPropertyAddress(appointment)}
-                    </p>
-                    {getCleanerName(appointment) && (
-                      <p className="text-sm text-gray-600">
-                        Cleaner: {getCleanerName(appointment)}
-                      </p>
-                    )}
-                    {appointment.service_type && (
-                      <p className="text-sm text-gray-600">
-                        Service: {appointment.service_type.name}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={appointment.status} size="sm" />
-                  </div>
-                </div>
-              );
-            })}
-            {upcomingAppointments.length === 0 && (
-              <div className="text-center py-8">
+        )}
+      </div>
+
+      {/* Today's Appointments - collapsible; auto-collapsed when empty */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpandedToday((prev) => !prev)}
+          className="w-full text-left flex items-center gap-2 mb-4 group"
+        >
+          {(todaysAppointments.length > 0 || appointmentsLoading ? expandedToday : false) ? (
+            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          )}
+          <Clock className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-gray-900">
+            Today&apos;s Appointments
+          </h3>
+          <span className="text-sm font-normal text-gray-500">
+            ({todaysAppointments.length})
+          </span>
+        </button>
+        {(todaysAppointments.length > 0 || appointmentsLoading ? expandedToday : false) && (
+          <>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Loading...</span>
+              </div>
+            ) : todaysAppointments.length > 0 ? (
+              <div className="space-y-4">
+                {todaysAppointments.map((appointment) => (
+                  <AppointmentCard
+                    key={appointment.id}
+                    appointment={appointment as Parameters<typeof AppointmentCard>[0]["appointment"]}
+                    onClick={() => setActiveTab("bookings")}
+                    role="homeowner"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">No appointments scheduled for today</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Upcoming Appointments - collapsible; auto-collapsed when empty */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setExpandedUpcoming((prev) => !prev)}
+          className="w-full text-left flex items-center gap-2 mb-4 group"
+        >
+          {(allUpcomingAppointments.length > 0 || appointmentsLoading ? expandedUpcoming : false) ? (
+            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
+          )}
+          <MapPin className="w-5 h-5 text-primary-600" />
+          <h3 className="text-xl font-semibold text-gray-900">
+            Upcoming Appointments
+          </h3>
+          <span className="text-sm font-normal text-gray-500">
+            ({allUpcomingAppointments.length})
+          </span>
+        </button>
+        {(allUpcomingAppointments.length > 0 || appointmentsLoading ? expandedUpcoming : false) && (
+          <>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Loading appointments...</span>
+              </div>
+            ) : appointmentsError ? (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-2" />
+                <p className="text-red-600">Failed to load appointments</p>
+              </div>
+            ) : allUpcomingAppointments.length > 0 ? (
+              <div className="space-y-4">
+                {upcomingAppointments.map((appointment) => (
+                  <AppointmentCard
+                    key={appointment.id}
+                    appointment={appointment as Parameters<typeof AppointmentCard>[0]["appointment"]}
+                    onClick={() => setActiveTab("bookings")}
+                    role="homeowner"
+                  />
+                ))}
+                {allUpcomingAppointments.length > 3 && (
+                  <div className="pt-2">
+                    <button
+                      onClick={() => {
+                        setShowAllFilter(true);
+                        setActiveTab("bookings");
+                      }}
+                      className="w-full text-center py-2.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors rounded-lg border border-primary-200 hover:bg-primary-50"
+                    >
+                      View all ({allUpcomingAppointments.length})
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">No upcoming appointments</p>
               </div>
             )}
-            {allUpcomingAppointments.length > 3 && (
-              <div className="pt-3 border-t border-gray-200">
-                <button
-                  onClick={() => {
-                    setShowAllFilter(true);
-                    setActiveTab("bookings");
-                  }}
-                  className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
-                >
-                  View all {allUpcomingAppointments.length} upcoming
-                </button>
-              </div>
-            )}
-          </div>
+          </>
         )}
       </div>
     </div>

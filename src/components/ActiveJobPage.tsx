@@ -1,0 +1,491 @@
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Camera,
+  ChevronLeft,
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
+import { supabase } from "../lib/supabase";
+import { JobProgress, JobWorkflowState, ChecklistItem } from "../types";
+import { updateJobProgress, useChecklist } from "../hooks/useCleanerData";
+import JobProgressIndicator from "./JobProgressIndicator";
+import NoPhotosWarningModal from "./NoPhotosWarningModal";
+
+interface ActiveJobPageProps {
+  appointmentId: string;
+  onExit: () => void;
+  onComplete: () => Promise<void>;
+}
+
+export default function ActiveJobPage({
+  appointmentId,
+  onExit,
+  onComplete,
+}: ActiveJobPageProps) {
+  // State
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [currentStep, setCurrentStep] = useState<JobProgress>("before_photos");
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [hasBeforePhotos, setHasBeforePhotos] = useState(false);
+  const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [photoWarningType, setPhotoWarningType] = useState<"before" | "after">("before");
+  
+  // Appointment data
+  const [appointment, setAppointment] = useState<{
+    homeowner: { first_name: string; last_name: string } | null;
+    service_type: { name: string; id: string } | null;
+    job_progress: JobProgress;
+  } | null>(null);
+
+  // Fetch checklist for the service type
+  const {
+    checklist,
+    lineItems,
+    loading: checklistLoading,
+  } = useChecklist(appointment?.service_type?.id || null);
+
+  // Session storage key
+  const storageKey = `job_workflow_${appointmentId}`;
+
+  // Load appointment and workflow state
+  useEffect(() => {
+    const loadAppointment = async () => {
+      try {
+        setLoading(true);
+
+        // Fetch appointment with relations
+        const { data, error } = await supabase
+          .from("appointments")
+          .select(
+            `
+            id,
+            job_progress,
+            homeowner:user_profiles!homeowner_id(
+              first_name,
+              last_name
+            ),
+            service_type:service_types(
+              id,
+              name
+            )
+          `
+          )
+          .eq("id", appointmentId)
+          .single();
+
+        if (error) throw error;
+
+        const appointmentData = {
+          homeowner: Array.isArray(data.homeowner)
+            ? data.homeowner[0]
+            : data.homeowner,
+          service_type: Array.isArray(data.service_type)
+            ? data.service_type[0]
+            : data.service_type,
+          job_progress: data.job_progress as JobProgress,
+        };
+
+        setAppointment(appointmentData);
+
+        // Load from session storage if exists
+        const savedState = sessionStorage.getItem(storageKey);
+        if (savedState) {
+          try {
+            const state: JobWorkflowState = JSON.parse(savedState);
+            setCurrentStep(state.step);
+            setChecklistItems(state.checklistProgress);
+            setHasBeforePhotos(state.hasBeforePhotos);
+            setHasAfterPhotos(state.hasAfterPhotos);
+          } catch {
+            // If parse fails, use DB state
+            setCurrentStep(appointmentData.job_progress);
+          }
+        } else {
+          setCurrentStep(appointmentData.job_progress);
+        }
+      } catch (error) {
+        console.error("Error loading appointment:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAppointment();
+  }, [appointmentId, storageKey]);
+
+  // Initialize checklist items when lineItems are loaded
+  useEffect(() => {
+    if (lineItems.length > 0 && checklistItems.length === 0) {
+      const savedState = sessionStorage.getItem(storageKey);
+      if (savedState) {
+        try {
+          const state: JobWorkflowState = JSON.parse(savedState);
+          if (state.checklistProgress.length > 0) {
+            setChecklistItems(state.checklistProgress);
+            return;
+          }
+        } catch {
+          // Continue with default initialization
+        }
+      }
+
+      // Initialize from line items
+      setChecklistItems(
+        lineItems.map((item) => ({
+          id: item.id,
+          task: item.task,
+          completed: false,
+        }))
+      );
+    }
+  }, [lineItems, checklistItems.length, storageKey]);
+
+  // Save state to session storage
+  const saveToSessionStorage = useCallback(() => {
+    const state: JobWorkflowState = {
+      step: currentStep,
+      checklistProgress: checklistItems,
+      hasBeforePhotos,
+      hasAfterPhotos,
+      lastUpdated: new Date().toISOString(),
+    };
+    sessionStorage.setItem(storageKey, JSON.stringify(state));
+  }, [currentStep, checklistItems, hasBeforePhotos, hasAfterPhotos, storageKey]);
+
+  // Auto-save to session storage when state changes
+  useEffect(() => {
+    if (!loading) {
+      saveToSessionStorage();
+    }
+  }, [currentStep, checklistItems, hasBeforePhotos, hasAfterPhotos, loading, saveToSessionStorage]);
+
+  // Toggle checklist item
+  const toggleChecklistItem = (itemId: string) => {
+    setChecklistItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, completed: !item.completed } : item
+      )
+    );
+  };
+
+  // Check if can proceed to next step
+  const canProceed = () => {
+    if (currentStep === "checklist") {
+      return checklistItems.every((item) => item.completed);
+    }
+    return true;
+  };
+
+  // Handle next step
+  const handleNext = async () => {
+    // Check for photo warnings
+    if (currentStep === "before_photos" && !hasBeforePhotos) {
+      setPhotoWarningType("before");
+      setShowWarningModal(true);
+      return;
+    }
+
+    if (currentStep === "after_photos" && !hasAfterPhotos) {
+      setPhotoWarningType("after");
+      setShowWarningModal(true);
+      return;
+    }
+
+    await proceedToNext();
+  };
+
+  // Proceed to next step (after warning confirmation if needed) or complete job from modal
+  const proceedToNext = async () => {
+    setSaving(true);
+    try {
+      let nextStep: JobProgress = currentStep;
+
+      if (currentStep === "before_photos") {
+        nextStep = "checklist";
+      } else if (currentStep === "checklist") {
+        nextStep = "after_photos";
+      }
+
+      // Update database
+      const result = await updateJobProgress(appointmentId, nextStep);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      setCurrentStep(nextStep);
+      setShowWarningModal(false);
+    } catch (error) {
+      console.error("Error proceeding to next step:", error);
+      alert("Failed to proceed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle back
+  const handleBack = async () => {
+    setSaving(true);
+    try {
+      let prevStep: JobProgress = currentStep;
+
+      if (currentStep === "checklist") {
+        prevStep = "before_photos";
+      } else if (currentStep === "after_photos") {
+        prevStep = "checklist";
+      }
+
+      // Update database
+      const result = await updateJobProgress(appointmentId, prevStep);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      setCurrentStep(prevStep);
+    } catch (error) {
+      console.error("Error going back:", error);
+      alert("Failed to go back. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
+  // Actual job completion (called after warning confirmation or when photos exist)
+  const confirmCompleteJob = async () => {
+    setSaving(true);
+    try {
+      setShowWarningModal(false);
+      // Clear session storage
+      sessionStorage.removeItem(storageKey);
+
+      // Complete the job (this will update status to completed)
+      await onComplete();
+    } catch (error) {
+      console.error("Error completing job:", error);
+      alert("Failed to complete job. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle complete job click - show warning if no after photos
+  const handleCompleteJobClick = () => {
+    if (!hasAfterPhotos) {
+      setPhotoWarningType("after");
+      setShowWarningModal(true);
+      return;
+    }
+    confirmCompleteJob();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    );
+  }
+
+  if (!appointment) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-600">Failed to load appointment</p>
+      </div>
+    );
+  }
+
+  const homeownerName = appointment.homeowner
+    ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
+    : "Unknown";
+  const serviceName = appointment.service_type?.name || "Service";
+
+  return (
+    <div className="space-y-6">
+      {/* Progress indicator - its own transparent container above content */}
+      <div className="flex justify-center w-full py-2">
+        <JobProgressIndicator currentProgress={currentStep} size="md" />
+      </div>
+
+      {/* Content container: Upload Before Photos / Checklist / After Photos */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+        {/* Step 1: Before Photos */}
+        {currentStep === "before_photos" && (
+            <div className="space-y-4">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Upload Before Photos
+              </h2>
+              <p className="text-gray-600">
+                Take photos of the property before starting the cleaning job.
+              </p>
+
+              {/* Photo upload placeholder */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+                <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-lg font-medium text-gray-700 mb-2">
+                  Photo upload functionality coming soon
+                </p>
+                <p className="text-sm text-gray-500">
+                  You can continue without photos or wait to upload them
+                </p>
+              </div>
+            </div>
+        )}
+
+        {/* Step 2: Checklist */}
+        {currentStep === "checklist" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Cleaning Checklist
+                </h2>
+                <span className="text-sm font-medium text-gray-600">
+                  {checklistItems.filter((item) => item.completed).length} of{" "}
+                  {checklistItems.length} tasks completed
+                </span>
+              </div>
+              <p className="text-gray-600">
+                Complete all tasks before moving to the next step.
+              </p>
+
+              {checklistLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                </div>
+              ) : checklistItems.length > 0 ? (
+                <div className="space-y-2">
+                  {checklistItems.map((item) => (
+                    <label
+                      key={item.id}
+                      className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        item.completed
+                          ? "bg-gray-50 border-gray-200"
+                          : "bg-white border-gray-200 hover:border-primary-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={item.completed}
+                        onChange={() => toggleChecklistItem(item.id)}
+                        className="mt-1 w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                      />
+                      <span
+                        className={`flex-1 ${
+                          item.completed
+                            ? "line-through text-gray-400"
+                            : "text-gray-900"
+                        }`}
+                      >
+                        {item.task}
+                      </span>
+                      {item.completed && (
+                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <p>No checklist items found for this service type.</p>
+                  <p className="text-sm mt-2">
+                    You can proceed to the next step.
+                  </p>
+                </div>
+              )}
+            </div>
+        )}
+
+        {/* Step 3: After Photos */}
+        {currentStep === "after_photos" && (
+            <div className="space-y-4">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Upload After Photos
+              </h2>
+              <p className="text-gray-600">
+                Take photos of the property after completing the cleaning job.
+              </p>
+
+              {/* Photo upload placeholder */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+                <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-lg font-medium text-gray-700 mb-2">
+                  Photo upload functionality coming soon
+                </p>
+                <p className="text-sm text-gray-500">
+                  You can continue without photos or wait to upload them
+                </p>
+              </div>
+            </div>
+        )}
+      </div>
+
+      {/* Action Buttons - at bottom, no box */}
+      <div className="flex items-center justify-between gap-3 pt-2">
+        {/* Back button */}
+        {(currentStep === "checklist" || currentStep === "after_photos") && (
+          <button
+            onClick={handleBack}
+            disabled={saving}
+            className="px-4 py-2.5 text-gray-700 font-medium rounded-lg border-2 border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+        )}
+
+        {/* Spacer when no back button */}
+        {currentStep === "before_photos" && <div />}
+
+        {/* Next/Complete button */}
+        {currentStep !== "after_photos" ? (
+          <button
+            onClick={handleNext}
+            disabled={!canProceed() || saving}
+            className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                Next Step
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={handleCompleteJobClick}
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Completing...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-5 h-5" />
+                Complete Job
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Warning Modal - onContinue: confirmCompleteJob when completing without after photos, proceedToNext otherwise */}
+      <NoPhotosWarningModal
+        isOpen={showWarningModal}
+        onClose={() => setShowWarningModal(false)}
+        onContinue={photoWarningType === "after" ? confirmCompleteJob : proceedToNext}
+        photoType={photoWarningType}
+      />
+    </div>
+  );
+}
