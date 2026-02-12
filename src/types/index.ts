@@ -16,6 +16,7 @@ export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
 export type JobProgress = 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
+export type CleanerConfirmationStatus = 'awaiting' | 'approved' | 'rejected';
 
 // USER PROFILES
 export interface UserProfile {
@@ -115,6 +116,7 @@ export interface Appointment {
   special_requests: string | null; // NOT special_instructions!
   notes: string | null;
   series_id: string | null; // References recurring_appointment_series(id)
+  cleaner_confirmation_status: CleanerConfirmationStatus; // awaiting, approved, or rejected
   created_at: string;
   updated_at: string;
 }
@@ -270,6 +272,40 @@ export interface ChecklistLineItem {
 // Checklist with nested line items (for UI)
 export interface ChecklistWithItems extends Checklist {
   checklist_line_items: ChecklistLineItem[];
+}
+
+// CLEANER AVAILABILITY FEEDBACK
+export interface CleanerAvailabilityFeedback {
+  id: string;
+  appointment_id: string;
+  cleaner_id: string;
+  reason: string | null;
+  created_at: string;
+}
+
+// CLEANER SUGGESTED TIMES
+export interface CleanerSuggestedTime {
+  id: string;
+  feedback_id: string;
+  suggested_date: string; // date
+  suggested_time: string; // time
+  created_at: string;
+}
+
+// CLEANER SUGGESTED WINDOWS
+export interface CleanerSuggestedWindow {
+  id: string;
+  feedback_id: string;
+  window_date: string; // date
+  start_time: string; // time
+  end_time: string; // time
+  created_at: string;
+}
+
+// Feedback with nested suggested times and windows (for UI)
+export interface CleanerFeedbackWithTimes extends CleanerAvailabilityFeedback {
+  cleaner_suggested_times: CleanerSuggestedTime[];
+  cleaner_suggested_windows: CleanerSuggestedWindow[];
 }
 
 // ==========================================

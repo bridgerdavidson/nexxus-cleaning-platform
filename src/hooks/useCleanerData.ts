@@ -13,6 +13,7 @@ export interface CleanerAppointment {
   job_progress?: 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
   total_price: number;
   special_requests?: string;
+  cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected';
   homeowner: {
     first_name: string;
     last_name: string;
@@ -113,6 +114,7 @@ export function useCleanerAppointments() {
           job_progress,
           total_price,
           special_requests,
+          cleaner_confirmation_status,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -254,6 +256,7 @@ export function useCleanerAppointments() {
             job_progress,
             total_price,
             special_requests,
+            cleaner_confirmation_status,
             homeowner:user_profiles!homeowner_id(
               first_name,
               last_name,

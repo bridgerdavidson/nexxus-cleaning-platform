@@ -25,6 +25,17 @@ import { updateAppointment } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import PaymentMethodForm from "./PaymentMethodForm";
 
+interface CleanerFeedback {
+  id: string;
+  reason: string | null;
+  created_at: string;
+  cleaner_suggested_times: {
+    id: string;
+    suggested_date: string;
+    suggested_time: string;
+  }[];
+}
+
 interface AppointmentSidePanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -37,6 +48,7 @@ interface AppointmentSidePanelProps {
   onStartJob?: (appointmentId: string) => void;
   onCompleteJob?: (appointmentId: string) => void;
   onAppointmentUpdated?: (updatedAppointment: AppointmentCardData) => void;
+  onReschedule?: (appointment: AppointmentCardData) => void;
   role: "admin" | "manager" | "cleaner" | "homeowner";
   canEdit?: boolean;
   canApproveDecline?: boolean;
@@ -54,6 +66,7 @@ export default function AppointmentSidePanel({
   onStartJob,
   onCompleteJob,
   onAppointmentUpdated,
+  onReschedule,
   role,
   canEdit = true,
   canApproveDecline = false,
@@ -73,6 +86,10 @@ export default function AppointmentSidePanel({
     special_requests: "",
     notes: "",
   });
+
+  // Cleaner feedback state
+  const [cleanerFeedback, setCleanerFeedback] = useState<CleanerFeedback[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   // Payment method state
   const [paymentMethodInfo, setPaymentMethodInfo] = useState<{
@@ -135,6 +152,29 @@ export default function AppointmentSidePanel({
     // Reset payment form state when appointment changes
     setShowPaymentForm(false);
   }, [appointment?.homeowner_id, isOpen, fetchPaymentMethod]);
+
+  // Fetch cleaner feedback when appointment is rejected
+  useEffect(() => {
+    if (appointment?.cleaner_confirmation_status === 'rejected' && isOpen && (role === "admin" || role === "manager")) {
+      const fetchFeedback = async () => {
+        setFeedbackLoading(true);
+        try {
+          const response = await fetch(`/api/appointments/confirm?appointmentId=${appointment.id}`);
+          const result = await response.json();
+          if (result.success) {
+            setCleanerFeedback(result.data || []);
+          }
+        } catch (err) {
+          console.error("Error fetching cleaner feedback:", err);
+        } finally {
+          setFeedbackLoading(false);
+        }
+      };
+      fetchFeedback();
+    } else {
+      setCleanerFeedback([]);
+    }
+  }, [appointment?.id, appointment?.cleaner_confirmation_status, isOpen, role]);
 
   // Start animating when opened
   useEffect(() => {
@@ -653,6 +693,95 @@ export default function AppointmentSidePanel({
                   </p>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Cleaner Confirmation Status - Awaiting */}
+          {appointment.cleaner_confirmation_status === 'awaiting' && !isEditing && (role === "admin" || role === "manager") && (
+            <div className="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                <h4 className="font-semibold text-amber-800">Awaiting Cleaner Confirmation</h4>
+              </div>
+              <p className="text-sm text-amber-700">
+                Waiting for the cleaner to confirm their availability for this appointment.
+              </p>
+            </div>
+          )}
+
+          {/* Cleaner Confirmation Status - Rejected */}
+          {appointment.cleaner_confirmation_status === 'rejected' && !isEditing && (role === "admin" || role === "manager") && (
+            <div className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                <h4 className="font-semibold text-red-800">Cleaner Declined This Time</h4>
+              </div>
+
+              {feedbackLoading ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Loading feedback...</span>
+                </div>
+              ) : cleanerFeedback.length > 0 ? (
+                <div className="space-y-3">
+                  {cleanerFeedback.map((fb) => (
+                    <div key={fb.id} className="bg-white rounded-lg p-3 border border-red-200">
+                      {fb.reason && (
+                        <div className="mb-2">
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Reason</p>
+                          <p className="text-sm text-gray-800">{fb.reason}</p>
+                        </div>
+                      )}
+                      {fb.cleaner_suggested_times && fb.cleaner_suggested_times.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Suggested Times</p>
+                          <div className="space-y-1">
+                            {fb.cleaner_suggested_times.map((st) => {
+                              const [y, m, d] = st.suggested_date.split("-").map(Number);
+                              const sugDate = new Date(y, m - 1, d);
+                              const dateStr = sugDate.toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              });
+                              const [hours, minutes] = st.suggested_time.split(":");
+                              const hour = parseInt(hours);
+                              const ampm = hour >= 12 ? "PM" : "AM";
+                              const displayHour = hour % 12 || 12;
+                              const timeStr = `${displayHour}:${minutes} ${ampm}`;
+                              return (
+                                <div
+                                  key={st.id}
+                                  className="flex items-center gap-2 text-sm text-gray-700 bg-green-50 px-2 py-1 rounded"
+                                >
+                                  <Calendar className="w-3.5 h-3.5 text-green-600" />
+                                  <span>{dateStr} at {timeStr}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400 mt-2">
+                        {new Date(fb.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-red-700">
+                  The cleaner declined but no detailed feedback was provided.
+                </p>
+              )}
+
+              {onReschedule && (
+                <button
+                  onClick={() => onReschedule(appointment)}
+                  className="w-full mt-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Reschedule Appointment
+                </button>
+              )}
             </div>
           )}
 

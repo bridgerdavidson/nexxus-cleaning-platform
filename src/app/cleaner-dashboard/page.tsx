@@ -50,6 +50,7 @@ import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
+import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
 import { format } from "date-fns";
 
 type ViewType = "list" | "calendar";
@@ -197,6 +198,24 @@ export default function CleanerDashboard() {
   // Active jobs (in_progress) - shown in Active Cleanings section
   const activeJobs = useMemo(
     () => appointments.filter((a) => a.status === "in_progress"),
+    [appointments]
+  );
+
+  // Pending confirmation appointments - awaiting cleaner response
+  const pendingConfirmations = useMemo(
+    () =>
+      appointments
+        .filter(
+          (apt) =>
+            apt.cleaner_confirmation_status === 'awaiting' &&
+            apt.status !== "cancelled" &&
+            apt.status !== "completed"
+        )
+        .sort((a, b) => {
+          const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
+          if (dateCompare !== 0) return dateCompare;
+          return a.scheduled_time.localeCompare(b.scheduled_time);
+        }),
     [appointments]
   );
 
@@ -834,6 +853,18 @@ export default function CleanerDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Pending Confirmations - Requires cleaner action */}
+      <PendingConfirmationsSection
+        appointments={pendingConfirmations}
+        loading={appointmentsLoading}
+        userId={user.id}
+        organizationId={currentOrganizationId || ""}
+        onConfirmed={() => {
+          // Realtime subscription will auto-update the appointments state
+          // No manual refetch needed
+        }}
+      />
 
       {/* Active Cleanings - collapsible; auto-collapsed when empty */}
       <div>

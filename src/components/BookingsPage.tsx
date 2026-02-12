@@ -28,6 +28,8 @@ import AppointmentSidePanel from "./AppointmentSidePanel";
 import CancelConfirmModal from "./CancelConfirmModal";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
+import RescheduleAppointmentModal from "./RescheduleAppointmentModal";
+import RescheduleRequiredSection from "./RescheduleRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
@@ -47,6 +49,7 @@ interface BookingsPageProps {
   canEdit?: boolean;
   initialStatusFilter?: string;
   canApproveDecline?: boolean;
+  organizationId?: string;
 }
 
 export default function BookingsPage({
@@ -61,6 +64,7 @@ export default function BookingsPage({
   canEdit = true,
   initialStatusFilter,
   canApproveDecline = false,
+  organizationId = "",
 }: BookingsPageProps) {
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,6 +81,10 @@ export default function BookingsPage({
     string | null
   >(null);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
+
+  // Reschedule modal state
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [reschedulingAppointment, setReschedulingAppointment] = useState<AppointmentCardData | null>(null);
 
   // Calendar-specific state
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
@@ -259,6 +267,22 @@ export default function BookingsPage({
     if (statusFilter === "all") return true;
     return appointment.status === statusFilter;
   };
+
+  // Get appointments requiring reschedule (rejected by cleaner)
+  const rescheduleRequiredAppointments = useMemo(() => {
+    return localAppointments
+      .filter(
+        (apt) =>
+          apt.cleaner_confirmation_status === "rejected" &&
+          apt.status !== "cancelled" &&
+          apt.status !== "completed"
+      )
+      .sort((a, b) => {
+        const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
+        const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
+        return dateA.getTime() - dateB.getTime();
+      });
+  }, [localAppointments]);
 
   // Get filtered active appointments (in_progress)
   const filteredActiveAppointments = useMemo(() => {
@@ -804,6 +828,23 @@ export default function BookingsPage({
             </div>
           ) : (
             <div className="space-y-8">
+              {/* Reschedule Required Section */}
+              {(role === "admin" || role === "manager") && (
+                <RescheduleRequiredSection
+                  appointments={rescheduleRequiredAppointments}
+                  loading={loading}
+                  defaultExpanded={false}
+                  onReschedule={(apt) => {
+                    setReschedulingAppointment(apt as AppointmentCardData);
+                    setShowRescheduleModal(true);
+                  }}
+                  onViewDetails={(apt) => {
+                    setSelectedAppointment(apt as AppointmentCardData);
+                    setShowSidePanel(true);
+                  }}
+                />
+              )}
+
               {/* Active Cleanings Section - always expanded on Bookings */}
               {filteredActiveAppointments.length > 0 && (
                 <div>
@@ -1083,6 +1124,24 @@ export default function BookingsPage({
               }
             : undefined
         }
+        onReschedule={
+          canEdit && (role === "admin" || role === "manager")
+            ? (apt) => {
+                if (apt.cleaner_confirmation_status === "rejected") {
+                  // Open dedicated reschedule modal for rejected appointments
+                  setShowSidePanel(false);
+                  setReschedulingAppointment(apt);
+                  setShowRescheduleModal(true);
+                } else {
+                  // Open the add appointment modal with pre-filled date/time
+                  setShowSidePanel(false);
+                  setPreFilledDate(apt.scheduled_date);
+                  setPreFilledTime(apt.scheduled_time?.slice(0, 5));
+                  setShowAddAppointmentModal(true);
+                }
+              }
+            : undefined
+        }
         role={role}
         canEdit={canEdit}
         canApproveDecline={canApproveDecline}
@@ -1125,6 +1184,22 @@ export default function BookingsPage({
         }}
         preFilledDate={preFilledDate}
         preFilledTime={preFilledTime}
+      />
+
+      {/* Reschedule Appointment Modal */}
+      <RescheduleAppointmentModal
+        isOpen={showRescheduleModal}
+        onClose={() => {
+          setShowRescheduleModal(false);
+          setReschedulingAppointment(null);
+        }}
+        onRescheduleComplete={() => {
+          if (onRefreshAppointments) {
+            onRefreshAppointments();
+          }
+        }}
+        appointment={reschedulingAppointment}
+        organizationId={organizationId}
       />
     </div>
   );

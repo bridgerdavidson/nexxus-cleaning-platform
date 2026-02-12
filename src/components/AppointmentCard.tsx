@@ -1,5 +1,5 @@
 import React from "react";
-import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles } from "lucide-react";
+import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
 import { JobProgress } from "../types";
@@ -14,6 +14,7 @@ export interface AppointmentCardData {
   special_requests?: string | null;
   notes?: string | null;
   series_id?: string | null;
+  cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   homeowner_id?: string;
   homeowner?: {
@@ -170,6 +171,10 @@ export default function AppointmentCard({
       className={`relative bg-white border rounded-lg hover:shadow-lg transition-all duration-200 cursor-pointer group overflow-hidden ${
         isSelected
           ? "border-primary-500 bg-primary-50"
+          : appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner"
+          ? "border-l-4 border-l-red-500 border-gray-200 hover:border-primary-300"
+          : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner"
+          ? "border-l-4 border-l-amber-400 border-gray-200 hover:border-primary-300"
           : "border-gray-200 hover:border-primary-300"
       }`}
     >
@@ -256,15 +261,27 @@ export default function AppointmentCard({
 
         {/* Status with inline progress - hide progress bar for cleaner role */}
         <div className="col-span-2 flex flex-col items-center justify-center gap-2">
-          <div className="flex items-center gap-2">
-            {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
-              <CompactJobProgressIndicator 
-                currentProgress={appointment.job_progress as JobProgress} 
-              />
-            )}
-            <StatusBadge status={appointment.status} size="sm" />
-          </div>
-          {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
+          {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">
+              <RefreshCw className="w-3 h-3" />
+              Reschedule Required
+            </span>
+          ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
+              <Clock className="w-3 h-3" />
+              Awaiting Cleaner
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
+                <CompactJobProgressIndicator 
+                  currentProgress={appointment.job_progress as JobProgress} 
+                />
+              )}
+              <StatusBadge status={appointment.status} size="sm" />
+            </div>
+          )}
+          {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
             <div className="flex items-center gap-1.5">
               <button
                 className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
@@ -343,13 +360,27 @@ export default function AppointmentCard({
         <div className="sm:col-span-2">
           <div className="flex sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
-              {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
-                <CompactJobProgressIndicator 
-                  currentProgress={appointment.job_progress as JobProgress} 
-                />
+              {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">
+                  <RefreshCw className="w-3 h-3" />
+                  Reschedule Required
+                </span>
+              ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
+                  <Clock className="w-3 h-3" />
+                  Awaiting Cleaner
+                </span>
+              ) : (
+                <>
+                  {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
+                    <CompactJobProgressIndicator 
+                      currentProgress={appointment.job_progress as JobProgress} 
+                    />
+                  )}
+                  <StatusBadge status={appointment.status} size="md" />
+                </>
               )}
-              <StatusBadge status={appointment.status} size="md" />
-              {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending") && (
+              {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
                 <div className="flex items-center gap-1.5">
                   <button
                     className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"

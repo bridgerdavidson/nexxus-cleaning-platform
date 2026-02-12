@@ -64,9 +64,12 @@ import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
+import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
+import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
+import { AppointmentCardData } from "../../components/AppointmentCard";
 
 export default function AdminDashboard() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, currentOrganizationId } = useAuth();
   const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -92,6 +95,8 @@ export default function AdminDashboard() {
     useState(true);
   const [selectedCleaner, setSelectedCleaner] = useState<any | null>(null);
   const [isCleanerSidePanelOpen, setIsCleanerSidePanelOpen] = useState(false);
+  const [rescheduleModalAppointment, setRescheduleModalAppointment] =
+    useState<AppointmentCardData | null>(null);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -440,6 +445,19 @@ export default function AdminDashboard() {
       return dateA.getTime() - dateB.getTime();
     });
 
+  // Appointments where the cleaner has rejected the time (needs rescheduling)
+  const rescheduleRequiredAppointments = appointments
+    .filter((a) => {
+      if (a.cleaner_confirmation_status !== "rejected") return false;
+      if (a.status === "completed" || a.status === "cancelled") return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
+      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
   const renderOverview = () => (
     <>
       {/* Mobile Header - Compact */}
@@ -496,6 +514,21 @@ export default function AdminDashboard() {
               </>
             )}
           </div>
+        </div>
+
+        {/* Mobile Reschedule Required - Top Priority */}
+        <div className="md:hidden">
+          <RescheduleRequiredSection
+            appointments={rescheduleRequiredAppointments}
+            loading={appointmentsLoading}
+            defaultExpanded={false}
+            onReschedule={(apt) => {
+              setRescheduleModalAppointment(apt as AppointmentCardData);
+            }}
+            onViewDetails={() => {
+              setActiveTab("bookings");
+            }}
+          />
         </div>
 
         {/* Mobile Pending Approvals - Priority Section */}
@@ -862,6 +895,21 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Desktop Reschedule Required */}
+        <div className="hidden md:block">
+          <RescheduleRequiredSection
+            appointments={rescheduleRequiredAppointments}
+            loading={appointmentsLoading}
+            defaultExpanded={false}
+            onReschedule={(apt) => {
+              setRescheduleModalAppointment(apt as AppointmentCardData);
+            }}
+            onViewDetails={() => {
+              setActiveTab("bookings");
+            }}
+          />
+        </div>
+
         {/* Desktop Quick Actions - Original Two Column Layout */}
         <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
@@ -954,7 +1002,13 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={appointment.id}
-                      className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg overflow-hidden pr-24"
+                      className={`relative flex items-center justify-between p-3 rounded-lg overflow-hidden pr-24 ${
+                        appointment.cleaner_confirmation_status === 'rejected'
+                          ? "bg-red-50 border-l-4 border-l-red-500"
+                          : appointment.cleaner_confirmation_status === 'awaiting'
+                          ? "bg-amber-50 border-l-4 border-l-amber-400"
+                          : "bg-gray-50"
+                      }`}
                     >
                       {/* Payment Status Tab */}
                       <div
@@ -982,9 +1036,23 @@ export default function AdminDashboard() {
                             Service: {appointment.service_type.name}
                           </p>
                         )}
+                        {appointment.cleaner_confirmation_status === 'rejected' && (
+                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">
+                            <AlertCircle className="w-3 h-3" />
+                            Reschedule Required
+                          </span>
+                        )}
+                        {appointment.cleaner_confirmation_status === 'awaiting' && (
+                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
+                            <Clock className="w-3 h-3" />
+                            Awaiting Cleaner
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <StatusBadge status={appointment.status} size="sm" />
+                        {appointment.cleaner_confirmation_status === 'approved' && (
+                          <StatusBadge status={appointment.status} size="sm" />
+                        )}
                       </div>
                     </div>
                   );
@@ -1063,6 +1131,7 @@ export default function AdminDashboard() {
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
         role="admin"
         initialStatusFilter={initialFilter}
+        organizationId={currentOrganizationId || ""}
       />
     );
   };
@@ -1598,6 +1667,14 @@ export default function AdminDashboard() {
           // Update in list state without refetch
           updateCleanerInState(updatedCleaner.id, updatedCleaner);
         }}
+      />
+
+      <RescheduleAppointmentModal
+        isOpen={!!rescheduleModalAppointment}
+        onClose={() => setRescheduleModalAppointment(null)}
+        onRescheduleComplete={refetchAppointments}
+        appointment={rescheduleModalAppointment}
+        organizationId={currentOrganizationId || ""}
       />
     </div>
   );

@@ -58,7 +58,7 @@ import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 
 export default function ManagerDashboard() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, currentOrganizationId } = useAuth();
   const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1297,6 +1297,7 @@ export default function ManagerDashboard() {
         role="manager"
         canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
         initialStatusFilter={initialFilter}
+        organizationId={currentOrganizationId || ""}
       />
     );
   };

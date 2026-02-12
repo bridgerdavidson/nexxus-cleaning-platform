@@ -199,6 +199,7 @@ export type Database = {
           total_price: number
           notes: string | null
           series_id: string | null
+          cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected'
           created_at: string
           updated_at: string
         }
@@ -215,6 +216,7 @@ export type Database = {
           total_price: number
           notes?: string | null
           series_id?: string | null
+          cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected'
           created_at?: string
           updated_at?: string
         }
@@ -231,8 +233,55 @@ export type Database = {
           total_price?: number
           notes?: string | null
           series_id?: string | null
+          cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected'
           created_at?: string
           updated_at?: string
+        }
+      }
+      cleaner_availability_feedback: {
+        Row: {
+          id: string
+          appointment_id: string
+          cleaner_id: string
+          reason: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          appointment_id: string
+          cleaner_id: string
+          reason?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          appointment_id?: string
+          cleaner_id?: string
+          reason?: string | null
+          created_at?: string
+        }
+      }
+      cleaner_suggested_times: {
+        Row: {
+          id: string
+          feedback_id: string
+          suggested_date: string
+          suggested_time: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          feedback_id: string
+          suggested_date: string
+          suggested_time: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          feedback_id?: string
+          suggested_date?: string
+          suggested_time?: string
+          created_at?: string
         }
       }
       recurring_appointment_series: {

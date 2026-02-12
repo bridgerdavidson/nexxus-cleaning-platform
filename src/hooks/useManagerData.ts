@@ -15,6 +15,7 @@ export interface ManagerAppointment {
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
+  cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
   homeowner_id?: string;
   homeowner: {
     first_name: string;
@@ -115,6 +116,7 @@ export function useManagerAppointments() {
           total_price,
           special_requests,
           notes,
+          cleaner_confirmation_status,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -262,6 +264,7 @@ export function useManagerAppointments() {
           total_price,
           special_requests,
           notes,
+          cleaner_confirmation_status,
           homeowner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
@@ -653,6 +656,7 @@ export async function updateAppointment(
         total_price,
         special_requests,
         notes,
+        cleaner_confirmation_status,
         homeowner:user_profiles!homeowner_id(
           first_name,
           last_name,

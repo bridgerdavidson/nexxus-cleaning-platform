@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
       special_requests: specialRequests ?? null,
       status: appointmentStatus,
       series_id: series.id,
+      cleaner_confirmation_status: 'awaiting',
     }));
 
     const { data: appointments, error: appointmentsError } = await supabaseAdmin

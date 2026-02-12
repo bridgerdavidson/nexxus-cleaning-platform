@@ -15,6 +15,7 @@ export interface AdminAppointment {
   special_requests?: string | null;
   notes?: string | null;
   series_id?: string | null;
+  cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
   homeowner_id?: string;
   homeowner: {
     first_name: string;
@@ -128,6 +129,7 @@ export function useAdminAppointments() {
           special_requests,
           notes,
           series_id,
+          cleaner_confirmation_status,
           homeowner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
@@ -275,6 +277,7 @@ export function useAdminAppointments() {
           special_requests,
           notes,
           series_id,
+          cleaner_confirmation_status,
           homeowner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
@@ -997,6 +1000,7 @@ export async function updateAppointment(
     special_requests?: string | null;
     notes?: string | null;
     status?: string;
+    cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
   }
 ): Promise<{ success: boolean; data?: AdminAppointment; error?: string }> {
   try {
@@ -1016,6 +1020,7 @@ export async function updateAppointment(
         special_requests,
         notes,
         series_id,
+        cleaner_confirmation_status,
         homeowner:user_profiles!homeowner_id(
           first_name,
           last_name,

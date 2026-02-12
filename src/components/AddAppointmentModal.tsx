@@ -132,7 +132,6 @@ export default function AddAppointmentModal({
   const [cleanersLoading, setCleanersLoading] = useState(false);
   const [cleanerSearch, setCleanerSearch] = useState("");
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
-  const [skipCleaner, setSkipCleaner] = useState(false);
 
   // Step 2 - Price override state
   const [customPrice, setCustomPrice] = useState<string>("");
@@ -395,8 +394,8 @@ export default function AddAppointmentModal({
       return;
     }
 
-    if (!skipCleaner && !selectedCleaner) {
-      setError('Please select a cleaner or check "Skip for now"');
+    if (!selectedCleaner) {
+      setError("Please select a cleaner");
       return;
     }
 
@@ -464,7 +463,7 @@ export default function AddAppointmentModal({
           body: JSON.stringify({
             organizationId: currentOrganizationId,
             homeownerId: selectedHomeowner.id,
-            cleanerId: skipCleaner ? null : selectedCleaner?.id,
+            cleanerId: selectedCleaner.id,
             propertyId: selectedProperty.id,
             serviceTypeId: selectedServiceType.id,
             startDate: scheduledDate,
@@ -507,7 +506,7 @@ export default function AddAppointmentModal({
         .insert({
           organization_id: currentOrganizationId,
           homeowner_id: selectedHomeowner.id,
-          cleaner_id: skipCleaner ? null : selectedCleaner?.id,
+          cleaner_id: selectedCleaner.id,
           property_id: selectedProperty.id,
           service_type_id: selectedServiceType.id,
           scheduled_date: scheduledDate,
@@ -516,6 +515,7 @@ export default function AddAppointmentModal({
           total_price: finalPrice,
           special_requests: specialRequests || null,
           status: initialStatus,
+          cleaner_confirmation_status: 'awaiting',
         });
 
       if (insertError) {
@@ -573,7 +573,6 @@ export default function AddAppointmentModal({
     setScheduledTime("");
     setSpecialRequests("");
     setSelectedCleaner(null);
-    setSkipCleaner(false);
     setHomeownerSearch("");
     setPropertySearch("");
     setCleanerSearch("");
@@ -642,7 +641,7 @@ export default function AddAppointmentModal({
     (hidePriceOverride ||
       !priceOverrideEnabled ||
       (customPrice && parseFloat(customPrice) > 0));
-  const isStep3Valid = selectedCleaner || skipCleaner;
+  const isStep3Valid = !!selectedCleaner;
   const isStep4Valid = paymentMethodSaved || skipPaymentMethod;
 
   // Get today's date for min date validation (using local timezone, not UTC)
@@ -1445,15 +1444,11 @@ export default function AddAppointmentModal({
                         type="button"
                         onClick={() => {
                           setSelectedCleaner(cleaner);
-                          setSkipCleaner(false);
                         }}
-                        disabled={skipCleaner}
                         className={`p-4 border-2 rounded-lg text-left transition-all ${
                           selectedCleaner?.id === cleaner.id
                             ? "border-primary-500 bg-primary-50"
                             : "border-gray-200 hover:border-gray-300"
-                        } ${
-                          skipCleaner ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                       >
                         <div className="flex items-start justify-between">
@@ -1479,8 +1474,7 @@ export default function AddAppointmentModal({
                               </div>
                             </div>
                           </div>
-                          {selectedCleaner?.id === cleaner.id &&
-                            !skipCleaner && (
+                          {selectedCleaner?.id === cleaner.id && (
                               <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
                             )}
                         </div>
@@ -1489,28 +1483,14 @@ export default function AddAppointmentModal({
                   </div>
                 )}
 
-                {/* Skip for now option */}
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={skipCleaner}
-                      onChange={(e) => {
-                        setSkipCleaner(e.target.checked);
-                        if (e.target.checked) {
-                          setSelectedCleaner(null);
-                        }
-                      }}
-                      className="w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                    />
-                    <div>
-                      <p className="font-medium text-gray-900">Skip for now</p>
-                      <p className="text-sm text-gray-600">
-                        Assign a cleaner later
-                      </p>
-                    </div>
-                  </label>
-                </div>
+                {/* Cleaner selection required notice */}
+                {!selectedCleaner && cleaners.length > 0 && (
+                  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-700">
+                      A cleaner must be selected. The appointment will be sent to them for availability confirmation.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1701,7 +1681,7 @@ export default function AddAppointmentModal({
                       <Loader2 className="w-4 h-4 animate-spin" />
                       {recurrenceType !== "none"
                         ? "Creating Series..."
-                        : "Creating..."}
+                        : "Sending..."}
                     </>
                   ) : (
                     <>
@@ -1709,8 +1689,8 @@ export default function AddAppointmentModal({
                         <Repeat className="w-4 h-4" />
                       )}
                       {recurrenceType !== "none"
-                        ? "Create Recurring Appointments"
-                        : "Create Appointment"}
+                        ? "Send Series to Cleaner for Confirmation"
+                        : "Send to Cleaner for Confirmation"}
                     </>
                   )}
                 </button>
