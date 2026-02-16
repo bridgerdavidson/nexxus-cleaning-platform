@@ -470,20 +470,147 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Desktop Header - Match Bookings spacing */}
+      {/* Desktop Header - Modern control center hero */}
       <div className="hidden md:block mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
-          <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
-            Admin Dashboard
-          </span>
+        <div className="relative overflow-hidden rounded-[2rem] border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-7 shadow-[0_8px_20px_-14px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
+          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary-300/35 blur-3xl" />
+          <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-primary-200/30 blur-3xl" />
+
+          <div className="relative flex flex-col gap-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                <Star className="h-3.5 w-3.5" />
+                Admin Dashboard
+              </div>
+              <h2 className="text-4xl font-bold tracking-tight text-gray-900">
+                Operations overview
+              </h2>
+              <p className="mt-2 max-w-2xl text-gray-600">
+                Track the health of bookings, team capacity, and revenue in one
+                polished workspace built for quick decision-making.
+              </p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setActiveTab("bookings")}
+                className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+              >
+                View bookings
+              </button>
+              <button
+                onClick={() => setActiveTab("analytics")}
+                className="rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700"
+              >
+                Open analytics
+              </button>
+            </div>
+          </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
+                    <Calendar className="h-4 w-4 text-primary-700" />
+                  </span>
+                  Total Bookings
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.totalBookings}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
+                    <Users className="h-4 w-4 text-gray-700" />
+                  </span>
+                  Active Cleaners
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.activeCleaners}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
+                    <DollarSign className="h-4 w-4 text-emerald-700" />
+                  </span>
+                  Total Revenue
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    ${stats.totalRevenue}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
+                    <AlertTriangle className="h-4 w-4 text-amber-700" />
+                  </span>
+                  Pending
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.pendingApprovals}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
+                    <TrendingUp className="h-4 w-4 text-primary-700" />
+                  </span>
+                  Growth
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.monthlyGrowth}%
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
+                    <CheckCircle className="h-4 w-4 text-gray-700" />
+                  </span>
+                  Completion
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.completionRate}%
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <p className="text-gray-600">
-          Manage your cleaning business operations from one central location.
-        </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 md:space-y-7">
         {/* Mobile Quick Stats Bar */}
         <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
           <div className="flex items-center justify-between">
@@ -792,109 +919,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Desktop Stats Cards - Original Layout */}
-        <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-          <div className="card flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-purple-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Total Bookings
-              </p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.totalBookings}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="card flex items-center">
-            <div className="p-2 bg-indigo-100 rounded-lg">
-              <Users className="w-6 h-6 text-indigo-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Active Cleaners
-              </p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.activeCleaners}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="card flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  ${stats.totalRevenue}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="card flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.pendingApprovals}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="card flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Growth</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.monthlyGrowth}%
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="card flex items-center">
-            <div className="p-2 bg-teal-100 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-teal-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Completion</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.completionRate}%
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Desktop Reschedule Required */}
         <div className="hidden md:block">
           <RescheduleRequiredSection
@@ -910,9 +934,9 @@ export default function AdminDashboard() {
           />
         </div>
 
-        {/* Desktop Quick Actions - Original Two Column Layout */}
+        {/* Desktop Quick Actions - Dashboard cards */}
         <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card">
+          <div className="rounded-[1.75rem] border border-gray-100 bg-white/95 p-6 shadow-sm ring-1 ring-gray-100/60">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <FileText className="w-5 h-5 text-amber-600" />
               Appointments Pending Review
@@ -929,7 +953,7 @@ export default function AdminDashboard() {
                 {pendingAppointments.slice(0, 3).map((appointment) => (
                   <div
                     key={appointment.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between gap-4 p-4 bg-gradient-to-r from-slate-50 via-white to-primary-50/20 rounded-2xl border border-gray-100/90"
                   >
                     <div>
                       <p className="font-medium text-gray-900">
@@ -952,7 +976,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex space-x-2">
                       <button
-                        className="px-4 py-3 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors font-medium"
+                        className="px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium"
                       >
                         Review
                       </button>
@@ -982,7 +1006,7 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          <div className="card">
+          <div className="rounded-[1.75rem] border border-gray-100 bg-white/95 p-6 shadow-sm ring-1 ring-gray-100/60">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Upcoming Appointments
             </h3>
@@ -1002,12 +1026,12 @@ export default function AdminDashboard() {
                   return (
                     <div
                       key={appointment.id}
-                      className={`relative flex items-center justify-between p-3 rounded-lg overflow-hidden pr-24 ${
+                      className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl overflow-hidden pr-24 border shadow-sm ${
                         appointment.cleaner_confirmation_status === 'rejected'
-                          ? "bg-red-50 border-l-4 border-l-red-500"
+                          ? "bg-red-50 border-red-200"
                           : appointment.cleaner_confirmation_status === 'awaiting'
-                          ? "bg-amber-50 border-l-4 border-l-amber-400"
-                          : "bg-gray-50"
+                          ? "bg-amber-50 border-amber-200"
+                          : "bg-gradient-to-r from-gray-50 to-white border-gray-100"
                       }`}
                     >
                       {/* Payment Status Tab */}
@@ -1569,7 +1593,7 @@ export default function AdminDashboard() {
   return (
     <div
       className={`min-h-screen ${
-        activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
+        activeTab === "messages" ? "bg-white md:bg-gray-100" : "bg-gray-100"
       }`}
     >
       {/* Persistent Desktop Sidebar - Shows Groups */}

@@ -24,7 +24,7 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onLogout,
 }) => {
   return (
-    <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[260px] bg-white shadow-lg rounded-r-2xl z-40">
+    <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[260px] bg-gray-50 z-40">
       {/* Logo Section */}
       <div className="p-6 flex justify-center">
         <Link href="/" className="flex items-center">
@@ -44,8 +44,8 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 onClick={() => onGroupChange(group.id)}
                 className={`w-full flex items-center px-4 py-3 rounded-lg transition-all duration-200 relative ${
                   isActive
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    ? "bg-white text-primary-700 ring-1 ring-primary-100/80"
+                    : "text-gray-600 hover:bg-white/80 hover:text-gray-900"
                 }`}
               >
                 {isActive && (
@@ -70,7 +70,7 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       </nav>
 
       {/* Sign Out Button */}
-      <div className="p-4 border-t border-gray-200">
+      <div className="p-4">
         <button
           onClick={onLogout}
           className="w-full flex items-center justify-center px-4 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm"
