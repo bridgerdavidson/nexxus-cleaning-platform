@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this cleaner
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status')
       .eq('id', appointmentId)
       .single();
 
@@ -68,9 +68,14 @@ export async function POST(request: NextRequest) {
 
     if (confirmed) {
       // ===== CLEANER CONFIRMED =====
+      const updatePayload =
+        appointment.status === 'pending'
+          ? { cleaner_confirmation_status: 'approved', status: 'confirmed' }
+          : { cleaner_confirmation_status: 'approved' };
+
       const { error: updateError } = await supabaseAdmin
         .from('appointments')
-        .update({ cleaner_confirmation_status: 'approved' })
+        .update(updatePayload)
         .eq('id', appointmentId);
 
       if (updateError) {
@@ -103,9 +108,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Mark appointment as rejected
+      const rejectPayload =
+        appointment.status === 'confirmed'
+          ? { cleaner_confirmation_status: 'rejected', status: 'pending' }
+          : { cleaner_confirmation_status: 'rejected' };
+
       const { error: rejectError } = await supabaseAdmin
         .from('appointments')
-        .update({ cleaner_confirmation_status: 'rejected' })
+        .update(rejectPayload)
         .eq('id', appointmentId);
 
       if (rejectError) {

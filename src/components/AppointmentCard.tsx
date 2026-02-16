@@ -1,5 +1,5 @@
-import React from "react";
-import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw } from "lucide-react";
+import React, { useState } from "react";
+import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
 import { JobProgress } from "../types";
@@ -48,6 +48,7 @@ interface AppointmentCardProps {
   onToggleSelect?: () => void;
   role?: "admin" | "manager" | "cleaner" | "homeowner";
   canApproveDecline?: boolean;
+  onStartJob?: (appointmentId: string) => void;
 }
 
 export default function AppointmentCard({
@@ -58,7 +59,10 @@ export default function AppointmentCard({
   onToggleSelect,
   role,
   canApproveDecline = false,
+  onStartJob,
 }: AppointmentCardProps) {
+  const [isStarting, setIsStarting] = useState(false);
+
   const formatDateTime = (date: string, time: string) => {
     // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
     const [year, month, day] = date.split('-').map(Number);
@@ -162,6 +166,25 @@ export default function AppointmentCard({
     }
   };
 
+  const handleStartJobClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onStartJob && !isStarting) {
+      setIsStarting(true);
+      try {
+        await onStartJob(appointment.id);
+      } finally {
+        // Component may unmount when parent switches tabs, so this finally may not run
+        // but that's okay - the loading state is just for UI feedback
+        setIsStarting(false);
+      }
+    }
+  };
+
+  const showStartJobButton = 
+    role === "cleaner" && 
+    onStartJob && 
+    appointment.status === "confirmed";
+
 
   const paymentStatusConfig = getPaymentStatusTabConfig();
 
@@ -244,7 +267,7 @@ export default function AppointmentCard({
         </div>
 
         {/* Homeowner */}
-        <div className={`${role === "cleaner" ? "col-span-4" : "col-span-2"} flex items-center gap-1.5 min-w-0`}>
+        <div className={`${role === "cleaner" ? (showStartJobButton ? "col-span-2" : "col-span-5") : "col-span-2"} flex items-center gap-1.5 min-w-0`}>
           <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
           <p className="font-medium text-sm text-gray-900 truncate">{getHomeownerName()}</p>
         </div>
@@ -260,36 +283,48 @@ export default function AppointmentCard({
         )}
 
         {/* Status with inline progress - hide progress bar for cleaner role */}
-        <div className="col-span-2 flex flex-col items-center justify-center gap-2">
-          {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">
-              <RefreshCw className="w-3 h-3" />
-              Reschedule Required
-            </span>
-          ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
-              <Clock className="w-3 h-3" />
-              Awaiting Cleaner
-            </span>
-          ) : (
-            <div className="flex items-center gap-2">
-              {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
-                <CompactJobProgressIndicator 
-                  currentProgress={appointment.job_progress as JobProgress} 
-                />
-              )}
-              <StatusBadge status={appointment.status} size="sm" />
-            </div>
-          )}
-          {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
-            <div className="flex items-center gap-1.5">
+        {/* For cleaner with button, expand status section to col-span-5 to push button far right */}
+        <div className={`${role === "cleaner" && showStartJobButton ? "col-span-5" : "col-span-2"} flex items-center ${role === "cleaner" && showStartJobButton ? "justify-between" : "justify-center flex-col"} gap-2`}>
+          <div className="flex items-center gap-2">
+            {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">
+                <RefreshCw className="w-3 h-3" />
+                Reschedule Required
+              </span>
+            ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
+                <Clock className="w-3 h-3" />
+                Awaiting Cleaner
+              </span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
+                  <CompactJobProgressIndicator 
+                    currentProgress={appointment.job_progress as JobProgress} 
+                  />
+                )}
+                <StatusBadge status={appointment.status} size="sm" />
+              </div>
+            )}
+            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
               <button
                 className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
                 title="Review appointment"
               >
                 Review
               </button>
-            </div>
+            )}
+          </div>
+          {showStartJobButton && (
+            <button
+              onClick={handleStartJobClick}
+              disabled={isStarting}
+              className="px-3 py-1.5 text-xs font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-shrink-0"
+              title="Start this job"
+            >
+              <Play className="w-3 h-3" />
+              {isStarting ? "Starting..." : "Start Job"}
+            </button>
           )}
         </div>
 
@@ -381,16 +416,25 @@ export default function AppointmentCard({
                 </>
               )}
               {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
-                    title="Review appointment"
-                  >
-                    Review
-                  </button>
-                </div>
+                <button
+                  className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
+                  title="Review appointment"
+                >
+                  Review
+                </button>
               )}
             </div>
+            {showStartJobButton && (
+              <button
+                onClick={handleStartJobClick}
+                disabled={isStarting}
+                className="px-3 py-1.5 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                title="Start this job"
+              >
+                <Play className="w-4 h-4" />
+                {isStarting ? "Starting..." : "Start Job"}
+              </button>
+            )}
             {role !== "cleaner" && (
               <div className="flex items-center gap-1 text-right">
                 <DollarSign className="w-5 h-5 text-green-600" />

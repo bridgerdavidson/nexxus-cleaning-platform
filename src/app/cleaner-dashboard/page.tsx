@@ -936,6 +936,7 @@ export default function CleanerDashboard() {
                     appointment={convertToCardData(appointment)}
                     onClick={() => handleAppointmentCardClick(appointment)}
                     role="cleaner"
+                    onStartJob={handleStartJob}
                   />
                 ))}
               </div>
@@ -1230,6 +1231,7 @@ export default function CleanerDashboard() {
                         appointment={convertToCardData(appointment)}
                         onClick={() => handleAppointmentCardClick(appointment)}
                         role="cleaner"
+                        onStartJob={handleStartJob}
                       />
                     ))}
                   </div>

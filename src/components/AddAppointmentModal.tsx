@@ -78,11 +78,10 @@ export default function AddAppointmentModal({
   preFilledTime,
   hidePriceOverride = false,
 }: AddAppointmentModalProps) {
-  const { currentOrganizationId, user } = useAuth();
+  const { currentOrganizationId } = useAuth();
 
-  // Calculate initial status based on creator role
-  // Admin creates confirmed appointments, others create pending appointments
-  const initialStatus = user?.role === "admin" ? "confirmed" : "pending";
+  // Appointments requiring cleaner availability confirmation should always start pending.
+  const initialStatus = "pending";
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);

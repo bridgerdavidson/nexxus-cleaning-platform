@@ -10,7 +10,7 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: {
+                        : {
                             50: '#f0f9ff',
                             100: '#e0f2fe',
                             200: '#bae6fd',
@@ -35,17 +35,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <style>
-        .btn-primary {
-            @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200;
+        .btn- {
+            @apply bg--600 hover:bg--700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200;
         }
         .btn-secondary {
-            @apply bg-white hover:bg-gray-50 text-primary-600 font-semibold py-3 px-6 rounded-lg border border-primary-600 transition-colors duration-200;
+            @apply bg-white hover:bg-gray-50 text--600 font-semibold py-3 px-6 rounded-lg border border--600 transition-colors duration-200;
         }
         .card {
             @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
         }
         .input-field {
-            @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200;
+            @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring--500 focus:border--500 transition-colors duration-200;
         }
         .hidden { display: none !important; }
         .animate-fade-in {
@@ -63,20 +63,20 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-16">
                 <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+                    <div class="w-8 h-8 bg--600 rounded-lg flex items-center justify-center">
                         <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
                     </div>
                     <span class="text-xl font-bold text-gray-900">Nexxus Cleaning</span>
                 </div>
                 
                 <div class="hidden md:flex items-center space-x-8">
-                    <a href="#" class="text-gray-700 hover:text-primary-600 font-medium">Home</a>
-                    <a href="#" class="text-gray-700 hover:text-primary-600 font-medium">Services</a>
-                    <a href="#" class="text-gray-700 hover:text-primary-600 font-medium">About</a>
-                    <a href="#" class="text-gray-700 hover:text-primary-600 font-medium">Contact</a>
+                    <a href="#" class="text-gray-700 hover:text--600 font-medium">Home</a>
+                    <a href="#" class="text-gray-700 hover:text--600 font-medium">Services</a>
+                    <a href="#" class="text-gray-700 hover:text--600 font-medium">About</a>
+                    <a href="#" class="text-gray-700 hover:text--600 font-medium">Contact</a>
                     
                     <div class="relative">
-                        <button id="loginBtn" class="btn-primary">Login</button>
+                        <button id="loginBtn" class="btn-">Login</button>
                         <div id="loginDropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
                             <button onclick="showLogin('homeowner')" class="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 flex items-center space-x-2">
                                 <i data-lucide="home" class="w-4 h-4"></i>
@@ -100,22 +100,22 @@
     <!-- Landing Page -->
     <div id="landingPage" class="animate-fade-in">
         <!-- Hero Section -->
-        <section class="bg-gradient-to-br from-primary-600 to-primary-800 text-white py-20">
+        <section class="bg-gradient-to-br from--600 to--800 text-white py-20">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div>
                         <h1 class="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-                            Get Your Home <span class="text-primary-200">Sparkling Clean</span>
+                            Get Your Home <span class="text--200">Sparkling Clean</span>
                         </h1>
-                        <p class="text-xl text-primary-100 mb-8 leading-relaxed">
+                        <p class="text-xl text--100 mb-8 leading-relaxed">
                             Professional residential cleaning services you can trust. Eco-friendly products, 
                             vetted cleaners, and satisfaction guaranteed.
                         </p>
                         <div class="flex flex-col sm:flex-row gap-4">
-                            <button class="bg-white text-primary-600 hover:bg-primary-50 font-semibold py-4 px-8 rounded-lg transition-colors duration-200 text-lg">
+                            <button class="bg-white text--600 hover:bg--50 font-semibold py-4 px-8 rounded-lg transition-colors duration-200 text-lg">
                                 Get a Quote Today
                             </button>
-                            <button class="border-2 border-white text-white hover:bg-white hover:text-primary-600 font-semibold py-4 px-8 rounded-lg transition-colors duration-200 text-lg">
+                            <button class="border-2 border-white text-white hover:bg-white hover:text--600 font-semibold py-4 px-8 rounded-lg transition-colors duration-200 text-lg">
                                 Learn More
                             </button>
                         </div>
@@ -123,9 +123,9 @@
                     <div class="relative">
                         <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-8">
                             <div class="text-center">
-                                <i data-lucide="home" class="w-24 h-24 text-primary-200 mx-auto mb-4"></i>
+                                <i data-lucide="home" class="w-24 h-24 text--200 mx-auto mb-4"></i>
                                 <h3 class="text-2xl font-semibold mb-2">Trusted by 1000+ Families</h3>
-                                <p class="text-primary-100">Join thousands of satisfied customers</p>
+                                <p class="text--100">Join thousands of satisfied customers</p>
                             </div>
                         </div>
                     </div>
@@ -145,8 +145,8 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div class="text-center">
-                        <div class="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <i data-lucide="calendar" class="w-8 h-8 text-primary-600"></i>
+                        <div class="w-16 h-16 bg--100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <i data-lucide="calendar" class="w-8 h-8 text--600"></i>
                         </div>
                         <h3 class="text-xl font-semibold text-gray-900 mb-4">1. Request Quote</h3>
                         <p class="text-gray-600">
@@ -155,8 +155,8 @@
                     </div>
                     
                     <div class="text-center">
-                        <div class="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <i data-lucide="clock" class="w-8 h-8 text-primary-600"></i>
+                        <div class="w-16 h-16 bg--100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <i data-lucide="clock" class="w-8 h-8 text--600"></i>
                         </div>
                         <h3 class="text-xl font-semibold text-gray-900 mb-4">2. Schedule Cleaning</h3>
                         <p class="text-gray-600">
@@ -165,8 +165,8 @@
                     </div>
                     
                     <div class="text-center">
-                        <div class="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <i data-lucide="check-circle" class="w-8 h-8 text-primary-600"></i>
+                        <div class="w-16 h-16 bg--100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <i data-lucide="check-circle" class="w-8 h-8 text--600"></i>
                         </div>
                         <h3 class="text-xl font-semibold text-gray-900 mb-4">3. Sit Back & Relax</h3>
                         <p class="text-gray-600">
@@ -244,8 +244,8 @@
                             "Absolutely amazing service! My house has never been cleaner. The team was professional and thorough."
                         </p>
                         <div class="flex items-center">
-                            <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3">
-                                <span class="text-primary-600 font-semibold">SJ</span>
+                            <div class="w-10 h-10 bg--100 rounded-full flex items-center justify-center mr-3">
+                                <span class="text--600 font-semibold">SJ</span>
                             </div>
                             <div>
                                 <p class="font-semibold text-gray-900">Sarah Johnson</p>
@@ -268,8 +268,8 @@
                             "Reliable, affordable, and eco-friendly. I've been using Nexxus for 6 months and couldn't be happier!"
                         </p>
                         <div class="flex items-center">
-                            <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3">
-                                <span class="text-primary-600 font-semibold">MW</span>
+                            <div class="w-10 h-10 bg--100 rounded-full flex items-center justify-center mr-3">
+                                <span class="text--600 font-semibold">MW</span>
                             </div>
                             <div>
                                 <p class="font-semibold text-gray-900">Mike Wilson</p>
@@ -292,8 +292,8 @@
                             "The booking process was so easy, and the cleaner was fantastic. Will definitely use again!"
                         </p>
                         <div class="flex items-center">
-                            <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3">
-                                <span class="text-primary-600 font-semibold">EB</span>
+                            <div class="w-10 h-10 bg--100 rounded-full flex items-center justify-center mr-3">
+                                <span class="text--600 font-semibold">EB</span>
                             </div>
                             <div>
                                 <p class="font-semibold text-gray-900">Emily Brown</p>
@@ -327,7 +327,7 @@
                     <input type="password" id="loginPassword" class="input-field" placeholder="Enter your password" required>
                 </div>
                 
-                <button type="submit" class="w-full btn-primary">Login</button>
+                <button type="submit" class="w-full btn-">Login</button>
             </form>
             
             <div class="mt-4 p-4 bg-blue-50 rounded-lg">
@@ -351,8 +351,8 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div class="card">
                     <div class="flex items-center">
-                        <div class="p-2 bg-primary-100 rounded-lg">
-                            <i data-lucide="calendar" class="w-6 h-6 text-primary-600"></i>
+                        <div class="p-2 bg--100 rounded-lg">
+                            <i data-lucide="calendar" class="w-6 h-6 text--600"></i>
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-600">Next Cleaning</p>
@@ -402,7 +402,7 @@
                 <div class="card">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
                     <div class="space-y-3">
-                        <button class="w-full btn-primary text-left">
+                        <button class="w-full btn- text-left">
                             <i data-lucide="plus" class="w-5 h-5 inline mr-2"></i>
                             Book New Cleaning
                         </button>
@@ -457,8 +457,8 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div class="card">
                     <div class="flex items-center">
-                        <div class="p-2 bg-primary-100 rounded-lg">
-                            <i data-lucide="calendar" class="w-6 h-6 text-primary-600"></i>
+                        <div class="p-2 bg--100 rounded-lg">
+                            <i data-lucide="calendar" class="w-6 h-6 text--600"></i>
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-600">Today's Jobs</p>
@@ -532,7 +532,7 @@
                 <div class="card">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
                     <div class="space-y-3">
-                        <button class="w-full btn-primary text-left">
+                        <button class="w-full btn- text-left">
                             <i data-lucide="camera" class="w-5 h-5 inline mr-2"></i>
                             Upload Photos
                         </button>
@@ -563,8 +563,8 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div class="card">
                     <div class="flex items-center">
-                        <div class="p-2 bg-primary-100 rounded-lg">
-                            <i data-lucide="calendar" class="w-6 h-6 text-primary-600"></i>
+                        <div class="p-2 bg--100 rounded-lg">
+                            <i data-lucide="calendar" class="w-6 h-6 text--600"></i>
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-600">Total Bookings</p>
@@ -621,7 +621,7 @@
                                 <p class="text-sm text-gray-600">123 Main St, Phoenix</p>
                             </div>
                             <div class="flex space-x-2">
-                                <button class="btn-primary text-sm">Approve</button>
+                                <button class="btn- text-sm">Approve</button>
                                 <button class="btn-secondary text-sm">Decline</button>
                             </div>
                         </div>
@@ -632,7 +632,7 @@
                                 <p class="text-sm text-gray-600">456 Oak Ave, Scottsdale</p>
                             </div>
                             <div class="flex space-x-2">
-                                <button class="btn-primary text-sm">Approve</button>
+                                <button class="btn- text-sm">Approve</button>
                                 <button class="btn-secondary text-sm">Decline</button>
                             </div>
                         </div>
@@ -644,8 +644,8 @@
                     <div class="space-y-3">
                         <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                             <div class="flex items-center space-x-3">
-                                <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                                    <i data-lucide="user-check" class="w-5 h-5 text-primary-600"></i>
+                                <div class="w-10 h-10 bg--100 rounded-full flex items-center justify-center">
+                                    <i data-lucide="user-check" class="w-5 h-5 text--600"></i>
                                 </div>
                                 <div>
                                     <p class="font-medium text-gray-900">Jane Smith</p>
@@ -658,8 +658,8 @@
                         </div>
                         <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                             <div class="flex items-center space-x-3">
-                                <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                                    <i data-lucide="user-check" class="w-5 h-5 text-primary-600"></i>
+                                <div class="w-10 h-10 bg--100 rounded-full flex items-center justify-center">
+                                    <i data-lucide="user-check" class="w-5 h-5 text--600"></i>
                                 </div>
                                 <div>
                                     <p class="font-medium text-gray-900">Bob Johnson</p>

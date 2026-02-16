@@ -358,6 +358,7 @@ export default function RescheduleAppointmentModal({
         scheduled_date: scheduledDate,
         scheduled_time: scheduledTime + ":00",
         cleaner_id: selectedCleaner.id,
+        status: willAutoApprove ? "confirmed" : "pending",
         cleaner_confirmation_status: newStatus,
       });
 

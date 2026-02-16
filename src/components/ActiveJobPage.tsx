@@ -118,6 +118,21 @@ export default function ActiveJobPage({
     loadAppointment();
   }, [appointmentId, storageKey]);
 
+  // Auto-fix job_progress if stuck on not_started
+  useEffect(() => {
+    const autoFixProgress = async () => {
+      if (currentStep === "not_started" && !loading) {
+        console.log("Auto-fixing job_progress from not_started to before_photos");
+        const result = await updateJobProgress(appointmentId, "before_photos");
+        if (result.success) {
+          setCurrentStep("before_photos");
+        }
+      }
+    };
+
+    autoFixProgress();
+  }, [currentStep, loading, appointmentId]);
+
   // Initialize checklist items when lineItems are loaded
   useEffect(() => {
     if (lineItems.length > 0 && checklistItems.length === 0) {
@@ -183,8 +198,8 @@ export default function ActiveJobPage({
 
   // Handle next step
   const handleNext = async () => {
-    // Check for photo warnings
-    if (currentStep === "before_photos" && !hasBeforePhotos) {
+    // Check for photo warnings (treat not_started same as before_photos)
+    if ((currentStep === "before_photos" || currentStep === "not_started") && !hasBeforePhotos) {
       setPhotoWarningType("before");
       setShowWarningModal(true);
       return;
@@ -205,7 +220,8 @@ export default function ActiveJobPage({
     try {
       let nextStep: JobProgress = currentStep;
 
-      if (currentStep === "before_photos") {
+      // Treat not_started same as before_photos
+      if (currentStep === "before_photos" || currentStep === "not_started") {
         nextStep = "checklist";
       } else if (currentStep === "checklist") {
         nextStep = "after_photos";
@@ -234,7 +250,7 @@ export default function ActiveJobPage({
       let prevStep: JobProgress = currentStep;
 
       if (currentStep === "checklist") {
-        prevStep = "before_photos";
+        prevStep = "before_photos"; // Go back to before_photos (not not_started)
       } else if (currentStep === "after_photos") {
         prevStep = "checklist";
       }
@@ -313,8 +329,8 @@ export default function ActiveJobPage({
 
       {/* Content container: Upload Before Photos / Checklist / After Photos */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-        {/* Step 1: Before Photos */}
-        {currentStep === "before_photos" && (
+        {/* Step 1: Before Photos (also handles not_started state) */}
+        {(currentStep === "before_photos" || currentStep === "not_started") && (
             <div className="space-y-4">
               <h2 className="text-2xl font-bold text-gray-900">
                 Upload Before Photos

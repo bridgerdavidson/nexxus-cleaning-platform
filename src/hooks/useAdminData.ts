@@ -1082,7 +1082,8 @@ export async function assignCleanerToAppointment(appointmentId: string, cleanerI
       .from('appointments')
       .update({ 
         cleaner_id: cleanerId,
-        status: 'confirmed'
+        status: 'pending',
+        cleaner_confirmation_status: 'awaiting'
       })
       .eq('id', appointmentId);
 
