@@ -95,6 +95,8 @@ export default function MessagesPage({
     setIsSlidingIn(false);
     setIsSlidingOut(false);
     setSelectedConversation(conversation);
+    // Optimistically clear unread badge immediately
+    onUpdateUnreadCount(conversation.id, 0);
     // Trigger animation on next frame
     requestAnimationFrame(() => {
       setIsSlidingIn(true);

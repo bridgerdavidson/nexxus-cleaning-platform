@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from "react";
-import { Loader2, ArrowUp, MessageSquare } from "lucide-react";
+import { Loader2, MessageSquare } from "lucide-react";
 import { ConversationWithDetails, MessageWithDetails } from "../types";
 import { useMessages } from "../hooks/useMessages";
 import MessageBubble from "./MessageBubble";
@@ -25,6 +25,8 @@ export default function MessageThread({
   const prevConversationIdRef = useRef<string | null>(null);
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0);
+  // Ignore scroll-driven load-more while we're programmatically scrolling to bottom (smooth)
+  const isScrollingToBottomRef = useRef(false);
   
   const {
     messages,
@@ -60,24 +62,48 @@ export default function MessageThread({
   // Scroll to bottom helper
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (scrollContainerRef.current) {
+      const scrollHeight = scrollContainerRef.current.scrollHeight;
+      const clientHeight = scrollContainerRef.current.clientHeight;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MessageThread.tsx:scrollToBottom',message:'scrollToBottom called',data:{behavior,messagesCount:messages.length,scrollHeight,clientHeight,skipped:scrollHeight===0},timestamp:Date.now(),hypothesisId:'B,C'})}).catch(()=>{});
+      // #endregion
+      // Guard: Don't scroll if container isn't rendered yet (scrollHeight === 0)
+      if (scrollHeight === 0) {
+        console.log('[MessageThread] Skipping scroll - container not ready');
+        return;
+      }
+      // Prevent handleScroll from triggering load-more while we animate to bottom
+      if (behavior === "smooth") {
+        isScrollingToBottomRef.current = true;
+        setTimeout(() => {
+          isScrollingToBottomRef.current = false;
+        }, 800);
+      }
       requestAnimationFrame(() => {
         if (scrollContainerRef.current) {
+          const targetTop = scrollContainerRef.current.scrollHeight;
           scrollContainerRef.current.scrollTo({
-            top: scrollContainerRef.current.scrollHeight,
+            top: targetTop,
             behavior,
           });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MessageThread.tsx:scrollToBottom:rAF',message:'Scroll executed',data:{targetTop,actualScrollHeight:scrollContainerRef.current.scrollHeight,scrollTop:scrollContainerRef.current.scrollTop},timestamp:Date.now(),hypothesisId:'B,C'})}).catch(()=>{});
+          // #endregion
         }
       });
     }
-  }, []);
+  }, [messages.length]);
 
   // Auto-scroll logic:
   // - Always scroll when switching conversations
   // - Only scroll on new messages if user is already near bottom
   useEffect(() => {
     const conversationChanged = prevConversationIdRef.current !== conversation?.id;
-    const newMessagesArrived = messages.length > prevMessageCountRef.current;
-    
+    const prevCount = prevMessageCountRef.current;
+    const newMessagesArrived = messages.length > prevCount;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MessageThread.tsx:autoScroll',message:'Auto-scroll effect',data:{conversationId:conversation?.id,conversationChanged,newMessagesArrived,messagesLength:messages.length,prevCount,willReturnEarly:messages.length===0},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     // Update refs for next comparison
     prevConversationIdRef.current = conversation?.id || null;
     prevMessageCountRef.current = messages.length;
@@ -90,7 +116,7 @@ export default function MessageThread({
       scrollToBottom("instant");
       isNearBottomRef.current = true;
     } else if (newMessagesArrived && isNearBottomRef.current) {
-      // Only scroll if user was already near the bottom
+      // Use smooth for scroll effect; isScrollingToBottomRef prevents load-more during animation
       scrollToBottom("smooth");
     }
     // If user scrolled up and new messages arrive, don't auto-scroll
@@ -102,6 +128,8 @@ export default function MessageThread({
     updateScrollPosition();
     
     if (!scrollContainerRef.current || loading || !hasMore) return;
+    // Don't trigger load-more while we're programmatically scrolling to bottom (smooth)
+    if (isScrollingToBottomRef.current) return;
 
     const { scrollTop } = scrollContainerRef.current;
 
@@ -275,29 +303,6 @@ export default function MessageThread({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
       >
-        {/* Load more indicator */}
-        {hasMore && (
-          <div className="flex justify-center mb-4">
-            <button
-              onClick={loadMoreMessages}
-              disabled={loading}
-              className="flex items-center space-x-2 px-4 py-2 text-sm text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Loading...</span>
-                </>
-              ) : (
-                <>
-                  <ArrowUp className="w-4 h-4" />
-                  <span>Load older messages</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
         {/* Loading state */}
         {loading && messages.length === 0 && (
           <div className="flex items-center justify-center py-12">

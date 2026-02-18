@@ -248,43 +248,47 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
       console.log(`Found ${unreadMessages.length} unread messages, marking as read...`);
       markMessagesAsRead();
     } else {
-      // No unread messages, but mark as processed
+      // No unread messages, but mark as processed and sync with conversation list
       console.log('No unread messages, marking conversation as processed');
       hasMarkedAsReadRef.current = conversationId;
+      // Clear the badge in conversation list even when there's nothing to mark as read
+      if (onUnreadCountUpdate) {
+        onUnreadCountUpdate(conversationId, 0);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, messages.length, userId]); // Run when conversation changes or messages are loaded
 
-  const fetchMessages = async (offset = 0) => {
+  // Initial load: fetch the most recent 50 messages (newest first from API, then reverse for chronological display)
+  const fetchMessages = async () => {
     if (!conversationId) return;
 
-    // Check cache first for instant display
     const cachedMessages = messagesCacheRef.current.get(conversationId);
     const cachedHasMore = hasMoreCacheRef.current.get(conversationId);
-    const isInitialLoad = offset === 0 && !cachedMessages;
+    const isInitialLoad = !cachedMessages;
 
     try {
-      // Only show loading for initial loads (not cached conversations)
       if (isInitialLoad) {
         setLoading(true);
       }
       setError(null);
 
-      // If we have cached messages and this is initial load, show them instantly
-      if (cachedMessages && offset === 0) {
+      if (cachedMessages && cachedMessages.length > 0) {
         setMessages(cachedMessages);
         setHasMore(cachedHasMore ?? false);
         setLoading(false);
-        // Continue to fetch fresh messages in background (optional refresh)
       }
 
-      // Fetch messages for this conversation
       const { data: messagesData, error: messagesError } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
-        .range(offset, offset + limit - 1);
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useMessages.ts:fetchMessages',message:'Initial fetch result',data:{conversationId,requestedLimit:limit,returnedCount:messagesData?.length ?? 0},timestamp:Date.now(),hypothesisId:'A,D'})}).catch(()=>{});
+      // #endregion
 
       if (messagesError) {
         console.error('Error fetching messages:', messagesError);
@@ -292,87 +296,117 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
       }
 
       if (!messagesData || messagesData.length === 0) {
-        if (offset === 0) {
-          setMessages([]);
-          messagesCacheRef.current.set(conversationId, []);
-          setHasMore(false);
-          hasMoreCacheRef.current.set(conversationId, false);
-        }
+        setMessages([]);
+        messagesCacheRef.current.set(conversationId, []);
+        hasMoreCacheRef.current.set(conversationId, false);
+        setHasMore(false);
         setLoading(false);
         return;
       }
 
-      // Get unique sender and recipient IDs
-      const senderIds = [...new Set(messagesData.map(m => m.sender_id))];
-      const recipientIds = [...new Set(messagesData.map(m => m.recipient_id))];
-      const profileIds = [...new Set([...senderIds, ...recipientIds])];
+      const enrichedMessages = await enrichMessages(messagesData);
+      // Reverse so state is chronological (oldest of the 50 first, newest last)
+      const chronological = [...enrichedMessages].reverse();
 
-      // Fetch profiles separately
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .in('id', profileIds);
-
-      if (profilesError) {
-        console.error('Error fetching profiles:', profilesError);
-        // Continue without profiles rather than failing completely
-      }
-
-      // Map profiles by ID
-      const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
-
-      // Fetch attachments for these messages
-      const messageIds = messagesData.map(m => m.id);
-      const { data: attachmentsData, error: attachmentsError } = await supabase
-        .from('message_attachments')
-        .select('*')
-        .in('message_id', messageIds);
-
-      if (attachmentsError) {
-        console.error('Error fetching attachments:', attachmentsError);
-        // Continue without attachments rather than failing completely
-      }
-
-      // Map attachments by message_id
-      const attachmentsMap = new Map<string, MessageAttachment[]>();
-      attachmentsData?.forEach(att => {
-        if (!attachmentsMap.has(att.message_id)) {
-          attachmentsMap.set(att.message_id, []);
-        }
-        attachmentsMap.get(att.message_id)!.push(att);
-      });
-
-      // Combine data
-      const enrichedMessages: MessageWithDetails[] = messagesData.map(msg => ({
-        ...msg,
-        sender: profilesMap.get(msg.sender_id) || null,
-        recipient: profilesMap.get(msg.recipient_id) || null,
-        attachments: attachmentsMap.get(msg.id) || []
-      }));
-
-      if (offset === 0) {
-        // Update cache and state
-        messagesCacheRef.current.set(conversationId, enrichedMessages);
-        hasMoreCacheRef.current.set(conversationId, messagesData.length === limit);
-        setMessages(enrichedMessages);
-        setHasMore(messagesData.length === limit);
-      } else {
-        // For pagination, append to existing messages
-        const updatedMessages = [...enrichedMessages, ...messages];
-        messagesCacheRef.current.set(conversationId, updatedMessages);
-        setMessages(updatedMessages);
-        setHasMore(messagesData.length === limit);
-      }
+      const newHasMore = messagesData.length === limit;
+      messagesCacheRef.current.set(conversationId, chronological);
+      hasMoreCacheRef.current.set(conversationId, newHasMore);
+      setMessages(chronological);
+      setHasMore(newHasMore);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useMessages.ts:setMessages',message:'State set after initial load',data:{count:chronological.length,hasMore:newHasMore},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
     } catch (err) {
       console.error('Error fetching messages:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch messages');
-      // If we have cached messages and fetch fails, keep showing cached
       if (!cachedMessages) {
         setLoading(false);
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  // Load 50 messages older than the given timestamp (cursor-based); prepend to current list
+  const fetchOlderMessages = async (beforeCreatedAt: string) => {
+    if (!conversationId) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useMessages.ts:fetchOlderMessages',message:'Load older called',data:{conversationId,beforeCreatedAt},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data: messagesData, error: messagesError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .lt('created_at', beforeCreatedAt)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (messagesError) {
+        console.error('Error fetching older messages:', messagesError);
+        throw messagesError;
+      }
+
+      if (!messagesData || messagesData.length === 0) {
+        setHasMore(false);
+        hasMoreCacheRef.current.set(conversationId, false);
+        setLoading(false);
+        return;
+      }
+
+      const enrichedMessages = await enrichMessages(messagesData);
+      const olderReversed = [...enrichedMessages].reverse();
+
+      const newHasMore = messagesData.length === limit;
+      setMessages(prev => {
+        const next = [...olderReversed, ...prev];
+        messagesCacheRef.current.set(conversationId, next);
+        return next;
+      });
+      hasMoreCacheRef.current.set(conversationId, newHasMore);
+      setHasMore(newHasMore);
+    } catch (err) {
+      console.error('Error fetching older messages:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch older messages');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Shared helper to enrich raw messages with profiles and attachments
+  const enrichMessages = async (messagesData: { id: string; sender_id: string; recipient_id: string; [key: string]: unknown }[]): Promise<MessageWithDetails[]> => {
+    const senderIds = [...new Set(messagesData.map(m => m.sender_id))];
+    const recipientIds = [...new Set(messagesData.map(m => m.recipient_id))];
+    const profileIds = [...new Set([...senderIds, ...recipientIds])];
+
+    const { data: profilesData } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .in('id', profileIds);
+    const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+    const messageIds = messagesData.map(m => m.id);
+    const { data: attachmentsData } = await supabase
+      .from('message_attachments')
+      .select('*')
+      .in('message_id', messageIds);
+    const attachmentsMap = new Map<string, MessageAttachment[]>();
+    attachmentsData?.forEach(att => {
+      if (!attachmentsMap.has(att.message_id)) {
+        attachmentsMap.set(att.message_id, []);
+      }
+      attachmentsMap.get(att.message_id)!.push(att);
+    });
+
+    return messagesData.map(msg => ({
+      ...msg,
+      sender: profilesMap.get(msg.sender_id) || null,
+      recipient: profilesMap.get(msg.recipient_id) || null,
+      attachments: attachmentsMap.get(msg.id) || []
+    })) as MessageWithDetails[];
   };
 
   // Handle new message from realtime subscription
@@ -700,8 +734,8 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
   };
 
   const loadMoreMessages = () => {
-    if (!loading && hasMore) {
-      fetchMessages(messages.length);
+    if (!loading && hasMore && messages.length > 0) {
+      fetchOlderMessages(messages[0].created_at);
     }
   };
 
@@ -714,7 +748,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     loadMoreMessages,
     markMessagesAsRead,
     addMessage,
-    refetch: () => fetchMessages(0),
+    refetch: () => fetchMessages(),
     subscriptionStatus // Expose subscription status for UI indicators
   };
 }

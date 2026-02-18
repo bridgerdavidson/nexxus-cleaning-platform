@@ -27,6 +27,14 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
   const fetchConversationsRef = useRef<(() => Promise<void>) | null>(null);
   // Track if retry is in progress to prevent concurrent retries
   const isRetryingRef = useRef(false);
+  // Track unread counts to prevent stacking due to async state updates
+  const unreadCountByConvRef = useRef<Map<string, number>>(new Map());
+  // Refs for subscription callbacks so they always use latest state/updaters (avoid stale closure)
+  const optimisticallyUpdateConversationWithMessageRef = useRef<(msg: {
+    id: string; conversation_id: string | null; sender_id: string; recipient_id: string;
+    content: string; created_at: string; is_read: boolean;
+  }) => Promise<void>>(() => Promise.resolve());
+  const optimisticallyUpdateUnreadCountRef = useRef<(convId: string, delta: number) => void>(() => {});
 
   // Subscribe to realtime with retry logic
   const setupSubscription = useCallback(async (currentUserId: string) => {
@@ -58,16 +66,34 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'conversations'
         },
         (payload) => {
-          console.log('[useConversations] Conversation changed:', payload);
+          console.log('[useConversations] New conversation INSERT:', payload);
           // Only refresh if the conversation involves this user
           const conv = payload.new as any;
           if (conv.participant_1_id === currentUserId || conv.participant_2_id === currentUserId) {
             // Use ref to call fetchConversations
+            if (fetchConversationsRef.current) {
+              fetchConversationsRef.current();
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'conversations'
+        },
+        (payload) => {
+          console.log('[useConversations] Conversation DELETE:', payload);
+          // Refresh list on delete
+          const conv = payload.old as any;
+          if (conv.participant_1_id === currentUserId || conv.participant_2_id === currentUserId) {
             if (fetchConversationsRef.current) {
               fetchConversationsRef.current();
             }
@@ -94,10 +120,10 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
             is_read: boolean;
           };
           
-          // Update for both sender and recipient
+          // Update for both sender and recipient (use ref so we always run latest updater)
           if (newMessage.sender_id === currentUserId || newMessage.recipient_id === currentUserId) {
             console.log('[useConversations] Message involves current user, updating conversation list');
-            await optimisticallyUpdateConversationWithMessage(newMessage);
+            await optimisticallyUpdateConversationWithMessageRef.current(newMessage);
           } else {
             console.log('[useConversations] Message does not involve current user, skipping');
           }
@@ -122,8 +148,8 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
           if (updatedMessage.recipient_id === currentUserId && 
               updatedMessage.is_read === true && 
               updatedMessage.conversation_id) {
-            // Optimistically decrement unread count
-            optimisticallyUpdateUnreadCount(updatedMessage.conversation_id, -1);
+            // Optimistically decrement unread count (use ref so we always run latest updater)
+            optimisticallyUpdateUnreadCountRef.current(updatedMessage.conversation_id, -1);
           }
         }
       )
@@ -349,6 +375,9 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
             return null;
           }
 
+          // Seed the unread count ref
+          unreadCountByConvRef.current.set(conv.id, unreadCount);
+
           return {
             ...conv,
             other_participant: otherParticipant,
@@ -374,6 +403,9 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
 
   // Optimistically update unread count for a conversation
   const updateUnreadCount = (conversationId: string, newCount: number) => {
+    // Update ref synchronously to prevent stacking
+    unreadCountByConvRef.current.set(conversationId, newCount);
+    
     setConversations(prev => 
       prev.map(conv => 
         conv.id === conversationId
@@ -385,10 +417,15 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
 
   // Optimistically update unread count by delta (increment/decrement)
   const optimisticallyUpdateUnreadCount = (conversationId: string, delta: number) => {
+    // Update ref synchronously to prevent stacking
+    const currentCount = unreadCountByConvRef.current.get(conversationId) ?? 0;
+    const newCount = Math.max(0, currentCount + delta);
+    unreadCountByConvRef.current.set(conversationId, newCount);
+    
     setConversations(prev => 
       prev.map(conv => 
         conv.id === conversationId
-          ? { ...conv, unread_count: Math.max(0, conv.unread_count + delta) }
+          ? { ...conv, unread_count: newCount }
           : conv
       )
     );
@@ -474,10 +511,16 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
       const isRecipient = newMessage.recipient_id === userId;
       const isSender = newMessage.sender_id === userId;
       
+      // Use ref for base count to prevent stacking
+      const baseCount = unreadCountByConvRef.current.get(newMessage.conversation_id) ?? conv.unread_count;
+      
       // Update unread count only if user is recipient and message is unread
       const newUnreadCount = isRecipient && !newMessage.is_read
-        ? conv.unread_count + 1
-        : conv.unread_count;
+        ? baseCount + 1
+        : baseCount;
+      
+      // Update ref synchronously
+      unreadCountByConvRef.current.set(newMessage.conversation_id, newUnreadCount);
 
       // Always update last_message and last_message_at for both sender and recipient
       // This ensures the conversation moves to the top of the list
@@ -506,6 +549,10 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
       return sorted;
     });
   };
+
+  // Keep subscription callback refs current so realtime always uses latest state/updaters
+  optimisticallyUpdateConversationWithMessageRef.current = optimisticallyUpdateConversationWithMessage;
+  optimisticallyUpdateUnreadCountRef.current = optimisticallyUpdateUnreadCount;
 
   // Apply filters
   const filteredConversations = conversations.filter(conv => {

@@ -9,7 +9,7 @@ interface ConversationItemProps {
   onContextMenu: (e: React.MouseEvent) => void;
 }
 
-export default function ConversationItem({
+const ConversationItem = React.memo(function ConversationItem({
   conversation,
   isSelected,
   currentUserId,
@@ -17,6 +17,9 @@ export default function ConversationItem({
   onContextMenu,
 }: ConversationItemProps) {
   const { other_participant, last_message, unread_count } = conversation;
+
+  // Only show unread badge/styling when there are unread messages and conversation is NOT selected
+  const showUnread = unread_count > 0 && !isSelected;
 
   // Guard against missing participant
   if (!other_participant) {
@@ -99,7 +102,7 @@ export default function ConversationItem({
         <div className="flex items-baseline justify-between mb-1">
           <h3
             className={`text-sm truncate ${
-              unread_count > 0
+              showUnread
                 ? "font-bold text-gray-900"
                 : "font-medium text-gray-900"
             }`}
@@ -114,12 +117,12 @@ export default function ConversationItem({
         <div className="flex items-center justify-between">
           <p
             className={`text-sm truncate ${
-              unread_count > 0 ? "font-semibold text-gray-900" : "text-gray-600"
+              showUnread ? "font-semibold text-gray-900" : "text-gray-600"
             }`}
           >
             {getLastMessagePreview()}
           </p>
-          {unread_count > 0 && (
+          {showUnread && (
             <span className="ml-2 flex-shrink-0 bg-primary-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
               {unread_count > 9 ? "9+" : unread_count}
             </span>
@@ -133,4 +136,6 @@ export default function ConversationItem({
       </div>
     </div>
   );
-}
+});
+
+export default ConversationItem;

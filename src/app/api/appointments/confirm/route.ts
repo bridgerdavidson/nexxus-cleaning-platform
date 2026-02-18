@@ -32,6 +32,22 @@ interface ConfirmAppointmentInput {
   };
 }
 
+// Helper: Format date as mm/dd/yy
+function formatDateShort(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const twoDigitYear = year % 100;
+  return `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${twoDigitYear.toString().padStart(2, '0')}`;
+}
+
+// Helper: Format time as standard time (12-hour with AM/PM)
+function formatTimeStandard(timeStr: string): string {
+  const [hours, minutes] = timeStr.split(":");
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const standardHour = hour % 12 || 12;
+  return `${standardHour}:${minutes} ${ampm}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: ConfirmAppointmentInput = await request.json();
@@ -91,7 +107,7 @@ export async function POST(request: NextRequest) {
         organizationId,
         senderId: cleanerId,
         appointmentId,
-        content: `I've confirmed my availability for the appointment on ${appointment.scheduled_date} at ${appointment.scheduled_time}. I'm ready to go!`,
+        content: `I've confirmed my availability for the appointment on ${formatDateShort(appointment.scheduled_date)} at ${formatTimeStandard(appointment.scheduled_time)}. I'm ready to go!`,
       });
 
       return NextResponse.json({
@@ -195,12 +211,12 @@ export async function POST(request: NextRequest) {
       }
 
       // Build message content with feedback details
-      let messageContent = `I'm not available for the appointment on ${appointment.scheduled_date} at ${appointment.scheduled_time}.\n\nReason: ${feedback.reason}`;
+      let messageContent = `I'm not available for the appointment on ${formatDateShort(appointment.scheduled_date)} at ${formatTimeStandard(appointment.scheduled_time)}.\n\nReason: ${feedback.reason}`;
 
       if (feedback.suggestedTimes && feedback.suggestedTimes.length > 0) {
         messageContent += '\n\nSuggested alternative times:';
         feedback.suggestedTimes.forEach((st) => {
-          messageContent += `\n- ${st.date} at ${st.time}`;
+          messageContent += `\n- ${formatDateShort(st.date)} at ${formatTimeStandard(st.time)}`;
         });
       }
 
