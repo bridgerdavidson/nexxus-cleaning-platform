@@ -25,6 +25,7 @@ import {
   ArrowLeft,
   History,
   Briefcase,
+  User,
 } from "lucide-react";
 import {
   useCleanerAppointments,
@@ -50,6 +51,7 @@ import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
+import ProfileSettingsPage from "../../components/ProfileSettingsPage";
 import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
 import { format } from "date-fns";
 
@@ -57,13 +59,6 @@ type ViewType = "list" | "calendar";
 
 export default function CleanerDashboard() {
   const { user, loading, currentOrganizationId } = useAuth();
-  
-  // #region agent log
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:50',message:'Dashboard render',data:{hasUser:!!user,loading,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
-  });
-  // #endregion
-  
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedActive, setExpandedActive] = useState(true);
@@ -491,15 +486,7 @@ export default function CleanerDashboard() {
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    // #region agent log
-    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:366',message:'Dashboard redirect useEffect',data:{hasUser:!!user,loading,willRedirect:!loading && !user},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
-    
     if (!loading && !user) {
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner-dashboard:368',message:'Dashboard redirecting to login',data:{loading,user},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
-      // #endregion
-      
       router.push("/login");
     }
   }, [user, loading, router]);
@@ -666,6 +653,7 @@ export default function CleanerDashboard() {
     { id: "services", label: "Services", icon: Briefcase },
     { id: "earnings", label: "Earnings", icon: DollarSign },
     { id: "photos", label: "Photos", icon: Camera },
+    { id: "profile", label: "Profile", icon: User },
   ];
 
   // Filter tabs for top navigation (exclude earnings and photos - those are in mobile sidebar)
@@ -1650,6 +1638,8 @@ export default function CleanerDashboard() {
             updateServiceInState={updateServiceInState}
           />
         );
+      case "profile":
+        return <ProfileSettingsPage />;
       default:
         return renderSchedule();
     }

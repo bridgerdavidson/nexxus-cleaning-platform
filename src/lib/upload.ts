@@ -3,6 +3,11 @@ import { supabase } from './supabase';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
 
+// Avatar-specific constants (shared between client components and the server API route)
+export const AVATAR_BUCKET = 'avatars';
+export const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+export const AVATAR_ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
 export interface UploadResult {
   success: boolean;
   url?: string;

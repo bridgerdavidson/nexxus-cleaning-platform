@@ -8,16 +8,6 @@ import Link from "next/link";
 import CleanerProfileModal from "../../../components/CleanerProfileModal";
 
 export default function CleanerSignup() {
-  // #region agent log
-  const componentInstanceId = useRef(Math.random().toString(36).substring(7));
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner/page.tsx:10',message:'CleanerSignup mounted',data:{instanceId:componentInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    return () => {
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner/page.tsx:10',message:'CleanerSignup unmounted',data:{instanceId:componentInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    };
-  }, []);
-  // #endregion
-  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -144,18 +134,10 @@ export default function CleanerSignup() {
   // Separate effect for redirection - handles the case where an already-logged-in user visits the signup page
   // This should NOT run during the signup flow (when waitingForUser is true or modal is showing)
   useEffect(() => {
-    // #region agent log
-    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner/page.tsx:136',message:'Redirect useEffect running',data:{instanceId:componentInstanceId.current,hasUser:!!user,showProfileModal,waitingForUser,loading,isInSignupFlow:isInSignupFlowRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-    
     // Only redirect if user exists and we're not in the signup flow
     // Use ref to prevent redirect during signup-to-modal transition (avoids race condition)
     // The modal's onClose handler will handle the redirect after profile completion
     if (user && !showProfileModal && !waitingForUser && !loading && !isInSignupFlowRef.current) {
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cleaner/page.tsx:144',message:'Calling router.push',data:{instanceId:componentInstanceId.current,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      
       console.log(
         "[CleanerSignup] User already logged in, redirecting to dashboard"
       );

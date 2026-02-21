@@ -107,16 +107,24 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
           {user && (
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
-                  <User className="w-8 h-8 text-primary-600" />
+                <div className="w-16 h-16 bg-primary-100 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
+                  {user.profile.avatarUrl ? (
+                    <img
+                      src={user.profile.avatarUrl}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-8 h-8 text-primary-600" />
+                  )}
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 text-lg">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 text-lg truncate">
                     {user.profile.firstName || user.profile.lastName
                       ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
                       : user.email}
                   </h3>
-                  <p className="text-sm text-gray-600">{user.email}</p>
+                  <p className="text-sm text-gray-600 truncate">{user.email}</p>
                   <span className="inline-block mt-1 px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-full capitalize">
                     {role}
                   </span>

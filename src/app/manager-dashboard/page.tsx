@@ -56,6 +56,7 @@ import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
+import ProfileSettingsPage from "../../components/ProfileSettingsPage";
 import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
@@ -209,10 +210,7 @@ export default function ManagerDashboard() {
           id: "admin" as const,
           label: "Administration",
           icon: Settings,
-          tabs: [
-            { id: "settings", label: "Settings", icon: Settings },
-            { id: "support", label: "Support", icon: HelpCircle },
-          ],
+          tabs: [{ id: "support", label: "Support", icon: HelpCircle }],
         },
       };
     }
@@ -316,10 +314,7 @@ export default function ManagerDashboard() {
       id: "admin" as const,
       label: "Administration",
       icon: Settings,
-      tabs: [
-        { id: "settings", label: "Settings", icon: Settings },
-        { id: "support", label: "Support", icon: HelpCircle },
-      ],
+      tabs: [{ id: "support", label: "Support", icon: HelpCircle }],
     };
 
     return groups;
@@ -1825,10 +1820,7 @@ export default function ManagerDashboard() {
           />
         );
       case "settings":
-        return renderPlaceholder(
-          "Settings",
-          "Configure system settings, notifications, and preferences."
-        );
+        return null; // Settings is rendered separately and pre-mounted below
       case "support":
         return renderPlaceholder(
           "Support Center",
@@ -1851,6 +1843,8 @@ export default function ManagerDashboard() {
         activeGroup={activeGroup}
         onGroupChange={handleGroupChange}
         onLogout={handleLogout}
+        user={user}
+        activeTab={activeTab}
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
@@ -1864,10 +1858,12 @@ export default function ManagerDashboard() {
             activeTab={activeTab}
             onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
+            profileClickNavigatesToSettings
+            showSettingsIcon
           />
         </div>
 
-        {/* Main Content Area */}
+        {/* Main Content Area - Settings page is always mounted so it's ready when user clicks */}
         <main
           className={`${
             activeTab === "messages"
@@ -1875,7 +1871,10 @@ export default function ManagerDashboard() {
               : "p-4 sm:p-6 lg:p-8"
           } pb-24 md:pb-8`}
         >
-          {renderContent()}
+          <div className={activeTab === "settings" ? "block" : "hidden"}>
+            <ProfileSettingsPage />
+          </div>
+          {activeTab !== "settings" && renderContent()}
         </main>
       </div>
 

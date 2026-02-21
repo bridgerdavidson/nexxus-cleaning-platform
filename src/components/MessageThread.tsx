@@ -64,9 +64,6 @@ export default function MessageThread({
     if (scrollContainerRef.current) {
       const scrollHeight = scrollContainerRef.current.scrollHeight;
       const clientHeight = scrollContainerRef.current.clientHeight;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MessageThread.tsx:scrollToBottom',message:'scrollToBottom called',data:{behavior,messagesCount:messages.length,scrollHeight,clientHeight,skipped:scrollHeight===0},timestamp:Date.now(),hypothesisId:'B,C'})}).catch(()=>{});
-      // #endregion
       // Guard: Don't scroll if container isn't rendered yet (scrollHeight === 0)
       if (scrollHeight === 0) {
         console.log('[MessageThread] Skipping scroll - container not ready');
@@ -86,9 +83,6 @@ export default function MessageThread({
             top: targetTop,
             behavior,
           });
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MessageThread.tsx:scrollToBottom:rAF',message:'Scroll executed',data:{targetTop,actualScrollHeight:scrollContainerRef.current.scrollHeight,scrollTop:scrollContainerRef.current.scrollTop},timestamp:Date.now(),hypothesisId:'B,C'})}).catch(()=>{});
-          // #endregion
         }
       });
     }
@@ -101,9 +95,6 @@ export default function MessageThread({
     const conversationChanged = prevConversationIdRef.current !== conversation?.id;
     const prevCount = prevMessageCountRef.current;
     const newMessagesArrived = messages.length > prevCount;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MessageThread.tsx:autoScroll',message:'Auto-scroll effect',data:{conversationId:conversation?.id,conversationChanged,newMessagesArrived,messagesLength:messages.length,prevCount,willReturnEarly:messages.length===0},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     // Update refs for next comparison
     prevConversationIdRef.current = conversation?.id || null;
     prevMessageCountRef.current = messages.length;

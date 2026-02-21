@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Menu, LucideIcon, User, ChevronDown } from "lucide-react";
+import { Menu, LucideIcon, User, ChevronDown, Settings } from "lucide-react";
 
 interface Tab {
   id: string;
@@ -17,6 +17,10 @@ interface TopBarProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
   onMobileMenuClick?: () => void;
+  /** When true, profile area navigates to settings tab instead of opening a dropdown (used for admin/manager) */
+  profileClickNavigatesToSettings?: boolean;
+  /** When true, show a gear icon in the top right that opens the settings page (admin/manager) */
+  showSettingsIcon?: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -26,29 +30,27 @@ const TopBar: React.FC<TopBarProps> = ({
   activeTab,
   onTabChange,
   onMobileMenuClick,
+  profileClickNavigatesToSettings = false,
+  showSettingsIcon = false,
 }) => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (only when dropdown is used)
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsUserDropdownOpen(false);
-      }
-    };
-
-    if (isUserDropdownOpen) {
+    if (!profileClickNavigatesToSettings && isUserDropdownOpen) {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (
+          dropdownRef.current &&
+          !dropdownRef.current.contains(event.target as Node)
+        ) {
+          setIsUserDropdownOpen(false);
+        }
+      };
       document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
     }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isUserDropdownOpen]);
+  }, [isUserDropdownOpen, profileClickNavigatesToSettings]);
 
   return (
     <header className="bg-white/95 backdrop-blur fixed top-0 left-0 md:left-[260px] right-0 z-50">
@@ -96,15 +98,42 @@ const TopBar: React.FC<TopBarProps> = ({
           })}
         </nav>
 
-        {/* User Profile - Right */}
-        {user && (
-          <div className="hidden md:block relative ml-auto" ref={dropdownRef}>
+        {/* Settings gear + User Profile - Right */}
+        <div className="flex items-center ml-auto gap-1">
+          {showSettingsIcon && (
             <button
-              onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+              type="button"
+              onClick={() => onTabChange("settings")}
+              className="p-2 rounded-lg text-gray-600 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+              aria-label="Open settings"
+            >
+              <Settings
+                className={`w-5 h-5 ${
+                  activeTab === "settings" ? "text-primary-600" : ""
+                }`}
+              />
+            </button>
+          )}
+          {user && !profileClickNavigatesToSettings && (
+          <div className="hidden md:block relative" ref={dropdownRef}>
+            <button
+              onClick={() =>
+                profileClickNavigatesToSettings
+                  ? onTabChange("settings")
+                  : setIsUserDropdownOpen(!isUserDropdownOpen)
+              }
               className="flex items-center space-x-3 text-gray-700 hover:text-primary-600 transition-colors duration-200 px-3 py-2 rounded-lg hover:bg-gray-50"
             >
-              <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
-                <User className="w-5 h-5 text-primary-600" />
+              <div className="w-9 h-9 bg-primary-100 rounded-full overflow-hidden flex items-center justify-center">
+                {user.profile.avatarUrl ? (
+                  <img
+                    src={user.profile.avatarUrl}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-5 h-5 text-primary-600" />
+                )}
               </div>
               <div className="text-left">
                 <p className="text-sm font-medium text-gray-900">
@@ -114,10 +143,12 @@ const TopBar: React.FC<TopBarProps> = ({
                 </p>
                 <p className="text-xs text-gray-500 capitalize">{role}</p>
               </div>
-              <ChevronDown className="w-4 h-4 text-gray-400" />
+              {!profileClickNavigatesToSettings && (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              )}
             </button>
 
-            {isUserDropdownOpen && (
+            {!profileClickNavigatesToSettings && isUserDropdownOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg py-1 z-50 border border-gray-200">
                 <div className="px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-medium text-gray-900">
@@ -133,7 +164,8 @@ const TopBar: React.FC<TopBarProps> = ({
               </div>
             )}
           </div>
-        )}
+          )}
+        </div>
       </div>
     </header>
   );

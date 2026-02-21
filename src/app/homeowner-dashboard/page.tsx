@@ -20,6 +20,7 @@ import {
   MapPin,
   ChevronDown,
   ChevronRight,
+  User,
 } from "lucide-react";
 import {
   useHomeownerAppointments,
@@ -40,6 +41,7 @@ import AppointmentCard from "../../components/AppointmentCard";
 import StatusBadge from "../../components/StatusBadge";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
+import ProfileSettingsPage from "../../components/ProfileSettingsPage";
 
 export default function HomeownerDashboard() {
   const { user, loading } = useAuth();
@@ -262,10 +264,11 @@ export default function HomeownerDashboard() {
     { id: "properties", label: "Properties", icon: Building },
   ];
 
-  // Full tabs for side panel only (includes Payments)
+  // Full tabs for side panel only (includes Payments and Profile)
   const sidebarTabs = [
     ...headerTabs,
     { id: "payments", label: "Payments", icon: CreditCard },
+    { id: "profile", label: "Profile", icon: User },
   ];
 
   const getPaymentStatusTabConfig = (
@@ -744,6 +747,8 @@ export default function HomeownerDashboard() {
             updateServiceInState={updateServiceInState}
           />
         );
+      case "profile":
+        return <ProfileSettingsPage />;
       default:
         return renderOverview();
     }

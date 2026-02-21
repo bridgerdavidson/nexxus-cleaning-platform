@@ -286,10 +286,6 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
         .order('created_at', { ascending: false })
         .limit(limit);
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useMessages.ts:fetchMessages',message:'Initial fetch result',data:{conversationId,requestedLimit:limit,returnedCount:messagesData?.length ?? 0},timestamp:Date.now(),hypothesisId:'A,D'})}).catch(()=>{});
-      // #endregion
-
       if (messagesError) {
         console.error('Error fetching messages:', messagesError);
         throw messagesError;
@@ -313,9 +309,6 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
       hasMoreCacheRef.current.set(conversationId, newHasMore);
       setMessages(chronological);
       setHasMore(newHasMore);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useMessages.ts:setMessages',message:'State set after initial load',data:{count:chronological.length,hasMore:newHasMore},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
     } catch (err) {
       console.error('Error fetching messages:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch messages');
@@ -330,9 +323,6 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
   // Load 50 messages older than the given timestamp (cursor-based); prepend to current list
   const fetchOlderMessages = async (beforeCreatedAt: string) => {
     if (!conversationId) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useMessages.ts:fetchOlderMessages',message:'Load older called',data:{conversationId,beforeCreatedAt},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     try {
       setLoading(true);
       setError(null);

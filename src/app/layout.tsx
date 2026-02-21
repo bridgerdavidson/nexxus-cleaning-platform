@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import LayoutWrapper from "../components/LayoutWrapper";
 
@@ -18,6 +19,7 @@ export default function RootLayout({
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
+        <SpeedInsights />
       </body>
     </html>
   );

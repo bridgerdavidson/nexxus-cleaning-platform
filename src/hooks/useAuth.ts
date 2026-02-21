@@ -24,16 +24,6 @@ export interface AuthActions {
 }
 
 export function useAuth(): AuthState & AuthActions {
-  // #region agent log
-  const hookInstanceId = useRef(Math.random().toString(36).substring(7));
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook mounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    return () => {
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:27',message:'useAuth hook unmounted',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    };
-  }, []);
-  // #endregion
-  
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -91,6 +81,16 @@ export function useAuth(): AuthState & AuthActions {
         createdAt: user.created_at,
         updatedAt: user.created_at,
       };
+    };
+
+    /** When falling back to auth-only user, preserve existing profile from state so avatar/name don't flicker on transient failures */
+    const mergeExistingProfileInto = (userData: User): void => {
+      const current = userRef.current;
+      if (current?.id !== supabaseUser.id || !current.profile) return;
+      if (current.profile.avatarUrl) userData.profile.avatarUrl = current.profile.avatarUrl;
+      if (current.profile.firstName) userData.profile.firstName = current.profile.firstName;
+      if (current.profile.lastName) userData.profile.lastName = current.profile.lastName;
+      if (current.profile.phone !== undefined && current.profile.phone !== null) userData.profile.phone = current.profile.phone;
     };
 
     try {
@@ -157,6 +157,7 @@ export function useAuth(): AuthState & AuthActions {
           // (Logging removed)
           
           const userData = buildUserFromAuthOnly(supabaseUser);
+          mergeExistingProfileInto(userData);
           if (!isSigningOutRef.current) setUser(userData);
           return;
         }
@@ -181,6 +182,7 @@ export function useAuth(): AuthState & AuthActions {
           if (isProfileNotFound) {
             // No profile exists - don't retry
             const userData = buildUserFromAuthOnly(supabaseUser);
+            mergeExistingProfileInto(userData);
             if (!isSigningOutRef.current) setUser(userData);
             return;
           }
@@ -199,6 +201,7 @@ export function useAuth(): AuthState & AuthActions {
 
           // 406 on last retry or other error - fall back to auth metadata
           const userData = buildUserFromAuthOnly(supabaseUser);
+          mergeExistingProfileInto(userData);
           if (!isSigningOutRef.current) setUser(userData);
           return;
         }
@@ -216,6 +219,7 @@ export function useAuth(): AuthState & AuthActions {
       if (!profileResult || profileResult.error || !profileResult.data) {
         // This shouldn't happen, but handle it anyway
         const userData = buildUserFromAuthOnly(supabaseUser);
+        mergeExistingProfileInto(userData);
         if (!isSigningOutRef.current) setUser(userData);
         return;
       }
@@ -241,6 +245,7 @@ export function useAuth(): AuthState & AuthActions {
       // Always fall back to auth metadata - never leave user as null if we have a session
       // This ensures sign-in can complete even if profile loading fails
       const userData = buildUserFromAuthOnly(supabaseUser);
+      mergeExistingProfileInto(userData);
       if (!isSigningOutRef.current) setUser(userData);
     }
   }, []);
@@ -304,17 +309,9 @@ export function useAuth(): AuthState & AuthActions {
   }, [user]);
 
   useEffect(() => {
-    // #region agent log
-    if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:320',message:'Main useEffect running',data:{instanceId:hookInstanceId.current,hasLoadUserProfile:!!loadUserProfile},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    
     let isMounted = true;
-  
+
     const init = async () => {
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:325',message:'init() called',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      
       try {
         const { data, error } = await supabase.auth.getSession();
   
@@ -330,10 +327,6 @@ export function useAuth(): AuthState & AuthActions {
         setSession(session);
   
         if (session?.user) {
-          // #region agent log
-          if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:340',message:'init calling loadUserProfile',data:{instanceId:hookInstanceId.current,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
-          
           // 🔹 We DO await here so the initial "loading" covers profile fetch
           await loadUserProfile(session.user);
         } else {
@@ -357,10 +350,6 @@ export function useAuth(): AuthState & AuthActions {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:365',message:'onAuthStateChange fired',data:{instanceId:hookInstanceId.current,event,userId:session?.user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      
       if (!isMounted) return;
   
       // Handle SIGNED_OUT event explicitly
@@ -407,12 +396,12 @@ export function useAuth(): AuthState & AuthActions {
           return;
         }
 
-        // #region agent log
-        if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:410',message:'onAuthStateChange calling loadUserProfile',data:{instanceId:hookInstanceId.current,event,userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
+        // Skip profile reload on token refresh - profile hasn't changed, and refetch can fail and wipe avatar
+        if (event === 'TOKEN_REFRESHED') {
+          return;
+        }
 
-        // 🔹 Auth state changes (sign in / token refresh) update the user,
-        // but we DO NOT touch `loading` here
+        // Auth state changes (sign in, user updated, etc.) update the user
         try {
           await loadUserProfile(session.user);
           // loadUserProfile always sets user (either from profile or auth metadata)
@@ -502,10 +491,6 @@ export function useAuth(): AuthState & AuthActions {
     });
 
     return () => {
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') fetch('http://127.0.0.1:7242/ingest/7c24847b-d529-420b-a9fe-f2c30df00549',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.ts:505',message:'Main useEffect cleanup',data:{instanceId:hookInstanceId.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
       isMounted = false;
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -740,13 +725,16 @@ export function useAuth(): AuthState & AuthActions {
     if (!user) return { error: 'No user logged in' };
 
     try {
+      // Build only the columns that were provided
+      const dbUpdates: Record<string, string | null | undefined> = {};
+      if (updates.firstName !== undefined) dbUpdates.first_name = updates.firstName;
+      if (updates.lastName !== undefined) dbUpdates.last_name = updates.lastName;
+      if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
+      if (updates.avatarUrl !== undefined) dbUpdates.avatar_url = updates.avatarUrl;
+
       const { error: updateError } = await supabase
         .from('user_profiles')
-        .update({
-          first_name: updates.firstName,
-          last_name: updates.lastName,
-          phone: updates.phone,
-        })
+        .update(dbUpdates)
         .eq('id', user.id);
 
       if (updateError) {
