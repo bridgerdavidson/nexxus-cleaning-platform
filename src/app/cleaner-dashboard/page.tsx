@@ -13,7 +13,6 @@ import {
   Clock,
   CheckCircle,
   Star,
-  Upload,
   Loader2,
   Home,
   Search,
@@ -34,7 +33,6 @@ import {
   useCleanerPayouts,
   useCleanerPhotos,
   updateAppointmentStatus,
-  uploadJobPhoto,
 } from "../../hooks/useCleanerData";
 import { useConversations } from "../../hooks/useConversations";
 import { useServices } from "../../hooks/useServices";
@@ -1554,17 +1552,16 @@ export default function CleanerDashboard() {
       {/* Upload Section */}
       <div className="card">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Upload Before/After Photos
+          Before &amp; After Photos
         </h3>
-        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-          <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+        <div className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center bg-gray-50">
+          <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h4 className="text-lg font-medium text-gray-900 mb-2">
-            Upload Photos
+            Upload photos from an active job
           </h4>
-          <p className="text-gray-600 mb-4">
-            Drag and drop your before/after photos here, or click to browse
+          <p className="text-gray-500 text-sm">
+            Before and after photos are taken directly from the job workflow. Start a job and use the Before or After Photos steps to capture evidence.
           </p>
-          <button className="btn-primary">Choose Files</button>
         </div>
       </div>
 

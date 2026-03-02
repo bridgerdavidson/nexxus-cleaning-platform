@@ -776,41 +776,6 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
   }
 }
 
-// Helper function to upload job photo
-export async function uploadJobPhoto(appointmentId: string, file: File, photoType: 'before' | 'after' | 'during') {
-  try {
-    // Upload file to Supabase Storage
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${appointmentId}_${photoType}_${Date.now()}.${fileExt}`;
-    
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('job-photos')
-      .upload(fileName, file);
-
-    if (uploadError) throw uploadError;
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('job-photos')
-      .getPublicUrl(fileName);
-
-    // Save photo record to database
-    const { error: dbError } = await supabase
-      .from('job_photos')
-      .insert({
-        appointment_id: appointmentId,
-        photo_url: publicUrl,
-        photo_type: photoType
-      });
-
-    if (dbError) throw dbError;
-
-    return { success: true, url: publicUrl };
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to upload photo' };
-  }
-}
-
 // Helper function to update job progress
 export async function updateJobProgress(
   appointmentId: string,
@@ -901,4 +866,75 @@ export function useChecklist(serviceTypeId: string | null) {
   }, [serviceTypeId]);
 
   return { checklist, lineItems, loading, error };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Job photo types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface JobPhoto {
+  id: string;
+  photo_url: string;
+  photo_type: 'before' | 'after' | 'during';
+  uploaded_at: string;
+}
+
+export interface UseJobPhotosResult {
+  beforePhotos: JobPhoto[];
+  afterPhotos: JobPhoto[];
+  allPhotos: JobPhoto[];
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
+}
+
+/**
+ * Fetches before/after/during photos for a specific appointment.
+ * Splits results into beforePhotos and afterPhotos for direct use in ActiveJobPage.
+ * Call refetch() after an upload to refresh the list.
+ */
+export function useJobPhotosForAppointment(appointmentId: string | null): UseJobPhotosResult {
+  const [allPhotos, setAllPhotos] = useState<JobPhoto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchTick, setFetchTick] = useState(0);
+
+  const refetch = useCallback(() => setFetchTick(t => t + 1), []);
+
+  useEffect(() => {
+    if (!appointmentId) {
+      setAllPhotos([]);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchPhotos = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('job_photos')
+          .select('id, photo_url, photo_type, uploaded_at')
+          .eq('appointment_id', appointmentId)
+          .order('uploaded_at', { ascending: true });
+
+        if (fetchError) throw fetchError;
+        if (!cancelled) setAllPhotos((data as JobPhoto[]) ?? []);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch photos');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchPhotos();
+    return () => { cancelled = true; };
+  }, [appointmentId, fetchTick]);
+
+  const beforePhotos = allPhotos.filter(p => p.photo_type === 'before');
+  const afterPhotos = allPhotos.filter(p => p.photo_type === 'after');
+
+  return { beforePhotos, afterPhotos, allPhotos, loading, error, refetch };
 }

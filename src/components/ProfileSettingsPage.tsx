@@ -89,7 +89,7 @@ export default function ProfileSettingsPage() {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 text-sm cursor-not-allowed"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Email cannot be changed here. Contact support if needed.
+              Email cannot be changed yet.
             </p>
           </div>
 

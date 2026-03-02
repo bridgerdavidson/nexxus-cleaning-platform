@@ -8,6 +8,61 @@ export const AVATAR_BUCKET = 'avatars';
 export const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 export const AVATAR_ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
+// Job photo constants (shared between client components and the server API route)
+export const JOB_PHOTOS_BUCKET = 'job-photos';
+export const JOB_PHOTOS_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB (pre-compression originals)
+export const JOB_PHOTOS_ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+export const JOB_PHOTOS_MAX_BATCH_SIZE = 10;
+
+export interface JobPhotoValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+/**
+ * Validates a single job photo file (type and size)
+ */
+export function validateJobPhotoFile(file: File): JobPhotoValidationResult {
+  if (!JOB_PHOTOS_ALLOWED_TYPES.includes(file.type)) {
+    return {
+      valid: false,
+      error: `"${file.name}" is not an accepted file type. Accepted: JPEG, PNG, WebP.`
+    };
+  }
+
+  if (file.size > JOB_PHOTOS_MAX_FILE_SIZE) {
+    return {
+      valid: false,
+      error: `"${file.name}" exceeds the 10 MB size limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validates a batch of job photo files (count and per-file checks)
+ */
+export function validateJobPhotoBatch(files: File[]): JobPhotoValidationResult {
+  if (files.length === 0) {
+    return { valid: false, error: 'No files selected.' };
+  }
+
+  if (files.length > JOB_PHOTOS_MAX_BATCH_SIZE) {
+    return {
+      valid: false,
+      error: `Maximum ${JOB_PHOTOS_MAX_BATCH_SIZE} photos per upload. You selected ${files.length}.`
+    };
+  }
+
+  for (const file of files) {
+    const result = validateJobPhotoFile(file);
+    if (!result.valid) return result;
+  }
+
+  return { valid: true };
+}
+
 export interface UploadResult {
   success: boolean;
   url?: string;

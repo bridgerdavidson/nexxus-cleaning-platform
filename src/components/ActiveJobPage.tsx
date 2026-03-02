@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Camera,
   ChevronLeft,
   ArrowRight,
   CheckCircle2,
@@ -10,9 +9,10 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { JobProgress, JobWorkflowState, ChecklistItem } from "../types";
-import { updateJobProgress, useChecklist } from "../hooks/useCleanerData";
+import { updateJobProgress, useChecklist, useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import JobProgressIndicator from "./JobProgressIndicator";
 import NoPhotosWarningModal from "./NoPhotosWarningModal";
+import JobPhotoSection from "./JobPhotoSection";
 
 interface ActiveJobPageProps {
   appointmentId: string;
@@ -30,17 +30,25 @@ export default function ActiveJobPage({
   const [saving, setSaving] = useState(false);
   const [currentStep, setCurrentStep] = useState<JobProgress>("before_photos");
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
-  const [hasBeforePhotos, setHasBeforePhotos] = useState(false);
-  const [hasAfterPhotos, setHasAfterPhotos] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [photoWarningType, setPhotoWarningType] = useState<"before" | "after">("before");
-  
+
   // Appointment data
   const [appointment, setAppointment] = useState<{
     homeowner: { first_name: string; last_name: string } | null;
     service_type: { name: string; id: string } | null;
     job_progress: JobProgress;
   } | null>(null);
+
+  // Job photos from DB — source of truth for hasBeforePhotos / hasAfterPhotos
+  const {
+    beforePhotos,
+    afterPhotos,
+    refetch: refetchPhotos,
+  } = useJobPhotosForAppointment(appointmentId);
+
+  const hasBeforePhotos = beforePhotos.length > 0;
+  const hasAfterPhotos = afterPhotos.length > 0;
 
   // Fetch checklist for the service type
   const {
@@ -92,15 +100,13 @@ export default function ActiveJobPage({
 
         setAppointment(appointmentData);
 
-        // Load from session storage if exists
+        // Load from session storage if exists (step + checklist only; photos come from DB)
         const savedState = sessionStorage.getItem(storageKey);
         if (savedState) {
           try {
             const state: JobWorkflowState = JSON.parse(savedState);
             setCurrentStep(state.step);
             setChecklistItems(state.checklistProgress);
-            setHasBeforePhotos(state.hasBeforePhotos);
-            setHasAfterPhotos(state.hasAfterPhotos);
           } catch {
             // If parse fails, use DB state
             setCurrentStep(appointmentData.job_progress);
@@ -160,7 +166,8 @@ export default function ActiveJobPage({
     }
   }, [lineItems, checklistItems.length, storageKey]);
 
-  // Save state to session storage
+  // Save step + checklist state to session storage
+  // hasBeforePhotos / hasAfterPhotos are sourced from DB, not session storage
   const saveToSessionStorage = useCallback(() => {
     const state: JobWorkflowState = {
       step: currentStep,
@@ -172,12 +179,12 @@ export default function ActiveJobPage({
     sessionStorage.setItem(storageKey, JSON.stringify(state));
   }, [currentStep, checklistItems, hasBeforePhotos, hasAfterPhotos, storageKey]);
 
-  // Auto-save to session storage when state changes
+  // Auto-save to session storage when step or checklist changes
   useEffect(() => {
     if (!loading) {
       saveToSessionStorage();
     }
-  }, [currentStep, checklistItems, hasBeforePhotos, hasAfterPhotos, loading, saveToSessionStorage]);
+  }, [currentStep, checklistItems, loading, saveToSessionStorage]);
 
   // Toggle checklist item
   const toggleChecklistItem = (itemId: string) => {
@@ -331,25 +338,20 @@ export default function ActiveJobPage({
       <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
         {/* Step 1: Before Photos (also handles not_started state) */}
         {(currentStep === "before_photos" || currentStep === "not_started") && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-gray-900">
-                Upload Before Photos
-              </h2>
-              <p className="text-gray-600">
-                Take photos of the property before starting the cleaning job.
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Before Photos</h2>
+              <p className="text-gray-600 mt-1">
+                Document the property condition before starting the cleaning job.
               </p>
-
-              {/* Photo upload placeholder */}
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-                <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-lg font-medium text-gray-700 mb-2">
-                  Photo upload functionality coming soon
-                </p>
-                <p className="text-sm text-gray-500">
-                  You can continue without photos or wait to upload them
-                </p>
-              </div>
             </div>
+            <JobPhotoSection
+              appointmentId={appointmentId}
+              photoType="before"
+              photos={beforePhotos}
+              onPhotosChange={refetchPhotos}
+            />
+          </div>
         )}
 
         {/* Step 2: Checklist */}
@@ -417,25 +419,20 @@ export default function ActiveJobPage({
 
         {/* Step 3: After Photos */}
         {currentStep === "after_photos" && (
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-gray-900">
-                Upload After Photos
-              </h2>
-              <p className="text-gray-600">
-                Take photos of the property after completing the cleaning job.
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">After Photos</h2>
+              <p className="text-gray-600 mt-1">
+                Document the property after completing the cleaning job.
               </p>
-
-              {/* Photo upload placeholder */}
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-                <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-lg font-medium text-gray-700 mb-2">
-                  Photo upload functionality coming soon
-                </p>
-                <p className="text-sm text-gray-500">
-                  You can continue without photos or wait to upload them
-                </p>
-              </div>
             </div>
+            <JobPhotoSection
+              appointmentId={appointmentId}
+              photoType="after"
+              photos={afterPhotos}
+              onPhotosChange={refetchPhotos}
+            />
+          </div>
         )}
       </div>
 

@@ -17,11 +17,13 @@ import {
   FileText,
   CreditCard,
   AlertCircle,
+  Camera,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import StatusBadge from "./StatusBadge";
 import { AppointmentCardData } from "./AppointmentCard";
 import { updateAppointment } from "../hooks/useAdminData";
+import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import PaymentMethodForm from "./PaymentMethodForm";
 
@@ -99,6 +101,16 @@ export default function AppointmentSidePanel({
   const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
   const [paymentMethodError, setPaymentMethodError] = useState<string | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+
+  // Job photos (admin, manager, cleaner can view via RLS)
+  const {
+    beforePhotos,
+    afterPhotos,
+    allPhotos,
+    loading: photosLoading,
+    error: photosError,
+    refetch: refetchPhotos,
+  } = useJobPhotosForAppointment(appointment?.id ?? null);
 
   useEffect(() => {
     setMounted(true);
@@ -693,6 +705,102 @@ export default function AppointmentSidePanel({
                   </p>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Job Photos - before/after evidence; when job is in progress or completed */}
+          {!isEditing &&
+            (appointment.status === "in_progress" || appointment.status === "completed") &&
+            (role === "admin" || role === "manager" || role === "cleaner" || role === "homeowner") && (
+            <div className="space-y-3 pt-2 border-t border-gray-200">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                <p className="text-sm font-medium text-gray-700">Job Photos</p>
+              </div>
+              {photosLoading ? (
+                <div className="flex items-center gap-2 text-gray-500 py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Loading photos...</span>
+                </div>
+              ) : photosError ? (
+                <p className="text-sm text-amber-600 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {photosError}
+                </p>
+              ) : allPhotos.length === 0 ? (
+                <p className="text-sm text-gray-500 italic">No photos uploaded for this job yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {beforePhotos.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Before</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {beforePhotos.map((photo) => (
+                          <a
+                            key={photo.id}
+                            href={photo.photo_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <img
+                              src={photo.photo_url}
+                              alt="Before"
+                              className="w-full h-full object-cover"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {afterPhotos.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">After</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {afterPhotos.map((photo) => (
+                          <a
+                            key={photo.id}
+                            href={photo.photo_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <img
+                              src={photo.photo_url}
+                              alt="After"
+                              className="w-full h-full object-cover"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {allPhotos.some((p) => p.photo_type === "during") && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">During</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {allPhotos
+                          .filter((p) => p.photo_type === "during")
+                          .map((photo) => (
+                            <a
+                              key={photo.id}
+                              href={photo.photo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <img
+                                src={photo.photo_url}
+                                alt="During"
+                                className="w-full h-full object-cover"
+                              />
+                            </a>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
