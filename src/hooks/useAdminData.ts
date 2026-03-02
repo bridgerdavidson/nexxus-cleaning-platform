@@ -1136,18 +1136,41 @@ export async function cancelAppointment(appointmentId: string) {
   }
 }
 
-// Helper function to permanently delete an appointment (hard delete)
+// Helper function to permanently delete an appointment (hard delete).
+// Uses .select() so we can detect when RLS allows 0 rows (no error but nothing deleted).
 export async function deleteAppointment(appointmentId: string) {
   try {
-    const { error } = await supabase
-      .from('appointments')
+    const { data, error } = await supabase
+      .from("appointments")
       .delete()
-      .eq('id', appointmentId);
+      .eq("id", appointmentId)
+      .select("id");
 
-    if (error) throw error;
+    if (error) {
+      console.error("Error deleting appointment", appointmentId, error);
+      throw error;
+    }
+
+    // If no row was returned, RLS blocked the delete (0 rows affected).
+    if (!data || data.length === 0) {
+      console.error("Delete affected 0 rows (likely RLS). appointmentId:", appointmentId);
+      return {
+        success: false,
+        error:
+          "You don't have permission to delete this appointment, or it no longer exists.",
+      };
+    }
+
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete appointment' };
+    console.error("deleteAppointment failed", appointmentId, error);
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to delete appointment",
+    };
   }
 }
 

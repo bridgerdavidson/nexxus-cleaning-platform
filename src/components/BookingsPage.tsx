@@ -101,6 +101,8 @@ export default function BookingsPage({
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkAction, setBulkAction] = useState<"cancel" | "delete">("delete");
   const [isBulkActionLoading, setIsBulkActionLoading] = useState(false);
+  // Capture selected IDs when opening bulk modal so confirm uses the same set (avoids stale closure)
+  const selectedIdsForBulkRef = useRef<Set<string>>(new Set());
 
   // Pending drag updates for deferred DB sync
   const [pendingDragUpdates, setPendingDragUpdates] = useState<
@@ -401,6 +403,13 @@ export default function BookingsPage({
     return [...filteredTodaysAppointments, ...filteredUpcomingAppointments, ...filteredPastAppointments];
   }, [filteredTodaysAppointments, filteredUpcomingAppointments, filteredPastAppointments]);
 
+  // Appointments currently displayed in the list view (depends on active tab) — used for Select All
+  const displayedAppointmentsForTab = useMemo(() => {
+    if (appointmentsTab === "upcoming") return filteredUpcomingAppointments;
+    if (appointmentsTab === "past") return filteredPastAppointments;
+    return filteredAllAppointments;
+  }, [appointmentsTab, filteredUpcomingAppointments, filteredPastAppointments, filteredAllAppointments]);
+
   // Get unique statuses for filter dropdown
   const availableStatuses = useMemo(() => {
     const statuses = new Set(localAppointments.map((apt) => apt.status));
@@ -471,35 +480,41 @@ export default function BookingsPage({
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === allFilteredAppointments.length) {
+    if (selectedIds.size === displayedAppointmentsForTab.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(allFilteredAppointments.map((apt) => apt.id)));
+      setSelectedIds(new Set(displayedAppointmentsForTab.map((apt) => apt.id)));
     }
   };
 
   const handleBulkCancel = () => {
+    selectedIdsForBulkRef.current = new Set(selectedIds);
     setBulkAction("cancel");
     setShowBulkModal(true);
   };
 
   const handleBulkDelete = () => {
+    selectedIdsForBulkRef.current = new Set(selectedIds);
     setBulkAction("delete");
     setShowBulkModal(true);
   };
 
   const confirmBulkAction = async () => {
-    setIsBulkActionLoading(true);
-    const selectedAppointments = Array.from(selectedIds);
+    const idsToProcess = Array.from(selectedIdsForBulkRef.current);
+    if (idsToProcess.length === 0) {
+      setShowBulkModal(false);
+      return;
+    }
 
+    setIsBulkActionLoading(true);
     try {
       if (bulkAction === "cancel") {
         await Promise.all(
-          selectedAppointments.map((id) => onCancelAppointment(id))
+          idsToProcess.map((id) => onCancelAppointment(id))
         );
       } else {
         await Promise.all(
-          selectedAppointments.map((id) => onDeleteAppointment(id))
+          idsToProcess.map((id) => onDeleteAppointment(id))
         );
       }
       setSelectedIds(new Set());
@@ -619,10 +634,10 @@ export default function BookingsPage({
     setShowAddAppointmentModal(true);
   }, []);
 
-  // Check if all are selected
+  // Check if all displayed (current tab) are selected
   const isAllSelected =
-    allFilteredAppointments.length > 0 &&
-    selectedIds.size === allFilteredAppointments.length;
+    displayedAppointmentsForTab.length > 0 &&
+    selectedIds.size === displayedAppointmentsForTab.length;
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
 
   // Get appointment info for cancel modal
