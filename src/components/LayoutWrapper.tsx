@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
+import { AuthProvider } from '../contexts/AuthContext';
 import Navbar from './Navbar';
 //import { useTabVisibility } from '../hooks/useTabVisibility';
 
@@ -50,13 +51,13 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const isDashboard = pathname?.includes('-dashboard');
 
   return (
-    <>
+    <AuthProvider>
       {/* Dashboard pages render their own header with tabs */}
       {!isDashboard && <Navbar />}
       <div className={!isDashboard ? 'pt-16' : ''}>
         {children}
       </div>
-    </>
+    </AuthProvider>
   );
 }
 

@@ -1,19 +1,25 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import AvatarUpload from './AvatarUpload';
+import { formatPhoneDisplay, normalizePhoneToDigits } from '../lib/phone';
 
 export default function ProfileSettingsPage() {
   const { user, updateProfile } = useAuth();
 
   const [firstName, setFirstName] = useState(user?.profile.firstName ?? '');
   const [lastName, setLastName] = useState(user?.profile.lastName ?? '');
-  const [phone, setPhone] = useState(user?.profile.phone ?? '');
+  const [phone, setPhone] = useState(() => normalizePhoneToDigits(user?.profile.phone ?? ''));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Sync phone from profile when it changes (e.g. after load or save)
+  useEffect(() => {
+    setPhone(normalizePhoneToDigits(user?.profile.phone ?? ''));
+  }, [user?.profile.phone]);
 
   const handleAvatarUploadSuccess = (url: string) => {
     // Sync new avatar URL into the auth state (DB already updated by server route)
@@ -125,10 +131,12 @@ export default function ProfileSettingsPage() {
             <input
               id="phone"
               type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              inputMode="numeric"
+              autoComplete="tel"
+              value={formatPhoneDisplay(phone)}
+              onChange={(e) => setPhone(normalizePhoneToDigits(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="e.g. +1 555 000 0000"
+              placeholder="(555) 123-4567"
             />
           </div>
 
