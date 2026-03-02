@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Home, Search, Plus, User, CheckCircle, Loader2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { X, Home, Search, Plus, User, CheckCircle, Loader2, Camera, AlertCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { CustomerProperty } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { validateJobPhotoFile } from "../lib/upload";
+import { compressJobPhoto } from "../lib/compress-image";
 
 interface Homeowner {
   id: string;
@@ -27,7 +29,8 @@ export default function AddPropertyModal({
   onPropertyCreated,
   preSelectedHomeownerId,
 }: AddPropertyModalProps) {
-  const { currentOrganizationId } = useAuth();
+  const { currentOrganizationId, session } = useAuth();
+  const propertyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
@@ -62,6 +65,12 @@ export default function AddPropertyModal({
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Optional property photo (compressed file held until create)
+  const [propertyPhotoFile, setPropertyPhotoFile] = useState<File | null>(null);
+  const [propertyPhotoPreview, setPropertyPhotoPreview] = useState<string | null>(null);
+  const [compressingPhoto, setCompressingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
   // Fetch homeowners on modal open
   useEffect(() => {
     if (isOpen && currentOrganizationId) {
@@ -91,8 +100,12 @@ export default function AddPropertyModal({
       setSpecialInstructions("");
       setAccessInstructions("");
       setError(null);
+      setPropertyPhotoFile(null);
+      if (propertyPhotoPreview) URL.revokeObjectURL(propertyPhotoPreview);
+      setPropertyPhotoPreview(null);
+      setPhotoError(null);
     }
-  }, [isOpen, preSelectedHomeownerId]);
+  }, [isOpen, preSelectedHomeownerId, propertyPhotoPreview]);
 
   const fetchPreSelectedHomeowner = async () => {
     if (!preSelectedHomeownerId || !currentOrganizationId) return;
@@ -171,6 +184,40 @@ export default function AddPropertyModal({
     }
   };
 
+  const handlePropertyPhotoChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+
+      const validation = validateJobPhotoFile(file);
+      if (!validation.valid) {
+        setPhotoError(validation.error ?? "Invalid file.");
+        return;
+      }
+      setPhotoError(null);
+      setCompressingPhoto(true);
+      try {
+        const compressed = await compressJobPhoto(file);
+        if (propertyPhotoPreview) URL.revokeObjectURL(propertyPhotoPreview);
+        setPropertyPhotoFile(compressed);
+        setPropertyPhotoPreview(URL.createObjectURL(compressed));
+      } catch (err) {
+        setPhotoError(err instanceof Error ? err.message : "Compression failed.");
+      } finally {
+        setCompressingPhoto(false);
+      }
+    },
+    [propertyPhotoPreview]
+  );
+
+  const handleRemovePropertyPhoto = useCallback(() => {
+    setPropertyPhotoFile(null);
+    if (propertyPhotoPreview) URL.revokeObjectURL(propertyPhotoPreview);
+    setPropertyPhotoPreview(null);
+    setPhotoError(null);
+  }, [propertyPhotoPreview]);
+
   const handleCreateProperty = async () => {
     if (
       !selectedHomeowner ||
@@ -228,12 +275,33 @@ export default function AddPropertyModal({
         });
         throw insertError;
       }
-      
-      console.log("Property created successfully:", insertData);
 
-      // Success! Close modal and pass the created property
-      if (onPropertyCreated && insertData) {
-        onPropertyCreated(insertData as CustomerProperty);
+      let finalProperty: CustomerProperty = insertData as CustomerProperty;
+
+      // If user selected a photo, upload it to the new property
+      if (propertyPhotoFile && session?.access_token && insertData?.id) {
+        try {
+          const formData = new FormData();
+          formData.append("file", propertyPhotoFile);
+          const uploadRes = await fetch(
+            `/api/properties/${insertData.id}/upload-photo`,
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${session.access_token}` },
+              body: formData,
+            }
+          );
+          const uploadResult = await uploadRes.json();
+          if (uploadRes.ok && uploadResult.url) {
+            finalProperty = { ...insertData, photo_url: uploadResult.url } as CustomerProperty;
+          }
+        } catch {
+          // Non-fatal: property was created, photo upload failed
+        }
+      }
+
+      if (onPropertyCreated) {
+        onPropertyCreated(finalProperty);
       }
       handleClose();
     } catch (err) {
@@ -541,6 +609,64 @@ export default function AddPropertyModal({
                       required
                     />
                   </div>
+                </div>
+
+                {/* Optional Property Photo */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Property Photo (optional)
+                  </label>
+                  {propertyPhotoFile || propertyPhotoPreview ? (
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-100 ring-2 ring-gray-200">
+                        <img
+                          src={propertyPhotoPreview ?? undefined}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={handleRemovePropertyPhoto}
+                          className="text-sm text-gray-600 hover:text-red-600"
+                        >
+                          Remove photo
+                        </button>
+                        {compressingPhoto && (
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Compressing…
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={propertyPhotoInputRef}
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        onChange={handlePropertyPhotoChange}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => propertyPhotoInputRef.current?.click()}
+                        disabled={compressingPhoto}
+                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Camera className="w-4 h-4" />
+                        {compressingPhoto ? "Compressing…" : "Choose photo"}
+                      </button>
+                    </div>
+                  )}
+                  {photoError && (
+                    <div className="flex items-center gap-1.5 text-red-600 text-sm mt-1">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{photoError}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

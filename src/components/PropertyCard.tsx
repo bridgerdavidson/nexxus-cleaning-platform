@@ -11,6 +11,7 @@ export interface PropertyCardData {
   bedrooms: number | null;
   bathrooms: number | null;
   square_feet: number | null;
+  photo_url?: string | null;
   homeowner: {
     id: string;
     first_name: string;
@@ -112,9 +113,17 @@ export default function PropertyCard({
       <div className="p-5 flex flex-col flex-1">
         {/* Circular Image Area with Property Name Overlay */}
         <div className="relative mb-8">
-          {/* Circular placeholder */}
-          <div className="w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shadow-inner">
-            <Home className="w-12 h-12 text-primary-600" />
+          {/* Circular image or placeholder */}
+          <div className="w-28 h-28 mx-auto rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shadow-inner overflow-hidden">
+            {property.photo_url ? (
+              <img
+                src={property.photo_url}
+                alt={property.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Home className="w-12 h-12 text-primary-600" />
+            )}
           </div>
           
           {/* Property name badge overlaying bottom of circle */}

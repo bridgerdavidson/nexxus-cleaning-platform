@@ -1195,6 +1195,7 @@ export interface CustomerProperty {
   bedrooms: number | null;
   bathrooms: number | null;
   square_feet: number | null;
+  photo_url?: string | null;
 }
 
 export function useAdminCustomers() {
@@ -1475,6 +1476,7 @@ export interface AdminProperty {
   bedrooms: number | null;
   bathrooms: number | null;
   square_feet: number | null;
+  photo_url?: string | null;
   special_instructions: string | null;
   access_instructions: string | null;
   created_at: string;
@@ -1530,6 +1532,7 @@ export function useAdminProperties() {
           bedrooms,
           bathrooms,
           square_feet,
+          photo_url,
           special_instructions,
           access_instructions,
           created_at,
@@ -1595,6 +1598,7 @@ export async function updateProperty(
     bedrooms?: number | null;
     bathrooms?: number | null;
     square_feet?: number | null;
+    photo_url?: string | null;
     special_instructions?: string | null;
     access_instructions?: string | null;
   }
@@ -1617,6 +1621,7 @@ export async function updateProperty(
         bedrooms,
         bathrooms,
         square_feet,
+        photo_url,
         special_instructions,
         access_instructions,
         created_at,

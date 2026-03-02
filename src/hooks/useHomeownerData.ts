@@ -39,6 +39,7 @@ export interface Property {
   bedrooms?: number;
   bathrooms?: number;
   square_feet?: number;
+  photo_url?: string | null;
 }
 
 export interface HomeownerStats {

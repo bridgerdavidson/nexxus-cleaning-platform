@@ -19,6 +19,7 @@ import {
 import { createPortal } from "react-dom";
 import { PropertyCardData } from "./PropertyCard";
 import AddAppointmentModal from "./AddAppointmentModal";
+import PropertyPhotoUpload from "./PropertyPhotoUpload";
 import { updateProperty } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
@@ -248,6 +249,37 @@ export default function PropertySidePanel({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-6">
+          {/* Property Photo */}
+          <div>
+            <p className="text-sm text-gray-500 mb-2">Property Photo</p>
+            {isEditing ? (
+              <PropertyPhotoUpload
+                propertyId={property.id}
+                currentPhotoUrl={property.photo_url}
+                onUploadSuccess={(url) => {
+                  if (onPropertyUpdated) {
+                    onPropertyUpdated({ ...property, photo_url: url });
+                  }
+                }}
+                disabled={false}
+              />
+            ) : (
+              <div className="flex justify-center">
+                {property.photo_url ? (
+                  <img
+                    src={property.photo_url}
+                    alt="Property"
+                    className="w-28 h-28 rounded-full object-cover ring-2 ring-gray-200"
+                  />
+                ) : (
+                  <div className="w-28 h-28 rounded-full bg-gray-100 flex items-center justify-center ring-2 ring-gray-200">
+                    <Home className="w-12 h-12 text-primary-600" />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Property Name */}
           <div>
             <div className="flex items-start gap-2">
