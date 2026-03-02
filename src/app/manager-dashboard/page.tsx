@@ -1552,11 +1552,19 @@ export default function ManagerDashboard() {
 
                 {/* Avatar and Name */}
                 <div className="flex items-start gap-3 mb-4 pr-14">
-                  <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary-600 font-semibold text-sm">
-                      {getCleanerInitials(cleaner)}
-                    </span>
-                  </div>
+                  {cleaner.user_profile?.avatar_url ? (
+                    <img
+                      src={cleaner.user_profile.avatar_url}
+                      alt=""
+                      className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-primary-600 font-semibold text-sm">
+                        {getCleanerInitials(cleaner)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <h3 className="text-base font-semibold text-gray-900 truncate">
                       {getCleanerFullName(cleaner)}

@@ -48,6 +48,7 @@ export interface AdminCleaner {
     last_name: string;
     email: string;
     phone?: string;
+    avatar_url?: string | null;
   } | null;
   rating: number;
   total_jobs: number;
@@ -399,7 +400,8 @@ export function useAdminCleaners() {
             first_name,
             last_name,
             email,
-            phone
+            phone,
+            avatar_url
           )
         `)
         .eq('organization_id', currentOrganizationId)
