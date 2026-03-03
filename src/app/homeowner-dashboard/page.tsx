@@ -210,27 +210,6 @@ export default function HomeownerDashboard() {
     );
   }
 
-  // Helper function to format date and time
-  const formatDateTime = (date: string, time: string) => {
-    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-    const [year, month, day] = date.split("-").map(Number);
-    const localDate = new Date(year, month - 1, day); // month is 0-indexed
-    const formattedDate = localDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    
-    // Convert military time to 12-hour format
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const standardHour = hour % 12 || 12;
-    const formattedTime = `${standardHour}:${minutes} ${ampm}`;
-    
-    return `${formattedDate} at ${formattedTime}`;
-  };
-
   // Helper function to get cleaner name
   const getCleanerName = (appointment: any) => {
     if (appointment.cleaner_profile?.user_profile) {

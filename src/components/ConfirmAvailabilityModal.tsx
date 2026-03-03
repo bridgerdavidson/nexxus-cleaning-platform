@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { formatTimeTo12h } from "../lib/formatTime";
 
 interface SuggestedTime {
   date: string;
@@ -70,14 +71,6 @@ export default function ConfirmAvailabilityModal({
       day: "numeric",
       year: "numeric",
     });
-  };
-
-  const formatTime = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const standardHour = hour % 12 || 12;
-    return `${standardHour}:${minutes} ${ampm}`;
   };
 
   const handleConfirm = async () => {
@@ -211,7 +204,7 @@ export default function ConfirmAvailabilityModal({
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="w-4 h-4 text-gray-400" />
                 <span className="text-gray-700">
-                  {formatTime(appointment.scheduled_time)}
+                  {formatTimeTo12h(appointment.scheduled_time)}
                 </span>
               </div>
               <p className="text-sm text-gray-600">
@@ -304,7 +297,7 @@ export default function ConfirmAvailabilityModal({
             <div className="flex items-center gap-2 text-sm">
               <Clock className="w-4 h-4 text-gray-400" />
               <span className="text-gray-700">
-                {formatTime(appointment.scheduled_time)}
+                {formatTimeTo12h(appointment.scheduled_time)}
               </span>
             </div>
             <p className="text-sm text-gray-600">

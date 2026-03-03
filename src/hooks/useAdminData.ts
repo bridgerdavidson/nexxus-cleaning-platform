@@ -24,8 +24,10 @@ export interface AdminAppointment {
   } | null;
   cleaner_profile?: {
     user_profile: {
+      id: string;
       first_name: string;
       last_name: string;
+      email?: string;
     } | null;
   } | null;
   property: {
@@ -139,8 +141,10 @@ export function useAdminAppointments() {
           ),
           cleaner_profile:cleaner_profiles(
             user_profile:user_profiles!id(
+              id,
               first_name,
-              last_name
+              last_name,
+              email
             )
           ),
           property:properties(
@@ -287,8 +291,10 @@ export function useAdminAppointments() {
           ),
           cleaner_profile:cleaner_profiles(
             user_profile:user_profiles!id(
+              id,
               first_name,
-              last_name
+              last_name,
+              email
             )
           ),
           property:properties(
@@ -1030,8 +1036,10 @@ export async function updateAppointment(
         ),
         cleaner_profile:cleaner_profiles(
           user_profile:user_profiles!id(
+            id,
             first_name,
-            last_name
+            last_name,
+            email
           )
         ),
         property:properties(
@@ -1147,13 +1155,11 @@ export async function deleteAppointment(appointmentId: string) {
       .select("id");
 
     if (error) {
-      console.error("Error deleting appointment", appointmentId, error);
       throw error;
     }
 
     // If no row was returned, RLS blocked the delete (0 rows affected).
     if (!data || data.length === 0) {
-      console.error("Delete affected 0 rows (likely RLS). appointmentId:", appointmentId);
       return {
         success: false,
         error:
@@ -1163,7 +1169,6 @@ export async function deleteAppointment(appointmentId: string) {
 
     return { success: true };
   } catch (error) {
-    console.error("deleteAppointment failed", appointmentId, error);
     return {
       success: false,
       error:

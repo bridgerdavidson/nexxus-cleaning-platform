@@ -36,6 +36,7 @@ import {
 } from "../../hooks/useCleanerData";
 import { useConversations } from "../../hooks/useConversations";
 import { useServices } from "../../hooks/useServices";
+import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
 import DashboardHeader from "../../components/DashboardHeader";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -526,18 +527,6 @@ export default function CleanerDashboard() {
   }
 
   // Helper functions
-  const formatDateTime = (date: string, time: string) => {
-    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-    const [year, month, day] = date.split("-").map(Number);
-    const localDate = new Date(year, month - 1, day); // month is 0-indexed
-    const formattedDate = localDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    return `${formattedDate} at ${time}`;
-  };
-
   const getHomeownerName = (appointment: any) => {
     if (appointment.homeowner) {
       const { first_name, last_name } = appointment.homeowner;
@@ -595,15 +584,6 @@ export default function CleanerDashboard() {
         appointment.scheduled_date !== today &&
         ["pending", "confirmed", "in_progress"].includes(appointment.status)
     );
-  };
-
-  const formatTime = (time: string) => {
-    // Convert military time (HH:mm:ss) to standard time (h:mm AM/PM)
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const standardHour = hour % 12 || 12;
-    return `${standardHour}:${minutes} ${ampm}`;
   };
 
   const formatDate = (dateString: string) => {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
 import { UserRole, ConversationWithDetails } from "../types";
 import { useDeleteConversation } from "../hooks/useDeleteConversation";
@@ -16,6 +16,8 @@ interface MessagesPageProps {
   error: string | null;
   onRefresh: () => void;
   onUpdateUnreadCount: (conversationId: string, newCount: number) => void;
+  initialOtherParticipantId?: string;
+  onInitialParticipantConsumed?: () => void;
 }
 
 export default function MessagesPage({
@@ -26,6 +28,8 @@ export default function MessagesPage({
   error,
   onRefresh,
   onUpdateUnreadCount,
+  initialOtherParticipantId,
+  onInitialParticipantConsumed,
 }: MessagesPageProps) {
   const [selectedConversation, setSelectedConversation] =
     useState<ConversationWithDetails | null>(null);
@@ -74,6 +78,45 @@ export default function MessagesPage({
 
   const { deleteConversation, deleting } = useDeleteConversation();
   const { startConversation, starting } = useStartConversation();
+
+  // Track whether we've already acted on the current initialOtherParticipantId so we don't repeat on re-renders
+  const consumedParticipantIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!initialOtherParticipantId) return;
+    if (loading) return;
+    if (consumedParticipantIdRef.current === initialOtherParticipantId) return;
+    if (starting) return;
+
+    consumedParticipantIdRef.current = initialOtherParticipantId;
+
+    const existing = allConversations.find(
+      (c) => c.other_participant?.id === initialOtherParticipantId
+    );
+
+    if (existing) {
+      handleSelectConversation(existing);
+      onInitialParticipantConsumed?.();
+      return;
+    }
+
+    // No existing conversation — start one
+    startConversation(initialOtherParticipantId).then((result) => {
+      onRefresh();
+      if (result.success) {
+        if (result.conversation) {
+          handleSelectConversation(result.conversation);
+        } else if (result.conversationId) {
+          setTimeout(() => {
+            const conv = allConversations.find((c) => c.id === result.conversationId);
+            if (conv) handleSelectConversation(conv);
+          }, 600);
+        }
+      }
+      onInitialParticipantConsumed?.();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOtherParticipantId, loading, allConversations]);
 
   // Determine which roles to show in filter based on user's role
   const getAvailableRoles = (): UserRole[] => {

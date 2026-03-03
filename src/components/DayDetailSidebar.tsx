@@ -16,6 +16,7 @@ import {
 import { format } from "date-fns";
 import { AppointmentCardData } from "./AppointmentCard";
 import StatusBadge from "./StatusBadge";
+import { formatTimeTo12h } from "../lib/formatTime";
 
 interface DayDetailSidebarProps {
   isOpen: boolean;
@@ -113,15 +114,6 @@ export default function DayDetailSidebar({
     if (e.target === e.currentTarget) {
       handleClose();
     }
-  };
-
-  // Format time for display
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
   };
 
   if (!mounted || (!isOpen && !isAnimating) || !selectedDate) return null;
@@ -247,7 +239,6 @@ export default function DayDetailSidebar({
                   key={appointment.id}
                   appointment={appointment}
                   onClick={() => onAppointmentClick(appointment)}
-                  formatTime={formatTime}
                   hidePrice={role === "cleaner"}
                 />
               ))}
@@ -278,14 +269,12 @@ export default function DayDetailSidebar({
 interface AppointmentMiniCardProps {
   appointment: AppointmentCardData;
   onClick: () => void;
-  formatTime: (time: string) => string;
   hidePrice?: boolean;
 }
 
 function AppointmentMiniCard({
   appointment,
   onClick,
-  formatTime,
   hidePrice = false,
 }: AppointmentMiniCardProps) {
   const homeownerName = appointment.homeowner
@@ -310,7 +299,7 @@ function AppointmentMiniCard({
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-primary-600" />
           <span className="font-semibold text-gray-900">
-            {formatTime(appointment.scheduled_time)}
+            {formatTimeTo12h(appointment.scheduled_time)}
           </span>
         </div>
         <StatusBadge status={appointment.status} size="sm" />

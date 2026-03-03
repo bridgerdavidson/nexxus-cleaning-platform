@@ -28,6 +28,7 @@ import { createPortal } from "react-dom";
 import AddPropertyModal from "./AddPropertyModal";
 import AddAppointmentModal from "./AddAppointmentModal";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { formatTimeTo12h } from "../lib/formatTime";
 
 interface CustomerDetailModalProps {
   isOpen: boolean;
@@ -554,7 +555,7 @@ export default function CustomerDetailModal({
                               </span>
                               <Clock className="w-4 h-4 text-gray-400 ml-2" />
                               <span className="text-gray-600 text-sm">
-                                {appointment.scheduled_time}
+                                {formatTimeTo12h(appointment.scheduled_time)}
                               </span>
                             </div>
                             <span

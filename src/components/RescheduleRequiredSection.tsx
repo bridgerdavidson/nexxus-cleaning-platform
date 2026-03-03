@@ -13,6 +13,7 @@ import {
   Loader2,
   User,
 } from "lucide-react";
+import { formatTimeTo12h } from "../lib/formatTime";
 
 interface RejectedAppointment {
   id: string;
@@ -69,14 +70,6 @@ export default function RescheduleRequiredSection({
       month: "short",
       day: "numeric",
     });
-  };
-
-  const formatTime = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const standardHour = hour % 12 || 12;
-    return `${standardHour}:${minutes} ${ampm}`;
   };
 
   const getHomeownerName = (apt: RejectedAppointment) => {
@@ -177,7 +170,7 @@ export default function RescheduleRequiredSection({
                         <span>{formatDate(apt.scheduled_date)}</span>
                         <span className="text-gray-300">|</span>
                         <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{formatTime(apt.scheduled_time)}</span>
+                        <span>{formatTimeTo12h(apt.scheduled_time)}</span>
                       </div>
                       {apt.service_type && (
                         <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">

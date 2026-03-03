@@ -23,6 +23,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { AppointmentCardData } from "./AppointmentCard";
+import { formatTimeTo12h } from "../lib/formatTime";
 
 // Import CSS for react-big-calendar
 import "react-big-calendar/lib/css/react-big-calendar.css";
@@ -221,21 +222,13 @@ export default function CalendarView({
           ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`
           : "Unknown";
 
-      // Format time to 12-hour format
-      const formatTime = (time: string) => {
-        const [hours, minutes] = time.split(":").map(Number);
-        const period = hours >= 12 ? "PM" : "AM";
-        const displayHours = hours % 12 || 12;
-        return `${displayHours}:${minutes.toString().padStart(2, "0")} ${period}`;
-      };
-
       return (
         <div
           className={`${colors.bg} ${colors.text} border-l-4 ${colors.border} rounded-r px-1.5 py-1.5 h-full overflow-hidden`}
         >
           <div className="flex items-start justify-between gap-1">
             <div className="font-medium text-xs truncate flex-1">{primaryInfo}</div>
-            <div className="font-medium text-xs whitespace-nowrap">{formatTime(apt.scheduled_time)}</div>
+            <div className="font-medium text-xs whitespace-nowrap">{formatTimeTo12h(apt.scheduled_time)}</div>
           </div>
           {currentView !== Views.MONTH && (
             <div className="text-xs opacity-75 truncate">

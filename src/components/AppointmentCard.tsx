@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
+import { formatTimeTo12h } from "../lib/formatTime";
 import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
 import { JobProgress } from "../types";
 
@@ -64,23 +65,14 @@ export default function AppointmentCard({
   const [isStarting, setIsStarting] = useState(false);
 
   const formatDateTime = (date: string, time: string) => {
-    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
     const [year, month, day] = date.split('-').map(Number);
-    const localDate = new Date(year, month - 1, day); // month is 0-indexed
+    const localDate = new Date(year, month - 1, day);
     const formattedDate = localDate.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
-    
-    // Convert military time (HH:MM:SS) to 12-hour format with AM/PM
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour % 12 || 12; // Convert 0 to 12 for midnight
-    const formattedTime = `${displayHour}:${minutes} ${ampm}`;
-    
-    return { date: formattedDate, time: formattedTime };
+    return { date: formattedDate, time: formatTimeTo12h(time) };
   };
 
   const getHomeownerName = () => {

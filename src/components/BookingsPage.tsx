@@ -33,6 +33,7 @@ import RescheduleRequiredSection from "./RescheduleRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
+import { formatTimeTo12h } from "../lib/formatTime";
 
 type ViewType = "list" | "calendar";
 
@@ -658,7 +659,7 @@ export default function BookingsPage({
             year: "numeric",
           });
         })(),
-        time: cancellingAppointment.scheduled_time,
+        time: formatTimeTo12h(cancellingAppointment.scheduled_time),
         homeowner: cancellingAppointment.homeowner
           ? `${cancellingAppointment.homeowner.first_name} ${cancellingAppointment.homeowner.last_name}`
           : "Unknown",

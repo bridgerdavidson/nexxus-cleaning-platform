@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-
+import { formatTimeTo12h } from '@/lib/formatTime';
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,14 +39,6 @@ function formatDateShort(dateStr: string): string {
   return `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${twoDigitYear.toString().padStart(2, '0')}`;
 }
 
-// Helper: Format time as standard time (12-hour with AM/PM)
-function formatTimeStandard(timeStr: string): string {
-  const [hours, minutes] = timeStr.split(":");
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const standardHour = hour % 12 || 12;
-  return `${standardHour}:${minutes} ${ampm}`;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -107,7 +99,7 @@ export async function POST(request: NextRequest) {
         organizationId,
         senderId: cleanerId,
         appointmentId,
-        content: `I've confirmed my availability for the appointment on ${formatDateShort(appointment.scheduled_date)} at ${formatTimeStandard(appointment.scheduled_time)}. I'm ready to go!`,
+        content: `I've confirmed my availability for the appointment on ${formatDateShort(appointment.scheduled_date)} at ${formatTimeTo12h(appointment.scheduled_time)}. I'm ready to go!`,
       });
 
       return NextResponse.json({
@@ -211,12 +203,12 @@ export async function POST(request: NextRequest) {
       }
 
       // Build message content with feedback details
-      let messageContent = `I'm not available for the appointment on ${formatDateShort(appointment.scheduled_date)} at ${formatTimeStandard(appointment.scheduled_time)}.\n\nReason: ${feedback.reason}`;
+      let messageContent = `I'm not available for the appointment on ${formatDateShort(appointment.scheduled_date)} at ${formatTimeTo12h(appointment.scheduled_time)}.\n\nReason: ${feedback.reason}`;
 
       if (feedback.suggestedTimes && feedback.suggestedTimes.length > 0) {
         messageContent += '\n\nSuggested alternative times:';
         feedback.suggestedTimes.forEach((st) => {
-          messageContent += `\n- ${formatDateShort(st.date)} at ${formatTimeStandard(st.time)}`;
+          messageContent += `\n- ${formatDateShort(st.date)} at ${formatTimeTo12h(st.time)}`;
         });
       }
 

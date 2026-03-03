@@ -20,6 +20,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { updateAppointment } from "../hooks/useAdminData";
+import { formatTimeTo12h } from "../lib/formatTime";
 import { AppointmentCardData } from "./AppointmentCard";
 
 interface Cleaner {
@@ -214,14 +215,6 @@ export default function RescheduleAppointmentModal({
     const [year, month, day] = dateStr.split("-").map(Number);
     const twoDigitYear = year % 100;
     return `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${twoDigitYear.toString().padStart(2, '0')}`;
-  };
-
-  const formatTime = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const standardHour = hour % 12 || 12;
-    return `${standardHour}:${minutes} ${ampm}`;
   };
 
   const getHomeownerName = () => {
@@ -503,7 +496,7 @@ export default function RescheduleAppointmentModal({
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Current time</p>
                     <p className="text-sm text-gray-700 mt-0.5">
                       {formatDate(appointment.scheduled_date)} at{" "}
-                      {formatTime(appointment.scheduled_time)}
+                      {formatTimeTo12h(appointment.scheduled_time)}
                     </p>
                   </div>
                 </div>
@@ -610,7 +603,7 @@ export default function RescheduleAppointmentModal({
                                           )}
                                           <Calendar className="w-3.5 h-3.5" />
                                           <span>
-                                            {formatDate(sw.window_date)}: {formatTime(sw.start_time)} - {formatTime(sw.end_time)}
+                                            {formatDate(sw.window_date)}: {formatTimeTo12h(sw.start_time)} - {formatTimeTo12h(sw.end_time)}
                                           </span>
                                         </button>
                                       );

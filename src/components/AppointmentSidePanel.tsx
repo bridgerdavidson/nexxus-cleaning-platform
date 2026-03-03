@@ -25,6 +25,7 @@ import { AppointmentCardData } from "./AppointmentCard";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { formatTimeTo12h } from "../lib/formatTime";
 import PaymentMethodForm from "./PaymentMethodForm";
 
 interface CleanerFeedback {
@@ -228,13 +229,7 @@ export default function AppointmentSidePanel({
       year: "numeric",
     });
 
-    // Convert military time (HH:MM:SS) to 12-hour format with AM/PM
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours, 10);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour % 12 || 12; // Convert 0 to 12 for midnight
-    const formattedTime = `${displayHour}:${minutes} ${ampm}`;
-
+    const formattedTime = formatTimeTo12h(time);
     return { date: formattedDate, time: formattedTime };
   };
 

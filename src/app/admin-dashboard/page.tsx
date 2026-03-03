@@ -21,7 +21,6 @@ import {
   Trash2,
   Star,
   Building,
-  HelpCircle,
   LayoutGrid,
   ChevronDown,
   ChevronUp,
@@ -48,6 +47,7 @@ import {
 } from "../../hooks/useAdminData";
 import { useServices } from "../../hooks/useServices";
 import { useConversations } from "../../hooks/useConversations";
+import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -94,6 +94,7 @@ export default function AdminDashboard() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] =
     useState(true);
+  const [initialMessageRecipientId, setInitialMessageRecipientId] = useState<string | null>(null);
   const [selectedCleaner, setSelectedCleaner] = useState<any | null>(null);
   const [isCleanerSidePanelOpen, setIsCleanerSidePanelOpen] = useState(false);
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
@@ -232,12 +233,6 @@ export default function AdminDashboard() {
           { id: "analytics", label: "Analytics", icon: BarChart3 },
         ],
       },
-      admin: {
-        id: "admin" as const,
-        label: "Administration",
-        icon: Settings,
-        tabs: [{ id: "support", label: "Support", icon: HelpCircle }],
-      },
     }),
     [hasUnreadMessages]
   );
@@ -255,18 +250,6 @@ export default function AdminDashboard() {
   }
 
   // Helper functions
-  const formatDateTime = (date: string, time: string) => {
-    // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-    const [year, month, day] = date.split("-").map(Number);
-    const localDate = new Date(year, month - 1, day); // month is 0-indexed
-    const formattedDate = localDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    return `${formattedDate} at ${time}`;
-  };
-
   const getHomeownerName = (appointment: any) => {
     if (appointment.homeowner) {
       const { first_name, last_name } = appointment.homeowner;
@@ -397,8 +380,8 @@ export default function AdminDashboard() {
     }
   };
 
-  // Get upcoming appointments (future appointments, excluding completed/cancelled)
-  // This matches the BookingsPage "upcoming" tab definition
+  // Get upcoming appointments: future appointments that are confirmed
+  // This matches the BookingsPage "upcoming" tab definition, but restricted to confirmed
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -409,12 +392,8 @@ export default function AdminDashboard() {
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
 
-      // Future appointments, excluding completed/cancelled
-      return (
-        appointmentDate >= today &&
-        a.status !== "completed" &&
-        a.status !== "cancelled"
-      );
+      // Future appointments that have been confirmed
+      return appointmentDate >= today && a.status === "confirmed";
     })
     .sort((a, b) => {
       const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
@@ -455,6 +434,30 @@ export default function AdminDashboard() {
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
     });
+
+  // Appointments awaiting cleaner confirmation — shown in the "Pending Review" section
+  const awaitingCleanerApprovalAppointments = appointments
+    .filter((a) => {
+      if (a.cleaner_confirmation_status !== "awaiting") return false;
+      if (a.status === "completed" || a.status === "cancelled") return false;
+      const [year, month, day] = a.scheduled_date.split("-").map(Number);
+      const appointmentDate = new Date(year, month - 1, day);
+      appointmentDate.setHours(0, 0, 0, 0);
+      return appointmentDate >= today;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
+      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+  const handleMessageCleaner = (appointment: (typeof appointments)[0]) => {
+    const cleanerUserId = appointment.cleaner_profile?.user_profile?.id;
+    if (!cleanerUserId) return;
+    setInitialMessageRecipientId(cleanerUserId);
+    setActiveGroup("operations");
+    setActiveTab("messages");
+  };
 
   const renderOverview = () => (
     <>
@@ -656,9 +659,9 @@ export default function AdminDashboard() {
           />
         </div>
 
-        {/* Mobile Pending Approvals - Priority Section */}
+        {/* Mobile Awaiting Cleaner Approval - Priority Section */}
         <div className="md:hidden">
-          {pendingAppointments.length > 0 && (
+          {awaitingCleanerApprovalAppointments.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
               <button
                 onClick={() =>
@@ -668,15 +671,15 @@ export default function AdminDashboard() {
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-amber-100 rounded-lg">
-                    <FileText className="w-5 h-5 text-amber-600" />
+                    <UserCheck className="w-5 h-5 text-amber-600" />
                   </div>
                   <span className="font-medium text-gray-900">
-                    Appointments Pending Review
+                    Awaiting Cleaner Approval
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="bg-amber-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-                    {pendingAppointments.length}
+                    {awaitingCleanerApprovalAppointments.length}
                   </span>
                   {isPendingApprovalsExpanded ? (
                     <ChevronUp className="w-5 h-5 text-amber-600" />
@@ -692,40 +695,43 @@ export default function AdminDashboard() {
                       <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                     </div>
                   ) : (
-                    pendingAppointments.slice(0, 3).map((appointment) => (
-                      <div key={appointment.id} className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 truncate">
-                              {getHomeownerName(appointment)}
-                            </p>
-                            <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>
-                                {formatDateTime(
-                                  appointment.scheduled_date,
-                                  appointment.scheduled_time
-                                )}
-                              </span>
-                            </div>
-                            {appointment.service_type && (
-                              <p className="text-sm text-gray-500 mt-0.5">
-                                {appointment.service_type.name}
+                    awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
+                      const cleanerName = getCleanerName(appointment);
+                      return (
+                        <div key={appointment.id} className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 truncate">
+                                {cleanerName ?? "Unassigned"}
                               </p>
-                            )}
+                              <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                                <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                <span>
+                                  {formatDateTimeTo12h(
+                                    appointment.scheduled_date,
+                                    appointment.scheduled_time
+                                  )}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                Homeowner: {getHomeownerName(appointment)}
+                              </p>
+                            </div>
                           </div>
+                          {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
+                            <button
+                              onClick={() => handleMessageCleaner(appointment)}
+                              className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors font-medium text-sm"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              Message {cleanerName}
+                            </button>
+                          )}
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            className="flex-1 py-2.5 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors font-medium text-sm"
-                          >
-                            Review
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
-                  {pendingAppointments.length > 3 && (
+                  {awaitingCleanerApprovalAppointments.length > 3 && (
                     <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
                       <button
                         onClick={() => {
@@ -734,7 +740,7 @@ export default function AdminDashboard() {
                         }}
                         className="w-full text-center text-sm font-medium text-primary-600"
                       >
-                        View all {pendingAppointments.length} pending
+                        View all {awaitingCleanerApprovalAppointments.length} awaiting approval
                       </button>
                     </div>
                   )}
@@ -742,15 +748,15 @@ export default function AdminDashboard() {
               )}
             </div>
           )}
-          {pendingAppointments.length === 0 && !appointmentsLoading && (
+          {awaitingCleanerApprovalAppointments.length === 0 && !appointmentsLoading && (
             <div className="bg-white rounded-xl shadow-sm border border-green-200 p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 rounded-full">
                   <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">All caught up!</p>
-                  <p className="text-sm text-gray-500">No pending approvals</p>
+                  <p className="font-medium text-gray-900">All confirmed!</p>
+                  <p className="text-sm text-gray-500">No appointments awaiting cleaner approval</p>
                 </div>
               </div>
             </div>
@@ -891,7 +897,7 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-3 mt-1">
                         <div className="flex items-center gap-1 text-sm text-gray-500">
                           <Clock className="w-3.5 h-3.5" />
-                          <span>{appointment.scheduled_time}</span>
+                          <span>{formatTimeTo12h(appointment.scheduled_time)}</span>
                         </div>
                         {appointment.service_type && (
                           <span className="text-sm text-gray-500">
@@ -933,11 +939,16 @@ export default function AdminDashboard() {
         </div>
 
         {/* Desktop Quick Actions - Dashboard cards */}
-        <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="rounded-[1.75rem] border border-gray-100 bg-white/95 p-6 shadow-sm ring-1 ring-gray-100/60">
+        <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6 md:items-start">
+          <div className="rounded-[1.75rem] border border-amber-100 bg-white/95 p-6 shadow-sm ring-1 ring-amber-100/60 w-full">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-amber-600" />
-              Appointments Pending Review
+              <UserCheck className="w-5 h-5 text-amber-600" />
+              Awaiting Cleaner Approval
+              {awaitingCleanerApprovalAppointments.length > 0 && (
+                <span className="ml-auto text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                  {awaitingCleanerApprovalAppointments.length}
+                </span>
+              )}
             </h3>
             {appointmentsLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -948,46 +959,43 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {pendingAppointments.slice(0, 3).map((appointment) => (
-                  <div
-                    key={appointment.id}
-                    className="flex items-center justify-between gap-4 p-4 bg-gradient-to-r from-slate-50 via-white to-primary-50/20 rounded-2xl border border-gray-100/90"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {getHomeownerName(appointment)}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {formatDateTime(
-                          appointment.scheduled_date,
-                          appointment.scheduled_time
-                        )}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        {getPropertyAddress(appointment)}
-                      </p>
-                      {appointment.service_type && (
-                        <p className="text-sm text-gray-600">
-                          Service: {appointment.service_type.name}
+                {awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
+                  const cleanerName = getCleanerName(appointment);
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50/60 via-white to-white rounded-2xl border border-amber-100 shadow-sm"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">
+                          {cleanerName ?? "Unassigned"}
                         </p>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                          {formatDateTimeTo12h(appointment.scheduled_date, appointment.scheduled_time)}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          Homeowner: {getHomeownerName(appointment)}
+                        </p>
+                      </div>
+                      {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
+                        <button
+                          onClick={() => handleMessageCleaner(appointment)}
+                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          Message
+                        </button>
                       )}
                     </div>
-                    <div className="flex space-x-2">
-                      <button
-                        className="px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors font-medium"
-                      >
-                        Review
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {pendingAppointments.length === 0 && (
+                  );
+                })}
+                {awaitingCleanerApprovalAppointments.length === 0 && (
                   <div className="text-center py-8">
                     <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
-                    <p className="text-gray-600">No pending approvals</p>
+                    <p className="text-gray-600">All cleaners confirmed</p>
                   </div>
                 )}
-                {pendingAppointments.length > 3 && (
+                {awaitingCleanerApprovalAppointments.length > 3 && (
                   <div className="pt-3 border-t border-gray-200">
                     <button
                       onClick={() => {
@@ -996,7 +1004,7 @@ export default function AdminDashboard() {
                       }}
                       className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
                     >
-                      View all {pendingAppointments.length} pending
+                      View all {awaitingCleanerApprovalAppointments.length} awaiting approval
                     </button>
                   </div>
                 )}
@@ -1004,9 +1012,10 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          <div className="rounded-[1.75rem] border border-gray-100 bg-white/95 p-6 shadow-sm ring-1 ring-gray-100/60">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Upcoming Appointments
+          <div className="rounded-[1.75rem] border border-amber-100 bg-white/95 p-6 shadow-sm ring-1 ring-amber-100/60 w-full">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary-600" />
+              <span>Upcoming Appointments</span>
             </h3>
             {appointmentsLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -1027,9 +1036,7 @@ export default function AdminDashboard() {
                       className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl overflow-hidden pr-24 border shadow-sm ${
                         appointment.cleaner_confirmation_status === 'rejected'
                           ? "bg-red-50 border-red-200"
-                          : appointment.cleaner_confirmation_status === 'awaiting'
-                          ? "bg-amber-50 border-amber-200"
-                          : "bg-gradient-to-r from-gray-50 to-white border-gray-100"
+                          : "bg-gradient-to-r from-amber-50/60 via-white to-white border-amber-100"
                       }`}
                     >
                       {/* Payment Status Tab */}
@@ -1045,7 +1052,7 @@ export default function AdminDashboard() {
                           {getHomeownerName(appointment)}
                         </p>
                         <p className="text-sm text-gray-600">
-                          {formatDateTime(
+                          {formatDateTimeTo12h(
                             appointment.scheduled_date,
                             appointment.scheduled_time
                           )}
@@ -1488,6 +1495,8 @@ export default function AdminDashboard() {
       error={conversationsError}
       onRefresh={refetchConversations}
       onUpdateUnreadCount={updateUnreadCount}
+      initialOtherParticipantId={initialMessageRecipientId ?? undefined}
+      onInitialParticipantConsumed={() => setInitialMessageRecipientId(null)}
     />
   );
 
@@ -1583,11 +1592,6 @@ export default function AdminDashboard() {
         );
       case "settings":
         return null; // Settings is rendered separately and pre-mounted below
-      case "support":
-        return renderPlaceholder(
-          "Support Center",
-          "Access help resources and contact support."
-        );
       default:
         return renderOverview();
     }
