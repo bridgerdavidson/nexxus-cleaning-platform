@@ -1653,7 +1653,7 @@ export default function CleanerDashboard() {
         </div>
       </div>
       <MobileNavigation
-        tabs={topNavTabs}
+        tabs={mobileNavTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
