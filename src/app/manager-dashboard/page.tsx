@@ -38,7 +38,11 @@ import {
   deleteAppointment,
   updateAppointmentStatus,
 } from "../../hooks/useManagerData";
-import { useAdminCustomers, useAdminStats } from "../../hooks/useAdminData";
+import {
+  useAdminCustomers,
+  useAdminStats,
+  useAdminTeamMembers,
+} from "../../hooks/useAdminData";
 import { useServices } from "../../hooks/useServices";
 import { useConversations } from "../../hooks/useConversations";
 import { useManagerPermissions } from "../../hooks/useManagerPermissions";
@@ -52,6 +56,7 @@ import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
+import TeamMembersPage from "../../components/TeamMembersPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
@@ -115,6 +120,13 @@ export default function ManagerDashboard() {
     updateCustomerInState,
   } = useAdminCustomers();
   const {
+    teamMembers,
+    loading: teamMembersLoading,
+    error: teamMembersError,
+    refetch: refetchTeamMembers,
+    updateTeamMemberInState,
+  } = useAdminTeamMembers();
+  const {
     payments,
     loading: paymentsLoading,
     error: paymentsError,
@@ -163,6 +175,7 @@ export default function ManagerDashboard() {
         case "properties":
           return permissions.can_view_properties || false;
         case "cleaners":
+        case "team":
           return permissions.can_manage_cleaners || false;
         case "payments":
           return permissions.can_view_payments || false;
@@ -289,7 +302,10 @@ export default function ManagerDashboard() {
         id: "team" as const,
         label: "Team",
         icon: UserCheck,
-        tabs: [{ id: "cleaners", label: "Cleaners", icon: UserCheck }],
+        tabs: [
+          { id: "team", label: "Team Members", icon: Users },
+          { id: "cleaners", label: "Cleaners", icon: UserCheck },
+        ],
       };
     }
 
@@ -347,7 +363,11 @@ export default function ManagerDashboard() {
       const newGroup =
         navigationGroups[groupId as keyof typeof navigationGroups];
       if (newGroup && newGroup.tabs.length > 0) {
-        const firstTab = newGroup.tabs[0].id;
+        const firstTab =
+          groupId === "team"
+            ? newGroup.tabs.find((tab) => tab.id === "team")?.id ??
+              newGroup.tabs[0].id
+            : newGroup.tabs[0].id;
         // Check if tab is accessible
         if (isTabAccessible(firstTab)) {
           setActiveTab(firstTab);
@@ -1800,6 +1820,19 @@ export default function ManagerDashboard() {
           return renderAccessDenied("cleaner management");
         }
         return renderCleaners();
+      case "team":
+        if (!permissions?.can_manage_cleaners) {
+          return renderAccessDenied("team member management");
+        }
+        return (
+          <TeamMembersPage
+            teamMembers={teamMembers}
+            loading={teamMembersLoading}
+            error={teamMembersError}
+            onRefresh={refetchTeamMembers}
+            onMemberUpdated={updateTeamMemberInState}
+          />
+        );
       case "payments":
         if (!permissions?.can_view_payments) {
           return renderAccessDenied("payments");

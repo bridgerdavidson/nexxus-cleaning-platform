@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     // Look up the pending invite using supabaseAdmin to bypass RLS
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from('invites')
-      .select('id, email, role, organization_id, status, expiration_date, created_at')
+      .select('id, email, role, organization_id, status, expiration_date, created_at, organizations(name)')
       .eq('email', email)
       .eq('status', 'pending')
       .maybeSingle();
@@ -63,6 +63,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Return only safe fields needed to render the acceptance form
+    const orgRaw = invite.organizations as unknown as { name: string } | { name: string }[] | null;
+    const orgName = Array.isArray(orgRaw) ? (orgRaw[0]?.name ?? null) : (orgRaw?.name ?? null);
+
     return NextResponse.json({
       success: true,
       status: 'valid',
@@ -71,6 +74,7 @@ export async function POST(request: NextRequest) {
         email: invite.email,
         role: invite.role,
         organizationId: invite.organization_id,
+        organizationName: orgName,
       },
     }, { status: 200 });
 

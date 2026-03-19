@@ -47,14 +47,14 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  // Determine if we're on a dashboard page
+  // Determine if we're on a dashboard page or a page that manages its own header
   const isDashboard = pathname?.includes('-dashboard');
+  const isFullScreen = isDashboard || pathname?.startsWith('/accept-invite');
 
   return (
     <AuthProvider>
-      {/* Dashboard pages render their own header with tabs */}
-      {!isDashboard && <Navbar />}
-      <div className={!isDashboard ? 'pt-16' : ''}>
+      {!isFullScreen && <Navbar />}
+      <div className={!isFullScreen ? 'pt-16' : ''}>
         {children}
       </div>
     </AuthProvider>

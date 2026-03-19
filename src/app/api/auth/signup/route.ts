@@ -194,6 +194,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If user is a manager, grant full default manager permissions
+    if (userRole === 'manager') {
+      console.log('🔐 Creating manager permissions (all enabled)...');
+
+      const { error: managerPermissionsError } = await supabaseAdmin
+        .from('manager_permissions')
+        .upsert(
+          {
+            manager_id: authData.user.id,
+            organization_id: defaultOrgId,
+            can_view_customers: true,
+            can_edit_customers: true,
+            can_view_bookings: true,
+            can_edit_bookings: true,
+            can_approve_decline_bookings: true,
+            can_manage_cleaners: true,
+            can_view_properties: true,
+            can_edit_properties: true,
+            can_view_analytics: true,
+            can_view_payments: true,
+            can_manage_payments: true,
+            can_view_messages: true,
+            can_view_services: true,
+            can_manage_services: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'manager_id,organization_id' }
+        );
+
+      if (managerPermissionsError) {
+        console.error('⚠️ Manager permissions creation error:', managerPermissionsError);
+        // Don't fail signup, but log the error
+      } else {
+        console.log('✅ Manager permissions created successfully');
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'User created successfully',

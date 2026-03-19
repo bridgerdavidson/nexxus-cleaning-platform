@@ -130,6 +130,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // If the invited user is a manager, grant full default manager permissions
+    if (role === 'manager') {
+      const { error: managerPermissionsError } = await supabaseAdmin
+        .from('manager_permissions')
+        .upsert(
+          {
+            manager_id: user.id,
+            organization_id: organizationId,
+            can_view_customers: true,
+            can_edit_customers: true,
+            can_view_bookings: true,
+            can_edit_bookings: true,
+            can_approve_decline_bookings: true,
+            can_manage_cleaners: true,
+            can_view_properties: true,
+            can_edit_properties: true,
+            can_view_analytics: true,
+            can_view_payments: true,
+            can_manage_payments: true,
+            can_view_messages: true,
+            can_view_services: true,
+            can_manage_services: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'manager_id,organization_id' }
+        );
+
+      if (managerPermissionsError) {
+        console.error('Failed to create manager permissions:', managerPermissionsError);
+        // Non-fatal — log and continue
+      }
+    }
+
     // Mark invite as accepted — only after all records are created successfully
     const { error: acceptError } = await supabaseAdmin
       .from('invites')

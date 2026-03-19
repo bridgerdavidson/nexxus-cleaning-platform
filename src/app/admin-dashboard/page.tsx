@@ -220,8 +220,8 @@ export default function AdminDashboard() {
         label: "Team",
         icon: UserCheck,
         tabs: [
-          { id: "cleaners", label: "Cleaners", icon: UserCheck },
           { id: "team", label: "Team Members", icon: Users },
+          { id: "cleaners", label: "Cleaners", icon: UserCheck },
         ],
       },
       business: {
@@ -311,7 +311,12 @@ export default function AdminDashboard() {
     setActiveGroup(groupId);
     const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
     if (newGroup && newGroup.tabs.length > 0) {
-      setActiveTab(newGroup.tabs[0].id);
+      const nextTab =
+        groupId === "team"
+          ? newGroup.tabs.find((tab) => tab.id === "team")?.id ??
+            newGroup.tabs[0].id
+          : newGroup.tabs[0].id;
+      setActiveTab(nextTab);
       // Reset filters when switching groups
       setShowPendingFilter(false);
       setShowAllFilter(false);
