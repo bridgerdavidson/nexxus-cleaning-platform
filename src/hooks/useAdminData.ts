@@ -1789,7 +1789,7 @@ export interface TeamMember {
     phone: string | null;
     avatar_url: string | null;
   } | null;
-  role: 'cleaner' | 'manager';
+  role: 'cleaner' | 'manager' | 'admin';
   // Cleaner-specific fields
   cleaner_profile?: {
     rating: number;
@@ -1834,7 +1834,7 @@ export function useAdminTeamMembers() {
         .from('organization_members')
         .select('user_id, role')
         .eq('organization_id', currentOrganizationId)
-        .in('role', ['cleaner', 'manager']);
+        .in('role', ['cleaner', 'manager', 'admin']);
 
       if (membersError) throw membersError;
 
@@ -2014,22 +2014,25 @@ export async function deleteTeamMember(userId: string, organizationId: string) {
   }
 }
 
-// Helper function to create a team member
-export async function createTeamMember(data: {
-  firstName: string;
-  lastName: string;
+
+// Helper function to invite a team member
+export async function inviteTeamMember(data: {
   email: string;
-  phone?: string;
-  role: 'cleaner' | 'manager';
+  role: 'cleaner' | 'manager' | 'admin';
   organizationId: string;
+  accessToken: string | null | undefined;
 }) {
   try {
-    const response = await fetch('/api/admin/create-team-member', {
+
+    const { accessToken, ...rest } = data;
+
+    const response = await fetch('/api/admin/send-invite', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': accessToken ? `Bearer ${accessToken}` : '',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(rest),
     });
 
     const result = await response.json();
@@ -2037,7 +2040,7 @@ export async function createTeamMember(data: {
     if (!response.ok || !result.success) {
       return {
         success: false,
-        error: result.error || 'Failed to create team member',
+        error: result.error || 'Failed to invite team member',
       };
     }
 
@@ -2045,7 +2048,7 @@ export async function createTeamMember(data: {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to create team member',
+      error: error instanceof Error ? error.message : 'Failed to invite team member',
     };
   }
 }

@@ -15,6 +15,7 @@ import {
   Star,
   CheckCircle,
   ChevronDown,
+  ShieldCheck,
 } from "lucide-react";
 import { TeamMember, deleteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
@@ -42,7 +43,7 @@ export default function TeamMembersPage({
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "cleaner" | "manager">(
+  const [roleFilter, setRoleFilter] = useState<"all" | "cleaner" | "manager" | "admin">(
     "all"
   );
 
@@ -177,7 +178,8 @@ export default function TeamMembersPage({
   const stats = useMemo(() => {
     const cleaners = teamMembers.filter((m) => m.role === "cleaner").length;
     const managers = teamMembers.filter((m) => m.role === "manager").length;
-    return { cleaners, managers, total: teamMembers.length };
+    const admins = teamMembers.filter((m) => m.role === "admin").length;
+    return { cleaners, managers, admins, total: teamMembers.length };
   }, [teamMembers]);
 
   return (
@@ -187,7 +189,7 @@ export default function TeamMembersPage({
         <div>
           <h2 className="text-4xl font-bold text-gray-900">Team Members</h2>
           <p className="text-gray-600 mt-1 hidden md:block">
-            Manage your team of cleaners and managers
+            Manage your team of cleaners, managers, and admins
           </p>
         </div>
         <button
@@ -230,20 +232,21 @@ export default function TeamMembersPage({
           <select
             value={roleFilter}
             onChange={(e) =>
-              setRoleFilter(e.target.value as "all" | "cleaner" | "manager")
+              setRoleFilter(e.target.value as "all" | "cleaner" | "manager" | "admin")
             }
             className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
           >
             <option value="all">All Roles</option>
             <option value="cleaner">Cleaners</option>
             <option value="manager">Managers</option>
+            <option value="admin">Admins</option>
           </select>
           <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg border border-gray-200 p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary-100 rounded-lg">
@@ -277,6 +280,19 @@ export default function TeamMembersPage({
               <p className="text-sm text-gray-600">Managers</p>
               <p className="text-xl font-bold text-gray-900">
                 {stats.managers}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <ShieldCheck className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Admins</p>
+              <p className="text-xl font-bold text-gray-900">
+                {stats.admins}
               </p>
             </div>
           </div>
@@ -347,16 +363,18 @@ export default function TeamMembersPage({
                       <Settings className="w-5 h-5" />
                     </button>
                   )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(member);
-                    }}
-                    className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center min-w-[44px] min-h-[44px]"
-                    aria-label="Delete Team Member"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  {member.role !== "admin" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(member);
+                      }}
+                      className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center min-w-[44px] min-h-[44px]"
+                      aria-label="Delete Team Member"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Avatar and Name */}
@@ -382,12 +400,18 @@ export default function TeamMembersPage({
                     <div className="flex items-center gap-2 mt-1">
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          member.role === "manager"
+                          member.role === "admin"
+                            ? "bg-purple-100 text-purple-700"
+                            : member.role === "manager"
                             ? "bg-blue-100 text-blue-700"
                             : "bg-green-100 text-green-700"
                         }`}
                       >
-                        {member.role === "manager" ? "Manager" : "Cleaner"}
+                        {member.role === "admin"
+                          ? "Admin"
+                          : member.role === "manager"
+                          ? "Manager"
+                          : "Cleaner"}
                       </span>
                     </div>
                   </div>

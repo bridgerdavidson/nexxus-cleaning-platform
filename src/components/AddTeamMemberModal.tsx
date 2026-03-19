@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Users, UserCheck, Loader2 } from "lucide-react";
-import { createTeamMember } from "../hooks/useAdminData";
+import { X, Users, UserCheck, Loader2, Send, ShieldCheck } from "lucide-react";
+import { inviteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
@@ -18,15 +18,13 @@ export default function AddTeamMemberModal({
   onTeamMemberCreated,
 }: AddTeamMemberModalProps) {
   const { currentOrganizationId } = useAuth();
+  const { accessToken } = useAuth();
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"cleaner" | "manager">("cleaner");
+  const [role, setRole] = useState<"cleaner" | "manager" | "admin">("cleaner");
   const [emailError, setEmailError] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,11 +68,6 @@ export default function AddTeamMemberModal({
       return;
     }
 
-    if (!firstName.trim() || !lastName.trim()) {
-      setSubmitError("First name and last name are required");
-      return;
-    }
-
     if (!currentOrganizationId) {
       setSubmitError("Organization ID is missing");
       return;
@@ -83,26 +76,21 @@ export default function AddTeamMemberModal({
     setIsSubmitting(true);
 
     try {
-      const result = await createTeamMember({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+      const result = await inviteTeamMember({
         email: email.trim(),
-        phone: phone.trim() || undefined,
         role,
         organizationId: currentOrganizationId,
+        accessToken,
       });
 
       if (result.success) {
         // Reset form
-        setFirstName("");
-        setLastName("");
         setEmail("");
-        setPhone("");
         setRole("cleaner");
         setEmailError("");
         setEmailTouched(false);
         setSubmitError("");
-        
+
         if (onTeamMemberCreated) {
           onTeamMemberCreated();
         }
@@ -112,7 +100,7 @@ export default function AddTeamMemberModal({
       }
     } catch (error) {
       setSubmitError(
-        error instanceof Error ? error.message : "An unexpected error occurred"
+        error instanceof Error ? error.message : "An unexpected error occurred",
       );
     } finally {
       setIsSubmitting(false);
@@ -120,18 +108,11 @@ export default function AddTeamMemberModal({
   };
 
   const isEmailValid = emailRegex.test(email) && email.trim() !== "";
-  const isFormValid =
-    firstName.trim() !== "" &&
-    lastName.trim() !== "" &&
-    isEmailValid &&
-    !isSubmitting;
+  const isFormValid = isEmailValid && !isSubmitting;
 
   // Reset form when modal closes
   const handleClose = () => {
-    setFirstName("");
-    setLastName("");
     setEmail("");
-    setPhone("");
     setRole("cleaner");
     setEmailError("");
     setEmailTouched(false);
@@ -167,10 +148,10 @@ export default function AddTeamMemberModal({
               <Users className="w-8 h-8 text-primary-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Add New Team Member
+              Invite Team Member
             </h2>
             <p className="text-gray-600">
-              Create a new cleaner or manager account
+              Send an invite to a new team member
             </p>
           </div>
 
@@ -181,11 +162,11 @@ export default function AddTeamMemberModal({
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Role
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setRole("cleaner")}
-                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-colors ${
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
                     role === "cleaner"
                       ? "border-primary-500 bg-primary-50 text-primary-700"
                       : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
@@ -197,7 +178,7 @@ export default function AddTeamMemberModal({
                 <button
                   type="button"
                   onClick={() => setRole("manager")}
-                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-colors ${
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
                     role === "manager"
                       ? "border-primary-500 bg-primary-50 text-primary-700"
                       : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
@@ -206,47 +187,18 @@ export default function AddTeamMemberModal({
                   <Users className="w-5 h-5" />
                   <span className="font-medium">Manager</span>
                 </button>
-              </div>
-            </div>
-
-            {/* First Name and Last Name in Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="firstName"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                <button
+                  type="button"
+                  onClick={() => setRole("admin")}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
+                    role === "admin"
+                      ? "border-purple-500 bg-purple-50 text-purple-700"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                  }`}
                 >
-                  First Name
-                </label>
-                <input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  required
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="input-field"
-                  placeholder="First name"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="lastName"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Last Name
-                </label>
-                <input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  required
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  className="input-field"
-                  placeholder="Last name"
-                />
+                  <ShieldCheck className="w-5 h-5" />
+                  <span className="font-medium">Admin</span>
+                </button>
               </div>
             </div>
 
@@ -278,25 +230,6 @@ export default function AddTeamMemberModal({
               )}
             </div>
 
-            {/* Phone Field */}
-            <div>
-              <label
-                htmlFor="phone"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Phone <span className="text-gray-400">(optional)</span>
-              </label>
-              <input
-                id="phone"
-                name="phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="input-field"
-                placeholder="Enter phone number"
-              />
-            </div>
-
             {/* Error Message */}
             {submitError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -316,7 +249,10 @@ export default function AddTeamMemberModal({
                   <span>Creating...</span>
                 </>
               ) : (
-                <span>Create Team Member</span>
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Send Invite</span>
+                </>
               )}
             </button>
           </form>
@@ -333,4 +269,3 @@ export default function AddTeamMemberModal({
     </div>
   );
 }
-

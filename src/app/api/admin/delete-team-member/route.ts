@@ -99,19 +99,35 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // Note: We're NOT deleting the auth user or user_profile
-    // This allows the user to potentially be added to other organizations
-    // If you want to hard delete, uncomment the following:
+    // Step 4: Delete user_profile (cascades to any remaining cleaner_profiles)
+    const { error: userProfileError } = await supabaseAdmin
+      .from('user_profiles')
+      .delete()
+      .eq('id', userId);
 
-    // Step 4 (optional): Delete auth user and user_profile
-    // const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    // if (authError) {
-    //   console.error('Error deleting auth user:', authError);
-    // }
+    if (userProfileError) {
+      console.error('Error deleting user profile:', userProfileError);
+      return NextResponse.json(
+        { success: false, error: `Failed to delete user profile: ${userProfileError.message}` },
+        { status: 500 }
+      );
+    }
+
+    // Step 5: Delete auth user
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+
+    if (authError) {
+      console.error('Error deleting auth user:', authError);
+      return NextResponse.json({
+        success: true,
+        warning: `User profile deleted, but auth user deletion had issues: ${authError.message}`,
+        message: 'Team member deleted (with warnings)',
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Team member removed from organization successfully',
+      message: 'Team member deleted successfully',
     });
 
   } catch (error) {

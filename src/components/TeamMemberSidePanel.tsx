@@ -286,12 +286,18 @@ export default function TeamMemberSidePanel({
                 <div className="flex items-center gap-2 mt-2">
                   <span
                     className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                      member.role === "manager"
+                      member.role === "admin"
+                        ? "bg-purple-100 text-purple-700"
+                        : member.role === "manager"
                         ? "bg-blue-100 text-blue-700"
                         : "bg-green-100 text-green-700"
                     }`}
                   >
-                    {member.role === "manager" ? "Manager" : "Cleaner"}
+                    {member.role === "admin"
+                      ? "Admin"
+                      : member.role === "manager"
+                      ? "Manager"
+                      : "Cleaner"}
                   </span>
                 </div>
               </div>
@@ -500,7 +506,7 @@ export default function TeamMemberSidePanel({
               </button>
             )}
 
-            {onDelete && (
+            {member.role !== "admin" && onDelete && (
               <button
                 onClick={handleDelete}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-red-500 text-red-700 bg-transparent rounded-lg hover:bg-red-50 transition-colors font-medium"
