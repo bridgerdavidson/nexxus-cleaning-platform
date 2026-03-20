@@ -5,6 +5,7 @@ import { X, Users, UserCheck, Loader2, Send, ShieldCheck } from "lucide-react";
 import { inviteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useToast } from "../contexts/ToastContext";
 
 interface AddTeamMemberModalProps {
   isOpen: boolean;
@@ -17,8 +18,8 @@ export default function AddTeamMemberModal({
   onClose,
   onTeamMemberCreated,
 }: AddTeamMemberModalProps) {
-  const { currentOrganizationId } = useAuth();
-  const { accessToken } = useAuth();
+  const { currentOrganizationId, accessToken } = useAuth();
+  const { showToast } = useToast();
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
@@ -84,6 +85,11 @@ export default function AddTeamMemberModal({
       });
 
       if (result.success) {
+        showToast('Invite sent', {
+          description: `Invitation email sent to ${email.trim()}`,
+          variant: 'email',
+        });
+
         // Reset form
         setEmail("");
         setRole("cleaner");

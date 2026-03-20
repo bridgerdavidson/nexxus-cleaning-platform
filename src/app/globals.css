@@ -403,6 +403,38 @@ nav.sticky {
   animation: pulse-glow-gold 2.5s ease-in-out infinite;
 }
 
+/* Toast notification animations */
+@keyframes toast-in {
+  from {
+    transform: translateX(112%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(112%);
+    opacity: 0;
+  }
+}
+
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 /* Subtle pulse for job progress indicator */
 @keyframes pulse-subtle {
   0%, 100% {

@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { AuthProvider } from '../contexts/AuthContext';
+import { ToastProvider } from '../contexts/ToastContext';
 import Navbar from './Navbar';
 //import { useTabVisibility } from '../hooks/useTabVisibility';
 
@@ -52,12 +53,14 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const isFullScreen = isDashboard || pathname?.startsWith('/accept-invite');
 
   return (
-    <AuthProvider>
-      {!isFullScreen && <Navbar />}
-      <div className={!isFullScreen ? 'pt-16' : ''}>
-        {children}
-      </div>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        {!isFullScreen && <Navbar />}
+        <div className={!isFullScreen ? 'pt-16' : ''}>
+          {children}
+        </div>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

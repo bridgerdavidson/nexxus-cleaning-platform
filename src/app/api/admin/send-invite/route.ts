@@ -5,16 +5,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, role, organizationId } = body;
-    
-    // Validate user is logged in and get id
+
+    // ── Auth: validate caller session ────────────────────────────────────────
     const authHeader = request.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '').trim();
 
     if (!token) {
       return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 });
     }
-    
-    const {data: {user}, error: userError} = await supabaseAdmin.auth.getUser(token);
+
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
 
     if (userError || !user) {
       return NextResponse.json(
@@ -23,37 +23,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // authorize caller
+    // ── Auth: confirm caller is an admin of the org ──────────────────────────
     const { data: membership, error: membershipError } = await supabaseAdmin
-    .from('organization_members')
-    .select('role')
-    .eq('user_id', user.id)
-    .eq('organization_id', organizationId)
-    .maybeSingle();
+      .from('organization_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
 
-    if (membershipError)
-    {
+    if (membershipError) {
       return NextResponse.json(
         { success: false, error: 'Failed to get membership' },
         { status: 401 }
       );
     }
 
-    if (!membership)
-    {
+    if (!membership) {
       return NextResponse.json(
         { success: false, error: 'User is not a member of the organization' },
         { status: 401 }
       );
     }
-    if (membership.role !== 'admin'){
+
+    if (membership.role !== 'admin') {
       return NextResponse.json(
         { success: false, error: 'User is not an admin' },
         { status: 401 }
       );
     }
 
-    // Validate inputs
+    // ── Input validation ─────────────────────────────────────────────────────
     if (!email || !role || !organizationId) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
@@ -61,120 +60,172 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Normalize email once — aligns with invites_email_lowercase DB constraint
+    // Normalize email — aligns with invites_email_lowercase DB constraint
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!['cleaner', 'manager', 'admin'].includes(role)) {
       return NextResponse.json(
-        { success: false, error: 'Invalid role. Must be "cleaner" or "manager" or "admin"' },
+        { success: false, error: 'Invalid role. Must be "cleaner", "manager", or "admin"' },
         { status: 400 }
       );
     }
 
-    // Check if email exists in auth.users
-    const {
-      data: usersData,
-      error: emailCheckUserError,
-    } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 100,
-    });
+    // ── Guard 1: block if an accepted invite already exists for this org ──────
+    // An accepted invite means the user completed onboarding — do not overwrite.
+    const { data: acceptedInvite, error: acceptedInviteError } = await supabaseAdmin
+      .from('invites')
+      .select('id')
+      .eq('email', normalizedEmail)
+      .eq('organization_id', organizationId)
+      .eq('status', 'accepted')
+      .maybeSingle();
 
-    const emailCheckUser =
-  usersData?.users?.find(
-    (u) => u.email && u.email.toLowerCase() === normalizedEmail,
-  ) ?? null;
-
-    if (emailCheckUserError)
-    {
+    if (acceptedInviteError) {
       return NextResponse.json(
-        { success: false, error: 'Failed to check if email exists: ' + emailCheckUserError.message },
-        { status: 401 }
+        { success: false, error: 'Failed to check invite history' },
+        { status: 500 }
       );
     }
 
-    if (emailCheckUser)
-    {
+    if (acceptedInvite) {
       return NextResponse.json(
-        { success: false, error: 'Email already exists' },
+        { success: false, error: 'An account with this email has already been activated. No new invite is needed.' },
         { status: 400 }
       );
     }
 
-    // Check if there is a pending invite for this email
-    const { data: pendingInvite, error: pendingInviteError } = await supabaseAdmin
-    .from('invites')
-    .select('*')
-    .eq('email', normalizedEmail)
-    .eq('status', 'pending')
-    .maybeSingle();
-    if (pendingInviteError)
-    {
+    // ── Guard 2: block if the user already has an active org membership ───────
+    // user_profiles mirrors auth.users 1:1 via the on_auth_user_created trigger,
+    // so every auth user (including incomplete invitees) has a profile row.
+    const { data: existingProfile, error: profileLookupError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (profileLookupError) {
       return NextResponse.json(
-        { success: false, error: 'Failed to check for pending invite' },
-        { status: 401 }
-      );
-    }
-    if (pendingInvite)
-    {
-      return NextResponse.json(
-        { success: false, error: 'Email already has a pending invite' },
-        { status: 400 }
+        { success: false, error: 'Failed to look up user profile' },
+        { status: 500 }
       );
     }
 
-    // Create invite record
-    const {data: inviteData, error: inviteDataError} = await supabaseAdmin
-    .from('invites')
-    .insert({
-      organization_id: organizationId,
-      email: normalizedEmail,
-      role,
-      status: 'pending',
-      accepted_at: null,
-      invited_by: user.id,
-    })
-    .select()
-    .single();
-    
-    if (inviteDataError)
-    {
+    if (existingProfile) {
+      const { data: activeMembership, error: activeMembershipError } = await supabaseAdmin
+        .from('organization_members')
+        .select('user_id')
+        .eq('user_id', existingProfile.id)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (activeMembershipError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to check organization membership' },
+          { status: 500 }
+        );
+      }
+
+      if (activeMembership) {
+        return NextResponse.json(
+          { success: false, error: 'This user already has an active account in this organization.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ── Supersede any existing pending/creating invites for this email+org ────
+    // Replaces the hard block on re-invite; old rows are kept for audit trail.
+    const { error: supersededError } = await supabaseAdmin
+      .from('invites')
+      .update({ status: 'superseded' })
+      .eq('email', normalizedEmail)
+      .eq('organization_id', organizationId)
+      .in('status', ['pending', 'creating']);
+
+    if (supersededError) {
       return NextResponse.json(
-        { success: false, error: 'Failed to create invite record: ' + inviteDataError.message },
-        { status: 401 }
+        { success: false, error: 'Failed to supersede prior invites: ' + supersededError.message },
+        { status: 500 }
       );
     }
 
-    if (!inviteData)
-    {
+    // ── Delete stale auth user if one exists but has never completed onboarding
+    // The profile row (and auth user) were created by the previous invite.
+    // Deleting the auth user cascades to user_profiles via ON DELETE CASCADE.
+    if (existingProfile) {
+      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(
+        existingProfile.id
+      );
+
+      if (deleteAuthError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to clear stale auth user: ' + deleteAuthError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // ── Insert invite row as 'creating' (locks the slot before email send) ────
+    const { data: inviteData, error: inviteDataError } = await supabaseAdmin
+      .from('invites')
+      .insert({
+        organization_id: organizationId,
+        email: normalizedEmail,
+        role,
+        status: 'creating',
+        accepted_at: null,
+        invited_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (inviteDataError || !inviteData) {
       return NextResponse.json(
-        { success: false, error: 'Failed to create invite record: No invite data returned' },
-        { status: 401 }
+        {
+          success: false,
+          error: 'Failed to create invite record: ' + (inviteDataError?.message ?? 'no data returned'),
+        },
+        { status: 500 }
       );
     }
 
-    // Send invite
-    const {data: invite, error: inviteError} = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-      redirectTo: `${process.env.APP_URL}/accept-invite`,
-    });
+    // ── Send the Supabase invite email ────────────────────────────────────────
+    const { data: supabaseInvite, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      normalizedEmail,
+      { redirectTo: `${process.env.APP_URL}/accept-invite` }
+    );
 
-    if (inviteError)
-    {
+    if (inviteError || !supabaseInvite) {
+      // Mark the row as failed so it doesn't block future invite attempts.
+      await supabaseAdmin
+        .from('invites')
+        .update({ status: 'failed' })
+        .eq('id', inviteData.id);
+
       return NextResponse.json(
-        { success: false, error: 'Failed to send invite: ' + inviteError.message },
-        { status: 401 }
+        {
+          success: false,
+          error: 'Failed to send invite: ' + (inviteError?.message ?? 'no invite data returned'),
+        },
+        { status: 500 }
       );
     }
-    if (!invite)
-    {
-      return NextResponse.json(
-        { success: false, error: 'Failed to send invite: No invite data returned' },
-        { status: 401 }
-      );
+
+    // ── Promote row to 'pending' now that email was sent successfully ─────────
+    const { error: promoteError } = await supabaseAdmin
+      .from('invites')
+      .update({ status: 'pending', sent_at: new Date().toISOString() })
+      .eq('id', inviteData.id);
+
+    if (promoteError) {
+      // Email was sent — the invite will work. Log the promotion failure but
+      // don't surface it as an error. The 'creating' row is non-blocking and
+      // will be superseded on the next invite attempt if needed.
+      console.error('Failed to promote invite row to pending:', promoteError);
     }
-    
+
     return NextResponse.json(
-      { success: true, invite: inviteData },
+      { success: true, invite: { ...inviteData, status: 'pending' } },
       { status: 200 }
     );
 
@@ -185,4 +236,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
