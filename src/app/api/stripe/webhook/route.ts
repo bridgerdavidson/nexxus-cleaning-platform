@@ -7,13 +7,6 @@ import Stripe from 'stripe';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Disable body parsing - we need the raw body for signature verification
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
@@ -78,19 +71,6 @@ export async function POST(request: NextRequest) {
         break;
       }
 
-      case 'setup_intent.succeeded': {
-        const setupIntent = event.data.object as Stripe.SetupIntent;
-        console.log('SetupIntent succeeded:', setupIntent.id);
-        // No action needed - we handle this during confirmation
-        break;
-      }
-
-      case 'setup_intent.setup_failed': {
-        const setupIntent = event.data.object as Stripe.SetupIntent;
-        console.log('SetupIntent failed:', setupIntent.id, setupIntent.last_setup_error?.message);
-        break;
-      }
-
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -106,9 +86,10 @@ export async function POST(request: NextRequest) {
 }
 
 async function handlePaymentIntentSucceeded(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: unknown,
   paymentIntent: Stripe.PaymentIntent
 ) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
   console.log('PaymentIntent succeeded:', paymentIntent.id);
 
   const appointmentId = paymentIntent.metadata?.appointment_id;
@@ -119,7 +100,7 @@ async function handlePaymentIntentSucceeded(
   }
 
   // Update payment record
-  const { error: updateError } = await supabaseAdmin
+  const { error: updateError } = await supabase
     .from('payments')
     .update({
       status: 'paid',
@@ -131,7 +112,7 @@ async function handlePaymentIntentSucceeded(
     console.error('Error updating payment record:', updateError);
     
     // Try to find and update by appointment_id as fallback
-    const { error: fallbackError } = await supabaseAdmin
+    const { error: fallbackError } = await supabase
       .from('payments')
       .update({
         status: 'paid',
@@ -150,9 +131,10 @@ async function handlePaymentIntentSucceeded(
 }
 
 async function handlePaymentIntentFailed(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: unknown,
   paymentIntent: Stripe.PaymentIntent
 ) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
   console.log('PaymentIntent failed:', paymentIntent.id);
   console.log('Failure reason:', paymentIntent.last_payment_error?.message);
 
@@ -164,7 +146,7 @@ async function handlePaymentIntentFailed(
   }
 
   // Update payment record to failed
-  const { error: updateError } = await supabaseAdmin
+  const { error: updateError } = await supabase
     .from('payments')
     .update({
       status: 'failed',
@@ -175,7 +157,7 @@ async function handlePaymentIntentFailed(
     console.error('Error updating payment record:', updateError);
     
     // Try to find and update by appointment_id as fallback
-    const { error: fallbackError } = await supabaseAdmin
+    const { error: fallbackError } = await supabase
       .from('payments')
       .update({
         status: 'failed',
