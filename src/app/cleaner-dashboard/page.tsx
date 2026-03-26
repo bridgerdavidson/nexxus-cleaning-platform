@@ -50,7 +50,7 @@ import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
-import ProfileSettingsPage from "../../components/ProfileSettingsPage";
+import SettingsHub from "../../components/SettingsHub";
 import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
 import { format } from "date-fns";
 
@@ -631,7 +631,7 @@ export default function CleanerDashboard() {
     { id: "services", label: "Services", icon: Briefcase },
     { id: "earnings", label: "Earnings", icon: DollarSign },
     { id: "photos", label: "Photos", icon: Camera },
-    { id: "profile", label: "Profile", icon: User },
+    { id: "settings", label: "Settings", icon: User },
   ];
 
   // Filter tabs for top navigation (exclude earnings and photos - those are in mobile sidebar)
@@ -1615,8 +1615,8 @@ export default function CleanerDashboard() {
             updateServiceInState={updateServiceInState}
           />
         );
-      case "profile":
-        return <ProfileSettingsPage />;
+      case "settings":
+        return <SettingsHub />;
       default:
         return renderSchedule();
     }

@@ -61,7 +61,7 @@ import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
-import ProfileSettingsPage from "../../components/ProfileSettingsPage";
+import SettingsHub from "../../components/SettingsHub";
 import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
@@ -347,12 +347,17 @@ export default function ManagerDashboard() {
 
   // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
   const allTabs = useMemo(
-    () =>
-      Array.from(
+    () => {
+      const tabs = Array.from(
         new Map(
           groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])
         ).values()
-      ),
+      );
+      if (!tabs.find((t) => t.id === "settings")) {
+        tabs.push({ id: "settings", label: "Settings", icon: Settings });
+      }
+      return tabs;
+    },
     [groups]
   );
 
@@ -1913,7 +1918,7 @@ export default function ManagerDashboard() {
           } pb-24 md:pb-8`}
         >
           <div className={activeTab === "settings" ? "block" : "hidden"}>
-            <ProfileSettingsPage />
+            <SettingsHub />
           </div>
           {activeTab !== "settings" && renderContent()}
         </main>

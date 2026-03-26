@@ -41,7 +41,7 @@ import AppointmentCard from "../../components/AppointmentCard";
 import StatusBadge from "../../components/StatusBadge";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
-import ProfileSettingsPage from "../../components/ProfileSettingsPage";
+import SettingsHub from "../../components/SettingsHub";
 
 export default function HomeownerDashboard() {
   const { user, loading } = useAuth();
@@ -247,7 +247,7 @@ export default function HomeownerDashboard() {
   const sidebarTabs = [
     ...headerTabs,
     { id: "payments", label: "Payments", icon: CreditCard },
-    { id: "profile", label: "Profile", icon: User },
+    { id: "settings", label: "Settings", icon: User },
   ];
 
   const getPaymentStatusTabConfig = (
@@ -726,8 +726,8 @@ export default function HomeownerDashboard() {
             updateServiceInState={updateServiceInState}
           />
         );
-      case "profile":
-        return <ProfileSettingsPage />;
+      case "settings":
+        return <SettingsHub />;
       default:
         return renderOverview();
     }

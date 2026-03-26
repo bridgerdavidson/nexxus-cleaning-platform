@@ -64,7 +64,7 @@ import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
-import ProfileSettingsPage from "../../components/ProfileSettingsPage";
+import SettingsHub from "../../components/SettingsHub";
 import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
@@ -305,6 +305,9 @@ export default function AdminDashboard() {
   const allTabs = Array.from(
     new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values()
   );
+  if (!allTabs.find((t) => t.id === "settings")) {
+    allTabs.push({ id: "settings", label: "Settings", icon: Settings });
+  }
 
   // Handle group change - switch to first tab of new group
   const handleGroupChange = (groupId: string) => {
@@ -1643,7 +1646,7 @@ export default function AdminDashboard() {
           } pb-24 md:pb-8`}
         >
           <div className={activeTab === "settings" ? "block" : "hidden"}>
-            <ProfileSettingsPage />
+            <SettingsHub />
           </div>
           {activeTab !== "settings" && renderContent()}
         </main>

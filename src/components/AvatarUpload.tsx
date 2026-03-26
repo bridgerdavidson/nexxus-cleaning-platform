@@ -15,7 +15,7 @@ interface AvatarUploadProps {
 const sizeClasses = {
   sm: { wrapper: 'w-16 h-16', icon: 'w-8 h-8', badge: 'w-5 h-5 text-[10px]' },
   md: { wrapper: 'w-24 h-24', icon: 'w-12 h-12', badge: 'w-7 h-7 text-xs' },
-  lg: { wrapper: 'w-32 h-32', icon: 'w-16 h-16', badge: 'w-8 h-8 text-sm' },
+  lg: { wrapper: 'w-24 h-24 sm:w-28 sm:h-28', icon: 'w-12 h-12 sm:w-14 sm:h-14', badge: 'w-8 h-8 text-sm' },
 };
 
 export default function AvatarUpload({
@@ -180,12 +180,12 @@ export default function AvatarUpload({
 
       {/* Action buttons shown when a file is pending */}
       {pendingFile && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4 mt-6">
           <button
             type="button"
             onClick={handleUpload}
             disabled={uploading || compressing}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-60 transition-colors"
+            className={`flex items-center justify-center gap-2 px-8 py-3.5 bg-primary-600 text-white text-[14.5px] font-semibold rounded-[1.25rem] hover:bg-primary-700 disabled:opacity-60 transition-all duration-300 shadow-[0_4px_12px_-2px_rgba(217,167,24,0.3)] hover:shadow-[0_8px_20px_-4px_rgba(217,167,24,0.4)] hover:-translate-y-0.5 active:translate-y-0`}
           >
             {compressing ? (
               <>
@@ -205,7 +205,7 @@ export default function AvatarUpload({
             <button
               type="button"
               onClick={handleCancel}
-              className="px-4 py-1.5 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+              className="px-6 py-3.5 text-[14.5px] font-semibold text-gray-600 rounded-[1.25rem] hover:bg-gray-100/80 hover:text-gray-900 transition-all duration-300"
             >
               Cancel
             </button>
@@ -215,10 +215,10 @@ export default function AvatarUpload({
 
       {/* Change photo link when idle */}
       {!pendingFile && !uploading && !compressing && (
-        <button
+          <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+          className="text-[14.5px] text-primary-600 hover:text-primary-700 font-semibold transition-colors mt-4"
         >
           {currentAvatarUrl ? 'Change photo' : 'Upload photo'}
         </button>
