@@ -15,6 +15,8 @@ import {
   Loader2,
   Clock,
   DollarSign,
+  Percent,
+  Link2,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
@@ -36,6 +38,9 @@ interface CleanerProfile {
   hourly_rate?: number;
   background_check_verified: boolean;
   insurance_verified: boolean;
+  payout_percent: number;
+  stripe_connect_account_id: string | null;
+  stripe_connect_onboarding_complete: boolean;
 }
 
 interface CleanerSidePanelProps {
@@ -65,6 +70,7 @@ export default function CleanerSidePanel({
     last_name: "",
     email: "",
     phone: "",
+    payout_percent: 0,
   });
 
   useEffect(() => {
@@ -86,6 +92,7 @@ export default function CleanerSidePanel({
         last_name: cleaner.user_profile?.last_name || "",
         email: cleaner.user_profile?.email || "",
         phone: cleaner.user_profile?.phone || "",
+        payout_percent: cleaner.payout_percent ?? 0,
       });
     }
   }, [cleaner]);
@@ -153,9 +160,19 @@ export default function CleanerSidePanel({
         return;
       }
 
-      // Merge updated data with existing cleaner data
+      // Persist payout_percent to cleaner_profiles
+      const { error: payoutError } = await supabase
+        .from("cleaner_profiles")
+        .update({ payout_percent: editedCleaner.payout_percent })
+        .eq("id", cleaner.id);
+
+      if (payoutError) {
+        console.error("Error updating payout_percent:", payoutError);
+      }
+
       const updatedCleaner: CleanerProfile = {
         ...cleaner,
+        payout_percent: editedCleaner.payout_percent,
         user_profile: {
           ...cleaner.user_profile,
           first_name: updateData.first_name,
@@ -187,6 +204,7 @@ export default function CleanerSidePanel({
         last_name: cleaner.user_profile?.last_name || "",
         email: cleaner.user_profile?.email || "",
         phone: cleaner.user_profile?.phone || "",
+        payout_percent: cleaner.payout_percent ?? 0,
       });
     }
     setIsEditing(false);
@@ -470,6 +488,56 @@ export default function CleanerSidePanel({
                 </div>
               </div>
             )}
+
+            {/* Payout Percentage */}
+            <div className="flex items-center gap-3">
+              <Percent className="w-5 h-5 text-gray-500 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-gray-500">Payout Percentage</p>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={editedCleaner.payout_percent}
+                    onChange={(e) =>
+                      setEditedCleaner({
+                        ...editedCleaner,
+                        payout_percent: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                ) : (
+                  <p className="font-medium text-gray-900">
+                    {cleaner.payout_percent}% payout rate
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Stripe Connect Status */}
+            <div className="flex items-center gap-3">
+              <Link2 className="w-5 h-5 text-gray-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-gray-500">Stripe Connect</p>
+                {cleaner.stripe_connect_onboarding_complete ? (
+                  <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Connected
+                  </span>
+                ) : cleaner.stripe_connect_account_id ? (
+                  <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                    Onboarding Incomplete
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
+                    Not Connected
+                  </span>
+                )}
+              </div>
+            </div>
 
             {/* Status */}
             <div className="flex items-center gap-3">

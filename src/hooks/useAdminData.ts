@@ -59,6 +59,9 @@ export interface AdminCleaner {
   hourly_rate?: number;
   background_check_verified: boolean;
   insurance_verified: boolean;
+  payout_percent: number;
+  stripe_connect_account_id: string | null;
+  stripe_connect_onboarding_complete: boolean;
 }
 
 export interface AdminStats {
@@ -402,6 +405,9 @@ export function useAdminCleaners() {
           hourly_rate,
           background_check_verified,
           insurance_verified,
+          payout_percent,
+          stripe_connect_account_id,
+          stripe_connect_onboarding_complete,
           user_profile:user_profiles!id(
             first_name,
             last_name,

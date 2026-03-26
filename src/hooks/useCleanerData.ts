@@ -349,11 +349,10 @@ export function useCleanerStats() {
       try {
         setLoading(true);
 
-        // First get the cleaner profile
         // Note: cleaner_profiles.id IS the user's id
         const { data: cleanerProfile, error: profileError } = await supabase
           .from('cleaner_profiles')
-          .select('id, rating, total_jobs')
+          .select('id, rating, total_jobs, payout_percent')
           .eq('id', user.id)
           .eq('organization_id', orgId)
           .single();
@@ -407,8 +406,8 @@ export function useCleanerStats() {
         const totalEarnings = completedAppointments?.reduce((sum, appointment) => 
           sum + Number(appointment.total_price), 0) || 0;
 
-        // Get pending payouts (assuming 80% goes to cleaner, 20% to platform)
-        const cleanerEarnings = totalEarnings * 0.8;
+        const payoutPercent = Number(cleanerProfile.payout_percent) || 0;
+        const cleanerEarnings = totalEarnings * (payoutPercent / 100);
         
         // Get already paid amounts
         const { data: payouts } = await supabase

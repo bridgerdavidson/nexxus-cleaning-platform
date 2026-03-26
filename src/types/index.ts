@@ -62,6 +62,9 @@ export interface CleanerProfile {
   is_available: boolean; // default true
   background_check_verified: boolean; // default false
   insurance_verified: boolean; // default false
+  stripe_connect_account_id: string | null;
+  stripe_connect_onboarding_complete: boolean; // default false
+  payout_percent: number; // numeric(5,2), default 0.00
   created_at: string;
   updated_at: string;
 }
@@ -170,6 +173,7 @@ export interface Payout {
   amount: number; // numeric(10,2)
   status: PayoutStatus;
   stripe_transfer_id: string | null;
+  payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time
   notes: string | null;
   approved_at: string | null;
   paid_at: string | null;

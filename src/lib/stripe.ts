@@ -236,3 +236,89 @@ export function constructWebhookEvent(
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
 }
 
+// ---------------------------------------------------------------------------
+// Stripe Connect helpers
+// ---------------------------------------------------------------------------
+
+export async function createConnectAccount(
+  email: string,
+  name: string
+): Promise<Stripe.Account> {
+  const stripe = getStripe();
+
+  const account = await stripe.accounts.create({
+    type: 'express',
+    email,
+    business_type: 'individual',
+    individual: { first_name: name.split(' ')[0], last_name: name.split(' ').slice(1).join(' ') || undefined },
+    capabilities: {
+      transfers: { requested: true },
+    },
+    metadata: {
+      source: 'nexxus-cleaning-platform',
+    },
+  });
+
+  return account;
+}
+
+export async function createAccountOnboardingLink(
+  accountId: string,
+  returnUrl: string,
+  refreshUrl: string
+): Promise<Stripe.AccountLink> {
+  const stripe = getStripe();
+
+  const link = await stripe.accountLinks.create({
+    account: accountId,
+    return_url: returnUrl,
+    refresh_url: refreshUrl,
+    type: 'account_onboarding',
+  });
+
+  return link;
+}
+
+export async function getConnectAccountStatus(
+  accountId: string
+): Promise<{ chargesEnabled: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean }> {
+  const stripe = getStripe();
+  const account = await stripe.accounts.retrieve(accountId);
+
+  return {
+    chargesEnabled: account.charges_enabled ?? false,
+    payoutsEnabled: account.payouts_enabled ?? false,
+    detailsSubmitted: account.details_submitted ?? false,
+  };
+}
+
+/**
+ * Create a Connect transfer to a cleaner's connected account.
+ * Uses an idempotency key derived from the appointment ID to safely
+ * handle webhook retries without creating duplicate transfers.
+ */
+export async function createConnectTransfer(
+  amountCents: number,
+  destinationAccountId: string,
+  sourcePaymentIntentId: string,
+  appointmentId: string
+): Promise<Stripe.Transfer> {
+  const stripe = getStripe();
+
+  const transfer = await stripe.transfers.create(
+    {
+      amount: amountCents,
+      currency: 'usd',
+      destination: destinationAccountId,
+      source_transaction: sourcePaymentIntentId,
+      metadata: {
+        appointment_id: appointmentId,
+        source: 'nexxus-cleaning-platform',
+      },
+    },
+    { idempotencyKey: `payout-${appointmentId}` }
+  );
+
+  return transfer;
+}
+

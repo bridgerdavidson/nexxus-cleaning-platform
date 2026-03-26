@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { constructWebhookEvent } from '@/lib/stripe';
+import { constructWebhookEvent, createConnectTransfer } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
 import Stripe from 'stripe';
 
@@ -128,6 +128,98 @@ async function handlePaymentIntentSucceeded(
   }
 
   console.log('Payment record updated for appointment:', appointmentId);
+
+  // --- Automatic cleaner payout via Stripe Connect ---
+  try {
+    const { data: appointment } = await supabase
+      .from('appointments')
+      .select('cleaner_id, organization_id, total_price')
+      .eq('id', appointmentId)
+      .single();
+
+    if (!appointment?.cleaner_id) {
+      console.log('No cleaner assigned to appointment, skipping payout');
+      return;
+    }
+
+    const { data: cleanerProfile } = await supabase
+      .from('cleaner_profiles')
+      .select('stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+      .eq('id', appointment.cleaner_id)
+      .single();
+
+    if (!cleanerProfile) {
+      console.log('Cleaner profile not found, skipping payout');
+      return;
+    }
+
+    const payoutPercent = Number(cleanerProfile.payout_percent);
+    if (
+      !cleanerProfile.stripe_connect_account_id ||
+      !cleanerProfile.stripe_connect_onboarding_complete ||
+      payoutPercent <= 0
+    ) {
+      console.log('Cleaner payout not configured (no Connect account, onboarding incomplete, or 0% payout). Skipping transfer.', {
+        hasAccount: !!cleanerProfile.stripe_connect_account_id,
+        onboardingComplete: cleanerProfile.stripe_connect_onboarding_complete,
+        payoutPercent,
+      });
+      return;
+    }
+
+    const jobPrice = Number(appointment.total_price);
+    const cleanerAmountCents = Math.round(jobPrice * (payoutPercent / 100) * 100);
+
+    if (cleanerAmountCents <= 0) {
+      console.log('Computed cleaner payout is $0, skipping transfer');
+      return;
+    }
+
+    // Retrieve the charge ID from the PaymentIntent (required for source_transaction)
+    const chargeId = paymentIntent.latest_charge as string | null;
+    if (!chargeId) {
+      console.error('No charge found on PaymentIntent, cannot create transfer');
+      return;
+    }
+
+    const transfer = await createConnectTransfer(
+      cleanerAmountCents,
+      cleanerProfile.stripe_connect_account_id,
+      chargeId,
+      appointmentId
+    );
+
+    console.log('Connect transfer created:', transfer.id, `$${(cleanerAmountCents / 100).toFixed(2)} to ${cleanerProfile.stripe_connect_account_id}`);
+
+    // Upsert payout record
+    const payoutData = {
+      organization_id: appointment.organization_id || null,
+      cleaner_id: appointment.cleaner_id,
+      appointment_id: appointmentId,
+      amount: cleanerAmountCents / 100,
+      status: 'paid',
+      stripe_transfer_id: transfer.id,
+      payout_percent_snapshot: payoutPercent,
+      paid_at: new Date().toISOString(),
+    };
+
+    const { data: existingPayout } = await supabase
+      .from('payouts')
+      .select('id')
+      .eq('appointment_id', appointmentId)
+      .single();
+
+    if (existingPayout) {
+      await supabase.from('payouts').update(payoutData).eq('id', existingPayout.id);
+    } else {
+      await supabase.from('payouts').insert(payoutData);
+    }
+
+    console.log('Payout record saved for appointment:', appointmentId);
+  } catch (payoutError) {
+    // Transfer failure should not break the payment success flow
+    console.error('Error processing cleaner payout:', payoutError);
+  }
 }
 
 async function handlePaymentIntentFailed(
@@ -173,4 +265,5 @@ async function handlePaymentIntentFailed(
 
   console.log('Payment marked as failed for appointment:', appointmentId);
 }
+
 
