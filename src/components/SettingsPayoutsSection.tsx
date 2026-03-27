@@ -12,6 +12,7 @@ export default function SettingsPayoutsSection() {
   const { user } = useAuth();
 
   const [connectLoading, setConnectLoading] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [connectStatus, setConnectStatus] = useState<{
     has_account: boolean;
     onboarding_complete: boolean;
@@ -20,8 +21,12 @@ export default function SettingsPayoutsSection() {
   const [connectError, setConnectError] = useState<string | null>(null);
 
   const fetchConnectStatus = useCallback(async () => {
-    if (!user?.id || user.role !== 'cleaner' || !stripeUiEnabled()) return;
+    if (!user?.id || user.role !== 'cleaner' || !stripeUiEnabled()) {
+      setStatusLoading(false);
+      return;
+    }
 
+    setStatusLoading(true);
     try {
       const res = await fetch('/api/stripe/connect/account-status', {
         method: 'POST',
@@ -35,9 +40,13 @@ export default function SettingsPayoutsSection() {
           onboarding_complete: data.onboarding_complete,
           payouts_enabled: data.payouts_enabled,
         });
+      } else {
+        setConnectError('Unable to check payout status. Please try again.');
       }
     } catch {
-      // Silently fail on initial load
+      setConnectError('Unable to check payout status. Please try again.');
+    } finally {
+      setStatusLoading(false);
     }
   }, [user?.id, user?.role]);
 
@@ -113,7 +122,12 @@ export default function SettingsPayoutsSection() {
           </div>
         )}
 
-        {connectStatus?.onboarding_complete ? (
+        {statusLoading ? (
+          <div className="flex items-center gap-3 text-gray-400">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm text-gray-500">Checking payout status…</span>
+          </div>
+        ) : connectStatus?.onboarding_complete ? (
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
               <CheckCircle className="w-5 h-5 text-green-600" />

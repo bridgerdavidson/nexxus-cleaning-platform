@@ -424,7 +424,7 @@ function ChecklistsView({ service, canManageServices, onBackToServices, onBackTo
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Checklists</h2>
+            <h2 className="text-4xl font-bold text-gray-900">Checklists</h2>
             <p className="text-gray-600 mt-1">
               for <span className="font-medium">{service.name}</span>
             </p>
@@ -466,7 +466,7 @@ function ChecklistsView({ service, canManageServices, onBackToServices, onBackTo
           <span className="ml-2 text-gray-600">Loading checklists...</span>
         </div>
       ) : error ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             Failed to load checklists
@@ -480,7 +480,7 @@ function ChecklistsView({ service, canManageServices, onBackToServices, onBackTo
           </button>
         </div>
       ) : checklists.length === 0 ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             No checklists yet
@@ -1026,7 +1026,7 @@ export default function ServicesPage({
           <span className="ml-2 text-gray-600">Loading services...</span>
         </div>
       ) : error ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             Failed to load services
@@ -1040,7 +1040,7 @@ export default function ServicesPage({
           </button>
         </div>
       ) : filteredServices.length === 0 ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <Briefcase className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             {services.length === 0 ? "No services yet" : "No services found"}

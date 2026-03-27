@@ -24,6 +24,8 @@ import {
   History,
   Briefcase,
   User,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react";
 import {
   useCleanerAppointments,
@@ -141,7 +143,7 @@ export default function CleanerDashboard() {
     await signOut();
   };
 
-  // Mobile navigation tabs (keep it simple for bottom bar)
+  // Mobile navigation tabs (keep it simple for bottom bar — most-used tabs)
   const mobileNavTabs = [
     { id: "home", label: "Overview", icon: Home },
     { id: "jobs", label: "Jobs", icon: MapPin },
@@ -151,7 +153,7 @@ export default function CleanerDashboard() {
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
-    { id: "services", label: "Services", icon: Briefcase },
+    { id: "earnings", label: "Earnings", icon: DollarSign },
   ];
 
   // Helper function for converting appointments (must be defined before hooks)
@@ -545,7 +547,7 @@ export default function CleanerDashboard() {
   // Show loading while checking auth
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
           <p className="text-gray-600">Loading...</p>
@@ -1476,107 +1478,134 @@ export default function CleanerDashboard() {
     <div className="space-y-6">
       <h2 className="text-4xl font-bold text-gray-900">Earnings & Payouts</h2>
 
-      {/* Earnings Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Total Earnings
+      {statsError ? (
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
+          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Error loading earnings
           </h3>
-          {statsLoading ? (
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          ) : (
-            <p className="text-3xl font-bold text-green-600">
-              ${stats.totalEarnings}
-            </p>
-          )}
+          <p className="text-gray-600">{statsError}</p>
         </div>
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Pending Payout
-          </h3>
-          {statsLoading ? (
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          ) : (
-            <p className="text-3xl font-bold text-yellow-600">
-              ${stats.pendingPayouts}
-            </p>
-          )}
-        </div>
-        <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            This Week
-          </h3>
-          {statsLoading ? (
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          ) : (
-            <p className="text-3xl font-bold text-primary-600">
-              ${stats.completedThisWeek * 120}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Payout History */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Payout History
-        </h3>
-        {payoutsLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading payouts...</span>
-          </div>
-        ) : payouts.length > 0 ? (
-          <div className="space-y-4">
-            {payouts.slice(0, 10).map((payout) => (
-              <div
-                key={payout.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">
-                    ${payout.amount} -{" "}
-                    {payout.appointment?.service_type?.name || "Service"}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {payout.appointment?.homeowner
-                      ? `${payout.appointment.homeowner.first_name} ${payout.appointment.homeowner.last_name}`
-                      : "Unknown Customer"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {new Date(payout.created_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </p>
+      ) : (
+        <>
+          {/* Earnings Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="card">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-green-600" />
                 </div>
-                <span
-                  className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                    payout.status === "paid"
-                      ? "text-green-600 bg-green-100"
-                      : payout.status === "pending"
-                      ? "text-yellow-600 bg-yellow-100"
-                      : "text-red-600 bg-red-100"
-                  }`}
-                >
-                  {payout.status}
-                </span>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Total Earnings
+                </h3>
               </div>
-            ))}
+              {statsLoading ? (
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              ) : (
+                <p className="text-3xl font-bold text-green-600">
+                  ${stats.totalEarnings}
+                </p>
+              )}
+            </div>
+            <div className="card">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-yellow-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Pending Payout
+                </h3>
+              </div>
+              {statsLoading ? (
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              ) : (
+                <p className="text-3xl font-bold text-yellow-600">
+                  ${stats.pendingPayouts}
+                </p>
+              )}
+            </div>
+            <div className="card">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-primary-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  This Week
+                </h3>
+              </div>
+              {statsLoading ? (
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              ) : (
+                <p className="text-3xl font-bold text-primary-600">
+                  ${stats.completedThisWeek * 120}
+                </p>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="text-center py-12">
-            <DollarSign className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No payouts yet
+
+          {/* Payout History */}
+          <div className="card">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Payout History
             </h3>
-            <p className="text-gray-600">
-              Your payout history will appear here once you complete jobs.
-            </p>
+            {payoutsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Loading payouts...</span>
+              </div>
+            ) : payouts.length > 0 ? (
+              <div className="space-y-4">
+                {payouts.slice(0, 10).map((payout) => (
+                  <div
+                    key={payout.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        ${payout.amount} -{" "}
+                        {payout.appointment?.service_type?.name || "Service"}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {payout.appointment?.homeowner
+                          ? `${payout.appointment.homeowner.first_name} ${payout.appointment.homeowner.last_name}`
+                          : "Unknown Customer"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(payout.created_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <span
+                      className={`px-3 py-1 text-sm font-semibold rounded-full ${
+                        payout.status === "paid"
+                          ? "text-green-600 bg-green-100"
+                          : payout.status === "pending"
+                          ? "text-yellow-600 bg-yellow-100"
+                          : "text-red-600 bg-red-100"
+                      }`}
+                    >
+                      {payout.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <DollarSign className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No payouts yet
+                </h3>
+                <p className="text-gray-600">
+                  Your payout history will appear here once you complete jobs.
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 

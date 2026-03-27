@@ -17,12 +17,14 @@ export default function SettingsHub() {
   // Fallback if active section isn't available for role
   const currentSection = sections.find(s => s.id === activeSection) || sections[0];
 
+  const hasPayouts = sections.some(s => s.id === 'payouts');
+
   const renderContent = () => {
     switch (currentSection.id) {
       case 'profile':
         return <SettingsProfileSection />;
       case 'payouts':
-        return <SettingsPayoutsSection />;
+        return null;
       case 'security':
         return (
           <div className="card flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
@@ -72,7 +74,12 @@ export default function SettingsHub() {
 
       {/* Settings Content Area */}
       <div className="flex-1 min-w-0 pb-16 w-full max-w-2xl">
-        {renderContent()}
+        {hasPayouts && (
+          <div className={currentSection.id === 'payouts' ? '' : 'hidden'}>
+            <SettingsPayoutsSection />
+          </div>
+        )}
+        {currentSection.id !== 'payouts' && renderContent()}
       </div>
     </div>
   );

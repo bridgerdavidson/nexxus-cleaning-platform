@@ -414,7 +414,7 @@ export default function PropertiesPage({
           <span className="ml-2 text-gray-600">Loading properties...</span>
         </div>
       ) : error ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             Error loading properties
@@ -422,7 +422,7 @@ export default function PropertiesPage({
           <p className="text-gray-600">{error}</p>
         </div>
       ) : filteredProperties.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             {searchQuery ||

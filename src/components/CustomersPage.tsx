@@ -377,7 +377,7 @@ export default function CustomersPage({
 
       {/* Customer Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-primary-100 rounded-lg">
               <Users className="w-5 h-5 text-primary-600" />
@@ -390,7 +390,7 @@ export default function CustomersPage({
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-green-100 rounded-lg">
               <DollarSign className="w-5 h-5 text-green-600" />
@@ -405,7 +405,7 @@ export default function CustomersPage({
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-100 rounded-lg">
               <Calendar className="w-5 h-5 text-blue-600" />
@@ -427,7 +427,7 @@ export default function CustomersPage({
           <span className="ml-2 text-gray-600">Loading customers...</span>
         </div>
       ) : error ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             Error loading customers
@@ -435,7 +435,7 @@ export default function CustomersPage({
           <p className="text-gray-600">{error}</p>
         </div>
       ) : filteredCustomers.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             {searchQuery ? "No customers found" : "No customers yet"}
@@ -461,7 +461,7 @@ export default function CustomersPage({
             <div
               key={customer.id}
               onClick={() => handleCustomerClick(customer)}
-              className={`bg-white border rounded-lg p-5 cursor-pointer transition-all hover:shadow-md ${
+              className={`bg-white border rounded-xl p-5 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md ${
                 isSelectMode && selectedIds.has(customer.id)
                   ? "border-primary-500 ring-2 ring-primary-200"
                   : "border-gray-200 hover:border-gray-300"

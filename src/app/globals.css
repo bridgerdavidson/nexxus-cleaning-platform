@@ -24,7 +24,7 @@
   }
   
   .card {
-    @apply bg-white rounded-2xl border border-gray-200 p-6 shadow-sm;
+    @apply bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-all duration-200;
   }
   
   .input-field {

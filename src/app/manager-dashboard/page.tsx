@@ -26,13 +26,11 @@ import {
   ChevronDown,
   ChevronUp,
   Mail,
-  FileText,
   Briefcase,
 } from "lucide-react";
 import {
   useManagerAppointments,
   useManagerCleaners,
-  useManagerPayments,
   deleteCleaner,
   cancelAppointment,
   deleteAppointment,
@@ -42,6 +40,11 @@ import {
   useAdminCustomers,
   useAdminStats,
   useAdminTeamMembers,
+  useAdminProperties,
+  useAdminPayments,
+  useAdminPayouts,
+  useAdminInvoices,
+  usePaymentStats,
 } from "../../hooks/useAdminData";
 import { useServices } from "../../hooks/useServices";
 import { useConversations } from "../../hooks/useConversations";
@@ -60,6 +63,8 @@ import TeamMembersPage from "../../components/TeamMembersPage";
 import CleanerSidePanel from "../../components/CleanerSidePanel";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
+import PaymentsPage from "../../components/PaymentsPage";
+import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
 import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
@@ -129,8 +134,20 @@ export default function ManagerDashboard() {
   const {
     payments,
     loading: paymentsLoading,
-    error: paymentsError,
-  } = useManagerPayments();
+    refetch: refetchPayments,
+  } = useAdminPayments();
+  const {
+    payouts,
+    loading: payoutsLoading,
+    refetch: refetchPayouts,
+  } = useAdminPayouts();
+  const {
+    invoices,
+    loading: invoicesLoading,
+    refetch: refetchInvoices,
+  } = useAdminInvoices();
+  const { stats: paymentStats, loading: paymentStatsLoading } =
+    usePaymentStats();
   const {
     conversations,
     loading: conversationsLoading,
@@ -140,6 +157,13 @@ export default function ManagerDashboard() {
   } = useConversations({ userId: user?.id || "" });
   const { permissions, loading: permissionsLoading } = useManagerPermissions();
   const { stats, loading: statsLoading } = useAdminStats();
+  const {
+    properties,
+    loading: propertiesLoading,
+    error: propertiesError,
+    refetch: refetchProperties,
+    updatePropertyInState,
+  } = useAdminProperties();
   const {
     services,
     loading: servicesLoading,
@@ -430,7 +454,7 @@ export default function ManagerDashboard() {
   // Show loading while checking auth and permissions - MUST be after all hooks
   if (loading || !user || permissionsLoading || !permissions) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
           <p className="text-gray-600">Loading...</p>
@@ -448,9 +472,9 @@ export default function ManagerDashboard() {
       case "pending":
         return "text-yellow-700 bg-yellow-100";
       case "confirmed":
-        return "text-green-600 bg-green-100";
+        return "text-blue-700 bg-blue-100";
       case "in_progress":
-        return "text-yellow-600 bg-yellow-100";
+        return "text-purple-700 bg-purple-100";
       case "completed":
         return "text-green-600 bg-green-100";
       case "cancelled":
@@ -1402,22 +1426,11 @@ export default function ManagerDashboard() {
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-4xl font-bold text-gray-900">Cleaners</h2>
-            <p className="text-gray-600 mt-1 hidden md:block">
-              Manage your cleaning team members
-            </p>
-          </div>
-          {permissions?.can_manage_cleaners && (
-            <button
-              onClick={() => setShowAddCleanerModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
-            >
-              <UserCheck className="w-5 h-5" />
-              <span>New</span>
-            </button>
-          )}
+        <div>
+          <h2 className="text-4xl font-bold text-gray-900">Cleaners</h2>
+          <p className="text-gray-600 mt-1 hidden md:block">
+            Manage your cleaning team members
+          </p>
         </div>
 
         {/* Search Input - Own line on mobile */}
@@ -1467,7 +1480,7 @@ export default function ManagerDashboard() {
 
         {/* Stats Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary-100 rounded-lg">
                 <Users className="w-5 h-5 text-primary-600" />
@@ -1480,7 +1493,7 @@ export default function ManagerDashboard() {
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-green-100 rounded-lg">
                 <CheckCircle className="w-5 h-5 text-green-600" />
@@ -1493,7 +1506,7 @@ export default function ManagerDashboard() {
               </div>
             </div>
           </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-yellow-100 rounded-lg">
                 <Star className="w-5 h-5 text-yellow-600" />
@@ -1515,7 +1528,7 @@ export default function ManagerDashboard() {
             <span className="ml-2 text-gray-600">Loading cleaners...</span>
           </div>
         ) : cleanersError ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+          <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
             <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               Error loading cleaners
@@ -1523,7 +1536,7 @@ export default function ManagerDashboard() {
             <p className="text-gray-600">{cleanersError}</p>
           </div>
         ) : filteredCleaners.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+          <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
             <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               {searchQuery || availabilityFilter !== "all"
@@ -1556,7 +1569,7 @@ export default function ManagerDashboard() {
                   setSelectedCleaner(cleaner);
                   setIsCleanerSidePanelOpen(true);
                 }}
-                className="bg-white border rounded-lg p-5 hover:shadow-md transition-shadow relative cursor-pointer"
+                className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-200 relative cursor-pointer"
               >
                 {/* Delete button - top right */}
                 <div
@@ -1666,78 +1679,19 @@ export default function ManagerDashboard() {
   };
 
   const renderPayments = () => (
-    <div className="card">
-      <h2 className="text-4xl font-bold text-gray-900 mb-6">
-        Payment Management
-      </h2>
-      {paymentsLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
-      ) : paymentsError ? (
-        <div className="text-center py-12">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <p className="text-gray-600">{paymentsError}</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Service
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {payments.map((payment) => (
-                <tr key={payment.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(payment.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {payment.appointment?.homeowner
-                      ? `${payment.appointment.homeowner.first_name} ${payment.appointment.homeowner.last_name}`
-                      : "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {payment.appointment?.service_type?.name || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    ${payment.amount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        payment.status === "paid"
-                          ? "text-green-600 bg-green-100"
-                          : payment.status === "pending"
-                          ? "text-yellow-600 bg-yellow-100"
-                          : "text-red-600 bg-red-100"
-                      }`}
-                    >
-                      {payment.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <PaymentsPage
+      payments={payments}
+      payouts={payouts}
+      invoices={invoices}
+      stats={paymentStats}
+      paymentsLoading={paymentsLoading}
+      payoutsLoading={payoutsLoading}
+      invoicesLoading={invoicesLoading}
+      statsLoading={paymentStatsLoading}
+      onRefreshPayments={refetchPayments}
+      onRefreshPayouts={refetchPayouts}
+      onRefreshInvoices={refetchInvoices}
+    />
   );
 
   const renderMessages = () => (
@@ -1852,9 +1806,16 @@ export default function ManagerDashboard() {
         if (!permissions?.can_view_properties) {
           return renderAccessDenied("properties");
         }
-        return renderPlaceholder(
-          "Property Management",
-          "Manage properties and access details."
+        return (
+          <PropertiesPage
+            properties={properties}
+            loading={propertiesLoading}
+            error={propertiesError}
+            onRefreshProperties={refetchProperties}
+            onPropertyUpdated={updatePropertyInState}
+            onRefreshAppointments={refetchAppointments}
+            role="manager"
+          />
         );
       case "services":
         if (!permissions?.can_view_services) {

@@ -15,6 +15,7 @@ import {
   Users,
   Building,
   ChevronDown,
+  AlertCircle,
 } from 'lucide-react';
 import { useAnalyticsData } from '../hooks/useAnalyticsData';
 import { useAdminCleaners, useAdminProperties } from '../hooks/useAdminData';
@@ -125,7 +126,7 @@ export default function AnalyticsPage({ role }: AnalyticsPageProps) {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-5 h-5 text-gray-600" />
           <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
@@ -241,14 +242,15 @@ export default function AnalyticsPage({ role }: AnalyticsPageProps) {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Booking Trends Chart */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 className="w-5 h-5 text-primary-600" />
             <h3 className="text-lg font-semibold text-gray-900">Booking Trends</h3>
           </div>
           {error ? (
-            <div className="flex items-center justify-center h-64 text-red-600">
-              Error: {error}
+            <div className="flex flex-col items-center justify-center h-64">
+              <AlertCircle className="w-12 h-12 text-red-400 mb-2" />
+              <p className="text-sm text-gray-600">{error}</p>
             </div>
           ) : (
             <BookingTrendsChart data={bookingTrends} loading={loading} />
@@ -256,14 +258,15 @@ export default function AnalyticsPage({ role }: AnalyticsPageProps) {
         </div>
 
         {/* Revenue Growth Chart */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-5 h-5 text-green-600" />
             <h3 className="text-lg font-semibold text-gray-900">Revenue Growth</h3>
           </div>
           {error ? (
-            <div className="flex items-center justify-center h-64 text-red-600">
-              Error: {error}
+            <div className="flex flex-col items-center justify-center h-64">
+              <AlertCircle className="w-12 h-12 text-red-400 mb-2" />
+              <p className="text-sm text-gray-600">{error}</p>
             </div>
           ) : (
             <RevenueGrowthChart data={bookingTrends} loading={loading} />
@@ -272,7 +275,7 @@ export default function AnalyticsPage({ role }: AnalyticsPageProps) {
       </div>
 
       {/* Key Metrics Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Key Metrics</h3>
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -280,7 +283,11 @@ export default function AnalyticsPage({ role }: AnalyticsPageProps) {
             <span className="ml-2 text-gray-600">Loading metrics...</span>
           </div>
         ) : error ? (
-          <div className="text-center py-12 text-red-600">Error: {error}</div>
+          <div className="text-center py-12">
+            <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Error loading metrics</h3>
+            <p className="text-gray-600">{error}</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">

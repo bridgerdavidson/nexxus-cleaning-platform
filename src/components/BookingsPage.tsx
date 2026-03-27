@@ -914,7 +914,7 @@ export default function BookingsPage({
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                  <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
                     <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-600">
                       No appointments scheduled for today
@@ -1010,7 +1010,7 @@ export default function BookingsPage({
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                      <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
                         <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                         <p className="text-gray-600">
                           No upcoming appointments
@@ -1045,7 +1045,7 @@ export default function BookingsPage({
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                      <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
                         <History className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                         <p className="text-gray-600">No past appointments</p>
                       </div>
@@ -1075,7 +1075,7 @@ export default function BookingsPage({
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                      <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
                         <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                         <p className="text-gray-600">No appointments found</p>
                       </div>
