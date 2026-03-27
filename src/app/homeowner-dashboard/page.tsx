@@ -153,11 +153,14 @@ export default function HomeownerDashboard() {
     [appointments]
   );
 
-  // Today's appointments only (includes in_progress; active also shown in Active Cleanings)
+  // Today's appointments (not in progress — those appear only under Active Cleanings)
   const todaysAppointments = useMemo(
     () =>
       appointments
-        .filter((a) => a.scheduled_date === todayStr)
+        .filter(
+          (a) =>
+            a.scheduled_date === todayStr && a.status !== "in_progress"
+        )
         .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)),
     [appointments, todayStr]
   );

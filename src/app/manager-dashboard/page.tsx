@@ -360,11 +360,13 @@ export default function ManagerDashboard() {
     [navigationGroups, activeGroup]
   );
 
-  // Filter out "customers" from top navigation when in operations group (it appears in Accounts sidebar instead)
+  // Filter out "customers" and "messages" from top nav — messages use TopBar icon (cleaner pattern)
   const topNavTabs = useMemo(
     () =>
       activeGroup === "operations"
-        ? currentGroupTabs.filter((tab) => tab.id !== "customers")
+        ? currentGroupTabs.filter(
+            (tab) => tab.id !== "customers" && tab.id !== "messages"
+          )
         : currentGroupTabs,
     [currentGroupTabs, activeGroup]
   );
@@ -422,12 +424,15 @@ export default function ManagerDashboard() {
   // Handle tab change - reset filters if not navigating from specific sections
   const handleTabChange = useCallback((tabId: string) => {
     setActiveTab(tabId);
+    if (tabId === "messages") {
+      setActiveGroup("operations");
+    }
     // Only keep filters if we're staying on bookings tab
     if (tabId !== "bookings") {
       setShowPendingFilter(false);
       setShowAllFilter(false);
     }
-  }, []);
+  }, [setActiveGroup]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -1866,6 +1871,8 @@ export default function ManagerDashboard() {
             onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
             profileClickNavigatesToSettings
+            showMessagesIcon={permissions?.can_view_messages === true}
+            hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
           />
         </div>

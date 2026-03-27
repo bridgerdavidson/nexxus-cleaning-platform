@@ -180,6 +180,9 @@ export default function CleanerDashboard() {
         // Must be today
         if (apt.scheduled_date !== today) return false;
 
+        // In progress are listed only under Active Cleanings
+        if (apt.status === "in_progress") return false;
+
         // Filter by status
         if (statusFilter !== "all" && apt.status !== statusFilter) return false;
 
@@ -207,18 +210,6 @@ export default function CleanerDashboard() {
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   }, [appointments, searchQuery, statusFilter]);
 
-  // Today's jobs including in_progress, sorted with in_progress at the top
-  const filteredTodaysJobsDisplay = useMemo(
-    () => filteredTodaysJobs.sort((a, b) => {
-      // In-progress jobs first
-      if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
-      if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
-      // Then by time
-      return a.scheduled_time.localeCompare(b.scheduled_time);
-    }),
-    [filteredTodaysJobs]
-  );
-
   // Active jobs (in_progress) - shown in Active Cleanings section
   const activeJobs = useMemo(
     () => appointments.filter((a) => a.status === "in_progress"),
@@ -243,7 +234,7 @@ export default function CleanerDashboard() {
     [appointments]
   );
 
-  // Overview-only: today's jobs with no filters (includes in_progress; active also shown in Active Cleanings)
+  // Overview-only: today's jobs with no filters (in_progress only under Active Cleanings)
   const overviewTodaysJobs = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
@@ -251,12 +242,11 @@ export default function CleanerDashboard() {
     const day = String(now.getDate()).padStart(2, "0");
     const today = `${year}-${month}-${day}`;
     return appointments
-      .filter((apt) => apt.scheduled_date === today)
-      .sort((a, b) => {
-        if (a.status === "in_progress" && b.status !== "in_progress") return -1;
-        if (b.status === "in_progress" && a.status !== "in_progress") return 1;
-        return a.scheduled_time.localeCompare(b.scheduled_time);
-      });
+      .filter(
+        (apt) =>
+          apt.scheduled_date === today && apt.status !== "in_progress"
+      )
+      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   }, [appointments]);
 
   // Overview-only: upcoming jobs (after today, no filters) for overview preview
@@ -316,6 +306,9 @@ export default function CleanerDashboard() {
         // Must not be completed/cancelled
         if (apt.status === "completed" || apt.status === "cancelled")
           return false;
+
+        // In progress are only listed under Active Cleanings
+        if (apt.status === "in_progress") return false;
 
         // Filter by status
         if (statusFilter !== "all" && apt.status !== statusFilter) return false;
@@ -471,10 +464,18 @@ export default function CleanerDashboard() {
 
   // Combined appointments for calendar view
   const allFilteredAppointments = useMemo(() => {
-    return [...filteredTodaysJobs, ...filteredUpcomingJobs, ...filteredPastJobs].map(
-      convertToCardData
-    );
-  }, [filteredTodaysJobs, filteredUpcomingJobs, filteredPastJobs]);
+    return [
+      ...filteredActiveJobsForJobsTab,
+      ...filteredTodaysJobs,
+      ...filteredUpcomingJobs,
+      ...filteredPastJobs,
+    ].map(convertToCardData);
+  }, [
+    filteredActiveJobsForJobsTab,
+    filteredTodaysJobs,
+    filteredUpcomingJobs,
+    filteredPastJobs,
+  ]);
 
   // Get available statuses for filter dropdown
   const availableStatuses = useMemo(() => {
@@ -578,7 +579,7 @@ export default function CleanerDashboard() {
   };
 
   const getTodaysJobs = () => {
-    // Get today's date in local timezone - includes in_progress jobs
+    // Today's scheduled jobs not yet in progress (stats cards use pending/confirmed)
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -589,15 +590,9 @@ export default function CleanerDashboard() {
       .filter(
         (appointment) =>
           appointment.scheduled_date === today &&
-          ["pending", "confirmed", "in_progress"].includes(appointment.status)
+          ["pending", "confirmed"].includes(appointment.status)
       )
-      .sort((a, b) => {
-        // In-progress jobs first
-        if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
-        if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
-        // Then by time
-        return a.scheduled_time.localeCompare(b.scheduled_time);
-      });
+      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   };
 
   const getUpcomingJobs = () => {
@@ -1237,18 +1232,18 @@ export default function CleanerDashboard() {
                 </div>
               )}
 
-              {/* Today's Jobs Section - includes in_progress jobs sorted at the top */}
+              {/* Today's Jobs (in progress excluded — see Active Cleanings) */}
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary-600" />
                   Today's Jobs
                   <span className="text-sm font-normal text-gray-500">
-                    ({filteredTodaysJobsDisplay.length})
+                    ({filteredTodaysJobs.length})
                   </span>
                 </h3>
-                {filteredTodaysJobsDisplay.length > 0 ? (
+                {filteredTodaysJobs.length > 0 ? (
                   <div className="space-y-4">
-                    {filteredTodaysJobsDisplay.map((appointment) => (
+                    {filteredTodaysJobs.map((appointment) => (
                       <AppointmentCard
                         key={appointment.id}
                         appointment={convertToCardData(appointment)}

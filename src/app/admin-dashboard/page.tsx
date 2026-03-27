@@ -295,10 +295,12 @@ export default function AdminDashboard() {
   const currentGroupTabs =
     navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [];
 
-  // Filter out "customers" from top navigation when in operations group (it appears in Accounts sidebar instead)
+  // Filter out "customers" and "messages" from top nav — customers live under Accounts; messages use TopBar icon (cleaner pattern)
   const topNavTabs =
     activeGroup === "operations"
-      ? currentGroupTabs.filter((tab) => tab.id !== "customers")
+      ? currentGroupTabs.filter(
+          (tab) => tab.id !== "customers" && tab.id !== "messages"
+        )
       : currentGroupTabs;
 
   // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
@@ -329,6 +331,9 @@ export default function AdminDashboard() {
   // Handle tab change - reset filters if not navigating from specific sections
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
+    if (tabId === "messages") {
+      setActiveGroup("operations");
+    }
     // Only keep filters if we're staying on bookings tab
     if (tabId !== "bookings") {
       setShowPendingFilter(false);
@@ -1626,6 +1631,8 @@ export default function AdminDashboard() {
             onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
             profileClickNavigatesToSettings
+            showMessagesIcon
+            hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
           />
         </div>

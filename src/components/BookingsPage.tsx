@@ -304,23 +304,18 @@ export default function BookingsPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localAppointments, searchQuery, statusFilter]);
 
-  // Get filtered today's appointments
+  // Get filtered today's appointments (in progress only under Active Cleanings)
   const filteredTodaysAppointments = useMemo(() => {
     const today = getTodayString();
     return localAppointments
       .filter(
         (apt) =>
           apt.scheduled_date === today &&
+          apt.status !== "in_progress" &&
           filterBySearch(apt) &&
           filterByStatus(apt)
       )
-      .sort((a, b) => {
-        // In-progress jobs first
-        if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
-        if (b.status === 'in_progress' && a.status !== 'in_progress') return 1;
-        // Then by time
-        return a.scheduled_time.localeCompare(b.scheduled_time);
-      });
+      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localAppointments, searchQuery, statusFilter]);
 
@@ -401,8 +396,18 @@ export default function BookingsPage({
 
   // Combined appointments for selection and calendar view (used by calendar view)
   const allFilteredAppointments = useMemo(() => {
-    return [...filteredTodaysAppointments, ...filteredUpcomingAppointments, ...filteredPastAppointments];
-  }, [filteredTodaysAppointments, filteredUpcomingAppointments, filteredPastAppointments]);
+    return [
+      ...filteredActiveAppointments,
+      ...filteredTodaysAppointments,
+      ...filteredUpcomingAppointments,
+      ...filteredPastAppointments,
+    ];
+  }, [
+    filteredActiveAppointments,
+    filteredTodaysAppointments,
+    filteredUpcomingAppointments,
+    filteredPastAppointments,
+  ]);
 
   // Appointments currently displayed in the list view (depends on active tab) — used for Select All
   const displayedAppointmentsForTab = useMemo(() => {
