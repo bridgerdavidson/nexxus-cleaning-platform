@@ -25,7 +25,7 @@ export default function SettingsHub() {
         return <SettingsPayoutsSection />;
       case 'security':
         return (
-          <div className="bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] border border-gray-100/80 p-8 flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
+          <div className="card flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
         <h2 className="text-xl font-bold tracking-tight text-gray-900 mb-2 group-hover:text-primary-600 transition-colors">Security Settings</h2>
             <p className="text-gray-500 max-w-sm mt-1">
               Password management and two-factor authentication will be available here soon.
@@ -34,7 +34,7 @@ export default function SettingsHub() {
         );
       case 'notifications':
         return (
-          <div className="bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] border border-gray-100/80 p-8 flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
+          <div className="card flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
         <h2 className="text-xl font-bold tracking-tight text-gray-900 mb-2 group-hover:text-primary-600 transition-colors">Notification Preferences</h2>
             <p className="text-gray-500 max-w-sm mt-1">
               Manage your email, SMS, and push notification preferences here.
@@ -57,10 +57,10 @@ export default function SettingsHub() {
             <button
               key={section.id}
               onClick={() => setActiveSection(section.id)}
-              className={`flex items-center gap-3.5 px-5 py-4 rounded-3xl transition-all duration-300 whitespace-nowrap text-[14.5px] font-medium group ${
+              className={`flex items-center gap-3.5 px-5 py-3 rounded-xl transition-all duration-200 whitespace-nowrap text-sm font-medium group ${
                 isActive
-                  ? 'bg-white shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] border border-gray-100/80 ring-1 ring-black/5'
-                  : 'hover:bg-white/80 border border-transparent hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.03)]'
+                  ? 'bg-white shadow-sm border border-gray-200 text-gray-900'
+                  : 'hover:bg-gray-50 border border-transparent text-gray-600'
               }`}
             >
               <Icon className={`w-5 h-5 flex-shrink-0 transition-all duration-300 ${isActive ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-600'}`} />

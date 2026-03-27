@@ -183,7 +183,7 @@ export default function AppointmentCard({
   return (
     <div
       onClick={handleCardClick}
-      className={`relative bg-white border rounded-lg hover:shadow-lg transition-all duration-200 cursor-pointer group overflow-hidden ${
+      className={`relative bg-white border rounded-xl shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden ${
         isSelected
           ? "border-primary-500 bg-primary-50"
           : appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner"

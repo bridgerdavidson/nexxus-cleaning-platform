@@ -57,8 +57,8 @@ export default function SettingsProfileSection() {
       </div>
 
       {/* Avatar section */}
-      <div className="bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] border border-gray-100/80 p-8 md:p-12 mb-6 md:mb-10 transition-all duration-300 group">
-        <h2 className="text-[1.35rem] font-bold tracking-tight text-gray-900 mb-8 px-1 group-hover:text-primary-600 transition-colors">Profile Picture</h2>
+      <div className="card mb-6 md:mb-8 group">
+        <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-6 group-hover:text-primary-600 transition-colors">Profile Picture</h2>
         <div className="flex flex-col items-center pt-4 pb-4">
           <AvatarUpload
             currentAvatarUrl={user.profile.avatarUrl}
@@ -72,8 +72,8 @@ export default function SettingsProfileSection() {
       </div>
 
       {/* Profile info section */}
-      <div className="bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] border border-gray-100/80 p-8 md:p-12 mb-6 md:mb-10 transition-all duration-300 group">
-        <h2 className="text-[1.35rem] font-bold tracking-tight text-gray-900 mb-8 px-1 group-hover:text-primary-600 transition-colors">Personal Information</h2>
+      <div className="card mb-6 md:mb-8 group">
+        <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-6 group-hover:text-primary-600 transition-colors">Personal Information</h2>
 
         <form onSubmit={handleProfileSave} className="space-y-7">
           {/* Email (read-only) */}
@@ -86,7 +86,7 @@ export default function SettingsProfileSection() {
               value={user.email}
               readOnly
               disabled
-              className="w-full px-5 py-4 border border-gray-200/80 rounded-[1.25rem] bg-gray-50/50 text-gray-600 text-[14.5px] cursor-not-allowed focus:outline-none shadow-sm"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-sm cursor-not-allowed focus:outline-none shadow-sm"
             />
             <p className="text-sm text-gray-500 mt-2 ml-0.5">
               Email cannot be changed yet.
@@ -104,7 +104,7 @@ export default function SettingsProfileSection() {
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-5 py-4 border border-gray-300/80 rounded-[1.25rem] text-[14.5px] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all duration-300 shadow-sm hover:border-gray-400/80"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors shadow-sm"
                 placeholder="First name"
               />
             </div>
@@ -117,7 +117,7 @@ export default function SettingsProfileSection() {
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-5 py-4 border border-gray-300/80 rounded-[1.25rem] text-[14.5px] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all duration-300 shadow-sm hover:border-gray-400/80"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors shadow-sm"
                 placeholder="Last name"
               />
             </div>
@@ -135,7 +135,7 @@ export default function SettingsProfileSection() {
               autoComplete="tel"
               value={formatPhoneDisplay(phone)}
               onChange={(e) => setPhone(normalizePhoneToDigits(e.target.value))}
-              className="w-full px-5 py-4 border border-gray-300/80 rounded-[1.25rem] text-[14.5px] focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all duration-300 shadow-sm hover:border-gray-400/80"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors shadow-sm"
               placeholder="(555) 123-4567"
             />
           </div>
@@ -150,7 +150,7 @@ export default function SettingsProfileSection() {
               value={user.role}
               readOnly
               disabled
-              className="w-full px-5 py-4 border border-gray-200/80 rounded-[1.25rem] bg-gray-50/50 text-gray-600 text-[14.5px] capitalize cursor-not-allowed focus:outline-none shadow-sm"
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-sm capitalize cursor-not-allowed focus:outline-none shadow-sm"
             />
           </div>
 
@@ -169,7 +169,7 @@ export default function SettingsProfileSection() {
             <button
               type="submit"
               disabled={saving}
-              className="px-8 py-4 bg-primary-600 text-white text-[14.5px] font-semibold rounded-[1.25rem] hover:bg-primary-700 disabled:opacity-60 transition-all duration-300 shadow-[0_4px_12px_-2px_rgba(217,167,24,0.3)] hover:shadow-[0_8px_20px_-4px_rgba(217,167,24,0.4)] hover:-translate-y-0.5 active:translate-y-0"
+              className="btn-primary w-full sm:w-auto"
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>

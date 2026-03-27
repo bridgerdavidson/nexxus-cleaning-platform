@@ -10,6 +10,13 @@ interface NavigationGroup {
   icon: LucideIcon;
 }
 
+interface NavigationTab {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  hasNotification?: boolean;
+}
+
 interface SidebarUser {
   profile: {
     firstName?: string;
@@ -21,9 +28,12 @@ interface SidebarUser {
 }
 
 interface DesktopSidebarProps {
-  groups: NavigationGroup[];
-  activeGroup: string;
-  onGroupChange: (groupId: string) => void;
+  groups?: NavigationGroup[];
+  activeGroup?: string;
+  onGroupChange?: (groupId: string) => void;
+  /** Flat tab mode (used by cleaner) */
+  tabs?: NavigationTab[];
+  onTabChange?: (tabId: string) => void;
   onLogout: () => void;
   /** When provided (admin/manager), show profile card above Sign Out */
   user?: SidebarUser | null;
@@ -35,6 +45,8 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   groups,
   activeGroup,
   onGroupChange,
+  tabs,
+  onTabChange,
   onLogout,
   user,
   activeTab,
@@ -56,38 +68,76 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       {/* Group Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         <div className="space-y-1">
-          {groups.map((group) => {
-            const Icon = group.icon;
-            const isActive =
-              activeTab !== "settings" && activeGroup === group.id;
-            return (
-              <button
-                key={group.id}
-                onClick={() => onGroupChange(group.id)}
-                className={`w-full flex items-center px-4 py-3 rounded-lg transition-all duration-200 relative ${
-                  isActive
-                    ? "bg-white text-primary-700 ring-1 ring-primary-100/80"
-                    : "text-gray-600 hover:bg-white/80 hover:text-gray-900"
-                }`}
-              >
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary-600 rounded-r-full" />
-                )}
-                <Icon
-                  className={`flex-shrink-0 w-5 h-5 mr-3 ${
-                    isActive ? "text-primary-600" : "text-gray-400"
-                  }`}
-                />
-                <span
-                  className={`font-medium text-sm truncate ${
-                    isActive ? "font-semibold" : ""
-                  }`}
-                >
-                  {group.label}
-                </span>
-              </button>
-            );
-          })}
+          {tabs && onTabChange
+            ? tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive =
+                  activeTab !== "settings" && activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => onTabChange(tab.id)}
+                    className={`w-full flex items-center px-4 py-3 rounded-lg transition-all duration-200 relative ${
+                      isActive
+                        ? "bg-white text-primary-700 ring-1 ring-primary-100/80"
+                        : "text-gray-600 hover:bg-white/80 hover:text-gray-900"
+                    }`}
+                  >
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary-600 rounded-r-full" />
+                    )}
+                    <div className="relative mr-3">
+                      <Icon
+                        className={`flex-shrink-0 w-5 h-5 ${
+                          isActive ? "text-primary-600" : "text-gray-400"
+                        }`}
+                      />
+                      {tab.hasNotification && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full border-2 border-white" />
+                      )}
+                    </div>
+                    <span
+                      className={`font-medium text-sm truncate ${
+                        isActive ? "font-semibold" : ""
+                      }`}
+                    >
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })
+            : (groups ?? []).map((group) => {
+                const Icon = group.icon;
+                const isActive =
+                  activeTab !== "settings" && activeGroup === group.id;
+                return (
+                  <button
+                    key={group.id}
+                    onClick={() => onGroupChange?.(group.id)}
+                    className={`w-full flex items-center px-4 py-3 rounded-lg transition-all duration-200 relative ${
+                      isActive
+                        ? "bg-white text-primary-700 ring-1 ring-primary-100/80"
+                        : "text-gray-600 hover:bg-white/80 hover:text-gray-900"
+                    }`}
+                  >
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary-600 rounded-r-full" />
+                    )}
+                    <Icon
+                      className={`flex-shrink-0 w-5 h-5 mr-3 ${
+                        isActive ? "text-primary-600" : "text-gray-400"
+                      }`}
+                    />
+                    <span
+                      className={`font-medium text-sm truncate ${
+                        isActive ? "font-semibold" : ""
+                      }`}
+                    >
+                      {group.label}
+                    </span>
+                  </button>
+                );
+              })}
         </div>
       </nav>
 

@@ -9,7 +9,6 @@ import {
   MapPin,
   MessageCircle,
   DollarSign,
-  Camera,
   Clock,
   CheckCircle,
   Star,
@@ -29,17 +28,16 @@ import {
 import {
   useCleanerAppointments,
   useCleanerStats,
-  useCleanerMessages,
   useCleanerPayouts,
-  useCleanerPhotos,
   updateAppointmentStatus,
 } from "../../hooks/useCleanerData";
 import { useConversations } from "../../hooks/useConversations";
 import { useServices } from "../../hooks/useServices";
 import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
-import DashboardHeader from "../../components/DashboardHeader";
+import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
+import DesktopSidebar from "../../components/DesktopSidebar";
 import MessagesPage from "../../components/MessagesPage";
 import AppointmentCard, {
   AppointmentCardData,
@@ -57,7 +55,7 @@ import { format } from "date-fns";
 type ViewType = "list" | "calendar";
 
 export default function CleanerDashboard() {
-  const { user, loading, currentOrganizationId } = useAuth();
+  const { user, loading, signOut, currentOrganizationId } = useAuth();
   const [activeTab, setActiveTab] = useState("home");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedActive, setExpandedActive] = useState(true);
@@ -92,11 +90,6 @@ export default function CleanerDashboard() {
   } = useCleanerAppointments();
   const { stats, loading: statsLoading, error: statsError } = useCleanerStats();
   const {
-    messages,
-    loading: messagesLoading,
-    error: messagesError,
-  } = useCleanerMessages();
-  const {
     conversations,
     loading: conversationsLoading,
     error: conversationsError,
@@ -106,13 +99,7 @@ export default function CleanerDashboard() {
   const {
     payouts,
     loading: payoutsLoading,
-    error: payoutsError,
   } = useCleanerPayouts();
-  const {
-    photos,
-    loading: photosLoading,
-    error: photosError,
-  } = useCleanerPhotos();
   const {
     services,
     loading: servicesLoading,
@@ -125,6 +112,47 @@ export default function CleanerDashboard() {
   const hasUnreadMessages = useMemo(() => {
     return conversations.some((conv) => conv.unread_count > 0);
   }, [conversations]);
+
+  const sidebarTabs = useMemo(
+    () => [
+      { id: "home", label: "Overview", icon: Home },
+      { id: "jobs", label: "Jobs", icon: MapPin },
+      { id: "services", label: "Services", icon: Briefcase },
+      { id: "earnings", label: "Earnings", icon: DollarSign },
+    ],
+    []
+  );
+
+  // Tabs for mobile sidebar
+  const allTabs = [
+    ...sidebarTabs,
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageCircle,
+      hasNotification: hasUnreadMessages,
+    },
+  ];
+  if (!allTabs.find((t) => t.id === "settings")) {
+    allTabs.push({ id: "settings", label: "Settings", icon: User });
+  }
+
+  const handleLogout = async () => {
+    await signOut();
+  };
+
+  // Mobile navigation tabs (keep it simple for bottom bar)
+  const mobileNavTabs = [
+    { id: "home", label: "Overview", icon: Home },
+    { id: "jobs", label: "Jobs", icon: MapPin },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageCircle,
+      hasNotification: hasUnreadMessages,
+    },
+    { id: "services", label: "Services", icon: Briefcase },
+  ];
 
   // Helper function for converting appointments (must be defined before hooks)
   const convertToCardData = (appointment: any): AppointmentCardData => ({
@@ -619,39 +647,6 @@ export default function CleanerDashboard() {
     }
   };
 
-  const tabs = [
-    { id: "home", label: "Overview", icon: Home },
-    { id: "jobs", label: "Jobs", icon: MapPin },
-    {
-      id: "messages",
-      label: "Messages",
-      icon: MessageCircle,
-      hasNotification: hasUnreadMessages,
-    },
-    { id: "services", label: "Services", icon: Briefcase },
-    { id: "earnings", label: "Earnings", icon: DollarSign },
-    { id: "photos", label: "Photos", icon: Camera },
-    { id: "settings", label: "Settings", icon: User },
-  ];
-
-  // Filter tabs for top navigation (exclude earnings and photos - those are in mobile sidebar)
-  const topNavTabs = tabs.filter(
-    (tab) => tab.id !== "earnings" && tab.id !== "photos"
-  );
-
-  // Mobile navigation tabs (services is included since cleaner needs it in mobile nav)
-  const mobileNavTabs = [
-    { id: "home", label: "Overview", icon: Home },
-    { id: "jobs", label: "Jobs", icon: MapPin },
-    {
-      id: "messages",
-      label: "Messages",
-      icon: MessageCircle,
-      hasNotification: hasUnreadMessages,
-    },
-    { id: "services", label: "Services", icon: Briefcase },
-  ];
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case "upcoming":
@@ -703,125 +698,184 @@ export default function CleanerDashboard() {
   };
 
   const renderSchedule = () => (
-    <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
+    <>
+      {/* Mobile Header - Compact */}
+      <div className="md:hidden mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
-          <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
-            Cleaner Dashboard
+          <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+            Cleaner
           </span>
         </div>
-        <p className="text-gray-600">
-          Manage your cleaning jobs and schedule from one central location.
-        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-primary-600" />
+      {/* Desktop Header - Modern control center hero */}
+      <div className="hidden md:block mb-6">
+        <div className="relative overflow-hidden rounded-[2rem] border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-7 shadow-[0_8px_20px_-14px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
+          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary-300/35 blur-3xl" />
+          <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-primary-200/30 blur-3xl" />
+
+          <div className="relative flex flex-col gap-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                  <Star className="h-3.5 w-3.5" />
+                  Cleaner Dashboard
+                </div>
+                <h2 className="text-4xl font-bold tracking-tight text-gray-900">
+                  Your Schedule
+                </h2>
+                <p className="mt-2 max-w-2xl text-gray-600">
+                  Manage your cleaning jobs, track your earnings, and stay on top of your schedule.
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => setActiveTab("jobs")}
+                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+                >
+                  View all jobs
+                </button>
+              </div>
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Jobs</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
+
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
+                    <CheckCircle className="h-4 w-4 text-primary-700" />
+                  </span>
+                  Total Jobs
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.totalJobs}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-green-100 p-1.5 ring-1 ring-green-200/70">
+                    <Clock className="h-4 w-4 text-green-700" />
+                  </span>
+                  This Week
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.upcomingJobs}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
+                    <DollarSign className="h-4 w-4 text-emerald-700" />
+                  </span>
+                  Confirmed Today
+                </div>
+                {appointmentsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    ${getTodaysJobs()
+                      .filter((a) => a.status === "confirmed")
+                      .reduce((sum, a) => sum + Number(a.total_price), 0)
+                      .toFixed(0)}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
+                    <DollarSign className="h-4 w-4 text-amber-700" />
+                  </span>
+                  Pending Today
+                </div>
+                {appointmentsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    ${getTodaysJobs()
+                      .filter((a) => a.status === "pending")
+                      .reduce((sum, a) => sum + Number(a.total_price), 0)
+                      .toFixed(0)}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                  <span className="rounded-lg bg-purple-100 p-1.5 ring-1 ring-purple-200/70">
+                    <Star className="h-4 w-4 text-purple-700" />
+                  </span>
+                  Rating
+                </div>
+                {statsLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                ) : (
+                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                    {stats.rating}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Quick Stats Bar */}
+      <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
+        <div className="flex items-center justify-between">
+          {statsLoading || appointmentsLoading ? (
+            <div className="flex items-center justify-center w-full py-2">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 text-center border-r border-gray-200">
+                <p className="text-xl font-bold text-primary-600">
                   {stats.totalJobs}
                 </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Clock className="w-6 h-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">This Week</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xs text-gray-500">Jobs</p>
+              </div>
+              <div className="flex-1 text-center border-r border-gray-200">
+                <p className="text-xl font-bold text-green-600">
                   {stats.upcomingJobs}
                 </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Confirmed Today
-              </p>
-              {appointmentsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  $
-                  {getTodaysJobs()
-                    .filter((a) => a.status === "confirmed")
-                    .reduce((sum, a) => sum + Number(a.total_price), 0)
-                    .toFixed(0)}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <DollarSign className="w-6 h-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Pending Today</p>
-              {appointmentsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  $
-                  {getTodaysJobs()
+                <p className="text-xs text-gray-500">This Week</p>
+              </div>
+              <div className="flex-1 text-center border-r border-gray-200">
+                <p className="text-xl font-bold text-amber-600">
+                  ${getTodaysJobs()
                     .filter((a) => a.status === "pending")
                     .reduce((sum, a) => sum + Number(a.total_price), 0)
                     .toFixed(0)}
                 </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Star className="w-6 h-6 text-purple-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Rating</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-xs text-gray-500">Pending</p>
+              </div>
+              <div className="flex-1 text-center">
+                <p className="text-xl font-bold text-purple-600">
                   {stats.rating}
                 </p>
-              )}
-            </div>
-          </div>
+                <p className="text-xs text-gray-500">Rating</p>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Pending Confirmations - Requires cleaner action */}
-      <PendingConfirmationsSection
+      <div className="space-y-6">
+        {/* Pending Confirmations - Requires cleaner action */}
+        <PendingConfirmationsSection
         appointments={pendingConfirmations}
         loading={appointmentsLoading}
         userId={user.id}
@@ -907,7 +961,7 @@ export default function CleanerDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+              <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">No jobs scheduled for today</p>
               </div>
@@ -965,7 +1019,7 @@ export default function CleanerDashboard() {
                 )}
               </div>
             ) : (
-              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+              <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
                 <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600">No upcoming jobs</p>
               </div>
@@ -973,7 +1027,8 @@ export default function CleanerDashboard() {
           </>
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 
   // Time frame filter options
@@ -1202,7 +1257,7 @@ export default function CleanerDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                  <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
                     <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-600">No jobs scheduled for today</p>
                   </div>
@@ -1292,7 +1347,7 @@ export default function CleanerDashboard() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                      <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
                         <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                         <p className="text-gray-600">
                           No upcoming jobs
@@ -1323,7 +1378,7 @@ export default function CleanerDashboard() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                      <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
                         <History className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                         <p className="text-gray-600">No past jobs</p>
                       </div>
@@ -1349,7 +1404,7 @@ export default function CleanerDashboard() {
                         ))}
                       </div>
                     ) : (
-                      <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                      <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
                         <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                         <p className="text-gray-600">No jobs found</p>
                       </div>
@@ -1525,73 +1580,6 @@ export default function CleanerDashboard() {
     </div>
   );
 
-  const renderPhotos = () => (
-    <div className="space-y-6">
-      <h2 className="text-4xl font-bold text-gray-900">Photo Management</h2>
-
-      {/* Upload Section */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Before &amp; After Photos
-        </h3>
-        <div className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center bg-gray-50">
-          <Camera className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h4 className="text-lg font-medium text-gray-900 mb-2">
-            Upload photos from an active job
-          </h4>
-          <p className="text-gray-500 text-sm">
-            Before and after photos are taken directly from the job workflow. Start a job and use the Before or After Photos steps to capture evidence.
-          </p>
-        </div>
-      </div>
-
-      {/* Recent Photos */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Recent Photos
-        </h3>
-        {photosLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            <span className="ml-2 text-gray-600">Loading photos...</span>
-          </div>
-        ) : photos.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {photos.slice(0, 12).map((photo) => (
-              <div key={photo.id} className="relative group">
-                <img
-                  src={photo.photo_url}
-                  alt={`${photo.photo_type} photo`}
-                  className="w-full h-32 object-cover rounded-lg"
-                />
-                <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                  <div className="text-white text-center">
-                    <p className="text-sm font-medium">{photo.photo_type}</p>
-                    <p className="text-xs">
-                      {photo.appointment?.homeowner
-                        ? `${photo.appointment.homeowner.first_name} ${photo.appointment.homeowner.last_name}`
-                        : "Unknown"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <Camera className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No photos uploaded
-            </h3>
-            <p className="text-gray-600">
-              Photos you upload for jobs will appear here.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
   const renderContent = () => {
     switch (activeTab) {
       case "home":
@@ -1602,8 +1590,6 @@ export default function CleanerDashboard() {
         return renderMessages();
       case "earnings":
         return renderEarnings();
-      case "photos":
-        return renderPhotos();
       case "services":
         return (
           <ServicesPage
@@ -1623,35 +1609,51 @@ export default function CleanerDashboard() {
   };
 
   return (
-    <>
-      {/* Hide header on mobile for all tabs */}
-      <div className="hidden md:block">
-        <DashboardHeader
-          role="cleaner"
-          tabs={topNavTabs}
-          sidebarTabs={tabs}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-        />
-      </div>
-      <div
-        className={`min-h-screen ${
-          activeTab === "messages" ? "bg-white md:bg-gray-50" : "bg-gray-50"
-        } pt-4 md:pt-16`}
-      >
-        <div
+    <div
+      className={`min-h-screen ${
+        activeTab === "messages" ? "bg-white md:bg-gray-100" : "bg-gray-100"
+      }`}
+    >
+      {/* Persistent Desktop Sidebar - Shows Groups */}
+      <DesktopSidebar
+        tabs={sidebarTabs}
+        onTabChange={setActiveTab}
+        onLogout={handleLogout}
+        user={user}
+        activeTab={activeTab}
+      />
+
+      {/* Main Content Wrapper with Sidebar Offset */}
+      <div className="md:ml-[260px] pt-4 md:pt-16">
+        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
+        <div className="hidden md:block">
+          <TopBar
+            role="cleaner"
+            user={user}
+            tabs={[]}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            onMobileMenuClick={() => setIsSidebarOpen(true)}
+            profileClickNavigatesToSettings
+            showMessagesIcon
+            hasUnreadMessages={hasUnreadMessages}
+            showSettingsIcon
+          />
+        </div>
+
+        {/* Main Content Area */}
+        <main
           className={`${
             activeTab === "messages"
-              ? "px-0 md:px-4 md:sm:px-6 md:lg:px-8"
-              : "px-4 sm:px-6 lg:px-8"
-          } pb-24 md:pb-8 ${
-            activeTab === "messages" ? "py-0 md:py-8" : "py-8"
-          }`}
+              ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
+              : "p-4 sm:p-6 lg:p-8"
+          } pb-24 md:pb-8`}
         >
           {/* Tab Content */}
           {renderContent()}
-        </div>
+        </main>
       </div>
+
       <MobileNavigation
         tabs={mobileNavTabs}
         activeTab={activeTab}
@@ -1662,10 +1664,10 @@ export default function CleanerDashboard() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="cleaner"
-        tabs={tabs}
+        tabs={allTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
-    </>
+    </div>
   );
 }

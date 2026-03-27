@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Menu, LucideIcon, User, ChevronDown, Settings } from "lucide-react";
+import {
+  Menu,
+  LucideIcon,
+  User,
+  ChevronDown,
+  Settings,
+  MessageCircle,
+} from "lucide-react";
 
 interface Tab {
   id: string;
@@ -21,6 +28,12 @@ interface TopBarProps {
   profileClickNavigatesToSettings?: boolean;
   /** When true, show a gear icon in the top right that opens the settings page (admin/manager) */
   showSettingsIcon?: boolean;
+  /** When true, show a messages icon in the top right */
+  showMessagesIcon?: boolean;
+  /** Whether to show unread indicator on messages icon */
+  hasUnreadMessages?: boolean;
+  /** When true, leave left padding for the desktop sidebar. Default true. */
+  hasSidebar?: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -32,6 +45,9 @@ const TopBar: React.FC<TopBarProps> = ({
   onMobileMenuClick,
   profileClickNavigatesToSettings = false,
   showSettingsIcon = false,
+  showMessagesIcon = false,
+  hasUnreadMessages = false,
+  hasSidebar = true,
 }) => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -53,7 +69,7 @@ const TopBar: React.FC<TopBarProps> = ({
   }, [isUserDropdownOpen, profileClickNavigatesToSettings]);
 
   return (
-    <header className="bg-white/95 backdrop-blur fixed top-0 left-0 md:left-[260px] right-0 z-50">
+    <header className={`bg-white/95 backdrop-blur fixed top-0 left-0 ${hasSidebar ? 'md:left-[260px]' : ''} right-0 z-50`}>
       <div className="h-16 px-4 sm:px-6 lg:px-8 pt-8 md:pt-0 relative flex items-center">
         {/* Mobile Menu Button - Left */}
         <button
@@ -100,6 +116,23 @@ const TopBar: React.FC<TopBarProps> = ({
 
         {/* Settings gear + User Profile - Right */}
         <div className="flex items-center ml-auto gap-1">
+          {showMessagesIcon && (
+            <button
+              type="button"
+              onClick={() => onTabChange("messages")}
+              className="relative p-2 rounded-lg text-gray-600 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+              aria-label="Open messages"
+            >
+              <MessageCircle
+                className={`w-5 h-5 ${
+                  activeTab === "messages" ? "text-primary-600" : ""
+                }`}
+              />
+              {hasUnreadMessages && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-yellow-500 rounded-full border border-white" />
+              )}
+            </button>
+          )}
           {showSettingsIcon && (
             <button
               type="button"
