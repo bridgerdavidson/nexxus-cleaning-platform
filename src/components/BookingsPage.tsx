@@ -256,12 +256,14 @@ export default function BookingsPage({
       ? `${appointment.property.address} ${appointment.property.city} ${appointment.property.state}`.toLowerCase()
       : "";
     const serviceName = appointment.service_type?.name.toLowerCase() || "";
+    const checklistName = appointment.checklist?.name.toLowerCase() || "";
 
     return (
       homeownerName.includes(query) ||
       cleanerName.includes(query) ||
       propertyAddress.includes(query) ||
-      serviceName.includes(query)
+      serviceName.includes(query) ||
+      checklistName.includes(query)
     );
   };
 

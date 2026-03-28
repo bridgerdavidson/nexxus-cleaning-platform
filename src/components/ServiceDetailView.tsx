@@ -17,9 +17,11 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { ServiceType } from "../hooks/useServices";
+import { formatServicePriceRangeLabel } from "../lib/formatServicePriceRange";
 
 interface ServiceDetailViewProps {
   service: ServiceType;
+  maxChecklistAdder: number;
   canManage: boolean;
   onBack: () => void;
   onEdit?: (service: ServiceType) => void;
@@ -30,6 +32,7 @@ interface ServiceDetailViewProps {
 
 export default function ServiceDetailView({
   service,
+  maxChecklistAdder,
   canManage,
   onBack,
   onEdit,
@@ -47,10 +50,6 @@ export default function ServiceDetailView({
       return `${hours} hour${hours > 1 ? "s" : ""}`;
     }
     return `${hours} hour${hours > 1 ? "s" : ""} ${remainingMinutes} minutes`;
-  };
-
-  const formatPrice = (price: number) => {
-    return `$${price.toFixed(2)}`;
   };
 
   const formatServiceType = (type: string) => {
@@ -174,9 +173,12 @@ export default function ServiceDetailView({
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-500">Base Price</p>
+                <p className="text-sm font-medium text-gray-500">Pricing</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {formatPrice(service.base_price)}
+                  {formatServicePriceRangeLabel(
+                    service.base_price,
+                    maxChecklistAdder
+                  )}
                 </p>
               </div>
             </div>
@@ -268,8 +270,13 @@ export default function ServiceDetailView({
               </dd>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100">
-              <dt className="text-gray-600">Base Price</dt>
-              <dd className="font-medium text-gray-900">{formatPrice(service.base_price)}</dd>
+              <dt className="text-gray-600">Price</dt>
+              <dd className="font-medium text-gray-900">
+                {formatServicePriceRangeLabel(
+                  service.base_price,
+                  maxChecklistAdder
+                )}
+              </dd>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100">
               <dt className="text-gray-600">Duration</dt>

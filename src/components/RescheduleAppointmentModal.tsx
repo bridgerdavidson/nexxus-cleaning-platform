@@ -483,8 +483,15 @@ export default function RescheduleAppointmentModal({
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Service</p>
                       <p className="text-sm text-gray-700 mt-0.5">
-                        {appointment.service_type.name}
+                        {appointment.checklist?.name
+                          ? `${appointment.service_type.name} (${appointment.checklist.name})`
+                          : appointment.service_type.name}
                       </p>
+                      {appointment.checklist?.name && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {appointment.checklist.name}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

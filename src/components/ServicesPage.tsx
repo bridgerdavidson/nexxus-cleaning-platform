@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Search,
   ChevronDown,
@@ -51,6 +51,8 @@ import DeleteServiceModal from "./DeleteServiceModal";
 import ServiceDetailView from "./ServiceDetailView";
 import ChecklistFormModal from "./ChecklistFormModal";
 import DeleteChecklistModal from "./DeleteChecklistModal";
+import { useAuth } from "../hooks/useAuth";
+import { supabase } from "../lib/supabase";
 
 interface ServicesPageProps {
   services: ServiceType[];
@@ -199,9 +201,16 @@ interface ChecklistsViewProps {
   canManageServices: boolean;
   onBackToServices: () => void;
   onBackToServiceDetail?: () => void;
+  onChecklistPricingChanged?: () => void;
 }
 
-function ChecklistsView({ service, canManageServices, onBackToServices, onBackToServiceDetail }: ChecklistsViewProps) {
+function ChecklistsView({
+  service,
+  canManageServices,
+  onBackToServices,
+  onBackToServiceDetail,
+  onChecklistPricingChanged,
+}: ChecklistsViewProps) {
   const { 
     checklists, 
     loading, 
@@ -295,16 +304,18 @@ function ChecklistsView({ service, canManageServices, onBackToServices, onBackTo
     setShowDeleteChecklistModal(true);
   };
 
-  const handleChecklistFormSuccess = (result: { type: 'created'; checklist: ChecklistWithItems } | { type: 'updated'; checklistId: string; name: string }) => {
+  const handleChecklistFormSuccess = (result: { type: 'created'; checklist: ChecklistWithItems } | { type: 'updated'; checklistId: string; name: string; priceAdder: number }) => {
     if (result.type === 'created') {
       applyChecklistAdded(result.checklist);
     } else {
-      applyChecklistUpdated(result.checklistId, result.name);
+      applyChecklistUpdated(result.checklistId, result.name, result.priceAdder);
     }
+    onChecklistPricingChanged?.();
   };
 
   const handleChecklistDeleteSuccess = () => {
     refetch(); // Keep refetch for delete to ensure consistency
+    onChecklistPricingChanged?.();
   };
 
   // Handlers for line item CRUD
@@ -516,8 +527,7 @@ function ChecklistsView({ service, canManageServices, onBackToServices, onBackTo
                         {checklist.name}
                       </h3>
                       <p className="text-sm text-gray-500">
-                        {checklist.checklist_line_items?.length || 0} item
-                        {(checklist.checklist_line_items?.length || 0) !== 1 ? "s" : ""}
+                        +${(checklist.price_adder ?? 0).toFixed(2)} adder
                       </p>
                     </div>
                   </div>
@@ -672,6 +682,56 @@ export default function ServicesPage({
   canManageServices,
   updateServiceInState,
 }: ServicesPageProps) {
+  const { currentOrganizationId } = useAuth();
+
+  // Max checklist adder per service (for card/detail price range)
+  const [maxChecklistAdderByServiceId, setMaxChecklistAdderByServiceId] =
+    useState<Record<string, number>>({});
+
+  const serviceIdsKey = useMemo(
+    () => [...services].map((s) => s.id).sort().join(","),
+    [services]
+  );
+
+  const fetchMaxChecklistAdders = useCallback(async () => {
+    if (!currentOrganizationId) {
+      setMaxChecklistAdderByServiceId({});
+      return;
+    }
+    const ids = serviceIdsKey ? serviceIdsKey.split(",") : [];
+    if (ids.length === 0) {
+      setMaxChecklistAdderByServiceId({});
+      return;
+    }
+
+    try {
+      const { data, error: qError } = await supabase
+        .from("checklists")
+        .select("service_type_id, price_adder")
+        .in("service_type_id", ids);
+
+      if (qError) {
+        throw qError;
+      }
+
+      const map: Record<string, number> = {};
+      for (const id of ids) {
+        map[id] = 0;
+      }
+      for (const row of data || []) {
+        const sid = row.service_type_id as string;
+        const adder = Number(row.price_adder) || 0;
+        map[sid] = Math.max(map[sid] ?? 0, adder);
+      }
+      setMaxChecklistAdderByServiceId(map);
+    } catch (e) {
+      console.error("Error loading checklist adders for services:", e);
+    }
+  }, [currentOrganizationId, serviceIdsKey]);
+
+  useEffect(() => {
+    fetchMaxChecklistAdders();
+  }, [fetchMaxChecklistAdders]);
 
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -900,6 +960,7 @@ export default function ServicesPage({
         canManageServices={canManageServices}
         onBackToServices={handleBackToServicesFromChecklists}
         onBackToServiceDetail={viewingService ? handleBackToServiceDetail : undefined}
+        onChecklistPricingChanged={fetchMaxChecklistAdders}
       />
     );
   }
@@ -913,6 +974,9 @@ export default function ServicesPage({
       <>
         <ServiceDetailView
           service={latestService}
+          maxChecklistAdder={
+            maxChecklistAdderByServiceId[latestService.id] ?? 0
+          }
           canManage={canManageServices && !togglingIds.has(latestService.id)}
           onBack={handleBackToList}
           onEdit={handleEditFromDetail}
@@ -1068,6 +1132,9 @@ export default function ServicesPage({
             <ServiceCard
               key={service.id}
               service={service}
+              maxChecklistAdder={
+                maxChecklistAdderByServiceId[service.id] ?? 0
+              }
               canManage={canManageServices && !togglingIds.has(service.id)}
               onClick={handleViewService}
               onEdit={handleEdit}

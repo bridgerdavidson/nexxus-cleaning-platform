@@ -569,8 +569,17 @@ export default function CustomerDetailModal({
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-gray-900 text-sm">
-                                {appointment.service_type?.name || "Service"}
+                                {appointment.service_type?.name
+                                  ? appointment.checklist?.name
+                                    ? `${appointment.service_type.name} (${appointment.checklist.name})`
+                                    : appointment.service_type.name
+                                  : "Service"}
                               </p>
+                              {appointment.checklist?.name && (
+                                <p className="text-gray-400 text-xs">
+                                  {appointment.checklist.name}
+                                </p>
+                              )}
                               <p className="text-gray-500 text-xs">
                                 {appointment.property?.address || "No address"}
                               </p>

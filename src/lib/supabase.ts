@@ -193,13 +193,18 @@ export type Database = {
           cleaner_id: string | null
           property_id: string
           service_type_id: string
+          checklist_id: string | null
           scheduled_date: string
           scheduled_time: string
+          duration_minutes: number
           status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           total_price: number
+          special_requests: string | null
           notes: string | null
           series_id: string | null
           cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected'
+          price_override_enabled: boolean
+          price_override_total: number | null
           created_at: string
           updated_at: string
         }
@@ -210,13 +215,18 @@ export type Database = {
           cleaner_id?: string | null
           property_id: string
           service_type_id: string
+          checklist_id?: string | null
           scheduled_date: string
           scheduled_time: string
+          duration_minutes: number
           status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           total_price: number
+          special_requests?: string | null
           notes?: string | null
           series_id?: string | null
           cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected'
+          price_override_enabled?: boolean
+          price_override_total?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -227,13 +237,18 @@ export type Database = {
           cleaner_id?: string | null
           property_id?: string
           service_type_id?: string
+          checklist_id?: string | null
           scheduled_date?: string
           scheduled_time?: string
+          duration_minutes?: number
           status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           total_price?: number
+          special_requests?: string | null
           notes?: string | null
           series_id?: string | null
           cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected'
+          price_override_enabled?: boolean
+          price_override_total?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -292,6 +307,7 @@ export type Database = {
           cleaner_id: string | null
           property_id: string
           service_type_id: string
+          checklist_id: string | null
           start_date: string
           start_time: string
           duration_minutes: number
@@ -303,6 +319,8 @@ export type Database = {
           end_date: string | null
           max_occurrences: number | null
           is_active: boolean
+          price_override_enabled: boolean
+          price_override_total: number | null
           created_at: string
           updated_at: string
         }
@@ -313,6 +331,7 @@ export type Database = {
           cleaner_id?: string | null
           property_id: string
           service_type_id: string
+          checklist_id?: string | null
           start_date: string
           start_time: string
           duration_minutes: number
@@ -324,6 +343,8 @@ export type Database = {
           end_date?: string | null
           max_occurrences?: number | null
           is_active?: boolean
+          price_override_enabled?: boolean
+          price_override_total?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -334,6 +355,7 @@ export type Database = {
           cleaner_id?: string | null
           property_id?: string
           service_type_id?: string
+          checklist_id?: string | null
           start_date?: string
           start_time?: string
           duration_minutes?: number
@@ -345,6 +367,8 @@ export type Database = {
           end_date?: string | null
           max_occurrences?: number | null
           is_active?: boolean
+          price_override_enabled?: boolean
+          price_override_total?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -509,6 +533,7 @@ export type Database = {
           id: string
           name: string
           service_type_id: string
+          price_adder: number
           created_at: string
           updated_at: string
         }
@@ -516,6 +541,7 @@ export type Database = {
           id?: string
           name?: string
           service_type_id: string
+          price_adder?: number
           created_at?: string
           updated_at?: string
         }
@@ -523,6 +549,7 @@ export type Database = {
           id?: string
           name?: string
           service_type_id?: string
+          price_adder?: number
           created_at?: string
           updated_at?: string
         }

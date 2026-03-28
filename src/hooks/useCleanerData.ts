@@ -7,6 +7,8 @@ import { useRealtimeAppointments } from './useRealtimeAppointments';
 
 export interface CleanerAppointment {
   id: string;
+  service_type_id?: string;
+  checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
@@ -31,6 +33,10 @@ export interface CleanerAppointment {
     name: string;
     description: string;
     duration_minutes: number;
+  } | null;
+  checklist?: {
+    name: string;
+    price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
 }
@@ -108,6 +114,8 @@ export function useCleanerAppointments() {
         .from('appointments')
         .select(`
           id,
+          service_type_id,
+          checklist_id,
           scheduled_date,
           scheduled_time,
           status,
@@ -132,6 +140,10 @@ export function useCleanerAppointments() {
             name,
             description,
             duration_minutes
+          ),
+          checklist:checklists(
+            name,
+            price_adder
           )
         `)
         .eq('id', appointmentId)
@@ -151,7 +163,8 @@ export function useCleanerAppointments() {
         ...data,
         homeowner: Array.isArray(data.homeowner) ? data.homeowner[0] : data.homeowner,
         property: Array.isArray(data.property) ? data.property[0] : data.property,
-        service_type: Array.isArray(data.service_type) ? data.service_type[0] : data.service_type
+        service_type: Array.isArray(data.service_type) ? data.service_type[0] : data.service_type,
+        checklist: Array.isArray(data.checklist) ? data.checklist[0] : data.checklist
       } as CleanerAppointment;
     } catch (err) {
       console.error('Error in fetchSingleAppointment:', err);
@@ -250,6 +263,8 @@ export function useCleanerAppointments() {
           .from('appointments')
           .select(`
             id,
+            service_type_id,
+            checklist_id,
             scheduled_date,
             scheduled_time,
             status,
@@ -274,6 +289,10 @@ export function useCleanerAppointments() {
               name,
               description,
               duration_minutes
+            ),
+            checklist:checklists(
+              name,
+              price_adder
             )
           `)
           .eq('cleaner_id', user.id)
@@ -306,6 +325,7 @@ export function useCleanerAppointments() {
           homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
           property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
           service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+          checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
           payment_status: paymentStatusMap[appointment.id] || null,
         }));
         

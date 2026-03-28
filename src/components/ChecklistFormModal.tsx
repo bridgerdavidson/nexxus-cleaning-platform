@@ -12,7 +12,7 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 type ChecklistFormResult = 
   | { type: 'created'; checklist: ChecklistWithItems }
-  | { type: 'updated'; checklistId: string; name: string };
+  | { type: 'updated'; checklistId: string; name: string; priceAdder: number };
 
 interface ChecklistFormModalProps {
   isOpen: boolean;
@@ -33,6 +33,7 @@ export default function ChecklistFormModal({
 
   // Form state
   const [name, setName] = useState("");
+  const [priceAdder, setPriceAdder] = useState("0");
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -43,8 +44,10 @@ export default function ChecklistFormModal({
     if (isOpen) {
       if (checklist) {
         setName(checklist.name);
+        setPriceAdder((checklist.price_adder ?? 0).toString());
       } else {
         setName("");
+        setPriceAdder("0");
       }
       setError(null);
     }
@@ -64,20 +67,26 @@ export default function ChecklistFormModal({
       return;
     }
 
+    const parsedPriceAdder = parseFloat(priceAdder || "0");
+    if (Number.isNaN(parsedPriceAdder) || parsedPriceAdder < 0) {
+      setError("Price adder must be 0 or greater");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       if (isEditing && checklist) {
-        const result = await updateChecklist(checklist.id, name.trim());
+        const result = await updateChecklist(checklist.id, name.trim(), parsedPriceAdder);
         if (result.success) {
-          onSuccess({ type: 'updated', checklistId: checklist.id, name: name.trim() });
+          onSuccess({ type: 'updated', checklistId: checklist.id, name: name.trim(), priceAdder: parsedPriceAdder });
           onClose();
         } else {
           setError(result.error || "Failed to update checklist");
         }
       } else {
-        const result = await createChecklist(serviceTypeId!, name.trim());
+        const result = await createChecklist(serviceTypeId!, name.trim(), parsedPriceAdder);
         if (result.success && result.data) {
           // Convert Checklist to ChecklistWithItems with empty items array
           const checklistWithItems: ChecklistWithItems = {
@@ -153,6 +162,29 @@ export default function ChecklistFormModal({
               autoFocus
               required
             />
+          </div>
+
+          {/* Price adder */}
+          <div>
+            <label
+              htmlFor="checklist-price-adder"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Price Adder ($)
+            </label>
+            <input
+              type="number"
+              id="checklist-price-adder"
+              value={priceAdder}
+              onChange={(e) => setPriceAdder(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+              placeholder="0.00"
+              min="0"
+              step="0.01"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Added to the service base price when this checklist is selected.
+            </p>
           </div>
 
           {/* Actions */}

@@ -3,9 +3,12 @@
 import React from "react";
 import { Clock, DollarSign, Tag, Edit2, Trash2, ToggleLeft, ToggleRight, ClipboardList } from "lucide-react";
 import { ServiceType } from "../hooks/useServices";
+import { formatServicePriceRangeLabel } from "../lib/formatServicePriceRange";
 
 interface ServiceCardProps {
   service: ServiceType;
+  /** Largest price_adder among checklists for this service; 0 if none or all zero. */
+  maxChecklistAdder: number;
   canManage: boolean;
   onClick?: (service: ServiceType) => void;
   onEdit?: (service: ServiceType) => void;
@@ -16,6 +19,7 @@ interface ServiceCardProps {
 
 export default function ServiceCard({
   service,
+  maxChecklistAdder,
   canManage,
   onClick,
   onEdit,
@@ -33,10 +37,6 @@ export default function ServiceCard({
       return `${hours} hr${hours > 1 ? "s" : ""}`;
     }
     return `${hours} hr${hours > 1 ? "s" : ""} ${remainingMinutes} min`;
-  };
-
-  const formatPrice = (price: number) => {
-    return `$${price.toFixed(2)}`;
   };
 
   const formatServiceType = (type: string) => {
@@ -158,7 +158,10 @@ export default function ServiceCard({
                   service.is_active ? "text-gray-900" : "text-gray-500"
                 }`}
               >
-                {formatPrice(service.base_price)}
+                {formatServicePriceRangeLabel(
+                  service.base_price,
+                  maxChecklistAdder
+                )}
               </span>
             </div>
 

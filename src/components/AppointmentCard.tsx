@@ -7,6 +7,8 @@ import { JobProgress } from "../types";
 
 export interface AppointmentCardData {
   id: string;
+  service_type_id?: string;
+  checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
   status: string;
@@ -16,6 +18,8 @@ export interface AppointmentCardData {
   notes?: string | null;
   series_id?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  price_override_enabled?: boolean;
+  price_override_total?: number | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   homeowner_id?: string;
   homeowner?: {
@@ -38,6 +42,10 @@ export interface AppointmentCardData {
   service_type?: {
     name: string;
     description?: string;
+  } | null;
+  checklist?: {
+    name: string;
+    price_adder?: number;
   } | null;
 }
 
@@ -99,6 +107,14 @@ export default function AppointmentCard({
       }
     }
     return "Address not available";
+  };
+
+  const getServiceLabel = () => {
+    if (!appointment.service_type?.name) return "Service";
+    const checklistName = appointment.checklist?.name;
+    return checklistName
+      ? `${appointment.service_type.name} (${checklistName})`
+      : appointment.service_type.name;
   };
 
   const getPaymentStatusTabConfig = () => {
@@ -249,10 +265,10 @@ export default function AppointmentCard({
             <p className="text-sm text-gray-900 truncate font-medium">{getPropertyAddress()}</p>
           </div>
           {appointment.service_type && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
               <Briefcase className="w-4 h-4 text-gray-500 flex-shrink-0" />
               <p className="text-xs text-gray-600 truncate">
-                {appointment.service_type.name}
+                {getServiceLabel()}
               </p>
             </div>
           )}
@@ -348,10 +364,10 @@ export default function AppointmentCard({
             <p className="text-sm text-gray-600">{getPropertyAddress()}</p>
           </div>
           {appointment.service_type && (
-            <div className="flex items-start gap-2">
+            <div className="flex items-start gap-2 min-w-0">
               <Briefcase className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-gray-600">
-                {appointment.service_type.name}
+              <p className="text-sm text-gray-600 break-words">
+                {getServiceLabel()}
               </p>
             </div>
           )}

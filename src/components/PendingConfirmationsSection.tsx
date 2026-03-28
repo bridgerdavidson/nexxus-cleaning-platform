@@ -34,6 +34,9 @@ interface PendingAppointment {
   service_type?: {
     name: string;
   };
+  checklist?: {
+    name: string;
+  };
 }
 
 interface PendingConfirmationsSectionProps {
@@ -159,7 +162,11 @@ export default function PendingConfirmationsSection({
         homeowner_name: getHomeownerName(selectedAppointment),
         property_address: getPropertyAddress(selectedAppointment),
         service_name:
-          selectedAppointment.service_type?.name || "Cleaning Service",
+          selectedAppointment.service_type?.name
+            ? selectedAppointment.checklist?.name
+              ? `${selectedAppointment.service_type.name} (${selectedAppointment.checklist.name})`
+              : selectedAppointment.service_type.name
+            : "Cleaning Service",
       }
     : null;
 
@@ -236,7 +243,11 @@ export default function PendingConfirmationsSection({
                         {apt.service_type && (
                           <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
                             <SprayCan className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{apt.service_type.name}</span>
+                            <span>
+                              {apt.checklist?.name
+                                ? `${apt.service_type.name} (${apt.checklist.name})`
+                                : apt.service_type.name}
+                            </span>
                           </div>
                         )}
                         {apt.property && (

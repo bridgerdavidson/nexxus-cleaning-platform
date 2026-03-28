@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   X,
   Calendar,
@@ -44,6 +44,13 @@ interface ServiceType {
   description: string | null;
   base_price: number;
   duration_minutes: number;
+}
+
+interface ChecklistOption {
+  id: string;
+  name: string;
+  service_type_id: string;
+  price_adder: number;
 }
 
 interface Cleaner {
@@ -112,6 +119,9 @@ export default function AddAppointmentModal({
   const [serviceTypesLoading, setServiceTypesLoading] = useState(false);
   const [selectedServiceType, setSelectedServiceType] =
     useState<ServiceType | null>(null);
+  const [checklists, setChecklists] = useState<ChecklistOption[]>([]);
+  const [checklistsLoading, setChecklistsLoading] = useState(false);
+  const [selectedChecklist, setSelectedChecklist] = useState<ChecklistOption | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
@@ -138,12 +148,16 @@ export default function AddAppointmentModal({
 
   // Step 4 - Payment method state
   const [paymentMethodSaved, setPaymentMethodSaved] = useState(false);
-  const [stripeCustomerId, setStripeCustomerId] = useState<string | null>(null);
   const [skipPaymentMethod, setSkipPaymentMethod] = useState(false);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const getSystemCalculatedPrice = useCallback(() => {
+    if (!selectedServiceType || !selectedChecklist) return 0;
+    return selectedServiceType.base_price + (selectedChecklist.price_adder || 0);
+  }, [selectedChecklist, selectedServiceType]);
 
   // Fetch and set pre-selected homeowner
   const fetchPreSelectedHomeowner = async () => {
@@ -338,6 +352,58 @@ export default function AddAppointmentModal({
     }
   };
 
+  const fetchChecklists = useCallback(
+    async (serviceTypeId: string) => {
+      if (!currentOrganizationId) return;
+
+      try {
+        setChecklistsLoading(true);
+        setChecklists([]);
+        const { data, error } = await supabase
+          .from("checklists")
+          .select("id, name, service_type_id, price_adder")
+          .eq("service_type_id", serviceTypeId)
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+
+        const checklistOptions = (data || []) as ChecklistOption[];
+        setChecklists(checklistOptions);
+
+        if (checklistOptions.length > 0) {
+          setSelectedChecklist(checklistOptions[0]);
+          if (priceOverrideEnabled) {
+            const selectedService = serviceTypes.find((s) => s.id === serviceTypeId);
+            if (selectedService) {
+              const systemTotal = selectedService.base_price + (checklistOptions[0].price_adder || 0);
+              setCustomPrice(systemTotal.toString());
+            }
+          }
+        } else {
+          setSelectedChecklist(null);
+        }
+      } catch (err) {
+        console.error("Error fetching checklists:", err);
+        setChecklists([]);
+        setSelectedChecklist(null);
+        setError("Failed to load checklists for this service type");
+      } finally {
+        setChecklistsLoading(false);
+      }
+    },
+    [currentOrganizationId, priceOverrideEnabled, serviceTypes]
+  );
+
+  useEffect(() => {
+    if (!selectedServiceType) {
+      setChecklists([]);
+      setSelectedChecklist(null);
+      return;
+    }
+
+    fetchChecklists(selectedServiceType.id);
+  }, [fetchChecklists, selectedServiceType]);
+
   const fetchCleaners = async () => {
     if (!currentOrganizationId) return;
 
@@ -385,6 +451,7 @@ export default function AddAppointmentModal({
       !selectedHomeowner ||
       !selectedProperty ||
       !selectedServiceType ||
+      !selectedChecklist ||
       !scheduledDate ||
       !scheduledTime ||
       !currentOrganizationId
@@ -446,11 +513,12 @@ export default function AddAppointmentModal({
       setIsCreating(true);
       setError(null);
 
-      // Calculate final price (custom price or base price)
+      // Calculate final price (override or base+checklist adder)
+      const systemCalculatedPrice = getSystemCalculatedPrice();
       const finalPrice =
         priceOverrideEnabled && customPrice
           ? parseFloat(customPrice)
-          : selectedServiceType.base_price;
+          : systemCalculatedPrice;
 
       // Handle recurring appointments
       if (recurrenceType !== "none") {
@@ -465,10 +533,13 @@ export default function AddAppointmentModal({
             cleanerId: selectedCleaner.id,
             propertyId: selectedProperty.id,
             serviceTypeId: selectedServiceType.id,
+            checklistId: selectedChecklist.id,
             startDate: scheduledDate,
             startTime: scheduledTime,
             durationMinutes: selectedServiceType.duration_minutes,
             totalPrice: finalPrice,
+            priceOverrideEnabled: priceOverrideEnabled,
+            priceOverrideTotal: priceOverrideEnabled && customPrice ? parseFloat(customPrice) : null,
             recurrenceType: recurrenceType,
             interval: recurrenceInterval,
             daysOfWeek:
@@ -508,10 +579,13 @@ export default function AddAppointmentModal({
           cleaner_id: selectedCleaner.id,
           property_id: selectedProperty.id,
           service_type_id: selectedServiceType.id,
+          checklist_id: selectedChecklist.id,
           scheduled_date: scheduledDate,
           scheduled_time: scheduledTime,
           duration_minutes: selectedServiceType.duration_minutes,
           total_price: finalPrice,
+          price_override_enabled: priceOverrideEnabled,
+          price_override_total: priceOverrideEnabled && customPrice ? parseFloat(customPrice) : null,
           special_requests: specialRequests || null,
           status: initialStatus,
           cleaner_confirmation_status: 'awaiting',
@@ -568,6 +642,8 @@ export default function AddAppointmentModal({
       setSelectedProperty(null);
     }
     setSelectedServiceType(null);
+    setChecklists([]);
+    setSelectedChecklist(null);
     setScheduledDate("");
     setScheduledTime("");
     setSpecialRequests("");
@@ -587,7 +663,6 @@ export default function AddAppointmentModal({
     setPriceOverrideEnabled(false);
     // Reset payment state
     setPaymentMethodSaved(false);
-    setStripeCustomerId(null);
     setSkipPaymentMethod(false);
     setError(null);
     onClose();
@@ -635,6 +710,7 @@ export default function AddAppointmentModal({
   const isStep1Valid = selectedHomeowner && selectedProperty;
   const isStep2Valid =
     selectedServiceType &&
+    selectedChecklist &&
     scheduledDate &&
     scheduledTime &&
     (hidePriceOverride ||
@@ -1023,6 +1099,8 @@ export default function AddAppointmentModal({
                           (s) => s.id === e.target.value
                         );
                         setSelectedServiceType(serviceType || null);
+                        setSelectedChecklist(null);
+                        setChecklists([]);
                       }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       required
@@ -1036,85 +1114,122 @@ export default function AddAppointmentModal({
                       ))}
                     </select>
                   )}
-                  {selectedServiceType?.description && (
-                    <p className="mt-2 text-sm text-gray-600">
-                      {selectedServiceType.description}
-                    </p>
-                  )}
+                </div>
+
+                {/* Checklist */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Checklist *
+                  </label>
+                  <select
+                    value={selectedChecklist?.id || ""}
+                    disabled={!selectedServiceType || checklistsLoading}
+                    onChange={(e) => {
+                      const checklist = checklists.find((c) => c.id === e.target.value);
+                      setSelectedChecklist(checklist || null);
+                      if (priceOverrideEnabled && selectedServiceType && checklist) {
+                        const systemTotal =
+                          selectedServiceType.base_price + (checklist.price_adder || 0);
+                        setCustomPrice(systemTotal.toString());
+                      }
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    required
+                  >
+                    <option value="">
+                      {!selectedServiceType
+                        ? "Select a service type first"
+                        : checklistsLoading
+                          ? "Loading checklists…"
+                          : "Select a checklist"}
+                    </option>
+                    {checklists.map((checklist) => (
+                      <option key={checklist.id} value={checklist.id}>
+                        {`${checklist.name} (+${(checklist.price_adder ?? 0).toFixed(2)})`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Price Display (with optional override for admin/manager) */}
-                {selectedServiceType && (
+                {selectedServiceType && selectedChecklist && (
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-5 h-5 text-primary-600" />
-                        <span className="font-medium text-gray-900">Price</span>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        {!hidePriceOverride && priceOverrideEnabled ? (
+                          <div className="flex items-center gap-2 w-full max-w-full">
+                            <span className="text-lg font-medium text-gray-700">
+                              $
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={customPrice}
+                              onChange={(e) => setCustomPrice(e.target.value)}
+                              placeholder="Enter custom price"
+                              className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                            />
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="text-sm text-gray-600">
+                              Base: ${selectedServiceType.base_price.toFixed(2)}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Checklist adder: +$
+                              {selectedChecklist.price_adder.toFixed(2)}
+                            </p>
+                            <div className="text-2xl font-bold text-gray-900 pt-1">
+                              ${getSystemCalculatedPrice().toFixed(2)}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      {!hidePriceOverride && (
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={priceOverrideEnabled}
-                            onChange={(e) => {
-                              setPriceOverrideEnabled(e.target.checked);
-                              if (!e.target.checked) {
-                                setCustomPrice("");
-                              } else {
-                                setCustomPrice(
-                                  selectedServiceType.base_price.toString()
-                                );
-                              }
-                            }}
-                            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                          />
-                          <span className="text-sm text-gray-600">
-                            Override price
+                      <div className="shrink-0 flex flex-col items-end gap-2 text-right">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="w-5 h-5 text-primary-600 shrink-0" />
+                          <span className="font-medium text-gray-900">
+                            Price
                           </span>
-                        </label>
-                      )}
+                        </div>
+                        {!hidePriceOverride && (
+                          <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer leading-snug">
+                            <input
+                              type="checkbox"
+                              checked={priceOverrideEnabled}
+                              onChange={(e) => {
+                                setPriceOverrideEnabled(e.target.checked);
+                                if (!e.target.checked) {
+                                  setCustomPrice("");
+                                } else {
+                                  const systemTotal = getSystemCalculatedPrice();
+                                  setCustomPrice(systemTotal.toString());
+                                }
+                              }}
+                              className="w-4 h-4 mt-0.5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 shrink-0"
+                            />
+                            <span>Override price</span>
+                          </label>
+                        )}
+                      </div>
                     </div>
-
-                    {!hidePriceOverride && priceOverrideEnabled ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-medium text-gray-700">
-                          $
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={customPrice}
-                          onChange={(e) => setCustomPrice(e.target.value)}
-                          placeholder="Enter custom price"
-                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        />
-                      </div>
-                    ) : (
-                      <div className="text-2xl font-bold text-gray-900">
-                        ${selectedServiceType.base_price.toFixed(2)}
-                        <span className="text-sm font-normal text-gray-500 ml-2">
-                          (base price)
-                        </span>
-                      </div>
-                    )}
 
                     {!hidePriceOverride &&
                       priceOverrideEnabled &&
                       customPrice &&
-                      parseFloat(customPrice) !==
-                        selectedServiceType.base_price && (
+                      parseFloat(customPrice) !== getSystemCalculatedPrice() && (
                         <p className="mt-2 text-xs text-gray-500">
-                          Original base price: $
-                          {selectedServiceType.base_price.toFixed(2)}
+                          Calculated total: $
+                          {getSystemCalculatedPrice().toFixed(2)}
                           {parseFloat(customPrice) >
-                          selectedServiceType.base_price
+                          getSystemCalculatedPrice()
                             ? ` (+$${(
                                 parseFloat(customPrice) -
-                                selectedServiceType.base_price
+                                getSystemCalculatedPrice()
                               ).toFixed(2)})`
                             : ` (-$${(
-                                selectedServiceType.base_price -
+                                getSystemCalculatedPrice() -
                                 parseFloat(customPrice)
                               ).toFixed(2)})`}
                         </p>
@@ -1554,8 +1669,7 @@ export default function AddAppointmentModal({
                   ) : (
                     <PaymentMethodForm
                       homeownerId={selectedHomeowner.id}
-                      onSuccess={(customerId, paymentMethodId) => {
-                        setStripeCustomerId(customerId);
+                      onSuccess={() => {
                         setPaymentMethodSaved(true);
                       }}
                       onError={(errorMsg) => {

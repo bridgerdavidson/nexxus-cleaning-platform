@@ -325,7 +325,11 @@ export default function ActiveJobPage({
   const homeownerName = appointment.homeowner
     ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
     : "Unknown";
-  const serviceName = appointment.service_type?.name || "Service";
+  const serviceName = appointment.service_type?.name
+    ? appointment.checklist?.name
+      ? `${appointment.service_type.name} (${appointment.checklist.name})`
+      : appointment.service_type.name
+    : "Service";
 
   return (
     <div className="space-y-6">

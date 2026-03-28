@@ -13,7 +13,7 @@ interface UseChecklistsResult {
   applyLineItemAdded: (checklistId: string, item: ChecklistLineItem) => void;
   applyLineItemRemoved: (lineItemId: string) => void;
   applyLineItemsReordered: (checklistId: string, orderedItems: ChecklistLineItem[]) => void;
-  applyChecklistUpdated: (checklistId: string, name: string) => void;
+  applyChecklistUpdated: (checklistId: string, name: string, priceAdder: number) => void;
   applyChecklistAdded: (checklist: ChecklistWithItems) => void;
 }
 
@@ -140,10 +140,10 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
     );
   }, []);
 
-  const applyChecklistUpdated = useCallback((checklistId: string, name: string) => {
+  const applyChecklistUpdated = useCallback((checklistId: string, name: string, priceAdder: number) => {
     setChecklists((prev) =>
       prev.map((checklist) =>
-        checklist.id === checklistId ? { ...checklist, name } : checklist
+        checklist.id === checklistId ? { ...checklist, name, price_adder: priceAdder } : checklist
       )
     );
   }, []);
@@ -175,7 +175,8 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
  */
 export async function createChecklist(
   serviceTypeId: string,
-  name: string = 'New Checklist'
+  name: string = 'New Checklist',
+  priceAdder: number = 0
 ): Promise<{ success: boolean; data?: Checklist; error?: string }> {
   try {
     const { data, error } = await supabase
@@ -183,6 +184,7 @@ export async function createChecklist(
       .insert({
         service_type_id: serviceTypeId,
         name: name.trim() || 'New Checklist',
+        price_adder: priceAdder,
       })
       .select()
       .single();
@@ -206,7 +208,8 @@ export async function createChecklist(
  */
 export async function updateChecklist(
   checklistId: string,
-  name: string
+  name: string,
+  priceAdder: number
 ): Promise<{ success: boolean; data?: Checklist; error?: string }> {
   try {
     if (!name.trim()) {
@@ -215,7 +218,7 @@ export async function updateChecklist(
 
     const { data, error } = await supabase
       .from('checklists')
-      .update({ name: name.trim() })
+      .update({ name: name.trim(), price_adder: priceAdder })
       .eq('id', checklistId)
       .select()
       .single();

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   X,
   Calendar,
@@ -23,6 +23,7 @@ import { createPortal } from "react-dom";
 import StatusBadge from "./StatusBadge";
 import { AppointmentCardData } from "./AppointmentCard";
 import { updateAppointment } from "../hooks/useAdminData";
+import { supabase } from "../lib/supabase";
 import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { formatTimeTo12h } from "../lib/formatTime";
@@ -37,6 +38,19 @@ interface CleanerFeedback {
     suggested_date: string;
     suggested_time: string;
   }[];
+}
+
+interface ServiceTypeOption {
+  id: string;
+  name: string;
+  base_price: number;
+}
+
+interface ChecklistOption {
+  id: string;
+  name: string;
+  service_type_id: string;
+  price_adder: number;
 }
 
 interface AppointmentSidePanelProps {
@@ -85,10 +99,18 @@ export default function AppointmentSidePanel({
   const [editedAppointment, setEditedAppointment] = useState({
     scheduled_date: "",
     scheduled_time: "",
+    service_type_id: "",
+    checklist_id: "",
     total_price: 0,
+    price_override_enabled: false,
+    price_override_total: "",
     special_requests: "",
     notes: "",
   });
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([]);
+  const [serviceTypesLoading, setServiceTypesLoading] = useState(false);
+  const [checklists, setChecklists] = useState<ChecklistOption[]>([]);
+  const [checklistsLoading, setChecklistsLoading] = useState(false);
 
   // Cleaner feedback state
   const [cleanerFeedback, setCleanerFeedback] = useState<CleanerFeedback[]>([]);
@@ -158,6 +180,79 @@ export default function AppointmentSidePanel({
     }
   }, []);
 
+  const getSystemCalculatedTotal = useCallback(
+    (serviceTypeId: string, checklistId: string) => {
+      const serviceType = serviceTypes.find((s) => s.id === serviceTypeId);
+      const checklist = checklists.find((c) => c.id === checklistId);
+      if (!serviceType || !checklist) return 0;
+      return serviceType.base_price + (checklist.price_adder || 0);
+    },
+    [checklists, serviceTypes]
+  );
+
+  const editPricingPreview = useMemo(() => {
+    const serviceType = serviceTypes.find(
+      (s) => s.id === editedAppointment.service_type_id
+    );
+    const checklist = checklists.find(
+      (c) => c.id === editedAppointment.checklist_id
+    );
+    if (!serviceType || !checklist) return null;
+    const adder = checklist.price_adder ?? 0;
+    return {
+      base: serviceType.base_price,
+      adder,
+      total: serviceType.base_price + adder,
+    };
+  }, [
+    editedAppointment.service_type_id,
+    editedAppointment.checklist_id,
+    serviceTypes,
+    checklists,
+  ]);
+
+  const fetchServiceTypes = useCallback(async () => {
+    try {
+      setServiceTypesLoading(true);
+      const { data, error } = await supabase
+        .from("service_types")
+        .select("id, name, base_price")
+        .eq("is_active", true)
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      setServiceTypes((data || []) as ServiceTypeOption[]);
+    } catch (err) {
+      console.error("Error fetching service types:", err);
+      setServiceTypes([]);
+    } finally {
+      setServiceTypesLoading(false);
+    }
+  }, []);
+
+  const fetchChecklists = useCallback(async (serviceTypeId: string) => {
+    if (!serviceTypeId) {
+      setChecklists([]);
+      return;
+    }
+    try {
+      setChecklistsLoading(true);
+      const { data, error } = await supabase
+        .from("checklists")
+        .select("id, name, service_type_id, price_adder")
+        .eq("service_type_id", serviceTypeId)
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      setChecklists((data || []) as ChecklistOption[]);
+    } catch (err) {
+      console.error("Error fetching checklists:", err);
+      setChecklists([]);
+    } finally {
+      setChecklistsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (appointment?.homeowner_id && isOpen) {
       fetchPaymentMethod(appointment.homeowner_id);
@@ -202,12 +297,52 @@ export default function AppointmentSidePanel({
       setEditedAppointment({
         scheduled_date: appointment.scheduled_date || "",
         scheduled_time: appointment.scheduled_time?.slice(0, 5) || "", // Remove seconds if present
+        service_type_id: appointment.service_type_id || "",
+        checklist_id: appointment.checklist_id || "",
         total_price: appointment.total_price || 0,
+        price_override_enabled: appointment.price_override_enabled || false,
+        price_override_total:
+          appointment.price_override_total != null
+            ? appointment.price_override_total.toString()
+            : "",
         special_requests: appointment.special_requests || "",
         notes: appointment.notes || "",
       });
     }
   }, [appointment]);
+
+  useEffect(() => {
+    if (isOpen && isEditing) {
+      fetchServiceTypes();
+    }
+  }, [fetchServiceTypes, isEditing, isOpen]);
+
+  useEffect(() => {
+    if (isEditing && editedAppointment.service_type_id) {
+      fetchChecklists(editedAppointment.service_type_id);
+    } else {
+      setChecklists([]);
+    }
+  }, [editedAppointment.service_type_id, fetchChecklists, isEditing]);
+
+  useEffect(() => {
+    if (!isEditing || checklists.length === 0) return;
+    if (editedAppointment.checklist_id) return;
+
+    const firstChecklist = checklists[0];
+    setEditedAppointment((prev) => ({
+      ...prev,
+      checklist_id: firstChecklist.id,
+      total_price: prev.price_override_enabled
+        ? prev.total_price
+        : getSystemCalculatedTotal(prev.service_type_id, firstChecklist.id),
+    }));
+  }, [
+    checklists,
+    editedAppointment.checklist_id,
+    getSystemCalculatedTotal,
+    isEditing,
+  ]);
 
   // Reset editing state when panel closes
   useEffect(() => {
@@ -273,11 +408,27 @@ export default function AppointmentSidePanel({
   const handleSave = async () => {
     if (!appointment) return;
 
+    const priceOverrideEnabled = editedAppointment.price_override_enabled;
+    const systemTotal = getSystemCalculatedTotal(
+      editedAppointment.service_type_id,
+      editedAppointment.checklist_id
+    );
+    const overrideTotal = parseFloat(editedAppointment.price_override_total);
+    const finalTotal = priceOverrideEnabled
+      ? Number.isFinite(overrideTotal)
+        ? overrideTotal
+        : editedAppointment.total_price
+      : systemTotal || editedAppointment.total_price;
+
     setIsSaving(true);
     const result = await updateAppointment(appointment.id, {
       scheduled_date: editedAppointment.scheduled_date,
       scheduled_time: editedAppointment.scheduled_time + ":00", // Add seconds back
-      total_price: editedAppointment.total_price,
+      service_type_id: editedAppointment.service_type_id || undefined,
+      checklist_id: editedAppointment.checklist_id || null,
+      total_price: finalTotal,
+      price_override_enabled: priceOverrideEnabled,
+      price_override_total: priceOverrideEnabled ? finalTotal : null,
       special_requests: editedAppointment.special_requests || null,
       notes: editedAppointment.notes || null,
     });
@@ -290,16 +441,29 @@ export default function AppointmentSidePanel({
         scheduled_date: result.data.scheduled_date,
         scheduled_time: result.data.scheduled_time,
         total_price: result.data.total_price,
+        service_type_id: result.data.service_type_id,
+        checklist_id: result.data.checklist_id,
+        price_override_enabled: result.data.price_override_enabled,
+        price_override_total: result.data.price_override_total,
         special_requests: result.data.special_requests,
         notes: result.data.notes,
         status: result.data.status,
+        service_type: result.data.service_type,
+        checklist: result.data.checklist,
       };
 
       // Update local edited state immediately
       setEditedAppointment({
         scheduled_date: updatedAppointment.scheduled_date || "",
         scheduled_time: updatedAppointment.scheduled_time?.slice(0, 5) || "",
+        service_type_id: updatedAppointment.service_type_id || "",
+        checklist_id: updatedAppointment.checklist_id || "",
         total_price: updatedAppointment.total_price || 0,
+        price_override_enabled: updatedAppointment.price_override_enabled || false,
+        price_override_total:
+          updatedAppointment.price_override_total != null
+            ? updatedAppointment.price_override_total.toString()
+            : "",
         special_requests: updatedAppointment.special_requests || "",
         notes: updatedAppointment.notes || "",
       });
@@ -318,7 +482,14 @@ export default function AppointmentSidePanel({
       setEditedAppointment({
         scheduled_date: appointment.scheduled_date || "",
         scheduled_time: appointment.scheduled_time?.slice(0, 5) || "",
+        service_type_id: appointment.service_type_id || "",
+        checklist_id: appointment.checklist_id || "",
         total_price: appointment.total_price || 0,
+        price_override_enabled: appointment.price_override_enabled || false,
+        price_override_total:
+          appointment.price_override_total != null
+            ? appointment.price_override_total.toString()
+            : "",
         special_requests: appointment.special_requests || "",
         notes: appointment.notes || "",
       });
@@ -487,15 +658,64 @@ export default function AppointmentSidePanel({
           {appointment.service_type && (
             <div className="flex items-start gap-2">
               <Briefcase className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm text-gray-500">Service</p>
-                <p className="font-medium text-gray-900">
-                  {appointment.service_type.name}
-                </p>
-                {appointment.service_type.description && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    {appointment.service_type.description}
-                  </p>
+                {isEditing ? (
+                  <div className="space-y-2 mt-1">
+                    <select
+                      value={editedAppointment.service_type_id}
+                      onChange={(e) => {
+                        const nextServiceTypeId = e.target.value;
+                        setEditedAppointment((prev) => ({
+                          ...prev,
+                          service_type_id: nextServiceTypeId,
+                          checklist_id: "",
+                        }));
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      disabled={serviceTypesLoading}
+                    >
+                      <option value="">{serviceTypesLoading ? "Loading services..." : "Select service type"}</option>
+                      {serviceTypes.map((serviceType) => (
+                        <option key={serviceType.id} value={serviceType.id}>
+                          {serviceType.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={editedAppointment.checklist_id}
+                      onChange={(e) => {
+                        const nextChecklistId = e.target.value;
+                        setEditedAppointment((prev) => ({
+                          ...prev,
+                          checklist_id: nextChecklistId,
+                          total_price: prev.price_override_enabled
+                            ? prev.total_price
+                            : getSystemCalculatedTotal(prev.service_type_id, nextChecklistId),
+                        }));
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      disabled={!editedAppointment.service_type_id || checklistsLoading}
+                    >
+                      <option value="">
+                        {checklistsLoading ? "Loading checklists..." : "Select checklist"}
+                      </option>
+                      {checklists.map((checklist) => (
+                        <option key={checklist.id} value={checklist.id}>
+                          {checklist.name} (+${checklist.price_adder.toFixed(2)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <p className="font-medium text-gray-900">
+                      {appointment.service_type.name}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {appointment.checklist?.name || "No checklist"}
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -539,26 +759,108 @@ export default function AppointmentSidePanel({
           {role !== "cleaner" && (
             <div className="flex items-start gap-2">
               <DollarSign className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0 self-start">
                 <p className="text-sm text-gray-500">Total Amount</p>
                 {isEditing ? (
-                  <div className="relative mt-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                      $
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editedAppointment.total_price}
-                      onChange={(e) =>
-                        setEditedAppointment({
-                          ...editedAppointment,
-                          total_price: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
+                  <div className="mt-1 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        {editedAppointment.price_override_enabled ? (
+                          <div className="relative w-full max-w-full">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                              $
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={editedAppointment.price_override_total}
+                              onChange={(e) =>
+                                setEditedAppointment({
+                                  ...editedAppointment,
+                                  price_override_total: e.target.value,
+                                  total_price: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                              className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+                            />
+                          </div>
+                        ) : !editedAppointment.service_type_id ? (
+                          <p className="text-sm text-gray-500">
+                            Select a service type to preview price.
+                          </p>
+                        ) : checklistsLoading ? (
+                          <p className="text-sm text-gray-500">
+                            Loading checklists…
+                          </p>
+                        ) : !editedAppointment.checklist_id ? (
+                          <p className="text-sm text-gray-500">
+                            Select a checklist to preview price.
+                          </p>
+                        ) : editPricingPreview ? (
+                          <div className="space-y-1">
+                            <p className="text-sm text-gray-600">
+                              Base: ${editPricingPreview.base.toFixed(2)}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Checklist adder: +$
+                              {editPricingPreview.adder.toFixed(2)}
+                            </p>
+                            <div className="text-2xl font-bold text-gray-900 pt-1">
+                              ${editPricingPreview.total.toFixed(2)}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">
+                            Unable to preview price for this selection.
+                          </p>
+                        )}
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer shrink-0 leading-snug">
+                        <input
+                          type="checkbox"
+                          checked={editedAppointment.price_override_enabled}
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            const calculatedTotal = getSystemCalculatedTotal(
+                              editedAppointment.service_type_id,
+                              editedAppointment.checklist_id
+                            );
+                            setEditedAppointment((prev) => ({
+                              ...prev,
+                              price_override_enabled: enabled,
+                              price_override_total: enabled
+                                ? (prev.total_price || calculatedTotal).toString()
+                                : "",
+                              total_price: enabled
+                                ? prev.total_price
+                                : calculatedTotal || prev.total_price,
+                            }));
+                          }}
+                          className="w-4 h-4 mt-0.5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 shrink-0"
+                        />
+                        Override total price
+                      </label>
+                    </div>
+
+                    {editedAppointment.price_override_enabled &&
+                      editPricingPreview && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
+                          <p className="text-xs text-gray-500">
+                            Calculated from current service & checklist
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Base: ${editPricingPreview.base.toFixed(2)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Checklist adder: +$
+                            {editPricingPreview.adder.toFixed(2)}
+                          </p>
+                          <p className="text-sm font-semibold text-gray-900">
+                            ${editPricingPreview.total.toFixed(2)}
+                          </p>
+                        </div>
+                      )}
                   </div>
                 ) : (
                   <p className="text-2xl font-bold text-gray-900">

@@ -20,10 +20,13 @@ interface CreateRecurringAppointmentInput {
   cleanerId?: string | null;
   propertyId: string;
   serviceTypeId: string;
+  checklistId?: string | null;
   startDate: string;
   startTime: string;
   durationMinutes: number;
   totalPrice: number;
+  priceOverrideEnabled?: boolean;
+  priceOverrideTotal?: number | null;
   recurrenceType: 'daily' | 'weekly' | 'monthly';
   interval: number;
   daysOfWeek?: number[];
@@ -44,10 +47,13 @@ export async function POST(request: NextRequest) {
       cleanerId,
       propertyId,
       serviceTypeId,
+      checklistId,
       startDate,
       startTime,
       durationMinutes,
       totalPrice,
+      priceOverrideEnabled,
+      priceOverrideTotal,
       recurrenceType,
       interval,
       daysOfWeek,
@@ -98,10 +104,13 @@ export async function POST(request: NextRequest) {
         cleaner_id: cleanerId ?? null,
         property_id: propertyId,
         service_type_id: serviceTypeId,
+        checklist_id: checklistId ?? null,
         start_date: startDate,
         start_time: startTime,
         duration_minutes: durationMinutes,
         total_price: totalPrice,
+        price_override_enabled: priceOverrideEnabled ?? false,
+        price_override_total: priceOverrideTotal ?? null,
         special_requests: specialRequests ?? null,
         recurrence_type: recurrenceType,
         interval: interval,
@@ -154,10 +163,13 @@ export async function POST(request: NextRequest) {
       cleaner_id: cleanerId ?? null,
       property_id: propertyId,
       service_type_id: serviceTypeId,
+      checklist_id: checklistId ?? null,
       scheduled_date: occ.scheduled_date,
       scheduled_time: occ.scheduled_time,
       duration_minutes: occ.duration_minutes,
       total_price: totalPrice,
+      price_override_enabled: priceOverrideEnabled ?? false,
+      price_override_total: priceOverrideTotal ?? null,
       special_requests: specialRequests ?? null,
       status: appointmentStatus,
       series_id: series.id,

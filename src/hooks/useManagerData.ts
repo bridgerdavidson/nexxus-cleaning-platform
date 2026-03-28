@@ -9,6 +9,8 @@ import { useRealtimePayments, PaymentUpdateData } from './useRealtimePayments';
 // Manager interfaces (same as admin but focused on operations management)
 export interface ManagerAppointment {
   id: string;
+  service_type_id?: string;
+  checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
@@ -16,6 +18,8 @@ export interface ManagerAppointment {
   special_requests?: string | null;
   notes?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  price_override_enabled?: boolean;
+  price_override_total?: number | null;
   homeowner_id?: string;
   homeowner: {
     first_name: string;
@@ -39,6 +43,10 @@ export interface ManagerAppointment {
   service_type: {
     name: string;
     description: string;
+  } | null;
+  checklist?: {
+    name: string;
+    price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
 }
@@ -113,6 +121,8 @@ export function useManagerAppointments() {
         .from('appointments')
         .select(`
           id,
+          service_type_id,
+          checklist_id,
           scheduled_date,
           scheduled_time,
           status,
@@ -120,6 +130,8 @@ export function useManagerAppointments() {
           special_requests,
           notes,
           cleaner_confirmation_status,
+          price_override_enabled,
+          price_override_total,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -142,6 +154,10 @@ export function useManagerAppointments() {
           service_type:service_types(
             name,
             description
+          ),
+          checklist:checklists(
+            name,
+            price_adder
           )
         `)
         .eq('id', appointmentId)
@@ -161,6 +177,7 @@ export function useManagerAppointments() {
         homeowner: Array.isArray(data.homeowner) ? data.homeowner[0] : data.homeowner,
         property: Array.isArray(data.property) ? data.property[0] : data.property,
         service_type: Array.isArray(data.service_type) ? data.service_type[0] : data.service_type,
+        checklist: Array.isArray(data.checklist) ? data.checklist[0] : data.checklist,
         cleaner_profile: data.cleaner_profile && Array.isArray(data.cleaner_profile) 
           ? {
               ...data.cleaner_profile[0],
@@ -263,6 +280,8 @@ export function useManagerAppointments() {
         .from('appointments')
         .select(`
           id,
+          service_type_id,
+          checklist_id,
           scheduled_date,
           scheduled_time,
           status,
@@ -270,6 +289,8 @@ export function useManagerAppointments() {
           special_requests,
           notes,
           cleaner_confirmation_status,
+          price_override_enabled,
+          price_override_total,
           homeowner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
@@ -293,6 +314,10 @@ export function useManagerAppointments() {
           service_type:service_types(
             name,
             description
+          ),
+          checklist:checklists(
+            name,
+            price_adder
           )
         `)
         .eq('organization_id', currentOrganizationId)
@@ -324,6 +349,7 @@ export function useManagerAppointments() {
         homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
         property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
         service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+        checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
         cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
           ? {
               ...appointment.cleaner_profile[0],

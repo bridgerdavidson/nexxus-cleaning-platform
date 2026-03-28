@@ -164,7 +164,12 @@ export default function CalendarView({
           ? `${apt.homeowner.first_name} ${apt.homeowner.last_name}`
           : "Unknown";
       }
-      const serviceName = apt.service_type?.name || "Service";
+      const checklistName = apt.checklist?.name;
+      const serviceName = apt.service_type?.name
+        ? checklistName
+          ? `${apt.service_type.name} (${checklistName})`
+          : apt.service_type.name
+        : "Service";
 
       return {
         id: apt.id,
@@ -232,7 +237,11 @@ export default function CalendarView({
           </div>
           {currentView !== Views.MONTH && (
             <div className="text-xs opacity-75 truncate">
-              {apt.service_type?.name}
+              {apt.service_type?.name
+                ? apt.checklist?.name
+                  ? `${apt.service_type.name} (${apt.checklist.name})`
+                  : apt.service_type.name
+                : "Service"}
             </div>
           )}
         </div>

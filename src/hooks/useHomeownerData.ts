@@ -6,6 +6,8 @@ import { useAuth } from './useAuth';
 
 export interface Appointment {
   id: string;
+  service_type_id?: string;
+  checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
@@ -19,6 +21,10 @@ export interface Appointment {
   service_type: {
     name: string;
     description: string;
+  } | null;
+  checklist?: {
+    name: string;
+    price_adder: number;
   } | null;
   cleaner_profile?: {
     user_profile: {
@@ -98,6 +104,8 @@ export function useHomeownerAppointments() {
         .from('appointments')
         .select(`
           id,
+          service_type_id,
+          checklist_id,
           scheduled_date,
           scheduled_time,
           status,
@@ -111,6 +119,10 @@ export function useHomeownerAppointments() {
           service_type:service_types(
             name,
             description
+          ),
+          checklist:checklists(
+            name,
+            price_adder
           ),
           cleaner_profile:cleaner_profiles(
             user_profile:user_profiles(
@@ -148,6 +160,7 @@ export function useHomeownerAppointments() {
         ...appointment,
         property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
         service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+        checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
         cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
           ? {
               ...appointment.cleaner_profile[0],

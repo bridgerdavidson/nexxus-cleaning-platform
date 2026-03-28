@@ -110,6 +110,7 @@ export interface Appointment {
   cleaner_id: string | null; // References cleaner_profiles(id)
   property_id: string;
   service_type_id: string;
+  checklist_id: string | null; // References checklists(id)
   scheduled_date: string; // date
   scheduled_time: string; // time
   duration_minutes: number;
@@ -120,6 +121,8 @@ export interface Appointment {
   notes: string | null;
   series_id: string | null; // References recurring_appointment_series(id)
   cleaner_confirmation_status: CleanerConfirmationStatus; // awaiting, approved, or rejected
+  price_override_enabled: boolean;
+  price_override_total: number | null; // Explicit override when admin/manager customizes total
   created_at: string;
   updated_at: string;
 }
@@ -132,6 +135,7 @@ export interface RecurringAppointmentSeries {
   cleaner_id: string | null; // References cleaner_profiles(id)
   property_id: string;
   service_type_id: string;
+  checklist_id: string | null; // References checklists(id)
   start_date: string; // date
   start_time: string; // time
   duration_minutes: number;
@@ -143,6 +147,8 @@ export interface RecurringAppointmentSeries {
   end_date: string | null; // date
   max_occurrences: number | null;
   is_active: boolean;
+  price_override_enabled: boolean;
+  price_override_total: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -260,6 +266,7 @@ export interface Checklist {
   id: string;
   name: string; // Defaults to 'checklist'
   service_type_id: string; // References service_types(id)
+  price_adder: number; // numeric(10,2) adder to service base price
   created_at: string;
   updated_at: string;
 }

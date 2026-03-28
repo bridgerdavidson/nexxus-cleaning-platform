@@ -71,6 +71,7 @@ export default function DayDetailSidebar({
         ? `${apt.property.address} ${apt.property.city} ${apt.property.state}`.toLowerCase()
         : "";
       const serviceName = apt.service_type?.name.toLowerCase() || "";
+      const checklistName = apt.checklist?.name.toLowerCase() || "";
       const status = apt.status.toLowerCase();
 
       return (
@@ -78,6 +79,7 @@ export default function DayDetailSidebar({
         cleanerName.includes(query) ||
         propertyAddress.includes(query) ||
         serviceName.includes(query) ||
+        checklistName.includes(query) ||
         status.includes(query)
       );
     });
@@ -310,8 +312,15 @@ function AppointmentMiniCard({
         <div className="flex items-center gap-2 mb-2">
           <Briefcase className="w-4 h-4 text-gray-400" />
           <span className="font-medium text-gray-900">
-            {appointment.service_type.name}
+            {appointment.checklist?.name
+              ? `${appointment.service_type.name} (${appointment.checklist.name})`
+              : appointment.service_type.name}
           </span>
+          {appointment.checklist?.name && (
+            <span className="text-xs text-gray-400">
+              {appointment.checklist.name}
+            </span>
+          )}
         </div>
       )}
 

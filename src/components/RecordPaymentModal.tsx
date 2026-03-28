@@ -24,6 +24,9 @@ interface Appointment {
   service_type: {
     name: string;
   } | null;
+  checklist?: {
+    name: string;
+  } | null;
 }
 
 interface RecordPaymentModalProps {
@@ -107,6 +110,9 @@ export default function RecordPaymentModal({
             ),
             service_type:service_types(
               name
+            ),
+            checklist:checklists(
+              name
             )
           `)
           .eq("organization_id", currentOrganizationId)
@@ -120,6 +126,7 @@ export default function RecordPaymentModal({
           ...apt,
           property: Array.isArray(apt.property) ? apt.property[0] : apt.property,
           service_type: Array.isArray(apt.service_type) ? apt.service_type[0] : apt.service_type,
+          checklist: Array.isArray(apt.checklist) ? apt.checklist[0] : apt.checklist,
         }));
 
         setAppointments(transformedData);
@@ -312,7 +319,11 @@ export default function RecordPaymentModal({
                   {appointments.map((apt) => (
                     <option key={apt.id} value={apt.id}>
                       {apt.scheduled_date} - {apt.property?.name || "Unknown"} -{" "}
-                      {apt.service_type?.name || "Service"}
+                      {apt.service_type?.name
+                        ? apt.checklist?.name
+                          ? `${apt.service_type.name} (${apt.checklist.name})`
+                          : apt.service_type.name
+                        : "Service"}
                     </option>
                   ))}
                 </select>
