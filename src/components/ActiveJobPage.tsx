@@ -37,6 +37,7 @@ export default function ActiveJobPage({
   const [appointment, setAppointment] = useState<{
     homeowner: { first_name: string; last_name: string } | null;
     service_type: { name: string; id: string } | null;
+    checklist_id: string | null;
     job_progress: JobProgress;
   } | null>(null);
 
@@ -50,12 +51,15 @@ export default function ActiveJobPage({
   const hasBeforePhotos = beforePhotos.length > 0;
   const hasAfterPhotos = afterPhotos.length > 0;
 
-  // Fetch checklist for the service type
+  // Fetch checklist for this appointment (prefers saved checklist_id)
   const {
     checklist,
     lineItems,
     loading: checklistLoading,
-  } = useChecklist(appointment?.service_type?.id || null);
+  } = useChecklist({
+    checklistId: appointment?.checklist_id ?? null,
+    serviceTypeId: appointment?.service_type?.id ?? null,
+  });
 
   // Session storage key
   const storageKey = `job_workflow_${appointmentId}`;
@@ -72,6 +76,7 @@ export default function ActiveJobPage({
           .select(
             `
             id,
+            checklist_id,
             job_progress,
             homeowner:user_profiles!homeowner_id(
               first_name,
@@ -95,6 +100,7 @@ export default function ActiveJobPage({
           service_type: Array.isArray(data.service_type)
             ? data.service_type[0]
             : data.service_type,
+          checklist_id: data.checklist_id ?? null,
           job_progress: data.job_progress as JobProgress,
         };
 
@@ -139,32 +145,63 @@ export default function ActiveJobPage({
     autoFixProgress();
   }, [currentStep, loading, appointmentId]);
 
-  // Initialize checklist items when lineItems are loaded
+  // Align checklist UI with loaded line items; merge completion from session when IDs match
   useEffect(() => {
-    if (lineItems.length > 0 && checklistItems.length === 0) {
-      const savedState = sessionStorage.getItem(storageKey);
-      if (savedState) {
-        try {
-          const state: JobWorkflowState = JSON.parse(savedState);
-          if (state.checklistProgress.length > 0) {
-            setChecklistItems(state.checklistProgress);
-            return;
-          }
-        } catch {
-          // Continue with default initialization
-        }
+    if (checklistLoading) return;
+
+    if (lineItems.length === 0) {
+      setChecklistItems([]);
+      return;
+    }
+
+    setChecklistItems((prev) => {
+      const lineIds = new Set(lineItems.map((l) => l.id));
+      const sameShape =
+        prev.length === lineItems.length &&
+        prev.every((p) => lineIds.has(p.id));
+
+      if (sameShape) {
+        const next = lineItems.map((item) => {
+          const old = prev.find((p) => p.id === item.id)!;
+          return {
+            id: item.id,
+            task: item.task,
+            completed: old.completed,
+          };
+        });
+        const identical =
+          next.length === prev.length &&
+          next.every(
+            (n, i) =>
+              n.id === prev[i].id &&
+              n.task === prev[i].task &&
+              n.completed === prev[i].completed
+          );
+        return identical ? prev : next;
       }
 
-      // Initialize from line items
-      setChecklistItems(
-        lineItems.map((item) => ({
-          id: item.id,
-          task: item.task,
-          completed: false,
-        }))
+      let sessionProgress: ChecklistItem[] = [];
+      try {
+        const raw = sessionStorage.getItem(storageKey);
+        if (raw) {
+          const state: JobWorkflowState = JSON.parse(raw);
+          sessionProgress = state.checklistProgress || [];
+        }
+      } catch {
+        // ignore invalid session
+      }
+
+      const completedById = new Map(
+        sessionProgress.map((p) => [p.id, p.completed])
       );
-    }
-  }, [lineItems, checklistItems.length, storageKey]);
+
+      return lineItems.map((item) => ({
+        id: item.id,
+        task: item.task,
+        completed: completedById.get(item.id) ?? false,
+      }));
+    });
+  }, [lineItems, checklistLoading, storageKey]);
 
   // Save step + checklist state to session storage
   // hasBeforePhotos / hasAfterPhotos are sourced from DB, not session storage
@@ -322,12 +359,9 @@ export default function ActiveJobPage({
     );
   }
 
-  const homeownerName = appointment.homeowner
-    ? `${appointment.homeowner.first_name} ${appointment.homeowner.last_name}`
-    : "Unknown";
   const serviceName = appointment.service_type?.name
-    ? appointment.checklist?.name
-      ? `${appointment.service_type.name} (${appointment.checklist.name})`
+    ? checklist?.name
+      ? `${appointment.service_type.name} (${checklist.name})`
       : appointment.service_type.name
     : "Service";
 
@@ -361,11 +395,18 @@ export default function ActiveJobPage({
         {/* Step 2: Checklist */}
         {currentStep === "checklist" && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Cleaning Checklist
-                </h2>
-                <span className="text-sm font-medium text-gray-600">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    Cleaning Checklist
+                  </h2>
+                  {serviceName !== "Service" && (
+                    <p className="text-sm text-gray-600 mt-1 truncate" title={serviceName}>
+                      {serviceName}
+                    </p>
+                  )}
+                </div>
+                <span className="text-sm font-medium text-gray-600 flex-shrink-0">
                   {checklistItems.filter((item) => item.completed).length} of{" "}
                   {checklistItems.length} tasks completed
                 </span>

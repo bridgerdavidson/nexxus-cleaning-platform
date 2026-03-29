@@ -817,8 +817,29 @@ export async function updateJobProgress(
   }
 }
 
-// Hook to fetch checklist for a service type
-export function useChecklist(serviceTypeId: string | null) {
+export type UseChecklistArgs = {
+  /** Appointment-selected checklist (preferred). */
+  checklistId: string | null;
+  /** Used when checklist_id is missing (legacy rows) or primary fetch fails. */
+  serviceTypeId: string | null;
+};
+
+async function fetchLineItemsForChecklist(checklistRowId: string) {
+  const { data: lineItemsData, error: lineItemsError } = await supabase
+    .from('checklist_line_items')
+    .select('id, task, position')
+    .eq('checklist_id', checklistRowId)
+    .order('position', { ascending: true, nullsFirst: false });
+
+  if (lineItemsError) throw lineItemsError;
+  return lineItemsData || [];
+}
+
+/**
+ * Loads the checklist tied to an appointment: prefers `checklistId`, then falls back
+ * to the first checklist for `service_type_id` (name ASC, created_at ASC) for legacy data.
+ */
+export function useChecklist({ checklistId, serviceTypeId }: UseChecklistArgs) {
   const [checklist, setChecklist] = useState<{
     id: string;
     name: string;
@@ -833,56 +854,72 @@ export function useChecklist(serviceTypeId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!serviceTypeId) {
+    if (!checklistId && !serviceTypeId) {
+      setChecklist(null);
+      setLineItems([]);
       setLoading(false);
+      setError(null);
       return;
     }
 
     const fetchChecklist = async () => {
       try {
         setLoading(true);
+        setError(null);
+        setChecklist(null);
+        setLineItems([]);
 
-        // Get the checklist for this service type
-        // There might be multiple checklists, so we'll get the first one
-        const { data: checklistData, error: checklistError } = await supabase
-          .from('checklists')
-          .select('id, name, service_type_id')
-          .eq('service_type_id', serviceTypeId)
-          .limit(1)
-          .single();
+        let checklistData: {
+          id: string;
+          name: string;
+          service_type_id: string;
+        } | null = null;
 
-        if (checklistError) {
-          // If no checklist exists, that's okay - set empty state
-          if (checklistError.code === 'PGRST116') {
-            setChecklist(null);
-            setLineItems([]);
-            setLoading(false);
-            return;
-          }
-          throw checklistError;
+        if (checklistId) {
+          const { data, error: byIdError } = await supabase
+            .from('checklists')
+            .select('id, name, service_type_id')
+            .eq('id', checklistId)
+            .maybeSingle();
+
+          if (byIdError) throw byIdError;
+          checklistData = data;
+        }
+
+        // Legacy / missing row: pick one checklist per service type (deterministic)
+        if (!checklistData && serviceTypeId) {
+          const { data, error: byServiceError } = await supabase
+            .from('checklists')
+            .select('id, name, service_type_id')
+            .eq('service_type_id', serviceTypeId)
+            .order('name', { ascending: true })
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (byServiceError) throw byServiceError;
+          checklistData = data;
+        }
+
+        if (!checklistData) {
+          setChecklist(null);
+          setLineItems([]);
+          return;
         }
 
         setChecklist(checklistData);
-
-        // Get line items for this checklist
-        const { data: lineItemsData, error: lineItemsError } = await supabase
-          .from('checklist_line_items')
-          .select('id, task, position')
-          .eq('checklist_id', checklistData.id)
-          .order('position', { ascending: true, nullsFirst: false });
-
-        if (lineItemsError) throw lineItemsError;
-
-        setLineItems(lineItemsData || []);
+        setLineItems(await fetchLineItemsForChecklist(checklistData.id));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch checklist');
+        setChecklist(null);
+        setLineItems([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchChecklist();
-  }, [serviceTypeId]);
+  }, [checklistId, serviceTypeId]);
 
   return { checklist, lineItems, loading, error };
 }
