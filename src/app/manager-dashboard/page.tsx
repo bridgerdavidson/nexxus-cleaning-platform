@@ -170,6 +170,8 @@ export default function ManagerDashboard() {
     error: servicesError,
     refetch: refetchServices,
     updateServiceInState,
+    maxChecklistAdderByServiceId,
+    refreshMaxChecklistAdders,
   } = useServices();
 
   // Calculate number of visible stats cards for dynamic grid - MUST be a hook and defined before early returns
@@ -1834,6 +1836,8 @@ export default function ManagerDashboard() {
             refetch={refetchServices}
             canManageServices={permissions?.can_manage_services || false}
             updateServiceInState={updateServiceInState}
+            maxChecklistAdderByServiceId={maxChecklistAdderByServiceId}
+            refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
       case "settings":

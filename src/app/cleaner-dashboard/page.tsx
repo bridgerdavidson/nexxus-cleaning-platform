@@ -108,6 +108,8 @@ export default function CleanerDashboard() {
     error: servicesError,
     refetch: refetchServices,
     updateServiceInState,
+    maxChecklistAdderByServiceId,
+    refreshMaxChecklistAdders,
   } = useServices();
 
   // Calculate if there are any unread messages
@@ -1623,6 +1625,8 @@ export default function CleanerDashboard() {
             refetch={refetchServices}
             canManageServices={false}
             updateServiceInState={updateServiceInState}
+            maxChecklistAdderByServiceId={maxChecklistAdderByServiceId}
+            refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
       case "settings":

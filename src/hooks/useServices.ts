@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeServices } from './useRealtimeServices';
@@ -143,6 +143,55 @@ export function useServices() {
     });
   }, []);
 
+  // ── Checklist price-adder map (persists across tab switches) ──────────
+  const [maxChecklistAdderByServiceId, setMaxChecklistAdderByServiceId] =
+    useState<Record<string, number>>({});
+
+  const serviceIdsKey = useMemo(
+    () => [...services].map((s) => s.id).sort().join(','),
+    [services]
+  );
+
+  const fetchMaxChecklistAdders = useCallback(async () => {
+    if (!currentOrganizationId) {
+      setMaxChecklistAdderByServiceId({});
+      return;
+    }
+    const ids = serviceIdsKey ? serviceIdsKey.split(',') : [];
+    if (ids.length === 0) {
+      setMaxChecklistAdderByServiceId({});
+      return;
+    }
+
+    try {
+      const { data, error: qError } = await supabase
+        .from('checklists')
+        .select('service_type_id, price_adder')
+        .in('service_type_id', ids);
+
+      if (qError) {
+        throw qError;
+      }
+
+      const map: Record<string, number> = {};
+      for (const id of ids) {
+        map[id] = 0;
+      }
+      for (const row of data || []) {
+        const sid = row.service_type_id as string;
+        const adder = Number(row.price_adder) || 0;
+        map[sid] = Math.max(map[sid] ?? 0, adder);
+      }
+      setMaxChecklistAdderByServiceId(map);
+    } catch (e) {
+      console.error('Error loading checklist adders for services:', e);
+    }
+  }, [currentOrganizationId, serviceIdsKey]);
+
+  useEffect(() => {
+    fetchMaxChecklistAdders();
+  }, [fetchMaxChecklistAdders]);
+
   return {
     services,
     loading,
@@ -151,6 +200,8 @@ export function useServices() {
     setServices,
     updateServiceInState,
     replaceServiceInState,
+    maxChecklistAdderByServiceId,
+    refreshMaxChecklistAdders: fetchMaxChecklistAdders,
   };
 }
 

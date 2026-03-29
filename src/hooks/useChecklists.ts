@@ -370,17 +370,22 @@ export async function reorderLineItems(
   orderedIds: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Update each line item's position based on its index in orderedIds
-    const updates = orderedIds.map((id, index) =>
-      supabase
+    // Update each line item's position sequentially to avoid request storms/timeouts.
+    const results: {
+      status: number;
+      statusText: string;
+      count: number | null;
+      error: { code?: string; message?: string } | null;
+    }[] = [];
+
+    for (const [index, id] of orderedIds.entries()) {
+      const result = await supabase
         .from('checklist_line_items')
         .update({ position: index })
         .eq('id', id)
-        .eq('checklist_id', checklistId) // Ensure the item belongs to this checklist
-    );
-
-    // Execute all updates in parallel
-    const results = await Promise.all(updates);
+        .eq('checklist_id', checklistId); // Ensure the item belongs to this checklist
+      results.push(result);
+    }
 
     // Check if any updates failed
     const failedUpdate = results.find((result) => result.error);

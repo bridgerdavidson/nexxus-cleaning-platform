@@ -167,6 +167,8 @@ export default function AdminDashboard() {
     error: servicesError,
     refetch: refetchServices,
     updateServiceInState,
+    maxChecklistAdderByServiceId,
+    refreshMaxChecklistAdders,
   } = useServices();
 
   // Redirect to login if not authenticated
@@ -1594,6 +1596,8 @@ export default function AdminDashboard() {
             refetch={refetchServices}
             canManageServices={true}
             updateServiceInState={updateServiceInState}
+            maxChecklistAdderByServiceId={maxChecklistAdderByServiceId}
+            refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
       case "settings":

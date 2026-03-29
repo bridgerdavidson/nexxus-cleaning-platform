@@ -94,6 +94,8 @@ export default function HomeownerDashboard() {
     error: servicesError,
     refetch: refetchServices,
     updateServiceInState,
+    maxChecklistAdderByServiceId,
+    refreshMaxChecklistAdders,
   } = useServices();
 
   // Redirect to login if not authenticated
@@ -727,6 +729,8 @@ export default function HomeownerDashboard() {
             refetch={refetchServices}
             canManageServices={false}
             updateServiceInState={updateServiceInState}
+            maxChecklistAdderByServiceId={maxChecklistAdderByServiceId}
+            refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
       case "settings":
