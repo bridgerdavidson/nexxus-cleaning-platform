@@ -51,7 +51,7 @@ export default function SettingsHub() {
   return (
     <div className="w-full flex flex-col md:flex-row gap-6 md:gap-12 pb-16">
       {/* Settings Navigation */}
-      <nav className="w-full md:w-[260px] flex flex-row md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 scrollbar-hide shrink-0 md:pr-4 md:sticky md:top-24 md:self-start">
+      <nav className="w-full md:w-[260px] flex flex-row md:flex-col gap-2 overflow-x-auto pb-4 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide shrink-0 md:pr-4 md:sticky md:top-24 md:self-start snap-x">
         {sections.map((section) => {
           const Icon = section.icon;
           const isActive = currentSection.id === section.id;
@@ -59,14 +59,14 @@ export default function SettingsHub() {
             <button
               key={section.id}
               onClick={() => setActiveSection(section.id)}
-              className={`flex items-center gap-3.5 px-5 py-3 rounded-xl transition-all duration-200 whitespace-nowrap text-sm font-medium group ${
+              className={`flex items-center gap-3.5 px-5 py-3 rounded-xl transition-all duration-200 whitespace-nowrap text-sm font-medium group active:scale-[0.98] snap-start shrink-0 ${
                 isActive
-                  ? 'bg-white shadow-sm border border-gray-200 text-gray-900'
+                  ? 'bg-white shadow-sm border border-gray-200 text-gray-900 ring-1 ring-gray-900/5'
                   : 'hover:bg-gray-50 border border-transparent text-gray-600'
               }`}
             >
-              <Icon className={`w-5 h-5 flex-shrink-0 transition-all duration-300 ${isActive ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-600'}`} />
-              <span className={`transition-colors duration-300 ${isActive ? 'text-gray-900' : 'text-gray-500 group-hover:text-gray-900'}`}>{section.label}</span>
+              <Icon className={`w-[22px] h-[22px] flex-shrink-0 transition-transform duration-300 ${isActive ? 'text-primary-600 scale-110' : 'text-gray-400 group-hover:text-gray-600'}`} strokeWidth={isActive ? 2.5 : 2} />
+              <span className={`transition-colors duration-300 tracking-tight ${isActive ? 'text-gray-900 font-bold' : 'text-gray-500 group-hover:text-gray-900 font-medium'}`}>{section.label}</span>
             </button>
           );
         })}

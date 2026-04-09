@@ -133,7 +133,7 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
           )}
 
           {/* Navigation Links */}
-          <div className="flex-1 p-6 space-y-2 overflow-y-auto">
+          <div className="flex-1 p-4 space-y-1.5 overflow-y-auto">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -144,20 +144,21 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
                     onTabChange?.(tab.id);
                     onClose();
                   }}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors text-left ${
+                  className={`w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all duration-200 text-left active:scale-[0.98] ${
                     isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-100'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 active:bg-gray-100'
                   }`}
                 >
                   <Icon
-                    className={`w-5 h-5 ${
-                      isActive ? 'text-primary-600' : 'text-gray-400'
+                    className={`w-[22px] h-[22px] transition-transform ${
+                      isActive ? 'text-primary-600 scale-110' : 'text-gray-400'
                     }`}
+                    strokeWidth={isActive ? 2.5 : 2}
                   />
                   <span
-                    className={`font-medium text-base ${
-                      isActive ? 'font-semibold' : ''
+                    className={`font-medium text-[15px] ${
+                      isActive ? 'font-bold tracking-tight' : ''
                     }`}
                   >
                     {tab.label}

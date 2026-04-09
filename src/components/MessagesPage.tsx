@@ -264,10 +264,10 @@ export default function MessagesPage({
         >
           <button
             onClick={handleBackToConversations}
-            className="absolute top-4 left-4 z-10 p-2 bg-white rounded-full hover:bg-gray-50 transition-colors"
+            className="absolute top-[14px] left-3 z-10 p-1.5 text-gray-600 hover:bg-gray-100 rounded-full transition-colors active:scale-95"
             aria-label="Back to conversations"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-900" />
+            <ArrowLeft className="w-5 h-5" strokeWidth={2.5} />
           </button>
           <MessageThread
             conversation={selectedConversation}

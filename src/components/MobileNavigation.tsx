@@ -24,8 +24,8 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   onMenuClick,
 }) => {
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40 pb-safe">
-      <div className="flex items-center justify-around px-2 py-2">
+    <nav className="md:hidden fixed bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md border border-gray-200/80 shadow-lg z-40 pb-safe rounded-[1.25rem] overflow-hidden">
+      <div className="flex items-center justify-around px-2 py-2 h-20">
         {/* Navigation Tabs */}
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -34,25 +34,29 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex flex-col items-center justify-center min-w-[60px] py-2 px-3 rounded-lg transition-all duration-200 ${
+              className={`flex flex-col items-center justify-center w-full min-w-[44px] h-full rounded-xl transition-all duration-200 relative group ${
                 isActive
-                  ? "text-primary-600"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "text-primary-700"
+                  : "text-gray-500 hover:text-gray-900 active:bg-gray-100/50"
               }`}
             >
-              <div className="relative">
+              {isActive && (
+                <div className="absolute inset-0 bg-primary-50 rounded-xl -z-10 scale-95" />
+              )}
+              <div className="relative mb-1.5">
                 <Icon
-                  className={`w-6 h-6 mb-1 ${
-                    isActive ? "text-primary-600" : "text-gray-600"
+                  className={`w-6 h-6 transition-transform duration-200 ${
+                    isActive ? "text-primary-600 scale-110" : "text-gray-500 group-hover:text-gray-700 group-active:scale-95"
                   }`}
+                  strokeWidth={isActive ? 2.5 : 2}
                 />
                 {tab.hasNotification && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full border-2 border-white" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
                 )}
               </div>
               <span
-                className={`text-xs font-medium ${
-                  isActive ? "text-primary-600" : "text-gray-600"
+                className={`text-xs tracking-wide transition-all duration-200 ${
+                  isActive ? "font-bold text-primary-700" : "font-medium text-gray-500 group-hover:text-gray-700"
                 }`}
               >
                 {tab.label}
@@ -64,10 +68,10 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
         {/* Menu Button */}
         <button
           onClick={onMenuClick}
-          className="flex flex-col items-center justify-center min-w-[60px] py-2 px-3 rounded-lg transition-all duration-200 text-gray-600 hover:text-gray-900"
+          className="flex flex-col items-center justify-center w-full min-w-[44px] h-full rounded-xl transition-all duration-200 text-gray-500 hover:text-gray-900 active:bg-gray-100/50 group"
         >
-          <Menu className="w-6 h-6 mb-1" />
-          <span className="text-xs font-medium">Menu</span>
+          <Menu className="w-6 h-6 mb-1.5 transition-transform duration-200 group-hover:text-gray-700 group-active:scale-95" strokeWidth={2} />
+          <span className="text-xs font-medium tracking-wide group-hover:text-gray-700">Menu</span>
         </button>
       </div>
     </nav>

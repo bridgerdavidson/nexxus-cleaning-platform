@@ -18,6 +18,7 @@ import {
   CreditCard,
   AlertCircle,
   Camera,
+  Play,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import StatusBadge from "./StatusBadge";
@@ -1209,9 +1210,10 @@ export default function AppointmentSidePanel({
                         }
                       }}
                       disabled={isActionLoading}
-                      className="flex-1 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 px-5 py-3 text-sm font-semibold bg-primary-600 text-white rounded-xl shadow-md hover:shadow-lg hover:bg-primary-700 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center justify-center gap-2"
                     >
-                      {isActionLoading ? "Starting..." : "Start Job"}
+                      <Play className="w-4 h-4 fill-current" />
+                      {isActionLoading ? "Starting Job..." : "Start Job"}
                     </button>
                   )}
                 {/* Complete Job button - shows when status is in_progress */}

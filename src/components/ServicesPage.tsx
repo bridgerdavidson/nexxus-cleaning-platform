@@ -995,34 +995,24 @@ export default function ServicesPage({
         )}
       </div>
 
-      {/* Search Input - Mobile */}
-      <div className="flex-1 relative md:hidden">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-        <input
-          type="text"
-          placeholder="Search by name, type, or description..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-        />
-      </div>
-
-      {/* Filters Row */}
-      <div className="flex flex-row gap-3 overflow-x-auto">
-        {/* Search Input - Desktop */}
-        <div className="hidden md:flex flex-1 min-w-[200px] relative">
+      {/* Search & Filters */}
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
+        {/* Search Input */}
+        <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
             placeholder="Search by name, type, or description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white shadow-sm"
           />
         </div>
 
-        {/* Status Filter Dropdown */}
-        <div className="relative flex-shrink-0 min-w-[140px]">
+        {/* Filters Row */}
+        <div className="flex flex-row gap-3 overflow-x-auto pb-1 md:pb-0 scrollbar-hide shrink-0">
+          {/* Status Filter Dropdown */}
+          <div className="relative flex-shrink-0 min-w-[140px]">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
@@ -1033,6 +1023,7 @@ export default function ServicesPage({
             <option value="disabled">Disabled</option>
           </select>
           <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
         </div>
       </div>
 
