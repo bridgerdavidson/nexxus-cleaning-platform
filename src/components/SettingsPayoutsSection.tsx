@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, Loader2, AlertCircle, Link2 } from 'lucide-react';
+import { CheckCircle, Loader2, AlertCircle, Link2, ExternalLink } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 function stripeUiEnabled(): boolean {
@@ -96,6 +96,31 @@ export default function SettingsPayoutsSection() {
     }
   };
 
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  const handleOpenStripeDashboard = async () => {
+    if (!user?.id) return;
+    setDashboardLoading(true);
+    setConnectError(null);
+
+    try {
+      const res = await fetch('/api/stripe/connect/login-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cleaner_id: user.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to get Stripe dashboard link');
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Something went wrong');
+      setDashboardLoading(false);
+    }
+  };
+
   if (!user || user.role !== 'cleaner' || !stripeUiEnabled()) {
     return null;
   }
@@ -128,16 +153,35 @@ export default function SettingsPayoutsSection() {
             <span className="text-sm text-gray-500">Checking payout status…</span>
           </div>
         ) : connectStatus?.onboarding_complete ? (
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600" />
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900">Payouts Active</p>
+                <p className="text-sm text-gray-500">
+                  Your Stripe account is connected and ready to receive payouts.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-medium text-gray-900">Payouts Active</p>
-              <p className="text-sm text-gray-500">
-                Your Stripe account is connected and ready to receive payouts.
-              </p>
-            </div>
+            <button
+              onClick={handleOpenStripeDashboard}
+              disabled={dashboardLoading}
+              className="inline-flex items-center gap-2 px-8 py-4 bg-primary-600 text-white text-[14.5px] font-semibold rounded-[1.25rem] hover:bg-primary-700 disabled:opacity-60 transition-all duration-300 shadow-[0_4px_12px_-2px_rgba(217,167,24,0.3)] hover:shadow-[0_8px_20px_-4px_rgba(217,167,24,0.4)] hover:-translate-y-0.5 active:translate-y-0"
+            >
+              {dashboardLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Opening Dashboard…
+                </>
+              ) : (
+                <>
+                  Open Stripe Dashboard
+                  <ExternalLink className="w-4 h-4" />
+                </>
+              )}
+            </button>
           </div>
         ) : connectStatus?.has_account ? (
           <div>

@@ -293,6 +293,24 @@ export async function getConnectAccountStatus(
 }
 
 /**
+ * Create a short-lived login link that redirects an Express connected account
+ * holder to their Stripe Express dashboard.
+ */
+export async function createExpressDashboardLoginLink(
+  accountId: string,
+  redirectUrl?: string
+): Promise<Stripe.LoginLink> {
+  const stripe = getStripe();
+
+  const params: Stripe.LoginLinkCreateParams = {};
+  if (redirectUrl) {
+    params.redirect_url = redirectUrl;
+  }
+
+  return stripe.accounts.createLoginLink(accountId, params);
+}
+
+/**
  * Create a Connect transfer to a cleaner's connected account.
  * Uses an idempotency key derived from the appointment ID to safely
  * handle webhook retries without creating duplicate transfers.

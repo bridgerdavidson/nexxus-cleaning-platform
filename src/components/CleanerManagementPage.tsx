@@ -519,40 +519,42 @@ export default function CleanerManagementPage({
                     type: string;
                     placeholder?: string;
                   }>
-                ).map(({ icon: Icon, label, field, value, type, placeholder }) => (
-                  <div key={field} className="flex items-start gap-3">
-                    <div className="w-9 h-9 bg-white border border-gray-200 shadow-sm rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Icon className="w-4 h-4 text-gray-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                        {label}
-                      </p>
-                      {isEditing ? (
-                        <input
-                          type={type}
-                          value={
-                            editedFields[
-                              field as keyof typeof editedFields
-                            ] as string
-                          }
-                          onChange={(e) =>
-                            setEditedFields((prev) => ({
-                              ...prev,
-                              [field]: e.target.value,
-                            }))
-                          }
-                          placeholder={placeholder}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm transition-colors bg-white"
-                        />
-                      ) : (
-                        <p className="text-gray-900 font-medium break-words">
-                          {value || "—"}
+                ).map(
+                  ({ icon: Icon, label, field, value, type, placeholder }) => (
+                    <div key={field} className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-white border border-gray-200 shadow-sm rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Icon className="w-4 h-4 text-gray-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                          {label}
                         </p>
-                      )}
+                        {isEditing ? (
+                          <input
+                            type={type}
+                            value={
+                              editedFields[
+                                field as keyof typeof editedFields
+                              ] as string
+                            }
+                            onChange={(e) =>
+                              setEditedFields((prev) => ({
+                                ...prev,
+                                [field]: e.target.value,
+                              }))
+                            }
+                            placeholder={placeholder}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm transition-colors bg-white"
+                          />
+                        ) : (
+                          <p className="text-gray-900 font-medium break-words">
+                            {value || "—"}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ),
+                )}
               </div>
 
               {/* Professional Details */}
