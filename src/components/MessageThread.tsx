@@ -234,35 +234,9 @@ export default function MessageThread({
   return (
     <div className="flex-1 flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200 bg-white">
-        {/* Mobile: Centered vertical stack */}
-        <div className="flex flex-col items-center md:hidden">
-          {/* Avatar */}
-          {other_participant.avatar_url ? (
-            <img
-              src={other_participant.avatar_url}
-              alt={`${other_participant.first_name} ${other_participant.last_name}`}
-              className="w-12 h-12 rounded-full object-cover mb-2"
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-sm mb-2">
-              {getInitials()}
-            </div>
-          )}
-
-          {/* Name */}
-          <h3 className="font-semibold text-gray-900 mb-1 text-center">
-            {other_participant.first_name} {other_participant.last_name}
-          </h3>
-
-          {/* Role */}
-          <p className="text-sm text-gray-600 capitalize text-center">
-            {other_participant.role}
-          </p>
-        </div>
-
-        {/* Desktop: Horizontal layout (left-justified) */}
-        <div className="hidden md:flex md:items-center md:space-x-3">
+      <div className="flex-shrink-0 px-4 md:px-6 py-3 md:py-4 border-b border-gray-200 bg-white">
+        {/* Unified layout (left-justified) */}
+        <div className="flex items-center space-x-3 ml-12 md:ml-0">
           {/* Avatar */}
           {other_participant.avatar_url ? (
             <img
@@ -277,11 +251,11 @@ export default function MessageThread({
           )}
 
           {/* Name and role */}
-          <div>
-            <h3 className="font-semibold text-gray-900">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate">
               {other_participant.first_name} {other_participant.last_name}
             </h3>
-            <p className="text-sm text-gray-600 capitalize">
+            <p className="text-xs text-gray-500 capitalize">
               {other_participant.role}
             </p>
           </div>

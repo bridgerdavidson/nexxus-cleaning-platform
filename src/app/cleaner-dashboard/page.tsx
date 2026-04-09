@@ -698,14 +698,14 @@ export default function CleanerDashboard() {
 
   const renderSchedule = () => (
     <>
-      {/* Mobile Header - Compact */}
-      <div className="md:hidden mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
-          <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
-            Cleaner
-          </span>
-        </div>
+      {/* Mobile Header - Simple Greeting */}
+      <div className="md:hidden mb-6 mt-2">
+        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
+          Hello, {user?.profile?.firstName || "there"}
+        </h2>
+        <p className="text-gray-500 mt-1 font-medium">
+          {new Date().toLocaleDateString("en-US", { weekday: 'long', month: 'long', day: 'numeric' })}
+        </p>
       </div>
 
       {/* Desktop Header - Modern control center hero */}
@@ -722,10 +722,10 @@ export default function CleanerDashboard() {
                   <Star className="h-3.5 w-3.5" />
                   Cleaner Dashboard
                 </div>
-                <h2 className="text-4xl font-bold tracking-tight text-gray-900">
-                  Your Schedule
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
+                  Overview
                 </h2>
-                <p className="mt-2 max-w-2xl text-gray-600">
+                <p className="mt-2 max-w-2xl text-sm md:text-base text-gray-600">
                   Manage your cleaning jobs, track your earnings, and stay on top of your schedule.
                 </p>
               </div>
@@ -740,8 +740,9 @@ export default function CleanerDashboard() {
               </div>
             </div>
 
+            {/* Responsive Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
                     <CheckCircle className="h-4 w-4 text-primary-700" />
@@ -751,13 +752,13 @@ export default function CleanerDashboard() {
                 {statsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
                     {stats.totalJobs}
                   </p>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-green-100 p-1.5 ring-1 ring-green-200/70">
                     <Clock className="h-4 w-4 text-green-700" />
@@ -767,23 +768,23 @@ export default function CleanerDashboard() {
                 {statsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
                     {stats.upcomingJobs}
                   </p>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
                     <DollarSign className="h-4 w-4 text-emerald-700" />
                   </span>
-                  Confirmed Today
+                  <span className="truncate">Confirmed Today</span>
                 </div>
                 {appointmentsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
                     ${getTodaysJobs()
                       .filter((a) => a.status === "confirmed")
                       .reduce((sum, a) => sum + Number(a.total_price), 0)
@@ -792,7 +793,7 @@ export default function CleanerDashboard() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
                     <DollarSign className="h-4 w-4 text-amber-700" />
@@ -802,7 +803,7 @@ export default function CleanerDashboard() {
                 {appointmentsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
                     ${getTodaysJobs()
                       .filter((a) => a.status === "pending")
                       .reduce((sum, a) => sum + Number(a.total_price), 0)
@@ -811,7 +812,7 @@ export default function CleanerDashboard() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+              <div className="col-span-2 lg:col-span-1 rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-purple-100 p-1.5 ring-1 ring-purple-200/70">
                     <Star className="h-4 w-4 text-purple-700" />
@@ -821,7 +822,7 @@ export default function CleanerDashboard() {
                 {statsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
+                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
                     {stats.rating}
                   </p>
                 )}
@@ -831,201 +832,184 @@ export default function CleanerDashboard() {
         </div>
       </div>
 
-      {/* Mobile Quick Stats Bar */}
-      <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
-        <div className="flex items-center justify-between">
-          {statsLoading || appointmentsLoading ? (
-            <div className="flex items-center justify-center w-full py-2">
-              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <>
-              <div className="flex-1 text-center border-r border-gray-200">
-                <p className="text-xl font-bold text-primary-600">
-                  {stats.totalJobs}
-                </p>
-                <p className="text-xs text-gray-500">Jobs</p>
-              </div>
-              <div className="flex-1 text-center border-r border-gray-200">
-                <p className="text-xl font-bold text-green-600">
-                  {stats.upcomingJobs}
-                </p>
-                <p className="text-xs text-gray-500">This Week</p>
-              </div>
-              <div className="flex-1 text-center border-r border-gray-200">
-                <p className="text-xl font-bold text-amber-600">
-                  ${getTodaysJobs()
-                    .filter((a) => a.status === "pending")
-                    .reduce((sum, a) => sum + Number(a.total_price), 0)
-                    .toFixed(0)}
-                </p>
-                <p className="text-xs text-gray-500">Pending</p>
-              </div>
-              <div className="flex-1 text-center">
-                <p className="text-xl font-bold text-purple-600">
-                  {stats.rating}
-                </p>
-                <p className="text-xs text-gray-500">Rating</p>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
       <div className="space-y-6">
         {/* Pending Confirmations - Requires cleaner action */}
         <PendingConfirmationsSection
-        appointments={pendingConfirmations}
-        loading={appointmentsLoading}
-        userId={user.id}
-        organizationId={currentOrganizationId || ""}
-        onConfirmed={() => {
-          // Realtime subscription will auto-update the appointments state
-          // No manual refetch needed
-        }}
-      />
+          appointments={pendingConfirmations}
+          loading={appointmentsLoading}
+          userId={user.id}
+          organizationId={currentOrganizationId || ""}
+          onConfirmed={() => {
+            // Realtime subscription will auto-update the appointments state
+            // No manual refetch needed
+          }}
+        />
 
-      {/* Active Cleanings - collapsible; auto-collapsed when empty */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setExpandedActive((prev) => !prev)}
-          className="w-full text-left flex items-center gap-2 mb-4 group"
-        >
-          {(activeJobs.length > 0 ? expandedActive : false) ? (
-            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          )}
-          <SprayCan className="w-5 h-5 text-primary-600" />
-          <h3 className="text-xl font-semibold text-gray-900">
-            Active Cleanings
-          </h3>
-          <span className="text-sm font-normal text-gray-500">
-            ({activeJobs.length})
-          </span>
-        </button>
-        {(activeJobs.length > 0 ? expandedActive : false) && (
-          <div className="space-y-4">
-            {activeJobs.map((appointment) => (
-              <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
-                <AppointmentCard
-                  appointment={convertToCardData(appointment)}
-                  onClick={() => handleAppointmentCardClick(appointment)}
-                  role="cleaner"
-                />
+        {/* Today's Jobs - collapsible; auto-collapsed when empty */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setExpandedToday((prev) => !prev)}
+            className="w-full flex items-center justify-between py-2 mb-4 transition-all group bg-transparent"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary-50 text-primary-600 rounded-xl">
+                <Clock className="w-5 h-5" />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-gray-900">Today&apos;s Jobs</h3>
+                <span className="text-xs font-medium text-gray-500">
+                  {overviewTodaysJobs.length} scheduled
+                </span>
+              </div>
+            </div>
+            <div className="p-2 bg-gray-50 rounded-full group-hover:bg-primary-50 transition-colors">
+              {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) ? (
+                <ChevronDown className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+              )}
+            </div>
+          </button>
+          {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) && (
+            <>
+              {appointmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">Loading schedule...</span>
+                </div>
+              ) : overviewTodaysJobs.length > 0 ? (
+                <div className="space-y-4">
+                  {overviewTodaysJobs.map((appointment) => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={convertToCardData(appointment)}
+                      onClick={() => handleTodayScheduleAppointmentClick(appointment)}
+                      role="cleaner"
+                      onStartJob={handleStartJob}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                  <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600">No jobs scheduled for today</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-      {/* Today's Jobs - collapsible; auto-collapsed when empty */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setExpandedToday((prev) => !prev)}
-          className="w-full text-left flex items-center gap-2 mb-4 group"
-        >
-          {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) ? (
-            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          )}
-          <Clock className="w-5 h-5 text-primary-600" />
-          <h3 className="text-xl font-semibold text-gray-900">
-            Today&apos;s Jobs
-          </h3>
-          <span className="text-sm font-normal text-gray-500">
-            ({overviewTodaysJobs.length})
-          </span>
-        </button>
-        {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) && (
-          <>
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading schedule...</span>
+        {/* Active Cleanings - collapsible; auto-collapsed when empty */}
+        {activeJobs.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setExpandedActive((prev) => !prev)}
+              className="w-full flex items-center justify-between py-2 mb-4 transition-all group bg-transparent"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl relative">
+                  <SprayCan className="w-5 h-5 relative z-10" />
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                  </span>
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-bold text-gray-900">Active Cleanings</h3>
+                  <span className="text-xs font-medium text-amber-600">
+                    {activeJobs.length} in progress
+                  </span>
+                </div>
               </div>
-            ) : overviewTodaysJobs.length > 0 ? (
-              <div className="space-y-4">
-                {overviewTodaysJobs.map((appointment) => (
-                  <AppointmentCard
-                    key={appointment.id}
-                    appointment={convertToCardData(appointment)}
-                    onClick={() => handleAppointmentCardClick(appointment)}
-                    role="cleaner"
-                    onStartJob={handleStartJob}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
-                <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No jobs scheduled for today</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Upcoming Jobs - collapsible; auto-collapsed when empty */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setExpandedUpcoming((prev) => !prev)}
-          className="w-full text-left flex items-center gap-2 mb-4 group"
-        >
-          {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) ? (
-            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          )}
-          <Calendar className="w-5 h-5 text-primary-600" />
-          <h3 className="text-xl font-semibold text-gray-900">
-            Upcoming Jobs
-          </h3>
-          <span className="text-sm font-normal text-gray-500">
-            ({overviewUpcomingJobs.length})
-          </span>
-        </button>
-        {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) && (
-          <>
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading...</span>
-              </div>
-            ) : overviewUpcomingJobs.length > 0 ? (
-              <div className="space-y-4">
-                {overviewUpcomingJobs.slice(0, 3).map((appointment) => (
-                  <AppointmentCard
-                    key={appointment.id}
-                    appointment={convertToCardData(appointment)}
-                    onClick={() => handleAppointmentCardClick(appointment)}
-                    role="cleaner"
-                  />
-                ))}
-                {overviewUpcomingJobs.length > 3 && (
-                  <div className="pt-2">
-                    <button
-                      onClick={() => setActiveTab("jobs")}
-                      className="w-full text-center py-2.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors rounded-lg border border-primary-200 hover:bg-primary-50"
-                    >
-                      View all ({overviewUpcomingJobs.length})
-                    </button>
-                  </div>
+              <div className="p-2 bg-amber-50 rounded-full group-hover:bg-amber-100 transition-colors">
+                {(activeJobs.length > 0 ? expandedActive : false) ? (
+                  <ChevronDown className="w-5 h-5 text-amber-700 transition-colors" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-amber-700 transition-colors" />
                 )}
               </div>
-            ) : (
-              <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
-                <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No upcoming jobs</p>
+            </button>
+            {(activeJobs.length > 0 ? expandedActive : false) && (
+              <div className="space-y-4">
+                  {activeJobs.map((appointment) => (
+                    <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                      <AppointmentCard
+                        appointment={convertToCardData(appointment)}
+                        onClick={() => handleTodayScheduleAppointmentClick(appointment)}
+                        role="cleaner"
+                      />
+                    </div>
+                  ))}
               </div>
             )}
-          </>
+          </div>
         )}
-      </div>
+
+        {/* Upcoming Jobs - collapsible; auto-collapsed when empty */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setExpandedUpcoming((prev) => !prev)}
+            className="w-full flex items-center justify-between py-2 mb-4 transition-all group bg-transparent"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl group-hover:bg-primary-50 group-hover:text-primary-600 transition-colors">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-gray-900">Upcoming Jobs</h3>
+                <span className="text-xs font-medium text-gray-500">
+                  {overviewUpcomingJobs.length} future scheduled
+                </span>
+              </div>
+            </div>
+            <div className="p-2 bg-gray-50 rounded-full group-hover:bg-primary-50 transition-colors">
+              {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) ? (
+                <ChevronDown className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+              )}
+            </div>
+          </button>
+          {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) && (
+            <>
+              {appointmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">Loading...</span>
+                </div>
+              ) : overviewUpcomingJobs.length > 0 ? (
+                <div className="space-y-4">
+                  {overviewUpcomingJobs.slice(0, 3).map((appointment) => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={convertToCardData(appointment)}
+                      onClick={() => handleTodayScheduleAppointmentClick(appointment)}
+                      role="cleaner"
+                    />
+                  ))}
+                  {overviewUpcomingJobs.length > 3 && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => setActiveTab("jobs")}
+                        className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors rounded-xl border border-primary-100"
+                      >
+                        View all ({overviewUpcomingJobs.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600">No upcoming jobs</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </>
   );
@@ -1153,35 +1137,25 @@ export default function CleanerDashboard() {
           <>
             {/* Normal Jobs List Content */}
 
-      {/* Search Input - Own line on mobile */}
-      <div className="flex-1 relative md:hidden">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-        <input
-          type="text"
-          placeholder="Search by homeowner, property, or service..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
-        />
-      </div>
-
-      {/* Filters Row */}
-      <div className="flex flex-row gap-3 overflow-x-auto">
-        {/* Search Input - Desktop only */}
-        <div className="hidden md:flex flex-1 min-w-[200px] relative">
+      {/* Search & Filters */}
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
+        {/* Search Input */}
+        <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
             placeholder="Search by homeowner, property, or service..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white shadow-sm"
           />
         </div>
 
-        {/* Status Filter Dropdown */}
-        {availableStatuses.length > 0 && (
-          <div className="relative flex-shrink-0 min-w-[140px]">
+        {/* Filters Row */}
+        <div className="flex flex-row gap-3 overflow-x-auto pb-1 md:pb-0 scrollbar-hide shrink-0">
+          {/* Status Filter Dropdown */}
+          {availableStatuses.length > 0 && (
+            <div className="relative flex-shrink-0 min-w-[140px]">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -1198,6 +1172,7 @@ export default function CleanerDashboard() {
             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         )}
+        </div>
       </div>
 
       {/* List View Content */}
@@ -1675,7 +1650,7 @@ export default function CleanerDashboard() {
             activeTab === "messages"
               ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
               : "p-4 sm:p-6 lg:p-8"
-          } pb-24 md:pb-8`}
+          } pb-32 md:pb-8`}
         >
           {/* Tab Content */}
           {renderContent()}

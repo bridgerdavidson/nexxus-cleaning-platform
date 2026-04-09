@@ -327,10 +327,10 @@ export default function AppointmentCard({
             <button
               onClick={handleStartJobClick}
               disabled={isStarting}
-              className="px-3 py-1.5 text-xs font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-shrink-0"
+              className="px-5 py-2.5 text-sm font-semibold bg-primary-600 text-white rounded-xl shadow-md hover:shadow-lg hover:bg-primary-700 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-2 flex-shrink-0"
               title="Start this job"
             >
-              <Play className="w-3 h-3" />
+              <Play className="w-4 h-4" />
               {isStarting ? "Starting..." : "Start Job"}
             </button>
           )}
@@ -347,113 +347,95 @@ export default function AppointmentCard({
       </div>
       </div>
 
-      {/* Tablet & Mobile Layout: Vertical cards */}
-      <div className={`p-3 sm:p-4 ${role === "cleaner" ? "" : "pr-24"} lg:hidden`}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Booking Info */}
-          <div className="sm:col-span-2 space-y-2">
-            <div className="flex items-start gap-2">
-              <Calendar className="w-5 h-5 text-primary-600 mt-0.5 flex-shrink-0" />
+      {/* Tablet & Mobile Layout: Phone-first layout */}
+      <div className={`p-4 ${role === "cleaner" ? "" : "pr-[4.5rem]"} lg:hidden flex flex-col gap-3.5`}>
+        {/* Top row: Date/Time + Status/Actions */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 flex-shrink-0 w-8 h-8 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+              <Calendar className="w-4 h-4" />
+            </div>
             <div>
-              <p className="font-semibold text-gray-900">{date}</p>
-              <p className="text-sm text-gray-600">{time}</p>
+              <p className="font-bold tracking-tight text-gray-900">{date}</p>
+              <p className="text-xs font-medium text-gray-500">{time}</p>
             </div>
           </div>
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700 rounded-full">
+                Reschedule
+              </span>
+            ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 rounded-full">
+                Awaiting
+              </span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
+                  <CompactJobProgressIndicator currentProgress={appointment.job_progress as JobProgress} />
+                )}
+                <StatusBadge status={appointment.status} size="sm" />
+              </div>
+            )}
+            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
+              <button className="mt-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
+                Review
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Middle row: Address & Service */}
+        <div className="flex flex-col gap-2 pl-[42px]">
           <div className="flex items-start gap-2">
-            <MapPin className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-gray-600">{getPropertyAddress()}</p>
+            <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+            <p className="text-sm font-medium text-gray-700">{getPropertyAddress()}</p>
           </div>
           {appointment.service_type && (
-            <div className="flex items-start gap-2 min-w-0">
-              <Briefcase className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-gray-600 break-words">
-                {getServiceLabel()}
-              </p>
+            <div className="flex items-start gap-2">
+              <Briefcase className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-gray-600">{getServiceLabel()}</p>
             </div>
           )}
         </div>
 
-        {/* Homeowner */}
-        <div className="flex items-start gap-2">
-          <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-              Homeowner
-            </p>
-            <p className="font-medium text-gray-900">{getHomeownerName()}</p>
-          </div>
-        </div>
-
-        {/* Cleaner - Hide for cleaner role */}
-        {role !== "cleaner" && (
-          <div className="flex items-start gap-2">
-            <Sparkles className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                Cleaner
-              </p>
-              <p className={`font-medium ${getCleanerName() === "Unassigned" ? "text-gray-400 italic" : "text-gray-900"}`}>
-                {getCleanerName()}
-              </p>
+        {/* Bottom row: People & Money */}
+        <div className="flex items-center justify-between gap-4 pl-[42px] pt-2 border-t border-gray-100">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Client</span>
+              <span className="text-xs font-medium text-gray-900">{getHomeownerName()}</span>
             </div>
-          </div>
-        )}
-
-        {/* Status and Price - hide progress bar for cleaner role */}
-        <div className="sm:col-span-2">
-          <div className="flex sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">
-                  <RefreshCw className="w-3 h-3" />
-                  Reschedule Required
-                </span>
-              ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
-                  <Clock className="w-3 h-3" />
-                  Awaiting Cleaner
-                </span>
-              ) : (
-                <>
-                  {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
-                    <CompactJobProgressIndicator 
-                      currentProgress={appointment.job_progress as JobProgress} 
-                    />
-                  )}
-                  <StatusBadge status={appointment.status} size="md" />
-                </>
-              )}
-              {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
-                <button
-                  className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
-                  title="Review appointment"
-                >
-                  Review
-                </button>
-              )}
-            </div>
-            {showStartJobButton && (
-              <button
-                onClick={handleStartJobClick}
-                disabled={isStarting}
-                className="px-3 py-1.5 text-sm font-semibold bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                title="Start this job"
-              >
-                <Play className="w-4 h-4" />
-                {isStarting ? "Starting..." : "Start Job"}
-              </button>
-            )}
             {role !== "cleaner" && (
-              <div className="flex items-center gap-1 text-right">
-                <DollarSign className="w-5 h-5 text-green-600" />
-                <span className="text-lg font-bold text-gray-900">
-                  {appointment.total_price.toFixed(2)}
+              <div className="flex flex-col pl-4 border-l border-gray-100">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Cleaner</span>
+                <span className={`text-xs font-medium ${getCleanerName() === "Unassigned" ? "text-gray-400 italic" : "text-gray-900"}`}>
+                  {getCleanerName()}
                 </span>
               </div>
             )}
           </div>
+          {role !== "cleaner" && (
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Total</span>
+              <span className="text-sm font-bold text-gray-900">${appointment.total_price.toFixed(2)}</span>
+            </div>
+          )}
         </div>
-      </div>
+
+        {/* Primary Action Row - Full width button on mobile */}
+        {showStartJobButton && (
+          <div className="mt-2 pt-3 border-t border-gray-100">
+            <button
+              onClick={handleStartJobClick}
+              disabled={isStarting}
+              className="w-full justify-center px-6 py-3 text-sm font-semibold bg-primary-600 text-white rounded-xl shadow-md hover:shadow-lg hover:bg-primary-700 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-2 active:scale-[0.98]"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              {isStarting ? "Starting Job..." : "Start Job"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
