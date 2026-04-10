@@ -311,6 +311,145 @@ export async function createExpressDashboardLoginLink(
 }
 
 /**
+ * Fetch all payouts (bank transfers) for a connected account and return
+ * a map from each payout ID → { arrivalDate, status } for reconciliation.
+ */
+export async function getConnectedAccountPayouts(
+  connectedAccountId: string
+): Promise<Array<{ id: string; status: string; arrivalDate: string }>> {
+  const stripe = getStripe();
+  const payouts: Array<{ id: string; status: string; arrivalDate: string }> = [];
+
+  let hasMore = true;
+  let startingAfter: string | undefined;
+
+  while (hasMore) {
+    const params: Stripe.PayoutListParams = {
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    };
+
+    const page = await stripe.payouts.list(params, {
+      stripeAccount: connectedAccountId,
+    });
+
+    for (const p of page.data) {
+      if (p.status === 'paid') {
+        payouts.push({
+          id: p.id,
+          status: p.status,
+          arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
+        });
+      }
+    }
+
+    hasMore = page.has_more;
+    if (page.data.length > 0) {
+      startingAfter = page.data[page.data.length - 1].id;
+    }
+  }
+
+  return payouts;
+}
+
+/**
+ * Fetch balance transactions for a connected account's payout (bank transfer).
+ * Returns the source transfer IDs that were batched into this Stripe payout.
+ *
+ * Tries `type: 'payment'` first, and if that yields nothing, retries without a
+ * type filter so we catch transfers surfaced under other balance-transaction
+ * types (e.g. `transfer`, `payout`, etc.).
+ */
+export async function getPayoutTransferIds(
+  connectedAccountId: string,
+  stripePayoutId: string
+): Promise<string[]> {
+  const stripe = getStripe();
+
+  async function fetchIds(typeFilter: string | undefined): Promise<string[]> {
+    const ids: string[] = [];
+    let hasMore = true;
+    let startingAfter: string | undefined;
+
+    while (hasMore) {
+      const params: Stripe.BalanceTransactionListParams = {
+        payout: stripePayoutId,
+        limit: 100,
+        ...(typeFilter ? { type: typeFilter } : {}),
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      };
+
+      const page = await stripe.balanceTransactions.list(params, {
+        stripeAccount: connectedAccountId,
+      });
+
+      for (const txn of page.data) {
+        if (txn.source && typeof txn.source === 'string') {
+          ids.push(txn.source);
+        }
+      }
+
+      hasMore = page.has_more;
+      if (page.data.length > 0) {
+        startingAfter = page.data[page.data.length - 1].id;
+      }
+    }
+    return ids;
+  }
+
+  // Try the narrow filter first (most payouts are payments)
+  let transferIds = await fetchIds('payment');
+
+  // If nothing found, retry without a type filter to catch other txn types
+  if (transferIds.length === 0) {
+    transferIds = await fetchIds(undefined);
+  }
+
+  return transferIds;
+}
+
+/**
+ * Retrieve the available balance on a connected account.
+ * Returns the sum of available amounts in the account's default currency (USD).
+ */
+export async function getConnectedAccountBalance(
+  connectedAccountId: string
+): Promise<{ available: number; pending: number }> {
+  const stripe = getStripe();
+  const balance = await stripe.balance.retrieve({
+    stripeAccount: connectedAccountId,
+  });
+
+  const available = balance.available.reduce((sum, b) => sum + b.amount, 0);
+  const pending = balance.pending.reduce((sum, b) => sum + b.amount, 0);
+
+  return { available, pending };
+}
+
+/**
+ * Fetch the most recent completed bank payout for a connected account.
+ * Returns null if no payouts have been completed yet.
+ */
+export async function getLatestConnectedAccountPayout(
+  connectedAccountId: string
+): Promise<{ amount: number; arrivalDate: string } | null> {
+  const stripe = getStripe();
+
+  const payouts = await stripe.payouts.list(
+    { limit: 1, status: 'paid' },
+    { stripeAccount: connectedAccountId },
+  );
+
+  if (payouts.data.length === 0) return null;
+
+  const p = payouts.data[0];
+  return {
+    amount: p.amount,
+    arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
+  };
+}
+
+/**
  * Create a Connect transfer to a cleaner's connected account.
  * Uses an idempotency key derived from the appointment ID to safely
  * handle webhook retries without creating duplicate transfers.

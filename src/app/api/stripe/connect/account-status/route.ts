@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { getConnectAccountStatus } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
@@ -12,14 +9,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const authHeader = request.headers.get('Authorization');
+    const token = authHeader?.replace('Bearer ', '').trim();
+    if (!token) {
+      return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 });
+    }
+
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) {
+      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
+    }
 
     const { cleaner_id } = await request.json();
 
     if (!cleaner_id) {
       return NextResponse.json({ error: 'Missing required field: cleaner_id' }, { status: 400 });
+    }
+
+    if (authUser.id !== cleaner_id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const { data: cleaner, error: cleanerError } = await supabaseAdmin

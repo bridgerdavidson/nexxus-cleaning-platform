@@ -12,7 +12,7 @@ export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'compl
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 export type PaymentType = 'revenue' | 'expense' | 'refund';
 export type PaymentMethod = 'card' | 'ach' | 'manual';
-export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed';
+export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed' | 'reversed' | 'bank_paid';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
 export type JobProgress = 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
@@ -179,10 +179,13 @@ export interface Payout {
   amount: number; // numeric(10,2)
   status: PayoutStatus;
   stripe_transfer_id: string | null;
+  stripe_payout_id: string | null;
   payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time
   notes: string | null;
   approved_at: string | null;
   paid_at: string | null;
+  bank_paid_at: string | null;
+  reversed_at: string | null;
   created_at: string;
 }
 
