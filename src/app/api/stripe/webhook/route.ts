@@ -71,6 +71,24 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case 'transfer.reversed': {
+        const transfer = event.data.object as Stripe.Transfer;
+        await handleTransferReversed(supabaseAdmin, transfer);
+        break;
+      }
+
+      case 'payout.paid': {
+        const payout = event.data.object as Stripe.Payout;
+        await handlePayoutPaid(supabaseAdmin, payout, event.account ?? null);
+        break;
+      }
+
+      case 'payout.failed': {
+        const payout = event.data.object as Stripe.Payout;
+        await handlePayoutFailed(supabaseAdmin, payout, event.account ?? null);
+        break;
+      }
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -266,4 +284,217 @@ async function handlePaymentIntentFailed(
   console.log('Payment marked as failed for appointment:', appointmentId);
 }
 
+async function handleTransferReversed(
+  supabaseAdmin: unknown,
+  transfer: Stripe.Transfer
+) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
+  console.log('Transfer reversed:', transfer.id);
 
+  const { data: existingPayout, error: findError } = await supabase
+    .from('payouts')
+    .select('id')
+    .eq('stripe_transfer_id', transfer.id)
+    .single();
+
+  if (findError || !existingPayout) {
+    console.log('No payout record found for reversed transfer:', transfer.id);
+    return;
+  }
+
+  const { error: updateError } = await supabase
+    .from('payouts')
+    .update({
+      status: 'reversed',
+      reversed_at: new Date().toISOString(),
+    })
+    .eq('id', existingPayout.id);
+
+  if (updateError) {
+    console.error('Error marking payout as reversed:', updateError);
+  } else {
+    console.log('Payout marked as reversed for transfer:', transfer.id);
+  }
+}
+
+/**
+ * Handle payout.paid from a connected account — money landed in the cleaner's bank.
+ * Connect events arrive with event.account set to the connected account ID.
+ * Stripe batches balance into a single payout, so we mark all eligible rows.
+ *
+ * Resilience notes:
+ * - If event.account is missing (webhook misconfiguration), we skip and log clearly.
+ * - We match by stripe_transfer_id via balance transaction lookup when possible,
+ *   but fall back to marking all un-assigned 'paid' rows for the cleaner.
+ * - The reconcile-payouts endpoint handles catch-up for any missed webhooks.
+ */
+async function handlePayoutPaid(
+  supabaseAdmin: unknown,
+  payout: Stripe.Payout,
+  connectedAccountId: string | null
+) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
+  const arrivalDate = new Date(payout.arrival_date * 1000).toISOString();
+
+  console.log('Payout paid webhook received:', {
+    payoutId: payout.id,
+    connectedAccountId,
+    arrivalDate,
+    amount: payout.amount,
+    currency: payout.currency,
+    status: payout.status,
+  });
+
+  if (!connectedAccountId) {
+    console.warn(
+      'payout.paid event missing event.account — this usually means the webhook is not ' +
+      'configured as a Connect webhook. Enable "Listen to events on Connected accounts" ' +
+      'in your Stripe webhook settings. Payout will be caught by the reconcile endpoint.',
+      { payoutId: payout.id }
+    );
+    return;
+  }
+
+  // Find the cleaner by their Stripe Connect account
+  const { data: cleaner, error: cleanerError } = await supabase
+    .from('cleaner_profiles')
+    .select('id')
+    .eq('stripe_connect_account_id', connectedAccountId)
+    .single();
+
+  if (cleanerError || !cleaner) {
+    console.log('No cleaner found for connected account:', connectedAccountId, cleanerError?.message);
+    return;
+  }
+
+  // Try to get the specific transfer IDs from this bank payout so we can
+  // do a precise match. Falls back gracefully if balance transaction lookup fails.
+  let transferIds: string[] = [];
+  try {
+    const { getPayoutTransferIds } = await import('@/lib/stripe');
+    transferIds = await getPayoutTransferIds(connectedAccountId, payout.id);
+    console.log(`payout.paid ${payout.id}: resolved ${transferIds.length} transfer(s):`, transferIds);
+  } catch (err) {
+    console.warn('payout.paid: could not fetch balance transactions, will use fallback:', err);
+  }
+
+  const bankPaidUpdate = {
+    status: 'bank_paid' as const,
+    stripe_payout_id: payout.id,
+    bank_paid_at: arrivalDate,
+  };
+
+  let count = 0;
+
+  if (transferIds.length > 0) {
+    // Precise: only update rows whose transfers are in this bank payout
+    const { data: updatedRows, error: updateError } = await supabase
+      .from('payouts')
+      .update(bankPaidUpdate)
+      .eq('cleaner_id', cleaner.id)
+      .eq('status', 'paid')
+      .in('stripe_transfer_id', transferIds)
+      .select('id');
+
+    if (updateError) {
+      console.error('payout.paid: DB error during precise update:', updateError);
+    } else {
+      count = (updatedRows ?? []).length;
+    }
+
+    // If precise matching found nothing, fall back to unassigned rows
+    if (count === 0) {
+      console.warn('payout.paid: precise transfer match updated 0 rows, trying fallback for cleaner:', cleaner.id);
+      const { data: fallbackRows, error: fallbackError } = await supabase
+        .from('payouts')
+        .update(bankPaidUpdate)
+        .eq('cleaner_id', cleaner.id)
+        .eq('status', 'paid')
+        .is('stripe_payout_id', null)
+        .select('id');
+
+      if (fallbackError) {
+        console.error('payout.paid: DB error during fallback update:', fallbackError);
+      } else {
+        count = (fallbackRows ?? []).length;
+      }
+    }
+  } else {
+    // Fallback: mark all 'paid' rows not yet assigned a stripe_payout_id
+    const { data: updatedRows, error: updateError } = await supabase
+      .from('payouts')
+      .update(bankPaidUpdate)
+      .eq('cleaner_id', cleaner.id)
+      .eq('status', 'paid')
+      .is('stripe_payout_id', null)
+      .select('id');
+
+    if (updateError) {
+      console.error('payout.paid: DB error during fallback update:', updateError);
+    } else {
+      count = (updatedRows ?? []).length;
+    }
+  }
+
+  if (count === 0) {
+    console.warn('payout.paid: no eligible payout rows updated for cleaner:', cleaner.id,
+      'payout:', payout.id, '— rows may already be bank_paid or no matching rows exist');
+  } else {
+    console.log(`payout.paid: marked ${count} row(s) as bank_paid for cleaner ${cleaner.id}, payout ${payout.id}`);
+  }
+}
+
+async function handlePayoutFailed(
+  supabaseAdmin: unknown,
+  payout: Stripe.Payout,
+  connectedAccountId: string | null
+) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
+
+  console.log('Payout failed webhook received:', {
+    payoutId: payout.id,
+    connectedAccountId,
+    failureCode: payout.failure_code,
+    failureMessage: payout.failure_message,
+  });
+
+  if (!connectedAccountId) {
+    console.warn('payout.failed event missing event.account — Connect webhook not configured as connected account listener.');
+    return;
+  }
+
+  const { data: cleaner, error: cleanerError } = await supabase
+    .from('cleaner_profiles')
+    .select('id')
+    .eq('stripe_connect_account_id', connectedAccountId)
+    .single();
+
+  if (cleanerError || !cleaner) {
+    console.log('No cleaner found for connected account on payout.failed:', connectedAccountId);
+    return;
+  }
+
+  // If a payout fails after we already assigned its ID, revert those rows
+  // back to 'paid' (still in Stripe balance, not yet in bank).
+  const { data: revertedRows, error: updateError } = await supabase
+    .from('payouts')
+    .update({
+      status: 'paid',
+      stripe_payout_id: null,
+      bank_paid_at: null,
+    })
+    .eq('cleaner_id', cleaner.id)
+    .eq('stripe_payout_id', payout.id)
+    .select('id');
+
+  if (updateError) {
+    console.error('Error reverting payouts after payout.failed:', updateError);
+  } else {
+    const count = (revertedRows ?? []).length;
+    if (count === 0) {
+      console.log('payout.failed: no rows were reverted (may not have been assigned yet):', payout.id);
+    } else {
+      console.log(`payout.failed: reverted ${count} row(s) back to paid for cleaner ${cleaner.id}, payout ${payout.id}`);
+    }
+  }
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeAppointments } from './useRealtimeAppointments';
@@ -81,6 +82,48 @@ export interface CleanerPayout {
       name: string;
     } | null;
   } | null;
+}
+
+export interface EarningsPayoutRow {
+  id: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'paid' | 'failed' | 'reversed' | 'bank_paid';
+  paid_at: string | null;
+  bank_paid_at: string | null;
+  reversed_at: string | null;
+  created_at: string;
+  payout_percent_snapshot: number | null;
+  appointment: {
+    id: string;
+    scheduled_date: string;
+    homeowner: {
+      first_name: string;
+      last_name: string;
+    } | null;
+    service_type: {
+      name: string;
+    } | null;
+  } | null;
+}
+
+export interface StripeSummaryData {
+  inStripe: number;
+  latestBankPayoutAmount: number | null;
+  latestBankPayoutDate: string | null;
+}
+
+export interface EarningsSummary {
+  projectedEarnings: number;
+  inStripe: number;
+  latestBankPayoutAmount: number | null;
+  latestBankPayoutDate: string | null;
+}
+
+export interface CleanerEarningsData {
+  summary: EarningsSummary;
+  payoutHistory: EarningsPayoutRow[];
+  loading: boolean;
+  error: string | null;
 }
 
 export interface CleanerPhoto {
@@ -616,6 +659,285 @@ export function useCleanerPayouts() {
   }, [user?.id, orgId]);
 
   return { payouts, loading, error };
+}
+
+/**
+ * Projected earnings for a date range: sum of cleaner share for appointments
+ * that are confirmed, in progress, or completed in the window (pending and
+ * cancelled excluded). Only queries appointments — no Stripe calls, no reconcile.
+ */
+export function useCleanerProjectedEarnings(startDate: string, endDate: string) {
+  const [projectedEarnings, setProjectedEarnings] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
+
+  useEffect(() => {
+    if (!user?.id || !orgId) { setLoading(false); return; }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: cleanerProfile, error: profileError } = await supabase
+          .from('cleaner_profiles')
+          .select('id, payout_percent')
+          .eq('id', user.id)
+          .eq('organization_id', orgId)
+          .single();
+
+        if (profileError) throw profileError;
+        if (!cleanerProfile) throw new Error('Cleaner profile not found');
+
+        const payoutPercent = Number(cleanerProfile.payout_percent) || 0;
+
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const effectiveStart = startDate < todayStr ? todayStr : startDate;
+        if (effectiveStart > endDate) {
+          if (!cancelled) setProjectedEarnings(0);
+          return;
+        }
+
+        const { data: periodAppointments } = await supabase
+          .from('appointments')
+          .select('id, total_price')
+          .eq('cleaner_id', user.id)
+          .eq('organization_id', orgId)
+          .in('status', ['confirmed', 'in_progress', 'completed'])
+          .gte('scheduled_date', effectiveStart)
+          .lte('scheduled_date', endDate);
+
+        const grossTotal = (periodAppointments || []).reduce(
+          (sum, a) => sum + Number(a.total_price), 0,
+        );
+        if (!cancelled) {
+          setProjectedEarnings(Math.round(grossTotal * (payoutPercent / 100) * 100) / 100);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch projected earnings');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [user?.id, orgId, startDate, endDate]);
+
+  return { projectedEarnings, loading, error };
+}
+
+/**
+ * Live Stripe summary (In Stripe balance + latest bank payout).
+ * Fetched once on mount — period-independent so it never re-fetches when
+ * the user changes projected-earnings or history date ranges.
+ * Also kicks off reconcile in parallel to keep DB history accurate.
+ */
+export function useCleanerStripeSummary() {
+  const [data, setData] = useState<StripeSummaryData>({
+    inStripe: 0,
+    latestBankPayoutAmount: null,
+    latestBankPayoutDate: null,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
+
+  useEffect(() => {
+    if (!user?.id || !orgId) { setLoading(false); return; }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+
+        const reconcilePromise = token
+          ? fetch('/api/stripe/connect/reconcile-payouts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ cleaner_id: user.id }),
+            }).catch((err: unknown) => console.warn('Earnings reconcile failed (non-fatal):', err))
+          : Promise.resolve();
+
+        const stripeSummaryPromise = token
+          ? fetch('/api/stripe/connect/balance-summary', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ cleaner_id: user.id }),
+            })
+              .then(r => r.ok ? r.json() : null)
+              .catch(() => null)
+          : Promise.resolve(null);
+
+        const [, stripeSummary] = await Promise.all([reconcilePromise, stripeSummaryPromise]);
+
+        let inStripe = 0;
+        let latestBankPayoutAmount: number | null = null;
+        let latestBankPayoutDate: string | null = null;
+
+        if (stripeSummary?.success) {
+          inStripe = Number(stripeSummary.availableBalance) + Number(stripeSummary.pendingBalance);
+          if (stripeSummary.latestPayout) {
+            latestBankPayoutAmount = Number(stripeSummary.latestPayout.amount);
+            latestBankPayoutDate = stripeSummary.latestPayout.date;
+          }
+        } else {
+          const { data: inStripeData } = await supabase
+            .from('payouts').select('amount')
+            .eq('cleaner_id', user.id).eq('organization_id', orgId).eq('status', 'paid');
+          inStripe = (inStripeData || []).reduce((sum, r) => sum + Number(r.amount), 0);
+
+          const { data: latestBankData } = await supabase
+            .from('payouts').select('amount, bank_paid_at')
+            .eq('cleaner_id', user.id).eq('organization_id', orgId).eq('status', 'bank_paid')
+            .order('bank_paid_at', { ascending: false }).limit(1);
+          const latestBank = latestBankData?.[0] ?? null;
+          if (latestBank) {
+            latestBankPayoutAmount = Math.round(Number(latestBank.amount) * 100) / 100;
+            latestBankPayoutDate = latestBank.bank_paid_at ?? null;
+          }
+        }
+
+        if (!cancelled) {
+          setData({
+            inStripe: Math.round(inStripe * 100) / 100,
+            latestBankPayoutAmount: latestBankPayoutAmount != null ? Math.round(latestBankPayoutAmount * 100) / 100 : null,
+            latestBankPayoutDate,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch Stripe summary');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [user?.id, orgId]);
+
+  return { ...data, loading, error };
+}
+
+/**
+ * Payout history filtered by paid_at date range.
+ * Changing history period only re-fetches history rows — no Stripe calls.
+ */
+export function useCleanerEarningsHistory(startDate: string, endDate: string) {
+  const [payoutHistory, setPayoutHistory] = useState<EarningsPayoutRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const auth = useAuth();
+  const { user, currentOrganizationId } = auth || {};
+  const orgId = currentOrganizationId ?? null;
+
+  useEffect(() => {
+    if (!user?.id || !orgId) { setLoading(false); return; }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: payoutsData, error: payoutsError } = await supabase
+          .from('payouts')
+          .select(`
+            id, amount, status, paid_at, bank_paid_at, reversed_at, created_at,
+            payout_percent_snapshot,
+            appointment:appointments(
+              id, scheduled_date,
+              homeowner:user_profiles!homeowner_id(first_name, last_name),
+              service_type:service_types(name)
+            )
+          `)
+          .eq('cleaner_id', user.id)
+          .eq('organization_id', orgId)
+          .gte('paid_at', `${startDate}T00:00:00`)
+          .lte('paid_at', `${endDate}T23:59:59`)
+          .order('paid_at', { ascending: false });
+
+        if (payoutsError) throw payoutsError;
+
+        const transformed: EarningsPayoutRow[] = (payoutsData || []).map((p: Record<string, unknown>) => {
+          const apptRaw = p.appointment;
+          let appointment: EarningsPayoutRow['appointment'] = null;
+          if (apptRaw) {
+            const appt = Array.isArray(apptRaw) ? apptRaw[0] : apptRaw;
+            if (appt) {
+              appointment = {
+                id: appt.id as string,
+                scheduled_date: appt.scheduled_date as string,
+                homeowner: Array.isArray(appt.homeowner) ? appt.homeowner[0] : appt.homeowner,
+                service_type: Array.isArray(appt.service_type) ? appt.service_type[0] : appt.service_type,
+              };
+            }
+          }
+          return {
+            id: p.id as string,
+            amount: Number(p.amount),
+            status: p.status as EarningsPayoutRow['status'],
+            paid_at: p.paid_at as string | null,
+            bank_paid_at: p.bank_paid_at as string | null,
+            reversed_at: p.reversed_at as string | null,
+            created_at: p.created_at as string,
+            payout_percent_snapshot: p.payout_percent_snapshot != null ? Number(p.payout_percent_snapshot) : null,
+            appointment,
+          };
+        });
+
+        if (!cancelled) setPayoutHistory(transformed);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch payout history');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [user?.id, orgId, startDate, endDate]);
+
+  return { payoutHistory, loading, error };
+}
+
+/**
+ * Legacy combined hook — kept for backward compatibility but now delegates
+ * to the three independent hooks internally.
+ */
+export function useCleanerEarnings(
+  summaryStart: string,
+  summaryEnd: string,
+  historyStart: string,
+  historyEnd: string,
+) {
+  const { projectedEarnings, loading: projLoading, error: projError } = useCleanerProjectedEarnings(summaryStart, summaryEnd);
+  const { inStripe, latestBankPayoutAmount, latestBankPayoutDate, loading: stripeLoading, error: stripeError } = useCleanerStripeSummary();
+  const { payoutHistory, loading: histLoading, error: histError } = useCleanerEarningsHistory(historyStart, historyEnd);
+
+  const summary: EarningsSummary = {
+    projectedEarnings,
+    inStripe,
+    latestBankPayoutAmount,
+    latestBankPayoutDate,
+  };
+
+  return {
+    summary,
+    payoutHistory,
+    loading: projLoading || stripeLoading || histLoading,
+    error: projError || stripeError || histError,
+  };
 }
 
 export function useCleanerPhotos() {
