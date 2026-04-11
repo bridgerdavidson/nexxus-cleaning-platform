@@ -51,7 +51,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
                   strokeWidth={isActive ? 2.5 : 2}
                 />
                 {tab.hasNotification && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary-600 rounded-full border-2 border-white" />
                 )}
               </div>
               <span

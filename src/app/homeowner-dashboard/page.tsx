@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -42,10 +42,17 @@ import StatusBadge from "../../components/StatusBadge";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
+import {
+  HOMEOWNER_DASHBOARD_TAB_IDS,
+  usePersistedDashboardTab,
+} from "../../hooks/usePersistedDashboardTab";
 
-export default function HomeownerDashboard() {
+function HomeownerDashboardInner() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = usePersistedDashboardTab(
+    "home",
+    HOMEOWNER_DASHBOARD_TAB_IDS
+  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
@@ -794,5 +801,22 @@ export default function HomeownerDashboard() {
         hidePriceOverride={true}
       />
     </>
+  );
+}
+
+export default function HomeownerDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <HomeownerDashboardInner />
+    </Suspense>
   );
 }

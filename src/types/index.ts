@@ -382,7 +382,6 @@ export interface CleanerStats {
   completedJobs: number;
   totalEarnings: number;
   pendingPayouts: number;
-  rating: number;
 }
 
 export interface AdminStats {

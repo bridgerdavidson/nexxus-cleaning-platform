@@ -12,7 +12,6 @@ import {
   Mail,
   Phone,
   AlertCircle,
-  Star,
   CheckCircle,
   ChevronDown,
   ShieldCheck,
@@ -39,7 +38,10 @@ export default function TeamMembersPage({
   onRefresh,
   onMemberUpdated,
 }: TeamMembersPageProps) {
-  const { currentOrganizationId } = useAuth();
+  const { currentOrganizationId, user } = useAuth();
+
+  const canManagePermissionsForMember = (member: TeamMember) =>
+    member.role === "manager" && member.id !== user?.id;
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -351,7 +353,7 @@ export default function TeamMembersPage({
                   className="absolute top-4 right-4 flex items-center gap-2"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {member.role === "manager" && (
+                  {canManagePermissionsForMember(member) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -436,20 +438,13 @@ export default function TeamMembersPage({
                 {/* Role-specific info */}
                 {member.role === "cleaner" && member.cleaner_profile && (
                   <div className="flex items-center flex-wrap gap-3 pt-4 border-t border-gray-100">
-                    <div className="flex items-center gap-1.5">
-                      <Star className="w-4 h-4 text-yellow-400 fill-current flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-900">
-                        {member.cleaner_profile.rating.toFixed(1)}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {member.cleaner_profile.total_jobs} jobs
-                    </div>
-                    {member.cleaner_profile.is_available && (
+                    {member.cleaner_profile.is_available ? (
                       <div className="flex items-center gap-1 text-xs text-green-600">
                         <CheckCircle className="w-3 h-3 flex-shrink-0" />
                         <span>Available</span>
                       </div>
+                    ) : (
+                      <span className="text-xs text-gray-500">Unavailable</span>
                     )}
                   </div>
                 )}
@@ -519,6 +514,7 @@ export default function TeamMembersPage({
           setSelectedMember(null);
         }}
         member={selectedMember}
+        currentUserId={user?.id}
         onDelete={(member) => handleDeleteClick(member)}
         onManagePermissions={(member) => handleManagePermissions(member)}
         onMemberUpdated={(updatedMember) => {

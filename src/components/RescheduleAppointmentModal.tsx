@@ -11,7 +11,6 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
-  Star,
   RefreshCw,
   Send,
   SprayCan,
@@ -25,8 +24,6 @@ import { AppointmentCardData } from "./AppointmentCard";
 
 interface Cleaner {
   id: string;
-  rating: number;
-  total_jobs: number;
   user_profile: {
     first_name: string;
     last_name: string;
@@ -131,8 +128,6 @@ export default function RescheduleAppointmentModal({
         .select(
           `
           id,
-          rating,
-          total_jobs,
           user_profile:user_profiles!id(
             first_name,
             last_name,
@@ -142,7 +137,7 @@ export default function RescheduleAppointmentModal({
         )
         .eq("organization_id", organizationId)
         .eq("is_available", true)
-        .order("rating", { ascending: false });
+        .order("id", { ascending: true });
 
       if (fetchError) throw fetchError;
 
@@ -369,7 +364,7 @@ export default function RescheduleAppointmentModal({
           if (!convError && conversationId) {
             const homeownerName = getHomeownerName();
             const newDateFormatted = formatDate(scheduledDate);
-            const newTimeFormatted = formatTime(scheduledTime);
+            const newTimeFormatted = formatTimeTo12h(scheduledTime);
 
             await supabase.from("messages").insert({
               organization_id: organizationId,
@@ -445,74 +440,75 @@ export default function RescheduleAppointmentModal({
             </button>
           </div>
 
-          {/* Two-column content */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0 lg:flex-row">
-            {/* Left: Appointment details (informational) */}
-            <div className="flex-shrink-0 lg:w-[320px] lg:border-r lg:border-gray-200 bg-gray-50/80 p-6">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-                Appointment Details
-              </h3>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
-                    <User className="w-4 h-4 text-gray-500" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Customer</p>
-                    <p className="font-medium text-gray-900 mt-0.5">
-                      {getHomeownerName()}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
-                    <MapPin className="w-4 h-4 text-gray-500" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Address</p>
-                    <p className="text-sm text-gray-700 mt-0.5">
-                      {getPropertyAddress()}
-                    </p>
-                  </div>
-                </div>
-                {appointment.service_type && (
+          {/* Two-column content: mobile = one scroll (details then form); lg = side-by-side with form column scroll */}
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col lg:flex-row">
+            <div className="flex-1 min-h-0 overflow-y-auto modal-scrollbar flex flex-col lg:contents">
+              {/* Left: Appointment details (informational) */}
+              <div className="flex-shrink-0 lg:w-[320px] lg:border-r lg:border-gray-200 bg-gray-50/80 p-6">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                  Appointment Details
+                </h3>
+                <div className="space-y-4">
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
-                      <SprayCan className="w-4 h-4 text-gray-500" />
+                      <User className="w-4 h-4 text-gray-500" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Service</p>
-                      <p className="text-sm text-gray-700 mt-0.5">
-                        {appointment.checklist?.name
-                          ? `${appointment.service_type.name} (${appointment.checklist.name})`
-                          : appointment.service_type.name}
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Customer</p>
+                      <p className="font-medium text-gray-900 mt-0.5">
+                        {getHomeownerName()}
                       </p>
-                      {appointment.checklist?.name && (
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {appointment.checklist.name}
-                        </p>
-                      )}
                     </div>
                   </div>
-                )}
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
-                    <Calendar className="w-4 h-4 text-gray-500" />
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                      <MapPin className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Address</p>
+                      <p className="text-sm text-gray-700 mt-0.5">
+                        {getPropertyAddress()}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Current time</p>
-                    <p className="text-sm text-gray-700 mt-0.5">
-                      {formatDate(appointment.scheduled_date)} at{" "}
-                      {formatTimeTo12h(appointment.scheduled_time)}
-                    </p>
+                  {appointment.service_type && (
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                        <SprayCan className="w-4 h-4 text-gray-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Service</p>
+                        <p className="text-sm text-gray-700 mt-0.5">
+                          {appointment.checklist?.name
+                            ? `${appointment.service_type.name} (${appointment.checklist.name})`
+                            : appointment.service_type.name}
+                        </p>
+                        {appointment.checklist?.name && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {appointment.checklist.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                      <Calendar className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Current time</p>
+                      <p className="text-sm text-gray-700 mt-0.5">
+                        {formatDate(appointment.scheduled_date)} at{" "}
+                        {formatTimeTo12h(appointment.scheduled_time)}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Right: Rescheduling logic (form + actions) */}
-            <div className="flex-1 overflow-y-auto modal-scrollbar p-6 flex flex-col min-h-0">
-              <div className="space-y-5">
+              {/* Right: Rescheduling logic (form + actions) */}
+              <div className="flex-shrink-0 flex flex-col p-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto modal-scrollbar">
+                <div className="space-y-5">
                 {/* Cleaner Feedback Section */}
                 <div className="border-l-4 border-red-500 bg-red-50 rounded-r-xl p-4 space-y-3">
                   <div className="flex items-center gap-2">
@@ -572,7 +568,7 @@ export default function RescheduleAppointmentModal({
                                         <Calendar className="w-3.5 h-3.5" />
                                         <span>
                                           {formatDate(st.suggested_date)} at{" "}
-                                          {formatTime(st.suggested_time)}
+                                          {formatTimeTo12h(st.suggested_time)}
                                         </span>
                                       </button>
                                     );
@@ -644,17 +640,13 @@ export default function RescheduleAppointmentModal({
                           <p className="font-medium text-gray-900">
                             {getCleanerName(selectedCleaner)}
                           </p>
-                          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                            <Star className="w-3 h-3 text-yellow-500" />
-                            <span>{selectedCleaner.rating.toFixed(1)}</span>
-                            <span>&middot;</span>
-                            <span>{selectedCleaner.total_jobs} jobs</span>
-                            {selectedCleaner.id === originalCleanerId && (
+                          {selectedCleaner.id === originalCleanerId && (
+                            <div className="mt-1">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
                                 Current
                               </span>
-                            )}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <button
@@ -710,17 +702,13 @@ export default function RescheduleAppointmentModal({
                                 <p className="font-medium text-sm text-gray-900 truncate">
                                   {getCleanerName(cleaner)}
                                 </p>
-                                <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                                  <Star className="w-3 h-3 text-yellow-500" />
-                                  <span>{cleaner.rating.toFixed(1)}</span>
-                                  <span>&middot;</span>
-                                  <span>{cleaner.total_jobs} jobs</span>
-                                  {cleaner.id === originalCleanerId && (
+                                {cleaner.id === originalCleanerId && (
+                                  <div className="mt-0.5">
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
                                       Current
                                     </span>
-                                  )}
-                                </div>
+                                  </div>
+                                )}
                               </div>
                             </button>
                           ))}
@@ -842,6 +830,7 @@ export default function RescheduleAppointmentModal({
                   )}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>

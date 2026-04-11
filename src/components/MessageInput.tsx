@@ -86,6 +86,19 @@ export default function MessageInput({
       console.error("Error sending message:", error);
     } finally {
       setSending(false);
+      // Restore focus to the textarea after send, unless the user
+      // has intentionally moved focus to a different interactive element.
+      // Clicking the send button or send completing while textarea was focused
+      // both land here; body/null/the send button are all "unintentional" targets.
+      const active = document.activeElement;
+      const isOutsideTextarea = active !== textareaRef.current;
+      const isNotOtherInput =
+        active === document.body ||
+        active === null ||
+        active?.closest("[data-message-input]") !== null;
+      if (textareaRef.current && isOutsideTextarea && isNotOtherInput) {
+        textareaRef.current.focus();
+      }
     }
   };
 
@@ -110,7 +123,7 @@ export default function MessageInput({
     (content.trim() !== "" || attachments.length > 0) && !sending && !disabled;
 
   return (
-    <div className="bg-gray-50 p-4">
+    <div className="bg-gray-50 p-4" data-message-input>
       {/* Attachment previews */}
       {previews.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3 px-2">
@@ -145,9 +158,8 @@ export default function MessageInput({
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
-              disabled={disabled || sending}
               rows={1}
-              className="w-full resize-none border-0 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed max-h-32 overflow-y-auto bg-transparent text-gray-900 placeholder-gray-400"
+              className="w-full resize-none border-0 focus:outline-none focus:ring-0 max-h-32 overflow-y-auto bg-transparent text-gray-900 placeholder-gray-400"
               style={{ minHeight: "24px" }}
             />
 

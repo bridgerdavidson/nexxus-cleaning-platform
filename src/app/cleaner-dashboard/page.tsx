@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -60,6 +60,10 @@ import SettingsHub from "../../components/SettingsHub";
 import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import StripeConnectionCard from "../../components/StripeConnectionCard";
+import {
+  CLEANER_DASHBOARD_TAB_IDS,
+  usePersistedDashboardTab,
+} from "../../hooks/usePersistedDashboardTab";
 
 type ViewType = "list" | "calendar";
 
@@ -187,9 +191,12 @@ const PROJECTED_EARNINGS_PRESETS: EarningsRangePreset[] = [
   },
 ];
 
-export default function CleanerDashboard() {
+function CleanerDashboardInner() {
   const { user, loading, signOut, currentOrganizationId } = useAuth();
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = usePersistedDashboardTab(
+    "home",
+    CLEANER_DASHBOARD_TAB_IDS
+  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedActive, setExpandedActive] = useState(true);
   const [expandedToday, setExpandedToday] = useState(true);
@@ -918,7 +925,7 @@ export default function CleanerDashboard() {
             </div>
 
             {/* Responsive Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
@@ -985,22 +992,6 @@ export default function CleanerDashboard() {
                       .filter((a) => a.status === "pending")
                       .reduce((sum, a) => sum + Number(a.total_price), 0)
                       .toFixed(0)}
-                  </p>
-                )}
-              </div>
-
-              <div className="col-span-2 lg:col-span-1 rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-purple-100 p-1.5 ring-1 ring-purple-200/70">
-                    <Star className="h-4 w-4 text-purple-700" />
-                  </span>
-                  Rating
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.rating}
                   </p>
                 )}
               </div>
@@ -1974,5 +1965,22 @@ export default function CleanerDashboard() {
         onTabChange={setActiveTab}
       />
     </div>
+  );
+}
+
+export default function CleanerDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <CleanerDashboardInner />
+    </Suspense>
   );
 }

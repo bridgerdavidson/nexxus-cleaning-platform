@@ -563,20 +563,6 @@ export default function CleanerManagementPage({
                   Professional Details
                 </h3>
 
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-white border border-gray-200 shadow-sm rounded-lg flex items-center justify-center flex-shrink-0">
-                    <UserCheck className="w-4 h-4 text-gray-500" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                      Total Jobs
-                    </p>
-                    <p className="text-gray-900 font-medium">
-                      {viewingCleaner.total_jobs}
-                    </p>
-                  </div>
-                </div>
-
                 {!!viewingCleaner.experience_years && (
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 bg-white border border-gray-200 shadow-sm rounded-lg flex items-center justify-center flex-shrink-0">
@@ -976,7 +962,6 @@ export default function CleanerManagementPage({
 
                 {/* Stats: hidden below sm when stacked; inline in row from md */}
                 <div className="hidden sm:flex flex-wrap items-center gap-4 text-sm text-gray-500 md:ml-auto shrink-0">
-                  <span>{cleaner.total_jobs} jobs</span>
                   <span>{cleaner.payout_percent ?? 0}% payout</span>
                   {!!cleaner.hourly_rate && (
                     <span>${cleaner.hourly_rate}/hr</span>

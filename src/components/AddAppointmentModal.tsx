@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   X,
   Calendar,
@@ -8,7 +8,6 @@ import {
   Plus,
   User,
   Home,
-  Star,
   CheckCircle,
   Loader2,
   Repeat,
@@ -55,8 +54,6 @@ interface ChecklistOption {
 
 interface Cleaner {
   id: string;
-  rating: number;
-  total_jobs: number;
   user_profile: {
     first_name: string;
     last_name: string;
@@ -93,11 +90,21 @@ export default function AddAppointmentModal({
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
 
+  const overlayScrollRef = useRef<HTMLDivElement>(null);
+  const modalBodyScrollRef = useRef<HTMLDivElement>(null);
+
   // Step management - always start at step 1
   // When homeowner only is pre-selected: step 1 = select property, step 2 = appointment details, step 3 = cleaner
   // When homeowner and property are pre-selected: step 1 = appointment details, step 2 = cleaner
   // When not pre-selected: step 1 = homeowner/property, step 2 = appointment details, step 3 = cleaner
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Step changes reuse the same scroll containers; reset so each step starts at the top
+  useEffect(() => {
+    if (!isOpen) return;
+    overlayScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    modalBodyScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [currentStep, isOpen]);
 
   // Step 1 state
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
@@ -414,8 +421,6 @@ export default function AddAppointmentModal({
         .select(
           `
           id,
-          rating,
-          total_jobs,
           user_profile:user_profiles!id(
             first_name,
             last_name,
@@ -425,7 +430,7 @@ export default function AddAppointmentModal({
         )
         .eq("organization_id", currentOrganizationId)
         .eq("is_available", true)
-        .order("rating", { ascending: false });
+        .order("id", { ascending: true });
 
       if (error) throw error;
 
@@ -743,7 +748,10 @@ export default function AddAppointmentModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] overflow-y-auto">
+    <div
+      ref={overlayScrollRef}
+      className="fixed inset-0 z-[300] overflow-y-auto"
+    >
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
@@ -834,7 +842,10 @@ export default function AddAppointmentModal({
           </div>
 
           {/* Content */}
-          <div className="p-8 overflow-y-auto max-h-[calc(90vh-250px)]">
+          <div
+            ref={modalBodyScrollRef}
+            className="p-8 overflow-y-auto max-h-[calc(90vh-250px)]"
+          >
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
                 {error}
@@ -1575,17 +1586,6 @@ export default function AddAppointmentModal({
                                 {cleaner.user_profile?.first_name}{" "}
                                 {cleaner.user_profile?.last_name}
                               </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <div className="flex items-center">
-                                  <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                                  <span className="text-sm text-gray-600 ml-1">
-                                    {cleaner.rating.toFixed(1)}
-                                  </span>
-                                </div>
-                                <span className="text-sm text-gray-600">
-                                  • {cleaner.total_jobs} jobs
-                                </span>
-                              </div>
                             </div>
                           </div>
                           {selectedCleaner?.id === cleaner.id && (

@@ -47,7 +47,6 @@ export interface CleanerStats {
   completedThisWeek: number;
   totalEarnings: number;
   pendingPayouts: number;
-  rating: number;
   completedJobs: number;
   upcomingJobs: number;
 }
@@ -392,7 +391,6 @@ export function useCleanerStats() {
     completedThisWeek: 0,
     totalEarnings: 0,
     pendingPayouts: 0,
-    rating: 0,
     completedJobs: 0,
     upcomingJobs: 0
   });
@@ -415,7 +413,7 @@ export function useCleanerStats() {
         // Note: cleaner_profiles.id IS the user's id
         const { data: cleanerProfile, error: profileError } = await supabase
           .from('cleaner_profiles')
-          .select('id, rating, total_jobs, payout_percent')
+          .select('id, payout_percent')
           .eq('id', user.id)
           .eq('organization_id', orgId)
           .single();
@@ -488,7 +486,6 @@ export function useCleanerStats() {
           completedThisWeek: completedThisWeek || 0,
           totalEarnings: Math.round(cleanerEarnings),
           pendingPayouts: Math.round(pendingPayouts),
-          rating: cleanerProfile.rating || 0,
           completedJobs: completedJobs || 0,
           upcomingJobs: upcomingJobs || 0
         });

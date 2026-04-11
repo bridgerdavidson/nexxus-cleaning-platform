@@ -10,9 +10,7 @@ import {
   Edit2,
   Trash2,
   Settings,
-  Star,
   CheckCircle,
-  UserCheck,
   Save,
   Loader2,
 } from "lucide-react";
@@ -25,6 +23,8 @@ interface TeamMemberSidePanelProps {
   isOpen: boolean;
   onClose: () => void;
   member: TeamMember | null;
+  /** When set, hides "Manage Permissions" for this user (e.g. viewing your own row). */
+  currentUserId?: string | null;
   onEdit?: (member: TeamMember) => void;
   onDelete?: (member: TeamMember) => void;
   onManagePermissions?: (member: TeamMember) => void;
@@ -35,6 +35,7 @@ export default function TeamMemberSidePanel({
   isOpen,
   onClose,
   member,
+  currentUserId,
   onEdit,
   onDelete,
   onManagePermissions,
@@ -194,6 +195,10 @@ export default function TeamMemberSidePanel({
   };
 
   const permissionsCount = getPermissionsCount();
+  const showManagePermissions =
+    member.role === "manager" &&
+    onManagePermissions &&
+    member.id !== currentUserId;
 
   const panel = (
     <div
@@ -428,26 +433,6 @@ export default function TeamMemberSidePanel({
               </h4>
 
               <div className="flex items-center gap-3">
-                <Star className="w-5 h-5 text-yellow-400 fill-current flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-gray-500">Rating</p>
-                  <p className="font-medium text-gray-900">
-                    {member.cleaner_profile.rating.toFixed(1)} / 5.0
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <UserCheck className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                <div>
-                  <p className="text-sm text-gray-500">Total Jobs</p>
-                  <p className="font-medium text-gray-900">
-                    {member.cleaner_profile.total_jobs}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
                 <CheckCircle
                   className={`w-5 h-5 flex-shrink-0 ${
                     member.cleaner_profile.is_available
@@ -496,7 +481,7 @@ export default function TeamMemberSidePanel({
         {/* Action Footer */}
         <div className="flex-shrink-0 bg-white border-t border-gray-200 p-4 sm:p-6 shadow-lg space-y-2">
           <div className="flex flex-col lg:flex-row gap-2">
-            {member.role === "manager" && onManagePermissions && (
+            {showManagePermissions && (
               <button
                 onClick={handleManagePermissions}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-blue-500 text-blue-700 bg-transparent rounded-lg hover:bg-blue-50 transition-colors font-medium"

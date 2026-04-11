@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -67,11 +67,18 @@ import SettingsHub from "../../components/SettingsHub";
 import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
+import {
+  ADMIN_MANAGER_DASHBOARD_TAB_IDS,
+  usePersistedDashboardTab,
+} from "../../hooks/usePersistedDashboardTab";
 
-export default function ManagerDashboard() {
+function ManagerDashboardInner() {
   const { user, loading, signOut, currentOrganizationId } = useAuth();
   const [activeGroup, setActiveGroup] = useState("operations");
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = usePersistedDashboardTab(
+    "home",
+    ADMIN_MANAGER_DASHBOARD_TAB_IDS
+  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
@@ -415,17 +422,20 @@ export default function ManagerDashboard() {
   );
 
   // Handle tab change - reset filters if not navigating from specific sections
-  const handleTabChange = useCallback((tabId: string) => {
-    setActiveTab(tabId);
-    if (tabId === "messages") {
-      setActiveGroup("operations");
-    }
-    // Only keep filters if we're staying on bookings tab
-    if (tabId !== "bookings") {
-      setShowPendingFilter(false);
-      setShowAllFilter(false);
-    }
-  }, [setActiveGroup]);
+  const handleTabChange = useCallback(
+    (tabId: string) => {
+      setActiveTab(tabId);
+      if (tabId === "messages") {
+        setActiveGroup("operations");
+      }
+      // Only keep filters if we're staying on bookings tab
+      if (tabId !== "bookings") {
+        setShowPendingFilter(false);
+        setShowAllFilter(false);
+      }
+    },
+    [setActiveGroup, setActiveTab]
+  );
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -1639,5 +1649,22 @@ export default function ManagerDashboard() {
         organizationId={currentOrganizationId || ""}
       />
     </div>
+  );
+}
+
+export default function ManagerDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <ManagerDashboardInner />
+    </Suspense>
   );
 }
