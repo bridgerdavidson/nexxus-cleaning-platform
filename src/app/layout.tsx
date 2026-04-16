@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import LayoutWrapper from "../components/LayoutWrapper";
+import { APP_BG_COLOR } from "../constants/theme";
 
 export const metadata: Metadata = {
   title: "Nexxus Cleaning Solutions",
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f9fafb", // Matches Tailwind bg-gray-50
+  themeColor: APP_BG_COLOR, // Matches Tailwind bg-gray-50
   width: "device-width",
   initialScale: 1,
   maximumScale: 1, // Helps prevent zooming on input focus in iOS

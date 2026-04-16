@@ -4,6 +4,8 @@ import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { X, User, LogOut, LucideIcon } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useThemeColor } from '../hooks/useThemeColor';
+import { MENU_OVERLAY_COLOR } from '../constants/theme';
 
 interface Tab {
   id: string;
@@ -29,6 +31,8 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
   onTabChange,
 }) => {
   const { user, signOut } = useAuth();
+  
+  useThemeColor(MENU_OVERLAY_COLOR, isOpen);
 
   // Close sidebar on escape key
   useEffect(() => {
