@@ -882,14 +882,26 @@ function CleanerDashboardInner() {
 
   const renderSchedule = () => (
     <>
-      {/* Mobile Header - Simple Greeting */}
+      {/* Mobile Header - Gradient Card Match (Mini Desktop) */}
       <div className="md:hidden mb-6 mt-2">
-        <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
-          Hello, {user?.profile?.firstName || "there"}
-        </h2>
-        <p className="text-gray-500 mt-1 font-medium">
-          {new Date().toLocaleDateString("en-US", { weekday: 'long', month: 'long', day: 'numeric' })}
-        </p>
+        <div className="relative overflow-hidden rounded-3xl border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-5 shadow-[0_4px_12px_-6px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
+          <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-primary-300/35 blur-3xl" />
+          <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full bg-primary-200/30 blur-3xl" />
+
+          <div className="relative">
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-2.5 py-0.5 text-[10px] font-semibold text-primary-700 uppercase tracking-wider">
+              <Star className="h-3 w-3" />
+              Cleaner Dashboard
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Hello, {user?.profile?.firstName || "there"}
+            </h2>
+            <p className="text-gray-600 mt-1 text-sm font-medium">
+              {new Date().toLocaleDateString("en-US", { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Desktop Header - Modern control center hero */}
@@ -1381,7 +1393,7 @@ function CleanerDashboardInner() {
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-primary-600" />
-                  Today's Jobs
+                  Today&apos;s Jobs
                   <span className="text-sm font-normal text-gray-500">
                     ({filteredTodaysJobs.length})
                   </span>
