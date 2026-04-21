@@ -42,6 +42,11 @@ import {
 import { useConversations } from "../../hooks/useConversations";
 import { useServices } from "../../hooks/useServices";
 import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
+import {
+  DASHBOARD_HERO_BACKGROUND,
+  dashboardHeroCardDesktopClass,
+  dashboardHeroCardMobileClass,
+} from "../../lib/dashboardHero";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -884,11 +889,10 @@ function CleanerDashboardInner() {
     <>
       {/* Mobile Header - Gradient Card Match (Mini Desktop) */}
       <div className="md:hidden mb-6 mt-2">
-        <div className="relative overflow-hidden rounded-3xl border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-5 shadow-[0_4px_12px_-6px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
-          <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-primary-300/35 blur-3xl" />
-          <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full bg-primary-200/30 blur-3xl" />
-
+        <div
+          className={dashboardHeroCardMobileClass}
+          style={DASHBOARD_HERO_BACKGROUND}
+        >
           <div className="relative">
             <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-2.5 py-0.5 text-[10px] font-semibold text-primary-700 uppercase tracking-wider">
               <Star className="h-3 w-3" />
@@ -906,11 +910,10 @@ function CleanerDashboardInner() {
 
       {/* Desktop Header - Modern control center hero */}
       <div className="hidden md:block mb-6">
-        <div className="relative overflow-hidden rounded-[2rem] border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-7 shadow-[0_8px_20px_-14px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
-          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary-300/35 blur-3xl" />
-          <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-primary-200/30 blur-3xl" />
-
+        <div
+          className={dashboardHeroCardDesktopClass}
+          style={DASHBOARD_HERO_BACKGROUND}
+        >
           <div className="relative flex flex-col gap-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>

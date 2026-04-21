@@ -47,6 +47,12 @@ import { useServices } from "../../hooks/useServices";
 import { useConversations } from "../../hooks/useConversations";
 import { useManagerPermissions } from "../../hooks/useManagerPermissions";
 import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
+import {
+  DASHBOARD_HERO_BACKGROUND,
+  DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
+  DASHBOARD_HERO_SECONDARY_BUTTON_STYLE,
+  dashboardHeroCardDesktopClass,
+} from "../../lib/dashboardHero";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -685,11 +691,10 @@ function ManagerDashboardInner() {
 
       {/* Desktop Header - Modern control center hero */}
       <div className="hidden md:block mb-6">
-        <div className="relative overflow-hidden rounded-[2rem] border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-7 shadow-[0_8px_20px_-14px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
-          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary-300/35 blur-3xl" />
-          <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-primary-200/30 blur-3xl" />
-
+        <div
+          className={dashboardHeroCardDesktopClass}
+          style={DASHBOARD_HERO_BACKGROUND}
+        >
           <div className="relative flex flex-col gap-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -710,7 +715,8 @@ function ManagerDashboardInner() {
               {permissions?.can_view_bookings && (
                 <button
                   onClick={() => setActiveTab("bookings")}
-                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+                  className={DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}
+                  style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
                 >
                   View bookings
                 </button>

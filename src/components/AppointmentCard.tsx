@@ -2,6 +2,10 @@ import React, { useState } from "react";
 import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import { formatTimeTo12h } from "../lib/formatTime";
+import {
+  DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
+  DASHBOARD_HERO_SECONDARY_BUTTON_STYLE,
+} from "../lib/dashboardHero";
 import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
 import { JobProgress } from "../types";
 
@@ -327,10 +331,11 @@ export default function AppointmentCard({
             <button
               onClick={handleStartJobClick}
               disabled={isStarting}
-              className="px-5 py-2.5 text-sm font-semibold bg-primary-600 text-white rounded-xl shadow-md hover:shadow-lg hover:bg-primary-700 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-2 flex-shrink-0"
+              className={`flex flex-shrink-0 items-center gap-2 ${DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}`}
+              style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
               title="Start this job"
             >
-              <Play className="w-4 h-4" />
+              <Play className="h-4 w-4 shrink-0 text-primary-700" />
               {isStarting ? "Starting..." : "Start Job"}
             </button>
           )}
@@ -429,9 +434,10 @@ export default function AppointmentCard({
             <button
               onClick={handleStartJobClick}
               disabled={isStarting}
-              className="w-full justify-center px-6 py-3 text-sm font-semibold bg-primary-600 text-white rounded-xl shadow-md hover:shadow-lg hover:bg-primary-700 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center gap-2 active:scale-[0.98]"
+              className={`flex w-full items-center justify-center gap-2 ${DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}`}
+              style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
             >
-              <Play className="w-4 h-4 fill-current" />
+              <Play className="h-4 w-4 shrink-0 text-primary-700" />
               {isStarting ? "Starting Job..." : "Start Job"}
             </button>
           </div>

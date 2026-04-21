@@ -28,6 +28,10 @@ import { supabase } from "../lib/supabase";
 import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { formatTimeTo12h } from "../lib/formatTime";
+import {
+  DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
+  DASHBOARD_HERO_SECONDARY_BUTTON_STYLE,
+} from "../lib/dashboardHero";
 import PaymentMethodForm from "./PaymentMethodForm";
 
 interface CleanerFeedback {
@@ -1210,9 +1214,10 @@ export default function AppointmentSidePanel({
                         }
                       }}
                       disabled={isActionLoading}
-                      className="flex-1 px-5 py-3 text-sm font-semibold bg-primary-600 text-white rounded-xl shadow-md hover:shadow-lg hover:bg-primary-700 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-md flex items-center justify-center gap-2"
+                      className={`flex flex-1 items-center justify-center gap-2 ${DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}`}
+                      style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
                     >
-                      <Play className="w-4 h-4 fill-current" />
+                      <Play className="h-4 w-4 shrink-0 text-primary-700" />
                       {isActionLoading ? "Starting Job..." : "Start Job"}
                     </button>
                   )}

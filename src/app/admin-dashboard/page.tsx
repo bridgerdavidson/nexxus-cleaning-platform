@@ -43,6 +43,10 @@ import {
   deleteAppointment,
 } from "../../hooks/useAdminData";
 import { useServices } from "../../hooks/useServices";
+import {
+  DASHBOARD_HERO_BACKGROUND,
+  dashboardHeroCardDesktopClass,
+} from "../../lib/dashboardHero";
 import { useConversations } from "../../hooks/useConversations";
 import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
 import TopBar from "../../components/TopBar";
@@ -75,7 +79,7 @@ function AdminDashboardInner() {
   const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
-    ADMIN_MANAGER_DASHBOARD_TAB_IDS
+    ADMIN_MANAGER_DASHBOARD_TAB_IDS,
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
@@ -94,7 +98,9 @@ function AdminDashboardInner() {
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
   const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] =
     useState(true);
-  const [initialMessageRecipientId, setInitialMessageRecipientId] = useState<string | null>(null);
+  const [initialMessageRecipientId, setInitialMessageRecipientId] = useState<
+    string | null
+  >(null);
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
     useState<AppointmentCardData | null>(null);
   const router = useRouter();
@@ -234,7 +240,7 @@ function AdminDashboardInner() {
         ],
       },
     }),
-    [hasUnreadMessages]
+    [hasUnreadMessages],
   );
 
   // Show loading while checking auth
@@ -290,13 +296,13 @@ function AdminDashboardInner() {
   const topNavTabs =
     activeGroup === "operations"
       ? currentGroupTabs.filter(
-          (tab) => tab.id !== "customers" && tab.id !== "messages"
+          (tab) => tab.id !== "customers" && tab.id !== "messages",
         )
       : currentGroupTabs;
 
   // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
   const allTabs = Array.from(
-    new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values()
+    new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values(),
   );
   if (!allTabs.find((t) => t.id === "settings")) {
     allTabs.push({ id: "settings", label: "Settings", icon: Settings });
@@ -309,8 +315,8 @@ function AdminDashboardInner() {
     if (newGroup && newGroup.tabs.length > 0) {
       const nextTab =
         groupId === "team"
-          ? newGroup.tabs.find((tab) => tab.id === "team")?.id ??
-            newGroup.tabs[0].id
+          ? (newGroup.tabs.find((tab) => tab.id === "team")?.id ??
+            newGroup.tabs[0].id)
           : newGroup.tabs[0].id;
       setActiveTab(nextTab);
       // Reset filters when switching groups
@@ -350,7 +356,13 @@ function AdminDashboardInner() {
   };
 
   const getPaymentStatusTabConfig = (
-    paymentStatus: "pending" | "paid" | "failed" | "refunded" | null | undefined
+    paymentStatus:
+      | "pending"
+      | "paid"
+      | "failed"
+      | "refunded"
+      | null
+      | undefined,
   ) => {
     switch (paymentStatus) {
       case "paid":
@@ -479,42 +491,35 @@ function AdminDashboardInner() {
 
       {/* Desktop Header - Modern control center hero */}
       <div className="hidden md:block mb-6">
-        <div className="relative overflow-hidden rounded-[2rem] border border-primary-200/90 bg-gradient-to-br from-white via-primary-100/55 to-primary-50/75 p-7 shadow-[0_8px_20px_-14px_rgba(161,98,7,0.22)] ring-1 ring-primary-200/60">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-100/30 via-transparent to-gray-200/20" />
-          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary-300/35 blur-3xl" />
-          <div className="pointer-events-none absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-primary-200/30 blur-3xl" />
-
+        <div
+          className={dashboardHeroCardDesktopClass}
+          style={DASHBOARD_HERO_BACKGROUND}
+        >
           <div className="relative flex flex-col gap-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
-                <Star className="h-3.5 w-3.5" />
-                Admin Dashboard
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                  <Star className="h-3.5 w-3.5" />
+                  Admin Dashboard
+                </div>
+                <h2 className="text-4xl font-bold tracking-tight text-gray-900">
+                  Operations overview
+                </h2>
+                <p className="mt-2 max-w-2xl text-gray-600">
+                  Track the health of bookings, team capacity, and revenue in
+                  one polished workspace built for quick decision-making.
+                </p>
               </div>
-              <h2 className="text-4xl font-bold tracking-tight text-gray-900">
-                Operations overview
-              </h2>
-              <p className="mt-2 max-w-2xl text-gray-600">
-                Track the health of bookings, team capacity, and revenue in one
-                polished workspace built for quick decision-making.
-              </p>
-            </div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                onClick={() => setActiveTab("bookings")}
-                className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
-              >
-                View bookings
-              </button>
-              <button
-                onClick={() => setActiveTab("analytics")}
-                className="rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700"
-              >
-                Open analytics
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => setActiveTab("analytics")}
+                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+                >
+                  Open analytics
+                </button>
+              </div>
             </div>
-          </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
               <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
@@ -701,41 +706,46 @@ function AdminDashboardInner() {
                       <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                     </div>
                   ) : (
-                    awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
-                      const cleanerName = getCleanerName(appointment);
-                      return (
-                        <div key={appointment.id} className="p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 truncate">
-                                {cleanerName ?? "Unassigned"}
-                              </p>
-                              <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                                <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span>
-                                  {formatDateTimeTo12h(
-                                    appointment.scheduled_date,
-                                    appointment.scheduled_time
-                                  )}
-                                </span>
+                    awaitingCleanerApprovalAppointments
+                      .slice(0, 3)
+                      .map((appointment) => {
+                        const cleanerName = getCleanerName(appointment);
+                        return (
+                          <div key={appointment.id} className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-900 truncate">
+                                  {cleanerName ?? "Unassigned"}
+                                </p>
+                                <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                                  <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                  <span>
+                                    {formatDateTimeTo12h(
+                                      appointment.scheduled_date,
+                                      appointment.scheduled_time,
+                                    )}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                  Homeowner: {getHomeownerName(appointment)}
+                                </p>
                               </div>
-                              <p className="text-sm text-gray-500 mt-0.5">
-                                Homeowner: {getHomeownerName(appointment)}
-                              </p>
                             </div>
+                            {cleanerName &&
+                              appointment.cleaner_profile?.user_profile?.id && (
+                                <button
+                                  onClick={() =>
+                                    handleMessageCleaner(appointment)
+                                  }
+                                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors font-medium text-sm"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                  Message {cleanerName}
+                                </button>
+                              )}
                           </div>
-                          {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
-                            <button
-                              onClick={() => handleMessageCleaner(appointment)}
-                              className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors font-medium text-sm"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                              Message {cleanerName}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })
+                        );
+                      })
                   )}
                   {awaitingCleanerApprovalAppointments.length > 3 && (
                     <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
@@ -746,7 +756,8 @@ function AdminDashboardInner() {
                         }}
                         className="w-full text-center text-sm font-medium text-primary-600"
                       >
-                        View all {awaitingCleanerApprovalAppointments.length} awaiting approval
+                        View all {awaitingCleanerApprovalAppointments.length}{" "}
+                        awaiting approval
                       </button>
                     </div>
                   )}
@@ -754,19 +765,22 @@ function AdminDashboardInner() {
               )}
             </div>
           )}
-          {awaitingCleanerApprovalAppointments.length === 0 && !appointmentsLoading && (
-            <div className="bg-white rounded-xl shadow-sm border border-green-200 p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-full">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">All confirmed!</p>
-                  <p className="text-sm text-gray-500">No appointments awaiting cleaner approval</p>
+          {awaitingCleanerApprovalAppointments.length === 0 &&
+            !appointmentsLoading && (
+              <div className="bg-white rounded-xl shadow-sm border border-green-200 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">All confirmed!</p>
+                    <p className="text-sm text-gray-500">
+                      No appointments awaiting cleaner approval
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* Mobile Collapsible All Stats Section */}
@@ -871,7 +885,7 @@ function AdminDashboardInner() {
             ) : upcomingAppointments.length > 0 ? (
               upcomingAppointments.map((appointment) => {
                 const paymentStatusConfig = getPaymentStatusTabConfig(
-                  appointment.payment_status
+                  appointment.payment_status,
                 );
                 return (
                   <div
@@ -889,7 +903,7 @@ function AdminDashboardInner() {
                     <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
                       <span className="text-xs font-medium text-primary-600">
                         {new Date(
-                          appointment.scheduled_date
+                          appointment.scheduled_date,
                         ).toLocaleDateString("en-US", { month: "short" })}
                       </span>
                       <span className="text-lg font-bold text-primary-700">
@@ -903,7 +917,9 @@ function AdminDashboardInner() {
                       <div className="flex items-center gap-3 mt-1">
                         <div className="flex items-center gap-1 text-sm text-gray-500">
                           <Clock className="w-3.5 h-3.5" />
-                          <span>{formatTimeTo12h(appointment.scheduled_time)}</span>
+                          <span>
+                            {formatTimeTo12h(appointment.scheduled_time)}
+                          </span>
                         </div>
                         {appointment.service_type && (
                           <span className="text-sm text-gray-500">
@@ -965,36 +981,42 @@ function AdminDashboardInner() {
               </div>
             ) : (
               <div className="space-y-3">
-                {awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
-                  const cleanerName = getCleanerName(appointment);
-                  return (
-                    <div
-                      key={appointment.id}
-                      className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50/60 via-white to-white rounded-2xl border border-amber-100 shadow-sm"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">
-                          {cleanerName ?? "Unassigned"}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {formatDateTimeTo12h(appointment.scheduled_date, appointment.scheduled_time)}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Homeowner: {getHomeownerName(appointment)}
-                        </p>
+                {awaitingCleanerApprovalAppointments
+                  .slice(0, 3)
+                  .map((appointment) => {
+                    const cleanerName = getCleanerName(appointment);
+                    return (
+                      <div
+                        key={appointment.id}
+                        className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50/60 via-white to-white rounded-2xl border border-amber-100 shadow-sm"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">
+                            {cleanerName ?? "Unassigned"}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-0.5">
+                            {formatDateTimeTo12h(
+                              appointment.scheduled_date,
+                              appointment.scheduled_time,
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Homeowner: {getHomeownerName(appointment)}
+                          </p>
+                        </div>
+                        {cleanerName &&
+                          appointment.cleaner_profile?.user_profile?.id && (
+                            <button
+                              onClick={() => handleMessageCleaner(appointment)}
+                              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              Message
+                            </button>
+                          )}
                       </div>
-                      {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
-                        <button
-                          onClick={() => handleMessageCleaner(appointment)}
-                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          Message
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
                 {awaitingCleanerApprovalAppointments.length === 0 && (
                   <div className="text-center py-8">
                     <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
@@ -1010,7 +1032,8 @@ function AdminDashboardInner() {
                       }}
                       className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
                     >
-                      View all {awaitingCleanerApprovalAppointments.length} awaiting approval
+                      View all {awaitingCleanerApprovalAppointments.length}{" "}
+                      awaiting approval
                     </button>
                   </div>
                 )}
@@ -1034,13 +1057,13 @@ function AdminDashboardInner() {
               <div className="space-y-3">
                 {upcomingAppointments.slice(0, 3).map((appointment) => {
                   const paymentStatusConfig = getPaymentStatusTabConfig(
-                    appointment.payment_status
+                    appointment.payment_status,
                   );
                   return (
                     <div
                       key={appointment.id}
                       className={`relative flex items-center justify-between gap-3 p-4 rounded-2xl overflow-hidden pr-24 border shadow-sm ${
-                        appointment.cleaner_confirmation_status === 'rejected'
+                        appointment.cleaner_confirmation_status === "rejected"
                           ? "bg-red-50 border-red-200"
                           : "bg-gradient-to-r from-amber-50/60 via-white to-white border-amber-100"
                       }`}
@@ -1060,7 +1083,7 @@ function AdminDashboardInner() {
                         <p className="text-sm text-gray-600">
                           {formatDateTimeTo12h(
                             appointment.scheduled_date,
-                            appointment.scheduled_time
+                            appointment.scheduled_time,
                           )}
                         </p>
                         <p className="text-sm text-gray-600">
@@ -1071,13 +1094,15 @@ function AdminDashboardInner() {
                             Service: {appointment.service_type.name}
                           </p>
                         )}
-                        {appointment.cleaner_confirmation_status === 'rejected' && (
+                        {appointment.cleaner_confirmation_status ===
+                          "rejected" && (
                           <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">
                             <AlertCircle className="w-3 h-3" />
                             Reschedule Required
                           </span>
                         )}
-                        {appointment.cleaner_confirmation_status === 'awaiting' && (
+                        {appointment.cleaner_confirmation_status ===
+                          "awaiting" && (
                           <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
                             <Clock className="w-3 h-3" />
                             Awaiting Cleaner
@@ -1085,7 +1110,8 @@ function AdminDashboardInner() {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {appointment.cleaner_confirmation_status === 'approved' && (
+                        {appointment.cleaner_confirmation_status ===
+                          "approved" && (
                           <StatusBadge status={appointment.status} size="sm" />
                         )}
                       </div>
@@ -1198,12 +1224,16 @@ function AdminDashboardInner() {
       canManage={true}
       onCleanerUpdated={(c) => updateCleanerInState(c.id, c)}
       onDeleteRequest={(id, name) =>
-        setDeleteConfirmModal({ isOpen: true, cleanerId: id, cleanerName: name })
+        setDeleteConfirmModal({
+          isOpen: true,
+          cleanerId: id,
+          cleanerName: name,
+        })
       }
       onAddCleaner={() => setShowAddCleanerModal(true)}
       onBulkPayoutsUpdated={(updates) =>
         updates.forEach(({ id, payout_percent }) =>
-          updateCleanerInState(id, { payout_percent })
+          updateCleanerInState(id, { payout_percent }),
         )
       }
     />
@@ -1373,7 +1403,9 @@ function AdminDashboardInner() {
 
       {/* Mobile Bottom Navigation - Show first 4 tabs */}
       <MobileNavigation
-        tabs={navigationGroups.operations.tabs.filter((tab) => tab.id !== "services")}
+        tabs={navigationGroups.operations.tabs.filter(
+          (tab) => tab.id !== "services",
+        )}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}
