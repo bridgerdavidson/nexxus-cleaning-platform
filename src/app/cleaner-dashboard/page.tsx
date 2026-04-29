@@ -739,7 +739,7 @@ function CleanerDashboardInner() {
   // Show loading while checking auth
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
           <p className="text-gray-600">Loading...</p>
@@ -1920,11 +1920,7 @@ function CleanerDashboardInner() {
   };
 
   return (
-    <div
-      className={`min-h-screen ${
-        activeTab === "messages" ? "bg-white md:bg-gray-100" : "bg-gray-100"
-      }`}
-    >
+    <div className="min-h-screen bg-white md:bg-gray-100">
       {/* Persistent Desktop Sidebar - Shows Groups */}
       <DesktopSidebar
         tabs={sidebarTabs}
@@ -1987,7 +1983,7 @@ export default function CleanerDashboard() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
             <p className="text-gray-600">Loading...</p>

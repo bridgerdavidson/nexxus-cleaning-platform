@@ -24,7 +24,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   onMenuClick,
 }) => {
   return (
-    <nav className="md:hidden fixed bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md border border-gray-200/80 shadow-lg z-40 pb-safe rounded-[1.25rem] overflow-hidden">
+    <nav className="md:hidden fixed bottom-4 left-4 right-4 bg-white/95 backdrop-blur-lg border border-gray-200 shadow-xl ring-1 ring-black/5 z-40 pb-safe rounded-[1.25rem] overflow-hidden">
       <div className="flex items-center justify-around px-2 py-2 h-20">
         {/* Navigation Tabs */}
         {tabs.map((tab) => {

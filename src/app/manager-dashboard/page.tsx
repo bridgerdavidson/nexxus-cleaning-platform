@@ -468,7 +468,7 @@ function ManagerDashboardInner() {
   // Show loading while checking auth and permissions - MUST be after all hooks
   if (loading || !user || permissionsLoading || !permissions) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
           <p className="text-gray-600">Loading...</p>
@@ -843,7 +843,7 @@ function ManagerDashboardInner() {
 
       <div className="space-y-6 md:space-y-7">
         {/* Mobile Quick Stats Bar */}
-        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3">
+        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-3">
           <div className="flex items-center justify-between">
             {statsLoading ? (
               <div className="flex items-center justify-center w-full py-2">
@@ -921,7 +921,7 @@ function ManagerDashboardInner() {
                 </div>
               </button>
               {isPendingApprovalsExpanded && (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-200">
                   {appointmentsLoading ? (
                     <div className="flex items-center justify-center py-6">
                       <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -964,7 +964,7 @@ function ManagerDashboardInner() {
                     })
                   )}
                   {awaitingCleanerApprovalAppointments.length > 3 && (
-                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
                       <button
                         onClick={() => {
                           setShowPendingFilter(true);
@@ -999,7 +999,7 @@ function ManagerDashboardInner() {
         <div className="md:hidden">
           <button
             onClick={() => setIsStatsExpanded(!isStatsExpanded)}
-            className="w-full bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3 flex items-center justify-between"
+            className="w-full bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-3 flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary-100 rounded-lg">
@@ -1015,7 +1015,7 @@ function ManagerDashboardInner() {
           </button>
           {isStatsExpanded && (
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Calendar className="w-4 h-4 text-primary-600" />
                   <span className="text-xs text-gray-500">Bookings</span>
@@ -1024,7 +1024,7 @@ function ManagerDashboardInner() {
                   {stats.totalBookings}
                 </p>
               </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Users className="w-4 h-4 text-primary-600" />
                   <span className="text-xs text-gray-500">Cleaners</span>
@@ -1034,7 +1034,7 @@ function ManagerDashboardInner() {
                 </p>
               </div>
               {permissions?.can_view_payments && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <DollarSign className="w-4 h-4 text-green-600" />
                     <span className="text-xs text-gray-500">Revenue</span>
@@ -1045,7 +1045,7 @@ function ManagerDashboardInner() {
                 </div>
               )}
               {permissions?.can_view_analytics && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="w-4 h-4 text-blue-600" />
                     <span className="text-xs text-gray-500">Growth</span>
@@ -1056,7 +1056,7 @@ function ManagerDashboardInner() {
                 </div>
               )}
               {permissions?.can_view_analytics && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     <span className="text-xs text-gray-500">Completion</span>
@@ -1067,7 +1067,7 @@ function ManagerDashboardInner() {
                 </div>
               )}
               {permissions?.can_approve_decline_bookings && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
                     <span className="text-xs text-gray-500">Pending</span>
@@ -1082,8 +1082,8 @@ function ManagerDashboardInner() {
         </div>
 
         {/* Mobile Upcoming Appointments */}
-        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
+        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-primary-600" />
@@ -1559,11 +1559,7 @@ function ManagerDashboardInner() {
   };
 
   return (
-    <div
-      className={`min-h-screen ${
-        activeTab === "messages" ? "bg-white md:bg-gray-100" : "bg-gray-100"
-      }`}
-    >
+    <div className="min-h-screen bg-white md:bg-gray-100">
       {/* Persistent Desktop Sidebar - Shows Groups */}
       <DesktopSidebar
         groups={groups}
@@ -1662,7 +1658,7 @@ export default function ManagerDashboard() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
             <p className="text-gray-600">Loading...</p>

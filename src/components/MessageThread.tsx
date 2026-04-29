@@ -192,7 +192,7 @@ export default function MessageThread({
   // Empty state - no conversation selected
   if (!conversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center bg-white md:bg-gray-50">
         <div className="text-center">
           <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -211,7 +211,7 @@ export default function MessageThread({
   // Guard against missing participant
   if (!other_participant) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center bg-white md:bg-gray-50">
         <div className="text-center">
           <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
@@ -266,7 +266,7 @@ export default function MessageThread({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
+        className="flex-1 overflow-y-auto px-6 py-4 bg-white md:bg-gray-50"
       >
         {/* Loading state */}
         {loading && messages.length === 0 && (

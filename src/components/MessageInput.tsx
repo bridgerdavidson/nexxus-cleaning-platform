@@ -123,7 +123,7 @@ export default function MessageInput({
     (content.trim() !== "" || attachments.length > 0) && !sending && !disabled;
 
   return (
-    <div className="bg-gray-50 p-4" data-message-input>
+    <div className="bg-white md:bg-gray-50 p-4 border-t border-gray-100 md:border-t-0" data-message-input>
       {/* Attachment previews */}
       {previews.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3 px-2">

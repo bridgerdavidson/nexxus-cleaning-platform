@@ -81,7 +81,7 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
 
       {/* Sidebar Panel */}
       <div
-        className={`md:hidden fixed top-0 right-0 bottom-0 w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`md:hidden fixed top-0 right-0 bottom-0 w-80 bg-white shadow-2xl border-l border-gray-100 z-50 transform transition-transform duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
