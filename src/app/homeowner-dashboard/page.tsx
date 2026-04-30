@@ -765,7 +765,7 @@ function HomeownerDashboardInner() {
             activeTab === "messages"
               ? "px-0 md:px-4 md:sm:px-6 md:lg:px-8"
               : "px-4 sm:px-6 lg:px-8"
-          } pb-24 md:pb-8 ${
+          } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8 ${
             activeTab === "messages" ? "py-0 md:py-8" : "py-8"
           }`}
         >

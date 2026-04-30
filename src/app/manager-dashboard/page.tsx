@@ -1594,7 +1594,7 @@ function ManagerDashboardInner() {
             activeTab === "messages"
               ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
               : "p-4 sm:p-6 lg:p-8"
-          } pb-24 md:pb-8`}
+          } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
           <div className={activeTab === "settings" ? "block" : "hidden"}>
             <SettingsHub />

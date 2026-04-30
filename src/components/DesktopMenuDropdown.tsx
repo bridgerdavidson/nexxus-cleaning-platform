@@ -31,18 +31,18 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
 }) => {
   const { user, signOut } = useAuth();
 
-  // Close sidebar on escape key
+  // Close sidebar on escape key + lock body scroll only while open
   useEffect(() => {
+    if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
+    document.addEventListener('keydown', handleEscape);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen, onClose]);
 
@@ -68,13 +68,15 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className={`hidden md:block fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${
-          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={onClose}
-      />
+      {/* Backdrop - only mounted while open to avoid stale compositing layers */}
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="hidden md:block fixed inset-0 bg-black/50 z-40"
+          onClick={onClose}
+        />
+      )}
 
       {/* Sidebar Panel */}
       <div

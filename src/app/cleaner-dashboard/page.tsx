@@ -1954,7 +1954,7 @@ function CleanerDashboardInner() {
             activeTab === "messages"
               ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
               : "p-4 sm:p-6 lg:p-8"
-          } pb-32 md:pb-8`}
+          } pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
           {/* Tab Content */}
           {renderContent()}

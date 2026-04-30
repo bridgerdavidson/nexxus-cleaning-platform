@@ -4,8 +4,6 @@ import React, { useEffect } from "react";
 import Link from "next/link";
 import { X, User, LogOut, LucideIcon } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
-import { useThemeColor } from "../hooks/useThemeColor";
-import { MENU_OVERLAY_COLOR } from "../constants/theme";
 
 interface Tab {
   id: string;
@@ -32,20 +30,18 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
 }) => {
   const { user, signOut } = useAuth();
 
-  useThemeColor(MENU_OVERLAY_COLOR, isOpen);
-
-  // Close sidebar on escape key
+  // Close sidebar on escape key + lock body scroll only while open
   useEffect(() => {
+    if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      document.body.style.overflow = "hidden";
-    }
+    document.addEventListener("keydown", handleEscape);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen, onClose]);
 
@@ -71,13 +67,15 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className={`md:hidden fixed inset-0 bg-black/50 z-50 transition-opacity duration-300 ${
-          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-        onClick={onClose}
-      />
+      {/* Backdrop - only mounted while open to avoid iOS Safari safe-area compositing issues */}
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={onClose}
+        />
+      )}
 
       {/* Sidebar Panel */}
       <div

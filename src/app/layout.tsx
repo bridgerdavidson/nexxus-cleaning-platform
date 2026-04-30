@@ -8,12 +8,11 @@ export const metadata: Metadata = {
   description: "Professional cleaning services for your home and business",
   appleWebApp: {
     title: "Nexxus",
-    statusBarStyle: "default",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: APP_BG_COLOR, // Matches Tailwind bg-gray-50
+  themeColor: APP_BG_COLOR,
   width: "device-width",
   initialScale: 1,
   maximumScale: 1, // Helps prevent zooming on input focus in iOS
@@ -27,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-50">
+      <body className="min-h-screen bg-white">
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
