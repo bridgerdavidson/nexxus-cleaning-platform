@@ -1028,12 +1028,61 @@ function CleanerDashboardInner() {
           }}
         />
 
+        {/* Active Cleanings - collapsible; auto-collapsed when empty */}
+        {activeJobs.length > 0 && (
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setExpandedActive((prev) => !prev)}
+              className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-50 text-gray-600 rounded-xl relative">
+                  <SprayCan className="w-5 h-5 relative z-10" />
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500" />
+                  </span>
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-bold text-gray-900">Active Cleanings</h3>
+                  <span className="text-xs font-medium text-purple-700">
+                    {activeJobs.length} in progress
+                  </span>
+                </div>
+              </div>
+              <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
+                {(activeJobs.length > 0 ? expandedActive : false) ? (
+                  <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
+                )}
+              </div>
+            </button>
+            {(activeJobs.length > 0 ? expandedActive : false) && (
+              <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+                <div className="space-y-3">
+                  {activeJobs.map((appointment) => (
+                    <div key={appointment.id} className="animate-pulse-glow rounded-lg">
+                      <AppointmentCard
+                        appointment={convertToCardData(appointment)}
+                        onClick={() => handleTodayScheduleAppointmentClick(appointment)}
+                        role="cleaner"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Today's Jobs - collapsible; auto-collapsed when empty */}
-        <div>
+        <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <button
             type="button"
             onClick={() => setExpandedToday((prev) => !prev)}
-            className="w-full flex items-center justify-between py-2 mb-4 transition-all group bg-transparent"
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary-50 text-primary-600 rounded-xl">
@@ -1046,23 +1095,23 @@ function CleanerDashboardInner() {
                 </span>
               </div>
             </div>
-            <div className="p-2 bg-gray-50 rounded-full group-hover:bg-primary-50 transition-colors">
+            <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
               {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) ? (
-                <ChevronDown className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+                <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
               ) : (
-                <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+                <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
               )}
             </div>
           </button>
           {(overviewTodaysJobs.length > 0 || appointmentsLoading ? expandedToday : false) && (
-            <>
+            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
               {appointmentsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
                   <span className="ml-2 text-gray-600">Loading schedule...</span>
                 </div>
               ) : overviewTodaysJobs.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {overviewTodaysJobs.map((appointment) => (
                     <AppointmentCard
                       key={appointment.id}
@@ -1074,71 +1123,24 @@ function CleanerDashboardInner() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                <div className="text-center py-8">
                   <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                   <p className="text-gray-600">No jobs scheduled for today</p>
                 </div>
               )}
-            </>
+            </div>
           )}
-        </div>
-
-        {/* Active Cleanings - collapsible; auto-collapsed when empty */}
-        {activeJobs.length > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setExpandedActive((prev) => !prev)}
-              className="w-full flex items-center justify-between py-2 mb-4 transition-all group bg-transparent"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl relative">
-                  <SprayCan className="w-5 h-5 relative z-10" />
-                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-                  </span>
-                </div>
-                <div className="text-left">
-                  <h3 className="text-lg font-bold text-gray-900">Active Cleanings</h3>
-                  <span className="text-xs font-medium text-amber-600">
-                    {activeJobs.length} in progress
-                  </span>
-                </div>
-              </div>
-              <div className="p-2 bg-amber-50 rounded-full group-hover:bg-amber-100 transition-colors">
-                {(activeJobs.length > 0 ? expandedActive : false) ? (
-                  <ChevronDown className="w-5 h-5 text-amber-700 transition-colors" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-amber-700 transition-colors" />
-                )}
-              </div>
-            </button>
-            {(activeJobs.length > 0 ? expandedActive : false) && (
-              <div className="space-y-4">
-                  {activeJobs.map((appointment) => (
-                    <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
-                      <AppointmentCard
-                        appointment={convertToCardData(appointment)}
-                        onClick={() => handleTodayScheduleAppointmentClick(appointment)}
-                        role="cleaner"
-                      />
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
+        </section>
 
         {/* Upcoming Jobs - collapsible; auto-collapsed when empty */}
-        <div>
+        <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <button
             type="button"
             onClick={() => setExpandedUpcoming((prev) => !prev)}
-            className="w-full flex items-center justify-between py-2 mb-4 transition-all group bg-transparent"
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl group-hover:bg-primary-50 group-hover:text-primary-600 transition-colors">
+              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
                 <Calendar className="w-5 h-5" />
               </div>
               <div className="text-left">
@@ -1148,23 +1150,23 @@ function CleanerDashboardInner() {
                 </span>
               </div>
             </div>
-            <div className="p-2 bg-gray-50 rounded-full group-hover:bg-primary-50 transition-colors">
+            <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
               {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) ? (
-                <ChevronDown className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+                <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
               ) : (
-                <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-primary-600 transition-colors" />
+                <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
               )}
             </div>
           </button>
           {(overviewUpcomingJobs.length > 0 || appointmentsLoading ? expandedUpcoming : false) && (
-            <>
+            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
               {appointmentsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
                   <span className="ml-2 text-gray-600">Loading...</span>
                 </div>
               ) : overviewUpcomingJobs.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {overviewUpcomingJobs.slice(0, 3).map((appointment) => (
                     <AppointmentCard
                       key={appointment.id}
@@ -1174,25 +1176,23 @@ function CleanerDashboardInner() {
                     />
                   ))}
                   {overviewUpcomingJobs.length > 3 && (
-                    <div className="pt-2">
-                      <button
-                        onClick={() => setActiveTab("jobs")}
-                        className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors rounded-xl border border-primary-100"
-                      >
-                        View all ({overviewUpcomingJobs.length})
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setActiveTab("jobs")}
+                      className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
+                    >
+                      View all ({overviewUpcomingJobs.length})
+                    </button>
                   )}
                 </div>
               ) : (
-                <div className="text-center py-8 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                <div className="text-center py-8">
                   <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                   <p className="text-gray-600">No upcoming jobs</p>
                 </div>
               )}
-            </>
+            </div>
           )}
-        </div>
+        </section>
       </div>
     </>
   );

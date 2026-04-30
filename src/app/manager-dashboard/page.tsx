@@ -896,92 +896,102 @@ function ManagerDashboardInner() {
         {/* Mobile Awaiting Cleaner Approval - Priority Section */}
         <div className="md:hidden">
           {awaitingCleanerApprovalAppointments.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
+            <section className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
               <button
                 onClick={() => setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)}
-                className="w-full bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center justify-between hover:bg-amber-100 transition-colors"
+                className="w-full bg-gradient-to-r from-amber-50 to-orange-50 px-4 sm:px-5 py-4 flex items-center justify-between hover:from-amber-100 hover:to-orange-100 transition-colors duration-200 group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-100 rounded-lg">
+                  <div className="p-2 bg-amber-100 rounded-xl">
                     <UserCheck className="w-5 h-5 text-amber-600" />
                   </div>
-                  <span className="font-medium text-gray-900">
-                    Awaiting Cleaner Approval
-                  </span>
+                  <div className="text-left">
+                    <h3 className="text-lg font-bold text-gray-900">
+                      Awaiting Cleaner Approval
+                    </h3>
+                    <p className="text-xs font-medium text-amber-700">
+                      {awaitingCleanerApprovalAppointments.length} pending review
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="bg-amber-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                  <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
                     {awaitingCleanerApprovalAppointments.length}
                   </span>
-                  {isPendingApprovalsExpanded ? (
-                    <ChevronUp className="w-5 h-5 text-amber-600" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5 text-amber-600" />
-                  )}
+                  <div className="p-2 bg-white/70 rounded-full group-hover:bg-white transition-colors duration-200">
+                    {isPendingApprovalsExpanded ? (
+                      <ChevronUp className="w-5 h-5 text-amber-700" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-amber-700" />
+                    )}
+                  </div>
                 </div>
               </button>
               {isPendingApprovalsExpanded && (
-                <div className="divide-y divide-gray-200">
+                <div className="border-t border-amber-100 bg-amber-50/40 p-3 sm:p-4">
                   {appointmentsLoading ? (
                     <div className="flex items-center justify-center py-6">
                       <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                     </div>
                   ) : (
-                    awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
-                      const cleanerName = getCleanerName(appointment);
-                      return (
-                        <div key={appointment.id} className="p-4">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 truncate">
-                                {cleanerName ?? "Unassigned"}
-                              </p>
-                              <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                                <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span>
-                                  {formatDateTimeTo12h(
-                                    appointment.scheduled_date,
-                                    appointment.scheduled_time
-                                  )}
-                                </span>
+                    <div className="space-y-3">
+                      {awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
+                        const cleanerName = getCleanerName(appointment);
+                        return (
+                          <div
+                            key={appointment.id}
+                            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-900 truncate">
+                                  {cleanerName ?? "Unassigned"}
+                                </p>
+                                <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                                  <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                  <span>
+                                    {formatDateTimeTo12h(
+                                      appointment.scheduled_date,
+                                      appointment.scheduled_time
+                                    )}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                  Homeowner: {getHomeownerName(appointment)}
+                                </p>
                               </div>
-                              <p className="text-sm text-gray-500 mt-0.5">
-                                Homeowner: {getHomeownerName(appointment)}
-                              </p>
                             </div>
+                            {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
+                              <button
+                                onClick={() => handleMessageCleaner(appointment)}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors duration-200 font-medium text-sm"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                                Message {cleanerName}
+                              </button>
+                            )}
                           </div>
-                          {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
-                            <button
-                              onClick={() => handleMessageCleaner(appointment)}
-                              className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors font-medium text-sm"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                              Message {cleanerName}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                  {awaitingCleanerApprovalAppointments.length > 3 && (
-                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-                      <button
-                        onClick={() => {
-                          setShowPendingFilter(true);
-                          setActiveTab("bookings");
-                        }}
-                        className="w-full text-center text-sm font-medium text-primary-600"
-                      >
-                        View all {awaitingCleanerApprovalAppointments.length} awaiting approval
-                      </button>
+                        );
+                      })}
+                      {awaitingCleanerApprovalAppointments.length > 3 && (
+                        <button
+                          onClick={() => {
+                            setShowPendingFilter(true);
+                            setActiveTab("bookings");
+                          }}
+                          className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
+                        >
+                          View all {awaitingCleanerApprovalAppointments.length} awaiting approval
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
+            </section>
           )}
           {awaitingCleanerApprovalAppointments.length === 0 && !appointmentsLoading && (
-            <div className="bg-white rounded-xl shadow-sm border border-green-200 p-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-green-200 p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 rounded-full">
                   <CheckCircle className="w-5 h-5 text-green-600" />

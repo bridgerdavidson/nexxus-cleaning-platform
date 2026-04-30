@@ -174,17 +174,17 @@ export default function PendingConfirmationsSection({
     <>
       <div className="relative">
         {/* Animated attention border */}
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 rounded-xl opacity-75 animate-pulse" />
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 rounded-2xl opacity-75 animate-pulse" />
 
-        <div className="relative bg-white rounded-xl shadow-sm border-2 border-amber-300 overflow-hidden">
+        <section className="relative bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
           {/* Header */}
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-full bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 border-b border-amber-200 flex items-center justify-between hover:from-amber-100 hover:to-orange-100 transition-colors"
+            className="w-full bg-gradient-to-r from-amber-50 to-orange-50 px-4 sm:px-5 py-4 flex items-center justify-between hover:from-amber-100 hover:to-orange-100 transition-colors duration-200 group"
           >
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="p-2 bg-amber-100 rounded-lg">
+                <div className="p-2 bg-amber-100 rounded-xl">
                   <AlertCircle className="w-5 h-5 text-amber-600" />
                 </div>
                 {/* Ping animation */}
@@ -194,10 +194,10 @@ export default function PendingConfirmationsSection({
                 </span>
               </div>
               <div className="text-left">
-                <span className="font-semibold text-gray-900">
+                <h3 className="text-lg font-bold text-gray-900">
                   Action Required
-                </span>
-                <p className="text-xs text-amber-700">
+                </h3>
+                <p className="text-xs font-medium text-amber-700">
                   Confirm your availability for these appointments
                 </p>
               </div>
@@ -206,84 +206,88 @@ export default function PendingConfirmationsSection({
               <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
                 {appointments.length}
               </span>
-              {expanded ? (
-                <ChevronDown className="w-5 h-5 text-amber-600" />
-              ) : (
-                <ChevronRight className="w-5 h-5 text-amber-600" />
-              )}
+              <div className="p-2 bg-white/70 rounded-full group-hover:bg-white transition-colors duration-200">
+                {expanded ? (
+                  <ChevronDown className="w-5 h-5 text-amber-700" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-amber-700" />
+                )}
+              </div>
             </div>
           </button>
 
           {/* Content */}
           {expanded && (
-            <div className="divide-y divide-gray-100">
+            <div className="border-t border-amber-100 bg-amber-50/40 p-3 sm:p-4">
               {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
                   <span className="ml-2 text-gray-600">Loading...</span>
                 </div>
               ) : (
-                appointments.map((apt) => (
-                  <div
-                    key={apt.id}
-                    className="p-4 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">
-                          {getHomeownerName(apt)}
-                        </p>
-                        <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span>{formatDate(apt.scheduled_date)}</span>
-                          <span className="text-gray-300">|</span>
-                          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span>{formatTimeTo12h(apt.scheduled_time)}</span>
+                <div className="space-y-3">
+                  {appointments.map((apt) => (
+                    <div
+                      key={apt.id}
+                      className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">
+                            {getHomeownerName(apt)}
+                          </p>
+                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
+                            <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>{formatDate(apt.scheduled_date)}</span>
+                            <span className="text-gray-300">|</span>
+                            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>{formatTimeTo12h(apt.scheduled_time)}</span>
+                          </div>
+                          {apt.service_type && (
+                            <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
+                              <SprayCan className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>
+                                {apt.checklist?.name
+                                  ? `${apt.service_type.name} (${apt.checklist.name})`
+                                  : apt.service_type.name}
+                              </span>
+                            </div>
+                          )}
+                          {apt.property && (
+                            <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
+                              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="truncate">
+                                {getPropertyAddress(apt)}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        {apt.service_type && (
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                            <SprayCan className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>
-                              {apt.checklist?.name
-                                ? `${apt.service_type.name} (${apt.checklist.name})`
-                                : apt.service_type.name}
-                            </span>
-                          </div>
-                        )}
-                        {apt.property && (
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span className="truncate">
-                              {getPropertyAddress(apt)}
-                            </span>
-                          </div>
-                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleAvailableClick(apt)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors duration-200 font-medium text-sm"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          I&apos;m Available
+                        </button>
+                        <button
+                          onClick={() => handleUnavailableClick(apt)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium text-sm"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          I&apos;m Not Available
+                        </button>
                       </div>
                     </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleAvailableClick(apt)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors font-medium text-sm"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        I&apos;m Available
-                      </button>
-                      <button
-                        onClick={() => handleUnavailableClick(apt)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        I&apos;m Not Available
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
           )}
-        </div>
+        </section>
       </div>
 
       {/* Modal */}
