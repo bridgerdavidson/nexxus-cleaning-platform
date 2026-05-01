@@ -32,7 +32,7 @@ interface PropertiesPageProps {
   onRefreshProperties?: () => void;
   onPropertyUpdated?: (
     propertyId: string,
-    updatedData: Partial<AdminProperty>
+    updatedData: Partial<AdminProperty>,
   ) => void;
   onRefreshAppointments?: () => void;
   role: "admin" | "manager" | "homeowner";
@@ -110,7 +110,7 @@ export default function PropertiesPage({
     // Homeowner filter
     if (homeownerFilter !== "all") {
       result = result.filter(
-        (property) => property.homeowner?.id === homeownerFilter
+        (property) => property.homeowner?.id === homeownerFilter,
       );
     }
 
@@ -138,12 +138,12 @@ export default function PropertiesPage({
       email: string;
     }>;
     const unique = Array.from(
-      new Map(homeowners.map((h) => [h.id, h])).values()
+      new Map(homeowners.map((h) => [h.id, h])).values(),
     );
     return unique.sort((a, b) =>
       `${a.first_name} ${a.last_name}`.localeCompare(
-        `${b.first_name} ${b.last_name}`
-      )
+        `${b.first_name} ${b.last_name}`,
+      ),
     );
   }, [properties]);
 
@@ -189,7 +189,7 @@ export default function PropertiesPage({
   // Delete handlers
   const handleDeleteClick = (
     property: PropertyCardData,
-    e: React.MouseEvent
+    e: React.MouseEvent,
   ) => {
     e.stopPropagation();
     setDeleteConfirmModal({
@@ -205,7 +205,7 @@ export default function PropertiesPage({
     setIsDeleting(true);
     const result = await deleteProperty(
       deleteConfirmModal.propertyId,
-      currentOrganizationId
+      currentOrganizationId,
     );
     setIsDeleting(false);
 
@@ -231,7 +231,7 @@ export default function PropertiesPage({
     setIsBulkDeleting(true);
     const result = await deleteProperties(
       Array.from(selectedIds),
-      currentOrganizationId
+      currentOrganizationId,
     );
     setIsBulkDeleting(false);
 
@@ -469,7 +469,7 @@ export default function PropertiesPage({
               }}
               onDelete={(propertyId) => {
                 const prop = filteredProperties.find(
-                  (p) => p.id === propertyId
+                  (p) => p.id === propertyId,
                 );
                 if (prop) {
                   handleDeleteClick(prop, {

@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Home, Search, Plus, User, CheckCircle, Loader2, Camera, AlertCircle } from "lucide-react";
+import {
+  X,
+  Home,
+  Search,
+  Plus,
+  User,
+  CheckCircle,
+  Loader2,
+  Camera,
+  AlertCircle,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { CustomerProperty } from "../hooks/useAdminData";
@@ -44,8 +54,9 @@ export default function AddPropertyModal({
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [homeownersLoading, setHomeownersLoading] = useState(false);
   const [homeownerSearch, setHomeownerSearch] = useState("");
-  const [selectedHomeowner, setSelectedHomeowner] =
-    useState<Homeowner | null>(null);
+  const [selectedHomeowner, setSelectedHomeowner] = useState<Homeowner | null>(
+    null,
+  );
 
   // Step 2 state
   const [propertyName, setPropertyName] = useState("");
@@ -67,7 +78,9 @@ export default function AddPropertyModal({
 
   // Optional property photo (compressed file held until create)
   const [propertyPhotoFile, setPropertyPhotoFile] = useState<File | null>(null);
-  const [propertyPhotoPreview, setPropertyPhotoPreview] = useState<string | null>(null);
+  const [propertyPhotoPreview, setPropertyPhotoPreview] = useState<
+    string | null
+  >(null);
   const [compressingPhoto, setCompressingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -154,7 +167,7 @@ export default function AddPropertyModal({
             last_name,
             email
           )
-        `
+        `,
         )
         .eq("organization_id", currentOrganizationId)
         .eq("role", "homeowner");
@@ -203,12 +216,14 @@ export default function AddPropertyModal({
         setPropertyPhotoFile(compressed);
         setPropertyPhotoPreview(URL.createObjectURL(compressed));
       } catch (err) {
-        setPhotoError(err instanceof Error ? err.message : "Compression failed.");
+        setPhotoError(
+          err instanceof Error ? err.message : "Compression failed.",
+        );
       } finally {
         setCompressingPhoto(false);
       }
     },
-    [propertyPhotoPreview]
+    [propertyPhotoPreview],
   );
 
   const handleRemovePropertyPhoto = useCallback(() => {
@@ -252,7 +267,8 @@ export default function AddPropertyModal({
           special_instructions: specialInstructions || null,
           access_instructions: accessInstructions || null,
         })
-        .select(`
+        .select(
+          `
           id,
           name,
           address,
@@ -262,7 +278,8 @@ export default function AddPropertyModal({
           bedrooms,
           bathrooms,
           square_feet
-        `)
+        `,
+        )
         .single();
 
       if (insertError) {
@@ -271,7 +288,7 @@ export default function AddPropertyModal({
           details: insertError.details,
           hint: insertError.hint,
           code: insertError.code,
-          fullError: insertError
+          fullError: insertError,
         });
         throw insertError;
       }
@@ -289,11 +306,14 @@ export default function AddPropertyModal({
               method: "POST",
               headers: { Authorization: `Bearer ${session.access_token}` },
               body: formData,
-            }
+            },
           );
           const uploadResult = await uploadRes.json();
           if (uploadRes.ok && uploadResult.url) {
-            finalProperty = { ...insertData, photo_url: uploadResult.url } as CustomerProperty;
+            finalProperty = {
+              ...insertData,
+              photo_url: uploadResult.url,
+            } as CustomerProperty;
           }
         } catch {
           // Non-fatal: property was created, photo upload failed
@@ -307,22 +327,22 @@ export default function AddPropertyModal({
     } catch (err) {
       console.error("Error creating property:", err);
       let errorMessage = "Failed to create property";
-      
+
       if (err instanceof Error) {
         errorMessage = err.message;
-      } else if (typeof err === 'object' && err !== null) {
-        if ('message' in err) {
+      } else if (typeof err === "object" && err !== null) {
+        if ("message" in err) {
           errorMessage = String(err.message);
-        } else if ('details' in err) {
+        } else if ("details" in err) {
           errorMessage = String(err.details) || errorMessage;
-        } else if ('hint' in err) {
+        } else if ("hint" in err) {
           errorMessage = String(err.hint) || errorMessage;
         }
       }
-      
+
       // Also log the full error for debugging
       console.error("Full error object:", JSON.stringify(err, null, 2));
-      
+
       setError(errorMessage);
     } finally {
       setIsCreating(false);
@@ -410,8 +430,8 @@ export default function AddPropertyModal({
               New Property
             </h2>
             <p className="text-primary-100 text-center text-sm">
-              {preSelectedHomeownerId 
-                ? `Step ${currentStep} of 2` 
+              {preSelectedHomeownerId
+                ? `Step ${currentStep} of 2`
                 : `Step ${currentStep} of 3`}
             </p>
 
@@ -690,7 +710,7 @@ export default function AddPropertyModal({
                       value={bedrooms || ""}
                       onChange={(e) =>
                         setBedrooms(
-                          e.target.value ? parseInt(e.target.value) : null
+                          e.target.value ? parseInt(e.target.value) : null,
                         )
                       }
                       min="0"
@@ -707,7 +727,7 @@ export default function AddPropertyModal({
                       value={bathrooms || ""}
                       onChange={(e) =>
                         setBathrooms(
-                          e.target.value ? parseInt(e.target.value) : null
+                          e.target.value ? parseInt(e.target.value) : null,
                         )
                       }
                       min="0"
@@ -725,7 +745,7 @@ export default function AddPropertyModal({
                       value={squareFeet || ""}
                       onChange={(e) =>
                         setSquareFeet(
-                          e.target.value ? parseInt(e.target.value) : null
+                          e.target.value ? parseInt(e.target.value) : null,
                         )
                       }
                       min="0"
@@ -787,8 +807,8 @@ export default function AddPropertyModal({
                 </button>
               )}
 
-              {((preSelectedHomeownerId && currentStep < 2) ||
-                (!preSelectedHomeownerId && currentStep < 3)) ? (
+              {(preSelectedHomeownerId && currentStep < 2) ||
+              (!preSelectedHomeownerId && currentStep < 3) ? (
                 <button
                   type="button"
                   onClick={handleNext}
@@ -833,4 +853,3 @@ export default function AddPropertyModal({
     </div>
   );
 }
-

@@ -1,14 +1,23 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { CheckCircle, Loader2, AlertCircle, Link2, ExternalLink, AlertTriangle } from 'lucide-react';
-import { useStripeConnect } from '../hooks/useStripeConnect';
+import React from "react";
+import {
+  CheckCircle,
+  Loader2,
+  AlertCircle,
+  Link2,
+  ExternalLink,
+  AlertTriangle,
+} from "lucide-react";
+import { useStripeConnect } from "../hooks/useStripeConnect";
 
 interface StripeConnectionCardProps {
   compact?: boolean;
 }
 
-export default function StripeConnectionCard({ compact = false }: StripeConnectionCardProps) {
+export default function StripeConnectionCard({
+  compact = false,
+}: StripeConnectionCardProps) {
   const {
     enabled,
     connectStatus,
@@ -27,7 +36,9 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
       <div className="bg-white rounded-2xl border border-gray-200 p-5">
         <div className="flex items-center gap-3 mb-3">
           <Link2 className="w-4 h-4 text-gray-400" />
-          <h3 className="text-sm font-semibold text-gray-900">Stripe Account</h3>
+          <h3 className="text-sm font-semibold text-gray-900">
+            Stripe Account
+          </h3>
         </div>
 
         {connectError && (
@@ -48,7 +59,9 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
               <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center">
                 <CheckCircle className="w-4 h-4 text-green-600" />
               </div>
-              <span className="text-sm font-medium text-green-700">Connected</span>
+              <span className="text-sm font-medium text-green-700">
+                Connected
+              </span>
             </div>
             <button
               onClick={handleOpenStripeDashboard}
@@ -70,7 +83,9 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
               <div className="w-7 h-7 bg-yellow-100 rounded-full flex items-center justify-center">
                 <AlertTriangle className="w-4 h-4 text-yellow-600" />
               </div>
-              <span className="text-sm font-medium text-yellow-700">Setup incomplete</span>
+              <span className="text-sm font-medium text-yellow-700">
+                Setup incomplete
+              </span>
             </div>
             <button
               onClick={handleConnectWithStripe}
@@ -80,7 +95,7 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
               {connectLoading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                'Finish Setup'
+                "Finish Setup"
               )}
             </button>
           </div>
@@ -95,7 +110,7 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
               {connectLoading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                'Connect Stripe'
+                "Connect Stripe"
               )}
             </button>
           </div>
@@ -109,7 +124,9 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
     <div className="bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] border border-gray-100/80 p-8 md:p-12 mb-6 md:mb-10 transition-all duration-300 group">
       <div className="flex items-center gap-3 mb-6 px-1 text-gray-400 group-hover:text-primary-600 transition-colors">
         <Link2 className="w-5 h-5 transition-colors" />
-        <h2 className="text-[1.35rem] font-bold tracking-tight text-gray-900 group-hover:text-primary-600 transition-colors">Payout Account</h2>
+        <h2 className="text-[1.35rem] font-bold tracking-tight text-gray-900 group-hover:text-primary-600 transition-colors">
+          Payout Account
+        </h2>
       </div>
 
       {connectError && (
@@ -172,14 +189,15 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
                 Redirecting…
               </>
             ) : (
-              'Complete Stripe Setup'
+              "Complete Stripe Setup"
             )}
           </button>
         </div>
       ) : (
         <div>
           <p className="text-gray-500 mb-4 leading-relaxed">
-            Connect your Stripe account to receive automatic payouts when jobs are completed.
+            Connect your Stripe account to receive automatic payouts when jobs
+            are completed.
           </p>
           <button
             onClick={handleConnectWithStripe}
@@ -192,7 +210,7 @@ export default function StripeConnectionCard({ compact = false }: StripeConnecti
                 Redirecting…
               </>
             ) : (
-              'Connect with Stripe'
+              "Connect with Stripe"
             )}
           </button>
         </div>

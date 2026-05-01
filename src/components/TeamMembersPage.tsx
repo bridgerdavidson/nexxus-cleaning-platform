@@ -43,6 +43,9 @@ export default function TeamMembersPage({
   const canManagePermissionsForMember = (member: TeamMember) =>
     member.role === "manager" && member.id !== user?.id;
 
+  const canDeleteMember = (member: TeamMember) =>
+    member.role !== "admin" && member.id !== user?.id;
+
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "cleaner" | "manager" | "admin">(
@@ -114,7 +117,7 @@ export default function TeamMembersPage({
 
   // Handle delete
   const handleDeleteClick = (member: TeamMember) => {
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId || !canDeleteMember(member)) return;
 
     setDeleteConfirmModal({
       isOpen: true,
@@ -128,7 +131,13 @@ export default function TeamMembersPage({
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deleteConfirmModal.memberId || !currentOrganizationId) return;
+    if (
+      !deleteConfirmModal.memberId ||
+      !currentOrganizationId ||
+      deleteConfirmModal.memberId === user?.id
+    ) {
+      return;
+    }
 
     setIsDeleting(true);
     const result = await deleteTeamMember(
@@ -196,7 +205,7 @@ export default function TeamMembersPage({
         </div>
         <button
           onClick={() => setShowAddTeamMemberModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
+          className="btn-primary-chrome flex items-center gap-1.5 px-4 py-2.5 whitespace-nowrap"
         >
           <Plus className="w-5 h-5" />
           <span>New</span>
@@ -329,7 +338,7 @@ export default function TeamMembersPage({
           {!searchQuery && (
             <button
               onClick={() => setShowAddTeamMemberModal(true)}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+              className="btn-primary-chrome mt-4 inline-flex items-center gap-2 px-4 py-2"
             >
               <Plus className="w-5 h-5" />
               Add Team Member
@@ -365,7 +374,7 @@ export default function TeamMembersPage({
                       <Settings className="w-5 h-5" />
                     </button>
                   )}
-                  {member.role !== "admin" && (
+                  {canDeleteMember(member) && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

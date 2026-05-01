@@ -1,15 +1,22 @@
-'use client';
+"use client";
 
-import React, { useRef, useState, useCallback } from 'react';
-import { Camera, Upload, Loader2, AlertCircle, X, ImageIcon } from 'lucide-react';
-import { validateJobPhotoBatch, validateJobPhotoFile } from '../lib/upload';
-import { compressJobPhotoBatch } from '../lib/compress-image';
-import { JobPhoto } from '../hooks/useCleanerData';
-import { useAuth } from '../hooks/useAuth';
+import React, { useRef, useState, useCallback } from "react";
+import {
+  Camera,
+  Upload,
+  Loader2,
+  AlertCircle,
+  X,
+  ImageIcon,
+} from "lucide-react";
+import { validateJobPhotoBatch, validateJobPhotoFile } from "../lib/upload";
+import { compressJobPhotoBatch } from "../lib/compress-image";
+import { JobPhoto } from "../hooks/useCleanerData";
+import { useAuth } from "../hooks/useAuth";
 
 interface JobPhotoSectionProps {
   appointmentId: string;
-  photoType: 'before' | 'after';
+  photoType: "before" | "after";
   photos: JobPhoto[];
   onPhotosChange: () => void;
 }
@@ -43,13 +50,13 @@ export default function JobPhotoSection({
   const [partialErrors, setPartialErrors] = useState<UploadErrorItem[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const label = photoType === 'before' ? 'Before' : 'After';
+  const label = photoType === "before" ? "Before" : "After";
 
   // ─── Upload core ─────────────────────────────────────────────────────────────
   const uploadFiles = useCallback(
     async (files: File[]) => {
       if (!session?.access_token) {
-        setError('You must be logged in to upload photos.');
+        setError("You must be logged in to upload photos.");
         return;
       }
 
@@ -59,7 +66,7 @@ export default function JobPhotoSection({
       // Client-side batch validation (type, size, count)
       const batchValidation = validateJobPhotoBatch(files);
       if (!batchValidation.valid) {
-        setError(batchValidation.error ?? 'Invalid files.');
+        setError(batchValidation.error ?? "Invalid files.");
         return;
       }
 
@@ -69,7 +76,7 @@ export default function JobPhotoSection({
       try {
         compressed = await compressJobPhotoBatch(files);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Compression failed.');
+        setError(err instanceof Error ? err.message : "Compression failed.");
         setCompressing(false);
         return;
       } finally {
@@ -80,25 +87,25 @@ export default function JobPhotoSection({
       setUploading(true);
       try {
         const formData = new FormData();
-        formData.append('photoType', photoType);
+        formData.append("photoType", photoType);
         for (const file of compressed) {
-          formData.append('files', file);
+          formData.append("files", file);
         }
 
         const response = await fetch(`/api/jobs/${appointmentId}/photos`, {
-          method: 'POST',
+          method: "POST",
           headers: { Authorization: `Bearer ${session.access_token}` },
           body: formData,
         });
 
-        const result = await response.json() as {
+        const result = (await response.json()) as {
           uploaded?: UploadedResult[];
           errors?: UploadErrorItem[];
           error?: string;
         };
 
         if (!response.ok) {
-          setError(result.error ?? 'Upload failed. Please try again.');
+          setError(result.error ?? "Upload failed. Please try again.");
           return;
         }
 
@@ -110,41 +117,41 @@ export default function JobPhotoSection({
           onPhotosChange();
         }
       } catch {
-        setError('An unexpected error occurred. Please try again.');
+        setError("An unexpected error occurred. Please try again.");
       } finally {
         setUploading(false);
       }
     },
-    [session, appointmentId, photoType, onPhotosChange]
+    [session, appointmentId, photoType, onPhotosChange],
   );
 
   // ─── Camera handler ───────────────────────────────────────────────────────
   const handleCameraChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      e.target.value = ''; // allow re-capture
+      e.target.value = ""; // allow re-capture
       if (!file) return;
 
       const validation = validateJobPhotoFile(file);
       if (!validation.valid) {
-        setError(validation.error ?? 'Invalid file.');
+        setError(validation.error ?? "Invalid file.");
         return;
       }
 
       await uploadFiles([file]);
     },
-    [uploadFiles]
+    [uploadFiles],
   );
 
   // ─── Batch upload handler ─────────────────────────────────────────────────
   const handleUploadChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
-      e.target.value = ''; // allow re-select of same files
+      e.target.value = ""; // allow re-select of same files
       if (files.length === 0) return;
       await uploadFiles(files);
     },
-    [uploadFiles]
+    [uploadFiles],
   );
 
   // ─── Delete handler ───────────────────────────────────────────────────────
@@ -154,26 +161,26 @@ export default function JobPhotoSection({
       setDeletingId(photoId);
       try {
         const response = await fetch(`/api/jobs/${appointmentId}/photos`, {
-          method: 'DELETE',
+          method: "DELETE",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({ photoId }),
         });
         if (response.ok) {
           onPhotosChange();
         } else {
-          const result = await response.json() as { error?: string };
-          setError(result.error ?? 'Failed to delete photo.');
+          const result = (await response.json()) as { error?: string };
+          setError(result.error ?? "Failed to delete photo.");
         }
       } catch {
-        setError('Failed to delete photo.');
+        setError("Failed to delete photo.");
       } finally {
         setDeletingId(null);
       }
     },
-    [session, appointmentId, onPhotosChange]
+    [session, appointmentId, onPhotosChange],
   );
 
   const isWorking = compressing || uploading;
@@ -239,7 +246,8 @@ export default function JobPhotoSection({
       {partialErrors.length > 0 && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 space-y-1">
           <p className="text-sm font-medium text-yellow-800">
-            {partialErrors.length} file{partialErrors.length > 1 ? 's' : ''} failed to upload:
+            {partialErrors.length} file{partialErrors.length > 1 ? "s" : ""}{" "}
+            failed to upload:
           </p>
           <ul className="text-sm text-yellow-700 list-disc list-inside">
             {partialErrors.map((e) => (
@@ -253,7 +261,10 @@ export default function JobPhotoSection({
       {photos.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {photos.map((photo) => (
-            <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-100">
+            <div
+              key={photo.id}
+              className="relative group aspect-square rounded-lg overflow-hidden bg-gray-100"
+            >
               <img
                 src={photo.photo_url}
                 alt={`${label} photo`}
@@ -283,7 +294,9 @@ export default function JobPhotoSection({
           onClick={() => uploadInputRef.current?.click()}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && uploadInputRef.current?.click()}
+          onKeyDown={(e) =>
+            e.key === "Enter" && uploadInputRef.current?.click()
+          }
           aria-label={`Upload ${label.toLowerCase()} photos`}
         >
           <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
@@ -291,7 +304,8 @@ export default function JobPhotoSection({
             No {label.toLowerCase()} photos yet
           </p>
           <p className="text-xs text-gray-400">
-            Tap "Take Photo" or "Upload Photos" — up to 10 per batch, JPEG/PNG/WebP, max 10 MB each
+            Tap "Take Photo" or "Upload Photos" — up to 10 per batch,
+            JPEG/PNG/WebP, max 10 MB each
           </p>
         </div>
       )}

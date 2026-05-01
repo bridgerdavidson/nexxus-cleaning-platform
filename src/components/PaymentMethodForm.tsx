@@ -72,8 +72,16 @@ function PaymentForm({
         setCustomerId(data.customer_id);
       } catch (err) {
         console.error("Error creating SetupIntent:", err);
-        setError(err instanceof Error ? err.message : "Failed to initialize payment form");
-        onError(err instanceof Error ? err.message : "Failed to initialize payment form");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to initialize payment form",
+        );
+        onError(
+          err instanceof Error
+            ? err.message
+            : "Failed to initialize payment form",
+        );
       } finally {
         setLoading(false);
       }
@@ -109,7 +117,7 @@ function PaymentForm({
           payment_method: {
             card: cardElement,
           },
-        }
+        },
       );
 
       if (stripeError) {
@@ -140,14 +148,17 @@ function PaymentForm({
       }
 
       if (!confirmResponse.ok || !confirmData.success) {
-        throw new Error(confirmData.error || "Failed to confirm payment method");
+        throw new Error(
+          confirmData.error || "Failed to confirm payment method",
+        );
       }
 
       setSuccess(true);
       onSuccess(confirmData.customer_id, confirmData.payment_method_id);
     } catch (err) {
       console.error("Error processing payment method:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to save payment method";
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to save payment method";
       setError(errorMessage);
       onError(errorMessage);
     } finally {
@@ -229,7 +240,8 @@ function PaymentForm({
         )}
 
         <p className="mt-3 text-xs text-gray-500">
-          This card will be charged automatically when the cleaning job is completed.
+          This card will be charged automatically when the cleaning job is
+          completed.
         </p>
       </div>
 
@@ -276,7 +288,7 @@ export default function PaymentMethodForm(props: PaymentMethodFormProps) {
 
     const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     if (!publishableKey) {
-      console.warn('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not set');
+      console.warn("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not set");
       return null;
     }
 
@@ -344,4 +356,3 @@ export function SavedPaymentMethodDisplay({
     </div>
   );
 }
-

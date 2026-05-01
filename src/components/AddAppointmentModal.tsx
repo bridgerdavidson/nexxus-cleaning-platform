@@ -102,8 +102,16 @@ export default function AddAppointmentModal({
   // Step changes reuse the same scroll containers; reset so each step starts at the top
   useEffect(() => {
     if (!isOpen) return;
-    overlayScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    modalBodyScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    overlayScrollRef.current?.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "instant",
+    });
+    modalBodyScrollRef.current?.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "instant",
+    });
   }, [currentStep, isOpen]);
 
   // Step 1 state
@@ -111,14 +119,14 @@ export default function AddAppointmentModal({
   const [homeownersLoading, setHomeownersLoading] = useState(false);
   const [homeownerSearch, setHomeownerSearch] = useState("");
   const [selectedHomeowner, setSelectedHomeowner] = useState<Homeowner | null>(
-    null
+    null,
   );
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertySearch, setPropertySearch] = useState("");
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(
-    null
+    null,
   );
 
   // Step 2 state
@@ -128,7 +136,8 @@ export default function AddAppointmentModal({
     useState<ServiceType | null>(null);
   const [checklists, setChecklists] = useState<ChecklistOption[]>([]);
   const [checklistsLoading, setChecklistsLoading] = useState(false);
-  const [selectedChecklist, setSelectedChecklist] = useState<ChecklistOption | null>(null);
+  const [selectedChecklist, setSelectedChecklist] =
+    useState<ChecklistOption | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
@@ -163,7 +172,9 @@ export default function AddAppointmentModal({
 
   const getSystemCalculatedPrice = useCallback(() => {
     if (!selectedServiceType || !selectedChecklist) return 0;
-    return selectedServiceType.base_price + (selectedChecklist.price_adder || 0);
+    return (
+      selectedServiceType.base_price + (selectedChecklist.price_adder || 0)
+    );
   }, [selectedChecklist, selectedServiceType]);
 
   // Fetch and set pre-selected homeowner
@@ -285,7 +296,7 @@ export default function AddAppointmentModal({
             last_name,
             email
           )
-        `
+        `,
         )
         .eq("organization_id", currentOrganizationId)
         .eq("role", "homeowner");
@@ -380,9 +391,13 @@ export default function AddAppointmentModal({
         if (checklistOptions.length > 0) {
           setSelectedChecklist(checklistOptions[0]);
           if (priceOverrideEnabled) {
-            const selectedService = serviceTypes.find((s) => s.id === serviceTypeId);
+            const selectedService = serviceTypes.find(
+              (s) => s.id === serviceTypeId,
+            );
             if (selectedService) {
-              const systemTotal = selectedService.base_price + (checklistOptions[0].price_adder || 0);
+              const systemTotal =
+                selectedService.base_price +
+                (checklistOptions[0].price_adder || 0);
               setCustomPrice(systemTotal.toString());
             }
           }
@@ -398,7 +413,7 @@ export default function AddAppointmentModal({
         setChecklistsLoading(false);
       }
     },
-    [currentOrganizationId, priceOverrideEnabled, serviceTypes]
+    [currentOrganizationId, priceOverrideEnabled, serviceTypes],
   );
 
   useEffect(() => {
@@ -426,7 +441,7 @@ export default function AddAppointmentModal({
             last_name,
             avatar_url
           )
-        `
+        `,
         )
         .eq("organization_id", currentOrganizationId)
         .eq("is_available", true)
@@ -482,7 +497,7 @@ export default function AddAppointmentModal({
     // Compare date strings directly to avoid timezone issues
     if (scheduledDate < todayLocalStr) {
       setError(
-        "Cannot create appointments in the past. Please select today or a future date."
+        "Cannot create appointments in the past. Please select today or a future date.",
       );
       return;
     }
@@ -508,7 +523,7 @@ export default function AddAppointmentModal({
       }
       if (recurrenceType === "weekly" && selectedDaysOfWeek.length === 0) {
         setError(
-          "Please select at least one day of the week for weekly recurrence."
+          "Please select at least one day of the week for weekly recurrence.",
         );
         return;
       }
@@ -544,7 +559,10 @@ export default function AddAppointmentModal({
             durationMinutes: selectedServiceType.duration_minutes,
             totalPrice: finalPrice,
             priceOverrideEnabled: priceOverrideEnabled,
-            priceOverrideTotal: priceOverrideEnabled && customPrice ? parseFloat(customPrice) : null,
+            priceOverrideTotal:
+              priceOverrideEnabled && customPrice
+                ? parseFloat(customPrice)
+                : null,
             recurrenceType: recurrenceType,
             interval: recurrenceInterval,
             daysOfWeek:
@@ -563,7 +581,7 @@ export default function AddAppointmentModal({
 
         if (!response.ok || !result.success) {
           throw new Error(
-            result.error || "Failed to create recurring appointments"
+            result.error || "Failed to create recurring appointments",
           );
         }
 
@@ -590,10 +608,13 @@ export default function AddAppointmentModal({
           duration_minutes: selectedServiceType.duration_minutes,
           total_price: finalPrice,
           price_override_enabled: priceOverrideEnabled,
-          price_override_total: priceOverrideEnabled && customPrice ? parseFloat(customPrice) : null,
+          price_override_total:
+            priceOverrideEnabled && customPrice
+              ? parseFloat(customPrice)
+              : null,
           special_requests: specialRequests || null,
           status: initialStatus,
-          cleaner_confirmation_status: 'awaiting',
+          cleaner_confirmation_status: "awaiting",
         });
 
       if (insertError) {
@@ -788,8 +809,8 @@ export default function AddAppointmentModal({
               {preSelectedHomeownerId && preSelectedPropertyId
                 ? 3
                 : preSelectedHomeownerId
-                ? 4
-                : 4}
+                  ? 4
+                  : 4}
             </p>
 
             {/* Step indicator */}
@@ -1107,7 +1128,7 @@ export default function AddAppointmentModal({
                       value={selectedServiceType?.id || ""}
                       onChange={(e) => {
                         const serviceType = serviceTypes.find(
-                          (s) => s.id === e.target.value
+                          (s) => s.id === e.target.value,
                         );
                         setSelectedServiceType(serviceType || null);
                         setSelectedChecklist(null);
@@ -1136,11 +1157,18 @@ export default function AddAppointmentModal({
                     value={selectedChecklist?.id || ""}
                     disabled={!selectedServiceType || checklistsLoading}
                     onChange={(e) => {
-                      const checklist = checklists.find((c) => c.id === e.target.value);
+                      const checklist = checklists.find(
+                        (c) => c.id === e.target.value,
+                      );
                       setSelectedChecklist(checklist || null);
-                      if (priceOverrideEnabled && selectedServiceType && checklist) {
+                      if (
+                        priceOverrideEnabled &&
+                        selectedServiceType &&
+                        checklist
+                      ) {
                         const systemTotal =
-                          selectedServiceType.base_price + (checklist.price_adder || 0);
+                          selectedServiceType.base_price +
+                          (checklist.price_adder || 0);
                         setCustomPrice(systemTotal.toString());
                       }
                     }}
@@ -1214,7 +1242,8 @@ export default function AddAppointmentModal({
                                 if (!e.target.checked) {
                                   setCustomPrice("");
                                 } else {
-                                  const systemTotal = getSystemCalculatedPrice();
+                                  const systemTotal =
+                                    getSystemCalculatedPrice();
                                   setCustomPrice(systemTotal.toString());
                                 }
                               }}
@@ -1229,12 +1258,12 @@ export default function AddAppointmentModal({
                     {!hidePriceOverride &&
                       priceOverrideEnabled &&
                       customPrice &&
-                      parseFloat(customPrice) !== getSystemCalculatedPrice() && (
+                      parseFloat(customPrice) !==
+                        getSystemCalculatedPrice() && (
                         <p className="mt-2 text-xs text-gray-500">
                           Calculated total: $
                           {getSystemCalculatedPrice().toFixed(2)}
-                          {parseFloat(customPrice) >
-                          getSystemCalculatedPrice()
+                          {parseFloat(customPrice) > getSystemCalculatedPrice()
                             ? ` (+$${(
                                 parseFloat(customPrice) -
                                 getSystemCalculatedPrice()
@@ -1304,7 +1333,7 @@ export default function AddAppointmentModal({
 
                           if (selectedDateTime <= now) {
                             setError(
-                              "Cannot select a time in the past. Please choose a future time."
+                              "Cannot select a time in the past. Please choose a future time.",
                             );
                           } else {
                             setError(null);
@@ -1393,7 +1422,7 @@ export default function AddAppointmentModal({
                             value={recurrenceInterval}
                             onChange={(e) =>
                               setRecurrenceInterval(
-                                Math.max(1, parseInt(e.target.value) || 1)
+                                Math.max(1, parseInt(e.target.value) || 1),
                               )
                             }
                             className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -1432,7 +1461,7 @@ export default function AddAppointmentModal({
                                   setSelectedDaysOfWeek((prev) =>
                                     prev.includes(index)
                                       ? prev.filter((d) => d !== index)
-                                      : [...prev, index]
+                                      : [...prev, index],
                                   );
                                 }}
                                 className={`px-3 py-1.5 text-sm font-medium rounded-full transition-colors ${
@@ -1502,9 +1531,9 @@ export default function AddAppointmentModal({
                                         1,
                                         Math.min(
                                           50,
-                                          parseInt(e.target.value) || 1
-                                        )
-                                      )
+                                          parseInt(e.target.value) || 1,
+                                        ),
+                                      ),
                                     )
                                   }
                                   className="w-20 px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -1589,8 +1618,8 @@ export default function AddAppointmentModal({
                             </div>
                           </div>
                           {selectedCleaner?.id === cleaner.id && (
-                              <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
-                            )}
+                            <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                          )}
                         </div>
                       </button>
                     ))}
@@ -1601,7 +1630,8 @@ export default function AddAppointmentModal({
                 {!selectedCleaner && cleaners.length > 0 && (
                   <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-sm text-amber-700">
-                      A cleaner must be selected. The appointment will be sent to them for availability confirmation.
+                      A cleaner must be selected. The appointment will be sent
+                      to them for availability confirmation.
                     </p>
                   </div>
                 )}
@@ -1745,38 +1775,38 @@ export default function AddAppointmentModal({
                       !preSelectedHomeownerId &&
                       !preSelectedPropertyId &&
                       !isStep1Valid) ||
-                      (currentStep === 1 &&
-                        preSelectedHomeownerId &&
-                        !preSelectedPropertyId &&
-                        !isStep1Valid) ||
-                      // Step 1: Both pre-selected flow needs appointment details
-                      (currentStep === 1 &&
-                        preSelectedHomeownerId &&
-                        preSelectedPropertyId &&
-                        !isStep2Valid) ||
-                      // Step 2: Regular flow and homeowner-only flow need appointment details
-                      (currentStep === 2 &&
-                        !preSelectedHomeownerId &&
-                        !preSelectedPropertyId &&
-                        !isStep2Valid) ||
-                      (currentStep === 2 &&
-                        preSelectedHomeownerId &&
-                        !preSelectedPropertyId &&
-                        !isStep2Valid) ||
-                      // Step 2: Both pre-selected flow needs cleaner selection
-                      (currentStep === 2 &&
-                        preSelectedHomeownerId &&
-                        preSelectedPropertyId &&
-                        !isStep3Valid) ||
-                      // Step 3: Regular flow and homeowner-only flow need cleaner selection
-                      (currentStep === 3 &&
-                        !preSelectedHomeownerId &&
-                        !preSelectedPropertyId &&
-                        !isStep3Valid) ||
-                      (currentStep === 3 &&
-                        preSelectedHomeownerId &&
-                        !preSelectedPropertyId &&
-                        !isStep3Valid)
+                    (currentStep === 1 &&
+                      preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      !isStep1Valid) ||
+                    // Step 1: Both pre-selected flow needs appointment details
+                    (currentStep === 1 &&
+                      preSelectedHomeownerId &&
+                      preSelectedPropertyId &&
+                      !isStep2Valid) ||
+                    // Step 2: Regular flow and homeowner-only flow need appointment details
+                    (currentStep === 2 &&
+                      !preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      !isStep2Valid) ||
+                    (currentStep === 2 &&
+                      preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      !isStep2Valid) ||
+                    // Step 2: Both pre-selected flow needs cleaner selection
+                    (currentStep === 2 &&
+                      preSelectedHomeownerId &&
+                      preSelectedPropertyId &&
+                      !isStep3Valid) ||
+                    // Step 3: Regular flow and homeowner-only flow need cleaner selection
+                    (currentStep === 3 &&
+                      !preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      !isStep3Valid) ||
+                    (currentStep === 3 &&
+                      preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      !isStep3Valid),
                   )}
                   className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >

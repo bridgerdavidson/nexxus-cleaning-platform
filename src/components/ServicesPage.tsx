@@ -36,15 +36,15 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
-} from '@dnd-kit/core';
+} from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import ServiceCard from "./ServiceCard";
 import ServiceFormModal from "./ServiceFormModal";
 import DeleteServiceModal from "./DeleteServiceModal";
@@ -58,7 +58,10 @@ interface ServicesPageProps {
   error: string | null;
   refetch: () => void;
   canManageServices: boolean;
-  updateServiceInState?: (serviceId: string, patch: Partial<ServiceType>) => void;
+  updateServiceInState?: (
+    serviceId: string,
+    patch: Partial<ServiceType>,
+  ) => void;
   maxChecklistAdderByServiceId: Record<string, number>;
   refreshMaxChecklistAdders: () => void;
 }
@@ -211,10 +214,10 @@ function ChecklistsView({
   onBackToServiceDetail,
   onChecklistPricingChanged,
 }: ChecklistsViewProps) {
-  const { 
-    checklists, 
-    loading, 
-    error, 
+  const {
+    checklists,
+    loading,
+    error,
     refetch,
     applyLineItemUpdated,
     applyLineItemAdded,
@@ -226,8 +229,10 @@ function ChecklistsView({
 
   // Modal state for checklists
   const [showChecklistFormModal, setShowChecklistFormModal] = useState(false);
-  const [showDeleteChecklistModal, setShowDeleteChecklistModal] = useState(false);
-  const [selectedChecklist, setSelectedChecklist] = useState<ChecklistWithItems | null>(null);
+  const [showDeleteChecklistModal, setShowDeleteChecklistModal] =
+    useState(false);
+  const [selectedChecklist, setSelectedChecklist] =
+    useState<ChecklistWithItems | null>(null);
 
   // Inline editing state for line items
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -235,7 +240,9 @@ function ChecklistsView({
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
   // Add new item state (per checklist)
-  const [addingToChecklistId, setAddingToChecklistId] = useState<string | null>(null);
+  const [addingToChecklistId, setAddingToChecklistId] = useState<string | null>(
+    null,
+  );
   const [newItemText, setNewItemText] = useState("");
   const [addingItem, setAddingItem] = useState(false);
 
@@ -247,11 +254,15 @@ function ChecklistsView({
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   // Handle drag end for reordering line items
-  const handleDragEnd = async (event: DragEndEvent, checklistId: string, items: ChecklistLineItem[]) => {
+  const handleDragEnd = async (
+    event: DragEndEvent,
+    checklistId: string,
+    items: ChecklistLineItem[],
+  ) => {
     const { active, over } = event;
 
     if (!over || active.id === over.id) {
@@ -267,7 +278,7 @@ function ChecklistsView({
 
     // Create the new ordered array
     const reorderedItems = arrayMove(items, oldIndex, newIndex);
-    
+
     // Update position field for each item based on new order
     const itemsWithNewPositions = reorderedItems.map((item, index) => ({
       ...item,
@@ -283,7 +294,7 @@ function ChecklistsView({
 
     if (!result.success) {
       // Rollback on error
-      setItemError(result.error || 'Failed to reorder items');
+      setItemError(result.error || "Failed to reorder items");
       applyLineItemsReordered(checklistId, items);
     }
   };
@@ -304,8 +315,17 @@ function ChecklistsView({
     setShowDeleteChecklistModal(true);
   };
 
-  const handleChecklistFormSuccess = (result: { type: 'created'; checklist: ChecklistWithItems } | { type: 'updated'; checklistId: string; name: string; priceAdder: number }) => {
-    if (result.type === 'created') {
+  const handleChecklistFormSuccess = (
+    result:
+      | { type: "created"; checklist: ChecklistWithItems }
+      | {
+          type: "updated";
+          checklistId: string;
+          name: string;
+          priceAdder: number;
+        },
+  ) => {
+    if (result.type === "created") {
       applyChecklistAdded(result.checklist);
     } else {
       applyChecklistUpdated(result.checklistId, result.name, result.priceAdder);
@@ -557,14 +577,23 @@ function ChecklistsView({
 
               {/* Checklist Items */}
               <div className="p-6">
-                {checklist.checklist_line_items && checklist.checklist_line_items.length > 0 ? (
+                {checklist.checklist_line_items &&
+                checklist.checklist_line_items.length > 0 ? (
                   <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
-                    onDragEnd={(event) => handleDragEnd(event, checklist.id, checklist.checklist_line_items || [])}
+                    onDragEnd={(event) =>
+                      handleDragEnd(
+                        event,
+                        checklist.id,
+                        checklist.checklist_line_items || [],
+                      )
+                    }
                   >
                     <SortableContext
-                      items={checklist.checklist_line_items.map((item) => item.id)}
+                      items={checklist.checklist_line_items.map(
+                        (item) => item.id,
+                      )}
                       strategy={verticalListSortingStrategy}
                     >
                       <ul className="space-y-0">
@@ -685,7 +714,6 @@ export default function ServicesPage({
   maxChecklistAdderByServiceId,
   refreshMaxChecklistAdders,
 }: ServicesPageProps) {
-
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
@@ -693,13 +721,18 @@ export default function ServicesPage({
   // Modal state
   const [showFormModal, setShowFormModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceType | null>(
+    null,
+  );
 
   // Detail view state
-  const [viewingService, setViewingService] = useState<ServiceType | null>(null);
+  const [viewingService, setViewingService] = useState<ServiceType | null>(
+    null,
+  );
 
   // Checklists view state
-  const [viewingChecklistsForService, setViewingChecklistsForService] = useState<ServiceType | null>(null);
+  const [viewingChecklistsForService, setViewingChecklistsForService] =
+    useState<ServiceType | null>(null);
 
   // Toggle active loading state
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
@@ -725,7 +758,7 @@ export default function ServicesPage({
         (s) =>
           s.name.toLowerCase().includes(query) ||
           s.description?.toLowerCase().includes(query) ||
-          s.service_type.toLowerCase().includes(query)
+          s.service_type.toLowerCase().includes(query),
       );
     }
 
@@ -761,20 +794,24 @@ export default function ServicesPage({
     }
 
     try {
-      const result = await toggleServiceActive(service.id, newIsActive, service.organization_id);
+      const result = await toggleServiceActive(
+        service.id,
+        newIsActive,
+        service.organization_id,
+      );
       if (!result.success) {
         // Rollback on failure
         if (updateServiceInState) {
           updateServiceInState(service.id, { is_active: previousIsActive });
         }
-        setToggleError(result.error || 'Failed to update service status');
+        setToggleError(result.error || "Failed to update service status");
       }
     } catch {
       // Rollback on unexpected error
       if (updateServiceInState) {
         updateServiceInState(service.id, { is_active: previousIsActive });
       }
-      setToggleError('Failed to update service status');
+      setToggleError("Failed to update service status");
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -829,11 +866,15 @@ export default function ServicesPage({
     setViewingService((prev) =>
       prev && prev.id === service.id
         ? { ...prev, is_active: newIsActive }
-        : prev
+        : prev,
     );
 
     try {
-      const result = await toggleServiceActive(service.id, newIsActive, service.organization_id);
+      const result = await toggleServiceActive(
+        service.id,
+        newIsActive,
+        service.organization_id,
+      );
       if (!result.success) {
         // Rollback on failure
         if (updateServiceInState) {
@@ -842,9 +883,9 @@ export default function ServicesPage({
         setViewingService((prev) =>
           prev && prev.id === service.id
             ? { ...prev, is_active: previousIsActive }
-            : prev
+            : prev,
         );
-        setToggleError(result.error || 'Failed to update service status');
+        setToggleError(result.error || "Failed to update service status");
       }
     } catch {
       // Rollback on unexpected error
@@ -854,9 +895,9 @@ export default function ServicesPage({
       setViewingService((prev) =>
         prev && prev.id === service.id
           ? { ...prev, is_active: previousIsActive }
-          : prev
+          : prev,
       );
-      setToggleError('Failed to update service status');
+      setToggleError("Failed to update service status");
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -905,14 +946,18 @@ export default function ServicesPage({
 
   // If viewing checklists for a service, show the checklists view
   if (viewingChecklistsForService) {
-    const latestService = services.find((s) => s.id === viewingChecklistsForService.id) || viewingChecklistsForService;
-    
+    const latestService =
+      services.find((s) => s.id === viewingChecklistsForService.id) ||
+      viewingChecklistsForService;
+
     return (
       <ChecklistsView
         service={latestService}
         canManageServices={canManageServices}
         onBackToServices={handleBackToServicesFromChecklists}
-        onBackToServiceDetail={viewingService ? handleBackToServiceDetail : undefined}
+        onBackToServiceDetail={
+          viewingService ? handleBackToServiceDetail : undefined
+        }
         onChecklistPricingChanged={refreshMaxChecklistAdders}
       />
     );
@@ -921,8 +966,9 @@ export default function ServicesPage({
   // If viewing a service, show the detail view
   if (viewingService) {
     // Find the latest version of this service from the services array
-    const latestService = services.find((s) => s.id === viewingService.id) || viewingService;
-    
+    const latestService =
+      services.find((s) => s.id === viewingService.id) || viewingService;
+
     return (
       <>
         <ServiceDetailView
@@ -1013,17 +1059,17 @@ export default function ServicesPage({
         <div className="flex flex-row gap-3 overflow-x-auto pb-1 md:pb-0 scrollbar-hide shrink-0">
           {/* Status Filter Dropdown */}
           <div className="relative flex-shrink-0 min-w-[140px]">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
-          >
-            <option value="active">Active</option>
-            <option value="all">All</option>
-            <option value="disabled">Disabled</option>
-          </select>
-          <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-        </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="w-full px-4 py-2.5 pr-10 border border-gray-300 rounded-full focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white font-medium text-sm appearance-none"
+            >
+              <option value="active">Active</option>
+              <option value="all">All</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
         </div>
       </div>
 
@@ -1076,9 +1122,7 @@ export default function ServicesPage({
             <ServiceCard
               key={service.id}
               service={service}
-              maxChecklistAdder={
-                maxChecklistAdderByServiceId[service.id] ?? 0
-              }
+              maxChecklistAdder={maxChecklistAdderByServiceId[service.id] ?? 0}
               canManage={canManageServices && !togglingIds.has(service.id)}
               onClick={handleViewService}
               onEdit={handleEdit}

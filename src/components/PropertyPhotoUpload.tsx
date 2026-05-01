@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import React, { useRef, useState, useCallback } from 'react';
-import { Home, Camera, Loader2, AlertCircle, X } from 'lucide-react';
-import { validateJobPhotoFile } from '../lib/upload';
-import { compressJobPhoto } from '../lib/compress-image';
-import { useAuth } from '../hooks/useAuth';
+import React, { useRef, useState, useCallback } from "react";
+import { Home, Camera, Loader2, AlertCircle, X } from "lucide-react";
+import { validateJobPhotoFile } from "../lib/upload";
+import { compressJobPhoto } from "../lib/compress-image";
+import { useAuth } from "../hooks/useAuth";
 
 interface PropertyPhotoUploadProps {
   propertyId: string | null;
@@ -32,11 +32,11 @@ export default function PropertyPhotoUpload({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      e.target.value = '';
+      e.target.value = "";
 
       const validation = validateJobPhotoFile(file);
       if (!validation.valid) {
-        setError(validation.error ?? 'Invalid file.');
+        setError(validation.error ?? "Invalid file.");
         return;
       }
 
@@ -44,13 +44,13 @@ export default function PropertyPhotoUpload({
       setPendingFile(file);
       setPreview(URL.createObjectURL(file));
     },
-    []
+    [],
   );
 
   const handleUpload = useCallback(async () => {
     if (!pendingFile || !propertyId) return;
     if (!session?.access_token) {
-      setError('You must be logged in to upload a photo.');
+      setError("You must be logged in to upload a photo.");
       return;
     }
 
@@ -60,7 +60,11 @@ export default function PropertyPhotoUpload({
     try {
       fileToUpload = await compressJobPhoto(pendingFile);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Compression failed. Please try a different image.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Compression failed. Please try a different image.",
+      );
       setCompressing(false);
       return;
     } finally {
@@ -70,18 +74,21 @@ export default function PropertyPhotoUpload({
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('file', fileToUpload);
+      formData.append("file", fileToUpload);
 
-      const response = await fetch(`/api/properties/${propertyId}/upload-photo`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: formData,
-      });
+      const response = await fetch(
+        `/api/properties/${propertyId}/upload-photo`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: formData,
+        },
+      );
 
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error ?? 'Upload failed. Please try again.');
+        setError(result.error ?? "Upload failed. Please try again.");
         return;
       }
 
@@ -90,11 +97,17 @@ export default function PropertyPhotoUpload({
       setPendingFile(null);
       onUploadSuccess(result.url);
     } catch {
-      setError('An unexpected error occurred. Please try again.');
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setUploading(false);
     }
-  }, [pendingFile, propertyId, session?.access_token, preview, onUploadSuccess]);
+  }, [
+    pendingFile,
+    propertyId,
+    session?.access_token,
+    preview,
+    onUploadSuccess,
+  ]);
 
   const handleCancel = useCallback(() => {
     if (preview) URL.revokeObjectURL(preview);
@@ -181,7 +194,7 @@ export default function PropertyPhotoUpload({
                 Uploading…
               </>
             ) : (
-              'Save Photo'
+              "Save Photo"
             )}
           </button>
           {!isWorking && (
@@ -202,7 +215,7 @@ export default function PropertyPhotoUpload({
           onClick={() => inputRef.current?.click()}
           className="text-sm text-primary-600 hover:text-primary-700 font-medium"
         >
-          {currentPhotoUrl ? 'Change photo' : 'Upload photo'}
+          {currentPhotoUrl ? "Change photo" : "Upload photo"}
         </button>
       )}
 

@@ -1380,7 +1380,7 @@ function CleanerDashboardInner() {
                   </h3>
                   <div className="space-y-4">
                     {filteredActiveJobsForJobsTab.map((appointment) => (
-                      <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                      <div key={appointment.id} className="animate-pulse-glow rounded-lg">
                         <AppointmentCard
                           appointment={convertToCardData(appointment)}
                           onClick={() => handleAppointmentCardClick(appointment)}

@@ -70,10 +70,12 @@ export default function BookingsPage({
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>(
-    initialStatusFilter || "all"
+    initialStatusFilter || "all",
   );
   const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
-  const [appointmentsTab, setAppointmentsTab] = useState<"upcoming" | "past" | "all">("upcoming");
+  const [appointmentsTab, setAppointmentsTab] = useState<
+    "upcoming" | "past" | "all"
+  >("upcoming");
   const [selectedAppointment, setSelectedAppointment] =
     useState<AppointmentCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
@@ -85,13 +87,14 @@ export default function BookingsPage({
 
   // Reschedule modal state
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
-  const [reschedulingAppointment, setReschedulingAppointment] = useState<AppointmentCardData | null>(null);
+  const [reschedulingAppointment, setReschedulingAppointment] =
+    useState<AppointmentCardData | null>(null);
 
   // Calendar-specific state
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>(
-    []
+    [],
   );
   const [preFilledDate, setPreFilledDate] = useState<string | undefined>();
   const [preFilledTime, setPreFilledTime] = useState<string | undefined>();
@@ -110,7 +113,7 @@ export default function BookingsPage({
     Map<string, PendingDragUpdate>
   >(new Map());
   const pendingDragUpdatesRef = useRef<Map<string, PendingDragUpdate>>(
-    new Map()
+    new Map(),
   );
 
   // Debounce timer for flushing pending updates
@@ -162,7 +165,7 @@ export default function BookingsPage({
       } catch (error) {
         console.error(
           `Failed to update appointment ${update.appointmentId}:`,
-          error
+          error,
         );
         return { success: false, id: update.appointmentId, error };
       }
@@ -280,7 +283,7 @@ export default function BookingsPage({
         (apt) =>
           apt.cleaner_confirmation_status === "rejected" &&
           apt.status !== "cancelled" &&
-          apt.status !== "completed"
+          apt.status !== "completed",
       )
       .sort((a, b) => {
         const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
@@ -296,7 +299,7 @@ export default function BookingsPage({
         (apt) =>
           apt.status === "in_progress" &&
           filterBySearch(apt) &&
-          filterByStatus(apt)
+          filterByStatus(apt),
       )
       .sort((a, b) => {
         const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
@@ -315,7 +318,7 @@ export default function BookingsPage({
           apt.scheduled_date === today &&
           apt.status !== "in_progress" &&
           filterBySearch(apt) &&
-          filterByStatus(apt)
+          filterByStatus(apt),
       )
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -416,7 +419,12 @@ export default function BookingsPage({
     if (appointmentsTab === "upcoming") return filteredUpcomingAppointments;
     if (appointmentsTab === "past") return filteredPastAppointments;
     return filteredAllAppointments;
-  }, [appointmentsTab, filteredUpcomingAppointments, filteredPastAppointments, filteredAllAppointments]);
+  }, [
+    appointmentsTab,
+    filteredUpcomingAppointments,
+    filteredPastAppointments,
+    filteredAllAppointments,
+  ]);
 
   // Get unique statuses for filter dropdown
   const availableStatuses = useMemo(() => {
@@ -517,13 +525,9 @@ export default function BookingsPage({
     setIsBulkActionLoading(true);
     try {
       if (bulkAction === "cancel") {
-        await Promise.all(
-          idsToProcess.map((id) => onCancelAppointment(id))
-        );
+        await Promise.all(idsToProcess.map((id) => onCancelAppointment(id)));
       } else {
-        await Promise.all(
-          idsToProcess.map((id) => onDeleteAppointment(id))
-        );
+        await Promise.all(idsToProcess.map((id) => onDeleteAppointment(id)));
       }
       setSelectedIds(new Set());
       setIsSelectMode(false);
@@ -539,7 +543,7 @@ export default function BookingsPage({
       setSelectedAppointment(appointment);
       setShowSidePanel(true);
     },
-    []
+    [],
   );
 
   const handleDayClick = useCallback(
@@ -548,7 +552,7 @@ export default function BookingsPage({
       setDayAppointments(appointments);
       setShowDayDetailSidebar(true);
     },
-    []
+    [],
   );
 
   const handleSlotSelect = useCallback((date: Date, time: string) => {
@@ -577,7 +581,7 @@ export default function BookingsPage({
         alert("Failed to reschedule appointment: " + result.error);
       }
     },
-    [onAppointmentUpdated, onRefreshAppointments]
+    [onAppointmentUpdated, onRefreshAppointments],
   );
 
   // Local reschedule handler for deferred DB sync
@@ -587,15 +591,15 @@ export default function BookingsPage({
       newDate: string,
       newTime: string,
       originalDate: string,
-      originalTime: string
+      originalTime: string,
     ) => {
       // Update local appointments state immediately (optimistic update)
       setLocalAppointments((prev) =>
         prev.map((apt) =>
           apt.id === appointmentId
             ? { ...apt, scheduled_date: newDate, scheduled_time: newTime }
-            : apt
-        )
+            : apt,
+        ),
       );
 
       // Add to pending updates for later DB sync
@@ -614,7 +618,7 @@ export default function BookingsPage({
       // Trigger debounced flush - will save to DB after 750ms of inactivity
       debouncedFlushPendingUpdates();
     },
-    [debouncedFlushPendingUpdates]
+    [debouncedFlushPendingUpdates],
   );
 
   const handleDayDetailAppointmentClick = useCallback(
@@ -623,7 +627,7 @@ export default function BookingsPage({
       setSelectedAppointment(appointment);
       setShowSidePanel(true);
     },
-    []
+    [],
   );
 
   const handleDayDetailAddAppointment = useCallback(() => {
@@ -650,7 +654,7 @@ export default function BookingsPage({
 
   // Get appointment info for cancel modal
   const cancellingAppointment = localAppointments.find(
-    (apt) => apt.id === cancellingAppointmentId
+    (apt) => apt.id === cancellingAppointmentId,
   );
   const cancelModalInfo = cancellingAppointment
     ? {
@@ -711,7 +715,9 @@ export default function BookingsPage({
               className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
             >
               <Plus className="w-5 h-5" />
-              <span>{role === "homeowner" ? "Request New Cleaning" : "New"}</span>
+              <span>
+                {role === "homeowner" ? "Request New Cleaning" : "New"}
+              </span>
             </button>
           )}
         </div>
@@ -880,7 +886,10 @@ export default function BookingsPage({
                   </h3>
                   <div className="space-y-4">
                     {filteredActiveAppointments.map((appointment) => (
-                      <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+                      <div
+                        key={appointment.id}
+                        className="animate-pulse-glow rounded-lg"
+                      >
                         <AppointmentCard
                           appointment={appointment}
                           onClick={() => handleAppointmentClick(appointment)}
@@ -1010,7 +1019,9 @@ export default function BookingsPage({
                             onClick={() => handleAppointmentClick(appointment)}
                             isSelectMode={isSelectMode}
                             isSelected={selectedIds.has(appointment.id)}
-                            onToggleSelect={() => toggleSelection(appointment.id)}
+                            onToggleSelect={() =>
+                              toggleSelection(appointment.id)
+                            }
                             role={role}
                             canApproveDecline={canApproveDecline}
                           />
@@ -1045,7 +1056,9 @@ export default function BookingsPage({
                             onClick={() => handleAppointmentClick(appointment)}
                             isSelectMode={isSelectMode}
                             isSelected={selectedIds.has(appointment.id)}
-                            onToggleSelect={() => toggleSelection(appointment.id)}
+                            onToggleSelect={() =>
+                              toggleSelection(appointment.id)
+                            }
                             role={role}
                             canApproveDecline={canApproveDecline}
                           />
@@ -1075,7 +1088,9 @@ export default function BookingsPage({
                             onClick={() => handleAppointmentClick(appointment)}
                             isSelectMode={isSelectMode}
                             isSelected={selectedIds.has(appointment.id)}
-                            onToggleSelect={() => toggleSelection(appointment.id)}
+                            onToggleSelect={() =>
+                              toggleSelection(appointment.id)
+                            }
                             role={role}
                             canApproveDecline={canApproveDecline}
                           />

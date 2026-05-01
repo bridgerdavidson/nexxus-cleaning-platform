@@ -51,7 +51,7 @@ function HomeownerDashboardInner() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
-    HOMEOWNER_DASHBOARD_TAB_IDS
+    HOMEOWNER_DASHBOARD_TAB_IDS,
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
@@ -159,7 +159,7 @@ function HomeownerDashboardInner() {
   // Active appointments (in_progress) - shown in Active Cleanings section
   const activeAppointments = useMemo(
     () => appointments.filter((a) => a.status === "in_progress"),
-    [appointments]
+    [appointments],
   );
 
   // Today's appointments (not in progress — those appear only under Active Cleanings)
@@ -167,11 +167,10 @@ function HomeownerDashboardInner() {
     () =>
       appointments
         .filter(
-          (a) =>
-            a.scheduled_date === todayStr && a.status !== "in_progress"
+          (a) => a.scheduled_date === todayStr && a.status !== "in_progress",
         )
         .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)),
-    [appointments, todayStr]
+    [appointments, todayStr],
   );
 
   // Upcoming = after today only (today is in Today's Appointments)
@@ -263,7 +262,7 @@ function HomeownerDashboardInner() {
   ];
 
   const getPaymentStatusTabConfig = (
-    paymentStatus: "pending" | "paid" | "failed" | "refunded" | null
+    paymentStatus: "pending" | "paid" | "failed" | "refunded" | null,
   ) => {
     switch (paymentStatus) {
       case "paid":
@@ -443,9 +442,16 @@ function HomeownerDashboardInner() {
         {(activeAppointments.length > 0 ? expandedActive : false) && (
           <div className="space-y-4">
             {activeAppointments.map((appointment) => (
-              <div key={appointment.id} className="animate-pulse-glow-gold rounded-lg">
+              <div
+                key={appointment.id}
+                className="animate-pulse-glow rounded-lg"
+              >
                 <AppointmentCard
-                  appointment={appointment as Parameters<typeof AppointmentCard>[0]["appointment"]}
+                  appointment={
+                    appointment as Parameters<
+                      typeof AppointmentCard
+                    >[0]["appointment"]
+                  }
                   onClick={() => setActiveTab("bookings")}
                   role="homeowner"
                 />
@@ -462,7 +468,11 @@ function HomeownerDashboardInner() {
           onClick={() => setExpandedToday((prev) => !prev)}
           className="w-full text-left flex items-center gap-2 mb-4 group"
         >
-          {(todaysAppointments.length > 0 || appointmentsLoading ? expandedToday : false) ? (
+          {(
+            todaysAppointments.length > 0 || appointmentsLoading
+              ? expandedToday
+              : false
+          ) ? (
             <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
           ) : (
             <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
@@ -475,7 +485,9 @@ function HomeownerDashboardInner() {
             ({todaysAppointments.length})
           </span>
         </button>
-        {(todaysAppointments.length > 0 || appointmentsLoading ? expandedToday : false) && (
+        {(todaysAppointments.length > 0 || appointmentsLoading
+          ? expandedToday
+          : false) && (
           <>
             {appointmentsLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -487,7 +499,11 @@ function HomeownerDashboardInner() {
                 {todaysAppointments.map((appointment) => (
                   <AppointmentCard
                     key={appointment.id}
-                    appointment={appointment as Parameters<typeof AppointmentCard>[0]["appointment"]}
+                    appointment={
+                      appointment as Parameters<
+                        typeof AppointmentCard
+                      >[0]["appointment"]
+                    }
                     onClick={() => setActiveTab("bookings")}
                     role="homeowner"
                   />
@@ -496,7 +512,9 @@ function HomeownerDashboardInner() {
             ) : (
               <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
                 <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No appointments scheduled for today</p>
+                <p className="text-gray-600">
+                  No appointments scheduled for today
+                </p>
               </div>
             )}
           </>
@@ -510,7 +528,11 @@ function HomeownerDashboardInner() {
           onClick={() => setExpandedUpcoming((prev) => !prev)}
           className="w-full text-left flex items-center gap-2 mb-4 group"
         >
-          {(allUpcomingAppointments.length > 0 || appointmentsLoading ? expandedUpcoming : false) ? (
+          {(
+            allUpcomingAppointments.length > 0 || appointmentsLoading
+              ? expandedUpcoming
+              : false
+          ) ? (
             <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
           ) : (
             <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
@@ -523,12 +545,16 @@ function HomeownerDashboardInner() {
             ({allUpcomingAppointments.length})
           </span>
         </button>
-        {(allUpcomingAppointments.length > 0 || appointmentsLoading ? expandedUpcoming : false) && (
+        {(allUpcomingAppointments.length > 0 || appointmentsLoading
+          ? expandedUpcoming
+          : false) && (
           <>
             {appointmentsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading appointments...</span>
+                <span className="ml-2 text-gray-600">
+                  Loading appointments...
+                </span>
               </div>
             ) : appointmentsError ? (
               <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
@@ -540,7 +566,11 @@ function HomeownerDashboardInner() {
                 {upcomingAppointments.map((appointment) => (
                   <AppointmentCard
                     key={appointment.id}
-                    appointment={appointment as Parameters<typeof AppointmentCard>[0]["appointment"]}
+                    appointment={
+                      appointment as Parameters<
+                        typeof AppointmentCard
+                      >[0]["appointment"]
+                    }
                     onClick={() => setActiveTab("bookings")}
                     role="homeowner"
                   />
@@ -650,7 +680,7 @@ function HomeownerDashboardInner() {
                     {payment.appointment?.scheduled_date && (
                       <p className="text-sm text-gray-600">
                         {new Date(
-                          payment.appointment.scheduled_date
+                          payment.appointment.scheduled_date,
                         ).toLocaleDateString()}
                       </p>
                     )}
@@ -662,10 +692,10 @@ function HomeownerDashboardInner() {
                       payment.status === "paid"
                         ? "text-green-600 bg-green-100"
                         : payment.status === "pending"
-                        ? "text-yellow-600 bg-yellow-100"
-                        : payment.status === "failed"
-                        ? "text-red-600 bg-red-100"
-                        : "text-gray-600 bg-gray-100"
+                          ? "text-yellow-600 bg-yellow-100"
+                          : payment.status === "failed"
+                            ? "text-red-600 bg-red-100"
+                            : "text-gray-600 bg-gray-100"
                     }`}
                   >
                     {payment.status}
@@ -686,21 +716,21 @@ function HomeownerDashboardInner() {
 
   const renderProperties = () => {
     // Convert homeowner properties to AdminProperty format
-    const formattedProperties = properties.map(prop => ({
+    const formattedProperties = properties.map((prop) => ({
       ...prop,
       bedrooms: prop.bedrooms ?? null,
       bathrooms: prop.bathrooms ?? null,
       square_feet: prop.square_feet ?? null,
       special_instructions: null,
       access_instructions: null,
-      created_at: '',
-      updated_at: '',
-      owner_id: user?.id || '',
+      created_at: "",
+      updated_at: "",
+      owner_id: user?.id || "",
       homeowner: {
-        id: user?.id || '',
-        first_name: (user as any)?.user_metadata?.first_name || '',
-        last_name: (user as any)?.user_metadata?.last_name || '',
-        email: user?.email || '',
+        id: user?.id || "",
+        first_name: (user as any)?.user_metadata?.first_name || "",
+        last_name: (user as any)?.user_metadata?.last_name || "",
+        email: user?.email || "",
         phone: (user as any)?.user_metadata?.phone || null,
       },
     }));
@@ -751,13 +781,13 @@ function HomeownerDashboardInner() {
     <>
       {/* Hide header on mobile for all tabs */}
       <div className="hidden md:block">
-      <DashboardHeader
-        role="homeowner"
-        tabs={headerTabs}
-        sidebarTabs={sidebarTabs}
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-      />
+        <DashboardHeader
+          role="homeowner"
+          tabs={headerTabs}
+          sidebarTabs={sidebarTabs}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+        />
       </div>
       <div className="min-h-screen bg-white md:bg-gray-100 pt-4 md:pt-16">
         <div

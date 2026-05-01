@@ -10,9 +10,9 @@ import {
 } from "../hooks/useChecklists";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
-type ChecklistFormResult = 
-  | { type: 'created'; checklist: ChecklistWithItems }
-  | { type: 'updated'; checklistId: string; name: string; priceAdder: number };
+type ChecklistFormResult =
+  | { type: "created"; checklist: ChecklistWithItems }
+  | { type: "updated"; checklistId: string; name: string; priceAdder: number };
 
 interface ChecklistFormModalProps {
   isOpen: boolean;
@@ -78,22 +78,35 @@ export default function ChecklistFormModal({
 
     try {
       if (isEditing && checklist) {
-        const result = await updateChecklist(checklist.id, name.trim(), parsedPriceAdder);
+        const result = await updateChecklist(
+          checklist.id,
+          name.trim(),
+          parsedPriceAdder,
+        );
         if (result.success) {
-          onSuccess({ type: 'updated', checklistId: checklist.id, name: name.trim(), priceAdder: parsedPriceAdder });
+          onSuccess({
+            type: "updated",
+            checklistId: checklist.id,
+            name: name.trim(),
+            priceAdder: parsedPriceAdder,
+          });
           onClose();
         } else {
           setError(result.error || "Failed to update checklist");
         }
       } else {
-        const result = await createChecklist(serviceTypeId!, name.trim(), parsedPriceAdder);
+        const result = await createChecklist(
+          serviceTypeId!,
+          name.trim(),
+          parsedPriceAdder,
+        );
         if (result.success && result.data) {
           // Convert Checklist to ChecklistWithItems with empty items array
           const checklistWithItems: ChecklistWithItems = {
             ...result.data,
             checklist_line_items: [],
           };
-          onSuccess({ type: 'created', checklist: checklistWithItems });
+          onSuccess({ type: "created", checklist: checklistWithItems });
           onClose();
         } else {
           setError(result.error || "Failed to create checklist");
@@ -114,11 +127,8 @@ export default function ChecklistFormModal({
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/50"
-        onClick={onClose}
-      />
-      
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+
       {/* Modal */}
       <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md">
         {/* Header */}

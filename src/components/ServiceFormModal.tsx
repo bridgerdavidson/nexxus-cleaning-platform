@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Loader2, AlertCircle, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import {
+  X,
+  Loader2,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+} from "lucide-react";
 import {
   ServiceType,
   CreateServiceData,
@@ -65,7 +72,9 @@ export default function ServiceFormModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [diagnostic, setDiagnostic] = useState<ServiceUpdateDiagnostic | null>(null);
+  const [diagnostic, setDiagnostic] = useState<ServiceUpdateDiagnostic | null>(
+    null,
+  );
   const [showDebug, setShowDebug] = useState(false);
 
   // Reset form when modal opens/closes or service changes
@@ -94,9 +103,11 @@ export default function ServiceFormModal({
 
   async function runServiceUpdateDiagnostic(
     serviceId: string,
-    currentOrgId: string | null
+    currentOrgId: string | null,
   ): Promise<ServiceUpdateDiagnostic> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const userId = user?.id ?? null;
 
     let memberships: Array<{ organization_id: string; role: string }> = [];
@@ -137,7 +148,11 @@ export default function ServiceFormModal({
       return;
     }
 
-    if (!basePrice || isNaN(parseFloat(basePrice)) || parseFloat(basePrice) < 0) {
+    if (
+      !basePrice ||
+      isNaN(parseFloat(basePrice)) ||
+      parseFloat(basePrice) < 0
+    ) {
       setError("Valid base price is required");
       return;
     }
@@ -171,7 +186,11 @@ export default function ServiceFormModal({
 
       let result;
       if (isEditing && service) {
-        result = await updateService(service.id, data, currentOrganizationId ?? undefined);
+        result = await updateService(
+          service.id,
+          data,
+          currentOrganizationId ?? undefined,
+        );
       } else {
         result = await createService(currentOrganizationId, data);
       }
@@ -185,12 +204,14 @@ export default function ServiceFormModal({
         if (
           isEditing &&
           service &&
-          (errMsg === SERVICE_UPDATE_PERMISSION_ERROR || errMsg.includes("permission"))
+          (errMsg === SERVICE_UPDATE_PERMISSION_ERROR ||
+            errMsg.includes("permission"))
         ) {
           setDiagnostic(null);
-          runServiceUpdateDiagnostic(service.id, currentOrganizationId ?? null).then(
-            setDiagnostic
-          );
+          runServiceUpdateDiagnostic(
+            service.id,
+            currentOrganizationId ?? null,
+          ).then(setDiagnostic);
         }
       }
     } catch (err) {
@@ -206,7 +227,7 @@ export default function ServiceFormModal({
   };
 
   const filteredSuggestions = SERVICE_TYPE_SUGGESTIONS.filter((type) =>
-    type.toLowerCase().includes(serviceType.toLowerCase())
+    type.toLowerCase().includes(serviceType.toLowerCase()),
   );
 
   // Lock body scroll when modal is open
@@ -217,11 +238,8 @@ export default function ServiceFormModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/50"
-        onClick={onClose}
-      />
-      
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+
       {/* Modal */}
       <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto modal-scrollbar">
         {/* Header */}
@@ -263,46 +281,69 @@ export default function ServiceFormModal({
                   {showDebug && (
                     <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-3 text-sm">
                       <p className="text-gray-600">
-                        RLS allows update only if you have role owner/admin/manager in the
-                        service&apos;s organization. Run the SQL in{" "}
-                        <code className="bg-gray-200 px-1 rounded">docs/debug-service-update-rls.sql</code>{" "}
+                        RLS allows update only if you have role
+                        owner/admin/manager in the service&apos;s organization.
+                        Run the SQL in{" "}
+                        <code className="bg-gray-200 px-1 rounded">
+                          docs/debug-service-update-rls.sql
+                        </code>{" "}
                         in Supabase SQL Editor with the IDs below to verify.
                       </p>
                       <pre className="p-3 bg-white border border-gray-200 rounded overflow-x-auto text-xs text-gray-800 whitespace-pre-wrap">
                         {JSON.stringify(diagnostic, null, 2)}
                       </pre>
                       <div className="flex flex-wrap gap-2">
-                        <span className="font-medium text-gray-700">Checks:</span>
+                        <span className="font-medium text-gray-700">
+                          Checks:
+                        </span>
                         {!diagnostic.userId && (
-                          <span className="text-amber-700">No user session (auth.uid() is null)</span>
+                          <span className="text-amber-700">
+                            No user session (auth.uid() is null)
+                          </span>
                         )}
-                        {diagnostic.userId && diagnostic.memberships.length === 0 && (
-                          <span className="text-amber-700">No organization_members rows for this user</span>
-                        )}
+                        {diagnostic.userId &&
+                          diagnostic.memberships.length === 0 && (
+                            <span className="text-amber-700">
+                              No organization_members rows for this user
+                            </span>
+                          )}
                         {diagnostic.serviceRow === null && (
-                          <span className="text-amber-700">Cannot read service row (SELECT blocked by RLS?)</span>
+                          <span className="text-amber-700">
+                            Cannot read service row (SELECT blocked by RLS?)
+                          </span>
                         )}
-                        {diagnostic.serviceRow && diagnostic.currentOrganizationId && diagnostic.serviceRow.organization_id !== diagnostic.currentOrganizationId && (
-                          <span className="text-amber-700">Service org_id does not match current org</span>
-                        )}
+                        {diagnostic.serviceRow &&
+                          diagnostic.currentOrganizationId &&
+                          diagnostic.serviceRow.organization_id !==
+                            diagnostic.currentOrganizationId && (
+                            <span className="text-amber-700">
+                              Service org_id does not match current org
+                            </span>
+                          )}
                         {diagnostic.serviceRow &&
                           diagnostic.memberships.length > 0 &&
                           !diagnostic.memberships.some(
                             (m) =>
-                              m.organization_id === diagnostic.serviceRow?.organization_id &&
-                              ["owner", "admin", "manager"].includes(m.role)
+                              m.organization_id ===
+                                diagnostic.serviceRow?.organization_id &&
+                              ["owner", "admin", "manager"].includes(m.role),
                           ) && (
                             <span className="text-amber-700">
-                              No membership with role owner/admin/manager for service&apos;s org (role is case-sensitive)
+                              No membership with role owner/admin/manager for
+                              service&apos;s org (role is case-sensitive)
                             </span>
                           )}
                         {diagnostic.serviceRow &&
                           diagnostic.memberships.some(
                             (m) =>
-                              m.organization_id === diagnostic.serviceRow?.organization_id &&
-                              ["owner", "admin", "manager"].includes(m.role)
+                              m.organization_id ===
+                                diagnostic.serviceRow?.organization_id &&
+                              ["owner", "admin", "manager"].includes(m.role),
                           ) && (
-                            <span className="text-green-700">Membership looks OK — check auth.uid() in Supabase or run SQL script</span>
+                            <span className="text-green-700">
+                              Membership looks OK — check auth.uid() in Supabase
+                              or run SQL script
+                            </span>
                           )}
                       </div>
                       <button

@@ -200,6 +200,11 @@ export default function TeamMemberSidePanel({
     onManagePermissions &&
     member.id !== currentUserId;
 
+  const showDelete =
+    member.role !== "admin" &&
+    onDelete &&
+    member.id !== currentUserId;
+
   const panel = (
     <div
       className={`fixed inset-0 z-[200] flex justify-end transition-colors duration-300 ${
@@ -276,7 +281,7 @@ export default function TeamMemberSidePanel({
                       <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-50"
+                        className="btn-primary-chrome flex items-center gap-2 px-3 py-1.5 text-sm"
                       >
                         {isSaving ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -491,7 +496,7 @@ export default function TeamMemberSidePanel({
               </button>
             )}
 
-            {member.role !== "admin" && onDelete && (
+            {showDelete && (
               <button
                 onClick={handleDelete}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-red-500 text-red-700 bg-transparent rounded-lg hover:bg-red-50 transition-colors font-medium"

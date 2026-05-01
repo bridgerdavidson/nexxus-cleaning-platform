@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  ChevronLeft,
-  ArrowRight,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
+import { ChevronLeft, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { JobProgress, JobWorkflowState, ChecklistItem } from "../types";
-import { updateJobProgress, useChecklist, useJobPhotosForAppointment } from "../hooks/useCleanerData";
+import {
+  updateJobProgress,
+  useChecklist,
+  useJobPhotosForAppointment,
+} from "../hooks/useCleanerData";
 import JobProgressIndicator from "./JobProgressIndicator";
 import NoPhotosWarningModal from "./NoPhotosWarningModal";
 import JobPhotoSection from "./JobPhotoSection";
@@ -31,7 +30,9 @@ export default function ActiveJobPage({
   const [currentStep, setCurrentStep] = useState<JobProgress>("before_photos");
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [showWarningModal, setShowWarningModal] = useState(false);
-  const [photoWarningType, setPhotoWarningType] = useState<"before" | "after">("before");
+  const [photoWarningType, setPhotoWarningType] = useState<"before" | "after">(
+    "before",
+  );
 
   // Appointment data
   const [appointment, setAppointment] = useState<{
@@ -86,7 +87,7 @@ export default function ActiveJobPage({
               id,
               name
             )
-          `
+          `,
           )
           .eq("id", appointmentId)
           .single();
@@ -134,7 +135,9 @@ export default function ActiveJobPage({
   useEffect(() => {
     const autoFixProgress = async () => {
       if (currentStep === "not_started" && !loading) {
-        console.log("Auto-fixing job_progress from not_started to before_photos");
+        console.log(
+          "Auto-fixing job_progress from not_started to before_photos",
+        );
         const result = await updateJobProgress(appointmentId, "before_photos");
         if (result.success) {
           setCurrentStep("before_photos");
@@ -175,7 +178,7 @@ export default function ActiveJobPage({
             (n, i) =>
               n.id === prev[i].id &&
               n.task === prev[i].task &&
-              n.completed === prev[i].completed
+              n.completed === prev[i].completed,
           );
         return identical ? prev : next;
       }
@@ -192,7 +195,7 @@ export default function ActiveJobPage({
       }
 
       const completedById = new Map(
-        sessionProgress.map((p) => [p.id, p.completed])
+        sessionProgress.map((p) => [p.id, p.completed]),
       );
 
       return lineItems.map((item) => ({
@@ -214,7 +217,13 @@ export default function ActiveJobPage({
       lastUpdated: new Date().toISOString(),
     };
     sessionStorage.setItem(storageKey, JSON.stringify(state));
-  }, [currentStep, checklistItems, hasBeforePhotos, hasAfterPhotos, storageKey]);
+  }, [
+    currentStep,
+    checklistItems,
+    hasBeforePhotos,
+    hasAfterPhotos,
+    storageKey,
+  ]);
 
   // Auto-save to session storage when step or checklist changes
   useEffect(() => {
@@ -227,8 +236,8 @@ export default function ActiveJobPage({
   const toggleChecklistItem = (itemId: string) => {
     setChecklistItems((prev) =>
       prev.map((item) =>
-        item.id === itemId ? { ...item, completed: !item.completed } : item
-      )
+        item.id === itemId ? { ...item, completed: !item.completed } : item,
+      ),
     );
   };
 
@@ -243,7 +252,10 @@ export default function ActiveJobPage({
   // Handle next step
   const handleNext = async () => {
     // Check for photo warnings (treat not_started same as before_photos)
-    if ((currentStep === "before_photos" || currentStep === "not_started") && !hasBeforePhotos) {
+    if (
+      (currentStep === "before_photos" || currentStep === "not_started") &&
+      !hasBeforePhotos
+    ) {
       setPhotoWarningType("before");
       setShowWarningModal(true);
       return;
@@ -314,7 +326,6 @@ export default function ActiveJobPage({
     }
   };
 
-
   // Actual job completion (called after warning confirmation or when photos exist)
   const confirmCompleteJob = async () => {
     setSaving(true);
@@ -378,9 +389,12 @@ export default function ActiveJobPage({
         {(currentStep === "before_photos" || currentStep === "not_started") && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Before Photos</h2>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Before Photos
+              </h2>
               <p className="text-gray-600 mt-1">
-                Document the property condition before starting the cleaning job.
+                Document the property condition before starting the cleaning
+                job.
               </p>
             </div>
             <JobPhotoSection
@@ -394,72 +408,75 @@ export default function ActiveJobPage({
 
         {/* Step 2: Checklist */}
         {currentStep === "checklist" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    Cleaning Checklist
-                  </h2>
-                  {serviceName !== "Service" && (
-                    <p className="text-sm text-gray-600 mt-1 truncate" title={serviceName}>
-                      {serviceName}
-                    </p>
-                  )}
-                </div>
-                <span className="text-sm font-medium text-gray-600 flex-shrink-0">
-                  {checklistItems.filter((item) => item.completed).length} of{" "}
-                  {checklistItems.length} tasks completed
-                </span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Cleaning Checklist
+                </h2>
+                {serviceName !== "Service" && (
+                  <p
+                    className="text-sm text-gray-600 mt-1 truncate"
+                    title={serviceName}
+                  >
+                    {serviceName}
+                  </p>
+                )}
               </div>
-              <p className="text-gray-600">
-                Complete all tasks before moving to the next step.
-              </p>
+              <span className="text-sm font-medium text-gray-600 flex-shrink-0">
+                {checklistItems.filter((item) => item.completed).length} of{" "}
+                {checklistItems.length} tasks completed
+              </span>
+            </div>
+            <p className="text-gray-600">
+              Complete all tasks before moving to the next step.
+            </p>
 
-              {checklistLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                </div>
-              ) : checklistItems.length > 0 ? (
-                <div className="space-y-2">
-                  {checklistItems.map((item) => (
-                    <label
-                      key={item.id}
-                      className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
+            {checklistLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+              </div>
+            ) : checklistItems.length > 0 ? (
+              <div className="space-y-2">
+                {checklistItems.map((item) => (
+                  <label
+                    key={item.id}
+                    className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      item.completed
+                        ? "bg-gray-50 border-gray-200"
+                        : "bg-white border-gray-200 hover:border-primary-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.completed}
+                      onChange={() => toggleChecklistItem(item.id)}
+                      className="mt-1 w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                    />
+                    <span
+                      className={`flex-1 ${
                         item.completed
-                          ? "bg-gray-50 border-gray-200"
-                          : "bg-white border-gray-200 hover:border-primary-300"
+                          ? "line-through text-gray-400"
+                          : "text-gray-900"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={item.completed}
-                        onChange={() => toggleChecklistItem(item.id)}
-                        className="mt-1 w-5 h-5 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                      />
-                      <span
-                        className={`flex-1 ${
-                          item.completed
-                            ? "line-through text-gray-400"
-                            : "text-gray-900"
-                        }`}
-                      >
-                        {item.task}
-                      </span>
-                      {item.completed && (
-                        <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-                      )}
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <p>No checklist items found for this service type.</p>
-                  <p className="text-sm mt-2">
-                    You can proceed to the next step.
-                  </p>
-                </div>
-              )}
-            </div>
+                      {item.task}
+                    </span>
+                    {item.completed && (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    )}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                <p>No checklist items found for this service type.</p>
+                <p className="text-sm mt-2">
+                  You can proceed to the next step.
+                </p>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Step 3: After Photos */}
@@ -541,7 +558,9 @@ export default function ActiveJobPage({
       <NoPhotosWarningModal
         isOpen={showWarningModal}
         onClose={() => setShowWarningModal(false)}
-        onContinue={photoWarningType === "after" ? confirmCompleteJob : proceedToNext}
+        onContinue={
+          photoWarningType === "after" ? confirmCompleteJob : proceedToNext
+        }
         photoType={photoWarningType}
       />
     </div>

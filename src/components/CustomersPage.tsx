@@ -35,7 +35,7 @@ interface CustomersPageProps {
   onRefreshCustomers?: () => void;
   onCustomerUpdated?: (
     customerId: string,
-    updatedData: Partial<AdminCustomer>
+    updatedData: Partial<AdminCustomer>,
   ) => void;
   onRefreshAppointments?: () => void;
   onRefreshProperties?: () => void;
@@ -125,7 +125,7 @@ export default function CustomersPage({
       default:
         result.sort(
           (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         break;
     }
@@ -178,7 +178,7 @@ export default function CustomersPage({
     setIsDeleting(true);
     const result = await deleteCustomer(
       deleteConfirmModal.customerId,
-      currentOrganizationId
+      currentOrganizationId,
     );
     setIsDeleting(false);
 
@@ -200,7 +200,7 @@ export default function CustomersPage({
     setIsBulkDeleting(true);
     const result = await deleteCustomers(
       Array.from(selectedIds),
-      currentOrganizationId
+      currentOrganizationId,
     );
     setIsBulkDeleting(false);
 
@@ -399,7 +399,7 @@ export default function CustomersPage({
               <p className="text-sm text-gray-600">Total Revenue</p>
               <p className="text-xl font-bold text-gray-900">
                 {formatCurrency(
-                  customers.reduce((sum, c) => sum + c.total_spent, 0)
+                  customers.reduce((sum, c) => sum + c.total_spent, 0),
                 )}
               </p>
             </div>

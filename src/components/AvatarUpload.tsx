@@ -1,27 +1,31 @@
-'use client';
+"use client";
 
-import React, { useRef, useState, useCallback } from 'react';
-import { User, Camera, Loader2, AlertCircle, X } from 'lucide-react';
-import { AVATAR_MAX_FILE_SIZE, AVATAR_ALLOWED_TYPES } from '../lib/upload';
-import { compressJobPhoto } from '../lib/compress-image';
-import { useAuth } from '../hooks/useAuth';
+import React, { useRef, useState, useCallback } from "react";
+import { User, Camera, Loader2, AlertCircle, X } from "lucide-react";
+import { AVATAR_MAX_FILE_SIZE, AVATAR_ALLOWED_TYPES } from "../lib/upload";
+import { compressJobPhoto } from "../lib/compress-image";
+import { useAuth } from "../hooks/useAuth";
 
 interface AvatarUploadProps {
   currentAvatarUrl?: string;
   onUploadSuccess: (url: string) => void;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
 }
 
 const sizeClasses = {
-  sm: { wrapper: 'w-16 h-16', icon: 'w-8 h-8', badge: 'w-5 h-5 text-[10px]' },
-  md: { wrapper: 'w-24 h-24', icon: 'w-12 h-12', badge: 'w-7 h-7 text-xs' },
-  lg: { wrapper: 'w-24 h-24 sm:w-28 sm:h-28', icon: 'w-12 h-12 sm:w-14 sm:h-14', badge: 'w-8 h-8 text-sm' },
+  sm: { wrapper: "w-16 h-16", icon: "w-8 h-8", badge: "w-5 h-5 text-[10px]" },
+  md: { wrapper: "w-24 h-24", icon: "w-12 h-12", badge: "w-7 h-7 text-xs" },
+  lg: {
+    wrapper: "w-24 h-24 sm:w-28 sm:h-28",
+    icon: "w-12 h-12 sm:w-14 sm:h-14",
+    badge: "w-8 h-8 text-sm",
+  },
 };
 
 export default function AvatarUpload({
   currentAvatarUrl,
   onUploadSuccess,
-  size = 'lg',
+  size = "lg",
 }: AvatarUploadProps) {
   const { session } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +54,7 @@ export default function AvatarUpload({
       if (!file) return;
 
       // Reset input so the same file can be re-selected after cancellation
-      e.target.value = '';
+      e.target.value = "";
 
       const validationError = validateFile(file);
       if (validationError) {
@@ -62,13 +66,13 @@ export default function AvatarUpload({
       setPendingFile(file);
       setPreview(URL.createObjectURL(file));
     },
-    [validateFile]
+    [validateFile],
   );
 
   const handleUpload = useCallback(async () => {
     if (!pendingFile) return;
     if (!session?.access_token) {
-      setError('You must be logged in to upload an avatar.');
+      setError("You must be logged in to upload an avatar.");
       return;
     }
 
@@ -78,7 +82,11 @@ export default function AvatarUpload({
     try {
       fileToUpload = await compressJobPhoto(pendingFile);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Compression failed. Please try a different image.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Compression failed. Please try a different image.",
+      );
       setCompressing(false);
       return;
     } finally {
@@ -88,10 +96,10 @@ export default function AvatarUpload({
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('file', fileToUpload);
+      formData.append("file", fileToUpload);
 
-      const response = await fetch('/api/user/upload-avatar', {
-        method: 'POST',
+      const response = await fetch("/api/user/upload-avatar", {
+        method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: formData,
       });
@@ -99,7 +107,7 @@ export default function AvatarUpload({
       const result = await response.json();
 
       if (!response.ok) {
-        setError(result.error ?? 'Upload failed. Please try again.');
+        setError(result.error ?? "Upload failed. Please try again.");
         return;
       }
 
@@ -109,7 +117,7 @@ export default function AvatarUpload({
       setPendingFile(null);
       onUploadSuccess(result.url);
     } catch {
-      setError('An unexpected error occurred. Please try again.');
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -172,7 +180,7 @@ export default function AvatarUpload({
       <input
         ref={inputRef}
         type="file"
-        accept={AVATAR_ALLOWED_TYPES.join(',')}
+        accept={AVATAR_ALLOWED_TYPES.join(",")}
         onChange={handleFileChange}
         className="hidden"
         aria-hidden
@@ -198,7 +206,7 @@ export default function AvatarUpload({
                 Uploading…
               </>
             ) : (
-              'Save Photo'
+              "Save Photo"
             )}
           </button>
           {!uploading && !compressing && (
@@ -215,12 +223,12 @@ export default function AvatarUpload({
 
       {/* Change photo link when idle */}
       {!pendingFile && !uploading && !compressing && (
-          <button
+        <button
           type="button"
           onClick={() => inputRef.current?.click()}
           className="text-[14.5px] text-primary-600 hover:text-primary-700 font-semibold transition-colors mt-4"
         >
-          {currentAvatarUrl ? 'Change photo' : 'Upload photo'}
+          {currentAvatarUrl ? "Change photo" : "Upload photo"}
         </button>
       )}
 

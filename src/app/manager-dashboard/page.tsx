@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  Suspense,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -83,7 +89,7 @@ function ManagerDashboardInner() {
   const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
-    ADMIN_MANAGER_DASHBOARD_TAB_IDS
+    ADMIN_MANAGER_DASHBOARD_TAB_IDS,
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
@@ -100,8 +106,11 @@ function ManagerDashboardInner() {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
-  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] = useState(true);
-  const [initialMessageRecipientId, setInitialMessageRecipientId] = useState<string | null>(null);
+  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] =
+    useState(true);
+  const [initialMessageRecipientId, setInitialMessageRecipientId] = useState<
+    string | null
+  >(null);
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
     useState<AppointmentCardData | null>(null);
   const router = useRouter();
@@ -217,7 +226,7 @@ function ManagerDashboardInner() {
           return false;
       }
     },
-    [permissions]
+    [permissions],
   );
 
   // Calculate if there are any unread messages
@@ -355,7 +364,7 @@ function ManagerDashboardInner() {
   // Get groups array for sidebar
   const groups = useMemo(
     () => Object.values(navigationGroups),
-    [navigationGroups]
+    [navigationGroups],
   );
 
   // Get tabs for current group
@@ -363,7 +372,7 @@ function ManagerDashboardInner() {
     () =>
       navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs ||
       [],
-    [navigationGroups, activeGroup]
+    [navigationGroups, activeGroup],
   );
 
   // Filter out "customers" and "messages" from top nav — messages use TopBar icon (cleaner pattern)
@@ -371,27 +380,24 @@ function ManagerDashboardInner() {
     () =>
       activeGroup === "operations"
         ? currentGroupTabs.filter(
-            (tab) => tab.id !== "customers" && tab.id !== "messages"
+            (tab) => tab.id !== "customers" && tab.id !== "messages",
           )
         : currentGroupTabs,
-    [currentGroupTabs, activeGroup]
+    [currentGroupTabs, activeGroup],
   );
 
   // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
-  const allTabs = useMemo(
-    () => {
-      const tabs = Array.from(
-        new Map(
-          groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])
-        ).values()
-      );
-      if (!tabs.find((t) => t.id === "settings")) {
-        tabs.push({ id: "settings", label: "Settings", icon: Settings });
-      }
-      return tabs;
-    },
-    [groups]
-  );
+  const allTabs = useMemo(() => {
+    const tabs = Array.from(
+      new Map(
+        groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab]),
+      ).values(),
+    );
+    if (!tabs.find((t) => t.id === "settings")) {
+      tabs.push({ id: "settings", label: "Settings", icon: Settings });
+    }
+    return tabs;
+  }, [groups]);
 
   // Handle group change - switch to first tab of new group
   const handleGroupChange = useCallback(
@@ -402,8 +408,8 @@ function ManagerDashboardInner() {
       if (newGroup && newGroup.tabs.length > 0) {
         const firstTab =
           groupId === "team"
-            ? newGroup.tabs.find((tab) => tab.id === "team")?.id ??
-              newGroup.tabs[0].id
+            ? (newGroup.tabs.find((tab) => tab.id === "team")?.id ??
+              newGroup.tabs[0].id)
             : newGroup.tabs[0].id;
         // Check if tab is accessible
         if (isTabAccessible(firstTab)) {
@@ -411,7 +417,7 @@ function ManagerDashboardInner() {
         } else {
           // Find first accessible tab
           const accessibleTab = newGroup.tabs.find((tab) =>
-            isTabAccessible(tab.id)
+            isTabAccessible(tab.id),
           );
           if (accessibleTab) {
             setActiveTab(accessibleTab.id);
@@ -424,7 +430,7 @@ function ManagerDashboardInner() {
       setShowPendingFilter(false);
       setShowAllFilter(false);
     },
-    [navigationGroups, isTabAccessible]
+    [navigationGroups, isTabAccessible],
   );
 
   // Handle tab change - reset filters if not navigating from specific sections
@@ -440,7 +446,7 @@ function ManagerDashboardInner() {
         setShowAllFilter(false);
       }
     },
-    [setActiveGroup, setActiveTab]
+    [setActiveGroup, setActiveTab],
   );
 
   // Redirect to login if not authenticated
@@ -498,7 +504,15 @@ function ManagerDashboardInner() {
     }
   };
 
-  const getPaymentStatusTabConfig = (paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded' | null | undefined) => {
+  const getPaymentStatusTabConfig = (
+    paymentStatus:
+      | "pending"
+      | "paid"
+      | "failed"
+      | "refunded"
+      | null
+      | undefined,
+  ) => {
     switch (paymentStatus) {
       case "paid":
         return {
@@ -563,14 +577,14 @@ function ManagerDashboardInner() {
   // This matches the BookingsPage "upcoming" tab definition, but restricted to confirmed
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   const allUpcomingAppointments = appointments
     .filter((a) => {
       // Parse appointment date
       const [year, month, day] = a.scheduled_date.split("-").map(Number);
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
-      
+
       // Future appointments that have been confirmed
       return appointmentDate >= today && a.status === "confirmed";
     })
@@ -579,19 +593,19 @@ function ManagerDashboardInner() {
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
     });
-  
+
   const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
 
   const pendingAppointments = appointments
     .filter((a) => {
       // Only include pending appointments that are today or in the future
       if (a.status !== "pending") return false;
-      
+
       // Parse appointment date
       const [year, month, day] = a.scheduled_date.split("-").map(Number);
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
-      
+
       // Only include today and future appointments
       return appointmentDate >= today;
     })
@@ -696,147 +710,138 @@ function ManagerDashboardInner() {
           style={DASHBOARD_HERO_BACKGROUND}
         >
           <div className="relative flex flex-col gap-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
-                <Star className="h-3.5 w-3.5" />
-                Manager Dashboard
-              </div>
-              <h2 className="text-4xl font-bold tracking-tight text-gray-900">
-                Operations overview
-              </h2>
-              <p className="mt-2 max-w-2xl text-gray-600">
-                Track the health of bookings, team capacity, and revenue in one
-                polished workspace built for quick decision-making.
-              </p>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              {permissions?.can_view_bookings && (
-                <button
-                  onClick={() => setActiveTab("bookings")}
-                  className={DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}
-                  style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
-                >
-                  View bookings
-                </button>
-              )}
-              {permissions?.can_view_analytics && (
-                <button
-                  onClick={() => setActiveTab("analytics")}
-                  className="rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-700"
-                >
-                  Open analytics
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
-                  <Calendar className="h-4 w-4 text-primary-700" />
-                </span>
-                Total Bookings
-              </div>
-              {statsLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold tracking-tight text-gray-900">
-                  {stats.totalBookings}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
-                  <Users className="h-4 w-4 text-gray-700" />
-                </span>
-                Active Cleaners
-              </div>
-              {statsLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold tracking-tight text-gray-900">
-                  {stats.activeCleaners}
-                </p>
-              )}
-            </div>
-
-            {permissions?.can_view_payments && (
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
-                    <DollarSign className="h-4 w-4 text-emerald-700" />
-                  </span>
-                  Total Revenue
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                  <Star className="h-3.5 w-3.5" />
+                  Manager Dashboard
                 </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    ${stats.totalRevenue}
-                  </p>
+                <h2 className="text-4xl font-bold tracking-tight text-gray-900">
+                  Operations overview
+                </h2>
+                <p className="mt-2 max-w-2xl text-gray-600">
+                  Track the health of bookings, team capacity, and revenue in
+                  one polished workspace built for quick decision-making.
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                {permissions?.can_view_analytics && (
+                  <button
+                    onClick={() => setActiveTab("analytics")}
+                    className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+                  >
+                    Open analytics
+                  </button>
                 )}
               </div>
-            )}
+            </div>
 
-            {permissions?.can_approve_decline_bookings && (
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
-                    <AlertTriangle className="h-4 w-4 text-amber-700" />
-                  </span>
-                  Pending
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.pendingApprovals}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {permissions?.can_view_analytics && (
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
               <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
-                    <TrendingUp className="h-4 w-4 text-primary-700" />
+                    <Calendar className="h-4 w-4 text-primary-700" />
                   </span>
-                  Growth
+                  Total Bookings
                 </div>
                 {statsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
                   <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.monthlyGrowth}%
+                    {stats.totalBookings}
                   </p>
                 )}
               </div>
-            )}
 
-            {permissions?.can_view_analytics && (
               <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
                   <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
-                    <CheckCircle className="h-4 w-4 text-gray-700" />
+                    <Users className="h-4 w-4 text-gray-700" />
                   </span>
-                  Completion
+                  Active Cleaners
                 </div>
                 {statsLoading ? (
                   <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
                 ) : (
                   <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.completionRate}%
+                    {stats.activeCleaners}
                   </p>
                 )}
               </div>
-            )}
-          </div>
+
+              {permissions?.can_view_payments && (
+                <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                    <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
+                      <DollarSign className="h-4 w-4 text-emerald-700" />
+                    </span>
+                    Total Revenue
+                  </div>
+                  {statsLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                  ) : (
+                    <p className="text-2xl font-bold tracking-tight text-gray-900">
+                      ${stats.totalRevenue}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {permissions?.can_approve_decline_bookings && (
+                <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                    <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
+                      <AlertTriangle className="h-4 w-4 text-amber-700" />
+                    </span>
+                    Pending
+                  </div>
+                  {statsLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                  ) : (
+                    <p className="text-2xl font-bold tracking-tight text-gray-900">
+                      {stats.pendingApprovals}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {permissions?.can_view_analytics && (
+                <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                    <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
+                      <TrendingUp className="h-4 w-4 text-primary-700" />
+                    </span>
+                    Growth
+                  </div>
+                  {statsLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                  ) : (
+                    <p className="text-2xl font-bold tracking-tight text-gray-900">
+                      {stats.monthlyGrowth}%
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {permissions?.can_view_analytics && (
+                <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
+                    <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
+                      <CheckCircle className="h-4 w-4 text-gray-700" />
+                    </span>
+                    Completion
+                  </div>
+                  {statsLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                  ) : (
+                    <p className="text-2xl font-bold tracking-tight text-gray-900">
+                      {stats.completionRate}%
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -859,7 +864,9 @@ function ManagerDashboardInner() {
                     <p className="text-xs text-gray-500">Pending</p>
                   </div>
                 )}
-                <div className={`flex-1 text-center ${permissions?.can_approve_decline_bookings ? 'border-r border-gray-200' : ''}`}>
+                <div
+                  className={`flex-1 text-center ${permissions?.can_approve_decline_bookings ? "border-r border-gray-200" : ""}`}
+                >
                   <p className="text-xl font-bold text-primary-600">
                     {stats.totalBookings}
                   </p>
@@ -898,7 +905,9 @@ function ManagerDashboardInner() {
           {awaitingCleanerApprovalAppointments.length > 0 && (
             <section className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
               <button
-                onClick={() => setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)}
+                onClick={() =>
+                  setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)
+                }
                 className="w-full bg-gradient-to-r from-amber-50 to-orange-50 px-4 sm:px-5 py-4 flex items-center justify-between hover:from-amber-100 hover:to-orange-100 transition-colors duration-200 group"
               >
                 <div className="flex items-center gap-3">
@@ -910,7 +919,8 @@ function ManagerDashboardInner() {
                       Awaiting Cleaner Approval
                     </h3>
                     <p className="text-xs font-medium text-amber-700">
-                      {awaitingCleanerApprovalAppointments.length} pending review
+                      {awaitingCleanerApprovalAppointments.length} pending
+                      review
                     </p>
                   </div>
                 </div>
@@ -935,44 +945,50 @@ function ManagerDashboardInner() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
-                        const cleanerName = getCleanerName(appointment);
-                        return (
-                          <div
-                            key={appointment.id}
-                            className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
-                          >
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900 truncate">
-                                  {cleanerName ?? "Unassigned"}
-                                </p>
-                                <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                                  <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                                  <span>
-                                    {formatDateTimeTo12h(
-                                      appointment.scheduled_date,
-                                      appointment.scheduled_time
-                                    )}
-                                  </span>
+                      {awaitingCleanerApprovalAppointments
+                        .slice(0, 3)
+                        .map((appointment) => {
+                          const cleanerName = getCleanerName(appointment);
+                          return (
+                            <div
+                              key={appointment.id}
+                              className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-gray-900 truncate">
+                                    {cleanerName ?? "Unassigned"}
+                                  </p>
+                                  <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span>
+                                      {formatDateTimeTo12h(
+                                        appointment.scheduled_date,
+                                        appointment.scheduled_time,
+                                      )}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-500 mt-0.5">
+                                    Homeowner: {getHomeownerName(appointment)}
+                                  </p>
                                 </div>
-                                <p className="text-sm text-gray-500 mt-0.5">
-                                  Homeowner: {getHomeownerName(appointment)}
-                                </p>
                               </div>
+                              {cleanerName &&
+                                appointment.cleaner_profile?.user_profile
+                                  ?.id && (
+                                  <button
+                                    onClick={() =>
+                                      handleMessageCleaner(appointment)
+                                    }
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors duration-200 font-medium text-sm"
+                                  >
+                                    <MessageCircle className="w-4 h-4" />
+                                    Message {cleanerName}
+                                  </button>
+                                )}
                             </div>
-                            {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
-                              <button
-                                onClick={() => handleMessageCleaner(appointment)}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors duration-200 font-medium text-sm"
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                                Message {cleanerName}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
                       {awaitingCleanerApprovalAppointments.length > 3 && (
                         <button
                           onClick={() => {
@@ -981,7 +997,8 @@ function ManagerDashboardInner() {
                           }}
                           className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
                         >
-                          View all {awaitingCleanerApprovalAppointments.length} awaiting approval
+                          View all {awaitingCleanerApprovalAppointments.length}{" "}
+                          awaiting approval
                         </button>
                       )}
                     </div>
@@ -990,19 +1007,22 @@ function ManagerDashboardInner() {
               )}
             </section>
           )}
-          {awaitingCleanerApprovalAppointments.length === 0 && !appointmentsLoading && (
-            <div className="bg-white rounded-2xl shadow-sm border border-green-200 p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-full">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="font-medium text-gray-900">All confirmed!</p>
-                  <p className="text-sm text-gray-500">No appointments awaiting cleaner approval</p>
+          {awaitingCleanerApprovalAppointments.length === 0 &&
+            !appointmentsLoading && (
+              <div className="bg-white rounded-2xl shadow-sm border border-green-200 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">All confirmed!</p>
+                    <p className="text-sm text-gray-500">
+                      No appointments awaiting cleaner approval
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* Mobile Collapsible All Stats Section */}
@@ -1114,7 +1134,9 @@ function ManagerDashboardInner() {
               </div>
             ) : upcomingAppointments.length > 0 ? (
               upcomingAppointments.map((appointment) => {
-                const paymentStatusConfig = getPaymentStatusTabConfig(appointment.payment_status);
+                const paymentStatusConfig = getPaymentStatusTabConfig(
+                  appointment.payment_status,
+                );
                 return (
                   <div
                     key={appointment.id}
@@ -1130,10 +1152,9 @@ function ManagerDashboardInner() {
                     </div>
                     <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
                       <span className="text-xs font-medium text-primary-600">
-                        {new Date(appointment.scheduled_date).toLocaleDateString(
-                          "en-US",
-                          { month: "short" }
-                        )}
+                        {new Date(
+                          appointment.scheduled_date,
+                        ).toLocaleDateString("en-US", { month: "short" })}
                       </span>
                       <span className="text-lg font-bold text-primary-700">
                         {new Date(appointment.scheduled_date).getDate()}
@@ -1146,7 +1167,9 @@ function ManagerDashboardInner() {
                       <div className="flex items-center gap-3 mt-1">
                         <div className="flex items-center gap-1 text-sm text-gray-500">
                           <Clock className="w-3.5 h-3.5" />
-                          <span>{formatTimeTo12h(appointment.scheduled_time)}</span>
+                          <span>
+                            {formatTimeTo12h(appointment.scheduled_time)}
+                          </span>
                         </div>
                         {appointment.service_type && (
                           <span className="text-sm text-gray-500">
@@ -1208,36 +1231,42 @@ function ManagerDashboardInner() {
               </div>
             ) : (
               <div className="space-y-3">
-                {awaitingCleanerApprovalAppointments.slice(0, 3).map((appointment) => {
-                  const cleanerName = getCleanerName(appointment);
-                  return (
-                    <div
-                      key={appointment.id}
-                      className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50/60 via-white to-white rounded-2xl border border-amber-100 shadow-sm"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">
-                          {cleanerName ?? "Unassigned"}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {formatDateTimeTo12h(appointment.scheduled_date, appointment.scheduled_time)}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Homeowner: {getHomeownerName(appointment)}
-                        </p>
+                {awaitingCleanerApprovalAppointments
+                  .slice(0, 3)
+                  .map((appointment) => {
+                    const cleanerName = getCleanerName(appointment);
+                    return (
+                      <div
+                        key={appointment.id}
+                        className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50/60 via-white to-white rounded-2xl border border-amber-100 shadow-sm"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">
+                            {cleanerName ?? "Unassigned"}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-0.5">
+                            {formatDateTimeTo12h(
+                              appointment.scheduled_date,
+                              appointment.scheduled_time,
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Homeowner: {getHomeownerName(appointment)}
+                          </p>
+                        </div>
+                        {cleanerName &&
+                          appointment.cleaner_profile?.user_profile?.id && (
+                            <button
+                              onClick={() => handleMessageCleaner(appointment)}
+                              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                              Message
+                            </button>
+                          )}
                       </div>
-                      {cleanerName && appointment.cleaner_profile?.user_profile?.id && (
-                        <button
-                          onClick={() => handleMessageCleaner(appointment)}
-                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          Message
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
                 {awaitingCleanerApprovalAppointments.length === 0 && (
                   <div className="text-center py-8">
                     <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
@@ -1253,7 +1282,8 @@ function ManagerDashboardInner() {
                       }}
                       className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
                     >
-                      View all {awaitingCleanerApprovalAppointments.length} awaiting approval
+                      View all {awaitingCleanerApprovalAppointments.length}{" "}
+                      awaiting approval
                     </button>
                   </div>
                 )}
@@ -1262,77 +1292,79 @@ function ManagerDashboardInner() {
           </div>
 
           <div className="rounded-[1.75rem] border border-amber-100 bg-white/95 p-6 shadow-sm ring-1 ring-amber-100/60 w-full">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary-600" />
-                <span>Upcoming Appointments</span>
-              </h3>
-              {appointmentsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                  <span className="ml-2 text-gray-600">
-                    Loading appointments...
-                  </span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {upcomingAppointments.slice(0, 3).map((appointment) => {
-                    const paymentStatusConfig = getPaymentStatusTabConfig(appointment.payment_status);
-                    return (
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary-600" />
+              <span>Upcoming Appointments</span>
+            </h3>
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">
+                  Loading appointments...
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingAppointments.slice(0, 3).map((appointment) => {
+                  const paymentStatusConfig = getPaymentStatusTabConfig(
+                    appointment.payment_status,
+                  );
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-50/60 via-white to-white border border-amber-100 shadow-sm overflow-hidden pr-24"
+                    >
+                      {/* Payment Status Tab */}
                       <div
-                        key={appointment.id}
-                        className="relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-50/60 via-white to-white border border-amber-100 shadow-sm overflow-hidden pr-24"
+                        className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
                       >
-                        {/* Payment Status Tab */}
-                        <div
-                          className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
-                        >
-                          <span className="font-semibold text-xs whitespace-nowrap">
-                            {paymentStatusConfig.label}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {getHomeownerName(appointment)}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {formatDateTimeTo12h(
-                              appointment.scheduled_date,
-                              appointment.scheduled_time
-                            )}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {getPropertyAddress(appointment)}
-                          </p>
-                          {appointment.service_type && (
-                            <p className="text-sm text-gray-600">
-                              Service: {appointment.service_type.name}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={appointment.status} size="sm" />
-                        </div>
+                        <span className="font-semibold text-xs whitespace-nowrap">
+                          {paymentStatusConfig.label}
+                        </span>
                       </div>
-                    );
-                  })}
-                  {upcomingAppointments.length === 0 && (
-                    <div className="text-center py-8">
-                      <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                      <p className="text-gray-600">No upcoming appointments</p>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {getHomeownerName(appointment)}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {formatDateTimeTo12h(
+                            appointment.scheduled_date,
+                            appointment.scheduled_time,
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {getPropertyAddress(appointment)}
+                        </p>
+                        {appointment.service_type && (
+                          <p className="text-sm text-gray-600">
+                            Service: {appointment.service_type.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={appointment.status} size="sm" />
+                      </div>
                     </div>
-                  )}
-                  {allUpcomingAppointments.length > 3 && (
-                    <div className="pt-3 border-t border-gray-200">
-                      <button
-                        onClick={() => {
-                          setShowAllFilter(true);
-                          setActiveTab("bookings");
-                        }}
-                        className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
-                      >
-                        View all {allUpcomingAppointments.length} upcoming
-                      </button>
-                    </div>
+                  );
+                })}
+                {upcomingAppointments.length === 0 && (
+                  <div className="text-center py-8">
+                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">No upcoming appointments</p>
+                  </div>
+                )}
+                {allUpcomingAppointments.length > 3 && (
+                  <div className="pt-3 border-t border-gray-200">
+                    <button
+                      onClick={() => {
+                        setShowAllFilter(true);
+                        setActiveTab("bookings");
+                      }}
+                      className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                    >
+                      View all {allUpcomingAppointments.length} upcoming
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -1350,7 +1382,7 @@ function ManagerDashboardInner() {
     } else if (showAllFilter) {
       initialFilter = "all";
     }
-    
+
     return (
       <BookingsPage
         appointments={appointments}
@@ -1395,12 +1427,16 @@ function ManagerDashboardInner() {
       canManage={permissions?.can_manage_cleaners ?? false}
       onCleanerUpdated={(c) => updateCleanerInState(c.id, c)}
       onDeleteRequest={(id, name) =>
-        setDeleteConfirmModal({ isOpen: true, cleanerId: id, cleanerName: name })
+        setDeleteConfirmModal({
+          isOpen: true,
+          cleanerId: id,
+          cleanerName: name,
+        })
       }
       onAddCleaner={() => setShowAddCleanerModal(true)}
       onBulkPayoutsUpdated={(updates) =>
         updates.forEach(({ id, payout_percent }) =>
-          updateCleanerInState(id, { payout_percent })
+          updateCleanerInState(id, { payout_percent }),
         )
       }
     />
@@ -1615,7 +1651,9 @@ function ManagerDashboardInner() {
 
       {/* Mobile Bottom Navigation - Show first 4 tabs */}
       <MobileNavigation
-        tabs={navigationGroups.operations.tabs.filter((tab) => tab.id !== "services")}
+        tabs={navigationGroups.operations.tabs.filter(
+          (tab) => tab.id !== "services",
+        )}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}

@@ -127,7 +127,9 @@ export default function AppointmentSidePanel({
     brand: string;
   } | null>(null);
   const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
-  const [paymentMethodError, setPaymentMethodError] = useState<string | null>(null);
+  const [paymentMethodError, setPaymentMethodError] = useState<string | null>(
+    null,
+  );
   const [showPaymentForm, setShowPaymentForm] = useState(false);
 
   // Job photos (admin, manager, cleaner can view via RLS)
@@ -178,7 +180,9 @@ export default function AppointmentSidePanel({
       }
     } catch (err) {
       console.error("Error fetching payment method:", err);
-      setPaymentMethodError(err instanceof Error ? err.message : "Failed to fetch payment method");
+      setPaymentMethodError(
+        err instanceof Error ? err.message : "Failed to fetch payment method",
+      );
       setPaymentMethodInfo(null);
     } finally {
       setPaymentMethodLoading(false);
@@ -192,15 +196,15 @@ export default function AppointmentSidePanel({
       if (!serviceType || !checklist) return 0;
       return serviceType.base_price + (checklist.price_adder || 0);
     },
-    [checklists, serviceTypes]
+    [checklists, serviceTypes],
   );
 
   const editPricingPreview = useMemo(() => {
     const serviceType = serviceTypes.find(
-      (s) => s.id === editedAppointment.service_type_id
+      (s) => s.id === editedAppointment.service_type_id,
     );
     const checklist = checklists.find(
-      (c) => c.id === editedAppointment.checklist_id
+      (c) => c.id === editedAppointment.checklist_id,
     );
     if (!serviceType || !checklist) return null;
     const adder = checklist.price_adder ?? 0;
@@ -268,11 +272,17 @@ export default function AppointmentSidePanel({
 
   // Fetch cleaner feedback when appointment is rejected
   useEffect(() => {
-    if (appointment?.cleaner_confirmation_status === 'rejected' && isOpen && (role === "admin" || role === "manager")) {
+    if (
+      appointment?.cleaner_confirmation_status === "rejected" &&
+      isOpen &&
+      (role === "admin" || role === "manager")
+    ) {
       const fetchFeedback = async () => {
         setFeedbackLoading(true);
         try {
-          const response = await fetch(`/api/appointments/confirm?appointmentId=${appointment.id}`);
+          const response = await fetch(
+            `/api/appointments/confirm?appointmentId=${appointment.id}`,
+          );
           const result = await response.json();
           if (result.success) {
             setCleanerFeedback(result.data || []);
@@ -406,7 +416,7 @@ export default function AppointmentSidePanel({
 
   const { date, time } = formatDateTime(
     appointment.scheduled_date,
-    appointment.scheduled_time
+    appointment.scheduled_time,
   );
   const property = getPropertyAddress();
 
@@ -416,7 +426,7 @@ export default function AppointmentSidePanel({
     const priceOverrideEnabled = editedAppointment.price_override_enabled;
     const systemTotal = getSystemCalculatedTotal(
       editedAppointment.service_type_id,
-      editedAppointment.checklist_id
+      editedAppointment.checklist_id,
     );
     const overrideTotal = parseFloat(editedAppointment.price_override_total);
     const finalTotal = priceOverrideEnabled
@@ -464,7 +474,8 @@ export default function AppointmentSidePanel({
         service_type_id: updatedAppointment.service_type_id || "",
         checklist_id: updatedAppointment.checklist_id || "",
         total_price: updatedAppointment.total_price || 0,
-        price_override_enabled: updatedAppointment.price_override_enabled || false,
+        price_override_enabled:
+          updatedAppointment.price_override_enabled || false,
         price_override_total:
           updatedAppointment.price_override_total != null
             ? updatedAppointment.price_override_total.toString()
@@ -680,7 +691,11 @@ export default function AppointmentSidePanel({
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       disabled={serviceTypesLoading}
                     >
-                      <option value="">{serviceTypesLoading ? "Loading services..." : "Select service type"}</option>
+                      <option value="">
+                        {serviceTypesLoading
+                          ? "Loading services..."
+                          : "Select service type"}
+                      </option>
                       {serviceTypes.map((serviceType) => (
                         <option key={serviceType.id} value={serviceType.id}>
                           {serviceType.name}
@@ -696,18 +711,26 @@ export default function AppointmentSidePanel({
                           checklist_id: nextChecklistId,
                           total_price: prev.price_override_enabled
                             ? prev.total_price
-                            : getSystemCalculatedTotal(prev.service_type_id, nextChecklistId),
+                            : getSystemCalculatedTotal(
+                                prev.service_type_id,
+                                nextChecklistId,
+                              ),
                         }));
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      disabled={!editedAppointment.service_type_id || checklistsLoading}
+                      disabled={
+                        !editedAppointment.service_type_id || checklistsLoading
+                      }
                     >
                       <option value="">
-                        {checklistsLoading ? "Loading checklists..." : "Select checklist"}
+                        {checklistsLoading
+                          ? "Loading checklists..."
+                          : "Select checklist"}
                       </option>
                       {checklists.map((checklist) => (
                         <option key={checklist.id} value={checklist.id}>
-                          {checklist.name} (+${checklist.price_adder.toFixed(2)})
+                          {checklist.name} (+${checklist.price_adder.toFixed(2)}
+                          )
                         </option>
                       ))}
                     </select>
@@ -829,13 +852,15 @@ export default function AppointmentSidePanel({
                             const enabled = e.target.checked;
                             const calculatedTotal = getSystemCalculatedTotal(
                               editedAppointment.service_type_id,
-                              editedAppointment.checklist_id
+                              editedAppointment.checklist_id,
                             );
                             setEditedAppointment((prev) => ({
                               ...prev,
                               price_override_enabled: enabled,
                               price_override_total: enabled
-                                ? (prev.total_price || calculatedTotal).toString()
+                                ? (
+                                    prev.total_price || calculatedTotal
+                                  ).toString()
                                 : "",
                               total_price: enabled
                                 ? prev.total_price
@@ -882,7 +907,7 @@ export default function AppointmentSidePanel({
               <CreditCard className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm text-gray-500 mb-2">Payment Method</p>
-                
+
                 {showPaymentForm && appointment.homeowner_id ? (
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <PaymentMethodForm
@@ -1012,78 +1037,42 @@ export default function AppointmentSidePanel({
 
           {/* Job Photos - before/after evidence; when job is in progress or completed */}
           {!isEditing &&
-            (appointment.status === "in_progress" || appointment.status === "completed") &&
-            (role === "admin" || role === "manager" || role === "cleaner" || role === "homeowner") && (
-            <div className="space-y-3 pt-2 border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                <Camera className="w-5 h-5 text-gray-500 flex-shrink-0" />
-                <p className="text-sm font-medium text-gray-700">Job Photos</p>
-              </div>
-              {photosLoading ? (
-                <div className="flex items-center gap-2 text-gray-500 py-4">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Loading photos...</span>
+            (appointment.status === "in_progress" ||
+              appointment.status === "completed") &&
+            (role === "admin" ||
+              role === "manager" ||
+              role === "cleaner" ||
+              role === "homeowner") && (
+              <div className="space-y-3 pt-2 border-t border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                  <p className="text-sm font-medium text-gray-700">
+                    Job Photos
+                  </p>
                 </div>
-              ) : photosError ? (
-                <p className="text-sm text-amber-600 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {photosError}
-                </p>
-              ) : allPhotos.length === 0 ? (
-                <p className="text-sm text-gray-500 italic">No photos uploaded for this job yet.</p>
-              ) : (
-                <div className="space-y-4">
-                  {beforePhotos.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Before</p>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {beforePhotos.map((photo) => (
-                          <a
-                            key={photo.id}
-                            href={photo.photo_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          >
-                            <img
-                              src={photo.photo_url}
-                              alt="Before"
-                              className="w-full h-full object-cover"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {afterPhotos.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">After</p>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {afterPhotos.map((photo) => (
-                          <a
-                            key={photo.id}
-                            href={photo.photo_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          >
-                            <img
-                              src={photo.photo_url}
-                              alt="After"
-                              className="w-full h-full object-cover"
-                            />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {allPhotos.some((p) => p.photo_type === "during") && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">During</p>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {allPhotos
-                          .filter((p) => p.photo_type === "during")
-                          .map((photo) => (
+                {photosLoading ? (
+                  <div className="flex items-center gap-2 text-gray-500 py-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading photos...</span>
+                  </div>
+                ) : photosError ? (
+                  <p className="text-sm text-amber-600 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {photosError}
+                  </p>
+                ) : allPhotos.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">
+                    No photos uploaded for this job yet.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {beforePhotos.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                          Before
+                        </p>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {beforePhotos.map((photo) => (
                             <a
                               key={photo.id}
                               href={photo.photo_url}
@@ -1093,107 +1082,182 @@ export default function AppointmentSidePanel({
                             >
                               <img
                                 src={photo.photo_url}
-                                alt="During"
+                                alt="Before"
                                 className="w-full h-full object-cover"
                               />
                             </a>
                           ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                    )}
+                    {afterPhotos.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                          After
+                        </p>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {afterPhotos.map((photo) => (
+                            <a
+                              key={photo.id}
+                              href={photo.photo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <img
+                                src={photo.photo_url}
+                                alt="After"
+                                className="w-full h-full object-cover"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {allPhotos.some((p) => p.photo_type === "during") && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                          During
+                        </p>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {allPhotos
+                            .filter((p) => p.photo_type === "during")
+                            .map((photo) => (
+                              <a
+                                key={photo.id}
+                                href={photo.photo_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              >
+                                <img
+                                  src={photo.photo_url}
+                                  alt="During"
+                                  className="w-full h-full object-cover"
+                                />
+                              </a>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
           {/* Cleaner Confirmation Status - Awaiting */}
-          {appointment.cleaner_confirmation_status === 'awaiting' && !isEditing && (role === "admin" || role === "manager") && (
-            <div className="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg p-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                <h4 className="font-semibold text-amber-800">Awaiting Cleaner Confirmation</h4>
+          {appointment.cleaner_confirmation_status === "awaiting" &&
+            !isEditing &&
+            (role === "admin" || role === "manager") && (
+              <div className="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <h4 className="font-semibold text-amber-800">
+                    Awaiting Cleaner Confirmation
+                  </h4>
+                </div>
+                <p className="text-sm text-amber-700">
+                  Waiting for the cleaner to confirm their availability for this
+                  appointment.
+                </p>
               </div>
-              <p className="text-sm text-amber-700">
-                Waiting for the cleaner to confirm their availability for this appointment.
-              </p>
-            </div>
-          )}
+            )}
 
           {/* Cleaner Confirmation Status - Rejected */}
-          {appointment.cleaner_confirmation_status === 'rejected' && !isEditing && (role === "admin" || role === "manager") && (
-            <div className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                <h4 className="font-semibold text-red-800">Cleaner Declined This Time</h4>
-              </div>
-
-              {feedbackLoading ? (
-                <div className="flex items-center gap-2 text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Loading feedback...</span>
+          {appointment.cleaner_confirmation_status === "rejected" &&
+            !isEditing &&
+            (role === "admin" || role === "manager") && (
+              <div className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  <h4 className="font-semibold text-red-800">
+                    Cleaner Declined This Time
+                  </h4>
                 </div>
-              ) : cleanerFeedback.length > 0 ? (
-                <div className="space-y-3">
-                  {cleanerFeedback.map((fb) => (
-                    <div key={fb.id} className="bg-white rounded-lg p-3 border border-red-200">
-                      {fb.reason && (
-                        <div className="mb-2">
-                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Reason</p>
-                          <p className="text-sm text-gray-800">{fb.reason}</p>
-                        </div>
-                      )}
-                      {fb.cleaner_suggested_times && fb.cleaner_suggested_times.length > 0 && (
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Suggested Times</p>
-                          <div className="space-y-1">
-                            {fb.cleaner_suggested_times.map((st) => {
-                              const [y, m, d] = st.suggested_date.split("-").map(Number);
-                              const sugDate = new Date(y, m - 1, d);
-                              const dateStr = sugDate.toLocaleDateString("en-US", {
-                                weekday: "short",
-                                month: "short",
-                                day: "numeric",
-                              });
-                              const [hours, minutes] = st.suggested_time.split(":");
-                              const hour = parseInt(hours);
-                              const ampm = hour >= 12 ? "PM" : "AM";
-                              const displayHour = hour % 12 || 12;
-                              const timeStr = `${displayHour}:${minutes} ${ampm}`;
-                              return (
-                                <div
-                                  key={st.id}
-                                  className="flex items-center gap-2 text-sm text-gray-700 bg-green-50 px-2 py-1 rounded"
-                                >
-                                  <Calendar className="w-3.5 h-3.5 text-green-600" />
-                                  <span>{dateStr} at {timeStr}</span>
-                                </div>
-                              );
-                            })}
+
+                {feedbackLoading ? (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading feedback...</span>
+                  </div>
+                ) : cleanerFeedback.length > 0 ? (
+                  <div className="space-y-3">
+                    {cleanerFeedback.map((fb) => (
+                      <div
+                        key={fb.id}
+                        className="bg-white rounded-lg p-3 border border-red-200"
+                      >
+                        {fb.reason && (
+                          <div className="mb-2">
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                              Reason
+                            </p>
+                            <p className="text-sm text-gray-800">{fb.reason}</p>
                           </div>
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-400 mt-2">
-                        {new Date(fb.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-red-700">
-                  The cleaner declined but no detailed feedback was provided.
-                </p>
-              )}
+                        )}
+                        {fb.cleaner_suggested_times &&
+                          fb.cleaner_suggested_times.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                                Suggested Times
+                              </p>
+                              <div className="space-y-1">
+                                {fb.cleaner_suggested_times.map((st) => {
+                                  const [y, m, d] = st.suggested_date
+                                    .split("-")
+                                    .map(Number);
+                                  const sugDate = new Date(y, m - 1, d);
+                                  const dateStr = sugDate.toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      weekday: "short",
+                                      month: "short",
+                                      day: "numeric",
+                                    },
+                                  );
+                                  const [hours, minutes] =
+                                    st.suggested_time.split(":");
+                                  const hour = parseInt(hours);
+                                  const ampm = hour >= 12 ? "PM" : "AM";
+                                  const displayHour = hour % 12 || 12;
+                                  const timeStr = `${displayHour}:${minutes} ${ampm}`;
+                                  return (
+                                    <div
+                                      key={st.id}
+                                      className="flex items-center gap-2 text-sm text-gray-700 bg-green-50 px-2 py-1 rounded"
+                                    >
+                                      <Calendar className="w-3.5 h-3.5 text-green-600" />
+                                      <span>
+                                        {dateStr} at {timeStr}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        <p className="text-xs text-gray-400 mt-2">
+                          {new Date(fb.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-red-700">
+                    The cleaner declined but no detailed feedback was provided.
+                  </p>
+                )}
 
-              {onReschedule && (
-                <button
-                  onClick={() => onReschedule(appointment)}
-                  className="w-full mt-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Reschedule Appointment
-                </button>
-              )}
-            </div>
-          )}
+                {onReschedule && (
+                  <button
+                    onClick={() => onReschedule(appointment)}
+                    className="w-full mt-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Reschedule Appointment
+                  </button>
+                )}
+              </div>
+            )}
 
           {/* Start/Complete Job buttons for cleaners */}
           {role === "cleaner" &&
@@ -1201,26 +1265,25 @@ export default function AppointmentSidePanel({
             !isEditing && (
               <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
                 {/* Start Job button - shows when status is confirmed */}
-                {onStartJob &&
-                  appointment.status === "confirmed" && (
-                    <button
-                      onClick={async () => {
-                        setIsActionLoading(true);
-                        try {
-                          await onStartJob(appointment.id);
-                          // Don't close panel - let user see the status change
-                        } finally {
-                          setIsActionLoading(false);
-                        }
-                      }}
-                      disabled={isActionLoading}
-                      className={`flex flex-1 items-center justify-center gap-2 ${DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}`}
-                      style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
-                    >
-                      <Play className="h-4 w-4 shrink-0 text-primary-700" />
-                      {isActionLoading ? "Starting Job..." : "Start Job"}
-                    </button>
-                  )}
+                {onStartJob && appointment.status === "confirmed" && (
+                  <button
+                    onClick={async () => {
+                      setIsActionLoading(true);
+                      try {
+                        await onStartJob(appointment.id);
+                        // Don't close panel - let user see the status change
+                      } finally {
+                        setIsActionLoading(false);
+                      }
+                    }}
+                    disabled={isActionLoading}
+                    className={`flex flex-1 items-center justify-center gap-2 ${DASHBOARD_HERO_SECONDARY_BUTTON_CLASS}`}
+                    style={DASHBOARD_HERO_SECONDARY_BUTTON_STYLE}
+                  >
+                    <Play className="h-4 w-4 shrink-0 text-primary-700" />
+                    {isActionLoading ? "Starting Job..." : "Start Job"}
+                  </button>
+                )}
                 {/* Complete Job button - shows when status is in_progress */}
                 {onCompleteJob && appointment.status === "in_progress" && (
                   <button
@@ -1243,13 +1306,11 @@ export default function AppointmentSidePanel({
             )}
 
           {/* Review button for pending appointments (admin or manager with permission) */}
-          {((role === "admin" || (role === "manager" && canApproveDecline)) &&
+          {(role === "admin" || (role === "manager" && canApproveDecline)) &&
             appointment.status === "pending" &&
-            !isEditing) && (
+            !isEditing && (
               <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
-                <button
-                  className="flex-1 px-4 py-2 text-sm font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
-                >
+                <button className="flex-1 px-4 py-2 text-sm font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
                   Review
                 </button>
               </div>

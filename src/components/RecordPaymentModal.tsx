@@ -49,14 +49,19 @@ export default function RecordPaymentModal({
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [homeownersLoading, setHomeownersLoading] = useState(false);
   const [homeownerSearch, setHomeownerSearch] = useState("");
-  const [selectedHomeowner, setSelectedHomeowner] = useState<Homeowner | null>(null);
+  const [selectedHomeowner, setSelectedHomeowner] = useState<Homeowner | null>(
+    null,
+  );
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
-  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<Appointment | null>(null);
 
   const [amount, setAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "ach" | "manual">("manual");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "ach" | "manual">(
+    "manual",
+  );
   const [notes, setNotes] = useState("");
   const [reference, setReference] = useState("");
 
@@ -100,7 +105,8 @@ export default function RecordPaymentModal({
       try {
         const { data, error } = await supabase
           .from("appointments")
-          .select(`
+          .select(
+            `
             id,
             scheduled_date,
             scheduled_time,
@@ -114,7 +120,8 @@ export default function RecordPaymentModal({
             checklist:checklists(
               name
             )
-          `)
+          `,
+          )
           .eq("organization_id", currentOrganizationId)
           .eq("homeowner_id", selectedHomeowner.id)
           .order("scheduled_date", { ascending: false });
@@ -124,9 +131,15 @@ export default function RecordPaymentModal({
         // Transform the data
         const transformedData = (data || []).map((apt) => ({
           ...apt,
-          property: Array.isArray(apt.property) ? apt.property[0] : apt.property,
-          service_type: Array.isArray(apt.service_type) ? apt.service_type[0] : apt.service_type,
-          checklist: Array.isArray(apt.checklist) ? apt.checklist[0] : apt.checklist,
+          property: Array.isArray(apt.property)
+            ? apt.property[0]
+            : apt.property,
+          service_type: Array.isArray(apt.service_type)
+            ? apt.service_type[0]
+            : apt.service_type,
+          checklist: Array.isArray(apt.checklist)
+            ? apt.checklist[0]
+            : apt.checklist,
         }));
 
         setAppointments(transformedData);
@@ -212,7 +225,7 @@ export default function RecordPaymentModal({
   const filteredHomeowners = homeowners.filter((h) =>
     `${h.first_name} ${h.last_name} ${h.email}`
       .toLowerCase()
-      .includes(homeownerSearch.toLowerCase())
+      .includes(homeownerSearch.toLowerCase()),
   );
 
   return (
@@ -280,7 +293,9 @@ export default function RecordPaymentModal({
                     <div className="font-medium text-gray-900">
                       {homeowner.first_name} {homeowner.last_name}
                     </div>
-                    <div className="text-sm text-gray-500">{homeowner.email}</div>
+                    <div className="text-sm text-gray-500">
+                      {homeowner.email}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -291,7 +306,9 @@ export default function RecordPaymentModal({
                 <div className="font-medium text-gray-900">
                   {selectedHomeowner.first_name} {selectedHomeowner.last_name}
                 </div>
-                <div className="text-sm text-gray-500">{selectedHomeowner.email}</div>
+                <div className="text-sm text-gray-500">
+                  {selectedHomeowner.email}
+                </div>
               </div>
             )}
           </div>
@@ -310,7 +327,9 @@ export default function RecordPaymentModal({
                 <select
                   value={selectedAppointment?.id || ""}
                   onChange={(e) => {
-                    const apt = appointments.find((a) => a.id === e.target.value);
+                    const apt = appointments.find(
+                      (a) => a.id === e.target.value,
+                    );
                     setSelectedAppointment(apt || null);
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -367,14 +386,20 @@ export default function RecordPaymentModal({
                 <button
                   key={method}
                   type="button"
-                  onClick={() => setPaymentMethod(method as typeof paymentMethod)}
+                  onClick={() =>
+                    setPaymentMethod(method as typeof paymentMethod)
+                  }
                   className={`px-4 py-3 rounded-lg font-medium transition-all ${
                     paymentMethod === method
                       ? "bg-primary-600 text-white"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   }`}
                 >
-                  {method === "card" ? "Card" : method === "ach" ? "ACH" : "Manual"}
+                  {method === "card"
+                    ? "Card"
+                    : method === "ach"
+                      ? "ACH"
+                      : "Manual"}
                 </button>
               ))}
             </div>

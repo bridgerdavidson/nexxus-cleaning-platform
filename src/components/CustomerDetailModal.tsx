@@ -560,7 +560,7 @@ export default function CustomerDetailModal({
                             </div>
                             <span
                               className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(
-                                appointment.status
+                                appointment.status,
                               )}`}
                             >
                               {formatStatusForDisplay(appointment.status)}

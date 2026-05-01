@@ -95,12 +95,18 @@ export default function DayDetailSidebar({
   // Group appointments by status
   const appointmentsByStatus = useMemo(() => {
     const pending = sortedAppointments.filter((a) => a.status === "pending");
-    const confirmed = sortedAppointments.filter((a) => a.status === "confirmed");
-    const inProgress = sortedAppointments.filter(
-      (a) => a.status === "in_progress"
+    const confirmed = sortedAppointments.filter(
+      (a) => a.status === "confirmed",
     );
-    const completed = sortedAppointments.filter((a) => a.status === "completed");
-    const cancelled = sortedAppointments.filter((a) => a.status === "cancelled");
+    const inProgress = sortedAppointments.filter(
+      (a) => a.status === "in_progress",
+    );
+    const completed = sortedAppointments.filter(
+      (a) => a.status === "completed",
+    );
+    const cancelled = sortedAppointments.filter(
+      (a) => a.status === "cancelled",
+    );
 
     return { pending, confirmed, inProgress, completed, cancelled };
   }, [sortedAppointments]);
@@ -333,7 +339,9 @@ function AppointmentMiniCard({
       {/* Property */}
       <div className="flex items-center gap-2 mb-2">
         <MapPin className="w-4 h-4 text-gray-400" />
-        <span className="text-sm text-gray-600 truncate">{propertyAddress}</span>
+        <span className="text-sm text-gray-600 truncate">
+          {propertyAddress}
+        </span>
       </div>
 
       {/* Cleaner and Price - hide price for cleaner role */}
