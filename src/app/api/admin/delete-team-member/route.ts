@@ -30,6 +30,21 @@ export async function DELETE(request: NextRequest) {
 
     const role = orgMember.role;
 
+    // Look up the user's email so we can clean up matching invites later.
+    // user_profiles stores email lower-cased on insert via the auth trigger;
+    // invites.email has a CHECK (email = lower(email)) constraint, so we
+    // lower-case defensively before matching.
+    const { data: userProfile, error: userProfileLookupError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('email')
+      .eq('id', userId)
+      .single();
+
+    if (userProfileLookupError) {
+      console.error('Error looking up user profile email:', userProfileLookupError);
+    }
+    const userEmail = userProfile?.email ? userProfile.email.toLowerCase() : null;
+
     // If cleaner, check for active appointments
     if (role === 'cleaner') {
       const { data: activeAppointments, error: appointmentsError } = await supabaseAdmin
@@ -99,7 +114,23 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // Step 4: Delete user_profile (cascades to any remaining cleaner_profiles)
+    // Step 4: Delete any invites addressed to this user for this organization.
+    // The FK on invites.invited_by already cascades for invites *sent by* the
+    // user; this handles invites *sent to* them (matched by email + org).
+    if (userEmail) {
+      const { error: invitesError } = await supabaseAdmin
+        .from('invites')
+        .delete()
+        .eq('organization_id', organizationId)
+        .eq('email', userEmail);
+
+      if (invitesError) {
+        console.error('Error deleting invites for user:', invitesError);
+        // Continue - invite cleanup is best-effort and should not block deletion.
+      }
+    }
+
+    // Step 5: Delete user_profile (cascades to any remaining cleaner_profiles)
     const { error: userProfileError } = await supabaseAdmin
       .from('user_profiles')
       .delete()
@@ -113,7 +144,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Step 5: Delete auth user
+    // Step 6: Delete auth user
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (authError) {
