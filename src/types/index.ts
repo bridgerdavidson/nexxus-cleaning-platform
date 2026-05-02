@@ -17,6 +17,33 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
 export type JobProgress = 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
 export type CleanerConfirmationStatus = 'awaiting' | 'approved' | 'rejected';
+export type InviteStatus = 'pending' | 'accepted' | 'creating' | 'superseded' | 'failed' | 'expired';
+// Display status mirrors InviteStatus 1:1 now that 'expired' is a real DB value;
+// kept as a separate name for callers that previously folded computed expiry in.
+export type InviteDisplayStatus = InviteStatus;
+
+// INVITES
+export interface Invite {
+  id: string;
+  organization_id: string;
+  email: string;
+  role: 'cleaner' | 'manager' | 'admin';
+  status: InviteStatus;
+  sent_at: string | null;
+  accepted_at: string | null;
+  invited_by: string;
+  expiration_date: string;
+  opened_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined / derived
+  invited_by_profile?: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string;
+  } | null;
+  is_expired?: boolean;
+}
 
 // USER PROFILES
 export interface UserProfile {

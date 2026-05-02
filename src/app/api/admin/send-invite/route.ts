@@ -45,9 +45,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (membership.role !== 'admin') {
+    // Allow admins, or managers with can_manage_cleaners permission.
+    let isAuthorized = membership.role === 'admin';
+    if (!isAuthorized && membership.role === 'manager') {
+      const { data: managerPerms, error: permsError } = await supabaseAdmin
+        .from('manager_permissions')
+        .select('can_manage_cleaners')
+        .eq('manager_id', user.id)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (permsError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to check manager permissions' },
+          { status: 401 }
+        );
+      }
+
+      isAuthorized = managerPerms?.can_manage_cleaners === true;
+    }
+
+    if (!isAuthorized) {
       return NextResponse.json(
-        { success: false, error: 'User is not an admin' },
+        { success: false, error: 'Not authorized to send invites' },
         { status: 401 }
       );
     }
@@ -133,14 +153,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Supersede any existing pending/creating invites for this email+org ────
-    // Replaces the hard block on re-invite; old rows are kept for audit trail.
+    // ── Supersede any existing pending/creating/expired/failed invites ───────
+    // for this email+org. Replaces the hard block on re-invite; old rows are
+    // kept for audit trail. Including 'expired' and 'failed' here means the
+    // admin "Resend" button stops re-appearing on the old row after refresh
+    // — only the freshly-created invite shows up as the active one.
     const { error: supersededError } = await supabaseAdmin
       .from('invites')
       .update({ status: 'superseded' })
       .eq('email', normalizedEmail)
       .eq('organization_id', organizationId)
-      .in('status', ['pending', 'creating']);
+      .in('status', ['pending', 'creating', 'expired', 'failed']);
 
     if (supersededError) {
       return NextResponse.json(
@@ -190,9 +213,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Send the Supabase invite email ────────────────────────────────────────
+    // Include invite_id in the redirect so the accept page can mark the
+    // invite expired if the user clicks the email link a second time
+    // (Supabase preserves query params on otp_expired error redirects too).
     const { data: supabaseInvite, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       normalizedEmail,
-      { redirectTo: `${process.env.APP_URL}/accept-invite` }
+      { redirectTo: `${process.env.APP_URL}/accept-invite?invite_id=${inviteData.id}` }
     );
 
     if (inviteError || !supabaseInvite) {

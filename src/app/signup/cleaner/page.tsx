@@ -90,9 +90,14 @@ export default function CleanerSignup() {
         const currentWaiting = waitingForUserRef.current;
         const currentUser = userRef.current;
         const currentModal = showProfileModalRef.current;
-        
+
         // Check current state - if we still have user and are waiting, show modal
-        if (currentWaiting && currentUser?.id && !currentModal && isInSignupFlowRef.current) {
+        if (
+          currentWaiting &&
+          currentUser?.id &&
+          !currentModal &&
+          isInSignupFlowRef.current
+        ) {
           console.log("[CleanerSignup] Fallback: Opening modal after timeout", {
             hasUser: !!currentUser?.id,
             userId: currentUser?.id,
@@ -137,9 +142,15 @@ export default function CleanerSignup() {
     // Only redirect if user exists and we're not in the signup flow
     // Use ref to prevent redirect during signup-to-modal transition (avoids race condition)
     // The modal's onClose handler will handle the redirect after profile completion
-    if (user && !showProfileModal && !waitingForUser && !loading && !isInSignupFlowRef.current) {
+    if (
+      user &&
+      !showProfileModal &&
+      !waitingForUser &&
+      !loading &&
+      !isInSignupFlowRef.current
+    ) {
       console.log(
-        "[CleanerSignup] User already logged in, redirecting to dashboard"
+        "[CleanerSignup] User already logged in, redirecting to dashboard",
       );
       router.push("/cleaner-dashboard");
     }
@@ -180,9 +191,12 @@ export default function CleanerSignup() {
           fallbackTimeoutRef.current = null;
         }
       } else {
-        console.log("[CleanerSignup] Signup successful, waiting for user state", {
-          role: result.role,
-        });
+        console.log(
+          "[CleanerSignup] Signup successful, waiting for user state",
+          {
+            role: result.role,
+          },
+        );
         // Set waiting flag to show loading state while profile loads
         // Set ref to prevent redirect during signup flow
         isInSignupFlowRef.current = true;

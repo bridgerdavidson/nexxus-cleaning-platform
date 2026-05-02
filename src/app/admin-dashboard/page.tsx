@@ -25,6 +25,7 @@ import {
   Clock,
   FileText,
   Briefcase,
+  Mail,
 } from "lucide-react";
 import {
   useAdminAppointments,
@@ -60,6 +61,7 @@ import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
 import PropertiesPage from "../../components/PropertiesPage";
 import TeamMembersPage from "../../components/TeamMembersPage";
+import InvitesPage from "../../components/InvitesPage";
 import PaymentsPage from "../../components/PaymentsPage";
 import CleanerManagementPage from "../../components/CleanerManagementPage";
 import AnalyticsPage from "../../components/AnalyticsPage";
@@ -71,15 +73,20 @@ import RescheduleAppointmentModal from "../../components/RescheduleAppointmentMo
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import {
   ADMIN_MANAGER_DASHBOARD_TAB_IDS,
+  ADMIN_MANAGER_DEFAULT_GROUP,
+  ADMIN_MANAGER_TAB_TO_GROUP,
   usePersistedDashboardTab,
 } from "../../hooks/usePersistedDashboardTab";
 
 function AdminDashboardInner() {
   const { user, loading, signOut, currentOrganizationId } = useAuth();
-  const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
+  );
+  const activeGroup = useMemo(
+    () => ADMIN_MANAGER_TAB_TO_GROUP[activeTab] ?? ADMIN_MANAGER_DEFAULT_GROUP,
+    [activeTab],
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
@@ -228,6 +235,7 @@ function AdminDashboardInner() {
         tabs: [
           { id: "team", label: "Team Members", icon: Users },
           { id: "cleaners", label: "Cleaner Management", icon: UserCheck },
+          { id: "invites", label: "Invites", icon: Mail },
         ],
       },
       business: {
@@ -241,6 +249,24 @@ function AdminDashboardInner() {
       },
     }),
     [hasUnreadMessages],
+  );
+
+  // Get tabs for current group (must be before early return)
+  const currentGroupTabs = useMemo(
+    () =>
+      navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs ?? [],
+    [navigationGroups, activeGroup],
+  );
+
+  // Filter out "customers" and "messages" from top nav — customers live under Accounts; messages use TopBar icon (cleaner pattern)
+  const topNavTabs = useMemo(
+    () =>
+      activeGroup === "operations"
+        ? currentGroupTabs.filter(
+            (tab) => tab.id !== "customers" && tab.id !== "messages",
+          )
+        : currentGroupTabs,
+    [activeGroup, currentGroupTabs],
   );
 
   // Show loading while checking auth
@@ -288,18 +314,6 @@ function AdminDashboardInner() {
   // Get groups array for sidebar
   const groups = Object.values(navigationGroups);
 
-  // Get tabs for current group
-  const currentGroupTabs =
-    navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs || [];
-
-  // Filter out "customers" and "messages" from top nav — customers live under Accounts; messages use TopBar icon (cleaner pattern)
-  const topNavTabs =
-    activeGroup === "operations"
-      ? currentGroupTabs.filter(
-          (tab) => tab.id !== "customers" && tab.id !== "messages",
-        )
-      : currentGroupTabs;
-
   // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
   const allTabs = Array.from(
     new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values(),
@@ -308,9 +322,8 @@ function AdminDashboardInner() {
     allTabs.push({ id: "settings", label: "Settings", icon: Settings });
   }
 
-  // Handle group change - switch to first tab of new group
+  // Handle group change - switch to first tab of new group (group derives from tab via ADMIN_MANAGER_TAB_TO_GROUP)
   const handleGroupChange = (groupId: string) => {
-    setActiveGroup(groupId);
     const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
     if (newGroup && newGroup.tabs.length > 0) {
       const nextTab =
@@ -328,9 +341,6 @@ function AdminDashboardInner() {
   // Handle tab change - reset filters if not navigating from specific sections
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
-    if (tabId === "messages") {
-      setActiveGroup("operations");
-    }
     // Only keep filters if we're staying on bookings tab
     if (tabId !== "bookings") {
       setShowPendingFilter(false);
@@ -473,7 +483,6 @@ function AdminDashboardInner() {
     const cleanerUserId = appointment.cleaner_profile?.user_profile?.id;
     if (!cleanerUserId) return;
     setInitialMessageRecipientId(cleanerUserId);
-    setActiveGroup("operations");
     setActiveTab("messages");
   };
 
@@ -1342,6 +1351,8 @@ function AdminDashboardInner() {
             onMemberUpdated={updateTeamMemberInState}
           />
         );
+      case "invites":
+        return <InvitesPage canResend={true} />;
       case "services":
         return (
           <ServicesPage

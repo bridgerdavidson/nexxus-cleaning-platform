@@ -54,7 +54,7 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const displayName =
     user?.profile?.firstName || user?.profile?.lastName
       ? `${user.profile.firstName || ""} ${user.profile.lastName || ""}`.trim()
-      : user?.email ?? "";
+      : (user?.email ?? "");
 
   return (
     <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[260px] bg-gray-50 z-40">

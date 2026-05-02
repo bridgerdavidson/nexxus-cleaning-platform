@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import React, { useEffect } from 'react';
-import Link from 'next/link';
-import { X, User, LogOut, LucideIcon } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import React, { useEffect } from "react";
+import Link from "next/link";
+import { X, User, LogOut, LucideIcon } from "lucide-react";
+import { useAuth } from "../hooks/useAuth";
 
 interface Tab {
   id: string;
@@ -15,7 +15,7 @@ interface Tab {
 interface DesktopMenuDropdownProps {
   isOpen: boolean;
   onClose: () => void;
-  role: 'homeowner' | 'cleaner' | 'manager' | 'admin';
+  role: "homeowner" | "cleaner" | "manager" | "admin";
   tabs?: Tab[];
   activeTab?: string;
   onTabChange?: (tabId: string) => void;
@@ -35,13 +35,13 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = previousOverflow;
     };
   }, [isOpen, onClose]);
@@ -53,16 +53,16 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
   // Get dashboard link based on role
   const getDashboardLink = () => {
     switch (role) {
-      case 'homeowner':
-        return '/homeowner-dashboard';
-      case 'cleaner':
-        return '/cleaner-dashboard';
-      case 'manager':
-        return '/manager-dashboard';
-      case 'admin':
-        return '/admin-dashboard';
+      case "homeowner":
+        return "/homeowner-dashboard";
+      case "cleaner":
+        return "/cleaner-dashboard";
+      case "manager":
+        return "/manager-dashboard";
+      case "admin":
+        return "/admin-dashboard";
       default:
-        return '/';
+        return "/";
     }
   };
 
@@ -81,7 +81,7 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
       {/* Sidebar Panel */}
       <div
         className={`hidden md:flex fixed top-0 right-0 bottom-0 w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
+          isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div className="flex flex-col h-full w-full">
@@ -123,7 +123,7 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-gray-900 text-lg truncate">
                     {user.profile.firstName || user.profile.lastName
-                      ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
+                      ? `${user.profile.firstName || ""} ${user.profile.lastName || ""}`.trim()
                       : user.email}
                   </h3>
                   <p className="text-sm text-gray-600 truncate">{user.email}</p>
@@ -149,14 +149,14 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
                   }}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors text-left ${
                     isActive
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? "bg-primary-50 text-primary-700"
+                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                   }`}
                 >
                   <div className="relative">
                     <Icon
                       className={`w-5 h-5 ${
-                        isActive ? 'text-primary-600' : 'text-gray-400'
+                        isActive ? "text-primary-600" : "text-gray-400"
                       }`}
                     />
                     {tab.hasNotification && (
@@ -165,7 +165,7 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
                   </div>
                   <span
                     className={`font-medium text-base ${
-                      isActive ? 'font-semibold' : ''
+                      isActive ? "font-semibold" : ""
                     }`}
                   >
                     {tab.label}
@@ -192,4 +192,3 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
 };
 
 export default DesktopMenuDropdown;
-

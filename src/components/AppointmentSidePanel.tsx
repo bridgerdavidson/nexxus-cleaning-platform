@@ -33,6 +33,7 @@ import {
   DASHBOARD_HERO_SECONDARY_BUTTON_STYLE,
 } from "../lib/dashboardHero";
 import PaymentMethodForm from "./PaymentMethodForm";
+import JobPhotoLightbox from "./JobPhotoLightbox";
 
 interface CleanerFeedback {
   id: string;
@@ -132,6 +133,9 @@ export default function AppointmentSidePanel({
   );
   const [showPaymentForm, setShowPaymentForm] = useState(false);
 
+  // Lightbox state for job photos
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
   // Job photos (admin, manager, cleaner can view via RLS)
   const {
     beforePhotos,
@@ -141,6 +145,17 @@ export default function AppointmentSidePanel({
     error: photosError,
     refetch: refetchPhotos,
   } = useJobPhotosForAppointment(appointment?.id ?? null);
+
+  // Single ordered stream the lightbox navigates through (Before → During → After).
+  const orderedPhotos = useMemo(() => {
+    const duringPhotos = allPhotos.filter((p) => p.photo_type === "during");
+    return [...beforePhotos, ...duringPhotos, ...afterPhotos];
+  }, [beforePhotos, afterPhotos, allPhotos]);
+
+  const openLightboxAt = (photoId: string) => {
+    const idx = orderedPhotos.findIndex((p) => p.id === photoId);
+    if (idx >= 0) setLightboxIndex(idx);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -363,6 +378,7 @@ export default function AppointmentSidePanel({
   useEffect(() => {
     if (!isOpen) {
       setIsEditing(false);
+      setLightboxIndex(null);
     }
   }, [isOpen]);
 
@@ -1073,11 +1089,10 @@ export default function AppointmentSidePanel({
                         </p>
                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                           {beforePhotos.map((photo) => (
-                            <a
+                            <button
                               key={photo.id}
-                              href={photo.photo_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              type="button"
+                              onClick={() => openLightboxAt(photo.id)}
                               className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
                             >
                               <img
@@ -1085,7 +1100,7 @@ export default function AppointmentSidePanel({
                                 alt="Before"
                                 className="w-full h-full object-cover"
                               />
-                            </a>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -1097,11 +1112,10 @@ export default function AppointmentSidePanel({
                         </p>
                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                           {afterPhotos.map((photo) => (
-                            <a
+                            <button
                               key={photo.id}
-                              href={photo.photo_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              type="button"
+                              onClick={() => openLightboxAt(photo.id)}
                               className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
                             >
                               <img
@@ -1109,7 +1123,7 @@ export default function AppointmentSidePanel({
                                 alt="After"
                                 className="w-full h-full object-cover"
                               />
-                            </a>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -1123,11 +1137,10 @@ export default function AppointmentSidePanel({
                           {allPhotos
                             .filter((p) => p.photo_type === "during")
                             .map((photo) => (
-                              <a
+                              <button
                                 key={photo.id}
-                                href={photo.photo_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                type="button"
+                                onClick={() => openLightboxAt(photo.id)}
                                 className="block aspect-square rounded-lg overflow-hidden bg-gray-100 ring-1 ring-gray-200 hover:ring-2 hover:ring-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
                               >
                                 <img
@@ -1135,7 +1148,7 @@ export default function AppointmentSidePanel({
                                   alt="During"
                                   className="w-full h-full object-cover"
                                 />
-                              </a>
+                              </button>
                             ))}
                         </div>
                       </div>
@@ -1320,5 +1333,17 @@ export default function AppointmentSidePanel({
     </div>
   );
 
-  return createPortal(panel, document.body);
+  return createPortal(
+    <>
+      {panel}
+      <JobPhotoLightbox
+        photos={orderedPhotos}
+        open={lightboxIndex !== null}
+        index={lightboxIndex ?? 0}
+        onClose={() => setLightboxIndex(null)}
+        appointmentId={appointment.id}
+      />
+    </>,
+    document.body,
+  );
 }

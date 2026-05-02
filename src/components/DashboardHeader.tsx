@@ -56,7 +56,9 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 onClick={() => onTabChange?.("home")}
                 className="flex items-center hover:opacity-80 transition-opacity"
               >
-                <div className="text-2xl font-bold text-primary-600">Nexxus</div>
+                <div className="text-2xl font-bold text-primary-600">
+                  Nexxus
+                </div>
                 <div className="ml-2 text-sm text-gray-600 font-medium hidden sm:block">
                   Cleaning Solutions
                 </div>

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     // Look up the pending invite using supabaseAdmin to bypass RLS
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from('invites')
-      .select('id, email, role, organization_id, status, expiration_date, created_at, organizations(name)')
+      .select('id, email, role, organization_id, status, expiration_date, opened_at, created_at, organizations(name)')
       .eq('email', email)
       .eq('status', 'pending')
       .maybeSingle();
@@ -53,13 +53,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check expiration using expiration_date column
+    // Check expiration using expiration_date column. Flip the row to
+    // 'expired' so the admin UI reflects reality on the next read.
     const now = new Date();
     if (invite.expiration_date && new Date(invite.expiration_date) < now) {
+      await supabaseAdmin
+        .from('invites')
+        .update({ status: 'expired' })
+        .eq('id', invite.id)
+        .eq('status', 'pending');
       return NextResponse.json(
         { success: false, status: 'expired', message: 'This invite has expired. Please ask an admin to send a new invite.' },
         { status: 200 }
       );
+    }
+
+    // Record the first time this invite's form was loaded by the recipient.
+    // Used by the lazy-expire job in /api/invites to flip abandoned invites
+    // (opened but never accepted) to 'expired' once the access_token would
+    // have expired (~1h after opening).
+    if (!invite.opened_at) {
+      await supabaseAdmin
+        .from('invites')
+        .update({ opened_at: now.toISOString() })
+        .eq('id', invite.id)
+        .is('opened_at', null);
     }
 
     // Return only safe fields needed to render the acceptance form

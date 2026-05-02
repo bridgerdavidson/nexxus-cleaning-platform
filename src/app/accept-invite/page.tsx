@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader, Loader2, AlertCircle } from "lucide-react";
+import { Loader, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
 type PageState = "loading" | "valid" | "expired" | "invalid";
@@ -32,11 +32,29 @@ function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+function validatePassword(password: string): string | null {
+  if (password.length < 8) {
+    return "Password must be at least 8 characters.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must contain at least one uppercase letter.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must contain at least one lowercase letter.";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "Password must contain at least one number.";
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must contain at least one symbol.";
+  }
+  return null;
+}
+
 /* ── Shared background shell ─────────────────────────────────────────── */
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative min-h-screen overflow-hidden bg-gray-100 flex items-center justify-center px-4 py-12">
-
       <div className="relative z-10 w-full max-w-md">
         {/* Wordmark */}
         <div className="mb-8 text-center">
@@ -68,7 +86,9 @@ function AcceptInviteContent() {
 
   const [pageState, setPageState] = useState<PageState>("loading");
   const [pageError, setPageError] = useState("");
-  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
+  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(
+    null,
+  );
   const [userEmail, setUserEmail] = useState("");
   const [accessToken, setAccessToken] = useState("");
 
@@ -76,7 +96,7 @@ function AcceptInviteContent() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState("");
@@ -92,6 +112,12 @@ function AcceptInviteContent() {
     const hashErrorCode = hashParams.get("error_code");
     const hashErrorDesc = hashParams.get("error_description");
 
+    // invite_id is preserved by Supabase on the error redirect because we
+    // included it in redirect_to when sending the invite. Use it to flip
+    // the DB row to 'expired' so the admin UI reflects reality.
+    const queryParams = new URLSearchParams(window.location.search);
+    const inviteIdFromQuery = queryParams.get("invite_id");
+
     if (hashError) {
       handled = true;
       if (hashErrorCode === "otp_expired") {
@@ -99,6 +125,12 @@ function AcceptInviteContent() {
           "This invite link has expired. Please ask an admin to send a new invite.",
         );
         setPageState("expired");
+        if (inviteIdFromQuery) {
+          // Fire-and-forget; failure here doesn't change the user-facing flow.
+          fetch(`/api/invites/${inviteIdFromQuery}/mark-expired`, {
+            method: "POST",
+          }).catch(() => {});
+        }
       } else {
         setPageError(
           hashErrorDesc
@@ -193,8 +225,13 @@ function AcceptInviteContent() {
       setFormError("First and last name are required.");
       return;
     }
-    if (password.length < 8) {
-      setFormError("Password must be at least 8 characters.");
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setFormError(passwordError);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setFormError("Passwords do not match.");
       return;
     }
 
@@ -250,7 +287,9 @@ function AcceptInviteContent() {
         <GlassCard>
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-            <p className="text-sm font-medium text-gray-500">Verifying your invite…</p>
+            <p className="text-sm font-medium text-gray-500">
+              Verifying your invite…
+            </p>
           </div>
         </GlassCard>
       </PageShell>
@@ -302,7 +341,10 @@ function AcceptInviteContent() {
 
           {/* Email — disabled */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
               Email address
             </label>
             <input
@@ -327,7 +369,10 @@ function AcceptInviteContent() {
           {/* First + Last name */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label
+                htmlFor="firstName"
+                className="block text-sm font-medium text-gray-700 mb-1.5"
+              >
                 First name
               </label>
               <input
@@ -342,7 +387,10 @@ function AcceptInviteContent() {
               />
             </div>
             <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label
+                htmlFor="lastName"
+                className="block text-sm font-medium text-gray-700 mb-1.5"
+              >
                 Last name
               </label>
               <input
@@ -360,7 +408,10 @@ function AcceptInviteContent() {
 
           {/* Phone — optional */}
           <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label
+              htmlFor="phone"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
               Phone number{" "}
               <span className="font-normal text-gray-400">(optional)</span>
             </label>
@@ -377,32 +428,45 @@ function AcceptInviteContent() {
 
           {/* Password */}
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
               Create a password
             </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                required
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field pr-10"
-                placeholder="At least 8 characters"
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 transition-colors"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? (
-                  <EyeOff className="h-5 w-5" />
-                ) : (
-                  <Eye className="h-5 w-5" />
-                )}
-              </button>
-            </div>
+            <input
+              id="password"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
+              placeholder="At least 8 characters"
+            />
+            <p className="mt-1.5 text-xs text-gray-500">
+              Must include uppercase, lowercase, number, and symbol.
+            </p>
+          </div>
+
+          {/* Confirm password */}
+          <div>
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium text-gray-700 mb-1.5"
+            >
+              Confirm password
+            </label>
+            <input
+              id="confirmPassword"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
+              placeholder="Re-enter your password"
+            />
           </div>
 
           <div className="pt-1">

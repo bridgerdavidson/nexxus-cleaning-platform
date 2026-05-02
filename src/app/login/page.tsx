@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../../hooks/useAuth';
-import { Eye, EyeOff, Loader } from 'lucide-react';
-import Link from 'next/link';
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../hooks/useAuth";
+import { Eye, EyeOff, Loader } from "lucide-react";
+import Link from "next/link";
 
 function LoginContent() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const { signIn, user, loading, isCleaningUp } = useAuth();
   const router = useRouter();
 
@@ -26,22 +26,22 @@ function LoginContent() {
 
   const getDashboardPath = (userRole: string) => {
     switch (userRole) {
-      case 'homeowner':
-        return '/homeowner-dashboard';
-      case 'cleaner':
-        return '/cleaner-dashboard';
-      case 'manager':
-        return '/manager-dashboard';
-      case 'admin':
-        return '/admin-dashboard';
+      case "homeowner":
+        return "/homeowner-dashboard";
+      case "cleaner":
+        return "/cleaner-dashboard";
+      case "manager":
+        return "/manager-dashboard";
+      case "admin":
+        return "/admin-dashboard";
       default:
-        return '/';
+        return "/";
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
@@ -51,7 +51,7 @@ function LoginContent() {
       }
       // Don't redirect here - let the useEffect handle it when user state updates
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setIsLoading(false);
     }
@@ -82,7 +82,10 @@ function LoginContent() {
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Email address
               </label>
               <div className="mt-1">
@@ -101,14 +104,17 @@ function LoginContent() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Password
               </label>
               <div className="mt-1 relative">
                 <input
                   id="password"
                   name="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
                   value={password}
@@ -138,13 +144,19 @@ function LoginContent() {
                   type="checkbox"
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+                <label
+                  htmlFor="remember-me"
+                  className="ml-2 block text-sm text-gray-900"
+                >
                   Remember me
                 </label>
               </div>
 
               <div className="text-sm">
-                <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
+                <a
+                  href="#"
+                  className="font-medium text-primary-600 hover:text-primary-500"
+                >
                   Forgot your password?
                 </a>
               </div>
@@ -175,8 +187,11 @@ function LoginContent() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link href="/signup" className="font-medium text-primary-600 hover:text-primary-500">
+              Don't have an account?{" "}
+              <Link
+                href="/signup"
+                className="font-medium text-primary-600 hover:text-primary-500"
+              >
                 Sign up here
               </Link>
             </p>
@@ -189,12 +204,16 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-center">
-        <Loader className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
-        <p className="text-gray-600">Loading...</p>
-      </div>
-    </div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <Loader className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   );

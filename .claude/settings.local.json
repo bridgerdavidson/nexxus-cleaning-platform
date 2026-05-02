@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(gh repo *)",
+      "PowerShell(gh repo view bridgerdavidson/nexxus-cleaning-platform --json name,defaultBranchRef,isEmpty,pushedAt,url 2>&1)",
+      "mcp__github__list_branches",
+      "Bash(git remote *)",
+      "Bash(git commit --allow-empty -m ' *)"
+    ]
+  }
+}

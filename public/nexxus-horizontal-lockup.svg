@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="200" viewBox="0 0 720 200">
+  
+  
+  <g transform="translate(16, 35) scale(2.03125)">
+    
+  <g>
+    <path d="M8 8 L24 8 L40 32 L24 56 L8 56 L24 32 Z" fill="rgb(194, 194, 194)"></path>
+    <path d="M56 8 L40 8 L24 32 L40 56 L56 56 L40 32 Z" fill="rgb(216, 167, 24)"></path>
+  </g>
+  </g>
+  <g transform="translate(178, 152)">
+    <text class="nx" x="0" y="0" fill="rgb(194, 194, 194)" style="letter-spacing:-3.0px">Ne<tspan fill="rgb(194, 194, 194)">x</tspan><tspan fill="rgb(216, 167, 24)">x</tspan>us</text>
+  </g>
+</svg>

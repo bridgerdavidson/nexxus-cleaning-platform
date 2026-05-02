@@ -1,47 +1,47 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../../../hooks/useAuth';
-import { Eye, EyeOff, Loader, ArrowLeft, Home } from 'lucide-react';
-import Link from 'next/link';
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../../../hooks/useAuth";
+import { Eye, EyeOff, Loader, ArrowLeft, Home } from "lucide-react";
+import Link from "next/link";
 
 export default function HomeownerSignup() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  
+
   const { signUp, user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     // Redirect if already logged in
     if (user) {
-      router.push('/homeowner-dashboard');
+      router.push("/homeowner-dashboard");
     }
   }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setIsLoading(true);
 
     // Validation
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError("Passwords do not match");
       setIsLoading(false);
       return;
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+      setError("Password must be at least 6 characters long");
       setIsLoading(false);
       return;
     }
@@ -50,17 +50,17 @@ export default function HomeownerSignup() {
       const result = await signUp(email, password, {
         firstName,
         lastName,
-        role: 'homeowner'
+        role: "homeowner",
       });
 
       if (result.error) {
         setError(result.error);
       } else {
         // Redirect to dashboard immediately after successful signup and auto-login
-        router.push('/homeowner-dashboard');
+        router.push("/homeowner-dashboard");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Signup failed');
+      setError(err instanceof Error ? err.message : "Signup failed");
     } finally {
       setIsLoading(false);
     }
@@ -69,11 +69,14 @@ export default function HomeownerSignup() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <Link href="/signup" className="inline-flex items-center text-gray-600 hover:text-primary-600 mb-4 transition-colors justify-center">
+        <Link
+          href="/signup"
+          className="inline-flex items-center text-gray-600 hover:text-primary-600 mb-4 transition-colors justify-center"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to role selection
         </Link>
-        
+
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-100 rounded-full mb-4">
             <Home className="w-8 h-8 text-primary-600" />
@@ -100,7 +103,10 @@ export default function HomeownerSignup() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="firstName"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   First Name
                 </label>
                 <div className="mt-1">
@@ -118,7 +124,10 @@ export default function HomeownerSignup() {
               </div>
 
               <div>
-                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="lastName"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Last Name
                 </label>
                 <div className="mt-1">
@@ -137,7 +146,10 @@ export default function HomeownerSignup() {
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Email address
               </label>
               <div className="mt-1">
@@ -156,14 +168,17 @@ export default function HomeownerSignup() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Password
               </label>
               <div className="mt-1 relative">
                 <input
                   id="password"
                   name="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   autoComplete="new-password"
                   required
                   value={password}
@@ -186,14 +201,17 @@ export default function HomeownerSignup() {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Confirm Password
               </label>
               <div className="mt-1 relative">
                 <input
                   id="confirmPassword"
                   name="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
+                  type={showConfirmPassword ? "text" : "password"}
                   autoComplete="new-password"
                   required
                   value={confirmPassword}
@@ -235,8 +253,11 @@ export default function HomeownerSignup() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              Already have an account?{' '}
-              <Link href="/login" className="font-medium text-primary-600 hover:text-primary-500">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="font-medium text-primary-600 hover:text-primary-500"
+              >
                 Sign in here
               </Link>
             </p>
@@ -246,4 +267,3 @@ export default function HomeownerSignup() {
     </div>
   );
 }
-

@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronUp,
   Briefcase,
+  Mail,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -69,6 +70,7 @@ import BookingsPage from "../../components/BookingsPage";
 import MessagesPage from "../../components/MessagesPage";
 import CustomersPage from "../../components/CustomersPage";
 import TeamMembersPage from "../../components/TeamMembersPage";
+import InvitesPage from "../../components/InvitesPage";
 import CleanerManagementPage from "../../components/CleanerManagementPage";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import StatusBadge from "../../components/StatusBadge";
@@ -81,15 +83,20 @@ import RescheduleAppointmentModal from "../../components/RescheduleAppointmentMo
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import {
   ADMIN_MANAGER_DASHBOARD_TAB_IDS,
+  ADMIN_MANAGER_DEFAULT_GROUP,
+  ADMIN_MANAGER_TAB_TO_GROUP,
   usePersistedDashboardTab,
 } from "../../hooks/usePersistedDashboardTab";
 
 function ManagerDashboardInner() {
   const { user, loading, signOut, currentOrganizationId } = useAuth();
-  const [activeGroup, setActiveGroup] = useState("operations");
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
+  );
+  const activeGroup = useMemo(
+    () => ADMIN_MANAGER_TAB_TO_GROUP[activeTab] ?? ADMIN_MANAGER_DEFAULT_GROUP,
+    [activeTab],
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
@@ -215,6 +222,7 @@ function ManagerDashboardInner() {
           return permissions.can_view_properties || false;
         case "cleaners":
         case "team":
+        case "invites":
           return permissions.can_manage_cleaners || false;
         case "payments":
           return permissions.can_view_payments || false;
@@ -344,6 +352,7 @@ function ManagerDashboardInner() {
         tabs: [
           { id: "team", label: "Team Members", icon: Users },
           { id: "cleaners", label: "Cleaner Management", icon: UserCheck },
+          { id: "invites", label: "Invites", icon: Mail },
         ],
       };
     }
@@ -399,10 +408,9 @@ function ManagerDashboardInner() {
     return tabs;
   }, [groups]);
 
-  // Handle group change - switch to first tab of new group
+  // Handle group change - switch to first tab of new group (group derives from tab via ADMIN_MANAGER_TAB_TO_GROUP)
   const handleGroupChange = useCallback(
     (groupId: string) => {
-      setActiveGroup(groupId);
       const newGroup =
         navigationGroups[groupId as keyof typeof navigationGroups];
       if (newGroup && newGroup.tabs.length > 0) {
@@ -430,23 +438,20 @@ function ManagerDashboardInner() {
       setShowPendingFilter(false);
       setShowAllFilter(false);
     },
-    [navigationGroups, isTabAccessible],
+    [navigationGroups, isTabAccessible, setActiveTab],
   );
 
   // Handle tab change - reset filters if not navigating from specific sections
   const handleTabChange = useCallback(
     (tabId: string) => {
       setActiveTab(tabId);
-      if (tabId === "messages") {
-        setActiveGroup("operations");
-      }
       // Only keep filters if we're staying on bookings tab
       if (tabId !== "bookings") {
         setShowPendingFilter(false);
         setShowAllFilter(false);
       }
     },
-    [setActiveGroup, setActiveTab],
+    [setActiveTab],
   );
 
   // Redirect to login if not authenticated
@@ -461,10 +466,9 @@ function ManagerDashboardInner() {
     if (!permissionsLoading && permissions) {
       if (!isTabAccessible(activeTab)) {
         setActiveTab("home");
-        setActiveGroup("operations");
       }
     }
-  }, [permissions, permissionsLoading, activeTab, isTabAccessible]);
+  }, [permissions, permissionsLoading, activeTab, isTabAccessible, setActiveTab]);
 
   // Scroll to top when tab changes
   useEffect(() => {
@@ -648,7 +652,6 @@ function ManagerDashboardInner() {
     const cleanerUserId = appointment.cleaner_profile?.user_profile?.id;
     if (!cleanerUserId) return;
     setInitialMessageRecipientId(cleanerUserId);
-    setActiveGroup("operations");
     setActiveTab("messages");
   };
 
@@ -1495,7 +1498,6 @@ function ManagerDashboardInner() {
       <button
         onClick={() => {
           setActiveTab("home");
-          setActiveGroup("operations");
         }}
         className="btn-primary"
       >
@@ -1556,6 +1558,11 @@ function ManagerDashboardInner() {
             onMemberUpdated={updateTeamMemberInState}
           />
         );
+      case "invites":
+        if (!permissions?.can_manage_cleaners) {
+          return renderAccessDenied("invites");
+        }
+        return <InvitesPage canResend={permissions?.can_manage_cleaners === true} />;
       case "payments":
         if (!permissions?.can_view_payments) {
           return renderAccessDenied("payments");
