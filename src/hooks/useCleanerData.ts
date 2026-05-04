@@ -1043,88 +1043,54 @@ async function fetchLineItemsForChecklist(checklistRowId: string) {
  * to the first checklist for `service_type_id` (name ASC, created_at ASC) for legacy data.
  */
 export function useChecklist({ checklistId, serviceTypeId }: UseChecklistArgs) {
-  const [checklist, setChecklist] = useState<{
-    id: string;
-    name: string;
-    service_type_id: string;
-  } | null>(null);
-  const [lineItems, setLineItems] = useState<{
-    id: string;
-    task: string;
-    position: number | null;
-  }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useOrgQuery({
+    queryKey: ['checklist', 'detail', checklistId ?? '', serviceTypeId ?? ''] as const,
+    enabled: !!(checklistId || serviceTypeId),
+    queryFn: async () => {
+      let checklistData: {
+        id: string;
+        name: string;
+        service_type_id: string;
+      } | null = null;
 
-  useEffect(() => {
-    if (!checklistId && !serviceTypeId) {
-      setChecklist(null);
-      setLineItems([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    const fetchChecklist = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setChecklist(null);
-        setLineItems([]);
-
-        let checklistData: {
-          id: string;
-          name: string;
-          service_type_id: string;
-        } | null = null;
-
-        if (checklistId) {
-          const { data, error: byIdError } = await supabase
-            .from('checklists')
-            .select('id, name, service_type_id')
-            .eq('id', checklistId)
-            .maybeSingle();
-
-          if (byIdError) throw byIdError;
-          checklistData = data;
-        }
-
-        // Legacy / missing row: pick one checklist per service type (deterministic)
-        if (!checklistData && serviceTypeId) {
-          const { data, error: byServiceError } = await supabase
-            .from('checklists')
-            .select('id, name, service_type_id')
-            .eq('service_type_id', serviceTypeId)
-            .order('name', { ascending: true })
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
-
-          if (byServiceError) throw byServiceError;
-          checklistData = data;
-        }
-
-        if (!checklistData) {
-          setChecklist(null);
-          setLineItems([]);
-          return;
-        }
-
-        setChecklist(checklistData);
-        setLineItems(await fetchLineItemsForChecklist(checklistData.id));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch checklist');
-        setChecklist(null);
-        setLineItems([]);
-      } finally {
-        setLoading(false);
+      if (checklistId) {
+        const { data, error: byIdError } = await supabase
+          .from('checklists')
+          .select('id, name, service_type_id')
+          .eq('id', checklistId)
+          .maybeSingle();
+        if (byIdError) throw byIdError;
+        checklistData = data;
       }
-    };
 
-    fetchChecklist();
-  }, [checklistId, serviceTypeId]);
+      if (!checklistData && serviceTypeId) {
+        const { data, error: byServiceError } = await supabase
+          .from('checklists')
+          .select('id, name, service_type_id')
+          .eq('service_type_id', serviceTypeId)
+          .order('name', { ascending: true })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (byServiceError) throw byServiceError;
+        checklistData = data;
+      }
 
-  return { checklist, lineItems, loading, error };
+      if (!checklistData) {
+        return { checklist: null, lineItems: [] as { id: string; task: string; position: number | null }[] };
+      }
+
+      const lineItems = await fetchLineItemsForChecklist(checklistData.id);
+      return { checklist: checklistData, lineItems };
+    },
+  });
+
+  return {
+    checklist: query.data?.checklist ?? null,
+    lineItems: query.data?.lineItems ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
