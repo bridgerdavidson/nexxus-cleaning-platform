@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeAppointments } from './useRealtimeAppointments';
 import { useRealtimePayments, PaymentUpdateData } from './useRealtimePayments';
+import { useOrgQuery } from '../lib/useOrgQuery';
+import { keys } from '../lib/queryKeys';
 
 export interface AdminAppointment {
   id: string;
@@ -596,16 +598,11 @@ export function useAdminStats() {
 }
 
 export function useAdminPayments() {
-  const [payments, setPayments] = useState<AdminPayment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
-
-  const fetchPayments = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const query = useOrgQuery({
+    queryKey: keys.payments.byOrg(orgId),
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('payments')
         .select(`
@@ -629,40 +626,34 @@ export function useAdminPayments() {
             )
           )
         `)
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(payment => ({
+
+      return (data || []).map(payment => ({
         ...payment,
-        appointment: Array.isArray(payment.appointment) 
+        appointment: Array.isArray(payment.appointment)
           ? {
               ...payment.appointment[0],
-              homeowner: Array.isArray(payment.appointment[0]?.homeowner) 
-                ? payment.appointment[0].homeowner[0] 
+              homeowner: Array.isArray(payment.appointment[0]?.homeowner)
+                ? payment.appointment[0].homeowner[0]
                 : payment.appointment[0]?.homeowner,
-              service_type: Array.isArray(payment.appointment[0]?.service_type) 
-                ? payment.appointment[0].service_type[0] 
-                : payment.appointment[0]?.service_type
+              service_type: Array.isArray(payment.appointment[0]?.service_type)
+                ? payment.appointment[0].service_type[0]
+                : payment.appointment[0]?.service_type,
             }
-          : payment.appointment
-      }));
-      
-      setPayments(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch payments');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+          : payment.appointment,
+      })) as AdminPayment[];
+    },
+  });
 
-  useEffect(() => {
-    fetchPayments();
-  }, [fetchPayments]);
-
-  return { payments, loading, error, refetch: fetchPayments };
+  return {
+    payments: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 export interface AdminPayout {
@@ -684,16 +675,11 @@ export interface AdminPayout {
 }
 
 export function useAdminPayouts() {
-  const [payouts, setPayouts] = useState<AdminPayout[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
-
-  const fetchPayouts = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const query = useOrgQuery({
+    queryKey: keys.payouts.byOrg(orgId),
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('payouts')
         .select(`
@@ -715,39 +701,32 @@ export function useAdminPayouts() {
             scheduled_date
           )
         `)
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(payout => {
+
+      return (data || []).map(payout => {
         const cleanerData = Array.isArray(payout.cleaner) ? payout.cleaner[0] : payout.cleaner;
         const userProfile = cleanerData?.user_profile;
         const userProfileData = Array.isArray(userProfile) ? userProfile[0] : userProfile;
-        
         return {
           ...payout,
           cleaner: userProfileData || null,
-          appointment: Array.isArray(payout.appointment) 
-            ? payout.appointment[0] 
-            : payout.appointment
+          appointment: Array.isArray(payout.appointment)
+            ? payout.appointment[0]
+            : payout.appointment,
         };
-      });
-      
-      setPayouts(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch payouts');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+      }) as AdminPayout[];
+    },
+  });
 
-  useEffect(() => {
-    fetchPayouts();
-  }, [fetchPayouts]);
-
-  return { payouts, loading, error, refetch: fetchPayouts };
+  return {
+    payouts: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 export interface AdminInvoice {
@@ -767,16 +746,11 @@ export interface AdminInvoice {
 }
 
 export function useAdminInvoices() {
-  const [invoices, setInvoices] = useState<AdminInvoice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
-
-  const fetchInvoices = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const query = useOrgQuery({
+    queryKey: keys.invoices.byOrg(orgId),
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('invoices')
         .select(`
@@ -794,32 +768,26 @@ export function useAdminInvoices() {
             email
           )
         `)
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(invoice => ({
+
+      return (data || []).map(invoice => ({
         ...invoice,
-        homeowner: Array.isArray(invoice.homeowner) 
-          ? invoice.homeowner[0] 
-          : invoice.homeowner
-      }));
-      
-      setInvoices(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch invoices');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+        homeowner: Array.isArray(invoice.homeowner)
+          ? invoice.homeowner[0]
+          : invoice.homeowner,
+      })) as AdminInvoice[];
+    },
+  });
 
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
-
-  return { invoices, loading, error, refetch: fetchInvoices };
+  return {
+    invoices: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 export interface PaymentStats {

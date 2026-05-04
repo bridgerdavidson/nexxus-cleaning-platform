@@ -1,14 +1,19 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import Navbar from './Navbar';
+import AuthQueryBridge from './AuthQueryBridge';
+import { makeQueryClient } from '../lib/queryClient';
 //import { useTabVisibility } from '../hooks/useTabVisibility';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [queryClient] = useState(() => makeQueryClient());
 
   // Suppress browser extension errors (React DevTools, Redux DevTools, etc.)
   useEffect(() => {
@@ -54,12 +59,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
   return (
     <ToastProvider>
-      <AuthProvider>
-        {!isFullScreen && <Navbar />}
-        <div className={!isFullScreen ? 'pt-16' : ''}>
-          {children}
-        </div>
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AuthQueryBridge />
+          {!isFullScreen && <Navbar />}
+          <div className={!isFullScreen ? 'pt-16' : ''}>
+            {children}
+          </div>
+        </AuthProvider>
+        {process.env.NODE_ENV === 'development' && (
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
+        )}
+      </QueryClientProvider>
     </ToastProvider>
   );
 }
