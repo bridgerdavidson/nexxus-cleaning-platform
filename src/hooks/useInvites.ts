@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { inviteTeamMember } from './useAdminData';
+import { keys } from '../lib/queryKeys';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import type { Invite } from '../types';
 
 interface UseInvitesOptions {
@@ -23,101 +25,61 @@ export function useInvites(
   options: UseInvitesOptions = {}
 ): UseInvitesResult {
   const enabled = options.enabled !== false;
+  const queryKey = keys.invites.byOrg(organizationId ?? '');
+  const queryClient = useQueryClient();
 
-  const [invites, setInvites] = useState<Invite[]>([]);
-  const [loading, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
-  const tokenRef = useRef(accessToken);
-
-  useEffect(() => {
-    tokenRef.current = accessToken;
-  }, [accessToken]);
-
-  const fetchInvites = useCallback(async () => {
-    if (!enabled || !organizationId || !tokenRef.current) {
-      setInvites([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setError(null);
-      const res = await fetch(`/api/invites?organizationId=${encodeURIComponent(organizationId)}`, {
-        headers: { Authorization: `Bearer ${tokenRef.current}` },
+  const query = useQuery({
+    queryKey,
+    enabled: enabled && !!organizationId && !!accessToken,
+    queryFn: async () => {
+      const res = await fetch(`/api/invites?organizationId=${encodeURIComponent(organizationId as string)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = await res.json();
-
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to load invites');
       }
+      return data.invites as Invite[];
+    },
+  });
 
-      setInvites(data.invites as Invite[]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invites');
-      setInvites([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled, organizationId]);
+  useSupabaseRealtimeSync({
+    channelName: `invites:${organizationId ?? ''}`,
+    table: 'invites',
+    filter: organizationId ? `organization_id=eq.${organizationId}` : undefined,
+    enabled: enabled && !!organizationId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
 
-  useEffect(() => {
-    if (!enabled) {
-      setInvites([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    setLoading(true);
-    fetchInvites();
-  }, [enabled, fetchInvites]);
-
-  // Realtime subscription — refetch on any change to invites for this org.
-  useEffect(() => {
-    if (!enabled || !organizationId) return;
-
-    const channel = supabase
-      .channel(`invites:${organizationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'invites',
-          filter: `organization_id=eq.${organizationId}`,
-        },
-        () => {
-          fetchInvites();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [enabled, organizationId, fetchInvites]);
+  const refetch = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
 
   const resend = useCallback(
     async (invite: Invite) => {
-      if (!enabled || !organizationId || !tokenRef.current) {
+      if (!enabled || !organizationId || !accessToken) {
         return { success: false, error: 'Missing organization or session' };
       }
-
       const result = await inviteTeamMember({
         email: invite.email,
         role: invite.role,
         organizationId,
-        accessToken: tokenRef.current,
+        accessToken,
       });
-
       if (result.success) {
-        // Realtime will trigger refetch, but kick one off immediately for snappy UX.
-        await fetchInvites();
+        // Realtime will refresh too, but kick one off immediately for snappy UX.
+        await queryClient.invalidateQueries({ queryKey });
       }
-
       return result;
     },
-    [enabled, organizationId, fetchInvites]
+    [enabled, organizationId, accessToken, queryClient, queryKey]
   );
 
-  return { invites, loading, error, refetch: fetchInvites, resend };
+  return {
+    invites: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch,
+    resend,
+  };
 }

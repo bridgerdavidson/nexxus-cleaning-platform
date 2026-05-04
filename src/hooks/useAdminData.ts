@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useRealtimeAppointments } from './useRealtimeAppointments';
-import { useRealtimePayments, PaymentUpdateData } from './useRealtimePayments';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOrgQuery } from '../lib/useOrgQuery';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 
 export interface AdminAppointment {
@@ -125,16 +124,14 @@ export interface AdminMessage {
 }
 
 export function useAdminAppointments() {
-  const [appointments, setAppointments] = useState<AdminAppointment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.appointments.byOrg(orgId);
 
-  // Helper function to fetch a single appointment with all relations
-  const fetchSingleAppointment = useCallback(async (appointmentId: string): Promise<AdminAppointment | null> => {
-    if (!currentOrganizationId) return null;
-
-    try {
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('appointments')
         .select(`
@@ -180,182 +177,18 @@ export function useAdminAppointments() {
             price_adder
           )
         `)
-        .eq('id', appointmentId)
-        .eq('organization_id', currentOrganizationId)
-        .single();
-
-      if (error) {
-        return null;
-      }
-
-      if (!data) return null;
-
-      // Transform the data to match our interface
-      return {
-        ...data,
-        homeowner: Array.isArray(data.homeowner) ? data.homeowner[0] : data.homeowner,
-        property: Array.isArray(data.property) ? data.property[0] : data.property,
-        service_type: Array.isArray(data.service_type) ? data.service_type[0] : data.service_type,
-        checklist: Array.isArray(data.checklist) ? data.checklist[0] : data.checklist,
-        cleaner_profile: data.cleaner_profile && Array.isArray(data.cleaner_profile) 
-          ? {
-              ...data.cleaner_profile[0],
-              user_profile: Array.isArray(data.cleaner_profile[0]?.user_profile) 
-                ? data.cleaner_profile[0].user_profile[0] 
-                : data.cleaner_profile[0]?.user_profile
-            }
-          : data.cleaner_profile
-      } as AdminAppointment;
-    } catch (err) {
-      return null;
-    }
-  }, [currentOrganizationId]);
-
-  // Realtime callbacks
-  const handleAppointmentInsert = useCallback(async (appointmentId: string) => {
-    const appointment = await fetchSingleAppointment(appointmentId);
-    if (appointment) {
-      setAppointments(prev => {
-        // Check if appointment already exists (avoid duplicates)
-        if (prev.some(apt => apt.id === appointmentId)) {
-          return prev;
-        }
-        // Add new appointment and sort by date (descending for admin view)
-        return [...prev, appointment].sort((a, b) => {
-          const dateCompare = b.scheduled_date.localeCompare(a.scheduled_date);
-          if (dateCompare !== 0) return dateCompare;
-          return b.scheduled_time.localeCompare(a.scheduled_time);
-        });
-      });
-    }
-  }, [fetchSingleAppointment]);
-
-  const handleAppointmentUpdate = useCallback(async (appointmentId: string) => {
-    const appointment = await fetchSingleAppointment(appointmentId);
-    if (appointment) {
-      setAppointments(prev => {
-        // Update existing appointment or add if not found
-        const existingIndex = prev.findIndex(apt => apt.id === appointmentId);
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = appointment;
-          // Re-sort after update
-          return updated.sort((a, b) => {
-            const dateCompare = b.scheduled_date.localeCompare(a.scheduled_date);
-            if (dateCompare !== 0) return dateCompare;
-            return b.scheduled_time.localeCompare(a.scheduled_time);
-          });
-        } else {
-          // Appointment not in list, add it
-          return [...prev, appointment].sort((a, b) => {
-            const dateCompare = b.scheduled_date.localeCompare(a.scheduled_date);
-            if (dateCompare !== 0) return dateCompare;
-            return b.scheduled_time.localeCompare(a.scheduled_time);
-          });
-        }
-      });
-    }
-  }, [fetchSingleAppointment]);
-
-  const handleAppointmentDelete = useCallback((appointmentId: string) => {
-    setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
-  }, []);
-
-  // Handle payment status updates from realtime subscription
-  const handlePaymentUpdate = useCallback((data: PaymentUpdateData) => {
-    setAppointments(prev => 
-      prev.map(apt => 
-        apt.id === data.appointmentId 
-          ? { ...apt, payment_status: data.status }
-          : apt
-      )
-    );
-  }, []);
-
-  // Set up realtime subscription for appointments
-  useRealtimeAppointments({
-    filters: {
-      organizationId: currentOrganizationId || '',
-    },
-    onInsert: handleAppointmentInsert,
-    onUpdate: handleAppointmentUpdate,
-    onDelete: handleAppointmentDelete,
-    enabled: !!currentOrganizationId,
-  });
-
-  // Set up realtime subscription for payments
-  useRealtimePayments({
-    onPaymentUpdate: handlePaymentUpdate,
-    enabled: !!currentOrganizationId,
-  });
-
-  const fetchAppointments = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          service_type_id,
-          checklist_id,
-          scheduled_date,
-          scheduled_time,
-          status,
-          total_price,
-          special_requests,
-          notes,
-          series_id,
-          cleaner_confirmation_status,
-          price_override_enabled,
-          price_override_total,
-          homeowner_id,
-          homeowner:user_profiles!homeowner_id(
-            first_name,
-            last_name,
-            email
-          ),
-          cleaner_profile:cleaner_profiles(
-            user_profile:user_profiles!id(
-              id,
-              first_name,
-              last_name,
-              email
-            )
-          ),
-          property:properties(
-            name,
-            address,
-            city,
-            state
-          ),
-          service_type:service_types(
-            name,
-            description
-          ),
-          checklist:checklists(
-            name,
-            price_adder
-          )
-        `)
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('scheduled_date', { ascending: false });
 
-      if (error) {
-        throw error;
-      }
-      
-      // Fetch payment statuses for all appointments
+      if (error) throw error;
+
       const appointmentIds = (data || []).map(a => a.id);
       let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
-      
       if (appointmentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
           .select('appointment_id, status')
           .in('appointment_id', appointmentIds);
-        
         if (payments) {
           paymentStatusMap = payments.reduce((acc, p) => {
             acc[p.appointment_id] = p.status;
@@ -364,52 +197,76 @@ export function useAdminAppointments() {
         }
       }
 
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(appointment => ({
+      return (data || []).map(appointment => ({
         ...appointment,
         homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
         property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
         service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
         checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
-        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
+        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile)
           ? {
               ...appointment.cleaner_profile[0],
-              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
-                ? appointment.cleaner_profile[0].user_profile[0] 
-                : appointment.cleaner_profile[0]?.user_profile
+              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile)
+                ? appointment.cleaner_profile[0].user_profile[0]
+                : appointment.cleaner_profile[0]?.user_profile,
             }
           : appointment.cleaner_profile,
         payment_status: paymentStatusMap[appointment.id] || null,
-      }));
-      
-      setAppointments(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+      })) as AdminAppointment[];
+    },
+  });
 
-  useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
+  // Appointments realtime: invalidate the list on any change. Refetch picks up
+  // joins that the realtime payload doesn't carry (homeowner, cleaner, etc.).
+  useSupabaseRealtimeSync({
+    channelName: `appointments:${orgId}`,
+    table: 'appointments',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
 
-  const refetch = useCallback(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
+  // Payments realtime: small payload — patch the appointments cache directly
+  // (kills the legacy "fetch single appointment" round-trip on every payment).
+  useSupabaseRealtimeSync({
+    channelName: `payments:${orgId}`,
+    table: 'payments',
+    enabled: !!orgId,
+    onEvent: payload => {
+      const row = (payload.new ?? payload.old) as { appointment_id?: string; status?: string } | undefined;
+      const apptId = row?.appointment_id;
+      if (!apptId) return;
+      return {
+        type: 'patch',
+        key: queryKey,
+        updater: prev => {
+          const list = Array.isArray(prev) ? (prev as AdminAppointment[]) : [];
+          return list.map(a =>
+            a.id === apptId
+              ? { ...a, payment_status: (row?.status as AdminAppointment['payment_status']) ?? a.payment_status }
+              : a
+          );
+        },
+      };
+    },
+  });
 
-  // Update a single appointment in state without refetching
-  const updateAppointmentInState = useCallback((appointmentId: string, updatedData: Partial<AdminAppointment>) => {
-    setAppointments(prevAppointments => 
-      prevAppointments.map(appointment => 
-        appointment.id === appointmentId 
-          ? { ...appointment, ...updatedData }
-          : appointment
-      )
-    );
-  }, []);
+  const updateAppointmentInState = useCallback(
+    (appointmentId: string, updatedData: Partial<AdminAppointment>) => {
+      queryClient.setQueryData<AdminAppointment[]>(queryKey, prev =>
+        (prev ?? []).map(a => (a.id === appointmentId ? { ...a, ...updatedData } : a))
+      );
+    },
+    [queryClient, queryKey]
+  );
 
-  return { appointments, loading, error, refetch, updateAppointmentInState };
+  return {
+    appointments: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    updateAppointmentInState,
+  };
 }
 
 export function useAdminCleaners() {

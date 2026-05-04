@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useRealtimeServices } from './useRealtimeServices';
 import { useOrgQuery } from '../lib/useOrgQuery';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 
 export interface ServiceType {
@@ -39,171 +40,150 @@ export interface UpdateServiceData {
 }
 
 export function useServices() {
-  const [services, setServices] = useState<ServiceType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.services.byOrg(orgId);
 
-  const fetchServices = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) {
-      setServices([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error: fetchError } = await supabase
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
         .from('service_types')
         .select('*')
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('name', { ascending: true });
-
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setServices(data || []);
-    } catch (err) {
-      console.error('Error fetching services:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch services');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
-
-  // Realtime callback: Handle new service INSERT (receives full row from realtime payload)
-  const handleServiceInsert = useCallback((service: ServiceType) => {
-    // Add to state, maintaining alphabetical order by name
-    setServices((prev) => {
-      // Check if already exists to avoid duplicates
-      if (prev.some((s) => s.id === service.id)) {
-        return prev;
-      }
-      const updated = [...prev, service];
-      return updated.sort((a, b) => a.name.localeCompare(b.name));
-    });
-  }, []);
-
-  // Realtime callback: Handle service UPDATE (receives full row from realtime payload)
-  const handleServiceUpdate = useCallback((service: ServiceType) => {
-    setServices((prev) => {
-      const updated = prev.map((s) =>
-        s.id === service.id ? service : s
-      );
-      // Re-sort in case name changed
-      return updated.sort((a, b) => a.name.localeCompare(b.name));
-    });
-  }, []);
-
-  // Realtime callback: Handle service DELETE
-  const handleServiceDelete = useCallback((serviceId: string) => {
-    setServices((prev) => prev.filter((s) => s.id !== serviceId));
-  }, []);
-
-  // Set up realtime subscription
-  useRealtimeServices({
-    organizationId: currentOrganizationId || '',
-    onInsert: handleServiceInsert,
-    onUpdate: handleServiceUpdate,
-    onDelete: handleServiceDelete,
-    enabled: !!currentOrganizationId,
+      if (error) throw error;
+      return (data ?? []) as ServiceType[];
+    },
   });
 
-  useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
+  const services = useMemo(() => query.data ?? [], [query.data]);
 
-  const refetch = useCallback(() => {
-    fetchServices();
-  }, [fetchServices]);
+  // Realtime: full-row payload patches the cache directly. No refetch needed.
+  useSupabaseRealtimeSync({
+    channelName: `services:${orgId}`,
+    table: 'service_types',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: (payload) => {
+      const event = payload.eventType;
+      if (event === 'INSERT' || event === 'UPDATE') {
+        const row = payload.new as unknown as ServiceType;
+        return {
+          type: 'patch',
+          key: queryKey,
+          updater: (old) => {
+            const list = Array.isArray(old) ? (old as ServiceType[]) : [];
+            const next = list.some(s => s.id === row.id)
+              ? list.map(s => (s.id === row.id ? row : s))
+              : [...list, row];
+            return next.sort((a, b) => a.name.localeCompare(b.name));
+          },
+        };
+      }
+      if (event === 'DELETE') {
+        const old = payload.old as unknown as { id: string };
+        return {
+          type: 'patch',
+          key: queryKey,
+          updater: (prev) => {
+            const list = Array.isArray(prev) ? (prev as ServiceType[]) : [];
+            return list.filter(s => s.id !== old.id);
+          },
+        };
+      }
+    },
+  });
 
-  // Update a single service in state (merge partial fields)
   const updateServiceInState = useCallback(
     (serviceId: string, patch: Partial<ServiceType>) => {
-      setServices((prev) => {
-        const updated = prev.map((s) =>
-          s.id === serviceId ? { ...s, ...patch } : s
-        );
-        // Re-sort if name changed
+      queryClient.setQueryData<ServiceType[]>(queryKey, prev => {
+        const list = prev ?? [];
+        const updated = list.map(s => (s.id === serviceId ? { ...s, ...patch } : s));
         if (patch.name !== undefined) {
           return updated.sort((a, b) => a.name.localeCompare(b.name));
         }
         return updated;
       });
     },
-    []
+    [queryClient, queryKey]
   );
 
-  // Replace a single service in state (full replacement)
-  const replaceServiceInState = useCallback((service: ServiceType) => {
-    setServices((prev) => {
-      const updated = prev.map((s) => (s.id === service.id ? service : s));
-      return updated.sort((a, b) => a.name.localeCompare(b.name));
-    });
-  }, []);
+  const replaceServiceInState = useCallback(
+    (service: ServiceType) => {
+      queryClient.setQueryData<ServiceType[]>(queryKey, prev => {
+        const list = prev ?? [];
+        const updated = list.map(s => (s.id === service.id ? service : s));
+        return updated.sort((a, b) => a.name.localeCompare(b.name));
+      });
+    },
+    [queryClient, queryKey]
+  );
 
-  // ── Checklist price-adder map (persists across tab switches) ──────────
-  const [maxChecklistAdderByServiceId, setMaxChecklistAdderByServiceId] =
-    useState<Record<string, number>>({});
+  const setServices = useCallback(
+    (
+      updater:
+        | ServiceType[]
+        | ((prev: ServiceType[]) => ServiceType[])
+    ) => {
+      queryClient.setQueryData<ServiceType[]>(queryKey, prev => {
+        const list = prev ?? [];
+        return typeof updater === 'function' ? (updater as (p: ServiceType[]) => ServiceType[])(list) : updater;
+      });
+    },
+    [queryClient, queryKey]
+  );
 
+  // Checklist max-price-adder map — derived from the services list.
   const serviceIdsKey = useMemo(
-    () => [...services].map((s) => s.id).sort().join(','),
+    () => [...services].map(s => s.id).sort().join(','),
     [services]
   );
 
-  const fetchMaxChecklistAdders = useCallback(async () => {
-    if (!currentOrganizationId) {
-      setMaxChecklistAdderByServiceId({});
-      return;
-    }
-    const ids = serviceIdsKey ? serviceIdsKey.split(',') : [];
-    if (ids.length === 0) {
-      setMaxChecklistAdderByServiceId({});
-      return;
-    }
+  const adderQueryKey = useMemo(
+    () => ['services', 'max-checklist-adder', orgId, serviceIdsKey] as const,
+    [orgId, serviceIdsKey]
+  );
 
-    try {
-      const { data, error: qError } = await supabase
+  const adderQuery = useOrgQuery({
+    queryKey: adderQueryKey,
+    enabled: !!orgId && serviceIdsKey.length > 0,
+    queryFn: async () => {
+      const ids = serviceIdsKey ? serviceIdsKey.split(',') : [];
+      if (ids.length === 0) return {} as Record<string, number>;
+
+      const { data, error } = await supabase
         .from('checklists')
         .select('service_type_id, price_adder')
         .in('service_type_id', ids);
-
-      if (qError) {
-        throw qError;
-      }
+      if (error) throw error;
 
       const map: Record<string, number> = {};
-      for (const id of ids) {
-        map[id] = 0;
-      }
-      for (const row of data || []) {
+      for (const id of ids) map[id] = 0;
+      for (const row of data ?? []) {
         const sid = row.service_type_id as string;
         const adder = Number(row.price_adder) || 0;
         map[sid] = Math.max(map[sid] ?? 0, adder);
       }
-      setMaxChecklistAdderByServiceId(map);
-    } catch (e) {
-      console.error('Error loading checklist adders for services:', e);
-    }
-  }, [currentOrganizationId, serviceIdsKey]);
+      return map;
+    },
+  });
 
-  useEffect(() => {
-    fetchMaxChecklistAdders();
-  }, [fetchMaxChecklistAdders]);
+  const refreshMaxChecklistAdders = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: adderQueryKey });
+  }, [queryClient, adderQueryKey]);
 
   return {
     services,
-    loading,
-    error,
-    refetch,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
     setServices,
     updateServiceInState,
     replaceServiceInState,
-    maxChecklistAdderByServiceId,
-    refreshMaxChecklistAdders: fetchMaxChecklistAdders,
+    maxChecklistAdderByServiceId: adderQuery.data ?? {},
+    refreshMaxChecklistAdders,
   };
 }
 

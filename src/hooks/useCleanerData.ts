@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useRealtimeAppointments } from './useRealtimeAppointments';
 import { useOrgQuery } from '../lib/useOrgQuery';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 
 export interface CleanerAppointment {
@@ -143,18 +143,23 @@ export interface CleanerPhoto {
 }
 
 export function useCleanerAppointments() {
-  const [appointments, setAppointments] = useState<CleanerAppointment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.appointments.byCleaner(userId);
 
-  // Helper function to fetch a single appointment with all relations
-  const fetchSingleAppointment = useCallback(async (appointmentId: string): Promise<CleanerAppointment | null> => {
-    if (!user?.id || !orgId) return null;
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId, userId }) => {
+      const { data: cleanerProfile, error: profileError } = await supabase
+        .from('cleaner_profiles')
+        .select('id')
+        .eq('id', userId)
+        .eq('organization_id', orgId)
+        .single();
+      if (profileError) throw profileError;
+      if (!cleanerProfile) throw new Error('Cleaner profile not found');
 
-    try {
       const { data, error } = await supabase
         .from('appointments')
         .select(`
@@ -191,201 +196,61 @@ export function useCleanerAppointments() {
             price_adder
           )
         `)
-        .eq('id', appointmentId)
-        .eq('cleaner_id', user.id)
+        .eq('cleaner_id', userId)
         .eq('organization_id', orgId)
-        .single();
+        .order('scheduled_date', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching appointment:', error);
-        return null;
+      if (error) throw error;
+
+      const appointmentIds = (data || []).map(a => a.id);
+      let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
+      if (appointmentIds.length > 0) {
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('appointment_id, status')
+          .in('appointment_id', appointmentIds);
+        if (payments) {
+          paymentStatusMap = payments.reduce((acc, p) => {
+            acc[p.appointment_id] = p.status;
+            return acc;
+          }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
+        }
       }
 
-      if (!data) return null;
-
-      // Transform the data to match our interface
-      return {
-        ...data,
-        homeowner: Array.isArray(data.homeowner) ? data.homeowner[0] : data.homeowner,
-        property: Array.isArray(data.property) ? data.property[0] : data.property,
-        service_type: Array.isArray(data.service_type) ? data.service_type[0] : data.service_type,
-        checklist: Array.isArray(data.checklist) ? data.checklist[0] : data.checklist
-      } as CleanerAppointment;
-    } catch (err) {
-      console.error('Error in fetchSingleAppointment:', err);
-      return null;
-    }
-  }, [user?.id, orgId]);
-
-  // Realtime callbacks
-  const handleAppointmentInsert = useCallback(async (appointmentId: string) => {
-    const appointment = await fetchSingleAppointment(appointmentId);
-    if (appointment) {
-      setAppointments(prev => {
-        // Check if appointment already exists (avoid duplicates)
-        if (prev.some(apt => apt.id === appointmentId)) {
-          return prev;
-        }
-        // Add new appointment and sort by date
-        return [...prev, appointment].sort((a, b) => {
-          const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
-          if (dateCompare !== 0) return dateCompare;
-          return a.scheduled_time.localeCompare(b.scheduled_time);
-        });
-      });
-    }
-  }, [fetchSingleAppointment]);
-
-  const handleAppointmentUpdate = useCallback(async (appointmentId: string) => {
-    const appointment = await fetchSingleAppointment(appointmentId);
-    if (appointment) {
-      setAppointments(prev => {
-        // Update existing appointment or add if not found
-        const existingIndex = prev.findIndex(apt => apt.id === appointmentId);
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = appointment;
-          // Re-sort after update
-          return updated.sort((a, b) => {
-            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
-            if (dateCompare !== 0) return dateCompare;
-            return a.scheduled_time.localeCompare(b.scheduled_time);
-          });
-        } else {
-          // Appointment not in list, add it (might have been assigned to this cleaner)
-          return [...prev, appointment].sort((a, b) => {
-            const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);
-            if (dateCompare !== 0) return dateCompare;
-            return a.scheduled_time.localeCompare(b.scheduled_time);
-          });
-        }
-      });
-    }
-  }, [fetchSingleAppointment]);
-
-  const handleAppointmentDelete = useCallback((appointmentId: string) => {
-    setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
-  }, []);
-
-  // Set up realtime subscription
-  useRealtimeAppointments({
-    filters: {
-      organizationId: orgId || '',
-      cleanerId: user?.id,
+      return (data || []).map(appointment => ({
+        ...appointment,
+        homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
+        property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
+        service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+        checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
+        payment_status: paymentStatusMap[appointment.id] || null,
+      })) as CleanerAppointment[];
     },
-    onInsert: handleAppointmentInsert,
-    onUpdate: handleAppointmentUpdate,
-    onDelete: handleAppointmentDelete,
-    enabled: !!user?.id && !!orgId,
   });
 
-  useEffect(() => {
-    if (!user?.id || !orgId) {
-      setLoading(false);
-      return;
-    }
+  // Cleaner-scoped channel: filter to events for THIS cleaner only.
+  useSupabaseRealtimeSync({
+    channelName: `appointments:cleaner:${userId}`,
+    table: 'appointments',
+    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
 
-    const fetchAppointments = async () => {
-      try {
-        setLoading(true);
-        
-        // Check if cleaner profile exists for this user
-        // Note: cleaner_profiles.id IS the user's id (no separate user_id column)
-        const { data: cleanerProfile, error: profileError } = await supabase
-          .from('cleaner_profiles')
-          .select('id')
-          .eq('id', user.id)
-          .eq('organization_id', orgId)
-          .single();
+  // Helper for legacy callers; not currently used outside.
+  const _setQuery = useCallback(
+    (updater: (prev: CleanerAppointment[]) => CleanerAppointment[]) => {
+      queryClient.setQueryData<CleanerAppointment[]>(queryKey, prev => updater(prev ?? []));
+    },
+    [queryClient, queryKey]
+  );
+  void _setQuery;
 
-        if (profileError) {
-          console.error('Cleaner profile error:', profileError);
-          throw profileError;
-        }
-        if (!cleanerProfile) throw new Error('Cleaner profile not found');
-
-        const { data, error } = await supabase
-          .from('appointments')
-          .select(`
-            id,
-            service_type_id,
-            checklist_id,
-            scheduled_date,
-            scheduled_time,
-            status,
-            job_progress,
-            total_price,
-            special_requests,
-            cleaner_confirmation_status,
-            homeowner:user_profiles!homeowner_id(
-              first_name,
-              last_name,
-              email,
-              phone
-            ),
-            property:properties(
-              name,
-              address,
-              city,
-              state,
-              zip_code
-            ),
-            service_type:service_types(
-              name,
-              description,
-              duration_minutes
-            ),
-            checklist:checklists(
-              name,
-              price_adder
-            )
-          `)
-          .eq('cleaner_id', user.id)
-          .eq('organization_id', orgId)
-          .order('scheduled_date', { ascending: true });
-        
-        if (error) throw error;
-        
-        // Fetch payment statuses for all appointments
-        const appointmentIds = (data || []).map(a => a.id);
-        let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
-        
-        if (appointmentIds.length > 0) {
-          const { data: payments } = await supabase
-            .from('payments')
-            .select('appointment_id, status')
-            .in('appointment_id', appointmentIds);
-          
-          if (payments) {
-            paymentStatusMap = payments.reduce((acc, p) => {
-              acc[p.appointment_id] = p.status;
-              return acc;
-            }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
-          }
-        }
-
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(appointment => ({
-          ...appointment,
-          homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
-          property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
-          checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
-          payment_status: paymentStatusMap[appointment.id] || null,
-        }));
-        
-        setAppointments(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAppointments();
-  }, [user?.id, orgId]);
-
-  return { appointments, loading, error };
+  return {
+    appointments: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 export function useCleanerStats() {
