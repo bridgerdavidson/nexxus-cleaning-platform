@@ -476,119 +476,101 @@ export function useAdminCleaners() {
 }
 
 export function useAdminStats() {
-  const [stats, setStats] = useState<AdminStats>({
-    totalBookings: 0,
-    activeCleaners: 0,
-    totalRevenue: 0,
-    pendingApprovals: 0,
-    monthlyGrowth: 0,
-    completionRate: 0,
-    avgRating: 0,
-    avgJobsPerDay: 0,
-    avgJobValue: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
 
-  const fetchStats = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
+  const query = useOrgQuery({
+    queryKey: keys.stats.admin(orgId),
+    queryFn: async ({ orgId }) => {
+      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      const rpcRes = await supabase.rpc('admin_dashboard_stats', { p_org_id: orgId });
+      if (!rpcRes.error && rpcRes.data) {
+        const r = rpcRes.data as Record<string, number>;
+        return {
+          totalBookings: Number(r.totalBookings ?? 0),
+          activeCleaners: Number(r.activeCleaners ?? 0),
+          totalRevenue: Number(r.totalRevenue ?? 0),
+          pendingApprovals: Number(r.pendingApprovals ?? 0),
+          monthlyGrowth: 15.3, // placeholder; not yet computed in RPC
+          completionRate: Number(r.completionRate ?? 0),
+          avgRating: Number(r.avgRating ?? 0),
+          avgJobsPerDay: Number(r.avgJobsPerDay ?? 0),
+          avgJobValue: Number(r.avgJobValue ?? 0),
+        } as AdminStats;
+      }
 
-    try {
-      setLoading(true);
-
-      // Get total bookings
+      // Fallback: legacy 8-query waterfall (used until migration 049 is applied).
       const { count: totalBookings } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
-        .eq('organization_id', currentOrganizationId);
-
-      // Get active cleaners
+        .eq('organization_id', orgId);
       const { count: activeCleaners } = await supabase
         .from('cleaner_profiles')
         .select('*', { count: 'exact', head: true })
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .eq('is_available', true);
-
-      // Get pending approvals
       const { count: pendingApprovals } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .eq('status', 'pending');
-
-      // Get total revenue from paid payments
       const { data: payments } = await supabase
         .from('payments')
         .select('amount')
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .eq('status', 'paid');
-
-      const totalRevenue = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-
-      // Get completion rate
+      const totalRevenue = (payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
       const { count: completedJobs } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .eq('status', 'completed');
-
-      const completionRate = totalBookings ? (completedJobs || 0) / totalBookings * 100 : 0;
-
-      // Get average rating from reviews
+      const completionRate = totalBookings ? ((completedJobs || 0) / totalBookings) * 100 : 0;
       const { data: reviews } = await supabase
         .from('reviews')
         .select('rating')
-        .eq('organization_id', currentOrganizationId);
-
-      const avgRating = reviews?.length ? 
-        reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0;
-
-      // Calculate average job value
-      const avgJobValue = totalBookings ? totalRevenue / totalBookings : 0;
-
-      // Calculate jobs per day (last 30 days)
+        .eq('organization_id', orgId);
+      const avgRating = reviews?.length
+        ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+        : 0;
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
       const { count: recentJobs } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .gte('created_at', thirtyDaysAgo.toISOString());
-
-      const avgJobsPerDay = (recentJobs || 0) / 30;
-
-      // Calculate monthly growth (simplified - would need historical data for real calculation)
-      const monthlyGrowth = 15.3; // Placeholder
-
-      setStats({
+      return {
         totalBookings: totalBookings || 0,
         activeCleaners: activeCleaners || 0,
         totalRevenue,
         pendingApprovals: pendingApprovals || 0,
-        monthlyGrowth,
+        monthlyGrowth: 15.3,
         completionRate: Math.round(completionRate * 10) / 10,
         avgRating: Math.round(avgRating * 10) / 10,
-        avgJobsPerDay: Math.round(avgJobsPerDay * 10) / 10,
-        avgJobValue: Math.round(avgJobValue)
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch stats');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+        avgJobsPerDay: Math.round(((recentJobs || 0) / 30) * 10) / 10,
+        avgJobValue: Math.round(totalBookings ? totalRevenue / totalBookings : 0),
+      } as AdminStats;
+    },
+  });
 
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  const refetch = useCallback(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  return { stats, loading, error, refetch };
+  return {
+    stats:
+      query.data ?? {
+        totalBookings: 0,
+        activeCleaners: 0,
+        totalRevenue: 0,
+        pendingApprovals: 0,
+        monthlyGrowth: 0,
+        completionRate: 0,
+        avgRating: 0,
+        avgJobsPerDay: 0,
+        avgJobValue: 0,
+      },
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 export function useAdminPayments() {
@@ -791,70 +773,62 @@ export interface PaymentStats {
 }
 
 export function usePaymentStats() {
-  const [stats, setStats] = useState<PaymentStats>({
-    totalRevenue: 0,
-    pendingPayouts: 0,
-    thisMonthRevenue: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-
-        // Get total revenue from payments (status = 'paid' and type = 'revenue')
-        const { data: revenueData } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('organization_id', currentOrganizationId)
-          .eq('status', 'paid')
-          .eq('payment_type', 'revenue');
-
-        const totalRevenue = (revenueData || []).reduce((sum, p) => sum + Number(p.amount), 0);
-
-        // Get pending payouts
-        const { data: payoutsData } = await supabase
-          .from('payouts')
-          .select('amount')
-          .eq('organization_id', currentOrganizationId)
-          .eq('status', 'pending');
-
-        const pendingPayouts = (payoutsData || []).reduce((sum, p) => sum + Number(p.amount), 0);
-
-        // Get this month's revenue
-        const now = new Date();
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-        
-        const { data: monthData } = await supabase
-          .from('payments')
-          .select('amount')
-          .eq('organization_id', currentOrganizationId)
-          .eq('status', 'paid')
-          .eq('payment_type', 'revenue')
-          .gte('created_at', firstDayOfMonth);
-
-        const thisMonthRevenue = (monthData || []).reduce((sum, p) => sum + Number(p.amount), 0);
-
-        setStats({
-          totalRevenue: Math.round(totalRevenue),
-          pendingPayouts: Math.round(pendingPayouts),
-          thisMonthRevenue: Math.round(thisMonthRevenue),
-        });
-      } catch (err) {
-        // Error handled silently
-      } finally {
-        setLoading(false);
+  const query = useOrgQuery({
+    queryKey: keys.payments.statsByOrg(orgId),
+    queryFn: async ({ orgId }) => {
+      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      const rpcRes = await supabase.rpc('payment_stats', { p_org_id: orgId });
+      if (!rpcRes.error && rpcRes.data) {
+        const r = rpcRes.data as Record<string, number>;
+        return {
+          totalRevenue: Number(r.totalRevenue ?? 0),
+          pendingPayouts: Number(r.pendingPayouts ?? 0),
+          thisMonthRevenue: Number(r.thisMonthRevenue ?? 0),
+        } as PaymentStats;
       }
-    };
 
-    fetchStats();
-  }, [user?.id, currentOrganizationId]);
+      // Fallback: 3-query waterfall.
+      const { data: revenueData } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('organization_id', orgId)
+        .eq('status', 'paid')
+        .eq('payment_type', 'revenue');
+      const totalRevenue = (revenueData ?? []).reduce((s, p) => s + Number(p.amount), 0);
 
-  return { stats, loading };
+      const { data: payoutsData } = await supabase
+        .from('payouts')
+        .select('amount')
+        .eq('organization_id', orgId)
+        .eq('status', 'pending');
+      const pendingPayouts = (payoutsData ?? []).reduce((s, p) => s + Number(p.amount), 0);
+
+      const now = new Date();
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const { data: monthData } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('organization_id', orgId)
+        .eq('status', 'paid')
+        .eq('payment_type', 'revenue')
+        .gte('created_at', firstDayOfMonth);
+      const thisMonthRevenue = (monthData ?? []).reduce((s, p) => s + Number(p.amount), 0);
+
+      return {
+        totalRevenue: Math.round(totalRevenue),
+        pendingPayouts: Math.round(pendingPayouts),
+        thisMonthRevenue: Math.round(thisMonthRevenue),
+      } as PaymentStats;
+    },
+  });
+
+  return {
+    stats: query.data ?? { totalRevenue: 0, pendingPayouts: 0, thisMonthRevenue: 0 },
+    loading: query.isLoading,
+  };
 }
 
 export function useAdminMessages() {
@@ -1229,123 +1203,107 @@ export interface CustomerProperty {
 }
 
 export function useAdminCustomers() {
-  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.customers.byOrg(orgId);
 
-  const fetchCustomers = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
+      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      const rpcRes = await supabase.rpc('org_customers_with_counts', { p_org_id: orgId });
+      if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+        return (rpcRes.data as Array<Record<string, unknown>>).map(row => ({
+          id: row.id as string,
+          first_name: (row.first_name ?? null) as string | null,
+          last_name: (row.last_name ?? null) as string | null,
+          email: row.email as string,
+          phone: (row.phone ?? null) as string | null,
+          avatar_url: (row.avatar_url ?? null) as string | null,
+          created_at: row.created_at as string,
+          updated_at: row.updated_at as string,
+          properties_count: Number(row.properties_count ?? 0),
+          appointments_count: Number(row.appointments_count ?? 0),
+          total_spent: Number(row.total_spent ?? 0),
+          last_appointment_date: (row.last_appointment_date ?? null) as string | null,
+        })) as AdminCustomer[];
+      }
 
-    try {
-      setLoading(true);
-      
-      // Get homeowners in the organization via organization_members
+      // Fallback: legacy 4-query parallel + client merge.
       const { data: orgMembers, error: membersError } = await supabase
         .from('organization_members')
         .select('user_id')
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .eq('role', 'homeowner');
-
       if (membersError) throw membersError;
-
-      if (!orgMembers || orgMembers.length === 0) {
-        setCustomers([]);
-        setLoading(false);
-        return;
-      }
+      if (!orgMembers || orgMembers.length === 0) return [];
 
       const homeownerIds = orgMembers.map(m => m.user_id);
 
-      // Get user profiles for these homeowners
-      const { data: profiles, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select(`
-          id,
-          first_name,
-          last_name,
-          email,
-          phone,
-          avatar_url,
-          created_at,
-          updated_at
-        `)
-        .in('id', homeownerIds)
-        .order('created_at', { ascending: false });
+      const [profilesRes, propertiesRes, appointmentsRes] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('id, first_name, last_name, email, phone, avatar_url, created_at, updated_at')
+          .in('id', homeownerIds)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('properties')
+          .select('owner_id')
+          .eq('organization_id', orgId)
+          .in('owner_id', homeownerIds),
+        supabase
+          .from('appointments')
+          .select('homeowner_id, total_price, scheduled_date')
+          .eq('organization_id', orgId)
+          .in('homeowner_id', homeownerIds),
+      ]);
 
-      if (profilesError) throw profilesError;
+      if (profilesRes.error) throw profilesRes.error;
+      if (propertiesRes.error) throw propertiesRes.error;
+      if (appointmentsRes.error) throw appointmentsRes.error;
 
-      // Get properties count for each homeowner
-      const { data: propertiesData, error: propertiesError } = await supabase
-        .from('properties')
-        .select('owner_id')
-        .eq('organization_id', currentOrganizationId)
-        .in('owner_id', homeownerIds);
-
-      if (propertiesError) throw propertiesError;
-
-      // Get appointments data for each homeowner
-      const { data: appointmentsData, error: appointmentsError } = await supabase
-        .from('appointments')
-        .select('homeowner_id, total_price, scheduled_date')
-        .eq('organization_id', currentOrganizationId)
-        .in('homeowner_id', homeownerIds);
-
-      if (appointmentsError) throw appointmentsError;
-
-      // Calculate counts and totals for each customer
       const propertiesCount: Record<string, number> = {};
       const appointmentsCount: Record<string, number> = {};
       const totalSpent: Record<string, number> = {};
       const lastAppointment: Record<string, string | null> = {};
 
-      propertiesData?.forEach(p => {
+      propertiesRes.data?.forEach(p => {
         propertiesCount[p.owner_id] = (propertiesCount[p.owner_id] || 0) + 1;
       });
-
-      appointmentsData?.forEach(a => {
+      appointmentsRes.data?.forEach(a => {
         appointmentsCount[a.homeowner_id] = (appointmentsCount[a.homeowner_id] || 0) + 1;
         totalSpent[a.homeowner_id] = (totalSpent[a.homeowner_id] || 0) + Number(a.total_price);
-        
-        const currentDate = lastAppointment[a.homeowner_id];
-        if (!currentDate || a.scheduled_date > currentDate) {
-          lastAppointment[a.homeowner_id] = a.scheduled_date;
-        }
+        const cur = lastAppointment[a.homeowner_id];
+        if (!cur || a.scheduled_date > cur) lastAppointment[a.homeowner_id] = a.scheduled_date;
       });
 
-      // Combine all data
-      const customersData: AdminCustomer[] = (profiles || []).map(profile => ({
+      return (profilesRes.data ?? []).map(profile => ({
         ...profile,
         properties_count: propertiesCount[profile.id] || 0,
         appointments_count: appointmentsCount[profile.id] || 0,
         total_spent: totalSpent[profile.id] || 0,
         last_appointment_date: lastAppointment[profile.id] || null,
-      }));
+      })) as AdminCustomer[];
+    },
+  });
 
-      setCustomers(customersData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch customers');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+  const updateCustomerInState = useCallback(
+    (customerId: string, updatedData: Partial<AdminCustomer>) => {
+      queryClient.setQueryData<AdminCustomer[]>(queryKey, prev =>
+        (prev ?? []).map(c => (c.id === customerId ? { ...c, ...updatedData } : c))
+      );
+    },
+    [queryClient, queryKey]
+  );
 
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
-
-  // Update a single customer in state without refetching
-  const updateCustomerInState = useCallback((customerId: string, updatedData: Partial<AdminCustomer>) => {
-    setCustomers(prevCustomers => 
-      prevCustomers.map(customer => 
-        customer.id === customerId 
-          ? { ...customer, ...updatedData }
-          : customer
-      )
-    );
-  }, []);
-
-  return { customers, loading, error, refetch: fetchCustomers, updateCustomerInState };
+  return {
+    customers: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    updateCustomerInState,
+  };
 }
 
 export function useCustomerDetails(customerId: string | null) {
@@ -1513,35 +1471,14 @@ export interface AdminProperty {
 }
 
 export function useAdminProperties() {
-  const [properties, setProperties] = useState<AdminProperty[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.properties.byOrg(orgId);
 
-  const fetchProperties = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
-      
-      // First, get all homeowners in this organization
-      const { data: orgMembers, error: membersError } = await supabase
-        .from('organization_members')
-        .select('user_id')
-        .eq('organization_id', currentOrganizationId)
-        .eq('role', 'homeowner');
-
-      if (membersError) throw membersError;
-
-      if (!orgMembers || orgMembers.length === 0) {
-        setProperties([]);
-        setLoading(false);
-        return;
-      }
-
-      const homeownerIds = orgMembers.map(m => m.user_id);
-
-      // Then, get properties owned by these homeowners
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('properties')
         .select(`
@@ -1567,45 +1504,35 @@ export function useAdminProperties() {
             email
           )
         `)
-        .in('owner_id', homeownerIds)
+        .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(property => ({
+      return (data || []).map(property => ({
         ...property,
-        homeowner: Array.isArray(property.homeowner) ? property.homeowner[0] : property.homeowner
-      }));
-      
-      setProperties(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch properties');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+        homeowner: Array.isArray(property.homeowner)
+          ? property.homeowner[0]
+          : property.homeowner,
+      })) as AdminProperty[];
+    },
+  });
 
-  useEffect(() => {
-    fetchProperties();
-  }, [fetchProperties]);
+  const updatePropertyInState = useCallback(
+    (propertyId: string, updatedData: Partial<AdminProperty>) => {
+      queryClient.setQueryData<AdminProperty[]>(queryKey, prev =>
+        (prev ?? []).map(p => (p.id === propertyId ? { ...p, ...updatedData } : p))
+      );
+    },
+    [queryClient, queryKey]
+  );
 
-  const refetch = useCallback(() => {
-    fetchProperties();
-  }, [fetchProperties]);
-
-  // Update a single property in state without refetching
-  const updatePropertyInState = useCallback((propertyId: string, updatedData: Partial<AdminProperty>) => {
-    setProperties(prevProperties => 
-      prevProperties.map(property => 
-        property.id === propertyId 
-          ? { ...property, ...updatedData }
-          : property
-      )
-    );
-  }, []);
-
-  return { properties, loading, error, refetch, updatePropertyInState };
+  return {
+    properties: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    updatePropertyInState,
+  };
 }
 
 // Helper function to update a property
