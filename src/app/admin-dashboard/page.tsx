@@ -44,6 +44,7 @@ import {
   deleteAppointment,
 } from "../../hooks/useAdminData";
 import { useServices } from "../../hooks/useServices";
+import { useInvites } from "../../hooks/useInvites";
 import {
   DASHBOARD_HERO_BACKGROUND,
   dashboardHeroCardDesktopClass,
@@ -79,11 +80,19 @@ import {
 } from "../../hooks/usePersistedDashboardTab";
 
 function AdminDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
   );
+  // Lazy-load invites: stays mounted at dashboard level once first opened, so
+  // tab switches don't re-fetch and the Realtime channel survives navigation.
+  const [hasOpenedInvitesEver, setHasOpenedInvitesEver] = useState(
+    activeTab === "invites",
+  );
+  useEffect(() => {
+    if (activeTab === "invites") setHasOpenedInvitesEver(true);
+  }, [activeTab]);
   const activeGroup = useMemo(
     () => ADMIN_MANAGER_TAB_TO_GROUP[activeTab] ?? ADMIN_MANAGER_DEFAULT_GROUP,
     [activeTab],
@@ -181,6 +190,15 @@ function AdminDashboardInner() {
     maxChecklistAdderByServiceId,
     refreshMaxChecklistAdders,
   } = useServices();
+  const {
+    invites,
+    loading: invitesLoading,
+    error: invitesError,
+    refetch: refetchInvites,
+    resend: resendInvite,
+  } = useInvites(currentOrganizationId, accessToken, {
+    enabled: hasOpenedInvitesEver,
+  });
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -1352,7 +1370,16 @@ function AdminDashboardInner() {
           />
         );
       case "invites":
-        return <InvitesPage canResend={true} />;
+        return (
+          <InvitesPage
+            canResend={true}
+            invites={invites}
+            loading={invitesLoading}
+            error={invitesError}
+            refetch={refetchInvites}
+            resend={resendInvite}
+          />
+        );
       case "services":
         return (
           <ServicesPage

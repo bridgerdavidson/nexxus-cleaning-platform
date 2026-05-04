@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - link "Nexxus Cleaning Solutions" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e7]: Nexxus
+        - generic [ref=e8]: Cleaning Solutions
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Services" [ref=e12] [cursor=pointer]:
+          - /url: /services
+        - link "About" [ref=e13] [cursor=pointer]:
+          - /url: /about
+        - link "Contact" [ref=e14] [cursor=pointer]:
+          - /url: /contact
+      - generic [ref=e16]:
+        - link "Login" [ref=e17] [cursor=pointer]:
+          - /url: /login
+        - link "Sign Up" [ref=e18] [cursor=pointer]:
+          - /url: /signup
+  - generic [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - heading "Nexxus" [level=1] [ref=e23]
+        - paragraph [ref=e24]: Cleaning Solutions
+      - heading "Sign in to your account" [level=2] [ref=e25]
+      - paragraph [ref=e26]: Welcome back! Please enter your credentials
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]: Email address
+          - textbox "Email address" [ref=e33]:
+            - /placeholder: Enter your email
+        - generic [ref=e34]:
+          - generic [ref=e35]: Password
+          - generic [ref=e36]:
+            - textbox "Password" [ref=e37]:
+              - /placeholder: Enter your password
+            - button [ref=e38] [cursor=pointer]:
+              - img [ref=e39]
+        - generic [ref=e42]:
+          - generic [ref=e43]:
+            - checkbox "Remember me" [ref=e44]
+            - generic [ref=e45]: Remember me
+          - link "Forgot your password?" [ref=e47] [cursor=pointer]:
+            - /url: "#"
+        - button "Sign in" [ref=e49] [cursor=pointer]:
+          - generic [ref=e50]: Sign in
+      - paragraph [ref=e52]:
+        - text: Don't have an account?
+        - link "Sign up here" [ref=e53] [cursor=pointer]:
+          - /url: /signup
+  - button "Open Next.js Dev Tools" [ref=e59] [cursor=pointer]:
+    - img [ref=e60]
+  - alert [ref=e63]
+  - generic "Notifications"

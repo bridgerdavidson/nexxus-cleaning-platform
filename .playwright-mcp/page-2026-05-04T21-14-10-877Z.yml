@@ -1,0 +1,121 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - link "Nexxus Cleaning Solutions" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e7]: Nexxus
+        - generic [ref=e8]: Cleaning Solutions
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Services" [ref=e12] [cursor=pointer]:
+          - /url: /services
+        - link "About" [ref=e13] [cursor=pointer]:
+          - /url: /about
+        - link "Contact" [ref=e14] [cursor=pointer]:
+          - /url: /contact
+      - generic [ref=e16]:
+        - link "Login" [ref=e17] [cursor=pointer]:
+          - /url: /login
+        - link "Sign Up" [ref=e18] [cursor=pointer]:
+          - /url: /signup
+  - generic [ref=e20]:
+    - generic [ref=e24]:
+      - heading "Get Your Home Sparkling Clean" [level=1] [ref=e25]:
+        - text: Get Your Home
+        - generic [ref=e26]: Sparkling Clean
+      - paragraph [ref=e27]: Professional, eco-friendly cleaning services you can trust. Book online in minutes and enjoy a spotless home.
+      - generic [ref=e28]:
+        - link "Get Started Today" [ref=e29] [cursor=pointer]:
+          - /url: /signup
+          - generic [ref=e30]: Get Started Today
+          - img [ref=e31]
+        - link "Sign In" [ref=e33] [cursor=pointer]:
+          - /url: /login
+    - generic [ref=e35]:
+      - generic [ref=e36]:
+        - heading "How It Works" [level=2] [ref=e37]
+        - paragraph [ref=e38]: Getting your home cleaned is as easy as 1-2-3
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - img [ref=e42]
+          - heading "1. Request Quote" [level=3] [ref=e45]
+          - paragraph [ref=e46]: Tell us about your home and cleaning needs. Get an instant quote and choose your preferred date and time.
+        - generic [ref=e47]:
+          - img [ref=e49]
+          - heading "2. Schedule Cleaning" [level=3] [ref=e54]
+          - paragraph [ref=e55]: We'll match you with a trusted, vetted cleaner and confirm your appointment. Track everything in real-time.
+        - generic [ref=e56]:
+          - img [ref=e58]
+          - heading "3. Sit Back and Relax" [level=3] [ref=e60]
+          - paragraph [ref=e61]: Your cleaner arrives on time with all supplies. Enjoy your spotless home and leave us a review!
+    - generic [ref=e63]:
+      - generic [ref=e64]:
+        - heading "Why Choose Nexxus Cleaning?" [level=2] [ref=e65]
+        - paragraph [ref=e66]: We're committed to providing the best cleaning experience possible
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - img [ref=e70]
+          - heading "Eco-Friendly Products" [level=3] [ref=e73]
+          - paragraph [ref=e74]: We use only environmentally safe, non-toxic cleaning products that are safe for your family and pets.
+        - generic [ref=e75]:
+          - img [ref=e77]
+          - heading "Trusted Professionals" [level=3] [ref=e79]
+          - paragraph [ref=e80]: All our cleaners are thoroughly vetted, insured, and trained to deliver exceptional service every time.
+        - generic [ref=e81]:
+          - img [ref=e83]
+          - heading "Satisfaction Guarantee" [level=3] [ref=e86]
+          - paragraph [ref=e87]: Not happy with your cleaning? We'll make it right or your money back. Your satisfaction is our priority.
+    - generic [ref=e89]:
+      - generic [ref=e90]:
+        - heading "What Our Customers Say" [level=2] [ref=e91]
+        - paragraph [ref=e92]: Don't just take our word for it
+      - generic [ref=e93]:
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - img [ref=e96]
+            - img [ref=e98]
+            - img [ref=e100]
+            - img [ref=e102]
+            - img [ref=e104]
+          - paragraph [ref=e106]: "\"Absolutely amazing service! My house has never been cleaner. The team was professional, punctual, and thorough. Highly recommend!\""
+          - generic [ref=e107]:
+            - generic [ref=e109]: SM
+            - generic [ref=e110]:
+              - paragraph [ref=e111]: Sarah Martinez
+              - paragraph [ref=e112]: Phoenix, AZ
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - img [ref=e115]
+            - img [ref=e117]
+            - img [ref=e119]
+            - img [ref=e121]
+            - img [ref=e123]
+          - paragraph [ref=e125]: "\"I love how easy it is to book and the cleaners always do an incredible job. The eco-friendly products are a huge plus for our family.\""
+          - generic [ref=e126]:
+            - generic [ref=e128]: MJ
+            - generic [ref=e129]:
+              - paragraph [ref=e130]: Michael Johnson
+              - paragraph [ref=e131]: Scottsdale, AZ
+        - generic [ref=e132]:
+          - generic [ref=e133]:
+            - img [ref=e134]
+            - img [ref=e136]
+            - img [ref=e138]
+            - img [ref=e140]
+            - img [ref=e142]
+          - paragraph [ref=e144]: "\"Reliable, affordable, and they do an excellent job every time. I've been using Nexxus for over a year and couldn't be happier.\""
+          - generic [ref=e145]:
+            - generic [ref=e147]: LD
+            - generic [ref=e148]:
+              - paragraph [ref=e149]: Lisa Davis
+              - paragraph [ref=e150]: Tempe, AZ
+    - generic [ref=e152]:
+      - heading "Ready to Get Started?" [level=2] [ref=e153]
+      - paragraph [ref=e154]: Join thousands of satisfied customers who trust Nexxus Cleaning with their homes.
+      - link "Get Started Now" [ref=e155] [cursor=pointer]:
+        - /url: /signup
+        - generic [ref=e156]: Get Started Now
+        - img [ref=e157]
+  - button "Open Next.js Dev Tools" [ref=e164] [cursor=pointer]:
+    - img [ref=e165]

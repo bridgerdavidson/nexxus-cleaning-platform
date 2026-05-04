@@ -89,6 +89,10 @@ Required for full functionality:
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — server Stripe
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
 
+## Visual Testing
+Use the Playwright MCP tools to navigate to the local dev server 
+(http://localhost:3000) and take a screenshot to verify UI changes.
+
 ### Tailwind theme
 
 Custom palette in `tailwind.config.js`: `primary` is the brand yellow (`#F7C41E` at 500), `secondary` is slate, `success` is green. Plugins: `@tailwindcss/forms`, `@tailwindcss/typography`. Custom keyframes: `fade-in`, `slide-up`, `bounce-gentle`, `toast-in`, `toast-out`.

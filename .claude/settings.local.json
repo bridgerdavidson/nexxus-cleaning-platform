@@ -8,7 +8,17 @@
       "PowerShell(gh repo view bridgerdavidson/nexxus-cleaning-platform --json name,defaultBranchRef,isEmpty,pushedAt,url 2>&1)",
       "mcp__github__list_branches",
       "Bash(git remote *)",
-      "Bash(git commit --allow-empty -m ' *)"
+      "Bash(git commit --allow-empty -m ' *)",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_close"
     ]
   }
 }

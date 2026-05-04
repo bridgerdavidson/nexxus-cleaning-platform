@@ -1,0 +1,134 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e18]:
+      - link "Nexxus" [ref=e20] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e21]: Nexxus
+      - navigation [ref=e22]:
+        - generic [ref=e23]:
+          - button "Operations" [ref=e24] [cursor=pointer]:
+            - img [ref=e26]
+            - generic [ref=e31]: Operations
+          - button "Accounts" [ref=e32] [cursor=pointer]:
+            - img [ref=e33]
+            - generic [ref=e38]: Accounts
+          - button "Team" [ref=e39] [cursor=pointer]:
+            - img [ref=e40]
+            - generic [ref=e44]: Team
+          - button "Business" [ref=e45] [cursor=pointer]:
+            - img [ref=e46]
+            - generic [ref=e49]: Business
+      - generic [ref=e51]:
+        - generic [ref=e54]:
+          - paragraph [ref=e55]: Admin User
+          - paragraph [ref=e56]: admin
+        - button "Log out" [ref=e57] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e61]: Log out
+    - generic [ref=e62]:
+      - banner [ref=e63]:
+        - generic [ref=e64]:
+          - navigation [ref=e65]:
+            - button "Overview" [ref=e627] [cursor=pointer]:
+              - img [ref=e629]
+              - generic [ref=e632]: Overview
+            - button "Bookings" [ref=e633] [cursor=pointer]:
+              - img [ref=e635]
+              - generic [ref=e637]: Bookings
+            - button "Services" [ref=e638] [cursor=pointer]:
+              - img [ref=e640]
+              - generic [ref=e643]: Services
+          - generic [ref=e83]:
+            - button "Open messages" [active] [ref=e84] [cursor=pointer]:
+              - img [ref=e85]
+            - button "Open settings" [ref=e87] [cursor=pointer]:
+              - img [ref=e88]
+      - main [ref=e91]:
+        - generic [ref=e646]:
+          - generic [ref=e647]:
+            - generic [ref=e648]:
+              - generic [ref=e649]:
+                - img [ref=e650]
+                - text: Admin Dashboard
+              - heading "Operations overview" [level=2] [ref=e652]
+              - paragraph [ref=e653]: Track the health of bookings, team capacity, and revenue in one polished workspace built for quick decision-making.
+            - button "Open analytics" [ref=e655] [cursor=pointer]
+          - generic [ref=e656]:
+            - generic [ref=e657]:
+              - generic [ref=e658]:
+                - img [ref=e660]
+                - text: Total Bookings
+              - paragraph [ref=e662]: "88"
+            - generic [ref=e663]:
+              - generic [ref=e664]:
+                - img [ref=e666]
+                - text: Active Cleaners
+              - paragraph [ref=e671]: "5"
+            - generic [ref=e672]:
+              - generic [ref=e673]:
+                - img [ref=e675]
+                - text: Total Revenue
+              - paragraph [ref=e677]: $4653
+            - generic [ref=e678]:
+              - generic [ref=e679]:
+                - img [ref=e681]
+                - text: Pending
+              - paragraph [ref=e683]: "1"
+            - generic [ref=e684]:
+              - generic [ref=e685]:
+                - img [ref=e687]
+                - text: Growth
+              - paragraph [ref=e690]: 15.3%
+            - generic [ref=e691]:
+              - generic [ref=e692]:
+                - img [ref=e694]
+                - text: Completion
+              - paragraph [ref=e697]: 36.4%
+        - generic [ref=e699]:
+          - generic [ref=e700]:
+            - heading "Awaiting Cleaner Approval" [level=3] [ref=e701]:
+              - img [ref=e702]
+              - text: Awaiting Cleaner Approval
+            - generic [ref=e707]:
+              - img [ref=e708]
+              - paragraph [ref=e711]: All cleaners confirmed
+          - generic [ref=e712]:
+            - heading "Upcoming Appointments" [level=3] [ref=e713]:
+              - img [ref=e714]
+              - generic [ref=e716]: Upcoming Appointments
+            - generic [ref=e717]:
+              - generic [ref=e718]:
+                - generic [ref=e720]: Unpaid
+                - generic [ref=e721]:
+                  - paragraph [ref=e722]: Michael Thompson
+                  - paragraph [ref=e723]: May 5, 2026 at 9:58 PM
+                  - paragraph [ref=e724]: 2471 S Sunveil Rd, Tempe, AZ
+                  - paragraph [ref=e725]: "Service: Custom Service"
+                - generic [ref=e727]:
+                  - img [ref=e728]
+                  - text: Confirmed
+              - generic [ref=e731]:
+                - generic [ref=e733]: Unpaid
+                - generic [ref=e734]:
+                  - paragraph [ref=e735]: David Reynolds
+                  - paragraph [ref=e736]: May 7, 2026 at 3:23 PM
+                  - paragraph [ref=e737]: 1457 Copper Sky Ln, Mesa, AZ
+                  - paragraph [ref=e738]: "Service: Deep Cleaning"
+                - generic [ref=e740]:
+                  - img [ref=e741]
+                  - text: Confirmed
+              - generic [ref=e744]:
+                - generic [ref=e746]: Unpaid
+                - generic [ref=e747]:
+                  - paragraph [ref=e748]: Sarah Williams
+                  - paragraph [ref=e749]: May 12, 2026 at 4:20 PM
+                  - paragraph [ref=e750]: 8225 S Desert Bloom Dr, Phoenix, AZ
+                  - paragraph [ref=e751]: "Service: Custom Service"
+                - generic [ref=e753]:
+                  - img [ref=e754]
+                  - text: Confirmed
+              - button "View all 4 upcoming" [ref=e758] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e13] [cursor=pointer]:
+    - img [ref=e14]
+  - alert [ref=e17]
+  - generic "Notifications"

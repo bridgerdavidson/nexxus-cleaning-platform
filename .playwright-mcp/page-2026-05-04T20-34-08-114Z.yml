@@ -1,0 +1,129 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e18]:
+      - link "Nexxus" [ref=e20] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e21]: Nexxus
+      - navigation [ref=e22]:
+        - generic [ref=e23]:
+          - button "Operations" [ref=e24] [cursor=pointer]:
+            - img [ref=e26]
+            - generic [ref=e31]: Operations
+          - button "Accounts" [ref=e32] [cursor=pointer]:
+            - img [ref=e33]
+            - generic [ref=e38]: Accounts
+          - button "Team" [ref=e39] [cursor=pointer]:
+            - img [ref=e40]
+            - generic [ref=e44]: Team
+          - button "Business" [ref=e45] [cursor=pointer]:
+            - img [ref=e46]
+            - generic [ref=e49]: Business
+      - generic [ref=e51]:
+        - generic [ref=e54]:
+          - paragraph [ref=e55]: Admin User
+          - paragraph [ref=e56]: admin
+        - button "Log out" [ref=e57] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e61]: Log out
+    - generic [ref=e62]:
+      - banner [ref=e63]:
+        - generic [ref=e64]:
+          - navigation [ref=e65]:
+            - button "Overview" [ref=e66] [cursor=pointer]:
+              - img [ref=e68]
+              - generic [ref=e71]: Overview
+            - button "Bookings" [ref=e72] [cursor=pointer]:
+              - img [ref=e74]
+              - generic [ref=e76]: Bookings
+            - button "Services" [ref=e77] [cursor=pointer]:
+              - img [ref=e79]
+              - generic [ref=e82]: Services
+          - generic [ref=e83]:
+            - button "Open messages" [active] [ref=e84] [cursor=pointer]:
+              - img [ref=e85]
+            - button "Open settings" [ref=e87] [cursor=pointer]:
+              - img [ref=e88]
+      - main [ref=e91]:
+        - generic [ref=e226]:
+          - generic [ref=e228]:
+            - generic [ref=e229]:
+              - generic [ref=e230]:
+                - heading "Messages" [level=2] [ref=e231]
+                - generic [ref=e232]:
+                  - button "New conversation" [ref=e233] [cursor=pointer]:
+                    - img [ref=e234]
+                  - button [ref=e235] [cursor=pointer]:
+                    - img [ref=e236]
+              - combobox [ref=e239]:
+                - option "All conversations" [selected]
+                - option "Homeowners"
+                - option "Cleaners"
+                - option "Admins"
+                - option "Managers"
+            - generic [ref=e240]:
+              - generic [ref=e241] [cursor=pointer]:
+                - generic [ref=e243]: BD
+                - generic [ref=e244]:
+                  - generic [ref=e245]:
+                    - heading "Bridger Davidson" [level=3] [ref=e246]
+                    - generic [ref=e247]: 2d ago
+                  - generic [ref=e248]:
+                    - paragraph [ref=e249]: I've confirmed my availability for the appointment...
+                    - generic [ref=e250]: "1"
+                  - generic [ref=e251]: cleaner
+              - generic [ref=e252] [cursor=pointer]:
+                - img "Wanda Jones" [ref=e254]
+                - generic [ref=e255]:
+                  - generic [ref=e256]:
+                    - heading "Wanda Jones" [level=3] [ref=e257]
+                    - generic [ref=e258]: 4d ago
+                  - paragraph [ref=e260]: I've confirmed my availability for the appointment...
+                  - generic [ref=e261]: cleaner
+              - generic [ref=e262] [cursor=pointer]:
+                - generic [ref=e264]: JS
+                - generic [ref=e265]:
+                  - generic [ref=e266]:
+                    - heading "Jane Smith" [level=3] [ref=e267]
+                    - generic [ref=e268]: Apr 10
+                  - paragraph [ref=e270]: I've confirmed my availability for the appointment...
+                  - generic [ref=e271]: cleaner
+              - generic [ref=e272] [cursor=pointer]:
+                - generic [ref=e274]: JM
+                - generic [ref=e275]:
+                  - generic [ref=e276]:
+                    - heading "Jordan Miles" [level=3] [ref=e277]
+                    - generic [ref=e278]: Mar 26
+                  - paragraph [ref=e280]: Hey
+                  - generic [ref=e281]: cleaner
+              - generic [ref=e282] [cursor=pointer]:
+                - generic [ref=e284]: SW
+                - generic [ref=e285]:
+                  - generic [ref=e286]:
+                    - heading "Sarah Williams" [level=3] [ref=e287]
+                    - generic [ref=e288]: Jan 23
+                  - paragraph [ref=e290]: "You: hey"
+                  - generic [ref=e291]: homeowner
+              - generic [ref=e292] [cursor=pointer]:
+                - generic [ref=e294]: DR
+                - generic [ref=e295]:
+                  - generic [ref=e296]:
+                    - heading "David Reynolds" [level=3] [ref=e297]
+                    - generic [ref=e298]: Jan 23
+                  - paragraph [ref=e300]: No messages yet
+                  - generic [ref=e301]: homeowner
+              - generic [ref=e302] [cursor=pointer]:
+                - generic [ref=e304]: OM
+                - generic [ref=e305]:
+                  - generic [ref=e306]:
+                    - heading "Operations Manager" [level=3] [ref=e307]
+                    - generic [ref=e308]: Dec 23, 2025
+                  - paragraph [ref=e310]: testing
+                  - generic [ref=e311]: manager
+          - generic [ref=e314]:
+            - img [ref=e315]
+            - heading "No conversation selected" [level=3] [ref=e317]
+            - paragraph [ref=e318]: Choose a conversation from the list to start messaging
+  - button "Open Next.js Dev Tools" [ref=e13] [cursor=pointer]:
+    - img [ref=e14]
+  - alert [ref=e17]
+  - generic "Notifications"

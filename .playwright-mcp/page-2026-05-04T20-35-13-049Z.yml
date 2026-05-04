@@ -1,0 +1,99 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e18]:
+      - link "Nexxus" [ref=e20] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e21]: Nexxus
+      - navigation [ref=e22]:
+        - generic [ref=e23]:
+          - button "Operations" [ref=e24] [cursor=pointer]:
+            - img [ref=e26]
+            - generic [ref=e31]: Operations
+          - button "Accounts" [ref=e32] [cursor=pointer]:
+            - img [ref=e33]
+            - generic [ref=e38]: Accounts
+          - button "Team" [ref=e39] [cursor=pointer]:
+            - img [ref=e40]
+            - generic [ref=e44]: Team
+          - button "Business" [ref=e45] [cursor=pointer]:
+            - img [ref=e46]
+            - generic [ref=e49]: Business
+      - generic [ref=e51]:
+        - generic [ref=e54]:
+          - paragraph [ref=e55]: Admin User
+          - paragraph [ref=e56]: admin
+        - button "Log out" [ref=e57] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e61]: Log out
+    - generic [ref=e62]:
+      - banner [ref=e63]:
+        - generic [ref=e64]:
+          - navigation [ref=e65]:
+            - button "Team Members" [ref=e760] [cursor=pointer]:
+              - img [ref=e762]
+              - generic [ref=e767]: Team Members
+            - button "Cleaner Management" [ref=e768] [cursor=pointer]:
+              - img [ref=e770]
+              - generic [ref=e774]: Cleaner Management
+            - button "Invites" [ref=e775] [cursor=pointer]:
+              - img [ref=e777]
+              - generic [ref=e780]: Invites
+          - generic [ref=e83]:
+            - button "Open messages" [active] [ref=e84] [cursor=pointer]:
+              - img [ref=e85]
+            - button "Open settings" [ref=e87] [cursor=pointer]:
+              - img [ref=e88]
+      - main [ref=e91]:
+        - generic [ref=e1006]:
+          - generic [ref=e1007]:
+            - generic [ref=e1008]:
+              - heading "Invites" [level=2] [ref=e1009]
+              - paragraph [ref=e1010]: Track invitations sent to new team members
+            - button "New" [ref=e1011] [cursor=pointer]:
+              - img [ref=e1012]
+              - generic [ref=e1013]: New
+          - generic [ref=e1014]:
+            - generic [ref=e1015]:
+              - img [ref=e1016]
+              - textbox "Search by email..." [ref=e1019]
+            - generic [ref=e1020]:
+              - button "All 1" [ref=e1021] [cursor=pointer]:
+                - generic [ref=e1022]: All
+                - generic [ref=e1023]: "1"
+              - button "Pending 0" [ref=e1024] [cursor=pointer]:
+                - generic [ref=e1025]: Pending
+                - generic [ref=e1026]: "0"
+              - button "Accepted 1" [ref=e1027] [cursor=pointer]:
+                - generic [ref=e1028]: Accepted
+                - generic [ref=e1029]: "1"
+              - button "Failed 0" [ref=e1030] [cursor=pointer]:
+                - generic [ref=e1031]: Failed
+                - generic [ref=e1032]: "0"
+              - button "Expired 0" [ref=e1033] [cursor=pointer]:
+                - generic [ref=e1034]: Expired
+                - generic [ref=e1035]: "0"
+              - button "Superseded 0" [ref=e1036] [cursor=pointer]:
+                - generic [ref=e1037]: Superseded
+                - generic [ref=e1038]: "0"
+          - generic [ref=e1041]:
+            - generic [ref=e1042]:
+              - img [ref=e1044]
+              - generic [ref=e1047]:
+                - generic [ref=e1048]:
+                  - paragraph [ref=e1049]: mvbdavidson@gmail.com
+                  - generic [ref=e1050]:
+                    - img [ref=e1051]
+                    - text: Cleaner
+                - paragraph [ref=e1055]:
+                  - generic [ref=e1056]: Invited by Admin User
+                  - generic [ref=e1057]: ·
+                  - generic [ref=e1058]: Sent 2d ago
+                  - generic [ref=e1059]: ·
+                  - generic [ref=e1060]: Accepted 2d ago
+            - generic [ref=e1062]:
+              - img [ref=e1063]
+              - text: Accepted
+  - button "Open Next.js Dev Tools" [ref=e13] [cursor=pointer]:
+    - img [ref=e14]
+  - alert [ref=e17]
+  - generic "Notifications"

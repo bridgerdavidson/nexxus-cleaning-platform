@@ -51,6 +51,7 @@ import {
   usePaymentStats,
 } from "../../hooks/useAdminData";
 import { useServices } from "../../hooks/useServices";
+import { useInvites } from "../../hooks/useInvites";
 import { useConversations } from "../../hooks/useConversations";
 import { useManagerPermissions } from "../../hooks/useManagerPermissions";
 import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
@@ -89,11 +90,19 @@ import {
 } from "../../hooks/usePersistedDashboardTab";
 
 function ManagerDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
   );
+  // Lazy-load invites: stays mounted at dashboard level once first opened, so
+  // tab switches don't re-fetch and the Realtime channel survives navigation.
+  const [hasOpenedInvitesEver, setHasOpenedInvitesEver] = useState(
+    activeTab === "invites",
+  );
+  useEffect(() => {
+    if (activeTab === "invites") setHasOpenedInvitesEver(true);
+  }, [activeTab]);
   const activeGroup = useMemo(
     () => ADMIN_MANAGER_TAB_TO_GROUP[activeTab] ?? ADMIN_MANAGER_DEFAULT_GROUP,
     [activeTab],
@@ -193,6 +202,15 @@ function ManagerDashboardInner() {
     maxChecklistAdderByServiceId,
     refreshMaxChecklistAdders,
   } = useServices();
+  const {
+    invites,
+    loading: invitesLoading,
+    error: invitesError,
+    refetch: refetchInvites,
+    resend: resendInvite,
+  } = useInvites(currentOrganizationId, accessToken, {
+    enabled: hasOpenedInvitesEver && permissions?.can_manage_cleaners === true,
+  });
 
   // Calculate number of visible stats cards for dynamic grid - MUST be a hook and defined before early returns
   const visibleStatsCardsCount = useMemo(() => {
@@ -1562,7 +1580,16 @@ function ManagerDashboardInner() {
         if (!permissions?.can_manage_cleaners) {
           return renderAccessDenied("invites");
         }
-        return <InvitesPage canResend={permissions?.can_manage_cleaners === true} />;
+        return (
+          <InvitesPage
+            canResend={permissions?.can_manage_cleaners === true}
+            invites={invites}
+            loading={invitesLoading}
+            error={invitesError}
+            refetch={refetchInvites}
+            resend={resendInvite}
+          />
+        );
       case "payments":
         if (!permissions?.can_view_payments) {
           return renderAccessDenied("payments");

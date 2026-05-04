@@ -1,0 +1,189 @@
+- generic [ref=e1]:
+  - generic [ref=e64]:
+    - complementary [ref=e65]:
+      - link "Nexxus" [ref=e67] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e68]: Nexxus
+      - navigation [ref=e69]:
+        - generic [ref=e70]:
+          - button "Operations" [ref=e71] [cursor=pointer]:
+            - img [ref=e73]
+            - generic [ref=e78]: Operations
+          - button "Accounts" [ref=e79] [cursor=pointer]:
+            - img [ref=e80]
+            - generic [ref=e85]: Accounts
+          - button "Team" [active] [ref=e86] [cursor=pointer]:
+            - img [ref=e87]
+            - generic [ref=e91]: Team
+          - button "Business" [ref=e92] [cursor=pointer]:
+            - img [ref=e93]
+            - generic [ref=e96]: Business
+      - generic [ref=e98]:
+        - generic [ref=e101]:
+          - paragraph [ref=e102]: Admin User
+          - paragraph [ref=e103]: admin
+        - button "Log out" [ref=e104] [cursor=pointer]:
+          - img [ref=e105]
+          - generic [ref=e108]: Log out
+    - generic [ref=e109]:
+      - banner [ref=e110]:
+        - generic [ref=e111]:
+          - navigation [ref=e112]:
+            - button "Team Members" [ref=e256] [cursor=pointer]:
+              - img [ref=e258]
+              - generic [ref=e263]: Team Members
+            - button "Cleaner Management" [ref=e264] [cursor=pointer]:
+              - img [ref=e266]
+              - generic [ref=e270]: Cleaner Management
+            - button "Invites" [ref=e271] [cursor=pointer]:
+              - img [ref=e273]
+              - generic [ref=e276]: Invites
+          - generic [ref=e130]:
+            - button "Open messages" [ref=e131] [cursor=pointer]:
+              - img [ref=e132]
+            - button "Open settings" [ref=e135] [cursor=pointer]:
+              - img [ref=e136]
+      - main [ref=e139]:
+        - generic [ref=e277]:
+          - generic [ref=e278]:
+            - generic [ref=e279]:
+              - heading "Team Members" [level=2] [ref=e280]
+              - paragraph [ref=e281]: Manage your team of cleaners, managers, and admins
+            - button "New" [ref=e282] [cursor=pointer]:
+              - img [ref=e283]
+              - generic [ref=e284]: New
+          - generic [ref=e285]:
+            - generic [ref=e286]:
+              - img [ref=e287]
+              - textbox "Search by name, email, or phone..." [ref=e290]
+            - generic [ref=e291]:
+              - combobox [ref=e292]:
+                - option "All Roles" [selected]
+                - option "Cleaners"
+                - option "Managers"
+                - option "Admins"
+              - img
+          - generic [ref=e293]:
+            - generic [ref=e295]:
+              - img [ref=e297]
+              - generic [ref=e302]:
+                - paragraph [ref=e303]: Total Members
+                - paragraph [ref=e304]: "7"
+            - generic [ref=e306]:
+              - img [ref=e308]
+              - generic [ref=e312]:
+                - paragraph [ref=e313]: Cleaners
+                - paragraph [ref=e314]: "5"
+            - generic [ref=e316]:
+              - img [ref=e318]
+              - generic [ref=e321]:
+                - paragraph [ref=e322]: Managers
+                - paragraph [ref=e323]: "1"
+            - generic [ref=e325]:
+              - img [ref=e327]
+              - generic [ref=e330]:
+                - paragraph [ref=e331]: Admins
+                - paragraph [ref=e332]: "1"
+          - generic [ref=e333]:
+            - generic [ref=e334] [cursor=pointer]:
+              - generic [ref=e336]:
+                - heading "Admin User" [level=3] [ref=e337]
+                - generic [ref=e339]: Admin
+              - generic [ref=e340]:
+                - generic [ref=e341]:
+                  - img [ref=e342]
+                  - generic [ref=e345]: admin@nexxus.com
+                - generic [ref=e346]:
+                  - img [ref=e347]
+                  - generic [ref=e349]: "1231231234"
+            - generic [ref=e350] [cursor=pointer]:
+              - button "Delete Team Member" [ref=e352]:
+                - img [ref=e353]
+              - generic [ref=e356]:
+                - generic [ref=e358]: BD
+                - generic [ref=e359]:
+                  - heading "Bridger Davidson" [level=3] [ref=e360]
+                  - generic [ref=e362]: Cleaner
+              - generic [ref=e363]:
+                - generic [ref=e364]:
+                  - img [ref=e365]
+                  - generic [ref=e368]: mvbdavidson@gmail.com
+                - generic [ref=e369]:
+                  - img [ref=e370]
+                  - generic [ref=e372]: "14068504159"
+              - generic [ref=e374]:
+                - img [ref=e375]
+                - generic [ref=e378]: Available
+            - generic [ref=e379] [cursor=pointer]:
+              - button "Delete Team Member" [ref=e381]:
+                - img [ref=e382]
+              - generic [ref=e385]:
+                - generic [ref=e387]: CB
+                - generic [ref=e388]:
+                  - heading "Charles Brown" [level=3] [ref=e389]
+                  - generic [ref=e391]: Cleaner
+              - generic [ref=e393]:
+                - img [ref=e394]
+                - generic [ref=e397]: cleaner4@nexxus.com
+              - generic [ref=e399]:
+                - img [ref=e400]
+                - generic [ref=e403]: Available
+            - generic [ref=e404] [cursor=pointer]:
+              - button "Delete Team Member" [ref=e406]:
+                - img [ref=e407]
+              - generic [ref=e410]:
+                - generic [ref=e412]: JS
+                - generic [ref=e413]:
+                  - heading "Jane Smith" [level=3] [ref=e414]
+                  - generic [ref=e416]: Cleaner
+              - generic [ref=e418]:
+                - img [ref=e419]
+                - generic [ref=e422]: cleaner3@nexxus.com
+              - generic [ref=e424]:
+                - img [ref=e425]
+                - generic [ref=e428]: Available
+            - generic [ref=e429] [cursor=pointer]:
+              - button "Delete Team Member" [ref=e431]:
+                - img [ref=e432]
+              - generic [ref=e435]:
+                - generic [ref=e437]: JM
+                - generic [ref=e438]:
+                  - heading "Jordan Miles" [level=3] [ref=e439]
+                  - generic [ref=e441]: Cleaner
+              - generic [ref=e443]:
+                - img [ref=e444]
+                - generic [ref=e447]: cleaner2@nexxus.com
+              - generic [ref=e449]:
+                - img [ref=e450]
+                - generic [ref=e453]: Available
+            - generic [ref=e454] [cursor=pointer]:
+              - generic [ref=e455]:
+                - button "Manage Permissions" [ref=e456]:
+                  - img [ref=e457]
+                - button "Delete Team Member" [ref=e460]:
+                  - img [ref=e461]
+              - generic [ref=e464]:
+                - generic [ref=e466]: OM
+                - generic [ref=e467]:
+                  - heading "Operations Manager" [level=3] [ref=e468]
+                  - generic [ref=e470]: Manager
+              - generic [ref=e472]:
+                - img [ref=e473]
+                - generic [ref=e476]: manager@nexxus.com
+              - generic [ref=e478]: 14 of 14 permissions enabled
+            - generic [ref=e479] [cursor=pointer]:
+              - button "Delete Team Member" [ref=e481]:
+                - img [ref=e482]
+              - generic [ref=e486]:
+                - heading "Wanda Jones" [level=3] [ref=e487]
+                - generic [ref=e489]: Cleaner
+              - generic [ref=e491]:
+                - img [ref=e492]
+                - generic [ref=e495]: cleaner@nexxus.com
+              - generic [ref=e497]:
+                - img [ref=e498]
+                - generic [ref=e501]: Available
+  - button "Open Next.js Dev Tools" [ref=e59] [cursor=pointer]:
+    - img [ref=e60]
+  - alert [ref=e63]
+  - generic "Notifications"

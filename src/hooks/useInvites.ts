@@ -5,6 +5,10 @@ import { supabase } from '../lib/supabase';
 import { inviteTeamMember } from './useAdminData';
 import type { Invite } from '../types';
 
+interface UseInvitesOptions {
+  enabled?: boolean;
+}
+
 interface UseInvitesResult {
   invites: Invite[];
   loading: boolean;
@@ -15,10 +19,13 @@ interface UseInvitesResult {
 
 export function useInvites(
   organizationId: string | null | undefined,
-  accessToken: string | null | undefined
+  accessToken: string | null | undefined,
+  options: UseInvitesOptions = {}
 ): UseInvitesResult {
+  const enabled = options.enabled !== false;
+
   const [invites, setInvites] = useState<Invite[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const tokenRef = useRef(accessToken);
 
@@ -27,7 +34,7 @@ export function useInvites(
   }, [accessToken]);
 
   const fetchInvites = useCallback(async () => {
-    if (!organizationId || !tokenRef.current) {
+    if (!enabled || !organizationId || !tokenRef.current) {
       setInvites([]);
       setLoading(false);
       return;
@@ -51,16 +58,22 @@ export function useInvites(
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [enabled, organizationId]);
 
   useEffect(() => {
+    if (!enabled) {
+      setInvites([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     fetchInvites();
-  }, [fetchInvites]);
+  }, [enabled, fetchInvites]);
 
   // Realtime subscription — refetch on any change to invites for this org.
   useEffect(() => {
-    if (!organizationId) return;
+    if (!enabled || !organizationId) return;
 
     const channel = supabase
       .channel(`invites:${organizationId}`)
@@ -81,11 +94,11 @@ export function useInvites(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [organizationId, fetchInvites]);
+  }, [enabled, organizationId, fetchInvites]);
 
   const resend = useCallback(
     async (invite: Invite) => {
-      if (!organizationId || !tokenRef.current) {
+      if (!enabled || !organizationId || !tokenRef.current) {
         return { success: false, error: 'Missing organization or session' };
       }
 
@@ -103,7 +116,7 @@ export function useInvites(
 
       return result;
     },
-    [organizationId, fetchInvites]
+    [enabled, organizationId, fetchInvites]
   );
 
   return { invites, loading, error, refetch: fetchInvites, resend };

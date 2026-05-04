@@ -13,15 +13,18 @@ import {
   ShieldCheck,
   Check,
 } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../contexts/ToastContext';
-import { useInvites } from '../hooks/useInvites';
 import AddTeamMemberModal from './AddTeamMemberModal';
 import InviteStatusBadge from './InviteStatusBadge';
 import type { Invite, InviteDisplayStatus } from '../types';
 
 interface InvitesPageProps {
   canResend: boolean;
+  invites: Invite[];
+  loading: boolean;
+  error: string | null;
+  refetch: () => Promise<void>;
+  resend: (invite: Invite) => Promise<{ success: boolean; error?: string }>;
 }
 
 type FilterId = 'all' | InviteDisplayStatus;
@@ -91,13 +94,15 @@ function getInviterName(invite: Invite): string {
   return name || p.email || 'Unknown';
 }
 
-export default function InvitesPage({ canResend }: InvitesPageProps) {
-  const { currentOrganizationId, accessToken } = useAuth();
+export default function InvitesPage({
+  canResend,
+  invites,
+  loading,
+  error,
+  refetch,
+  resend,
+}: InvitesPageProps) {
   const { showToast } = useToast();
-  const { invites, loading, error, refetch, resend } = useInvites(
-    currentOrganizationId,
-    accessToken
-  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('all');
