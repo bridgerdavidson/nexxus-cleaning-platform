@@ -1233,16 +1233,21 @@ function ManagerDashboardInner() {
 
         {/* Desktop Quick Actions - Dashboard cards */}
         <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6 md:items-start">
-          <div className="rounded-[1.75rem] border border-amber-100 bg-white/95 p-6 shadow-sm ring-1 ring-amber-100/60 w-full">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-amber-600" />
-              Awaiting Cleaner Approval
-              {awaitingCleanerApprovalAppointments.length > 0 && (
-                <span className="ml-auto text-xs font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700">
-                  {awaitingCleanerApprovalAppointments.length}
-                </span>
-              )}
-            </h3>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
+            <div className="flex items-center justify-between px-4 sm:px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Awaiting Cleaner Approval</h3>
+                  <span className="text-xs font-medium text-gray-500">
+                    {awaitingCleanerApprovalAppointments.length} awaiting
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
             {appointmentsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -1259,7 +1264,7 @@ function ManagerDashboardInner() {
                     return (
                       <div
                         key={appointment.id}
-                        className="flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50/60 via-white to-white rounded-2xl border border-amber-100 shadow-sm"
+                        className="flex items-center gap-4 p-4 bg-white rounded-xl border border-gray-200 border-l-4 border-l-amber-400 shadow-sm"
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 truncate">
@@ -1310,13 +1315,24 @@ function ManagerDashboardInner() {
                 )}
               </div>
             )}
+            </div>
           </div>
 
-          <div className="rounded-[1.75rem] border border-amber-100 bg-white/95 p-6 shadow-sm ring-1 ring-amber-100/60 w-full">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-primary-600" />
-              <span>Upcoming Appointments</span>
-            </h3>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
+            <div className="flex items-center justify-between px-4 sm:px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Upcoming Appointments</h3>
+                  <span className="text-xs font-medium text-gray-500">
+                    {allUpcomingAppointments.length} scheduled
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
             {appointmentsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -1333,7 +1349,13 @@ function ManagerDashboardInner() {
                   return (
                     <div
                       key={appointment.id}
-                      className="relative flex items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-amber-50/60 via-white to-white border border-amber-100 shadow-sm overflow-hidden pr-24"
+                      className={`relative flex items-center justify-between gap-3 p-4 rounded-xl overflow-hidden pr-24 bg-white border border-gray-200 shadow-sm ${
+                        appointment.cleaner_confirmation_status === "rejected"
+                          ? "border-l-4 border-l-red-500"
+                          : appointment.cleaner_confirmation_status === "awaiting"
+                          ? "border-l-4 border-l-amber-400"
+                          : ""
+                      }`}
                     >
                       {/* Payment Status Tab */}
                       <div
@@ -1389,6 +1411,7 @@ function ManagerDashboardInner() {
                 )}
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
