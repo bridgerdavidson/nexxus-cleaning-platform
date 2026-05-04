@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeAppointments } from './useRealtimeAppointments';
+import { useOrgQuery } from '../lib/useOrgQuery';
+import { keys } from '../lib/queryKeys';
 
 export interface CleanerAppointment {
   id: string;
@@ -503,159 +506,119 @@ export function useCleanerStats() {
 }
 
 export function useCleanerMessages() {
-  const [messages, setMessages] = useState<CleanerMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !orgId) {
-      setLoading(false);
-      return;
-    }
+  const query = useOrgQuery({
+    queryKey: ['messages', 'cleaner', userId] as const,
+    queryFn: async ({ orgId, userId }) => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          subject,
+          content,
+          is_read,
+          created_at,
+          appointment_id,
+          sender:user_profiles!sender_id(
+            first_name,
+            last_name,
+            role
+          )
+        `)
+        .eq('organization_id', orgId)
+        .eq('recipient_id', userId)
+        .order('created_at', { ascending: false });
 
-    const fetchMessages = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('messages')
-          .select(`
-            id,
-            subject,
-            content,
-            is_read,
-            created_at,
-            appointment_id,
-            sender:user_profiles!sender_id(
-              first_name,
-              last_name,
-              role
-            )
-          `)
-          .eq('organization_id', orgId)
-          .eq('recipient_id', user.id)
-          .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(message => ({
+        ...message,
+        sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
+      })) as CleanerMessage[];
+    },
+  });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(message => ({
-          ...message,
-          sender: Array.isArray(message.sender) ? message.sender[0] : message.sender
-        }));
-        
-        setMessages(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch messages');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMessages();
-  }, [user?.id, orgId]);
-
-  return { messages, loading, error };
+  return {
+    messages: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 export function useCleanerPayouts() {
-  const [payouts, setPayouts] = useState<CleanerPayout[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !orgId) {
-      setLoading(false);
-      return;
-    }
+  const query = useOrgQuery({
+    queryKey: keys.payouts.byCleaner(userId),
+    queryFn: async ({ orgId, userId }) => {
+      const { data: cleanerProfile, error: profileError } = await supabase
+        .from('cleaner_profiles')
+        .select('id')
+        .eq('id', userId)
+        .eq('organization_id', orgId)
+        .single();
+      if (profileError) throw profileError;
+      if (!cleanerProfile) throw new Error('Cleaner profile not found');
 
-    const fetchPayouts = async () => {
-      try {
-        setLoading(true);
-        
-        // Note: cleaner_profiles.id IS the user's id
-        const { data: cleanerProfile, error: profileError } = await supabase
-          .from('cleaner_profiles')
-          .select('id')
-          .eq('id', user.id)
-          .eq('organization_id', orgId)
-          .single();
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('cleaner_id', userId)
+        .eq('organization_id', orgId);
 
-        if (profileError) throw profileError;
-        if (!cleanerProfile) throw new Error('Cleaner profile not found');
+      if (!appointments || appointments.length === 0) return [];
 
-        // Get appointments for this cleaner to find related payments
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('cleaner_id', user.id)
-          .eq('organization_id', orgId);
+      const appointmentIds = appointments.map(a => a.id);
 
-        if (!appointments || appointments.length === 0) {
-          setPayouts([]);
-          return;
-        }
-
-        const appointmentIds = appointments.map(a => a.id);
-
-        const { data, error } = await supabase
-          .from('payments')
-          .select(`
-            id,
-            amount,
-            status,
-            paid_at,
-            created_at,
-            appointment:appointments(
-              scheduled_date,
-              homeowner:user_profiles!homeowner_id(
-                first_name,
-                last_name
-              ),
-              service_type:service_types(
-                name
-              )
+      const { data, error } = await supabase
+        .from('payments')
+        .select(`
+          id,
+          amount,
+          status,
+          paid_at,
+          created_at,
+          appointment:appointments(
+            scheduled_date,
+            homeowner:user_profiles!homeowner_id(
+              first_name,
+              last_name
+            ),
+            service_type:service_types(
+              name
             )
-          `)
-          .eq('organization_id', orgId)
-          .in('appointment_id', appointmentIds)
-          .order('created_at', { ascending: false });
+          )
+        `)
+        .eq('organization_id', orgId)
+        .in('appointment_id', appointmentIds)
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(payment => ({
-          ...payment,
-          appointment: Array.isArray(payment.appointment) 
-            ? {
-                ...payment.appointment[0],
-                homeowner: Array.isArray(payment.appointment[0]?.homeowner) 
-                  ? payment.appointment[0].homeowner[0] 
-                  : payment.appointment[0]?.homeowner,
-                service_type: Array.isArray(payment.appointment[0]?.service_type) 
-                  ? payment.appointment[0].service_type[0] 
-                  : payment.appointment[0]?.service_type
-              }
-            : payment.appointment
-        }));
-        
-        setPayouts(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch payouts');
-      } finally {
-        setLoading(false);
-      }
-    };
+      if (error) throw error;
 
-    fetchPayouts();
-  }, [user?.id, orgId]);
+      return (data || []).map(payment => ({
+        ...payment,
+        appointment: Array.isArray(payment.appointment)
+          ? {
+              ...payment.appointment[0],
+              homeowner: Array.isArray(payment.appointment[0]?.homeowner)
+                ? payment.appointment[0].homeowner[0]
+                : payment.appointment[0]?.homeowner,
+              service_type: Array.isArray(payment.appointment[0]?.service_type)
+                ? payment.appointment[0].service_type[0]
+                : payment.appointment[0]?.service_type,
+            }
+          : payment.appointment,
+      })) as CleanerPayout[];
+    },
+  });
 
-  return { payouts, loading, error };
+  return {
+    payouts: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 /**
@@ -664,68 +627,47 @@ export function useCleanerPayouts() {
  * cancelled excluded). Only queries appointments — no Stripe calls, no reconcile.
  */
 export function useCleanerProjectedEarnings(startDate: string, endDate: string) {
-  const [projectedEarnings, setProjectedEarnings] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !orgId) { setLoading(false); return; }
+  const query = useOrgQuery({
+    queryKey: keys.cleanerEarnings.projected(userId, startDate, endDate),
+    queryFn: async ({ orgId, userId }) => {
+      const { data: cleanerProfile, error: profileError } = await supabase
+        .from('cleaner_profiles')
+        .select('id, payout_percent')
+        .eq('id', userId)
+        .eq('organization_id', orgId)
+        .single();
+      if (profileError) throw profileError;
+      if (!cleanerProfile) throw new Error('Cleaner profile not found');
 
-    let cancelled = false;
-    const run = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+      const payoutPercent = Number(cleanerProfile.payout_percent) || 0;
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const effectiveStart = startDate < todayStr ? todayStr : startDate;
+      if (effectiveStart > endDate) return 0;
 
-        const { data: cleanerProfile, error: profileError } = await supabase
-          .from('cleaner_profiles')
-          .select('id, payout_percent')
-          .eq('id', user.id)
-          .eq('organization_id', orgId)
-          .single();
+      const { data: periodAppointments } = await supabase
+        .from('appointments')
+        .select('id, total_price')
+        .eq('cleaner_id', userId)
+        .eq('organization_id', orgId)
+        .in('status', ['confirmed', 'in_progress', 'completed'])
+        .gte('scheduled_date', effectiveStart)
+        .lte('scheduled_date', endDate);
 
-        if (profileError) throw profileError;
-        if (!cleanerProfile) throw new Error('Cleaner profile not found');
+      const grossTotal = (periodAppointments || []).reduce(
+        (sum, a) => sum + Number(a.total_price), 0,
+      );
+      return Math.round(grossTotal * (payoutPercent / 100) * 100) / 100;
+    },
+  });
 
-        const payoutPercent = Number(cleanerProfile.payout_percent) || 0;
-
-        const todayStr = format(new Date(), 'yyyy-MM-dd');
-        const effectiveStart = startDate < todayStr ? todayStr : startDate;
-        if (effectiveStart > endDate) {
-          if (!cancelled) setProjectedEarnings(0);
-          return;
-        }
-
-        const { data: periodAppointments } = await supabase
-          .from('appointments')
-          .select('id, total_price')
-          .eq('cleaner_id', user.id)
-          .eq('organization_id', orgId)
-          .in('status', ['confirmed', 'in_progress', 'completed'])
-          .gte('scheduled_date', effectiveStart)
-          .lte('scheduled_date', endDate);
-
-        const grossTotal = (periodAppointments || []).reduce(
-          (sum, a) => sum + Number(a.total_price), 0,
-        );
-        if (!cancelled) {
-          setProjectedEarnings(Math.round(grossTotal * (payoutPercent / 100) * 100) / 100);
-        }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch projected earnings');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    run();
-    return () => { cancelled = true; };
-  }, [user?.id, orgId, startDate, endDate]);
-
-  return { projectedEarnings, loading, error };
+  return {
+    projectedEarnings: query.data ?? 0,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 /**
@@ -735,95 +677,77 @@ export function useCleanerProjectedEarnings(startDate: string, endDate: string) 
  * Also kicks off reconcile in parallel to keep DB history accurate.
  */
 export function useCleanerStripeSummary() {
-  const [data, setData] = useState<StripeSummaryData>({
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+
+  const query = useOrgQuery({
+    queryKey: keys.cleanerEarnings.summary(userId),
+    queryFn: async ({ orgId, userId, accessToken }) => {
+      const reconcilePromise = fetch('/api/stripe/connect/reconcile-payouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+        body: JSON.stringify({ cleaner_id: userId }),
+      }).catch((err: unknown) => console.warn('Earnings reconcile failed (non-fatal):', err));
+
+      const stripeSummaryPromise = fetch('/api/stripe/connect/balance-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+        body: JSON.stringify({ cleaner_id: userId }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+      const [, stripeSummary] = await Promise.all([reconcilePromise, stripeSummaryPromise]);
+
+      let inStripe = 0;
+      let latestBankPayoutAmount: number | null = null;
+      let latestBankPayoutDate: string | null = null;
+
+      if (stripeSummary?.success) {
+        inStripe = Number(stripeSummary.availableBalance) + Number(stripeSummary.pendingBalance);
+        if (stripeSummary.latestPayout) {
+          latestBankPayoutAmount = Number(stripeSummary.latestPayout.amount);
+          latestBankPayoutDate = stripeSummary.latestPayout.date;
+        }
+      } else {
+        const { data: inStripeData } = await supabase
+          .from('payouts').select('amount')
+          .eq('cleaner_id', userId).eq('organization_id', orgId).eq('status', 'paid');
+        inStripe = (inStripeData || []).reduce((sum, r) => sum + Number(r.amount), 0);
+
+        const { data: latestBankData } = await supabase
+          .from('payouts').select('amount, bank_paid_at')
+          .eq('cleaner_id', userId).eq('organization_id', orgId).eq('status', 'bank_paid')
+          .order('bank_paid_at', { ascending: false }).limit(1);
+        const latestBank = latestBankData?.[0] ?? null;
+        if (latestBank) {
+          latestBankPayoutAmount = Math.round(Number(latestBank.amount) * 100) / 100;
+          latestBankPayoutDate = latestBank.bank_paid_at ?? null;
+        }
+      }
+
+      return {
+        inStripe: Math.round(inStripe * 100) / 100,
+        latestBankPayoutAmount:
+          latestBankPayoutAmount != null
+            ? Math.round(latestBankPayoutAmount * 100) / 100
+            : null,
+        latestBankPayoutDate,
+      } as StripeSummaryData;
+    },
+  });
+
+  const data = query.data ?? {
     inStripe: 0,
     latestBankPayoutAmount: null,
     latestBankPayoutDate: null,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  };
 
-  useEffect(() => {
-    if (!user?.id || !orgId) { setLoading(false); return; }
-
-    let cancelled = false;
-    const run = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData?.session?.access_token;
-
-        const reconcilePromise = token
-          ? fetch('/api/stripe/connect/reconcile-payouts', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ cleaner_id: user.id }),
-            }).catch((err: unknown) => console.warn('Earnings reconcile failed (non-fatal):', err))
-          : Promise.resolve();
-
-        const stripeSummaryPromise = token
-          ? fetch('/api/stripe/connect/balance-summary', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ cleaner_id: user.id }),
-            })
-              .then(r => r.ok ? r.json() : null)
-              .catch(() => null)
-          : Promise.resolve(null);
-
-        const [, stripeSummary] = await Promise.all([reconcilePromise, stripeSummaryPromise]);
-
-        let inStripe = 0;
-        let latestBankPayoutAmount: number | null = null;
-        let latestBankPayoutDate: string | null = null;
-
-        if (stripeSummary?.success) {
-          inStripe = Number(stripeSummary.availableBalance) + Number(stripeSummary.pendingBalance);
-          if (stripeSummary.latestPayout) {
-            latestBankPayoutAmount = Number(stripeSummary.latestPayout.amount);
-            latestBankPayoutDate = stripeSummary.latestPayout.date;
-          }
-        } else {
-          const { data: inStripeData } = await supabase
-            .from('payouts').select('amount')
-            .eq('cleaner_id', user.id).eq('organization_id', orgId).eq('status', 'paid');
-          inStripe = (inStripeData || []).reduce((sum, r) => sum + Number(r.amount), 0);
-
-          const { data: latestBankData } = await supabase
-            .from('payouts').select('amount, bank_paid_at')
-            .eq('cleaner_id', user.id).eq('organization_id', orgId).eq('status', 'bank_paid')
-            .order('bank_paid_at', { ascending: false }).limit(1);
-          const latestBank = latestBankData?.[0] ?? null;
-          if (latestBank) {
-            latestBankPayoutAmount = Math.round(Number(latestBank.amount) * 100) / 100;
-            latestBankPayoutDate = latestBank.bank_paid_at ?? null;
-          }
-        }
-
-        if (!cancelled) {
-          setData({
-            inStripe: Math.round(inStripe * 100) / 100,
-            latestBankPayoutAmount: latestBankPayoutAmount != null ? Math.round(latestBankPayoutAmount * 100) / 100 : null,
-            latestBankPayoutDate,
-          });
-        }
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch Stripe summary');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    run();
-    return () => { cancelled = true; };
-  }, [user?.id, orgId]);
-
-  return { ...data, loading, error };
+  return {
+    ...data,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 /**
@@ -831,81 +755,65 @@ export function useCleanerStripeSummary() {
  * Changing history period only re-fetches history rows — no Stripe calls.
  */
 export function useCleanerEarningsHistory(startDate: string, endDate: string) {
-  const [payoutHistory, setPayoutHistory] = useState<EarningsPayoutRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !orgId) { setLoading(false); return; }
+  const query = useOrgQuery({
+    queryKey: keys.cleanerEarnings.history(userId, startDate, endDate),
+    queryFn: async ({ orgId, userId }) => {
+      const { data: payoutsData, error: payoutsError } = await supabase
+        .from('payouts')
+        .select(`
+          id, amount, status, paid_at, bank_paid_at, reversed_at, created_at,
+          payout_percent_snapshot,
+          appointment:appointments(
+            id, scheduled_date,
+            homeowner:user_profiles!homeowner_id(first_name, last_name),
+            service_type:service_types(name)
+          )
+        `)
+        .eq('cleaner_id', userId)
+        .eq('organization_id', orgId)
+        .gte('paid_at', `${startDate}T00:00:00`)
+        .lte('paid_at', `${endDate}T23:59:59`)
+        .order('paid_at', { ascending: false });
 
-    let cancelled = false;
-    const run = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+      if (payoutsError) throw payoutsError;
 
-        const { data: payoutsData, error: payoutsError } = await supabase
-          .from('payouts')
-          .select(`
-            id, amount, status, paid_at, bank_paid_at, reversed_at, created_at,
-            payout_percent_snapshot,
-            appointment:appointments(
-              id, scheduled_date,
-              homeowner:user_profiles!homeowner_id(first_name, last_name),
-              service_type:service_types(name)
-            )
-          `)
-          .eq('cleaner_id', user.id)
-          .eq('organization_id', orgId)
-          .gte('paid_at', `${startDate}T00:00:00`)
-          .lte('paid_at', `${endDate}T23:59:59`)
-          .order('paid_at', { ascending: false });
-
-        if (payoutsError) throw payoutsError;
-
-        const transformed: EarningsPayoutRow[] = (payoutsData || []).map((p: Record<string, unknown>) => {
-          const apptRaw = p.appointment;
-          let appointment: EarningsPayoutRow['appointment'] = null;
-          if (apptRaw) {
-            const appt = Array.isArray(apptRaw) ? apptRaw[0] : apptRaw;
-            if (appt) {
-              appointment = {
-                id: appt.id as string,
-                scheduled_date: appt.scheduled_date as string,
-                homeowner: Array.isArray(appt.homeowner) ? appt.homeowner[0] : appt.homeowner,
-                service_type: Array.isArray(appt.service_type) ? appt.service_type[0] : appt.service_type,
-              };
-            }
+      return (payoutsData || []).map((p: Record<string, unknown>) => {
+        const apptRaw = p.appointment;
+        let appointment: EarningsPayoutRow['appointment'] = null;
+        if (apptRaw) {
+          const appt = Array.isArray(apptRaw) ? apptRaw[0] : apptRaw;
+          if (appt) {
+            appointment = {
+              id: appt.id as string,
+              scheduled_date: appt.scheduled_date as string,
+              homeowner: Array.isArray(appt.homeowner) ? appt.homeowner[0] : appt.homeowner,
+              service_type: Array.isArray(appt.service_type) ? appt.service_type[0] : appt.service_type,
+            };
           }
-          return {
-            id: p.id as string,
-            amount: Number(p.amount),
-            status: p.status as EarningsPayoutRow['status'],
-            paid_at: p.paid_at as string | null,
-            bank_paid_at: p.bank_paid_at as string | null,
-            reversed_at: p.reversed_at as string | null,
-            created_at: p.created_at as string,
-            payout_percent_snapshot: p.payout_percent_snapshot != null ? Number(p.payout_percent_snapshot) : null,
-            appointment,
-          };
-        });
+        }
+        return {
+          id: p.id as string,
+          amount: Number(p.amount),
+          status: p.status as EarningsPayoutRow['status'],
+          paid_at: p.paid_at as string | null,
+          bank_paid_at: p.bank_paid_at as string | null,
+          reversed_at: p.reversed_at as string | null,
+          created_at: p.created_at as string,
+          payout_percent_snapshot: p.payout_percent_snapshot != null ? Number(p.payout_percent_snapshot) : null,
+          appointment,
+        } as EarningsPayoutRow;
+      });
+    },
+  });
 
-        if (!cancelled) setPayoutHistory(transformed);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch payout history');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    run();
-    return () => { cancelled = true; };
-  }, [user?.id, orgId, startDate, endDate]);
-
-  return { payoutHistory, loading, error };
+  return {
+    payoutHistory: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 /**
@@ -938,93 +846,69 @@ export function useCleanerEarnings(
 }
 
 export function useCleanerPhotos() {
-  const [photos, setPhotos] = useState<CleanerPhoto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const auth = useAuth();
-  const { user, currentOrganizationId } = auth || {};
-  const orgId = currentOrganizationId ?? null;
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !orgId) {
-      setLoading(false);
-      return;
-    }
+  const query = useOrgQuery({
+    queryKey: ['job-photos', 'cleaner', userId] as const,
+    queryFn: async ({ orgId, userId }) => {
+      const { data: cleanerProfile, error: profileError } = await supabase
+        .from('cleaner_profiles')
+        .select('id')
+        .eq('id', userId)
+        .eq('organization_id', orgId)
+        .single();
+      if (profileError) throw profileError;
+      if (!cleanerProfile) throw new Error('Cleaner profile not found');
 
-    const fetchPhotos = async () => {
-      try {
-        setLoading(true);
-        
-        // Note: cleaner_profiles.id IS the user's id
-        const { data: cleanerProfile, error: profileError } = await supabase
-          .from('cleaner_profiles')
-          .select('id')
-          .eq('id', user.id)
-          .eq('organization_id', orgId)
-          .single();
+      const { data: appointments } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('cleaner_id', userId)
+        .eq('organization_id', orgId);
 
-        if (profileError) throw profileError;
-        if (!cleanerProfile) throw new Error('Cleaner profile not found');
+      if (!appointments || appointments.length === 0) return [];
 
-        // Get appointments for this cleaner to find related photos
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id')
-          .eq('cleaner_id', user.id)
-          .eq('organization_id', orgId);
+      const appointmentIds = appointments.map(a => a.id);
 
-        if (!appointments || appointments.length === 0) {
-          setPhotos([]);
-          return;
-        }
-
-        const appointmentIds = appointments.map(a => a.id);
-
-        const { data, error } = await supabase
-          .from('job_photos')
-          .select(`
-            id,
-            photo_url,
-            photo_type,
-            uploaded_at,
-            appointment:appointments(
-              scheduled_date,
-              homeowner:user_profiles!homeowner_id(
-                first_name,
-                last_name
-              )
+      const { data, error } = await supabase
+        .from('job_photos')
+        .select(`
+          id,
+          photo_url,
+          photo_type,
+          uploaded_at,
+          appointment:appointments(
+            scheduled_date,
+            homeowner:user_profiles!homeowner_id(
+              first_name,
+              last_name
             )
-          `)
-          .in('appointment_id', appointmentIds)
-          .order('uploaded_at', { ascending: false });
+          )
+        `)
+        .in('appointment_id', appointmentIds)
+        .order('uploaded_at', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(photo => ({
-          ...photo,
-          appointment: Array.isArray(photo.appointment) 
-            ? {
-                ...photo.appointment[0],
-                homeowner: Array.isArray(photo.appointment[0]?.homeowner) 
-                  ? photo.appointment[0].homeowner[0] 
-                  : photo.appointment[0]?.homeowner
-              }
-            : photo.appointment
-        }));
-        
-        setPhotos(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch photos');
-      } finally {
-        setLoading(false);
-      }
-    };
+      if (error) throw error;
+      return (data || []).map(photo => ({
+        ...photo,
+        appointment: Array.isArray(photo.appointment)
+          ? {
+              ...photo.appointment[0],
+              homeowner: Array.isArray(photo.appointment[0]?.homeowner)
+                ? photo.appointment[0].homeowner[0]
+                : photo.appointment[0]?.homeowner,
+            }
+          : photo.appointment,
+      })) as CleanerPhoto[];
+    },
+  });
 
-    fetchPhotos();
-  }, [user?.id, orgId]);
-
-  return { photos, loading, error };
+  return {
+    photos: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 // Helper function to update appointment status
@@ -1269,47 +1153,38 @@ export interface UseJobPhotosResult {
  * Call refetch() after an upload to refresh the list.
  */
 export function useJobPhotosForAppointment(appointmentId: string | null): UseJobPhotosResult {
-  const [allPhotos, setAllPhotos] = useState<JobPhoto[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fetchTick, setFetchTick] = useState(0);
+  const queryClient = useQueryClient();
+  const queryKey = keys.jobPhotos.byAppointment(appointmentId ?? '');
 
-  const refetch = useCallback(() => setFetchTick(t => t + 1), []);
+  const query = useOrgQuery({
+    queryKey,
+    enabled: !!appointmentId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('job_photos')
+        .select('id, photo_url, photo_type, uploaded_at')
+        .eq('appointment_id', appointmentId as string)
+        .order('uploaded_at', { ascending: true });
 
-  useEffect(() => {
-    if (!appointmentId) {
-      setAllPhotos([]);
-      setLoading(false);
-      return;
-    }
+      if (error) throw error;
+      return (data ?? []) as JobPhoto[];
+    },
+  });
 
-    let cancelled = false;
-
-    const fetchPhotos = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const { data, error: fetchError } = await supabase
-          .from('job_photos')
-          .select('id, photo_url, photo_type, uploaded_at')
-          .eq('appointment_id', appointmentId)
-          .order('uploaded_at', { ascending: true });
-
-        if (fetchError) throw fetchError;
-        if (!cancelled) setAllPhotos((data as JobPhoto[]) ?? []);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch photos');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    fetchPhotos();
-    return () => { cancelled = true; };
-  }, [appointmentId, fetchTick]);
-
+  const allPhotos = query.data ?? [];
   const beforePhotos = allPhotos.filter(p => p.photo_type === 'before');
   const afterPhotos = allPhotos.filter(p => p.photo_type === 'after');
 
-  return { beforePhotos, afterPhotos, allPhotos, loading, error, refetch };
+  const refetch = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey });
+  }, [queryClient, queryKey]);
+
+  return {
+    beforePhotos,
+    afterPhotos,
+    allPhotos,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch,
+  };
 }
