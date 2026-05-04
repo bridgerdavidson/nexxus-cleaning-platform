@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { useOrgQuery } from '../lib/useOrgQuery';
+import { keys } from '../lib/queryKeys';
 
 export interface OrganizationMember {
   id: string;
@@ -10,7 +11,7 @@ export interface OrganizationMember {
   phone: string | null;
   role: string;
   avatar_url: string | null;
-  org_role: string; // Role in the organization (owner, admin, manager, cleaner, homeowner)
+  org_role: string;
 }
 
 interface UseOrganizationMembersOptions {
@@ -19,66 +20,34 @@ interface UseOrganizationMembersOptions {
 
 export function useOrganizationMembers(options: UseOrganizationMembersOptions = {}) {
   const { excludeCurrentUser = true } = options;
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { user, currentOrganizationId } = useAuth();
+  const userId = user?.id ?? '';
+  const orgId = currentOrganizationId ?? '';
 
-  const fetchMembers = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch all organization members with their user profiles
+  const query = useOrgQuery({
+    queryKey: [...keys.organizationMembers.byOrg(orgId), excludeCurrentUser ? 'noself' : 'all'] as const,
+    queryFn: async ({ orgId }) => {
       const { data: orgMembers, error: membersError } = await supabase
         .from('organization_members')
         .select('user_id, role')
-        .eq('organization_id', currentOrganizationId);
+        .eq('organization_id', orgId);
 
-      if (membersError) {
-        throw membersError;
-      }
+      if (membersError) throw membersError;
+      if (!orgMembers || orgMembers.length === 0) return [];
 
-      if (!orgMembers || orgMembers.length === 0) {
-        setMembers([]);
-        setLoading(false);
-        return;
-      }
-
-      // Get all user IDs
       let userIds = orgMembers.map(m => m.user_id);
-      
-      // Filter out current user if requested
-      if (excludeCurrentUser) {
-        userIds = userIds.filter(id => id !== user.id);
-      }
+      if (excludeCurrentUser) userIds = userIds.filter(id => id !== userId);
+      if (userIds.length === 0) return [];
 
-      if (userIds.length === 0) {
-        setMembers([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch user profiles
       const { data: profiles, error: profilesError } = await supabase
         .from('user_profiles')
         .select('id, email, first_name, last_name, phone, role, avatar_url')
         .in('id', userIds);
 
-      if (profilesError) {
-        throw profilesError;
-      }
+      if (profilesError) throw profilesError;
 
-      // Map org roles to user profiles
       const orgRoleMap = new Map(orgMembers.map(m => [m.user_id, m.role]));
-
-      // Combine data
-      const combinedMembers: OrganizationMember[] = (profiles || []).map(profile => ({
+      const combined: OrganizationMember[] = (profiles || []).map(profile => ({
         id: profile.id,
         email: profile.email,
         first_name: profile.first_name,
@@ -86,33 +55,23 @@ export function useOrganizationMembers(options: UseOrganizationMembersOptions = 
         phone: profile.phone,
         role: profile.role,
         avatar_url: profile.avatar_url,
-        org_role: orgRoleMap.get(profile.id) || 'member'
+        org_role: orgRoleMap.get(profile.id) || 'member',
       }));
 
-      // Sort by name
-      combinedMembers.sort((a, b) => {
+      combined.sort((a, b) => {
         const nameA = `${a.first_name || ''} ${a.last_name || ''}`.toLowerCase();
         const nameB = `${b.first_name || ''} ${b.last_name || ''}`.toLowerCase();
         return nameA.localeCompare(nameB);
       });
 
-      setMembers(combinedMembers);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch organization members');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId, excludeCurrentUser]);
-
-  useEffect(() => {
-    fetchMembers();
-  }, [fetchMembers]);
+      return combined;
+    },
+  });
 
   return {
-    members,
-    loading,
-    error,
-    refetch: fetchMembers
+    members: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
-

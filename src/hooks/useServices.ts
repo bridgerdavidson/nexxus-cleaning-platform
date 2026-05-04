@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeServices } from './useRealtimeServices';
+import { useOrgQuery } from '../lib/useOrgQuery';
+import { keys } from '../lib/queryKeys';
 
 export interface ServiceType {
   id: string;
@@ -206,47 +208,27 @@ export function useServices() {
 }
 
 export function useService(serviceId: string | null) {
-  const [service, setService] = useState<ServiceType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
-
-  const fetchService = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId || !serviceId) {
-      setService(null);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error: fetchError } = await supabase
+  const query = useOrgQuery({
+    queryKey: keys.services.detail(serviceId ?? ''),
+    enabled: !!serviceId,
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
         .from('service_types')
         .select('*')
-        .eq('id', serviceId)
-        .eq('organization_id', currentOrganizationId)
+        .eq('id', serviceId as string)
+        .eq('organization_id', orgId)
         .single();
+      if (error) throw error;
+      return data as ServiceType;
+    },
+  });
 
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      setService(data);
-    } catch (err) {
-      console.error('Error fetching service:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch service');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId, serviceId]);
-
-  useEffect(() => {
-    fetchService();
-  }, [fetchService]);
-
-  return { service, loading, error, refetch: fetchService };
+  return {
+    service: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 // Create a new service

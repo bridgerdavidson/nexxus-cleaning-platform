@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { useOrgQuery } from '../lib/useOrgQuery';
+import { keys } from '../lib/queryKeys';
 
 export interface Appointment {
   id: string;
@@ -90,16 +91,12 @@ export interface Payment {
 }
 
 export function useHomeownerAppointments() {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  const fetchAppointments = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
+  const query = useOrgQuery({
+    queryKey: keys.appointments.byHomeowner(userId),
+    queryFn: async ({ orgId, userId }) => {
       const { data, error: fetchError } = await supabase
         .from('appointments')
         .select(`
@@ -131,22 +128,19 @@ export function useHomeownerAppointments() {
             )
           )
         `)
-        .eq('homeowner_id', user.id)
-        .eq('organization_id', currentOrganizationId)
+        .eq('homeowner_id', userId)
+        .eq('organization_id', orgId)
         .order('scheduled_date', { ascending: true });
 
       if (fetchError) throw fetchError;
-      
-      // Fetch payment statuses for all appointments
+
       const appointmentIds = (data || []).map(a => a.id);
       let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
-      
       if (appointmentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
           .select('appointment_id, status')
           .in('appointment_id', appointmentIds);
-        
         if (payments) {
           paymentStatusMap = payments.reduce((acc, p) => {
             acc[p.appointment_id] = p.status;
@@ -155,272 +149,219 @@ export function useHomeownerAppointments() {
         }
       }
 
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(appointment => ({
+      return (data || []).map(appointment => ({
         ...appointment,
         property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
         service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
         checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
-        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile) 
+        cleaner_profile: appointment.cleaner_profile && Array.isArray(appointment.cleaner_profile)
           ? {
               ...appointment.cleaner_profile[0],
-              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile) 
-                ? appointment.cleaner_profile[0].user_profile[0] 
-                : appointment.cleaner_profile[0]?.user_profile
+              user_profile: Array.isArray(appointment.cleaner_profile[0]?.user_profile)
+                ? appointment.cleaner_profile[0].user_profile[0]
+                : appointment.cleaner_profile[0]?.user_profile,
             }
           : appointment.cleaner_profile,
         payment_status: paymentStatusMap[appointment.id] || null,
-      }));
-      
-      setAppointments(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch appointments');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+      })) as Appointment[];
+    },
+  });
 
-  useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
-
-  return { appointments, loading, error, refetch: fetchAppointments };
+  return {
+    appointments: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 export function useHomeownerProperties() {
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+  const query = useOrgQuery({
+    queryKey: keys.properties.byHomeowner(userId),
+    queryFn: async ({ orgId, userId }) => {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('owner_id', userId)
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
 
-    const fetchProperties = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('properties')
-          .select('*')
-          .eq('owner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
-          .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Property[];
+    },
+  });
 
-        if (error) throw error;
-        setProperties(data || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch properties');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProperties();
-  }, [user?.id, currentOrganizationId]);
-
-  return { properties, loading, error };
+  return {
+    properties: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 export function useHomeownerStats() {
-  const [stats, setStats] = useState<HomeownerStats>({
-    totalCleanings: 0,
-    upcomingCleanings: 0,
-    totalSpent: 0,
-    favoriteCleaners: 0
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-
-        // Get total cleanings (completed appointments)
-        const { count: totalCleanings } = await supabase
+  const query = useOrgQuery({
+    queryKey: keys.stats.homeowner(userId),
+    queryFn: async ({ orgId, userId }) => {
+      const [totalRes, upcomingRes, paidPaymentsRes, completedCleanerRes] = await Promise.all([
+        supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('homeowner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
-          .eq('status', 'completed');
-
-        // Get upcoming cleanings
-        const { count: upcomingCleanings } = await supabase
+          .eq('homeowner_id', userId)
+          .eq('organization_id', orgId)
+          .eq('status', 'completed'),
+        supabase
           .from('appointments')
           .select('*', { count: 'exact', head: true })
-          .eq('homeowner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
-          .in('status', ['pending', 'confirmed']);
-
-        // Get total spent (from paid payments)
-        const { data: payments } = await supabase
+          .eq('homeowner_id', userId)
+          .eq('organization_id', orgId)
+          .in('status', ['pending', 'confirmed']),
+        supabase
           .from('payments')
           .select('amount, appointments!inner(homeowner_id, organization_id)')
-          .eq('appointments.homeowner_id', user.id)
-          .eq('appointments.organization_id', currentOrganizationId)
-          .eq('status', 'paid');
-
-        const totalSpent = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0;
-
-        // Get favorite cleaners count (cleaners with 2+ completed jobs)
-        const { data: cleanerCounts } = await supabase
+          .eq('appointments.homeowner_id', userId)
+          .eq('appointments.organization_id', orgId)
+          .eq('status', 'paid'),
+        supabase
           .from('appointments')
           .select('cleaner_id')
-          .eq('homeowner_id', user.id)
-          .eq('organization_id', currentOrganizationId)
+          .eq('homeowner_id', userId)
+          .eq('organization_id', orgId)
           .eq('status', 'completed')
-          .not('cleaner_id', 'is', null);
+          .not('cleaner_id', 'is', null),
+      ]);
 
-        const cleanerJobCounts = cleanerCounts?.reduce((acc, appointment) => {
+      const totalSpent =
+        paidPaymentsRes.data?.reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
+
+      const cleanerJobCounts = (completedCleanerRes.data ?? []).reduce(
+        (acc, appointment) => {
           const cleanerId = appointment.cleaner_id;
-          if (cleanerId) {
-            acc[cleanerId] = (acc[cleanerId] || 0) + 1;
-          }
+          if (cleanerId) acc[cleanerId] = (acc[cleanerId] || 0) + 1;
           return acc;
-        }, {} as Record<string, number>) || {};
+        },
+        {} as Record<string, number>
+      );
+      const favoriteCleaners = Object.values(cleanerJobCounts).filter(c => c >= 2).length;
 
-        const favoriteCleaners = Object.values(cleanerJobCounts).filter(count => count >= 2).length;
+      return {
+        totalCleanings: totalRes.count ?? 0,
+        upcomingCleanings: upcomingRes.count ?? 0,
+        totalSpent,
+        favoriteCleaners,
+      } as HomeownerStats;
+    },
+  });
 
-        setStats({
-          totalCleanings: totalCleanings || 0,
-          upcomingCleanings: upcomingCleanings || 0,
-          totalSpent,
-          favoriteCleaners
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch stats');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, [user?.id, currentOrganizationId]);
-
-  return { stats, loading, error };
+  return {
+    stats: query.data ?? {
+      totalCleanings: 0,
+      upcomingCleanings: 0,
+      totalSpent: 0,
+      favoriteCleaners: 0,
+    },
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 export function useHomeownerMessages() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+  const query = useOrgQuery({
+    queryKey: ['messages', 'homeowner', userId] as const,
+    queryFn: async ({ orgId, userId }) => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          subject,
+          content,
+          is_read,
+          created_at,
+          sender_id,
+          recipient_id,
+          sender:user_profiles!sender_id(
+            first_name,
+            last_name,
+            role
+          ),
+          recipient:user_profiles!recipient_id(
+            first_name,
+            last_name,
+            role
+          )
+        `)
+        .eq('organization_id', orgId)
+        .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+        .order('created_at', { ascending: false });
 
-    const fetchMessages = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('messages')
-          .select(`
-            id,
-            subject,
-            content,
-            is_read,
-            created_at,
-            sender_id,
-            recipient_id,
-            sender:user_profiles!sender_id(
-              first_name,
-              last_name,
-              role
-            ),
-            recipient:user_profiles!recipient_id(
-              first_name,
-              last_name,
-              role
-            )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
-          .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(message => ({
+        ...message,
+        sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
+        recipient: Array.isArray(message.recipient) ? message.recipient[0] : message.recipient,
+      })) as Message[];
+    },
+  });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(message => ({
-          ...message,
-          sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
-          recipient: Array.isArray(message.recipient) ? message.recipient[0] : message.recipient
-        }));
-        
-        setMessages(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch messages');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMessages();
-  }, [user?.id, currentOrganizationId]);
-
-  return { messages, loading, error };
+  return {
+    messages: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 export function useHomeownerPayments() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    const fetchPayments = async () => {
-      try {
-        setLoading(true);
-        
-        // Get all payments - RLS policy will automatically filter for homeowner's appointments
-        const { data, error } = await supabase
-          .from('payments')
-          .select(`
-            id,
-            amount,
-            status,
-            paid_at,
-            created_at,
-            appointment:appointments(
-              scheduled_date,
-              homeowner_id,
-              service_type:service_types(
-                name
-              )
+  const query = useOrgQuery({
+    queryKey: keys.payments.byHomeowner(userId),
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select(`
+          id,
+          amount,
+          status,
+          paid_at,
+          created_at,
+          appointment:appointments(
+            scheduled_date,
+            homeowner_id,
+            service_type:service_types(
+              name
             )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .order('created_at', { ascending: false });
+          )
+        `)
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(payment => ({
-          ...payment,
-          appointment: Array.isArray(payment.appointment) 
-            ? {
-                ...payment.appointment[0],
-                service_type: Array.isArray(payment.appointment[0]?.service_type) 
-                  ? payment.appointment[0].service_type[0] 
-                  : payment.appointment[0]?.service_type
-              }
-            : payment.appointment
-        }));
-        
-        setPayments(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch payments');
-      } finally {
-        setLoading(false);
-      }
-    };
+      if (error) throw error;
+      return (data || []).map(payment => ({
+        ...payment,
+        appointment: Array.isArray(payment.appointment)
+          ? {
+              ...payment.appointment[0],
+              service_type: Array.isArray(payment.appointment[0]?.service_type)
+                ? payment.appointment[0].service_type[0]
+                : payment.appointment[0]?.service_type,
+            }
+          : payment.appointment,
+      })) as Payment[];
+    },
+  });
 
-    fetchPayments();
-  }, [user?.id, currentOrganizationId]);
-
-  return { payments, loading, error };
+  return {
+    payments: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { keys } from '../lib/queryKeys';
 import { Checklist, ChecklistLineItem, ChecklistWithItems } from '../types';
 
 interface UseChecklistsResult {
@@ -22,141 +24,131 @@ interface UseChecklistsResult {
  * Returns checklists with nested checklist_line_items array.
  */
 export function useChecklists(serviceTypeId: string | null): UseChecklistsResult {
-  const [checklists, setChecklists] = useState<ChecklistWithItems[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const queryKey = keys.checklists.byServiceType(serviceTypeId ?? '');
 
-  const fetchChecklists = useCallback(async () => {
-    if (!serviceTypeId) {
-      setChecklists([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch checklists with their line items using Supabase's nested select
-      const { data, error: fetchError } = await supabase
+  const query = useQuery({
+    queryKey,
+    enabled: !!serviceTypeId,
+    queryFn: async () => {
+      const { data, error } = await supabase
         .from('checklists')
         .select(`
           *,
           checklist_line_items (*)
         `)
-        .eq('service_type_id', serviceTypeId)
+        .eq('service_type_id', serviceTypeId as string)
         .order('name', { ascending: true });
 
-      if (fetchError) {
-        throw fetchError;
-      }
+      if (error) throw error;
 
-      // Type assertion since Supabase returns the nested data
       const checklistsWithItems = (data || []) as ChecklistWithItems[];
-      
-      // Sort line items within each checklist by position (nulls last), then created_at
       checklistsWithItems.forEach((checklist) => {
         if (checklist.checklist_line_items) {
           checklist.checklist_line_items.sort((a, b) => {
-            // Handle null positions - nulls sort last
             if (a.position === null && b.position === null) {
               return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
             }
             if (a.position === null) return 1;
             if (b.position === null) return -1;
-            
-            // Both have positions - sort by position, then created_at for ties
-            if (a.position !== b.position) {
-              return a.position - b.position;
-            }
+            if (a.position !== b.position) return a.position - b.position;
             return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           });
         }
       });
+      return checklistsWithItems;
+    },
+  });
 
-      setChecklists(checklistsWithItems);
-    } catch (err) {
-      console.error('Error fetching checklists:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch checklists');
-    } finally {
-      setLoading(false);
-    }
-  }, [serviceTypeId]);
+  const updateCache = useCallback(
+    (updater: (prev: ChecklistWithItems[]) => ChecklistWithItems[]) => {
+      queryClient.setQueryData<ChecklistWithItems[]>(queryKey, prev => updater(prev ?? []));
+    },
+    [queryClient, queryKey]
+  );
 
-  useEffect(() => {
-    fetchChecklists();
-  }, [fetchChecklists]);
+  const applyLineItemUpdated = useCallback(
+    (lineItemId: string, task: string) => {
+      updateCache(prev =>
+        prev.map(checklist => ({
+          ...checklist,
+          checklist_line_items: checklist.checklist_line_items?.map(item =>
+            item.id === lineItemId ? { ...item, task } : item
+          ),
+        }))
+      );
+    },
+    [updateCache]
+  );
 
-  const refetch = useCallback(() => {
-    fetchChecklists();
-  }, [fetchChecklists]);
+  const applyLineItemAdded = useCallback(
+    (checklistId: string, item: ChecklistLineItem) => {
+      updateCache(prev =>
+        prev.map(checklist =>
+          checklist.id === checklistId
+            ? {
+                ...checklist,
+                checklist_line_items: [...(checklist.checklist_line_items || []), item],
+              }
+            : checklist
+        )
+      );
+    },
+    [updateCache]
+  );
 
-  // Local state updaters - update in-memory state without refetching
-  const applyLineItemUpdated = useCallback((lineItemId: string, task: string) => {
-    setChecklists((prev) =>
-      prev.map((checklist) => ({
-        ...checklist,
-        checklist_line_items: checklist.checklist_line_items?.map((item) =>
-          item.id === lineItemId ? { ...item, task } : item
-        ),
-      }))
-    );
-  }, []);
+  const applyLineItemRemoved = useCallback(
+    (lineItemId: string) => {
+      updateCache(prev =>
+        prev.map(checklist => ({
+          ...checklist,
+          checklist_line_items: checklist.checklist_line_items?.filter(item => item.id !== lineItemId),
+        }))
+      );
+    },
+    [updateCache]
+  );
 
-  const applyLineItemAdded = useCallback((checklistId: string, item: ChecklistLineItem) => {
-    setChecklists((prev) =>
-      prev.map((checklist) =>
-        checklist.id === checklistId
-          ? {
-              ...checklist,
-              checklist_line_items: [...(checklist.checklist_line_items || []), item],
-            }
-          : checklist
-      )
-    );
-  }, []);
+  const applyLineItemsReordered = useCallback(
+    (checklistId: string, orderedItems: ChecklistLineItem[]) => {
+      updateCache(prev =>
+        prev.map(checklist =>
+          checklist.id === checklistId
+            ? { ...checklist, checklist_line_items: orderedItems }
+            : checklist
+        )
+      );
+    },
+    [updateCache]
+  );
 
-  const applyLineItemRemoved = useCallback((lineItemId: string) => {
-    setChecklists((prev) =>
-      prev.map((checklist) => ({
-        ...checklist,
-        checklist_line_items: checklist.checklist_line_items?.filter(
-          (item) => item.id !== lineItemId
-        ),
-      }))
-    );
-  }, []);
+  const applyChecklistUpdated = useCallback(
+    (checklistId: string, name: string, priceAdder: number) => {
+      updateCache(prev =>
+        prev.map(checklist =>
+          checklist.id === checklistId ? { ...checklist, name, price_adder: priceAdder } : checklist
+        )
+      );
+    },
+    [updateCache]
+  );
 
-  const applyLineItemsReordered = useCallback((checklistId: string, orderedItems: ChecklistLineItem[]) => {
-    setChecklists((prev) =>
-      prev.map((checklist) =>
-        checklist.id === checklistId
-          ? {
-              ...checklist,
-              checklist_line_items: orderedItems,
-            }
-          : checklist
-      )
-    );
-  }, []);
-
-  const applyChecklistUpdated = useCallback((checklistId: string, name: string, priceAdder: number) => {
-    setChecklists((prev) =>
-      prev.map((checklist) =>
-        checklist.id === checklistId ? { ...checklist, name, price_adder: priceAdder } : checklist
-      )
-    );
-  }, []);
-
-  const applyChecklistAdded = useCallback((checklist: ChecklistWithItems) => {
-    setChecklists((prev) => [...prev, checklist].sort((a, b) => a.name.localeCompare(b.name)));
-  }, []);
+  const applyChecklistAdded = useCallback(
+    (checklist: ChecklistWithItems) => {
+      updateCache(prev =>
+        [...prev, checklist].sort((a, b) => a.name.localeCompare(b.name))
+      );
+    },
+    [updateCache]
+  );
 
   return {
-    checklists,
-    loading,
-    error,
-    refetch,
+    checklists: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: () => {
+      query.refetch();
+    },
     applyLineItemUpdated,
     applyLineItemAdded,
     applyLineItemRemoved,

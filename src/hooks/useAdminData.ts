@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeAppointments } from './useRealtimeAppointments';
 import { useRealtimePayments, PaymentUpdateData } from './useRealtimePayments';
+import { useQueryClient } from '@tanstack/react-query';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { keys } from '../lib/queryKeys';
 
@@ -412,16 +413,14 @@ export function useAdminAppointments() {
 }
 
 export function useAdminCleaners() {
-  const [cleaners, setCleaners] = useState<AdminCleaner[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.cleanerProfiles.byOrg(orgId);
 
-  const fetchCleaners = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('cleaner_profiles')
         .select(`
@@ -444,41 +443,36 @@ export function useAdminCleaners() {
             avatar_url
           )
         `)
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('total_jobs', { ascending: false });
 
       if (error) throw error;
-      
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(cleaner => ({
+
+      return (data || []).map(cleaner => ({
         ...cleaner,
-        user_profile: Array.isArray(cleaner.user_profile) ? cleaner.user_profile[0] : cleaner.user_profile
-      }));
-      
-      setCleaners(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch cleaners');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+        user_profile: Array.isArray(cleaner.user_profile)
+          ? cleaner.user_profile[0]
+          : cleaner.user_profile,
+      })) as AdminCleaner[];
+    },
+  });
 
-  useEffect(() => {
-    fetchCleaners();
-  }, [fetchCleaners]);
+  const updateCleanerInState = useCallback(
+    (cleanerId: string, updatedData: Partial<AdminCleaner>) => {
+      queryClient.setQueryData<AdminCleaner[]>(queryKey, prev =>
+        (prev ?? []).map(c => (c.id === cleanerId ? { ...c, ...updatedData } : c))
+      );
+    },
+    [queryClient, queryKey]
+  );
 
-  // Update a single cleaner in state without refetching
-  const updateCleanerInState = useCallback((cleanerId: string, updatedData: Partial<AdminCleaner>) => {
-    setCleaners(prevCleaners => 
-      prevCleaners.map(cleaner => 
-        cleaner.id === cleanerId 
-          ? { ...cleaner, ...updatedData }
-          : cleaner
-      )
-    );
-  }, []);
-
-  return { cleaners, loading, error, refetch: fetchCleaners, updateCleanerInState };
+  return {
+    cleaners: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    updateCleanerInState,
+  };
 }
 
 export function useAdminStats() {
@@ -864,61 +858,51 @@ export function usePaymentStats() {
 }
 
 export function useAdminMessages() {
-  const [messages, setMessages] = useState<AdminMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const query = useOrgQuery({
+    queryKey: ['messages', 'admin', orgId] as const,
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          subject,
+          content,
+          is_read,
+          created_at,
+          appointment_id,
+          sender:user_profiles!sender_id(
+            first_name,
+            last_name,
+            role
+          ),
+          recipient:user_profiles!recipient_id(
+            first_name,
+            last_name,
+            role
+          )
+        `)
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+      if (error) throw error;
 
-    const fetchMessages = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('messages')
-          .select(`
-            id,
-            subject,
-            content,
-            is_read,
-            created_at,
-            appointment_id,
-            sender:user_profiles!sender_id(
-              first_name,
-              last_name,
-              role
-            ),
-            recipient:user_profiles!recipient_id(
-              first_name,
-              last_name,
-              role
-            )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .order('created_at', { ascending: false });
+      return (data || []).map(message => ({
+        ...message,
+        sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
+        recipient: Array.isArray(message.recipient)
+          ? message.recipient[0]
+          : message.recipient,
+      })) as AdminMessage[];
+    },
+  });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(message => ({
-          ...message,
-          sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
-          recipient: Array.isArray(message.recipient) ? message.recipient[0] : message.recipient
-        }));
-        
-        setMessages(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch messages');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMessages();
-  }, [user?.id, currentOrganizationId]);
-
-  return { messages, loading, error };
+  return {
+    messages: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 // Helper function to update appointment status
@@ -1365,82 +1349,70 @@ export function useAdminCustomers() {
 }
 
 export function useCustomerDetails(customerId: string | null) {
-  const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
-  const [properties, setProperties] = useState<CustomerProperty[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { currentOrganizationId } = useAuth();
+  const query = useOrgQuery({
+    queryKey: keys.customers.detail(customerId ?? ''),
+    enabled: !!customerId,
+    queryFn: async ({ orgId }) => {
+      const [appointmentsRes, propertiesRes] = await Promise.all([
+        supabase
+          .from('appointments')
+          .select(`
+            id,
+            service_type_id,
+            checklist_id,
+            scheduled_date,
+            scheduled_time,
+            status,
+            total_price,
+            service_type:service_types(name),
+            checklist:checklists(name, price_adder),
+            property:properties(name, address)
+          `)
+          .eq('organization_id', orgId)
+          .eq('homeowner_id', customerId as string)
+          .order('scheduled_date', { ascending: false }),
+        supabase
+          .from('properties')
+          .select(`
+            id,
+            name,
+            address,
+            city,
+            state,
+            zip_code,
+            bedrooms,
+            bathrooms,
+            square_feet
+          `)
+          .eq('organization_id', orgId)
+          .eq('owner_id', customerId as string)
+          .order('created_at', { ascending: false }),
+      ]);
 
-  const fetchDetails = useCallback(async () => {
-    if (!customerId || !currentOrganizationId) return;
+      if (appointmentsRes.error) throw appointmentsRes.error;
+      if (propertiesRes.error) throw propertiesRes.error;
 
-    try {
-      setLoading(true);
-
-      // Fetch customer's appointments
-      const { data: appointmentsData, error: appointmentsError } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          service_type_id,
-          checklist_id,
-          scheduled_date,
-          scheduled_time,
-          status,
-          total_price,
-          service_type:service_types(name),
-          checklist:checklists(name, price_adder),
-          property:properties(name, address)
-        `)
-        .eq('organization_id', currentOrganizationId)
-        .eq('homeowner_id', customerId)
-        .order('scheduled_date', { ascending: false });
-
-      if (appointmentsError) throw appointmentsError;
-
-      // Transform appointments data
-      const transformedAppointments = (appointmentsData || []).map(apt => ({
+      const appointments = (appointmentsRes.data || []).map(apt => ({
         ...apt,
         service_type: Array.isArray(apt.service_type) ? apt.service_type[0] : apt.service_type,
         checklist: Array.isArray(apt.checklist) ? apt.checklist[0] : apt.checklist,
         property: Array.isArray(apt.property) ? apt.property[0] : apt.property,
-      }));
+      })) as CustomerAppointment[];
 
-      setAppointments(transformedAppointments);
+      return {
+        appointments,
+        properties: (propertiesRes.data || []) as CustomerProperty[],
+      };
+    },
+  });
 
-      // Fetch customer's properties
-      const { data: propertiesData, error: propertiesError } = await supabase
-        .from('properties')
-        .select(`
-          id,
-          name,
-          address,
-          city,
-          state,
-          zip_code,
-          bedrooms,
-          bathrooms,
-          square_feet
-        `)
-        .eq('organization_id', currentOrganizationId)
-        .eq('owner_id', customerId)
-        .order('created_at', { ascending: false });
-
-      if (propertiesError) throw propertiesError;
-
-      setProperties(propertiesData || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch customer details');
-    } finally {
-      setLoading(false);
-    }
-  }, [customerId, currentOrganizationId]);
-
-  useEffect(() => {
-    fetchDetails();
-  }, [fetchDetails]);
-
-  return { appointments, properties, loading, error, refetch: fetchDetails };
+  return {
+    appointments: query.data?.appointments ?? [],
+    properties: query.data?.properties ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 // Helper function to update a customer profile

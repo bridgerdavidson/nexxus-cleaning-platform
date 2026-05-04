@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useRealtimeAppointments } from './useRealtimeAppointments';
 import { useRealtimePayments, PaymentUpdateData } from './useRealtimePayments';
+import { useOrgQuery } from '../lib/useOrgQuery';
+import { keys } from '../lib/queryKeys';
 
 // Manager interfaces (same as admin but focused on operations management)
 export interface ManagerAppointment {
@@ -395,16 +398,14 @@ export function useManagerAppointments() {
 }
 
 export function useManagerCleaners() {
-  const [cleaners, setCleaners] = useState<ManagerCleaner[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.cleanerProfiles.byOrg(orgId);
 
-  const fetchCleaners = useCallback(async () => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    try {
-      setLoading(true);
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
       const { data, error } = await supabase
         .from('cleaner_profiles')
         .select(`
@@ -427,165 +428,135 @@ export function useManagerCleaners() {
             avatar_url
           )
         `)
-        .eq('organization_id', currentOrganizationId)
+        .eq('organization_id', orgId)
         .order('total_jobs', { ascending: false });
 
       if (error) throw error;
-      
-      // Transform the data to match our interface
-      const transformedData = (data || []).map(cleaner => ({
+      return (data || []).map(cleaner => ({
         ...cleaner,
-        user_profile: Array.isArray(cleaner.user_profile) ? cleaner.user_profile[0] : cleaner.user_profile
-      }));
-      
-      setCleaners(transformedData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch cleaners');
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id, currentOrganizationId]);
+        user_profile: Array.isArray(cleaner.user_profile)
+          ? cleaner.user_profile[0]
+          : cleaner.user_profile,
+      })) as ManagerCleaner[];
+    },
+  });
 
-  useEffect(() => {
-    fetchCleaners();
-  }, [fetchCleaners]);
+  const updateCleanerInState = useCallback(
+    (cleanerId: string, updatedData: Partial<ManagerCleaner>) => {
+      queryClient.setQueryData<ManagerCleaner[]>(queryKey, prev =>
+        (prev ?? []).map(c => (c.id === cleanerId ? { ...c, ...updatedData } : c))
+      );
+    },
+    [queryClient, queryKey]
+  );
 
-  // Update a single cleaner in state without refetching
-  const updateCleanerInState = useCallback((cleanerId: string, updatedData: Partial<ManagerCleaner>) => {
-    setCleaners(prevCleaners => 
-      prevCleaners.map(cleaner => 
-        cleaner.id === cleanerId 
-          ? { ...cleaner, ...updatedData }
-          : cleaner
-      )
-    );
-  }, []);
-
-  return { cleaners, loading, error, refetch: fetchCleaners, updateCleanerInState };
+  return {
+    cleaners: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    updateCleanerInState,
+  };
 }
 
 export function useManagerPayments() {
-  const [payments, setPayments] = useState<ManagerPayment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
-
-    const fetchPayments = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('payments')
-          .select(`
-            id,
-            amount,
-            status,
-            paid_at,
-            created_at,
-            appointment:appointments(
-              scheduled_date,
-              homeowner:user_profiles!homeowner_id(
-                first_name,
-                last_name
-              ),
-              service_type:service_types(
-                name
-              )
+  const query = useOrgQuery({
+    queryKey: keys.payments.byOrg(orgId),
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from('payments')
+        .select(`
+          id,
+          amount,
+          status,
+          paid_at,
+          created_at,
+          appointment:appointments(
+            scheduled_date,
+            homeowner:user_profiles!homeowner_id(
+              first_name,
+              last_name
+            ),
+            service_type:service_types(
+              name
             )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .order('created_at', { ascending: false });
+          )
+        `)
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(payment => ({
-          ...payment,
-          appointment: Array.isArray(payment.appointment) 
-            ? {
-                ...payment.appointment[0],
-                homeowner: Array.isArray(payment.appointment[0]?.homeowner) 
-                  ? payment.appointment[0].homeowner[0] 
-                  : payment.appointment[0]?.homeowner,
-                service_type: Array.isArray(payment.appointment[0]?.service_type) 
-                  ? payment.appointment[0].service_type[0] 
-                  : payment.appointment[0]?.service_type
-              }
-            : payment.appointment
-        }));
-        
-        setPayments(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch payments');
-      } finally {
-        setLoading(false);
-      }
-    };
+      if (error) throw error;
+      return (data || []).map(payment => ({
+        ...payment,
+        appointment: Array.isArray(payment.appointment)
+          ? {
+              ...payment.appointment[0],
+              homeowner: Array.isArray(payment.appointment[0]?.homeowner)
+                ? payment.appointment[0].homeowner[0]
+                : payment.appointment[0]?.homeowner,
+              service_type: Array.isArray(payment.appointment[0]?.service_type)
+                ? payment.appointment[0].service_type[0]
+                : payment.appointment[0]?.service_type,
+            }
+          : payment.appointment,
+      })) as ManagerPayment[];
+    },
+  });
 
-    fetchPayments();
-  }, [user?.id, currentOrganizationId]);
-
-  return { payments, loading, error };
+  return {
+    payments: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 export function useManagerMessages() {
-  const [messages, setMessages] = useState<ManagerMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
 
-  useEffect(() => {
-    if (!user?.id || !currentOrganizationId) return;
+  const query = useOrgQuery({
+    queryKey: ['messages', 'manager', orgId] as const,
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          subject,
+          content,
+          is_read,
+          created_at,
+          appointment_id,
+          sender:user_profiles!sender_id(
+            first_name,
+            last_name,
+            role
+          ),
+          recipient:user_profiles!recipient_id(
+            first_name,
+            last_name,
+            role
+          )
+        `)
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
 
-    const fetchMessages = async () => {
-      try {
-        setLoading(true);
-        const { data, error } = await supabase
-          .from('messages')
-          .select(`
-            id,
-            subject,
-            content,
-            is_read,
-            created_at,
-            appointment_id,
-            sender:user_profiles!sender_id(
-              first_name,
-              last_name,
-              role
-            ),
-            recipient:user_profiles!recipient_id(
-              first_name,
-              last_name,
-              role
-            )
-          `)
-          .eq('organization_id', currentOrganizationId)
-          .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(message => ({
+        ...message,
+        sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
+        recipient: Array.isArray(message.recipient) ? message.recipient[0] : message.recipient,
+      })) as ManagerMessage[];
+    },
+  });
 
-        if (error) throw error;
-        
-        // Transform the data to match our interface
-        const transformedData = (data || []).map(message => ({
-          ...message,
-          sender: Array.isArray(message.sender) ? message.sender[0] : message.sender,
-          recipient: Array.isArray(message.recipient) ? message.recipient[0] : message.recipient
-        }));
-        
-        setMessages(transformedData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch messages');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMessages();
-  }, [user?.id, currentOrganizationId]);
-
-  return { messages, loading, error };
+  return {
+    messages: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
 }
 
 // Helper function to update appointment status
