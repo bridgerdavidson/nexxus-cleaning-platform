@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev      # Next.js dev server (Turbopack) on :3000
 npm run build    # Production build
 npm run start    # Run the production build
-npm run lint     # ESLint (next/core-web-vitals, next/typescript)
+npm run lint     # ESLint (note: Next.js 16 removed `next lint`, this script now runs `eslint .` directly)
 npx tsc --noEmit # Type-check (no test runner is configured)
 ```
 
@@ -71,14 +71,48 @@ This file is the source of truth for TypeScript shapes that mirror the database.
 
 There is a separate, partial `Database` type in `src/lib/supabase.ts` that does **not** include all tables/columns from `src/types/index.ts` (notably missing `job_progress`, `payout_*`, `cleaner_profiles.stripe_connect_*`, `properties.name`, etc.). Prefer importing entity types from `src/types` for app code; the `Database` generic is only used incidentally.
 
-### Realtime + dashboards
+### Data fetching: TanStack Query
 
-Each role's dashboard page (`src/app/{admin,manager,cleaner,homeowner}-dashboard/page.tsx`) is a thin wrapper that renders large client components from `src/components/` (e.g. `BookingsPage`, `CalendarView`, `PaymentsPage`, `MessagesPage`, `CleanerManagementPage`). Cross-cutting hooks under `src/hooks/`:
+The app's data layer is **TanStack Query v5** (added in the unification refactor — see `docs/perf-after.md`). Hooks under `src/hooks/` follow these conventions:
 
-- `useRealtimeAppointments`, `useRealtimePayments`, `useRealtimeServices` — Supabase Realtime channel subscriptions.
-- `useAdminData`, `useManagerData`, `useCleanerData`, `useHomeownerData` — role-specific aggregated queries.
+- **`useOrgQuery`** (in `src/lib/useOrgQuery.ts`) — wraps `useQuery` and pulls `currentOrganizationId`, `accessToken`, and `userId` from `useAuth()` into the `queryFn` context. Use it for any org-scoped query. Falls back to `useQuery` directly when the query is not org-scoped (e.g. `useService` by id).
+- **Query keys** — defined as a typed factory in `src/lib/queryKeys.ts`. Use `keys.appointments.byOrg(orgId)` not raw arrays — the hierarchy enables prefix invalidation (`invalidateQueries({ queryKey: keys.appointments.all })` cascades).
+- **`QueryClient` defaults** (in `src/lib/queryClient.ts`): `staleTime: 30s`, `gcTime: 5min`, `refetchOnWindowFocus: false` (AuthContext already does visibilitychange revalidation), `refetchOnReconnect: 'always'`. RLS errors (`PGRST*`, `42*`) skip retry; other errors retry once.
+- **Mutations** — use `useMutation` with explicit `onSuccess` invalidations of the relevant keys. See `useSendMessage`, `useDeleteConversation`, `useStartConversation`, `useResendInvite` for the pattern.
+- **Auth rotation** — `<AuthQueryBridge>` (mounted inside `LayoutWrapper`) calls `queryClient.invalidateQueries()` whenever `accessToken` changes, so a long-`staleTime` query never carries an old token.
+
+### Realtime: `useSupabaseRealtimeSync`
+
+One helper at `src/lib/useSupabaseRealtimeSync.ts` handles every Supabase `postgres_changes` subscription. The three previous standalone hooks (`useRealtimeAppointments`, `useRealtimePayments`, `useRealtimeServices`) are deleted; the helper supports three behaviors:
+
+- `{ type: 'invalidate', keys: [...] }` — full refetch. Use when the realtime payload doesn't carry the data the UI needs (e.g. joined rows).
+- `{ type: 'patch', key, updater }` — `setQueryData` patch. Use when the realtime payload carries the full row (`useServices`) or a small targeted field (`useAdminAppointments` payment-status).
+- `{ type: 'append', key, transform }` — append to a list. Used by `useMessages` for new INSERTs (with temp-ID dedup for optimistic sender flows).
+
+Channel deduplication: identical `channelName` values share one Supabase subscription. Admin and manager appointments hooks use `appointments:${orgId}` so they share. Use **DB-level filters** (e.g. `filter: 'organization_id=eq.' + orgId`) rather than callback-level filtering — it's cheaper and reduces noise.
+
+Realtime tables must be added to the `supabase_realtime` publication and have `REPLICA IDENTITY FULL` set. See `supabase/migrations/048_invites_realtime.sql` as the template.
+
+### Stats RPCs
+
+`supabase/migrations/049_dashboard_rpcs.sql` defines four `security invoker` RPCs that collapse stats waterfalls into single round trips:
+
+- `admin_dashboard_stats(p_org_id)` — used by `useAdminStats`
+- `cleaner_stats(p_cleaner_id, p_org_id)` — used by `useCleanerStats`
+- `payment_stats(p_org_id)` — used by `usePaymentStats`
+- `org_customers_with_counts(p_org_id)` — used by `useAdminCustomers` (also fixes the previous lossy client-side merge)
+
+Each hook calls the RPC first and falls back to the legacy multi-query path if the RPC errors (so the app keeps working before the migration is applied to a new environment). The fallback should be removed once 049 has shipped to all envs.
+
+### Dashboards
+
+Each role's dashboard page (`src/app/{admin,manager,cleaner,homeowner}-dashboard/page.tsx`) is a thin wrapper that renders large client components from `src/components/` (e.g. `BookingsPage`, `CalendarView`, `PaymentsPage`, `MessagesPage`, `CleanerManagementPage`).
+
+Hooks under `src/hooks/`:
+- `useAdminData`, `useManagerData`, `useCleanerData`, `useHomeownerData` — role-specific aggregated queries (split into per-resource hooks like `useAdminAppointments`, `useAdminStats`).
 - `useManagerPermissions` — fine-grained per-manager flags layered on top of `OrgRole`.
 - `useStripeConnect` — wraps Connect onboarding/status flows.
+- `useInvites` — uses the lazy-on-tab-open pattern (`enabled` flag); the rest of the dashboards still load eagerly. Extending lazy-gating to the other tabs is a follow-up perf ticket.
 
 ### Environment variables
 
