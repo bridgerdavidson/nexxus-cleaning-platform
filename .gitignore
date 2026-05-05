@@ -42,3 +42,8 @@ Thumbs.db
 
 # Playwright MCP session artifacts
 .playwright-mcp/
+
+# Design iteration / verification screenshots (root only — keep public/ assets tracked)
+/*.png
+/*.jpg
+/*.jpeg
