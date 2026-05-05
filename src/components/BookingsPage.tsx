@@ -886,20 +886,16 @@ export default function BookingsPage({
                   </h3>
                   <div className="space-y-4">
                     {filteredActiveAppointments.map((appointment) => (
-                      <div
+                      <AppointmentCard
                         key={appointment.id}
-                        className="animate-pulse-glow rounded-lg"
-                      >
-                        <AppointmentCard
-                          appointment={appointment}
-                          onClick={() => handleAppointmentClick(appointment)}
-                          isSelectMode={isSelectMode}
-                          isSelected={selectedIds.has(appointment.id)}
-                          onToggleSelect={() => toggleSelection(appointment.id)}
-                          role={role}
-                          canApproveDecline={canApproveDecline}
-                        />
-                      </div>
+                        appointment={appointment}
+                        onClick={() => handleAppointmentClick(appointment)}
+                        isSelectMode={isSelectMode}
+                        isSelected={selectedIds.has(appointment.id)}
+                        onToggleSelect={() => toggleSelection(appointment.id)}
+                        role={role}
+                        canApproveDecline={canApproveDecline}
+                      />
                     ))}
                   </div>
                 </div>

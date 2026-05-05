@@ -1063,13 +1063,12 @@ function CleanerDashboardInner() {
               <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
                 <div className="space-y-3">
                   {activeJobs.map((appointment) => (
-                    <div key={appointment.id} className="animate-pulse-glow rounded-lg">
-                      <AppointmentCard
-                        appointment={convertToCardData(appointment)}
-                        onClick={() => handleTodayScheduleAppointmentClick(appointment)}
-                        role="cleaner"
-                      />
-                    </div>
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={convertToCardData(appointment)}
+                      onClick={() => handleTodayScheduleAppointmentClick(appointment)}
+                      role="cleaner"
+                    />
                   ))}
                 </div>
               </div>
@@ -1380,13 +1379,12 @@ function CleanerDashboardInner() {
                   </h3>
                   <div className="space-y-4">
                     {filteredActiveJobsForJobsTab.map((appointment) => (
-                      <div key={appointment.id} className="animate-pulse-glow rounded-lg">
-                        <AppointmentCard
-                          appointment={convertToCardData(appointment)}
-                          onClick={() => handleAppointmentCardClick(appointment)}
-                          role="cleaner"
-                        />
-                      </div>
+                      <AppointmentCard
+                        key={appointment.id}
+                        appointment={convertToCardData(appointment)}
+                        onClick={() => handleAppointmentCardClick(appointment)}
+                        role="cleaner"
+                      />
                     ))}
                   </div>
                 </div>

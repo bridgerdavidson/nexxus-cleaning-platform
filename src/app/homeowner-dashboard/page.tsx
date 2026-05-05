@@ -442,20 +442,16 @@ function HomeownerDashboardInner() {
         {(activeAppointments.length > 0 ? expandedActive : false) && (
           <div className="space-y-4">
             {activeAppointments.map((appointment) => (
-              <div
+              <AppointmentCard
                 key={appointment.id}
-                className="animate-pulse-glow rounded-lg"
-              >
-                <AppointmentCard
-                  appointment={
-                    appointment as Parameters<
-                      typeof AppointmentCard
-                    >[0]["appointment"]
-                  }
-                  onClick={() => setActiveTab("bookings")}
-                  role="homeowner"
-                />
-              </div>
+                appointment={
+                  appointment as Parameters<
+                    typeof AppointmentCard
+                  >[0]["appointment"]
+                }
+                onClick={() => setActiveTab("bookings")}
+                role="homeowner"
+              />
             ))}
           </div>
         )}

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
@@ -10,9 +10,6 @@ import {
   DollarSign,
   BarChart3,
   Settings,
-  CheckCircle,
-  AlertTriangle,
-  AlertCircle,
   TrendingUp,
   UserCheck,
   Home,
@@ -20,10 +17,6 @@ import {
   Star,
   Building,
   LayoutGrid,
-  ChevronDown,
-  ChevronUp,
-  Clock,
-  FileText,
   Briefcase,
   Mail,
 } from "lucide-react";
@@ -32,7 +25,6 @@ import {
   useAdminCleaners,
   useAdminCustomers,
   useAdminProperties,
-  useAdminStats,
   useAdminPayments,
   useAdminPayouts,
   useAdminInvoices,
@@ -48,9 +40,9 @@ import { useInvites } from "../../hooks/useInvites";
 import {
   DASHBOARD_HERO_BACKGROUND,
   dashboardHeroCardDesktopClass,
+  dashboardHeroCardMobileClass,
 } from "../../lib/dashboardHero";
 import { useConversations } from "../../hooks/useConversations";
-import { formatDateTimeTo12h, formatTimeTo12h } from "../../lib/formatTime";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
@@ -66,12 +58,15 @@ import InvitesPage from "../../components/InvitesPage";
 import PaymentsPage from "../../components/PaymentsPage";
 import CleanerManagementPage from "../../components/CleanerManagementPage";
 import AnalyticsPage from "../../components/AnalyticsPage";
-import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
 import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
+import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
+import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
+import TodayScheduleSection from "../../components/TodayScheduleSection";
+import ActiveNowSection from "../../components/ActiveNowSection";
 import {
   ADMIN_MANAGER_DASHBOARD_TAB_IDS,
   ADMIN_MANAGER_DEFAULT_GROUP,
@@ -111,9 +106,6 @@ function AdminDashboardInner() {
     cleanerName: "",
   });
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isStatsExpanded, setIsStatsExpanded] = useState(false);
-  const [isPendingApprovalsExpanded, setIsPendingApprovalsExpanded] =
-    useState(true);
   const [initialMessageRecipientId, setInitialMessageRecipientId] = useState<
     string | null
   >(null);
@@ -149,7 +141,6 @@ function AdminDashboardInner() {
     refetch: refetchProperties,
     updatePropertyInState,
   } = useAdminProperties();
-  const { stats, loading: statsLoading } = useAdminStats();
   const {
     payments,
     loading: paymentsLoading,
@@ -299,32 +290,6 @@ function AdminDashboardInner() {
     );
   }
 
-  // Helper functions
-  const getHomeownerName = (appointment: any) => {
-    if (appointment.homeowner) {
-      const { first_name, last_name } = appointment.homeowner;
-      return `${first_name} ${last_name}`;
-    }
-    return "Unknown";
-  };
-
-  const getCleanerName = (appointment: any) => {
-    if (appointment.cleaner_profile?.user_profile) {
-      const { first_name, last_name } =
-        appointment.cleaner_profile.user_profile;
-      return `${first_name} ${last_name}`;
-    }
-    return null;
-  };
-
-  const getPropertyAddress = (appointment: any) => {
-    if (appointment.property) {
-      const { address, city, state } = appointment.property;
-      return `${address}, ${city}, ${state}`;
-    }
-    return "Address not available";
-  };
-
   const handleLogout = async () => {
     await signOut();
   };
@@ -366,66 +331,6 @@ function AdminDashboardInner() {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "text-yellow-700 bg-yellow-100";
-      case "confirmed":
-        return "text-blue-700 bg-blue-100";
-      case "in_progress":
-        return "text-purple-700 bg-purple-100";
-      case "completed":
-        return "text-green-600 bg-green-100";
-      case "cancelled":
-        return "text-red-600 bg-red-100";
-      default:
-        return "text-gray-600 bg-gray-100";
-    }
-  };
-
-  const getPaymentStatusTabConfig = (
-    paymentStatus:
-      | "pending"
-      | "paid"
-      | "failed"
-      | "refunded"
-      | null
-      | undefined,
-  ) => {
-    switch (paymentStatus) {
-      case "paid":
-        return {
-          label: "Paid",
-          bgColor: "bg-green-100",
-          textColor: "text-green-700",
-        };
-      case "failed":
-        return {
-          label: "Failed",
-          bgColor: "bg-red-100",
-          textColor: "text-red-700",
-        };
-      case "pending":
-        return {
-          label: "Unpaid",
-          bgColor: "bg-gray-100",
-          textColor: "text-gray-700",
-        };
-      case "refunded":
-        return {
-          label: "Refunded",
-          bgColor: "bg-blue-100",
-          textColor: "text-blue-700",
-        };
-      default:
-        return {
-          label: "Unpaid",
-          bgColor: "bg-gray-100",
-          textColor: "text-gray-700",
-        };
-    }
-  };
-
   // Get upcoming appointments: future appointments that are confirmed
   // This matches the BookingsPage "upcoming" tab definition, but restricted to confirmed
   const today = new Date();
@@ -438,8 +343,9 @@ function AdminDashboardInner() {
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
 
-      // Future appointments that have been confirmed
-      return appointmentDate >= today && a.status === "confirmed";
+      // Strictly future appointments (after today) that are confirmed.
+      // Today's appointments live in the Today's Schedule section.
+      return appointmentDate > today && a.status === "confirmed";
     })
     .sort((a, b) => {
       const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
@@ -449,24 +355,23 @@ function AdminDashboardInner() {
 
   const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
 
-  const pendingAppointments = appointments
+  const todaysAppointments = appointments
     .filter((a) => {
-      // Only include pending appointments that are today or in the future
-      if (a.status !== "pending") return false;
-
-      // Parse appointment date
       const [year, month, day] = a.scheduled_date.split("-").map(Number);
       const appointmentDate = new Date(year, month - 1, day);
       appointmentDate.setHours(0, 0, 0, 0);
-
-      // Only include today and future appointments
-      return appointmentDate >= today;
+      return (
+        appointmentDate.getTime() === today.getTime() &&
+        a.status !== "completed" &&
+        a.status !== "cancelled" &&
+        a.status !== "in_progress"
+      );
     })
-    .sort((a, b) => {
-      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
+    .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+
+  const activeJobsAdmin = appointments
+    .filter((a) => a.status === "in_progress")
+    .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
 
   // Appointments where the cleaner has rejected the time (needs rescheduling)
   const rescheduleRequiredAppointments = appointments
@@ -506,700 +411,112 @@ function AdminDashboardInner() {
 
   const renderOverview = () => (
     <>
-      {/* Mobile Header - Compact */}
-      <div className="md:hidden mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
-          <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
-            Admin
-          </span>
+      {/* Mobile Header - Gradient Card Match (Mini Desktop) */}
+      <div className="md:hidden mb-6 mt-2">
+        <div
+          className={dashboardHeroCardMobileClass}
+          style={DASHBOARD_HERO_BACKGROUND}
+        >
+          <div className="relative">
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-2.5 py-0.5 text-[10px] font-semibold text-primary-700 uppercase tracking-wider">
+              <Star className="h-3 w-3" />
+              Admin Dashboard
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Hello, {user?.profile?.firstName || "Admin"}
+            </h2>
+            <p className="text-gray-600 mt-1 text-sm font-medium">
+              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Desktop Header - Modern control center hero */}
+      {/* Desktop Header - Modern control center hero (no stat tiles) */}
       <div className="hidden md:block mb-6">
         <div
           className={dashboardHeroCardDesktopClass}
           style={DASHBOARD_HERO_BACKGROUND}
         >
-          <div className="relative flex flex-col gap-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
-                  <Star className="h-3.5 w-3.5" />
-                  Admin Dashboard
-                </div>
-                <h2 className="text-4xl font-bold tracking-tight text-gray-900">
-                  Operations overview
-                </h2>
-                <p className="mt-2 max-w-2xl text-gray-600">
-                  Track the health of bookings, team capacity, and revenue in
-                  one polished workspace built for quick decision-making.
-                </p>
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                <Star className="h-3.5 w-3.5" />
+                Admin Dashboard
               </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  onClick={() => setActiveTab("analytics")}
-                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
-                >
-                  Open analytics
-                </button>
-              </div>
+              <h2 className="text-4xl font-bold tracking-tight text-gray-900">
+                Operations overview
+              </h2>
+              <p className="mt-2 max-w-2xl text-gray-600">
+                Track the health of bookings, team capacity, and revenue in
+                one polished workspace built for quick decision-making.
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
-                    <Calendar className="h-4 w-4 text-primary-700" />
-                  </span>
-                  Total Bookings
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.totalBookings}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
-                    <Users className="h-4 w-4 text-gray-700" />
-                  </span>
-                  Active Cleaners
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.activeCleaners}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
-                    <DollarSign className="h-4 w-4 text-emerald-700" />
-                  </span>
-                  Total Revenue
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    ${stats.totalRevenue}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
-                    <AlertTriangle className="h-4 w-4 text-amber-700" />
-                  </span>
-                  Pending
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.pendingApprovals}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
-                    <TrendingUp className="h-4 w-4 text-primary-700" />
-                  </span>
-                  Growth
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.monthlyGrowth}%
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-gray-200 p-1.5 ring-1 ring-gray-300/70">
-                    <CheckCircle className="h-4 w-4 text-gray-700" />
-                  </span>
-                  Completion
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.completionRate}%
-                  </p>
-                )}
-              </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setActiveTab("analytics")}
+                className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+              >
+                Open analytics
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="space-y-6 md:space-y-7">
-        {/* Mobile Quick Stats Bar */}
-        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-3">
-          <div className="flex items-center justify-between">
-            {statsLoading ? (
-              <div className="flex items-center justify-center w-full py-2">
-                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <>
-                <div className="flex-1 text-center border-r border-gray-200">
-                  <p className="text-xl font-bold text-amber-600">
-                    {stats.pendingApprovals}
-                  </p>
-                  <p className="text-xs text-gray-500">Pending</p>
-                </div>
-                <div className="flex-1 text-center border-r border-gray-200">
-                  <p className="text-xl font-bold text-primary-600">
-                    {stats.totalBookings}
-                  </p>
-                  <p className="text-xs text-gray-500">Bookings</p>
-                </div>
-                <div className="flex-1 text-center">
-                  <p className="text-xl font-bold text-green-600">
-                    ${stats.totalRevenue}
-                  </p>
-                  <p className="text-xs text-gray-500">Revenue</p>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      <div className="space-y-6">
+        <RescheduleRequiredSection
+          appointments={rescheduleRequiredAppointments}
+          loading={appointmentsLoading}
+          defaultExpanded={false}
+          onReschedule={(apt) => {
+            setRescheduleModalAppointment(apt as AppointmentCardData);
+          }}
+          onViewDetails={() => {
+            setActiveTab("bookings");
+          }}
+        />
 
-        {/* Mobile Reschedule Required - Top Priority */}
-        <div className="md:hidden">
-          <RescheduleRequiredSection
-            appointments={rescheduleRequiredAppointments}
+        {activeJobsAdmin.length > 0 && (
+          <ActiveNowSection
+            appointments={activeJobsAdmin as unknown as AppointmentCardData[]}
             loading={appointmentsLoading}
-            defaultExpanded={false}
-            onReschedule={(apt) => {
-              setRescheduleModalAppointment(apt as AppointmentCardData);
-            }}
-            onViewDetails={() => {
+          />
+        )}
+
+        <AwaitingApprovalSection
+          appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}
+          loading={appointmentsLoading}
+          onMessageCleaner={(apt) =>
+            handleMessageCleaner(apt as unknown as (typeof appointments)[0])
+          }
+          onViewAll={() => {
+            setShowPendingFilter(true);
+            setActiveTab("bookings");
+          }}
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <TodayScheduleSection
+            appointments={todaysAppointments as unknown as AppointmentCardData[]}
+            loading={appointmentsLoading}
+            onViewAll={() => setActiveTab("bookings")}
+          />
+          <UpcomingAppointmentsSection
+            appointments={upcomingAppointments as unknown as AppointmentCardData[]}
+            totalCount={allUpcomingAppointments.length}
+            loading={appointmentsLoading}
+            onViewAll={() => {
+              setShowAllFilter(true);
               setActiveTab("bookings");
             }}
           />
-        </div>
-
-        {/* Mobile Awaiting Cleaner Approval - Priority Section */}
-        <div className="md:hidden">
-          {awaitingCleanerApprovalAppointments.length > 0 && (
-            <section className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
-              <button
-                onClick={() =>
-                  setIsPendingApprovalsExpanded(!isPendingApprovalsExpanded)
-                }
-                className="w-full bg-gradient-to-r from-amber-50 to-orange-50 px-4 sm:px-5 py-4 flex items-center justify-between hover:from-amber-100 hover:to-orange-100 transition-colors duration-200 group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-100 rounded-xl">
-                    <UserCheck className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <div className="text-left">
-                    <h3 className="text-lg font-bold text-gray-900">
-                      Awaiting Cleaner Approval
-                    </h3>
-                    <p className="text-xs font-medium text-amber-700">
-                      {awaitingCleanerApprovalAppointments.length} pending review
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="bg-amber-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-                    {awaitingCleanerApprovalAppointments.length}
-                  </span>
-                  <div className="p-2 bg-white/70 rounded-full group-hover:bg-white transition-colors duration-200">
-                    {isPendingApprovalsExpanded ? (
-                      <ChevronUp className="w-5 h-5 text-amber-700" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-amber-700" />
-                    )}
-                  </div>
-                </div>
-              </button>
-              {isPendingApprovalsExpanded && (
-                <div className="border-t border-amber-100 bg-amber-50/40 p-3 sm:p-4">
-                  {appointmentsLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {awaitingCleanerApprovalAppointments
-                        .slice(0, 3)
-                        .map((appointment) => {
-                          const cleanerName = getCleanerName(appointment);
-                          return (
-                            <div
-                              key={appointment.id}
-                              className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
-                            >
-                              <div className="flex items-start justify-between mb-3">
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-gray-900 truncate">
-                                    {cleanerName ?? "Unassigned"}
-                                  </p>
-                                  <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                                    <span>
-                                      {formatDateTimeTo12h(
-                                        appointment.scheduled_date,
-                                        appointment.scheduled_time,
-                                      )}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-gray-500 mt-0.5">
-                                    Homeowner: {getHomeownerName(appointment)}
-                                  </p>
-                                </div>
-                              </div>
-                              {cleanerName &&
-                                appointment.cleaner_profile?.user_profile?.id && (
-                                  <button
-                                    onClick={() =>
-                                      handleMessageCleaner(appointment)
-                                    }
-                                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors duration-200 font-medium text-sm"
-                                  >
-                                    <MessageCircle className="w-4 h-4" />
-                                    Message {cleanerName}
-                                  </button>
-                                )}
-                            </div>
-                          );
-                        })}
-                      {awaitingCleanerApprovalAppointments.length > 3 && (
-                        <button
-                          onClick={() => {
-                            setShowPendingFilter(true);
-                            setActiveTab("bookings");
-                          }}
-                          className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
-                        >
-                          View all {awaitingCleanerApprovalAppointments.length}{" "}
-                          awaiting approval
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-          {awaitingCleanerApprovalAppointments.length === 0 &&
-            !appointmentsLoading && (
-              <div className="bg-white rounded-2xl shadow-sm border border-green-200 p-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 rounded-full">
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">All confirmed!</p>
-                    <p className="text-sm text-gray-500">
-                      No appointments awaiting cleaner approval
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-        </div>
-
-        {/* Mobile Collapsible All Stats Section */}
-        <div className="md:hidden">
-          <button
-            onClick={() => setIsStatsExpanded(!isStatsExpanded)}
-            className="w-full bg-white rounded-xl shadow-sm border border-gray-200 px-4 py-3 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary-100 rounded-lg">
-                <BarChart3 className="w-5 h-5 text-primary-600" />
-              </div>
-              <span className="font-medium text-gray-900">All Statistics</span>
-            </div>
-            {isStatsExpanded ? (
-              <ChevronUp className="w-5 h-5 text-gray-400" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-400" />
-            )}
-          </button>
-          {isStatsExpanded && (
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-primary-600" />
-                  <span className="text-xs text-gray-500">Bookings</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.totalBookings}
-                </p>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-primary-600" />
-                  <span className="text-xs text-gray-500">Cleaners</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.activeCleaners}
-                </p>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-4 h-4 text-green-600" />
-                  <span className="text-xs text-gray-500">Revenue</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  ${stats.totalRevenue}
-                </p>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs text-gray-500">Growth</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.monthlyGrowth}%
-                </p>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                  <span className="text-xs text-gray-500">Completion</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.completionRate}%
-                </p>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs text-gray-500">Pending</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.pendingApprovals}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Mobile Upcoming Appointments */}
-        <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary-600" />
-                <h3 className="font-semibold text-gray-900">Upcoming</h3>
-              </div>
-              <button
-                onClick={() => setActiveTab("bookings")}
-                className="text-sm font-medium text-primary-600"
-              >
-                View all
-              </button>
-            </div>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              </div>
-            ) : upcomingAppointments.length > 0 ? (
-              upcomingAppointments.map((appointment) => {
-                const paymentStatusConfig = getPaymentStatusTabConfig(
-                  appointment.payment_status,
-                );
-                return (
-                  <div
-                    key={appointment.id}
-                    className="relative p-4 flex items-center gap-4 overflow-hidden pr-24"
-                  >
-                    {/* Payment Status Tab */}
-                    <div
-                      className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
-                    >
-                      <span className="font-semibold text-xs whitespace-nowrap">
-                        {paymentStatusConfig.label}
-                      </span>
-                    </div>
-                    <div className="flex-shrink-0 w-12 h-12 bg-primary-50 rounded-xl flex flex-col items-center justify-center">
-                      <span className="text-xs font-medium text-primary-600">
-                        {new Date(
-                          appointment.scheduled_date,
-                        ).toLocaleDateString("en-US", { month: "short" })}
-                      </span>
-                      <span className="text-lg font-bold text-primary-700">
-                        {new Date(appointment.scheduled_date).getDate()}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {getHomeownerName(appointment)}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1">
-                        <div className="flex items-center gap-1 text-sm text-gray-500">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>
-                            {formatTimeTo12h(appointment.scheduled_time)}
-                          </span>
-                        </div>
-                        {appointment.service_type && (
-                          <span className="text-sm text-gray-500">
-                            {appointment.service_type.name}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={appointment.status} size="sm" />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-8">
-                <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-500 text-sm">
-                  No upcoming appointments
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Desktop Reschedule Required */}
-        <div className="hidden md:block">
-          <RescheduleRequiredSection
-            appointments={rescheduleRequiredAppointments}
-            loading={appointmentsLoading}
-            defaultExpanded={false}
-            onReschedule={(apt) => {
-              setRescheduleModalAppointment(apt as AppointmentCardData);
-            }}
-            onViewDetails={() => {
-              setActiveTab("bookings");
-            }}
-          />
-        </div>
-
-        {/* Desktop Quick Actions - Dashboard cards */}
-        <div className="hidden md:grid md:grid-cols-1 lg:grid-cols-2 gap-6 md:items-start">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
-            <div className="flex items-center justify-between px-4 sm:px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Awaiting Cleaner Approval</h3>
-                  <span className="text-xs font-medium text-gray-500">
-                    {awaitingCleanerApprovalAppointments.length} awaiting
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">
-                  Loading appointments...
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {awaitingCleanerApprovalAppointments
-                  .slice(0, 3)
-                  .map((appointment) => {
-                    const cleanerName = getCleanerName(appointment);
-                    return (
-                      <div
-                        key={appointment.id}
-                        className="flex items-center gap-4 p-4 bg-white rounded-xl border border-gray-200 border-l-4 border-l-amber-400 shadow-sm"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 truncate">
-                            {cleanerName ?? "Unassigned"}
-                          </p>
-                          <p className="text-sm text-gray-500 mt-0.5">
-                            {formatDateTimeTo12h(
-                              appointment.scheduled_date,
-                              appointment.scheduled_time,
-                            )}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Homeowner: {getHomeownerName(appointment)}
-                          </p>
-                        </div>
-                        {cleanerName &&
-                          appointment.cleaner_profile?.user_profile?.id && (
-                            <button
-                              onClick={() => handleMessageCleaner(appointment)}
-                              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                              Message
-                            </button>
-                          )}
-                      </div>
-                    );
-                  })}
-                {awaitingCleanerApprovalAppointments.length === 0 && (
-                  <div className="text-center py-8">
-                    <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
-                    <p className="text-gray-600">All cleaners confirmed</p>
-                  </div>
-                )}
-                {awaitingCleanerApprovalAppointments.length > 3 && (
-                  <div className="pt-3 border-t border-gray-200">
-                    <button
-                      onClick={() => {
-                        setShowPendingFilter(true);
-                        setActiveTab("bookings");
-                      }}
-                      className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
-                    >
-                      View all {awaitingCleanerApprovalAppointments.length}{" "}
-                      awaiting approval
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
-            <div className="flex items-center justify-between px-4 sm:px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Upcoming Appointments</h3>
-                  <span className="text-xs font-medium text-gray-500">
-                    {allUpcomingAppointments.length} scheduled
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">
-                  Loading appointments...
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {upcomingAppointments.slice(0, 3).map((appointment) => {
-                  const paymentStatusConfig = getPaymentStatusTabConfig(
-                    appointment.payment_status,
-                  );
-                  return (
-                    <div
-                      key={appointment.id}
-                      className={`relative flex items-center justify-between gap-3 p-4 rounded-xl overflow-hidden pr-24 bg-white border border-gray-200 shadow-sm ${
-                        appointment.cleaner_confirmation_status === "rejected"
-                          ? "border-l-4 border-l-red-500"
-                          : appointment.cleaner_confirmation_status === "awaiting"
-                          ? "border-l-4 border-l-amber-400"
-                          : ""
-                      }`}
-                    >
-                      {/* Payment Status Tab */}
-                      <div
-                        className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
-                      >
-                        <span className="font-semibold text-xs whitespace-nowrap">
-                          {paymentStatusConfig.label}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {getHomeownerName(appointment)}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {formatDateTimeTo12h(
-                            appointment.scheduled_date,
-                            appointment.scheduled_time,
-                          )}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {getPropertyAddress(appointment)}
-                        </p>
-                        {appointment.service_type && (
-                          <p className="text-sm text-gray-600">
-                            Service: {appointment.service_type.name}
-                          </p>
-                        )}
-                        {appointment.cleaner_confirmation_status ===
-                          "rejected" && (
-                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">
-                            <AlertCircle className="w-3 h-3" />
-                            Reschedule Required
-                          </span>
-                        )}
-                        {appointment.cleaner_confirmation_status ===
-                          "awaiting" && (
-                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
-                            <Clock className="w-3 h-3" />
-                            Awaiting Cleaner
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {appointment.cleaner_confirmation_status ===
-                          "approved" && (
-                          <StatusBadge status={appointment.status} size="sm" />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {upcomingAppointments.length === 0 && (
-                  <div className="text-center py-8">
-                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">No upcoming appointments</p>
-                  </div>
-                )}
-                {allUpcomingAppointments.length > 3 && (
-                  <div className="pt-3 border-t border-gray-200">
-                    <button
-                      onClick={() => {
-                        setShowAllFilter(true);
-                        setActiveTab("bookings");
-                      }}
-                      className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
-                    >
-                      View all {allUpcomingAppointments.length} upcoming
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            </div>
-          </div>
         </div>
       </div>
     </>
   );
+
 
   const handleCancelAppointment = async (appointmentId: string) => {
     const result = await cancelAppointment(appointmentId);
@@ -1338,16 +655,6 @@ function AdminDashboardInner() {
   );
 
   const renderAnalytics = () => <AnalyticsPage role="admin" />;
-
-  const renderPlaceholder = (title: string, description: string) => (
-    <div className="card text-center py-16">
-      <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100">
-        <Settings className="w-8 h-8 text-primary-600" />
-      </div>
-      <h2 className="text-4xl font-bold text-gray-900 mb-2">{title}</h2>
-      <p className="text-gray-600 max-w-md mx-auto">{description}</p>
-    </div>
-  );
 
   const renderContent = () => {
     switch (activeTab) {
