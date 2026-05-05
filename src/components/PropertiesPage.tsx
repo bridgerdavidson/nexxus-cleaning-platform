@@ -260,13 +260,15 @@ export default function PropertiesPage({
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-4xl font-bold text-gray-900">Properties</h2>
-        <button
-          onClick={() => setShowAddPropertyModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
-        >
-          <Plus className="w-5 h-5" />
-          <span>New</span>
-        </button>
+        {role !== "homeowner" && (
+          <button
+            onClick={() => setShowAddPropertyModal(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
+          >
+            <Plus className="w-5 h-5" />
+            <span>New</span>
+          </button>
+        )}
       </div>
 
       {/* Search Input - Own line on mobile */}
@@ -438,9 +440,12 @@ export default function PropertiesPage({
             cityFilter !== "all" ||
             stateFilter !== "all"
               ? "Try adjusting your search or filters"
-              : "Create your first property to get started"}
+              : role === "homeowner"
+                ? "Your properties will appear here"
+                : "Create your first property to get started"}
           </p>
-          {!searchQuery &&
+          {role !== "homeowner" &&
+            !searchQuery &&
             homeownerFilter === "all" &&
             cityFilter === "all" &&
             stateFilter === "all" && (

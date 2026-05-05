@@ -4,15 +4,12 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  SprayCan,
   Calendar,
   Home,
   MessageCircle,
   CreditCard,
   Building,
-  Plus,
   Clock,
-  CheckCircle,
   AlertCircle,
   Star,
   Loader2,
@@ -25,23 +22,27 @@ import {
 import {
   useHomeownerAppointments,
   useHomeownerProperties,
-  useHomeownerStats,
-  useHomeownerMessages,
   useHomeownerPayments,
 } from "../../hooks/useHomeownerData";
 import { useConversations } from "../../hooks/useConversations";
 import { useServices } from "../../hooks/useServices";
-import DashboardHeader from "../../components/DashboardHeader";
+import {
+  DASHBOARD_HERO_BACKGROUND,
+  dashboardHeroCardDesktopClass,
+  dashboardHeroCardMobileClass,
+} from "../../lib/dashboardHero";
+import DesktopSidebar from "../../components/DesktopSidebar";
+import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
 import AddAppointmentModal from "../../components/AddAppointmentModal";
 import BookingsPage from "../../components/BookingsPage";
 import AppointmentCard from "../../components/AppointmentCard";
-import StatusBadge from "../../components/StatusBadge";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
+import ActiveNowSection from "../../components/ActiveNowSection";
 import {
   HOMEOWNER_DASHBOARD_TAB_IDS,
   usePersistedDashboardTab,
@@ -51,7 +52,7 @@ import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 import { AppointmentCardData } from "../../components/AppointmentCard";
 
 function HomeownerDashboardInner() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     HOMEOWNER_DASHBOARD_TAB_IDS,
@@ -65,7 +66,6 @@ function HomeownerDashboardInner() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
-  const [expandedActive, setExpandedActive] = useState(true);
   const [expandedToday, setExpandedToday] = useState(true);
   const [expandedUpcoming, setExpandedUpcoming] = useState(true);
   const router = useRouter();
@@ -82,16 +82,6 @@ function HomeownerDashboardInner() {
     loading: propertiesLoading,
     error: propertiesError,
   } = useHomeownerProperties();
-  const {
-    stats,
-    loading: statsLoading,
-    error: statsError,
-  } = useHomeownerStats();
-  const {
-    messages,
-    loading: messagesLoading,
-    error: messagesError,
-  } = useHomeownerMessages();
   const {
     payments,
     loading: paymentsLoading,
@@ -196,12 +186,6 @@ function HomeownerDashboardInner() {
   // Auto-collapse empty sections only after data has loaded; keep expanded when section has items
   useEffect(() => {
     if (!appointmentsLoading) {
-      if (activeAppointments.length > 0) setExpandedActive(true);
-      else setExpandedActive(false);
-    }
-  }, [appointmentsLoading, activeAppointments.length]);
-  useEffect(() => {
-    if (!appointmentsLoading) {
       if (todaysAppointments.length > 0) setExpandedToday(true);
       else setExpandedToday(false);
     }
@@ -212,6 +196,18 @@ function HomeownerDashboardInner() {
       else setExpandedUpcoming(false);
     }
   }, [appointmentsLoading, allUpcomingAppointments.length]);
+
+  // Persistent left sidebar tabs (desktop) — mirrors cleaner pattern (Messages + Settings live on top bar).
+  const sidebarTabs = useMemo(
+    () => [
+      { id: "home", label: "Overview", icon: Home },
+      { id: "bookings", label: "Bookings", icon: Calendar },
+      { id: "properties", label: "Properties", icon: Building },
+      { id: "payments", label: "Payments", icon: CreditCard },
+      { id: "services", label: "Services", icon: Briefcase },
+    ],
+    [],
+  );
 
   // Show loading while checking auth
   if (loading || !user) {
@@ -225,380 +221,273 @@ function HomeownerDashboardInner() {
     );
   }
 
-  // Helper function to get cleaner name
-  const getCleanerName = (appointment: any) => {
-    if (appointment.cleaner_profile?.user_profile) {
-      const { first_name, last_name } =
-        appointment.cleaner_profile.user_profile;
-      return `${first_name} ${last_name}`;
-    }
-    return null;
+  const handleLogout = async () => {
+    await signOut();
   };
 
-  // Helper function to get property address
-  const getPropertyAddress = (appointment: any) => {
-    if (appointment.property) {
-      const { address, city, state } = appointment.property;
-      return `${address}, ${city}, ${state}`;
-    }
-    return "Address not available";
-  };
-
-  // Main nav tabs (header + mobile bottom bar) — Payments is in side panel only
-  const headerTabs = [
-    { id: "home", label: "Overview", icon: Home },
-    { id: "bookings", label: "My Bookings", icon: Calendar },
+  // Mobile slide-out drawer shows everything including Messages + Settings.
+  const allTabs = [
+    ...sidebarTabs,
     {
       id: "messages",
       label: "Messages",
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
-    { id: "services", label: "Services", icon: Briefcase },
-    { id: "properties", label: "Properties", icon: Building },
-  ];
-
-  // Full tabs for side panel only (includes Payments and Profile)
-  const sidebarTabs = [
-    ...headerTabs,
-    { id: "payments", label: "Payments", icon: CreditCard },
     { id: "settings", label: "Settings", icon: User },
   ];
 
-  const getPaymentStatusTabConfig = (
-    paymentStatus: "pending" | "paid" | "failed" | "refunded" | null,
-  ) => {
-    switch (paymentStatus) {
-      case "paid":
-        return {
-          label: "Paid",
-          bgColor: "bg-green-100",
-          textColor: "text-green-700",
-        };
-      case "failed":
-        return {
-          label: "Failed",
-          bgColor: "bg-red-100",
-          textColor: "text-red-700",
-        };
-      case "pending":
-        return {
-          label: "Unpaid",
-          bgColor: "bg-gray-100",
-          textColor: "text-gray-700",
-        };
-      case "refunded":
-        return {
-          label: "Refunded",
-          bgColor: "bg-blue-100",
-          textColor: "text-blue-700",
-        };
-      default:
-        return {
-          label: "Unpaid",
-          bgColor: "bg-gray-100",
-          textColor: "text-gray-700",
-        };
-    }
-  };
+  // Bottom mobile nav — surface the most-used tabs.
+  const mobileNavTabs = [
+    { id: "home", label: "Overview", icon: Home },
+    { id: "bookings", label: "Bookings", icon: Calendar },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: MessageCircle,
+      hasNotification: hasUnreadMessages,
+    },
+    { id: "payments", label: "Payments", icon: CreditCard },
+  ];
 
   const renderOverview = () => (
-    <div className="space-y-6">
-      {/* Welcome Section with Inline Actions */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-4xl font-bold text-gray-900">Overview</h2>
-            <span className="px-2.5 py-1 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+    <>
+      {/* Mobile Hero */}
+      <div className="md:hidden mb-6 mt-2">
+        <div
+          className={dashboardHeroCardMobileClass}
+          style={DASHBOARD_HERO_BACKGROUND}
+        >
+          <div className="relative">
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-2.5 py-0.5 text-[10px] font-semibold text-primary-700 uppercase tracking-wider">
+              <Star className="h-3 w-3" />
               Homeowner Dashboard
-            </span>
-          </div>
-          <p className="text-gray-600">
-            Manage your cleaning appointments and properties from one central
-            location.
-          </p>
-        </div>
-        {/* Quick Actions - Pill Buttons */}
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setShowAddAppointmentModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors shadow-sm hover:shadow-md"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Request New Cleaning</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("messages")}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-full font-medium hover:bg-gray-50 transition-colors shadow-sm"
-          >
-            <MessageCircle className="w-5 h-5" />
-            <span>Contact Support</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("bookings")}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-full font-medium hover:bg-gray-50 transition-colors shadow-sm"
-          >
-            <Calendar className="w-5 h-5" />
-            <span>View Schedule</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-primary-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Total Cleanings
-              </p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.totalCleanings}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <Clock className="w-6 h-6 text-yellow-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Upcoming</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.upcomingCleanings}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <CreditCard className="w-6 h-6 text-green-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Spent</p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  ${stats.totalSpent}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Star className="w-6 h-6 text-purple-600" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">
-                Favorite Cleaners
-              </p>
-              {statsLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">
-                  {stats.favoriteCleaners}
-                </p>
-              )}
-            </div>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Hello, {user?.profile?.firstName || "there"}
+            </h2>
+            <p className="text-gray-600 mt-1 text-sm font-medium">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Active Cleanings - collapsible; auto-collapsed when empty */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setExpandedActive((prev) => !prev)}
-          className="w-full text-left flex items-center gap-2 mb-4 group"
+      {/* Desktop Hero */}
+      <div className="hidden md:block mb-6">
+        <div
+          className={dashboardHeroCardDesktopClass}
+          style={DASHBOARD_HERO_BACKGROUND}
         >
-          {(activeAppointments.length > 0 ? expandedActive : false) ? (
-            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          )}
-          <SprayCan className="w-5 h-5 text-primary-600" />
-          <h3 className="text-xl font-semibold text-gray-900">
-            Active Cleanings
-          </h3>
-          <span className="text-sm font-normal text-gray-500">
-            ({activeAppointments.length})
-          </span>
-        </button>
-        {(activeAppointments.length > 0 ? expandedActive : false) && (
-          <div className="space-y-4">
-            {activeAppointments.map((appointment) => (
-              <AppointmentCard
-                key={appointment.id}
-                appointment={
-                  appointment as Parameters<
-                    typeof AppointmentCard
-                  >[0]["appointment"]
-                }
-                onClick={() => openAppointment(appointment.id)}
-                role="homeowner"
-              />
-            ))}
+          <div className="relative flex flex-col gap-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                  <Star className="h-3.5 w-3.5" />
+                  Homeowner Dashboard
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
+                  Overview
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm md:text-base text-gray-600">
+                  Track your cleanings, message your team, and view your
+                  properties from one central place.
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => setActiveTab("bookings")}
+                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+                >
+                  View all bookings
+                </button>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        {/* Active Cleanings — only renders when there are in-progress cleanings */}
+        {activeAppointments.length > 0 && (
+          <ActiveNowSection
+            title="Active Cleanings"
+            appointments={
+              activeAppointments as unknown as AppointmentCardData[]
+            }
+            loading={appointmentsLoading}
+          >
+            <div className="space-y-3">
+              {activeAppointments.map((appointment) => (
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={
+                    appointment as Parameters<
+                      typeof AppointmentCard
+                    >[0]["appointment"]
+                  }
+                  onClick={() => openAppointment(appointment.id)}
+                  role="homeowner"
+                />
+              ))}
+            </div>
+          </ActiveNowSection>
         )}
-      </div>
 
-      {/* Today's Appointments - collapsible; auto-collapsed when empty */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setExpandedToday((prev) => !prev)}
-          className="w-full text-left flex items-center gap-2 mb-4 group"
-        >
-          {(
-            todaysAppointments.length > 0 || appointmentsLoading
-              ? expandedToday
-              : false
-          ) ? (
-            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          )}
-          <Clock className="w-5 h-5 text-primary-600" />
-          <h3 className="text-xl font-semibold text-gray-900">
-            Today&apos;s Appointments
-          </h3>
-          <span className="text-sm font-normal text-gray-500">
-            ({todaysAppointments.length})
-          </span>
-        </button>
-        {(todaysAppointments.length > 0 || appointmentsLoading
-          ? expandedToday
-          : false) && (
-          <>
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading...</span>
+        {/* Today's Appointments */}
+        <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setExpandedToday((prev) => !prev)}
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
+                <Clock className="w-5 h-5" />
               </div>
-            ) : todaysAppointments.length > 0 ? (
-              <div className="space-y-4">
-                {todaysAppointments.map((appointment) => (
-                  <AppointmentCard
-                    key={appointment.id}
-                    appointment={
-                      appointment as Parameters<
-                        typeof AppointmentCard
-                      >[0]["appointment"]
-                    }
-                    onClick={() => setActiveTab("bookings")}
-                    role="homeowner"
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-                <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">
-                  No appointments scheduled for today
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Upcoming Appointments - collapsible; auto-collapsed when empty */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setExpandedUpcoming((prev) => !prev)}
-          className="w-full text-left flex items-center gap-2 mb-4 group"
-        >
-          {(
-            allUpcomingAppointments.length > 0 || appointmentsLoading
-              ? expandedUpcoming
-              : false
-          ) ? (
-            <ChevronDown className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-500 flex-shrink-0 transition-transform group-hover:text-gray-700" />
-          )}
-          <MapPin className="w-5 h-5 text-primary-600" />
-          <h3 className="text-xl font-semibold text-gray-900">
-            Upcoming Appointments
-          </h3>
-          <span className="text-sm font-normal text-gray-500">
-            ({allUpcomingAppointments.length})
-          </span>
-        </button>
-        {(allUpcomingAppointments.length > 0 || appointmentsLoading
-          ? expandedUpcoming
-          : false) && (
-          <>
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">
-                  Loading appointments...
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-gray-900">
+                  Today&apos;s Appointments
+                </h3>
+                <span className="text-xs font-medium text-gray-500">
+                  {todaysAppointments.length} scheduled
                 </span>
               </div>
-            ) : appointmentsError ? (
-              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-                <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-2" />
-                <p className="text-red-600">Failed to load appointments</p>
+            </div>
+            <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
+              {(todaysAppointments.length > 0 || appointmentsLoading
+                ? expandedToday
+                : false) ? (
+                <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
+              )}
+            </div>
+          </button>
+          {(todaysAppointments.length > 0 || appointmentsLoading
+            ? expandedToday
+            : false) && (
+            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+              {appointmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">
+                    Loading schedule...
+                  </span>
+                </div>
+              ) : todaysAppointments.length > 0 ? (
+                <div className="space-y-3">
+                  {todaysAppointments.map((appointment) => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={
+                        appointment as Parameters<
+                          typeof AppointmentCard
+                        >[0]["appointment"]
+                      }
+                      onClick={() => openAppointment(appointment.id)}
+                      role="homeowner"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Clock className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600">
+                    No appointments scheduled for today
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Upcoming Appointments */}
+        <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setExpandedUpcoming((prev) => !prev)}
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
+                <Calendar className="w-5 h-5" />
               </div>
-            ) : allUpcomingAppointments.length > 0 ? (
-              <div className="space-y-4">
-                {upcomingAppointments.map((appointment) => (
-                  <AppointmentCard
-                    key={appointment.id}
-                    appointment={
-                      appointment as Parameters<
-                        typeof AppointmentCard
-                      >[0]["appointment"]
-                    }
-                    onClick={() => setActiveTab("bookings")}
-                    role="homeowner"
-                  />
-                ))}
-                {allUpcomingAppointments.length > 3 && (
-                  <div className="pt-2">
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-gray-900">
+                  Upcoming Appointments
+                </h3>
+                <span className="text-xs font-medium text-gray-500">
+                  {allUpcomingAppointments.length} future scheduled
+                </span>
+              </div>
+            </div>
+            <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
+              {(allUpcomingAppointments.length > 0 || appointmentsLoading
+                ? expandedUpcoming
+                : false) ? (
+                <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
+              )}
+            </div>
+          </button>
+          {(allUpcomingAppointments.length > 0 || appointmentsLoading
+            ? expandedUpcoming
+            : false) && (
+            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+              {appointmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">Loading...</span>
+                </div>
+              ) : appointmentsError ? (
+                <div className="text-center py-8">
+                  <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-2" />
+                  <p className="text-red-600">Failed to load appointments</p>
+                </div>
+              ) : allUpcomingAppointments.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingAppointments.map((appointment) => (
+                    <AppointmentCard
+                      key={appointment.id}
+                      appointment={
+                        appointment as Parameters<
+                          typeof AppointmentCard
+                        >[0]["appointment"]
+                      }
+                      onClick={() => openAppointment(appointment.id)}
+                      role="homeowner"
+                    />
+                  ))}
+                  {allUpcomingAppointments.length > 3 && (
                     <button
                       onClick={() => {
                         setShowAllFilter(true);
                         setActiveTab("bookings");
                       }}
-                      className="w-full text-center py-2.5 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors rounded-lg border border-primary-200 hover:bg-primary-50"
+                      className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
                     >
                       View all ({allUpcomingAppointments.length})
                     </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
-                <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">No upcoming appointments</p>
-              </div>
-            )}
-          </>
-        )}
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600">No upcoming appointments</p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+    </>
   );
 
   const renderBookings = () => {
@@ -728,10 +617,10 @@ function HomeownerDashboardInner() {
       owner_id: user?.id || "",
       homeowner: {
         id: user?.id || "",
-        first_name: (user as any)?.user_metadata?.first_name || "",
-        last_name: (user as any)?.user_metadata?.last_name || "",
+        first_name: user?.profile?.firstName || "",
+        last_name: user?.profile?.lastName || "",
         email: user?.email || "",
-        phone: (user as any)?.user_metadata?.phone || null,
+        phone: user?.profile?.phone || null,
       },
     }));
 
@@ -778,33 +667,48 @@ function HomeownerDashboardInner() {
   };
 
   return (
-    <>
-      {/* Hide header on mobile for all tabs */}
-      <div className="hidden md:block">
-        <DashboardHeader
-          role="homeowner"
-          tabs={headerTabs}
-          sidebarTabs={sidebarTabs}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-        />
-      </div>
-      <div className="min-h-screen bg-white md:bg-gray-100 pt-4 md:pt-16">
-        <div
+    <div className="min-h-screen bg-white md:bg-gray-100">
+      {/* Persistent Desktop Sidebar */}
+      <DesktopSidebar
+        tabs={sidebarTabs}
+        onTabChange={handleTabChange}
+        onLogout={handleLogout}
+        user={user}
+        activeTab={activeTab}
+      />
+
+      {/* Main Content Wrapper with Sidebar Offset */}
+      <div className="md:ml-[260px] pt-4 md:pt-16">
+        {/* Top Bar — Messages + Settings icons; profile click navigates to settings */}
+        <div className="hidden md:block">
+          <TopBar
+            role="homeowner"
+            user={user}
+            tabs={[]}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            onMobileMenuClick={() => setIsSidebarOpen(true)}
+            profileClickNavigatesToSettings
+            showMessagesIcon
+            hasUnreadMessages={hasUnreadMessages}
+            showSettingsIcon
+          />
+        </div>
+
+        {/* Main Content Area */}
+        <main
           className={`${
             activeTab === "messages"
-              ? "px-0 md:px-4 md:sm:px-6 md:lg:px-8"
-              : "px-4 sm:px-6 lg:px-8"
-          } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8 ${
-            activeTab === "messages" ? "py-0 md:py-8" : "py-8"
-          }`}
+              ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
+              : "p-4 sm:p-6 lg:p-8"
+          } pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
-          {/* Tab Content */}
           {renderContent()}
-        </div>
+        </main>
       </div>
+
       <MobileNavigation
-        tabs={headerTabs}
+        tabs={mobileNavTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
         onMenuClick={() => setIsSidebarOpen(true)}
@@ -813,7 +717,7 @@ function HomeownerDashboardInner() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         role="homeowner"
-        tabs={sidebarTabs}
+        tabs={allTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
       />
@@ -835,7 +739,7 @@ function HomeownerDashboardInner() {
         canEdit={false}
         onRefreshAppointments={refetchAppointments}
       />
-    </>
+    </div>
   );
 }
 

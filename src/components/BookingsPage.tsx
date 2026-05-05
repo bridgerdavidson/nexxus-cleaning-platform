@@ -636,15 +636,13 @@ export default function BookingsPage({
             </button>
           </div>
           {/* Add New Appointment Button */}
-          {(canEdit || role === "homeowner") && (
+          {canEdit && (
             <button
               onClick={handleOpenAddAppointmentModal}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
             >
               <Plus className="w-5 h-5" />
-              <span>
-                {role === "homeowner" ? "Request New Cleaning" : "New"}
-              </span>
+              <span>New</span>
             </button>
           )}
         </div>
