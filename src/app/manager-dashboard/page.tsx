@@ -83,6 +83,8 @@ import {
   ADMIN_MANAGER_TAB_TO_GROUP,
   usePersistedDashboardTab,
 } from "../../hooks/usePersistedDashboardTab";
+import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
+import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 
 function ManagerDashboardInner() {
   const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
@@ -90,6 +92,12 @@ function ManagerDashboardInner() {
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
   );
+  const {
+    appointmentId: openAppointmentId,
+    isOpen: isAppointmentPanelOpen,
+    openAppointment,
+    closeAppointment,
+  } = useAppointmentPanel();
   // Lazy-load invites: stays mounted at dashboard level once first opened, so
   // tab switches don't re-fetch and the Realtime channel survives navigation.
   const [hasOpenedInvitesEver, setHasOpenedInvitesEver] = useState(
@@ -522,7 +530,6 @@ function ManagerDashboardInner() {
       appointmentDate.setHours(0, 0, 0, 0);
       return (
         appointmentDate.getTime() === today.getTime() &&
-        a.status !== "completed" &&
         a.status !== "cancelled" &&
         a.status !== "in_progress"
       );
@@ -661,27 +668,23 @@ function ManagerDashboardInner() {
           onReschedule={(apt) => {
             setRescheduleModalAppointment(apt as AppointmentCardData);
           }}
-          onViewDetails={() => {
-            setActiveTab("bookings");
-          }}
+          onViewDetails={(apt) => openAppointment(apt.id)}
         />
 
         {activeJobsManager.length > 0 && (
           <ActiveNowSection
             appointments={activeJobsManager as unknown as AppointmentCardData[]}
             loading={appointmentsLoading}
+            onAppointmentClick={(apt) => openAppointment(apt.id)}
           />
         )}
 
-        <div
-          className={`grid grid-cols-1 gap-6 items-start ${
-            todaysAppointments.length > 0 ? "lg:grid-cols-2" : ""
-          }`}
-        >
+        <div className="space-y-6">
           <TodayScheduleSection
             appointments={todaysAppointments as unknown as AppointmentCardData[]}
             loading={appointmentsLoading}
             onViewAll={() => setActiveTab("bookings")}
+            onAppointmentClick={(apt) => openAppointment(apt.id)}
           />
           <UpcomingAppointmentsSection
             appointments={upcomingAppointments as unknown as AppointmentCardData[]}
@@ -691,6 +694,7 @@ function ManagerDashboardInner() {
               setShowAllFilter(true);
               setActiveTab("bookings");
             }}
+            onAppointmentClick={(apt) => openAppointment(apt.id)}
           />
         </div>
 
@@ -704,6 +708,7 @@ function ManagerDashboardInner() {
             setShowPendingFilter(true);
             setActiveTab("bookings");
           }}
+          onAppointmentClick={(apt) => openAppointment(apt.id)}
         />
       </div>
     </>
@@ -725,13 +730,13 @@ function ManagerDashboardInner() {
         loading={appointmentsLoading}
         onCancelAppointment={handleCancelAppointment}
         onDeleteAppointment={handleDeleteAppointment}
-        onMarkComplete={handleMarkComplete}
         onRefreshAppointments={refetchAppointments}
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
+        onOpenAppointment={openAppointment}
+        onRescheduleRejected={(apt) => setRescheduleModalAppointment(apt)}
         role="manager"
         canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
         initialStatusFilter={initialFilter}
-        organizationId={currentOrganizationId || ""}
       />
     );
   };
@@ -1036,6 +1041,21 @@ function ManagerDashboardInner() {
         onRescheduleComplete={refetchAppointments}
         appointment={rescheduleModalAppointment}
         organizationId={currentOrganizationId || ""}
+      />
+
+      <AppointmentPanelHost
+        appointments={appointments as unknown as AppointmentCardData[]}
+        appointmentId={openAppointmentId}
+        isOpen={isAppointmentPanelOpen}
+        onClose={closeAppointment}
+        role="manager"
+        canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
+        onCancelAppointment={handleCancelAppointment}
+        onDeleteAppointment={handleDeleteAppointment}
+        onMarkComplete={handleMarkComplete}
+        onRefreshAppointments={refetchAppointments}
+        onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
+        onRescheduleRejected={(apt) => setRescheduleModalAppointment(apt)}
       />
     </div>
   );

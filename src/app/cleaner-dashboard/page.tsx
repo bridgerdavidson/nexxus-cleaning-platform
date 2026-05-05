@@ -63,6 +63,7 @@ import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
 import SettingsHub from "../../components/SettingsHub";
 import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
+import ActiveNowSection from "../../components/ActiveNowSection";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import StripeConnectionCard from "../../components/StripeConnectionCard";
 import {
@@ -203,7 +204,6 @@ function CleanerDashboardInner() {
     CLEANER_DASHBOARD_TAB_IDS
   );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [expandedActive, setExpandedActive] = useState(true);
   const [expandedToday, setExpandedToday] = useState(true);
   const [expandedUpcoming, setExpandedUpcoming] = useState(true);
   const router = useRouter();
@@ -720,12 +720,6 @@ function CleanerDashboardInner() {
   // Auto-collapse empty sections only after data has loaded; keep expanded when section has items
   useEffect(() => {
     if (!appointmentsLoading) {
-      if (activeJobs.length > 0) setExpandedActive(true);
-      else setExpandedActive(false);
-    }
-  }, [appointmentsLoading, activeJobs.length]);
-  useEffect(() => {
-    if (!appointmentsLoading) {
       if (overviewTodaysJobs.length > 0) setExpandedToday(true);
       else setExpandedToday(false);
     }
@@ -1028,52 +1022,25 @@ function CleanerDashboardInner() {
           }}
         />
 
-        {/* Active Cleanings - collapsible; auto-collapsed when empty */}
+        {/* Active Cleanings - shared header (cyan icon + ping dot + count) with admin/manager Active Now,
+            but renders cleaner-flavored AppointmentCards in the body to match Today's Jobs / Upcoming Jobs. */}
         {activeJobs.length > 0 && (
-          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setExpandedActive((prev) => !prev)}
-              className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-gray-50 text-gray-600 rounded-xl relative">
-                  <SprayCan className="w-5 h-5 relative z-10" />
-                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500" />
-                  </span>
-                </div>
-                <div className="text-left">
-                  <h3 className="text-lg font-bold text-gray-900">Active Cleanings</h3>
-                  <span className="text-xs font-medium text-purple-700">
-                    {activeJobs.length} in progress
-                  </span>
-                </div>
-              </div>
-              <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
-                {(activeJobs.length > 0 ? expandedActive : false) ? (
-                  <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
-                )}
-              </div>
-            </button>
-            {(activeJobs.length > 0 ? expandedActive : false) && (
-              <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
-                <div className="space-y-3">
-                  {activeJobs.map((appointment) => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={convertToCardData(appointment)}
-                      onClick={() => handleTodayScheduleAppointmentClick(appointment)}
-                      role="cleaner"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
+          <ActiveNowSection
+            title="Active Cleanings"
+            appointments={activeJobs.map(convertToCardData)}
+            loading={appointmentsLoading}
+          >
+            <div className="space-y-3">
+              {activeJobs.map((appointment) => (
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={convertToCardData(appointment)}
+                  onClick={() => handleTodayScheduleAppointmentClick(appointment)}
+                  role="cleaner"
+                />
+              ))}
+            </div>
+          </ActiveNowSection>
         )}
 
         {/* Today's Jobs - collapsible; auto-collapsed when empty */}
@@ -1084,7 +1051,7 @@ function CleanerDashboardInner() {
             className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary-50 text-primary-600 rounded-xl">
+              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
                 <Clock className="w-5 h-5" />
               </div>
               <div className="text-left">
@@ -1123,7 +1090,7 @@ function CleanerDashboardInner() {
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                  <Clock className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                   <p className="text-gray-600">No jobs scheduled for today</p>
                 </div>
               )}

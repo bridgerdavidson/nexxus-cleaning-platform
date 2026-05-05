@@ -24,16 +24,12 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
-import AppointmentSidePanel from "./AppointmentSidePanel";
-import CancelConfirmModal from "./CancelConfirmModal";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
-import RescheduleAppointmentModal from "./RescheduleAppointmentModal";
 import RescheduleRequiredSection from "./RescheduleRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
-import { formatTimeTo12h } from "../lib/formatTime";
 
 type ViewType = "list" | "calendar";
 
@@ -42,15 +38,17 @@ interface BookingsPageProps {
   loading: boolean;
   onCancelAppointment: (appointmentId: string) => Promise<void>;
   onDeleteAppointment: (appointmentId: string) => Promise<void>;
-  onMarkComplete: (appointmentId: string) => Promise<void>;
   onRefreshAppointments?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
+  /** Open the shared appointment-details panel (URL-driven, mounted at the dashboard page level). */
+  onOpenAppointment: (appointmentId: string) => void;
+  /** Triggered when a rejected appointment needs the dedicated reschedule modal. */
+  onRescheduleRejected?: (appointment: AppointmentCardData) => void;
   role: "admin" | "manager" | "homeowner";
   canEdit?: boolean;
   initialStatusFilter?: string;
   canApproveDecline?: boolean;
-  organizationId?: string;
 }
 
 export default function BookingsPage({
@@ -58,14 +56,14 @@ export default function BookingsPage({
   loading,
   onCancelAppointment,
   onDeleteAppointment,
-  onMarkComplete,
   onRefreshAppointments,
   onAppointmentUpdated,
+  onOpenAppointment,
+  onRescheduleRejected,
   role,
   canEdit = true,
   initialStatusFilter,
   canApproveDecline = false,
-  organizationId = "",
 }: BookingsPageProps) {
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -76,19 +74,7 @@ export default function BookingsPage({
   const [appointmentsTab, setAppointmentsTab] = useState<
     "upcoming" | "past" | "all"
   >("upcoming");
-  const [selectedAppointment, setSelectedAppointment] =
-    useState<AppointmentCardData | null>(null);
-  const [showSidePanel, setShowSidePanel] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancellingAppointmentId, setCancellingAppointmentId] = useState<
-    string | null
-  >(null);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
-
-  // Reschedule modal state
-  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
-  const [reschedulingAppointment, setReschedulingAppointment] =
-    useState<AppointmentCardData | null>(null);
 
   // Calendar-specific state
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
@@ -442,41 +428,9 @@ export default function BookingsPage({
     { value: -1, label: "All" },
   ];
 
-  // Handle appointment card click
+  // Handle appointment card click — defers to the dashboard-level panel host.
   const handleAppointmentClick = (appointment: AppointmentCardData) => {
-    setSelectedAppointment(appointment);
-    setShowSidePanel(true);
-  };
-
-  // Handle cancel from side panel
-  const handleCancelFromPanel = (appointmentId: string) => {
-    setCancellingAppointmentId(appointmentId);
-    setShowCancelModal(true);
-    setShowSidePanel(false);
-  };
-
-  // Handle cancel (soft delete)
-  const handleCancel = async () => {
-    if (cancellingAppointmentId) {
-      await onCancelAppointment(cancellingAppointmentId);
-      setShowCancelModal(false);
-      setCancellingAppointmentId(null);
-    }
-  };
-
-  // Handle delete (hard delete)
-  const handleDelete = async () => {
-    if (cancellingAppointmentId) {
-      await onDeleteAppointment(cancellingAppointmentId);
-      setShowCancelModal(false);
-      setCancellingAppointmentId(null);
-    }
-  };
-
-  // Handle mark complete
-  const handleMarkComplete = async (appointmentId: string) => {
-    await onMarkComplete(appointmentId);
-    setShowSidePanel(false);
+    onOpenAppointment(appointment.id);
   };
 
   // Selection handlers
@@ -540,10 +494,9 @@ export default function BookingsPage({
   // Calendar handlers
   const handleCalendarAppointmentClick = useCallback(
     (appointment: AppointmentCardData) => {
-      setSelectedAppointment(appointment);
-      setShowSidePanel(true);
+      onOpenAppointment(appointment.id);
     },
-    [],
+    [onOpenAppointment],
   );
 
   const handleDayClick = useCallback(
@@ -624,10 +577,9 @@ export default function BookingsPage({
   const handleDayDetailAppointmentClick = useCallback(
     (appointment: AppointmentCardData) => {
       setShowDayDetailSidebar(false);
-      setSelectedAppointment(appointment);
-      setShowSidePanel(true);
+      onOpenAppointment(appointment.id);
     },
-    [],
+    [onOpenAppointment],
   );
 
   const handleDayDetailAddAppointment = useCallback(() => {
@@ -651,31 +603,6 @@ export default function BookingsPage({
     displayedAppointmentsForTab.length > 0 &&
     selectedIds.size === displayedAppointmentsForTab.length;
   const isSomeSelected = selectedIds.size > 0 && !isAllSelected;
-
-  // Get appointment info for cancel modal
-  const cancellingAppointment = localAppointments.find(
-    (apt) => apt.id === cancellingAppointmentId,
-  );
-  const cancelModalInfo = cancellingAppointment
-    ? {
-        date: (() => {
-          // Parse date string (YYYY-MM-DD) as local date to avoid timezone issues
-          const [year, month, day] = cancellingAppointment.scheduled_date
-            .split("-")
-            .map(Number);
-          const localDate = new Date(year, month - 1, day); // month is 0-indexed
-          return localDate.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-        })(),
-        time: formatTimeTo12h(cancellingAppointment.scheduled_time),
-        homeowner: cancellingAppointment.homeowner
-          ? `${cancellingAppointment.homeowner.first_name} ${cancellingAppointment.homeowner.last_name}`
-          : "Unknown",
-      }
-    : undefined;
 
   return (
     <div className="space-y-6">
@@ -863,14 +790,12 @@ export default function BookingsPage({
                   appointments={rescheduleRequiredAppointments}
                   loading={loading}
                   defaultExpanded={false}
-                  onReschedule={(apt) => {
-                    setReschedulingAppointment(apt as AppointmentCardData);
-                    setShowRescheduleModal(true);
-                  }}
-                  onViewDetails={(apt) => {
-                    setSelectedAppointment(apt as AppointmentCardData);
-                    setShowSidePanel(true);
-                  }}
+                  onReschedule={(apt) =>
+                    onRescheduleRejected?.(apt as AppointmentCardData)
+                  }
+                  onViewDetails={(apt) =>
+                    onOpenAppointment((apt as AppointmentCardData).id)
+                  }
                 />
               )}
 
@@ -1132,67 +1057,6 @@ export default function BookingsPage({
         canEdit={canEdit}
       />
 
-      {/* Side Panel */}
-      <AppointmentSidePanel
-        isOpen={showSidePanel}
-        onClose={() => setShowSidePanel(false)}
-        appointment={selectedAppointment}
-        onCancel={canEdit ? handleCancelFromPanel : undefined}
-        onMarkComplete={canEdit ? handleMarkComplete : undefined}
-        onAppointmentUpdated={(updatedAppointment) => {
-          // Update selected appointment immediately for side panel display
-          setSelectedAppointment(updatedAppointment);
-          // Update the appointment in the parent list without refetch
-          if (onAppointmentUpdated) {
-            onAppointmentUpdated(updatedAppointment.id, updatedAppointment);
-          } else if (onRefreshAppointments) {
-            // Fallback to full refresh if selective update not available
-            onRefreshAppointments();
-          }
-        }}
-        onDelete={
-          canEdit
-            ? async (id) => {
-                await onDeleteAppointment(id);
-                setShowSidePanel(false);
-              }
-            : undefined
-        }
-        onReschedule={
-          canEdit && (role === "admin" || role === "manager")
-            ? (apt) => {
-                if (apt.cleaner_confirmation_status === "rejected") {
-                  // Open dedicated reschedule modal for rejected appointments
-                  setShowSidePanel(false);
-                  setReschedulingAppointment(apt);
-                  setShowRescheduleModal(true);
-                } else {
-                  // Open the add appointment modal with pre-filled date/time
-                  setShowSidePanel(false);
-                  setPreFilledDate(apt.scheduled_date);
-                  setPreFilledTime(apt.scheduled_time?.slice(0, 5));
-                  setShowAddAppointmentModal(true);
-                }
-              }
-            : undefined
-        }
-        role={role}
-        canEdit={canEdit}
-        canApproveDecline={canApproveDecline}
-      />
-
-      {/* Cancel Confirmation Modal */}
-      <CancelConfirmModal
-        isOpen={showCancelModal}
-        onClose={() => {
-          setShowCancelModal(false);
-          setCancellingAppointmentId(null);
-        }}
-        onCancel={handleCancel}
-        onDelete={handleDelete}
-        appointmentInfo={cancelModalInfo}
-      />
-
       {/* Bulk Action Confirmation Modal */}
       <BulkActionConfirmModal
         isOpen={showBulkModal}
@@ -1218,22 +1082,6 @@ export default function BookingsPage({
         }}
         preFilledDate={preFilledDate}
         preFilledTime={preFilledTime}
-      />
-
-      {/* Reschedule Appointment Modal */}
-      <RescheduleAppointmentModal
-        isOpen={showRescheduleModal}
-        onClose={() => {
-          setShowRescheduleModal(false);
-          setReschedulingAppointment(null);
-        }}
-        onRescheduleComplete={() => {
-          if (onRefreshAppointments) {
-            onRefreshAppointments();
-          }
-        }}
-        appointment={reschedulingAppointment}
-        organizationId={organizationId}
       />
     </div>
   );

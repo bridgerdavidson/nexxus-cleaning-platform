@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
+import CompactAppointmentRow from "./CompactAppointmentRow";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
   DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
@@ -200,16 +201,55 @@ export default function AppointmentCard({
 
   const paymentStatusConfig = getPaymentStatusTabConfig();
 
+  // Unified compact row on mobile for admin/manager/homeowner. The cluttered
+  // legacy mobile layout (date pill + status stack + indented address + footer
+  // row) is preserved only for the cleaner role, where the Start Job action
+  // and on-shift workflow live.
+  const renderMobileCompactRow = role !== "cleaner";
+
   return (
+    <>
+      {renderMobileCompactRow && (
+        <div className="lg:hidden">
+          {isSelectMode ? (
+            <div
+              className={`flex items-stretch gap-2 ${
+                isSelected ? "rounded-xl ring-2 ring-primary-400" : ""
+              }`}
+            >
+              <button
+                onClick={handleCheckboxClick}
+                className="flex-shrink-0 self-stretch px-2 flex items-center bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors"
+                aria-label={isSelected ? "Deselect" : "Select"}
+              >
+                {isSelected ? (
+                  <CheckSquare className="w-5 h-5 text-primary-600" />
+                ) : (
+                  <Square className="w-5 h-5 text-gray-400" />
+                )}
+              </button>
+              <div className="flex-1 min-w-0">
+                <CompactAppointmentRow
+                  appointment={appointment}
+                  onClick={onToggleSelect}
+                />
+              </div>
+            </div>
+          ) : (
+            <CompactAppointmentRow
+              appointment={appointment}
+              onClick={onClick}
+            />
+          )}
+        </div>
+      )}
     <div
       onClick={handleCardClick}
       className={`relative bg-white border rounded-xl shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden ${
+        renderMobileCompactRow ? "hidden lg:block" : ""
+      } ${
         isSelected
           ? "border-primary-500 bg-primary-50"
-          : appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner"
-          ? "border-l-4 border-l-red-500 border-gray-200 hover:border-primary-300"
-          : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner"
-          ? "border-l-4 border-l-amber-400 border-gray-200 hover:border-primary-300"
           : "border-gray-200 hover:border-primary-300"
       }`}
     >
@@ -299,12 +339,12 @@ export default function AppointmentCard({
         <div className={`${role === "cleaner" && showStartJobButton ? "col-span-5" : "col-span-2"} flex items-center ${role === "cleaner" && showStartJobButton ? "justify-between" : "justify-center flex-col"} gap-2`}>
           <div className="flex items-center gap-2">
             {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-700 rounded-full">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-orange-50 text-orange-700 rounded-full">
                 <RefreshCw className="w-3 h-3" />
                 Reschedule Required
               </span>
             ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 rounded-full">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 rounded-full">
                 <Clock className="w-3 h-3" />
                 Awaiting Cleaner
               </span>
@@ -317,14 +357,6 @@ export default function AppointmentCard({
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
               </div>
-            )}
-            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
-              <button
-                className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors"
-                title="Review appointment"
-              >
-                Review
-              </button>
             )}
           </div>
           {showStartJobButton && (
@@ -367,11 +399,11 @@ export default function AppointmentCard({
           </div>
           <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
             {appointment.cleaner_confirmation_status === 'rejected' && role !== "cleaner" ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700 rounded-full">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-orange-50 text-orange-700 rounded-full">
                 Reschedule
               </span>
             ) : appointment.cleaner_confirmation_status === 'awaiting' && role !== "cleaner" ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 rounded-full">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 rounded-full">
                 Awaiting
               </span>
             ) : (
@@ -381,11 +413,6 @@ export default function AppointmentCard({
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
               </div>
-            )}
-            {((role === "admin" || (role === "manager" && canApproveDecline)) && appointment.status === "pending" && appointment.cleaner_confirmation_status === 'approved') && (
-              <button className="mt-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
-                Review
-              </button>
             )}
           </div>
         </div>
@@ -444,6 +471,7 @@ export default function AppointmentCard({
         )}
       </div>
     </div>
+    </>
   );
 }
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   X,
+  ArrowLeft,
   Calendar,
   MapPin,
   User,
@@ -564,13 +565,26 @@ export default function AppointmentSidePanel({
       >
         {/* Header */}
         <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4 sm:p-6">
-          <div className="flex items-center justify-between">
+          {/* Mobile: back arrow on the left + title */}
+          <div className="flex items-center gap-3 lg:hidden">
+            <button
+              onClick={handleClose}
+              className="-ml-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Back"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
+            </button>
+            <h2 className="text-xl font-bold text-gray-900">Appointment</h2>
+          </div>
+          {/* Desktop: title + X */}
+          <div className="hidden lg:flex items-center justify-between">
             <h2 className="text-xl font-bold text-gray-900">
               Appointment Details
             </h2>
             <button
               onClick={handleClose}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Close"
             >
               <X className="w-5 h-5 text-gray-500" />
             </button>
@@ -583,7 +597,11 @@ export default function AppointmentSidePanel({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-2">Status</p>
-              <StatusBadge status={appointment.status} size="lg" />
+              <StatusBadge
+                status={appointment.status}
+                size="lg"
+                cleanerConfirmationStatus={appointment.cleaner_confirmation_status}
+              />
             </div>
             {canEdit && !isEditing && (
               <div className="flex items-center gap-2">
@@ -782,22 +800,24 @@ export default function AppointmentSidePanel({
             </div>
           </div>
 
-          {/* Cleaner */}
-          <div className="flex items-start gap-2">
-            <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm text-gray-500">Cleaner</p>
-              <p
-                className={`font-medium ${
-                  getCleanerName() === "Unassigned"
-                    ? "text-gray-400 italic"
-                    : "text-gray-900"
-                }`}
-              >
-                {getCleanerName()}
-              </p>
+          {/* Cleaner - Hide for cleaner role */}
+          {role !== "cleaner" && (
+            <div className="flex items-start gap-2">
+              <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-gray-500">Cleaner</p>
+                <p
+                  className={`font-medium ${
+                    getCleanerName() === "Unassigned"
+                      ? "text-gray-400 italic"
+                      : "text-gray-900"
+                  }`}
+                >
+                  {getCleanerName()}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Price - Hide for cleaner role */}
           {role !== "cleaner" && (
@@ -917,8 +937,8 @@ export default function AppointmentSidePanel({
             </div>
           )}
 
-          {/* Payment Method */}
-          {!isEditing && (
+          {/* Payment Method - Hide for cleaner role */}
+          {!isEditing && role !== "cleaner" && (
             <div className="flex items-start gap-2">
               <CreditCard className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
@@ -1162,7 +1182,7 @@ export default function AppointmentSidePanel({
           {appointment.cleaner_confirmation_status === "awaiting" &&
             !isEditing &&
             (role === "admin" || role === "manager") && (
-              <div className="border-l-4 border-amber-400 bg-amber-50 rounded-r-lg p-4 space-y-2">
+              <div className="border-l-4 border-amber-500 bg-amber-50 rounded-r-lg p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-amber-600 flex-shrink-0" />
                   <h4 className="font-semibold text-amber-800">
@@ -1180,10 +1200,10 @@ export default function AppointmentSidePanel({
           {appointment.cleaner_confirmation_status === "rejected" &&
             !isEditing &&
             (role === "admin" || role === "manager") && (
-              <div className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-4 space-y-3">
+              <div className="border-l-4 border-orange-500 bg-orange-50 rounded-r-lg p-4 space-y-3">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                  <h4 className="font-semibold text-red-800">
+                  <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0" />
+                  <h4 className="font-semibold text-orange-800">
                     Cleaner Declined This Time
                   </h4>
                 </div>
@@ -1198,7 +1218,7 @@ export default function AppointmentSidePanel({
                     {cleanerFeedback.map((fb) => (
                       <div
                         key={fb.id}
-                        className="bg-white rounded-lg p-3 border border-red-200"
+                        className="bg-white rounded-lg p-3 border border-orange-200"
                       >
                         {fb.reason && (
                           <div className="mb-2">
@@ -1256,7 +1276,7 @@ export default function AppointmentSidePanel({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-red-700">
+                  <p className="text-sm text-orange-700">
                     The cleaner declined but no detailed feedback was provided.
                   </p>
                 )}
@@ -1264,7 +1284,7 @@ export default function AppointmentSidePanel({
                 {onReschedule && (
                   <button
                     onClick={() => onReschedule(appointment)}
-                    className="w-full mt-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    className="w-full mt-2 px-4 py-2.5 text-sm font-semibold bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
                   >
                     Reschedule Appointment
                   </button>
@@ -1318,16 +1338,6 @@ export default function AppointmentSidePanel({
               </div>
             )}
 
-          {/* Review button for pending appointments (admin or manager with permission) */}
-          {(role === "admin" || (role === "manager" && canApproveDecline)) &&
-            appointment.status === "pending" &&
-            !isEditing && (
-              <div className="flex items-center gap-2 pt-4 border-t border-gray-200 mt-4">
-                <button className="flex-1 px-4 py-2 text-sm font-medium bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors">
-                  Review
-                </button>
-              </div>
-            )}
         </div>
       </div>
     </div>

@@ -153,7 +153,10 @@ export default function ActiveJobPage({
     if (checklistLoading) return;
 
     if (lineItems.length === 0) {
-      setChecklistItems([]);
+      // Avoid producing a new [] reference when state is already empty —
+      // setting fresh [] each render would loop the effect via lineItems
+      // recomputation in the upstream hook.
+      setChecklistItems((prev) => (prev.length === 0 ? prev : []));
       return;
     }
 

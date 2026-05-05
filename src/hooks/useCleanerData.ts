@@ -897,6 +897,8 @@ async function fetchLineItemsForChecklist(checklistRowId: string) {
  * Loads the checklist tied to an appointment: prefers `checklistId`, then falls back
  * to the first checklist for `service_type_id` (name ASC, created_at ASC) for legacy data.
  */
+const EMPTY_LINE_ITEMS: { id: string; task: string; position: number | null }[] = [];
+
 export function useChecklist({ checklistId, serviceTypeId }: UseChecklistArgs) {
   const query = useOrgQuery({
     queryKey: ['checklist', 'detail', checklistId ?? '', serviceTypeId ?? ''] as const,
@@ -942,7 +944,9 @@ export function useChecklist({ checklistId, serviceTypeId }: UseChecklistArgs) {
 
   return {
     checklist: query.data?.checklist ?? null,
-    lineItems: query.data?.lineItems ?? [],
+    // Stable empty-array fallback so consumers that depend on lineItems don't
+    // re-fire effects on every render before data arrives.
+    lineItems: query.data?.lineItems ?? EMPTY_LINE_ITEMS,
     loading: query.isLoading,
     error: query.error?.message ?? null,
   };

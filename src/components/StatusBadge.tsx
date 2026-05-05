@@ -1,46 +1,72 @@
 import React from "react";
-import { Clock, CheckCircle, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import {
+  Clock,
+  CheckCircle,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  RefreshCw,
+} from "lucide-react";
 
 interface StatusBadgeProps {
   status: string;
   size?: "sm" | "md" | "lg";
+  /**
+   * Cleaner-confirmation state for the appointment, if any. When set to
+   * "rejected" it overrides the underlying status with a "Reschedule
+   * Required" badge. Other values defer to the regular status mapping.
+   */
+  cleanerConfirmationStatus?: "awaiting" | "approved" | "rejected" | null;
 }
 
-export default function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
-  const getStatusConfig = (status: string) => {
+export default function StatusBadge({
+  status,
+  size = "md",
+  cleanerConfirmationStatus,
+}: StatusBadgeProps) {
+  const getStatusConfig = () => {
+    if (cleanerConfirmationStatus === "rejected") {
+      return {
+        bgColor: "bg-orange-50",
+        textColor: "text-orange-700",
+        icon: RefreshCw,
+        label: "Reschedule Required",
+      };
+    }
+
     switch (status.toLowerCase()) {
       case "pending":
         return {
-          bgColor: "bg-yellow-100",
-          textColor: "text-yellow-700",
+          bgColor: "bg-amber-50",
+          textColor: "text-amber-700",
           icon: Clock,
-          label: "Pending Review",
+          label: "Awaiting Cleaner",
         };
       case "confirmed":
         return {
-          bgColor: "bg-blue-100",
+          bgColor: "bg-blue-50",
           textColor: "text-blue-700",
           icon: CheckCircle,
           label: "Confirmed",
         };
       case "in_progress":
         return {
-          bgColor: "bg-purple-100",
-          textColor: "text-purple-700",
+          bgColor: "bg-cyan-50",
+          textColor: "text-cyan-700",
           icon: Loader2,
           label: "In Progress",
         };
       case "completed":
         return {
-          bgColor: "bg-green-100",
-          textColor: "text-green-700",
+          bgColor: "bg-emerald-50",
+          textColor: "text-emerald-700",
           icon: CheckCircle2,
           label: "Completed",
         };
       case "cancelled":
         return {
-          bgColor: "bg-red-100",
-          textColor: "text-red-700",
+          bgColor: "bg-slate-100",
+          textColor: "text-slate-600",
           icon: XCircle,
           label: "Cancelled",
         };
@@ -54,7 +80,7 @@ export default function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
     }
   };
 
-  const config = getStatusConfig(status);
+  const config = getStatusConfig();
   const Icon = config.icon;
 
   const sizeClasses = {
@@ -73,9 +99,12 @@ export default function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
     <span
       className={`inline-flex items-center gap-1.5 font-semibold rounded-full ${config.bgColor} ${config.textColor} ${sizeClasses[size]}`}
     >
-      <Icon className={`${iconSizes[size]} ${status.toLowerCase() === "in_progress" ? "animate-spin" : ""}`} />
+      <Icon
+        className={`${iconSizes[size]} ${
+          status.toLowerCase() === "in_progress" ? "animate-spin" : ""
+        }`}
+      />
       {config.label}
     </span>
   );
 }
-

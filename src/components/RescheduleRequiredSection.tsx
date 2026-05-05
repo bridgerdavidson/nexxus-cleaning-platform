@@ -3,17 +3,13 @@
 import React, { useState } from "react";
 import {
   AlertCircle,
-  Calendar,
-  Clock,
-  MapPin,
-  SprayCan,
-  RefreshCw,
   ChevronDown,
   ChevronRight,
   Loader2,
-  User,
+  RefreshCw,
 } from "lucide-react";
-import { formatTimeTo12h } from "../lib/formatTime";
+import CompactAppointmentRow from "./CompactAppointmentRow";
+import { AppointmentCardData } from "./AppointmentCard";
 
 interface RejectedAppointment {
   id: string;
@@ -53,6 +49,13 @@ interface RescheduleRequiredSectionProps {
   defaultExpanded?: boolean;
 }
 
+const getCleanerName = (apt: RejectedAppointment): string => {
+  const profile = apt.cleaner_profile?.user_profile;
+  if (!profile) return "The cleaner";
+  const name = `${profile.first_name || ""} ${profile.last_name || ""}`.trim();
+  return name || "The cleaner";
+};
+
 export default function RescheduleRequiredSection({
   appointments,
   loading,
@@ -62,167 +65,90 @@ export default function RescheduleRequiredSection({
 }: RescheduleRequiredSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
-  // Don't render while loading or if there are no appointments
   if (loading || appointments.length === 0) return null;
 
-  const formatDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const getHomeownerName = (apt: RejectedAppointment) => {
-    if (apt.homeowner) {
-      const { first_name, last_name } = apt.homeowner;
-      return `${first_name || ""} ${last_name || ""}`.trim() || "Unknown";
-    }
-    return "Unknown";
-  };
-
-  const getCleanerName = (apt: RejectedAppointment) => {
-    if (apt.cleaner_profile?.user_profile) {
-      const { first_name, last_name } = apt.cleaner_profile.user_profile;
-      return `${first_name || ""} ${last_name || ""}`.trim() || "Unknown";
-    }
-    return "Unassigned";
-  };
-
-  const getPropertyAddress = (apt: RejectedAppointment) => {
-    if (apt.property) {
-      const { address, city, state } = apt.property;
-      if (address && city && state) return `${address}, ${city}, ${state}`;
-    }
-    return "Address not available";
-  };
-
   return (
-    <div className="relative">
-      {/* Animated attention border - red */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-red-400 via-red-500 to-red-400 rounded-2xl opacity-75 animate-pulse" />
-
-      <section className="relative bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden">
-        {/* Header */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full bg-gradient-to-r from-red-50 to-rose-50 px-4 sm:px-5 py-4 flex items-center justify-between hover:from-red-100 hover:to-rose-100 transition-colors duration-200 group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="p-2 bg-red-100 rounded-xl">
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              </div>
-              {/* Ping animation */}
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-              </span>
+    <section className="bg-white rounded-2xl border border-orange-200 shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full bg-orange-50/70 px-4 sm:px-5 py-4 flex items-center justify-between hover:bg-orange-50 transition-colors duration-200 group md:cursor-default md:hover:bg-orange-50/70"
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="p-2 bg-orange-100 rounded-xl">
+              <AlertCircle className="w-5 h-5 text-orange-600" />
             </div>
-            <div className="text-left">
-              <h3 className="text-lg font-bold text-gray-900">
-                Reschedule Required
-              </h3>
-              <p className="text-xs font-medium text-red-700">
-                Cleaner is not available for these appointments
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="bg-red-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-              {appointments.length}
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500" />
             </span>
-            <div className="p-2 bg-white/70 rounded-full group-hover:bg-white transition-colors duration-200">
-              {expanded ? (
-                <ChevronDown className="w-5 h-5 text-red-700" />
-              ) : (
-                <ChevronRight className="w-5 h-5 text-red-700" />
-              )}
+          </div>
+          <div className="text-left">
+            <h3 className="text-lg font-bold text-gray-900">
+              Reschedule Required
+            </h3>
+            <p className="text-xs font-medium text-orange-700">
+              Cleaner is not available for these appointments
+            </p>
+          </div>
+        </div>
+        <div className="md:hidden p-2 bg-white/70 rounded-full group-hover:bg-white transition-colors duration-200">
+          {expanded ? (
+            <ChevronDown className="w-5 h-5 text-orange-700" />
+          ) : (
+            <ChevronRight className="w-5 h-5 text-orange-700" />
+          )}
+        </div>
+      </button>
+
+      <div
+        className={`${!expanded ? "hidden md:block" : ""} border-t border-orange-100 bg-orange-50/30 p-3 sm:p-4`}
+      >
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+              <span className="ml-2 text-gray-600">Loading...</span>
             </div>
-          </div>
-        </button>
-
-        {/* Content */}
-        {expanded && (
-          <div className="border-t border-red-100 bg-red-50/40 p-3 sm:p-4">
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-red-500" />
-                <span className="ml-2 text-gray-600">Loading...</span>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {appointments.map((apt) => (
-                  <div
+          ) : (
+            <div className="space-y-2">
+              {appointments.map((apt) => {
+                const cardData = apt as unknown as AppointmentCardData;
+                const cleanerName = getCleanerName(apt);
+                return (
+                  <CompactAppointmentRow
                     key={apt.id}
-                    className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md hover:border-primary-300 transition-all duration-200 cursor-pointer"
+                    appointment={cardData}
                     onClick={() => onViewDetails(apt)}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <p className="font-medium text-gray-900 truncate">
-                            {getHomeownerName(apt)}
-                          </p>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full flex-shrink-0">
-                            <AlertCircle className="w-3 h-3" />
-                            Reschedule Required
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-                          <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span>{formatDate(apt.scheduled_date)}</span>
-                          <span className="text-gray-300">|</span>
-                          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span>{formatTimeTo12h(apt.scheduled_time)}</span>
-                        </div>
-                        {apt.service_type && (
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                            <SprayCan className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>
-                              {apt.checklist?.name
-                                ? `${apt.service_type.name} (${apt.checklist.name})`
-                                : apt.service_type.name}
-                            </span>
-                          </div>
-                        )}
-                        {apt.property && (
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span className="truncate">
-                              {getPropertyAddress(apt)}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1.5 text-sm text-red-600 mt-0.5">
-                          <User className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span>
-                            {getCleanerName(apt)} declined this time
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Reschedule Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onReschedule(apt);
-                      }}
-                      className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors duration-200 font-medium text-sm"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Reschedule
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-    </div>
+                    hidePaymentChip
+                    rightSlot={
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReschedule(apt);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors text-xs font-medium whitespace-nowrap"
+                        title="Reschedule appointment"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Reschedule
+                      </button>
+                    }
+                    subline={
+                      <p className="text-xs text-orange-700 inline-flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">
+                          {cleanerName} declined this time
+                        </span>
+                      </p>
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+    </section>
   );
 }

@@ -2,8 +2,8 @@
 
 import React from "react";
 import { CheckCircle, Loader2, MessageCircle, UserCheck } from "lucide-react";
-import { formatDateTimeTo12h } from "../lib/formatTime";
 import OverviewSectionCard from "./OverviewSectionCard";
+import CompactAppointmentRow from "./CompactAppointmentRow";
 import { AppointmentCardData } from "./AppointmentCard";
 
 interface AwaitingApprovalSectionProps {
@@ -11,27 +11,15 @@ interface AwaitingApprovalSectionProps {
   loading: boolean;
   onMessageCleaner: (appointment: AppointmentCardData) => void;
   onViewAll: () => void;
+  onAppointmentClick?: (appointment: AppointmentCardData) => void;
 }
-
-const getCleanerName = (appointment: AppointmentCardData): string | null => {
-  const profile = appointment.cleaner_profile?.user_profile;
-  if (!profile) return null;
-  return `${profile.first_name} ${profile.last_name}`;
-};
-
-const getHomeownerName = (appointment: AppointmentCardData): string => {
-  if (appointment.homeowner) {
-    const { first_name, last_name } = appointment.homeowner;
-    return `${first_name} ${last_name}`;
-  }
-  return "Unknown";
-};
 
 export default function AwaitingApprovalSection({
   appointments,
   loading,
   onMessageCleaner,
   onViewAll,
+  onAppointmentClick,
 }: AwaitingApprovalSectionProps) {
   if (!loading && appointments.length === 0) {
     return (
@@ -75,38 +63,34 @@ export default function AwaitingApprovalSection({
           <span className="ml-2 text-gray-600">Loading appointments...</span>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {appointments.slice(0, 3).map((appointment) => {
-            const cleanerName = getCleanerName(appointment);
-            return (
-              <div
-                key={appointment.id}
-                className="flex items-center gap-4 p-4 bg-white rounded-xl border border-gray-200 border-l-4 border-l-amber-400 shadow-sm"
+            const cleanerName = appointment.cleaner_profile?.user_profile;
+            const messageButton = cleanerName ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMessageCleaner(appointment);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors text-xs font-medium whitespace-nowrap"
+                title="Message cleaner"
               >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 truncate">
-                    {cleanerName ?? "Unassigned"}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-0.5">
-                    {formatDateTimeTo12h(
-                      appointment.scheduled_date,
-                      appointment.scheduled_time,
-                    )}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Homeowner: {getHomeownerName(appointment)}
-                  </p>
-                </div>
-                {cleanerName && (
-                  <button
-                    onClick={() => onMessageCleaner(appointment)}
-                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 border border-primary-200 rounded-xl hover:bg-primary-100 transition-colors font-medium text-sm whitespace-nowrap"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    Message
-                  </button>
-                )}
-              </div>
+                <MessageCircle className="w-3.5 h-3.5" />
+                Message
+              </button>
+            ) : null;
+
+            return (
+              <CompactAppointmentRow
+                key={appointment.id}
+                appointment={appointment}
+                onClick={
+                  onAppointmentClick
+                    ? () => onAppointmentClick(appointment)
+                    : undefined
+                }
+                rightSlot={messageButton ?? undefined}
+              />
             );
           })}
           {appointments.length > 3 && (

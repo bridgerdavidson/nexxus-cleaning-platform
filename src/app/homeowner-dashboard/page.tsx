@@ -46,6 +46,9 @@ import {
   HOMEOWNER_DASHBOARD_TAB_IDS,
   usePersistedDashboardTab,
 } from "../../hooks/usePersistedDashboardTab";
+import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
+import AppointmentPanelHost from "../../components/AppointmentPanelHost";
+import { AppointmentCardData } from "../../components/AppointmentCard";
 
 function HomeownerDashboardInner() {
   const { user, loading } = useAuth();
@@ -53,6 +56,12 @@ function HomeownerDashboardInner() {
     "home",
     HOMEOWNER_DASHBOARD_TAB_IDS,
   );
+  const {
+    appointmentId: openAppointmentId,
+    isOpen: isAppointmentPanelOpen,
+    openAppointment,
+    closeAppointment,
+  } = useAppointmentPanel();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
@@ -135,11 +144,6 @@ function HomeownerDashboardInner() {
   const handleDeleteAppointment = async (appointmentId: string) => {
     // TODO: Implement delete functionality
     console.log("Delete appointment:", appointmentId);
-  };
-
-  const handleMarkComplete = async (appointmentId: string) => {
-    // TODO: Implement mark complete functionality
-    console.log("Mark complete:", appointmentId);
   };
 
   // Calculate if there are any unread messages
@@ -449,7 +453,7 @@ function HomeownerDashboardInner() {
                     typeof AppointmentCard
                   >[0]["appointment"]
                 }
-                onClick={() => setActiveTab("bookings")}
+                onClick={() => openAppointment(appointment.id)}
                 role="homeowner"
               />
             ))}
@@ -610,8 +614,8 @@ function HomeownerDashboardInner() {
         loading={appointmentsLoading}
         onCancelAppointment={handleCancelAppointment}
         onDeleteAppointment={handleDeleteAppointment}
-        onMarkComplete={handleMarkComplete}
         onRefreshAppointments={refetchAppointments}
+        onOpenAppointment={openAppointment}
         role="homeowner"
         canEdit={false}
         initialStatusFilter={initialFilter}
@@ -821,6 +825,15 @@ function HomeownerDashboardInner() {
         }}
         preSelectedHomeownerId={user.id}
         hidePriceOverride={true}
+      />
+      <AppointmentPanelHost
+        appointments={appointments as unknown as AppointmentCardData[]}
+        appointmentId={openAppointmentId}
+        isOpen={isAppointmentPanelOpen}
+        onClose={closeAppointment}
+        role="homeowner"
+        canEdit={false}
+        onRefreshAppointments={refetchAppointments}
       />
     </>
   );
