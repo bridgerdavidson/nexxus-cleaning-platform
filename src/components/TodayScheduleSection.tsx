@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Calendar, Loader2 } from "lucide-react";
+import { Calendar, CheckCircle, Loader2 } from "lucide-react";
 import { formatTimeTo12h } from "../lib/formatTime";
 import OverviewSectionCard from "./OverviewSectionCard";
 import StatusBadge from "./StatusBadge";
@@ -61,6 +61,28 @@ export default function TodayScheduleSection({
   onViewAll,
   onItemClick,
 }: TodayScheduleSectionProps) {
+  if (!loading && appointments.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-primary-50 text-primary-600 shrink-0">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+              Today&apos;s Schedule
+            </h3>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold shrink-0">
+            <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+            <span className="hidden sm:inline">Nothing scheduled today</span>
+            <span className="sm:hidden">Nothing today</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <OverviewSectionCard
       icon={<Calendar className="w-5 h-5" />}
@@ -77,11 +99,6 @@ export default function TodayScheduleSection({
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
           <span className="ml-2 text-gray-600">Loading schedule...</span>
-        </div>
-      ) : appointments.length === 0 ? (
-        <div className="text-center py-8">
-          <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-          <p className="text-gray-600">No appointments today</p>
         </div>
       ) : (
         <div className="space-y-2">

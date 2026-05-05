@@ -496,7 +496,11 @@ function AdminDashboardInner() {
           }}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <div
+          className={`grid grid-cols-1 gap-6 items-start ${
+            todaysAppointments.length > 0 ? "lg:grid-cols-2" : ""
+          }`}
+        >
           <TodayScheduleSection
             appointments={todaysAppointments as unknown as AppointmentCardData[]}
             loading={appointmentsLoading}

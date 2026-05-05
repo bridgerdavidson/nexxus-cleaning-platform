@@ -33,6 +33,29 @@ export default function AwaitingApprovalSection({
   onMessageCleaner,
   onViewAll,
 }: AwaitingApprovalSectionProps) {
+  if (!loading && appointments.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 shrink-0">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+              <span className="hidden sm:inline">Awaiting Cleaner Approval</span>
+              <span className="sm:hidden">Awaiting Approval</span>
+            </h3>
+          </div>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold shrink-0">
+            <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+            <span className="hidden sm:inline">All cleaners confirmed</span>
+            <span className="sm:hidden">All clear</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <OverviewSectionCard
       icon={<UserCheck className="w-5 h-5" />}
@@ -81,12 +104,6 @@ export default function AwaitingApprovalSection({
               </div>
             );
           })}
-          {appointments.length === 0 && (
-            <div className="text-center py-8">
-              <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-2" />
-              <p className="text-gray-600">All cleaners confirmed</p>
-            </div>
-          )}
           {appointments.length > 3 && (
             <div className="pt-3 border-t border-gray-200">
               <button
