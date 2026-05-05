@@ -64,19 +64,24 @@ export default function TodayScheduleSection({
   if (!loading && appointments.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
-        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-xl bg-primary-50 text-primary-600 shrink-0">
               <Calendar className="w-5 h-5" />
             </div>
-            <h3 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+            <h3 className="text-lg font-bold text-gray-900 truncate">
               Today&apos;s Schedule
             </h3>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold shrink-0">
+          <div
+            className="sm:hidden flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 shrink-0"
+            aria-label="Nothing scheduled today"
+          >
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          </div>
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold shrink-0">
             <CheckCircle className="w-3.5 h-3.5 text-green-600" />
-            <span className="hidden sm:inline">Nothing scheduled today</span>
-            <span className="sm:hidden">Nothing today</span>
+            <span>Nothing scheduled today</span>
           </div>
         </div>
       </div>

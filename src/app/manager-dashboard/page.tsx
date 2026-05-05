@@ -673,18 +673,6 @@ function ManagerDashboardInner() {
           />
         )}
 
-        <AwaitingApprovalSection
-          appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}
-          loading={appointmentsLoading}
-          onMessageCleaner={(apt) =>
-            handleMessageCleaner(apt as unknown as (typeof appointments)[0])
-          }
-          onViewAll={() => {
-            setShowPendingFilter(true);
-            setActiveTab("bookings");
-          }}
-        />
-
         <div
           className={`grid grid-cols-1 gap-6 items-start ${
             todaysAppointments.length > 0 ? "lg:grid-cols-2" : ""
@@ -705,6 +693,18 @@ function ManagerDashboardInner() {
             }}
           />
         </div>
+
+        <AwaitingApprovalSection
+          appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}
+          loading={appointmentsLoading}
+          onMessageCleaner={(apt) =>
+            handleMessageCleaner(apt as unknown as (typeof appointments)[0])
+          }
+          onViewAll={() => {
+            setShowPendingFilter(true);
+            setActiveTab("bookings");
+          }}
+        />
       </div>
     </>
   );
