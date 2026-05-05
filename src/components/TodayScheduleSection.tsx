@@ -28,14 +28,29 @@ const getHomeownerName = (appointment: AppointmentCardData): string => {
   return "Unknown";
 };
 
-const getPropertyAddress = (appointment: AppointmentCardData): string => {
-  if (appointment.property) {
-    const { address, city, state } = appointment.property;
-    if (address && city && state) {
-      return `${address}, ${city}, ${state}`;
-    }
+const formatShortDate = (scheduledDate: string): string => {
+  const [year, month, day] = scheduledDate.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+type PaymentStatus = AppointmentCardData["payment_status"];
+type PaymentChip = { label: string; className: string };
+
+const getPaymentChip = (status: PaymentStatus): PaymentChip => {
+  switch (status) {
+    case "paid":
+      return { label: "Paid", className: "bg-green-100 text-green-700" };
+    case "failed":
+      return { label: "Failed", className: "bg-red-100 text-red-700" };
+    case "refunded":
+      return { label: "Refunded", className: "bg-blue-100 text-blue-700" };
+    case "pending":
+    default:
+      return { label: "Unpaid", className: "bg-gray-100 text-gray-700" };
   }
-  return "Address not available";
 };
 
 const MAX_ITEMS = 5;
@@ -72,6 +87,13 @@ export default function TodayScheduleSection({
         <div className="space-y-2">
           {appointments.slice(0, MAX_ITEMS).map((appointment) => {
             const cleanerName = getCleanerName(appointment);
+            const paymentChip = getPaymentChip(appointment.payment_status);
+            const accent =
+              appointment.cleaner_confirmation_status === "rejected"
+                ? "border-l-4 border-l-red-500"
+                : appointment.cleaner_confirmation_status === "awaiting"
+                  ? "border-l-4 border-l-amber-400"
+                  : "";
             const Wrapper = onItemClick ? "button" : "div";
             return (
               <Wrapper
@@ -82,7 +104,7 @@ export default function TodayScheduleSection({
                       onClick: () => onItemClick(appointment),
                     }
                   : {})}
-                className={`w-full text-left flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-white border border-gray-200 shadow-sm ${
+                className={`w-full text-left flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl bg-white border border-gray-200 shadow-sm ${accent} ${
                   onItemClick
                     ? "transition-colors hover:border-primary-300 hover:bg-primary-50/30"
                     : ""
@@ -102,11 +124,16 @@ export default function TodayScheduleSection({
                   <p className="text-xs sm:text-sm text-gray-600 truncate">
                     {getHomeownerName(appointment)}
                     {" · "}
-                    {getPropertyAddress(appointment)}
+                    {formatShortDate(appointment.scheduled_date)}
                   </p>
                 </div>
-                <div className="flex flex-shrink-0">
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                   <StatusBadge status={appointment.status} size="sm" />
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${paymentChip.className}`}
+                  >
+                    {paymentChip.label}
+                  </span>
                 </div>
               </Wrapper>
             );

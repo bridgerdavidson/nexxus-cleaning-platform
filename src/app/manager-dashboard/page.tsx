@@ -632,11 +632,10 @@ function ManagerDashboardInner() {
                 Manager Dashboard
               </div>
               <h2 className="text-4xl font-bold tracking-tight text-gray-900">
-                Operations overview
+                Hello, {user?.profile?.firstName || "Manager"}
               </h2>
-              <p className="mt-2 max-w-2xl text-gray-600">
-                Track the health of bookings, team capacity, and revenue in
-                one polished workspace built for quick decision-making.
+              <p className="mt-2 text-gray-600 font-medium">
+                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
               </p>
             </div>
 

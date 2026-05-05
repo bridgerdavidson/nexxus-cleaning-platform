@@ -29,15 +29,6 @@ const getHomeownerName = (appointment: AppointmentCardData): string => {
   return "Unknown";
 };
 
-const getPropertyAddress = (appointment: AppointmentCardData): string => {
-  if (appointment.property) {
-    const { address, city } = appointment.property;
-    if (address && city) return `${address}, ${city}`;
-    if (address) return address;
-  }
-  return "";
-};
-
 const formatShortDate = (scheduledDate: string): string => {
   const [year, month, day] = scheduledDate.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString("en-US", {
@@ -128,12 +119,7 @@ export default function UpcomingAppointmentsSection({
                   </p>
                   <p className="text-xs sm:text-sm text-gray-600 truncate">
                     {getHomeownerName(appointment)}
-                    {(() => {
-                      const addr = getPropertyAddress(appointment);
-                      return addr ? ` · ${addr}` : "";
-                    })()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                    {" · "}
                     {formatShortDate(appointment.scheduled_date)}
                   </p>
                 </div>
