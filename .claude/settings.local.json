@@ -22,7 +22,16 @@
       "Bash(Get-ChildItem -Path \"C:\\\\builds\\\\nexxuscleaningsolutions\\\\src\\\\app\" -Recurse -Directory)",
       "Bash(Select-Object -First 30)",
       "Bash(xargs grep -l \"appointment\")",
-      "mcp__playwright__browser_resize"
+      "mcp__playwright__browser_resize",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(taskkill /PID 4484 /F)",
+      "Bash(taskkill /PID 6108 /F)",
+      "PowerShell(Stop-Process -Id 4484 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 6108 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue)",
+      "Read(//c/Users/mvbda/.claude/projects/C--builds-nexxuscleaningsolutions/memory//**)",
+      "Read(//c/Users/mvbda/.claude/projects/C--builds-nexxuscleaningsolutions/memory/**)"
     ]
   }
 }

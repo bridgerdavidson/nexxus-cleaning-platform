@@ -224,28 +224,54 @@ Check for these issues:
 - A drawer library portal renders outside the app root and uses a different background or stale overlay.
 - The overlay covers `100vh` instead of using dynamic viewport units.
 
-Prefer fully unmounting the overlay after close, or ensure the closed state has no visible background/backdrop styles.
+### What's actually happening on iOS 26 (Liquid Glass)
 
-Example pattern:
+iOS 26 Safari **does not honor the `theme-color` meta tag** anymore. Instead, the toolbar and safe-area extensions are tinted by **sampling the `background-color` of `position: fixed` / `position: sticky` elements near the viewport edges**. The fallback is the `<html>` / `<body>` background.
+
+The trap: the sampling is **not based on what's visible**. From the Safari 26 / Liquid Glass write-up:
+
+- `opacity: 0` — element is **still sampled** (its `background-color` is parsed regardless of opacity).
+- `pointer-events: none` — **still sampled**.
+- `visibility: hidden` — **still sampled**.
+- `display: none` — **NOT sampled** (removed from the render tree).
+- `background: transparent` — sampled, but contributes nothing, so Safari falls back to the next eligible element / body / html.
+
+So if you keep a `fixed inset-0 bg-black/50` element mounted with `opacity: 0`, the safe area stays tinted gray. That was the wrong fix. The right fix is to **either change the actual `background-color` to `transparent` (so the sampled value contributes nothing) or remove the element from the render tree entirely**.
+
+### Canonical pattern
+
+Use a `bg-color` transition during the open/close animation, then unmount the backdrop after the transition completes. This gives a smooth tint fade *and* guarantees the element is gone from the render tree once closed, so Safari has nothing to sample but the panel / body white.
 
 ```tsx
-{isMenuOpen && (
-  <button
-    type="button"
-    aria-label="Close menu"
-    className="fixed inset-0 z-40 bg-black/50"
-    onClick={() => setIsMenuOpen(false)}
-  />
-)}
+const [shouldRenderBackdrop, setShouldRenderBackdrop] = useState(false);
+useEffect(() => {
+  if (isOpen) { setShouldRenderBackdrop(true); return; }
+  const t = setTimeout(() => setShouldRenderBackdrop(false), 300);
+  return () => clearTimeout(t);
+}, [isOpen]);
+
+return (
+  <>
+    {shouldRenderBackdrop && (
+      <button
+        type="button"
+        aria-label="Close menu"
+        aria-hidden={!isOpen}
+        tabIndex={isOpen ? 0 : -1}
+        className={`fixed inset-0 z-40 transition-colors duration-300 ease-in-out ${
+          isOpen ? "bg-black/50" : "bg-transparent pointer-events-none"
+        }`}
+        onClick={onClose}
+      />
+    )}
+    {/* always-mounted panel with bg-white, slides via transform */}
+  </>
+);
 ```
 
-If animations require keeping it mounted, ensure the final closed class includes:
+`AppointmentSidePanel.tsx` uses an equivalent always-mounted single-wrapper variant of this pattern (`bg-black/50` ↔ `bg-transparent` via `transition-colors`); both work. The key invariants are: **don't keep `bg-black/50` on the element after close**, and **the element's `background-color` must be transparent (or it must be unmounted) before Safari samples again**.
 
-```tsx
-opacity-0 pointer-events-none bg-transparent backdrop-blur-0
-```
-
-And remove it from the DOM after the exit animation if possible.
+Sources for the iOS 26 sampling rules: 1ar.io "Safari 26 Liquid Glass: fixing toolbar tinting" and Ben Frain "iOS 26 Safari theme-color/tab-tinting with fixed position elements".
 
 ---
 

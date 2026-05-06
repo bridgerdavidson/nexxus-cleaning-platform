@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { X, User, LogOut, LucideIcon } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 interface Tab {
   id: string;
@@ -30,19 +31,32 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
 }) => {
   const { user, signOut } = useAuth();
 
-  // Close sidebar on escape key + lock body scroll only while open
+  useBodyScrollLock(isOpen);
+
+  // iOS 26 Safari samples `position: fixed` elements' background-color to
+  // tint the toolbar / safe-area extension (Liquid Glass). `opacity: 0` does
+  // NOT remove the element from sampling — only absence from the render tree
+  // does. We keep the backdrop mounted during the close transition so its
+  // bg-color can fade `bg-black/50 → bg-transparent` (Safari samples that
+  // continuously and the safe-area tint follows), then unmount it after the
+  // transition so Safari falls back to the panel/body bg-white cleanly.
+  const [shouldRenderBackdrop, setShouldRenderBackdrop] = useState(false);
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRenderBackdrop(true);
+      return;
+    }
+    const t = setTimeout(() => setShouldRenderBackdrop(false), 300);
+    return () => clearTimeout(t);
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleEscape);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = previousOverflow;
-    };
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose]);
 
   const handleLogout = async () => {
@@ -67,12 +81,18 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
 
   return (
     <>
-      {/* Backdrop - only mounted while open to avoid iOS Safari safe-area compositing issues */}
-      {isOpen && (
+      {/* Backdrop: bg-color transitions black/50 ↔ transparent during the
+          open/close animation, then unmounts after the transition completes
+          so iOS 26 Safari can re-sample the safe-area tint cleanly. */}
+      {shouldRenderBackdrop && (
         <button
           type="button"
           aria-label="Close menu"
-          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          aria-hidden={!isOpen}
+          tabIndex={isOpen ? 0 : -1}
+          className={`md:hidden fixed inset-0 z-40 transition-colors duration-300 ease-in-out ${
+            isOpen ? "bg-black/50" : "bg-transparent pointer-events-none"
+          }`}
           onClick={onClose}
         />
       )}
