@@ -55,7 +55,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
   // Determine if we're on a dashboard page or a page that manages its own header
   const isDashboard = pathname?.includes('-dashboard');
-  const isFullScreen = isDashboard || pathname?.startsWith('/accept-invite');
+  const isFullScreen =
+    isDashboard ||
+    pathname?.startsWith('/accept-invite') ||
+    pathname?.startsWith('/forgot-password') ||
+    pathname?.startsWith('/reset-password');
 
   return (
     <ToastProvider>

@@ -4,6 +4,11 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { Loader, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import {
+  validatePassword,
+  PASSWORD_HELPER_TEXT,
+} from "../../lib/passwordValidation";
+import { AuthShell } from "../../components/auth/AuthShell";
 
 type PageState = "loading" | "valid" | "expired" | "invalid";
 
@@ -30,55 +35,6 @@ function getDashboardPath(role: string): string {
 
 function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
-}
-
-function validatePassword(password: string): string | null {
-  if (password.length < 8) {
-    return "Password must be at least 8 characters.";
-  }
-  if (!/[A-Z]/.test(password)) {
-    return "Password must contain at least one uppercase letter.";
-  }
-  if (!/[a-z]/.test(password)) {
-    return "Password must contain at least one lowercase letter.";
-  }
-  if (!/[0-9]/.test(password)) {
-    return "Password must contain at least one number.";
-  }
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    return "Password must contain at least one symbol.";
-  }
-  return null;
-}
-
-/* ── Shared background shell ─────────────────────────────────────────── */
-function PageShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-100 flex items-center justify-center px-4 py-12">
-      <div className="relative z-10 w-full max-w-md">
-        {/* Wordmark */}
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-primary-600">
-            Nexxus
-          </h1>
-          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700 shadow-sm">
-            Team Invitation
-          </div>
-        </div>
-
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/* ── Glass card wrapper ───────────────────────────────────────────────── */
-function GlassCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-white/80 bg-white/80 px-8 py-8 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-      {children}
-    </div>
-  );
 }
 
 function AcceptInviteContent() {
@@ -283,44 +239,39 @@ function AcceptInviteContent() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (pageState === "loading") {
     return (
-      <PageShell>
-        <GlassCard>
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-            <p className="text-sm font-medium text-gray-500">
-              Verifying your invite…
-            </p>
-          </div>
-        </GlassCard>
-      </PageShell>
+      <AuthShell badge="Team Invitation">
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+          <p className="text-sm font-medium text-gray-500">
+            Verifying your invite…
+          </p>
+        </div>
+      </AuthShell>
     );
   }
 
   // ── Invalid / Expired state ────────────────────────────────────────────────
   if (pageState === "invalid" || pageState === "expired") {
     return (
-      <PageShell>
-        <GlassCard>
-          <div className="flex flex-col items-center gap-4 py-4 text-center">
-            <div className="rounded-xl border border-red-100 bg-red-50 p-3 ring-1 ring-red-100/60">
-              <AlertCircle className="h-7 w-7 text-red-500" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-gray-900">
-                {pageState === "expired" ? "Invite Expired" : "Invalid Invite"}
-              </h2>
-              <p className="mt-2 text-sm text-gray-500">{pageError}</p>
-            </div>
+      <AuthShell badge="Team Invitation">
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="rounded-xl border border-red-100 bg-red-50 p-3 ring-1 ring-red-100/60">
+            <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
-        </GlassCard>
-      </PageShell>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900">
+              {pageState === "expired" ? "Invite Expired" : "Invalid Invite"}
+            </h2>
+            <p className="mt-2 text-sm text-gray-500">{pageError}</p>
+          </div>
+        </div>
+      </AuthShell>
     );
   }
 
   // ── Valid state — show form ────────────────────────────────────────────────
   return (
-    <PageShell>
-      <GlassCard>
+    <AuthShell badge="Team Invitation">
         {/* Card header */}
         <div className="mb-6 text-center">
           <h2 className="text-2xl font-bold tracking-tight text-gray-900">
@@ -444,9 +395,7 @@ function AcceptInviteContent() {
               className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
               placeholder="At least 8 characters"
             />
-            <p className="mt-1.5 text-xs text-gray-500">
-              Must include uppercase, lowercase, number, and symbol.
-            </p>
+            <p className="mt-1.5 text-xs text-gray-500">{PASSWORD_HELPER_TEXT}</p>
           </div>
 
           {/* Confirm password */}
@@ -486,8 +435,7 @@ function AcceptInviteContent() {
             </button>
           </div>
         </form>
-      </GlassCard>
-    </PageShell>
+    </AuthShell>
   );
 }
 

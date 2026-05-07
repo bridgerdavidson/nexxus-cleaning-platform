@@ -31,7 +31,14 @@
       "PowerShell(Stop-Process -Id 6108 -Force -ErrorAction SilentlyContinue)",
       "PowerShell(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue)",
       "Read(//c/Users/mvbda/.claude/projects/C--builds-nexxuscleaningsolutions/memory//**)",
-      "Read(//c/Users/mvbda/.claude/projects/C--builds-nexxuscleaningsolutions/memory/**)"
+      "Read(//c/Users/mvbda/.claude/projects/C--builds-nexxuscleaningsolutions/memory/**)",
+      "Bash(stripe listen *)",
+      "Bash(where.exe sh *)",
+      "Bash(where.exe bash *)",
+      "Bash(where.exe node *)",
+      "PowerShell(irm bun.sh/install.ps1 | iex)",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "Bash(docker info *)"
     ]
   }
 }
