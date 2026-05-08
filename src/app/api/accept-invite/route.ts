@@ -109,9 +109,13 @@ export async function POST(request: NextRequest) {
 
     const { role, organization_id: organizationId } = invite;
 
-    // Set password and update display name in auth.users
+    // Set password, role, and display name in auth.users. app_metadata.role
+    // mirrors user_profiles.role so the AuthContext fallback path (used when
+    // the user_profiles SELECT errors/times out/aborts) returns the correct
+    // role instead of defaulting to 'homeowner'.
     const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
       password,
+      app_metadata: { role },
       user_metadata: {
         first_name: firstName,
         last_name: lastName,
