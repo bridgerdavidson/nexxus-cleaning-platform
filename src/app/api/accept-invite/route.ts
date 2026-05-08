@@ -4,9 +4,9 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accessToken, firstName, lastName, phone, password } = body;
+    const { accessToken, inviteId, firstName, lastName, phone, password } = body;
 
-    if (!accessToken || !firstName || !lastName || !password) {
+    if (!accessToken || !inviteId || !firstName || !lastName || !password) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -31,12 +31,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Re-validate invite server-side — never trust the client's preview result
+    // Re-validate invite server-side by id — never trust the client's preview
+    // result. Looking up by id (instead of email + status='pending') lets us
+    // inspect the actual current status and return a specific error per state.
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from('invites')
       .select('id, email, role, organization_id, status, expiration_date')
-      .eq('email', email)
-      .eq('status', 'pending')
+      .eq('id', inviteId)
       .maybeSingle();
 
     if (inviteError) {
@@ -48,9 +49,54 @@ export async function POST(request: NextRequest) {
 
     if (!invite) {
       return NextResponse.json(
-        { success: false, error: 'Invite not found or has already been used.' },
+        { success: false, error: 'Invite not found. Please ask an admin to send a new invite.' },
         { status: 400 }
       );
+    }
+
+    // Email sanity check — prevents accepting an invite issued to someone else.
+    if (invite.email !== email) {
+      return NextResponse.json(
+        { success: false, error: 'This invite was issued to a different address.' },
+        { status: 400 }
+      );
+    }
+
+    // Status-specific handling. Only 'pending' continues; everything else
+    // returns an actionable message describing the actual state.
+    switch (invite.status) {
+      case 'pending':
+        break;
+      case 'accepted':
+        return NextResponse.json(
+          { success: false, error: 'This invite has already been used. Please sign in instead.' },
+          { status: 400 }
+        );
+      case 'superseded':
+        return NextResponse.json(
+          { success: false, error: 'A newer invite was sent. Please use the most recent link from your inbox.' },
+          { status: 400 }
+        );
+      case 'expired':
+        return NextResponse.json(
+          { success: false, error: 'This invite has expired. Please ask an admin to send a new invite.' },
+          { status: 400 }
+        );
+      case 'failed':
+        return NextResponse.json(
+          { success: false, error: 'This invite failed to send. Please ask an admin to send a new invite.' },
+          { status: 400 }
+        );
+      case 'creating':
+        return NextResponse.json(
+          { success: false, error: 'This invite is still being prepared. Please try again in a moment.' },
+          { status: 400 }
+        );
+      default:
+        return NextResponse.json(
+          { success: false, error: 'This invite is no longer valid.' },
+          { status: 400 }
+        );
     }
 
     // Check expiration using the expiration_date column set at invite creation
@@ -61,7 +107,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { role, organization_id: organizationId, id: inviteId } = invite;
+    const { role, organization_id: organizationId } = invite;
 
     // Set password and update display name in auth.users
     const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {

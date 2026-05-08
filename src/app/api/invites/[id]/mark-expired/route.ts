@@ -11,6 +11,13 @@ import { supabaseAdmin } from '../../../../../lib/supabase-admin';
 // state change available is pending → expired, which is recoverable by
 // resending. We do NOT 404 on a non-pending row to avoid leaking which ids
 // are valid.
+//
+// Guard: only flip when opened_at IS NULL. If the recipient already loaded
+// the accept-invite form (preview set opened_at), they have an active form
+// session — a *second* fetch of the URL (a re-tap, mail-client pre-fetch,
+// safe-link scanner, link-preview gesture) must not invalidate the row out
+// from under them. Genuinely abandoned invites are still cleaned up by the
+// opened_at < (now-1h) lazy-expire pass in GET /api/invites.
 
 export async function POST(
   _request: NextRequest,
@@ -26,12 +33,14 @@ export async function POST(
       );
     }
 
-    // Only flip if currently pending — a no-op for any other status.
+    // Only flip if currently pending AND the recipient has not yet loaded
+    // the accept form. See file header for the opened_at guard rationale.
     const { error } = await supabaseAdmin
       .from('invites')
       .update({ status: 'expired' })
       .eq('id', id)
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .is('opened_at', null);
 
     if (error) {
       return NextResponse.json(

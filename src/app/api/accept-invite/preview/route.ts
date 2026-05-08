@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accessToken } = body;
+    const { accessToken, inviteId } = body;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -31,13 +31,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Look up the pending invite using supabaseAdmin to bypass RLS
-    const { data: invite, error: inviteError } = await supabaseAdmin
+    // Look up the invite using supabaseAdmin to bypass RLS. Prefer id-based
+    // lookup so we can inspect the actual status and return specific copy
+    // for each non-pending state. Fall back to the email + status='pending'
+    // query when the page didn't pass an inviteId (legacy compat for cached
+    // pages from before this change shipped).
+    const inviteQuery = supabaseAdmin
       .from('invites')
-      .select('id, email, role, organization_id, status, expiration_date, opened_at, created_at, organizations(name)')
-      .eq('email', email)
-      .eq('status', 'pending')
-      .maybeSingle();
+      .select('id, email, role, organization_id, status, expiration_date, opened_at, created_at, organizations(name)');
+
+    const { data: invite, error: inviteError } = await (
+      inviteId
+        ? inviteQuery.eq('id', inviteId).maybeSingle()
+        : inviteQuery.eq('email', email).eq('status', 'pending').maybeSingle()
+    );
 
     if (inviteError) {
       return NextResponse.json(
@@ -50,6 +57,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, status: 'invalid', message: 'This invite has already been used or is no longer valid.' },
         { status: 404 }
+      );
+    }
+
+    // Email sanity check on the id-based path — prevents confusion if the
+    // recipient somehow arrives with a token whose email differs from the
+    // invite's email (e.g., URL tampering, account confusion).
+    if (inviteId && invite.email !== email) {
+      return NextResponse.json(
+        { success: false, status: 'invalid', message: 'This invite was issued to a different address.' },
+        { status: 400 }
+      );
+    }
+
+    // Status-specific handling. Only 'pending' continues to render the form.
+    if (invite.status !== 'pending') {
+      const messageByStatus: Record<string, string> = {
+        accepted: 'This invite has already been used. Please sign in.',
+        superseded: 'A newer invite was sent. Please use the most recent link from your inbox.',
+        expired: 'This invite has expired. Please ask an admin to send a new invite.',
+        failed: 'This invite failed to send. Please ask an admin to send a new invite.',
+        creating: 'This invite is still being prepared. Please refresh in a moment.',
+      };
+      const responseStatus: 'expired' | 'invalid' = invite.status === 'expired' ? 'expired' : 'invalid';
+      return NextResponse.json(
+        {
+          success: false,
+          status: responseStatus,
+          message: messageByStatus[invite.status] ?? 'This invite is no longer valid.',
+        },
+        { status: 200 }
       );
     }
 

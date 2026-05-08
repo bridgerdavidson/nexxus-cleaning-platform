@@ -69,8 +69,9 @@ function AcceptInviteContent() {
     const hashErrorDesc = hashParams.get("error_description");
 
     // invite_id is preserved by Supabase on the error redirect because we
-    // included it in redirect_to when sending the invite. Use it to flip
-    // the DB row to 'expired' so the admin UI reflects reality.
+    // included it in redirect_to when sending the invite. The id is also
+    // passed to the preview/accept endpoints so they can look the row up
+    // by id and inspect the actual current status.
     const queryParams = new URLSearchParams(window.location.search);
     const inviteIdFromQuery = queryParams.get("invite_id");
 
@@ -83,6 +84,8 @@ function AcceptInviteContent() {
         setPageState("expired");
         if (inviteIdFromQuery) {
           // Fire-and-forget; failure here doesn't change the user-facing flow.
+          // The route's opened_at-IS-NULL guard makes this a no-op when the
+          // recipient already loaded the form in another tab.
           fetch(`/api/invites/${inviteIdFromQuery}/mark-expired`, {
             method: "POST",
           }).catch(() => {});
@@ -120,7 +123,10 @@ function AcceptInviteContent() {
         const response = await fetch("/api/accept-invite/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accessToken: session.access_token }),
+          body: JSON.stringify({
+            accessToken: session.access_token,
+            inviteId: inviteIdFromQuery,
+          }),
         });
 
         const result = await response.json();
@@ -152,11 +158,19 @@ function AcceptInviteContent() {
 
     // Primary: listen for the SIGNED_IN event that detectSessionInUrl fires
     // after exchanging the invite hash token — this handles the async timing gap.
+    // On TOKEN_REFRESHED, also keep the React accessToken state in sync so a
+    // long form-fill doesn't submit with a stale (expired) token.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
+      if (event === "SIGNED_IN" && session) {
         processSession(session);
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        if (handled) {
+          setAccessToken(session.access_token);
+        } else {
+          processSession(session);
+        }
       }
     });
 
@@ -177,6 +191,10 @@ function AcceptInviteContent() {
     e.preventDefault();
     setFormError("");
 
+    if (!invitePreview) {
+      setFormError("Invite is no longer valid. Please reload and try again.");
+      return;
+    }
     if (!firstName.trim() || !lastName.trim()) {
       setFormError("First and last name are required.");
       return;
@@ -199,6 +217,7 @@ function AcceptInviteContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken,
+          inviteId: invitePreview.id,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           phone: phone.trim() || null,
