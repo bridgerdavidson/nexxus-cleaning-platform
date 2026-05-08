@@ -44,7 +44,7 @@ export default function TeamMembersPage({
     member.role === "manager" && member.id !== user?.id;
 
   const canDeleteMember = (member: TeamMember) =>
-    member.role !== "admin" && member.id !== user?.id;
+    member.id !== user?.id;
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");

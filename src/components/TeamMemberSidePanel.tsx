@@ -201,7 +201,6 @@ export default function TeamMemberSidePanel({
     member.id !== currentUserId;
 
   const showDelete =
-    member.role !== "admin" &&
     onDelete &&
     member.id !== currentUserId;
 
