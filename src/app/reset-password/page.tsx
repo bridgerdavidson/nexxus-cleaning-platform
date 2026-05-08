@@ -132,18 +132,26 @@ function ResetPasswordContent() {
 
     setPageState("success");
 
-    // Read role from auth metadata (matches getRoleFromAuth in AuthContext).
+    // Prefer user_profiles.role — auth metadata is empty for users created
+    // via invite (accept-invite writes role to user_profiles only), so the
+    // old metadata-only path silently routed admins/managers to homeowner.
     const u = data.user;
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", u.id)
+      .maybeSingle();
+
     const role =
-      ((u.app_metadata?.role as string) ||
-        (u.user_metadata?.role as string) ||
-        "homeowner") as string;
+      (profile?.role as string | undefined) ||
+      (u.app_metadata?.role as string | undefined) ||
+      (u.user_metadata?.role as string | undefined) ||
+      null;
 
     showToast("Password updated. Welcome back.", { variant: "success" });
 
-    // Brief delay so the toast registers before navigation.
     setTimeout(() => {
-      router.push(getDashboardPath(role));
+      router.push(role ? getDashboardPath(role) : "/");
     }, 250);
   };
 
