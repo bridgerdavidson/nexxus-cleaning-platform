@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Loader2,
@@ -112,6 +112,32 @@ export default function InvitesPage({
   // button to a disabled "Sent" state immediately, even before realtime
   // marks the row as superseded.
   const [resentIds, setResentIds] = useState<Set<string>>(new Set());
+
+  // Prune resentIds once a row's status moves out of the resendable range
+  // (failed/expired). The "Sent" pill is only meaningful as an immediate
+  // replacement for the Resend button; once the row becomes superseded /
+  // accepted / pending / creating, the pill should vanish along with the
+  // button it was replacing. Using the status (not canResendInvite) keeps
+  // the prune independent of mid-session permission changes.
+  useEffect(() => {
+    setResentIds((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of prev) {
+        const invite = invites.find((inv) => inv.id === id);
+        if (
+          !invite ||
+          (getDisplayStatus(invite) !== 'failed' &&
+            getDisplayStatus(invite) !== 'expired')
+        ) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [invites]);
 
   const counts = useMemo(() => {
     const c: Record<FilterId, number> = {
