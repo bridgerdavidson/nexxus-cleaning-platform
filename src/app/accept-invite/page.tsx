@@ -84,8 +84,10 @@ function AcceptInviteContent() {
         setPageState("expired");
         if (inviteIdFromQuery) {
           // Fire-and-forget; failure here doesn't change the user-facing flow.
-          // The route's opened_at-IS-NULL guard makes this a no-op when the
-          // recipient already loaded the form in another tab.
+          // The route's guard allows the flip when the recipient either
+          // hadn't loaded the form (opened_at IS NULL) or already closed
+          // it (form_closed_at set via pagehide beacon below). A re-fetch
+          // mid-fill remains a no-op so the active form session survives.
           fetch(`/api/invites/${inviteIdFromQuery}/mark-expired`, {
             method: "POST",
           }).catch(() => {});
@@ -186,6 +188,24 @@ function AcceptInviteContent() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // When the form is rendered (pageState === 'valid') and the page is being
+  // hidden/torn down, beacon the server so mark-expired knows the recipient
+  // closed the form. Without this, the server can't tell "user walked away"
+  // from "scanner re-fetched the URL while user is mid-fill" — the latter
+  // must NOT invalidate the row. pagehide is the right signal: it fires on
+  // tab close and navigation away, including iOS Safari, but does not fire
+  // on a routine visibility blur (app-switch / tab-switch) which we
+  // deliberately do not want to treat as abandonment.
+  useEffect(() => {
+    if (pageState !== "valid" || !invitePreview?.id) return;
+    const id = invitePreview.id;
+    const handlePageHide = () => {
+      navigator.sendBeacon(`/api/invites/${id}/form-closed`);
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [pageState, invitePreview?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
