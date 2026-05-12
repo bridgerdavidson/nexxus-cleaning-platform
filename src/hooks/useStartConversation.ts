@@ -4,6 +4,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { keys } from '../lib/queryKeys';
+import {
+  MESSAGING_FORBIDDEN_TEXT,
+  isMessagingForbiddenError,
+} from '../lib/messagingPermissions';
 import { ConversationWithDetails, UserProfile } from '../types';
 
 interface StartConversationResult {
@@ -78,6 +82,9 @@ export function useStartConversation() {
         conversation: result.conversation,
       };
     } catch (err) {
+      if (isMessagingForbiddenError(err)) {
+        return { success: false, error: MESSAGING_FORBIDDEN_TEXT };
+      }
       const errorMessage = err instanceof Error ? err.message : 'Failed to start conversation';
       return { success: false, error: errorMessage };
     }

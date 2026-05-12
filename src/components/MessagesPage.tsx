@@ -4,6 +4,7 @@ import { UserRole, ConversationWithDetails } from "../types";
 import { useDeleteConversation } from "../hooks/useDeleteConversation";
 import { useStartConversation } from "../hooks/useStartConversation";
 import { OrganizationMember } from "../hooks/useOrganizationMembers";
+import { rolesUserCanMessage } from "../lib/messagingPermissions";
 import ConversationList from "./ConversationList";
 import MessageThread from "./MessageThread";
 import NewConversationModal from "./NewConversationModal";
@@ -118,20 +119,8 @@ export default function MessagesPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOtherParticipantId, loading, allConversations]);
 
-  // Determine which roles to show in filter based on user's role
-  const getAvailableRoles = (): UserRole[] => {
-    switch (userRole) {
-      case "admin":
-      case "manager":
-        return ["homeowner", "cleaner", "admin", "manager"];
-      case "homeowner":
-        return ["cleaner", "admin", "manager"];
-      case "cleaner":
-        return ["homeowner", "admin", "manager"];
-      default:
-        return [];
-    }
-  };
+  // Roles the current user is allowed to message — shared with NewConversationModal
+  const getAvailableRoles = (): UserRole[] => rolesUserCanMessage(userRole);
 
   const handleSelectConversation = (conversation: ConversationWithDetails) => {
     // Start off-screen, then trigger slide-in animation
@@ -283,6 +272,7 @@ export default function MessagesPage({
         onClose={() => setShowNewConversationModal(false)}
         onSelectUser={handleSelectNewConversationUser}
         currentUserId={userId}
+        currentUserRole={userRole}
       />
     </div>
   );

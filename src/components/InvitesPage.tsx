@@ -16,6 +16,7 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import AddTeamMemberModal from './AddTeamMemberModal';
 import InviteStatusBadge from './InviteStatusBadge';
+import { getRoleBadgeClasses } from '../lib/roleStyles';
 import type { Invite, InviteDisplayStatus } from '../types';
 
 interface InvitesPageProps {
@@ -37,12 +38,6 @@ const FILTERS: { id: FilterId; label: string }[] = [
   { id: 'expired', label: 'Expired' },
   { id: 'superseded', label: 'Superseded' },
 ];
-
-const ROLE_PILL: Record<string, string> = {
-  cleaner: 'bg-green-100 text-green-700',
-  manager: 'bg-blue-100 text-blue-700',
-  admin: 'bg-purple-100 text-purple-700',
-};
 
 const ROLE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   cleaner: UserCheck,
@@ -322,7 +317,7 @@ export default function InvitesPage({
           {filtered.map((invite) => {
             const ds = getDisplayStatus(invite);
             const RoleIcon = ROLE_ICON[invite.role] ?? UserCheck;
-            const rolePill = ROLE_PILL[invite.role] ?? 'bg-gray-100 text-gray-700';
+            const rolePill = getRoleBadgeClasses(invite.role);
             const showResend = canResendInvite(invite);
             const isResending = resendingId === invite.id;
             const justSent = resentIds.has(invite.id);

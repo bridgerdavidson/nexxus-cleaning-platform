@@ -5,12 +5,16 @@ import {
   OrganizationMember,
 } from "../hooks/useOrganizationMembers";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { UserRole } from "../types";
+import { canMessageRole } from "../lib/messagingPermissions";
+import { getRoleBadgeClasses } from "../lib/roleStyles";
 
 interface NewConversationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectUser: (user: OrganizationMember) => void;
   currentUserId: string;
+  currentUserRole: UserRole;
 }
 
 export default function NewConversationModal({
@@ -18,6 +22,7 @@ export default function NewConversationModal({
   onClose,
   onSelectUser,
   currentUserId,
+  currentUserRole,
 }: NewConversationModalProps) {
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
@@ -27,12 +32,16 @@ export default function NewConversationModal({
     excludeCurrentUser: true,
   });
 
-  // Filter members based on search query
+  // Apply messaging permission matrix first, then search filter
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) return members;
+    const allowed = members.filter((m) =>
+      canMessageRole(currentUserRole, m.role as UserRole)
+    );
+
+    if (!searchQuery.trim()) return allowed;
 
     const query = searchQuery.toLowerCase();
-    return members.filter((member) => {
+    return allowed.filter((member) => {
       const fullName = `${member.first_name || ""} ${
         member.last_name || ""
       }`.toLowerCase();
@@ -45,27 +54,12 @@ export default function NewConversationModal({
         role.includes(query)
       );
     });
-  }, [members, searchQuery]);
+  }, [members, searchQuery, currentUserRole]);
 
   const getInitials = (member: OrganizationMember) => {
     const firstName = member.first_name || "";
     const lastName = member.last_name || "";
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || "?";
-  };
-
-  const getRoleBadgeColor = (role: string) => {
-    switch (role?.toLowerCase()) {
-      case "admin":
-        return "bg-purple-100 text-purple-700";
-      case "manager":
-        return "bg-blue-100 text-blue-700";
-      case "cleaner":
-        return "bg-green-100 text-green-700";
-      case "homeowner":
-        return "bg-orange-100 text-orange-700";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
   };
 
   if (!isOpen) return null;
@@ -164,7 +158,7 @@ export default function NewConversationModal({
                         {member.first_name} {member.last_name}
                       </p>
                       <span
-                        className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${getRoleBadgeColor(
+                        className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${getRoleBadgeClasses(
                           member.role
                         )}`}
                       >

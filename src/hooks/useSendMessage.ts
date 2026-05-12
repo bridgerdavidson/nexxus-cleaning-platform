@@ -5,6 +5,10 @@ import { supabase } from '../lib/supabase';
 import { uploadImages } from '../lib/upload';
 import { useAuth } from './useAuth';
 import { keys } from '../lib/queryKeys';
+import {
+  MESSAGING_FORBIDDEN_TEXT,
+  isMessagingForbiddenError,
+} from '../lib/messagingPermissions';
 
 interface SendMessageOptions {
   conversationId?: string;
@@ -85,6 +89,9 @@ export function useSendMessage() {
       const result = await mutation.mutateAsync(opts);
       return { success: true, messageId: result.messageId, conversationId: result.conversationId };
     } catch (err) {
+      if (isMessagingForbiddenError(err)) {
+        return { success: false, error: MESSAGING_FORBIDDEN_TEXT };
+      }
       const errorMessage = err instanceof Error ? err.message : 'Failed to send message';
       return { success: false, error: errorMessage };
     }
