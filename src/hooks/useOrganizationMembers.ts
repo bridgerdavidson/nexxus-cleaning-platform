@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useOrgQuery } from '../lib/useOrgQuery';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 
 export interface OrganizationMember {
@@ -24,8 +25,10 @@ export function useOrganizationMembers(options: UseOrganizationMembersOptions = 
   const userId = user?.id ?? '';
   const orgId = currentOrganizationId ?? '';
 
+  const queryKey = [...keys.organizationMembers.byOrg(orgId), excludeCurrentUser ? 'noself' : 'all'] as const;
+
   const query = useOrgQuery({
-    queryKey: [...keys.organizationMembers.byOrg(orgId), excludeCurrentUser ? 'noself' : 'all'] as const,
+    queryKey,
     queryFn: async ({ orgId }) => {
       const { data: orgMembers, error: membersError } = await supabase
         .from('organization_members')
@@ -66,6 +69,27 @@ export function useOrganizationMembers(options: UseOrganizationMembersOptions = 
 
       return combined;
     },
+  });
+
+  // Org-shared channel: any change to organization_members ripples through
+  // team-members, customers, and admin stats. Channel name matches the
+  // org-shared pattern used by useAdminData/useManagerData so all consumers
+  // dedupe onto one subscription.
+  useSupabaseRealtimeSync({
+    channelName: `organization_members:${orgId}`,
+    table: 'organization_members',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [
+        queryKey,
+        keys.organizationMembers.byOrg(orgId),
+        keys.teamMembers.byOrg(orgId),
+        keys.customers.byOrg(orgId),
+        keys.stats.admin(orgId),
+      ],
+    }),
   });
 
   return {

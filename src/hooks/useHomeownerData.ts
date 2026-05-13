@@ -3,6 +3,7 @@
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useOrgQuery } from '../lib/useOrgQuery';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 
 export interface Appointment {
@@ -91,11 +92,13 @@ export interface Payment {
 }
 
 export function useHomeownerAppointments() {
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
   const userId = user?.id ?? '';
+  const orgId = currentOrganizationId ?? '';
+  const queryKey = keys.appointments.byHomeowner(userId);
 
   const query = useOrgQuery({
-    queryKey: keys.appointments.byHomeowner(userId),
+    queryKey,
     queryFn: async ({ orgId, userId }) => {
       const { data, error: fetchError } = await supabase
         .from('appointments')
@@ -167,6 +170,33 @@ export function useHomeownerAppointments() {
     },
   });
 
+  // Homeowner-scoped appointments realtime. Invalidates the list and any
+  // dependent stats whenever an appointment of this homeowner changes.
+  useSupabaseRealtimeSync({
+    channelName: `appointments:homeowner:${userId}`,
+    table: 'appointments',
+    filter: userId ? `homeowner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.stats.homeowner(userId)],
+    }),
+  });
+
+  // Payments don't carry homeowner_id, so we filter by org and let the
+  // callback narrow to "is this appointment in the homeowner's cache?"
+  // before invalidating. Avoids cross-homeowner refetch storms.
+  useSupabaseRealtimeSync({
+    channelName: `payments:homeowner:${userId}`,
+    table: 'payments',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId && !!userId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.payments.byHomeowner(userId), keys.stats.homeowner(userId)],
+    }),
+  });
+
   return {
     appointments: query.data ?? [],
     loading: query.isLoading,
@@ -178,9 +208,10 @@ export function useHomeownerAppointments() {
 export function useHomeownerProperties() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
+  const queryKey = keys.properties.byHomeowner(userId);
 
   const query = useOrgQuery({
-    queryKey: keys.properties.byHomeowner(userId),
+    queryKey,
     queryFn: async ({ orgId, userId }) => {
       const { data, error } = await supabase
         .from('properties')
@@ -192,6 +223,14 @@ export function useHomeownerProperties() {
       if (error) throw error;
       return (data || []) as Property[];
     },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `properties:homeowner:${userId}`,
+    table: 'properties',
+    filter: userId ? `owner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
   return {

@@ -218,36 +218,53 @@ export function useAdminAppointments() {
 
   // Appointments realtime: invalidate the list on any change. Refetch picks up
   // joins that the realtime payload doesn't carry (homeowner, cleaner, etc.).
+  // Also invalidate admin stats and customer counts — both derive from this
+  // table.
   useSupabaseRealtimeSync({
     channelName: `appointments:${orgId}`,
     table: 'appointments',
     filter: orgId ? `organization_id=eq.${orgId}` : undefined,
     enabled: !!orgId,
-    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId)],
+    }),
   });
 
-  // Payments realtime: small payload — patch the appointments cache directly
-  // (kills the legacy "fetch single appointment" round-trip on every payment).
+  // Payments realtime: patch payment_status into the appointments cache and
+  // invalidate the derived stats RPCs. Filter by org so we don't broadcast
+  // every payment in the database to every admin tab.
   useSupabaseRealtimeSync({
     channelName: `payments:${orgId}`,
     table: 'payments',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
     enabled: !!orgId,
     onEvent: payload => {
       const row = (payload.new ?? payload.old) as { appointment_id?: string; status?: string } | undefined;
       const apptId = row?.appointment_id;
       if (!apptId) return;
-      return {
-        type: 'patch',
-        key: queryKey,
-        updater: prev => {
-          const list = Array.isArray(prev) ? (prev as AdminAppointment[]) : [];
-          return list.map(a =>
-            a.id === apptId
-              ? { ...a, payment_status: (row?.status as AdminAppointment['payment_status']) ?? a.payment_status }
-              : a
-          );
+      return [
+        {
+          type: 'patch',
+          key: queryKey,
+          updater: prev => {
+            const list = Array.isArray(prev) ? (prev as AdminAppointment[]) : [];
+            return list.map(a =>
+              a.id === apptId
+                ? { ...a, payment_status: (row?.status as AdminAppointment['payment_status']) ?? a.payment_status }
+                : a
+            );
+          },
         },
-      };
+        {
+          type: 'invalidate',
+          keys: [
+            keys.payments.byOrg(orgId),
+            keys.payments.statsByOrg(orgId),
+            keys.stats.admin(orgId),
+          ],
+        },
+      ];
     },
   });
 
@@ -312,6 +329,19 @@ export function useAdminCleaners() {
           : cleaner.user_profile,
       })) as AdminCleaner[];
     },
+  });
+
+  // Org-shared cleaner_profiles channel. Invalidate the list + dependent stats
+  // on any change (new cleaner, availability flip, Stripe onboarding flag).
+  useSupabaseRealtimeSync({
+    channelName: `cleaner_profiles:${orgId}`,
+    table: 'cleaner_profiles',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.stats.admin(orgId), keys.teamMembers.byOrg(orgId)],
+    }),
   });
 
   const updateCleanerInState = useCallback(
@@ -1374,6 +1404,19 @@ export function useAdminProperties() {
     },
   });
 
+  // Org-shared properties channel. New properties / edits / deletes ripple
+  // into customer property counts too.
+  useSupabaseRealtimeSync({
+    channelName: `properties:${orgId}`,
+    table: 'properties',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.customers.byOrg(orgId)],
+    }),
+  });
+
   const updatePropertyInState = useCallback(
     (propertyId: string, updatedData: Partial<AdminProperty>) => {
       queryClient.setQueryData<AdminProperty[]>(queryKey, prev =>
@@ -1707,6 +1750,29 @@ export function useAdminTeamMembers() {
   useEffect(() => {
     fetchTeamMembers();
   }, [fetchTeamMembers]);
+
+  // Org-scoped realtime — re-fetch the (multi-table) team list whenever any of
+  // the contributing tables changes. We pass `fetchTeamMembers` directly; the
+  // helper holds it in a ref so the callback always sees the latest version.
+  const orgId = currentOrganizationId ?? '';
+  useSupabaseRealtimeSync({
+    channelName: `organization_members:${orgId}`,
+    table: 'organization_members',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => {
+      fetchTeamMembers();
+    },
+  });
+  useSupabaseRealtimeSync({
+    channelName: `manager_permissions:${orgId}`,
+    table: 'manager_permissions',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => {
+      fetchTeamMembers();
+    },
+  });
 
   const refetch = useCallback(() => {
     fetchTeamMembers();

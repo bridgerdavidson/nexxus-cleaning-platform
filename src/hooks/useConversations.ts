@@ -125,19 +125,22 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
 
   // Messages realtime: any message INSERT/UPDATE that involves this user
   // changes either the last_message preview or the unread count, so we
-  // invalidate the conversation list. The bespoke optimistic patches that
-  // existed before are gone — refetch is simpler and the cost is negligible
-  // for the typical conversation count per user.
+  // invalidate the conversation list. Split into two channels because
+  // Supabase realtime filters don't support OR — one matches messages this
+  // user sent, the other matches messages addressed to them.
   useSupabaseRealtimeSync({
-    channelName: `messages:user:${userId}`,
+    channelName: `messages:sender:${userId}`,
     table: 'messages',
+    filter: userId ? `sender_id=eq.${userId}` : undefined,
     enabled: !!userId,
-    onEvent: payload => {
-      const msg = (payload.new ?? payload.old) as { sender_id?: string; recipient_id?: string } | undefined;
-      if (!msg) return;
-      if (msg.sender_id !== userId && msg.recipient_id !== userId) return;
-      return { type: 'invalidate', keys: [queryKey] };
-    },
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+  useSupabaseRealtimeSync({
+    channelName: `messages:recipient:${userId}`,
+    table: 'messages',
+    filter: userId ? `recipient_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
   // Attachments arrive AFTER the parent message row (sender uploads them

@@ -228,13 +228,17 @@ export function useCleanerAppointments() {
     },
   });
 
-  // Cleaner-scoped channel: filter to events for THIS cleaner only.
+  // Cleaner-scoped channel: filter to events for THIS cleaner only. Also
+  // invalidates the cleaner stats RPC so the dashboard tiles update live.
   useSupabaseRealtimeSync({
     channelName: `appointments:cleaner:${userId}`,
     table: 'appointments',
     filter: userId ? `cleaner_id=eq.${userId}` : undefined,
     enabled: !!userId,
-    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.stats.cleaner(userId), keys.payouts.byCleaner(userId)],
+    }),
   });
 
   // Helper for legacy callers; not currently used outside.

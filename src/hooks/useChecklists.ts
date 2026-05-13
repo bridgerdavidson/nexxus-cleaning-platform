@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { Checklist, ChecklistLineItem, ChecklistWithItems } from '../types';
 
@@ -58,6 +59,17 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
       });
       return checklistsWithItems;
     },
+  });
+
+  // Live checklists scoped to the active service type. checklist_line_items
+  // are not in the publication (back-office table); local mutations call the
+  // applyLineItem* helpers below, and full refetch picks up cross-tab edits.
+  useSupabaseRealtimeSync({
+    channelName: `checklists:${serviceTypeId ?? ''}`,
+    table: 'checklists',
+    filter: serviceTypeId ? `service_type_id=eq.${serviceTypeId}` : undefined,
+    enabled: !!serviceTypeId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
   const updateCache = useCallback(

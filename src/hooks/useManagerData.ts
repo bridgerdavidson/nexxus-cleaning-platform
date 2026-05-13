@@ -204,34 +204,49 @@ export function useManagerAppointments() {
   });
 
   // Channel name matches admin's so the two consumers share one subscription.
+  // We also invalidate stats keys here so dashboards stay live.
   useSupabaseRealtimeSync({
     channelName: `appointments:${orgId}`,
     table: 'appointments',
     filter: orgId ? `organization_id=eq.${orgId}` : undefined,
     enabled: !!orgId,
-    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId)],
+    }),
   });
 
   useSupabaseRealtimeSync({
     channelName: `payments:${orgId}`,
     table: 'payments',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
     enabled: !!orgId,
     onEvent: payload => {
       const row = (payload.new ?? payload.old) as { appointment_id?: string; status?: string } | undefined;
       const apptId = row?.appointment_id;
       if (!apptId) return;
-      return {
-        type: 'patch',
-        key: queryKey,
-        updater: prev => {
-          const list = Array.isArray(prev) ? (prev as ManagerAppointment[]) : [];
-          return list.map(a =>
-            a.id === apptId
-              ? { ...a, payment_status: (row?.status as ManagerAppointment['payment_status']) ?? a.payment_status }
-              : a
-          );
+      return [
+        {
+          type: 'patch',
+          key: queryKey,
+          updater: prev => {
+            const list = Array.isArray(prev) ? (prev as ManagerAppointment[]) : [];
+            return list.map(a =>
+              a.id === apptId
+                ? { ...a, payment_status: (row?.status as ManagerAppointment['payment_status']) ?? a.payment_status }
+                : a
+            );
+          },
         },
-      };
+        {
+          type: 'invalidate',
+          keys: [
+            keys.payments.byOrg(orgId),
+            keys.payments.statsByOrg(orgId),
+            keys.stats.admin(orgId),
+          ],
+        },
+      ];
     },
   });
 
@@ -295,6 +310,19 @@ export function useManagerCleaners() {
           : cleaner.user_profile,
       })) as ManagerCleaner[];
     },
+  });
+
+  // Org-shared cleaner_profiles channel (same name as useAdminCleaners so they
+  // share one underlying subscription).
+  useSupabaseRealtimeSync({
+    channelName: `cleaner_profiles:${orgId}`,
+    table: 'cleaner_profiles',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [queryKey, keys.stats.admin(orgId), keys.teamMembers.byOrg(orgId)],
+    }),
   });
 
   const updateCleanerInState = useCallback(

@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { ManagerPermissions } from './useAdminData';
 
@@ -27,9 +28,10 @@ export function useManagerPermissions() {
   const { user, currentOrganizationId } = useAuth();
   const userId = user?.id ?? '';
   const orgId = currentOrganizationId ?? '';
+  const queryKey = keys.managerPermissions.byUser(userId);
 
   const query = useQuery({
-    queryKey: keys.managerPermissions.byUser(userId),
+    queryKey,
     enabled: !!user?.id && !!currentOrganizationId,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -63,6 +65,16 @@ export function useManagerPermissions() {
         can_manage_services: Boolean(data.can_manage_services),
       } as ManagerPermissions;
     },
+  });
+
+  // Live permissions — if an admin grants or revokes a flag, the manager's
+  // sidebar/UI gates flip without requiring a sign-out / reload.
+  useSupabaseRealtimeSync({
+    channelName: `manager_permissions:user:${userId}`,
+    table: 'manager_permissions',
+    filter: userId ? `manager_id=eq.${userId}` : undefined,
+    enabled: !!userId && !!orgId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
   return {

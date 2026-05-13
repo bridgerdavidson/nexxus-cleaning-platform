@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { supabase } from './supabase';
@@ -37,10 +37,24 @@ export function useSupabaseRealtimeSync({
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
+  // supabase.channel(topic) returns the EXISTING channel if the topic matches,
+  // which means two hooks with the same `channelName` end up sharing one
+  // RealtimeChannel — both .on() bindings pile onto the same channel and the
+  // first hook to unmount calls removeChannel and kills it for the other one.
+  // Combined with React Strict Mode (mount → cleanup → re-mount in dev), this
+  // duplicates bindings and the next rejoin throws "mismatch between server
+  // and client bindings for postgres changes".
+  //
+  // useId() gives each hook instance a stable unique suffix, so the underlying
+  // realtime topic is always unique per hook. We keep `channelName` as a
+  // human-readable label baked into the topic for log readability.
+  const instanceId = useId();
+  const topic = `${channelName}#${instanceId}`;
+
   useEffect(() => {
     if (!enabled) return;
 
-    const channel: RealtimeChannel = supabase.channel(channelName);
+    const channel: RealtimeChannel = supabase.channel(topic);
 
     for (const event of events) {
       channel.on(
@@ -70,10 +84,27 @@ export function useSupabaseRealtimeSync({
       );
     }
 
-    channel.subscribe();
+    channel.subscribe((status, err) => {
+      // Differentiate real failures from transient connection blips.
+      // CHANNEL_ERROR with no `err` arg fires from RealtimeClient._onConnClose
+      // for every channel whenever the websocket closes (idle tab, network
+      // blip, supabase server graceful restart). The client auto-reconnects
+      // and channels re-subscribe — pure noise. CHANNEL_ERROR *with* an
+      // Error object (binding mismatch, RLS rejection, postgres-changes
+      // misconfig) is the real signal worth screaming about.
+      if (status === 'CHANNEL_ERROR' && err) {
+        console.error(`[realtime] ${channelName} CHANNEL_ERROR`, err);
+      } else if (status === 'CHANNEL_ERROR') {
+        console.debug(`[realtime] ${channelName} CHANNEL_ERROR (connection close)`);
+      } else if (status === 'TIMED_OUT') {
+        console.warn(`[realtime] ${channelName} TIMED_OUT`, err ?? '');
+      } else if (status === 'CLOSED') {
+        console.debug(`[realtime] ${channelName} CLOSED`);
+      }
+    });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [enabled, channelName, table, schema, filter, events.join(','), queryClient]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, topic, table, schema, filter, events.join(','), queryClient]); // eslint-disable-line react-hooks/exhaustive-deps
 }

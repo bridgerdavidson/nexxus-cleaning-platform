@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './useAuth';
 import { supabase } from '../lib/supabase';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 
 function stripeUiEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STRIPE_ENABLED === 'true';
@@ -81,6 +82,21 @@ export function useStripeConnect() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [fetchConnectStatus]);
+
+  // Realtime: re-pull Stripe status when the Stripe webhook flips this
+  // cleaner's onboarding flag. Without this, the cleaner has to refresh after
+  // finishing Stripe onboarding for the UI to drop the "Connect with Stripe"
+  // call to action.
+  const cleanerId = user?.id ?? '';
+  useSupabaseRealtimeSync({
+    channelName: `cleaner_profiles:detail:${cleanerId}`,
+    table: 'cleaner_profiles',
+    filter: cleanerId ? `id=eq.${cleanerId}` : undefined,
+    enabled: enabled && !!cleanerId,
+    onEvent: () => {
+      fetchConnectStatus();
+    },
+  });
 
   const handleConnectWithStripe = useCallback(async () => {
     if (!user?.id) return;
