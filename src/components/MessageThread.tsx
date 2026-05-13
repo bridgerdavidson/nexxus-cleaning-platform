@@ -133,60 +133,54 @@ export default function MessageThread({
   const handleSendMessage = async (content: string, attachments: File[]) => {
     if (!conversation || !user) return;
 
-    // Generate temporary ID for optimistic update
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
-    const now = new Date().toISOString();
+    // Text-only sends: optimistically inject the bubble for instant feedback.
+    // Sends WITH attachments skip the optimistic insert — the Send button
+    // spinner carries the loading state, and `useSendMessage.onSuccess`
+    // injects the fully-formed bubble (text + images + timestamp + check)
+    // in one go when the uploads finish. This avoids the chunky flow where
+    // the text/timestamp appeared first and images popped in afterward.
+    if (attachments.length === 0) {
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
+      const now = new Date().toISOString();
 
-    // Construct sender profile from user data (matching UserProfile type)
-    const senderProfile = {
-      id: user.id,
-      email: user.email,
-      first_name: user.profile.firstName || null,
-      last_name: user.profile.lastName || null,
-      phone: user.profile.phone || null,
-      role: user.role,
-      avatar_url: user.profile.avatarUrl || null,
-      created_at: user.createdAt,
-      updated_at: user.updatedAt,
-    };
+      const senderProfile = {
+        id: user.id,
+        email: user.email,
+        first_name: user.profile.firstName || null,
+        last_name: user.profile.lastName || null,
+        phone: user.profile.phone || null,
+        role: user.role,
+        avatar_url: user.profile.avatarUrl || null,
+        created_at: user.createdAt,
+        updated_at: user.updatedAt,
+      };
 
-    // Construct optimistic message
-    const optimisticMessage: MessageWithDetails = {
-      id: tempId,
-      organization_id: null,
-      conversation_id: conversation.id,
-      sender_id: currentUserId,
-      recipient_id: conversation.other_participant.id,
-      appointment_id: null,
-      subject: null,
-      content: content.trim(),
-      is_read: false,
-      created_at: now,
-      sender: senderProfile,
-      recipient: conversation.other_participant,
-      attachments: [], // Will be updated by real-time subscription if attachments exist
-    };
+      const optimisticMessage: MessageWithDetails = {
+        id: tempId,
+        organization_id: null,
+        conversation_id: conversation.id,
+        sender_id: currentUserId,
+        recipient_id: conversation.other_participant.id,
+        appointment_id: null,
+        subject: null,
+        content: content.trim(),
+        is_read: false,
+        created_at: now,
+        sender: senderProfile,
+        recipient: conversation.other_participant,
+        attachments: [],
+      };
 
-    // Add message optimistically (instant UI feedback)
-    addMessage(optimisticMessage);
+      addMessage(optimisticMessage);
+    }
 
-    // Send message to backend
-    const result = await sendMessage({
+    await sendMessage({
       conversationId: conversation.id,
       senderId: currentUserId,
       recipientId: conversation.other_participant.id,
       content,
       attachments,
     });
-
-    // If sending fails, remove the optimistic message
-    if (!result.success && result.error) {
-      // Remove the optimistic message on failure
-      // The real-time subscription won't fire, so we need to clean up
-      // We'll handle this in addNewMessage by checking for temp IDs
-    }
-    // If successful, the real-time subscription will update with the real message ID
-    // The addNewMessage function will replace the temp message with the real one
   };
 
   // Empty state - no conversation selected

@@ -1,9 +1,14 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { User, Camera, Loader2, AlertCircle, X } from "lucide-react";
-import { AVATAR_MAX_FILE_SIZE, AVATAR_ALLOWED_TYPES } from "../lib/upload";
-import { compressJobPhoto } from "../lib/compress-image";
+import {
+  AVATAR_MAX_FILE_SIZE,
+  AVATAR_ALLOWED_TYPES,
+  IMAGE_ACCEPT_ATTR,
+  validateImageFile,
+} from "../lib/upload";
+import { useImageUpload } from "../hooks/useImageUpload";
 import { useAuth } from "../hooks/useAuth";
 
 interface AvatarUploadProps {
@@ -27,38 +32,51 @@ export default function AvatarUpload({
   onUploadSuccess,
   size = "lg",
 }: AvatarUploadProps) {
-  const { session } = useAuth();
+  const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [preview, setPreview] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const classes = sizeClasses[size];
 
-  const validateFile = useCallback((file: File): string | null => {
-    if (!AVATAR_ALLOWED_TYPES.includes(file.type)) {
-      return `File type not allowed. Accepted: JPEG, PNG, WebP.`;
-    }
-    if (file.size > AVATAR_MAX_FILE_SIZE) {
-      return `File exceeds 5 MB limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`;
-    }
-    return null;
-  }, []);
+  const { items, start, reset, isWorking } = useImageUpload({
+    context: { kind: "avatar", ctx: { userId: user?.id ?? "", currentAvatarUrl } },
+    onComplete: ({ uploaded, failed }) => {
+      if (uploaded[0]) {
+        if (preview) URL.revokeObjectURL(preview);
+        setPreview(null);
+        setPendingFile(null);
+        onUploadSuccess(uploaded[0].url);
+        reset();
+      } else if (failed[0]) {
+        setError(failed[0].message);
+      }
+    },
+  });
+
+  // Surface status from the in-flight item (for the button label)
+  const inFlight = items[0];
+  const converting = inFlight?.status === "converting";
+  const compressing = inFlight?.status === "compressing";
+  const uploading = inFlight?.status === "uploading";
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
-      // Reset input so the same file can be re-selected after cancellation
       e.target.value = "";
 
-      const validationError = validateFile(file);
-      if (validationError) {
-        setError(validationError);
+      const validation = validateImageFile(file, AVATAR_ALLOWED_TYPES, AVATAR_MAX_FILE_SIZE);
+      if (!validation.valid) {
+        setError(validation.error ?? "Invalid file.");
         return;
       }
 
@@ -66,75 +84,31 @@ export default function AvatarUpload({
       setPendingFile(file);
       setPreview(URL.createObjectURL(file));
     },
-    [validateFile],
+    [],
   );
 
-  const handleUpload = useCallback(async () => {
+  const handleUpload = useCallback(() => {
     if (!pendingFile) return;
-    if (!session?.access_token) {
+    if (!user?.id) {
       setError("You must be logged in to upload an avatar.");
       return;
     }
-
     setError(null);
-    setCompressing(true);
-    let fileToUpload: File;
-    try {
-      fileToUpload = await compressJobPhoto(pendingFile);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Compression failed. Please try a different image.",
-      );
-      setCompressing(false);
-      return;
-    } finally {
-      setCompressing(false);
-    }
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", fileToUpload);
-
-      const response = await fetch("/api/user/upload-avatar", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setError(result.error ?? "Upload failed. Please try again.");
-        return;
-      }
-
-      // Revoke the local object URL to free memory
-      if (preview) URL.revokeObjectURL(preview);
-      setPreview(null);
-      setPendingFile(null);
-      onUploadSuccess(result.url);
-    } catch {
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
-      setUploading(false);
-    }
-  }, [pendingFile, session, preview, onUploadSuccess]);
+    start([pendingFile]);
+  }, [pendingFile, user?.id, start]);
 
   const handleCancel = useCallback(() => {
     if (preview) URL.revokeObjectURL(preview);
     setPreview(null);
     setPendingFile(null);
     setError(null);
-  }, [preview]);
+    reset();
+  }, [preview, reset]);
 
   const displayUrl = preview ?? currentAvatarUrl;
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {/* Avatar circle */}
       <div className="relative group">
         <div
           className={`${classes.wrapper} rounded-full overflow-hidden bg-primary-100 flex items-center justify-center ring-4 ring-white shadow-md`}
@@ -150,12 +124,11 @@ export default function AvatarUpload({
           )}
         </div>
 
-        {/* Camera badge — triggers file picker */}
         {!pendingFile && (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            disabled={uploading || compressing}
+            disabled={isWorking}
             className={`absolute bottom-0 right-0 ${classes.badge} rounded-full bg-primary-600 text-white flex items-center justify-center shadow hover:bg-primary-700 transition-colors disabled:opacity-50`}
             aria-label="Change profile picture"
           >
@@ -163,8 +136,7 @@ export default function AvatarUpload({
           </button>
         )}
 
-        {/* Cancel preview badge */}
-        {pendingFile && !uploading && (
+        {pendingFile && !isWorking && (
           <button
             type="button"
             onClick={handleCancel}
@@ -176,26 +148,29 @@ export default function AvatarUpload({
         )}
       </div>
 
-      {/* Hidden file input */}
       <input
         ref={inputRef}
         type="file"
-        accept={AVATAR_ALLOWED_TYPES.join(",")}
+        accept={IMAGE_ACCEPT_ATTR}
         onChange={handleFileChange}
         className="hidden"
         aria-hidden
       />
 
-      {/* Action buttons shown when a file is pending */}
       {pendingFile && (
         <div className="flex items-center gap-4 mt-6">
           <button
             type="button"
             onClick={handleUpload}
-            disabled={uploading || compressing}
+            disabled={isWorking}
             className={`flex items-center justify-center gap-2 px-8 py-3.5 bg-primary-600 text-white text-[14.5px] font-semibold rounded-[1.25rem] hover:bg-primary-700 disabled:opacity-60 transition-all duration-300 shadow-[0_4px_12px_-2px_rgba(217,167,24,0.3)] hover:shadow-[0_8px_20px_-4px_rgba(217,167,24,0.4)] hover:-translate-y-0.5 active:translate-y-0`}
           >
-            {compressing ? (
+            {converting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Converting…
+              </>
+            ) : compressing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Compressing…
@@ -209,7 +184,7 @@ export default function AvatarUpload({
               "Save Photo"
             )}
           </button>
-          {!uploading && !compressing && (
+          {!isWorking && (
             <button
               type="button"
               onClick={handleCancel}
@@ -221,8 +196,7 @@ export default function AvatarUpload({
         </div>
       )}
 
-      {/* Change photo link when idle */}
-      {!pendingFile && !uploading && !compressing && (
+      {!pendingFile && !isWorking && (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -232,7 +206,6 @@ export default function AvatarUpload({
         </button>
       )}
 
-      {/* Error message */}
       {error && (
         <div className="flex items-center gap-1.5 text-red-600 text-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />

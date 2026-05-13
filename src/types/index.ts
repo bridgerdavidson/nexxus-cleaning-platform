@@ -270,6 +270,9 @@ export interface MessageAttachment {
 export interface ConversationWithDetails extends Conversation {
   other_participant: UserProfile;
   last_message: Message | null;
+  /** Number of attachments on the last message (0 if none). Used to render
+   *  "Photo" / "N photos" previews when the last message has no text. */
+  last_message_attachment_count: number;
   unread_count: number;
 }
 

@@ -74,15 +74,35 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
         unreadCountMap.set(msg.conversation_id, count + 1);
       });
 
+      // Fetch attachment counts for just the "last message" of each
+      // conversation so we can render a "Photo" preview when the message has
+      // no text content. Bounded by the conversation count, not total
+      // messages, so the cost is tiny.
+      const lastMessageIds = Array.from(lastMessageMap.values()).map(m => m.id);
+      const attachmentCountMap = new Map<string, number>();
+      if (lastMessageIds.length > 0) {
+        const { data: attachments, error: attachmentsError } = await supabase
+          .from('message_attachments')
+          .select('message_id')
+          .in('message_id', lastMessageIds);
+        if (attachmentsError) throw attachmentsError;
+        attachments?.forEach(a => {
+          const mid = a.message_id as string;
+          attachmentCountMap.set(mid, (attachmentCountMap.get(mid) ?? 0) + 1);
+        });
+      }
+
       return conversationsData
         .map(conv => {
           const otherId = conv.participant_1_id === userId ? conv.participant_2_id : conv.participant_1_id;
           const otherParticipant = profilesMap.get(otherId);
           if (!otherParticipant) return null;
+          const lastMsg = lastMessageMap.get(conv.id) ?? null;
           return {
             ...conv,
             other_participant: otherParticipant,
-            last_message: lastMessageMap.get(conv.id) ?? null,
+            last_message: lastMsg,
+            last_message_attachment_count: lastMsg ? (attachmentCountMap.get(lastMsg.id) ?? 0) : 0,
             unread_count: unreadCountMap.get(conv.id) ?? 0,
           } as ConversationWithDetails;
         })
@@ -118,6 +138,16 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
       if (msg.sender_id !== userId && msg.recipient_id !== userId) return;
       return { type: 'invalidate', keys: [queryKey] };
     },
+  });
+
+  // Attachments arrive AFTER the parent message row (sender uploads them
+  // sequentially after the INSERT). Subscribe so the recipient's conversation
+  // list refetches the attachment count once the photos land.
+  useSupabaseRealtimeSync({
+    channelName: `message_attachments:user:${userId}`,
+    table: 'message_attachments',
+    enabled: !!userId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
   // Optimistic unread-count update (used by useMessages on markAsRead).

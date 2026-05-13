@@ -10,15 +10,12 @@ const COMPRESSION_OPTIONS = {
 } as const;
 
 /**
- * Compresses a single image file for job photo upload.
- * Resizes to max 2048px and targets ≤ 2 MB JPEG output.
+ * Compresses a single image file. Resizes to max 2048px and targets ≤ 2 MB JPEG output.
  * Throws a user-friendly error if compression fails.
  */
-export async function compressJobPhoto(file: File): Promise<File> {
+export async function compressImage(file: File): Promise<File> {
   try {
     const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
-    // imageCompression returns a Blob; wrap it back into a File so callers
-    // can still read .name and .type consistently.
     return new File([compressed], file.name.replace(/\.[^/.]+$/, '.jpg'), {
       type: 'image/jpeg',
       lastModified: Date.now(),
@@ -30,20 +27,3 @@ export async function compressJobPhoto(file: File): Promise<File> {
   }
 }
 
-/**
- * Compresses a batch of image files concurrently.
- * Uses a concurrency limit of 3 to avoid exhausting memory on mobile devices.
- * Throws on the first compression failure.
- */
-export async function compressJobPhotoBatch(files: File[]): Promise<File[]> {
-  const CONCURRENCY = 3;
-  const results: File[] = [];
-
-  for (let i = 0; i < files.length; i += CONCURRENCY) {
-    const chunk = files.slice(i, i + CONCURRENCY);
-    const compressed = await Promise.all(chunk.map(compressJobPhoto));
-    results.push(...compressed);
-  }
-
-  return results;
-}

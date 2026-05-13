@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Home, Camera, Loader2, AlertCircle, X } from "lucide-react";
-import { validateJobPhotoFile } from "../lib/upload";
-import { compressJobPhoto } from "../lib/compress-image";
-import { useAuth } from "../hooks/useAuth";
+import {
+  validateImageFile,
+  PROPERTY_PHOTOS_ALLOWED_TYPES,
+  PROPERTY_PHOTOS_MAX_FILE_SIZE,
+  IMAGE_ACCEPT_ATTR,
+} from "../lib/upload";
+import { useImageUpload } from "../hooks/useImageUpload";
 
 interface PropertyPhotoUploadProps {
   propertyId: string | null;
@@ -19,14 +23,40 @@ export default function PropertyPhotoUpload({
   onUploadSuccess,
   disabled = false,
 }: PropertyPhotoUploadProps) {
-  const { session } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [preview, setPreview] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { items, start, reset, isWorking } = useImageUpload({
+    context: {
+      kind: "property",
+      ctx: { propertyId: propertyId ?? "", currentPhotoUrl },
+    },
+    onComplete: ({ uploaded, failed }) => {
+      if (uploaded[0]) {
+        if (preview) URL.revokeObjectURL(preview);
+        setPreview(null);
+        setPendingFile(null);
+        onUploadSuccess(uploaded[0].url);
+        reset();
+      } else if (failed[0]) {
+        setError(failed[0].message);
+      }
+    },
+  });
+
+  const inFlight = items[0];
+  const converting = inFlight?.status === "converting";
+  const compressing = inFlight?.status === "compressing";
+  const uploading = inFlight?.status === "uploading";
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,7 +64,11 @@ export default function PropertyPhotoUpload({
       if (!file) return;
       e.target.value = "";
 
-      const validation = validateJobPhotoFile(file);
+      const validation = validateImageFile(
+        file,
+        PROPERTY_PHOTOS_ALLOWED_TYPES,
+        PROPERTY_PHOTOS_MAX_FILE_SIZE,
+      );
       if (!validation.valid) {
         setError(validation.error ?? "Invalid file.");
         return;
@@ -47,77 +81,21 @@ export default function PropertyPhotoUpload({
     [],
   );
 
-  const handleUpload = useCallback(async () => {
+  const handleUpload = useCallback(() => {
     if (!pendingFile || !propertyId) return;
-    if (!session?.access_token) {
-      setError("You must be logged in to upload a photo.");
-      return;
-    }
-
     setError(null);
-    setCompressing(true);
-    let fileToUpload: File;
-    try {
-      fileToUpload = await compressJobPhoto(pendingFile);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Compression failed. Please try a different image.",
-      );
-      setCompressing(false);
-      return;
-    } finally {
-      setCompressing(false);
-    }
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", fileToUpload);
-
-      const response = await fetch(
-        `/api/properties/${propertyId}/upload-photo`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          body: formData,
-        },
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setError(result.error ?? "Upload failed. Please try again.");
-        return;
-      }
-
-      if (preview) URL.revokeObjectURL(preview);
-      setPreview(null);
-      setPendingFile(null);
-      onUploadSuccess(result.url);
-    } catch {
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
-      setUploading(false);
-    }
-  }, [
-    pendingFile,
-    propertyId,
-    session?.access_token,
-    preview,
-    onUploadSuccess,
-  ]);
+    start([pendingFile]);
+  }, [pendingFile, propertyId, start]);
 
   const handleCancel = useCallback(() => {
     if (preview) URL.revokeObjectURL(preview);
     setPreview(null);
     setPendingFile(null);
     setError(null);
-  }, [preview]);
+    reset();
+  }, [preview, reset]);
 
   const displayUrl = preview ?? currentPhotoUrl ?? null;
-  const isWorking = uploading || compressing;
 
   if (propertyId == null) {
     return (
@@ -169,7 +147,7 @@ export default function PropertyPhotoUpload({
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
+        accept={IMAGE_ACCEPT_ATTR}
         onChange={handleFileChange}
         className="hidden"
         aria-hidden
@@ -183,7 +161,12 @@ export default function PropertyPhotoUpload({
             disabled={isWorking}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-60"
           >
-            {compressing ? (
+            {converting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Converting…
+              </>
+            ) : compressing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Compressing…

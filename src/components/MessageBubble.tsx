@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { MessageWithDetails } from "../types";
 import { Check, CheckCheck } from "lucide-react";
+import MessageAttachmentsLightbox from "./MessageAttachmentsLightbox";
 
 interface MessageBubbleProps {
   message: MessageWithDetails;
@@ -8,6 +9,9 @@ interface MessageBubbleProps {
 }
 
 export default function MessageBubble({ message, isSent }: MessageBubbleProps) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const attachments = message.attachments ?? [];
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString("en-US", {
@@ -24,19 +28,23 @@ export default function MessageBubble({ message, isSent }: MessageBubbleProps) {
 
   return (
     <div className={`flex ${isSent ? "justify-end" : "justify-start"} mb-4`}>
-      <div className={`max-w-[70%] ${isSent ? "order-2" : "order-1"}`}>
+      <div
+        className={`max-w-[70%] flex flex-col ${
+          isSent ? "items-end order-2" : "items-start order-1"
+        }`}
+      >
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (
           <div
-            className={`grid gap-2 mb-2 ${
+            className={`grid gap-2 ${
+              message.content.trim() ? "mb-2" : ""
+            } ${
               message.attachments.length === 1
                 ? "grid-cols-1"
-                : message.attachments.length === 2
-                ? "grid-cols-2"
                 : "grid-cols-2"
             }`}
           >
-            {message.attachments.map((attachment) => (
+            {message.attachments.map((attachment, idx) => (
               <div
                 key={attachment.id}
                 className="relative rounded-lg overflow-hidden"
@@ -45,30 +53,33 @@ export default function MessageBubble({ message, isSent }: MessageBubbleProps) {
                   src={attachment.file_url}
                   alt="Attachment"
                   className="w-full h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => window.open(attachment.file_url, "_blank")}
+                  onClick={() => setLightboxIndex(idx)}
                 />
               </div>
             ))}
           </div>
         )}
 
-        {/* Message bubble */}
-        <div
-          className={`inline-block px-4 py-2 ${
-            isSent
-              ? "bg-primary-600 text-white rounded-2xl"
-              : "bg-gray-200 text-gray-900 rounded-2xl"
-          }`}
-          style={{
-            ...(isSent
-              ? { borderRadius: "18px 18px 4px 18px" }
-              : { borderRadius: "18px 18px 18px 4px" }),
-          }}
-        >
-          <p className="text-sm whitespace-pre-wrap break-words">
-            {message.content.trim()}
-          </p>
-        </div>
+        {/* Message bubble — only render when there's actual text. Attachments
+            can stand alone (image-only sends). */}
+        {message.content.trim() && (
+          <div
+            className={`inline-block px-4 py-2 ${
+              isSent
+                ? "bg-primary-600 text-white rounded-2xl"
+                : "bg-gray-200 text-gray-900 rounded-2xl"
+            }`}
+            style={{
+              ...(isSent
+                ? { borderRadius: "18px 18px 4px 18px" }
+                : { borderRadius: "18px 18px 18px 4px" }),
+            }}
+          >
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {message.content.trim()}
+            </p>
+          </div>
+        )}
 
         {/* Timestamp and read status */}
         <div
@@ -90,6 +101,16 @@ export default function MessageBubble({ message, isSent }: MessageBubbleProps) {
           )}
         </div>
       </div>
+
+      {/* Lightbox is scoped to THIS message's attachments only. */}
+      {attachments.length > 0 && (
+        <MessageAttachmentsLightbox
+          attachments={attachments}
+          open={lightboxIndex !== null}
+          index={lightboxIndex ?? 0}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   );
 }

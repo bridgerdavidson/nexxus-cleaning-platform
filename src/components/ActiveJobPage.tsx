@@ -33,6 +33,7 @@ export default function ActiveJobPage({
   const [photoWarningType, setPhotoWarningType] = useState<"before" | "after">(
     "before",
   );
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
 
   // Appointment data
   const [appointment, setAppointment] = useState<{
@@ -405,6 +406,7 @@ export default function ActiveJobPage({
               photoType="before"
               photos={beforePhotos}
               onPhotosChange={refetchPhotos}
+              onUploadingChange={setIsPhotoUploading}
             />
           </div>
         )}
@@ -496,6 +498,7 @@ export default function ActiveJobPage({
               photoType="after"
               photos={afterPhotos}
               onPhotosChange={refetchPhotos}
+              onUploadingChange={setIsPhotoUploading}
             />
           </div>
         )}
@@ -521,13 +524,23 @@ export default function ActiveJobPage({
         {currentStep !== "after_photos" ? (
           <button
             onClick={handleNext}
-            disabled={!canProceed() || saving}
+            disabled={!canProceed() || saving || isPhotoUploading}
+            title={
+              isPhotoUploading
+                ? "Wait for photos to finish uploading"
+                : undefined
+            }
             className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Saving...
+              </>
+            ) : isPhotoUploading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Uploading photos…
               </>
             ) : (
               <>
@@ -539,13 +552,23 @@ export default function ActiveJobPage({
         ) : (
           <button
             onClick={handleCompleteJobClick}
-            disabled={saving}
+            disabled={saving || isPhotoUploading}
+            title={
+              isPhotoUploading
+                ? "Wait for photos to finish uploading"
+                : undefined
+            }
             className="flex items-center gap-2 px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Completing...
+              </>
+            ) : isPhotoUploading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Uploading photos…
               </>
             ) : (
               <>

@@ -16,8 +16,13 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { CustomerProperty } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { validateJobPhotoFile } from "../lib/upload";
-import { compressJobPhoto } from "../lib/compress-image";
+import {
+  validateImageFile,
+  PROPERTY_PHOTOS_ALLOWED_TYPES,
+  PROPERTY_PHOTOS_MAX_FILE_SIZE,
+  IMAGE_ACCEPT_ATTR,
+} from "../lib/upload";
+import { uploadOne } from "../lib/image-upload/uploadOne";
 
 interface Homeowner {
   id: string;
@@ -39,7 +44,7 @@ export default function AddPropertyModal({
   onPropertyCreated,
   preSelectedHomeownerId,
 }: AddPropertyModalProps) {
-  const { currentOrganizationId, session } = useAuth();
+  const { currentOrganizationId } = useAuth();
   const propertyPhotoInputRef = useRef<HTMLInputElement>(null);
 
   // Lock body scroll when modal is open
@@ -81,7 +86,6 @@ export default function AddPropertyModal({
   const [propertyPhotoPreview, setPropertyPhotoPreview] = useState<
     string | null
   >(null);
-  const [compressingPhoto, setCompressingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   // Fetch homeowners on modal open
@@ -198,30 +202,27 @@ export default function AddPropertyModal({
   };
 
   const handlePropertyPhotoChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       e.target.value = "";
       if (!file) return;
 
-      const validation = validateJobPhotoFile(file);
+      const validation = validateImageFile(
+        file,
+        PROPERTY_PHOTOS_ALLOWED_TYPES,
+        PROPERTY_PHOTOS_MAX_FILE_SIZE,
+      );
       if (!validation.valid) {
         setPhotoError(validation.error ?? "Invalid file.");
         return;
       }
       setPhotoError(null);
-      setCompressingPhoto(true);
-      try {
-        const compressed = await compressJobPhoto(file);
-        if (propertyPhotoPreview) URL.revokeObjectURL(propertyPhotoPreview);
-        setPropertyPhotoFile(compressed);
-        setPropertyPhotoPreview(URL.createObjectURL(compressed));
-      } catch (err) {
-        setPhotoError(
-          err instanceof Error ? err.message : "Compression failed.",
-        );
-      } finally {
-        setCompressingPhoto(false);
-      }
+      // Keep the original file — compression + HEIC conversion happen at
+      // upload time inside uploadOne. Preview is built from the original so
+      // the user sees their actual selection.
+      if (propertyPhotoPreview) URL.revokeObjectURL(propertyPhotoPreview);
+      setPropertyPhotoFile(file);
+      setPropertyPhotoPreview(URL.createObjectURL(file));
     },
     [propertyPhotoPreview],
   );
@@ -295,28 +296,21 @@ export default function AddPropertyModal({
 
       let finalProperty: CustomerProperty = insertData as CustomerProperty;
 
-      // If user selected a photo, upload it to the new property
-      if (propertyPhotoFile && session?.access_token && insertData?.id) {
+      // If user selected a photo, upload it to the new property. Compression
+      // and HEIC conversion happen inside uploadOne. Non-fatal: if the upload
+      // fails the property is still created without a photo.
+      if (propertyPhotoFile && insertData?.id) {
         try {
-          const formData = new FormData();
-          formData.append("file", propertyPhotoFile);
-          const uploadRes = await fetch(
-            `/api/properties/${insertData.id}/upload-photo`,
-            {
-              method: "POST",
-              headers: { Authorization: `Bearer ${session.access_token}` },
-              body: formData,
-            },
-          );
-          const uploadResult = await uploadRes.json();
-          if (uploadRes.ok && uploadResult.url) {
-            finalProperty = {
-              ...insertData,
-              photo_url: uploadResult.url,
-            } as CustomerProperty;
-          }
-        } catch {
-          // Non-fatal: property was created, photo upload failed
+          const uploadResult = await uploadOne(propertyPhotoFile, {
+            kind: "property",
+            ctx: { propertyId: insertData.id, currentPhotoUrl: null },
+          });
+          finalProperty = {
+            ...insertData,
+            photo_url: uploadResult.url,
+          } as CustomerProperty;
+        } catch (err) {
+          console.error("Property photo upload failed after create:", err);
         }
       }
 
@@ -653,12 +647,6 @@ export default function AddPropertyModal({
                         >
                           Remove photo
                         </button>
-                        {compressingPhoto && (
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Compressing…
-                          </span>
-                        )}
                       </div>
                     </div>
                   ) : (
@@ -666,18 +654,17 @@ export default function AddPropertyModal({
                       <input
                         ref={propertyPhotoInputRef}
                         type="file"
-                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        accept={IMAGE_ACCEPT_ATTR}
                         onChange={handlePropertyPhotoChange}
                         className="hidden"
                       />
                       <button
                         type="button"
                         onClick={() => propertyPhotoInputRef.current?.click()}
-                        disabled={compressingPhoto}
-                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                       >
                         <Camera className="w-4 h-4" />
-                        {compressingPhoto ? "Compressing…" : "Choose photo"}
+                        Choose photo
                       </button>
                     </div>
                   )}

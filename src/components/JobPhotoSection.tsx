@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useMemo, useEffect } from "react";
 import {
   Camera,
   Upload,
@@ -8,29 +8,29 @@ import {
   AlertCircle,
   X,
   ImageIcon,
+  RefreshCw,
 } from "lucide-react";
-import { validateJobPhotoBatch, validateJobPhotoFile } from "../lib/upload";
-import { compressJobPhotoBatch } from "../lib/compress-image";
+import {
+  validateJobPhotoBatch,
+  validateJobPhotoFile,
+  IMAGE_ACCEPT_ATTR,
+  createPreviewUrl,
+  revokePreviewUrl,
+} from "../lib/upload";
+import { useImageUpload } from "../hooks/useImageUpload";
+import type { UploadItem } from "../lib/image-upload/types";
 import { JobPhoto } from "../hooks/useCleanerData";
-import { useAuth } from "../hooks/useAuth";
+import { supabase } from "../lib/supabase";
+import { pathFromPublicUrl } from "../lib/image-upload/uploadOne";
 
 interface JobPhotoSectionProps {
   appointmentId: string;
   photoType: "before" | "after";
   photos: JobPhoto[];
   onPhotosChange: () => void;
-}
-
-interface UploadedResult {
-  id: string;
-  url: string;
-  photo_type: string;
-}
-
-interface UploadErrorItem {
-  fileIndex: number;
-  fileName: string;
-  message: string;
+  /** Reports upload activity (compress/upload in flight) so the parent can
+   *  block navigation while photos are still being processed. */
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
 export default function JobPhotoSection({
@@ -38,158 +38,120 @@ export default function JobPhotoSection({
   photoType,
   photos,
   onPhotosChange,
+  onUploadingChange,
 }: JobPhotoSectionProps) {
-  const { session } = useAuth();
-
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploading, setUploading] = useState(false);
-  const [compressing, setCompressing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [partialErrors, setPartialErrors] = useState<UploadErrorItem[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const label = photoType === "before" ? "Before" : "After";
 
-  // ─── Upload core ─────────────────────────────────────────────────────────────
-  const uploadFiles = useCallback(
-    async (files: File[]) => {
-      if (!session?.access_token) {
-        setError("You must be logged in to upload photos.");
-        return;
-      }
+  const { items, start, retryFailed, reset, isWorking } = useImageUpload({
+    context: { kind: "job-photo", ctx: { appointmentId, photoType } },
+  });
 
-      setError(null);
-      setPartialErrors([]);
-
-      // Client-side batch validation (type, size, count)
-      const batchValidation = validateJobPhotoBatch(files);
-      if (!batchValidation.valid) {
-        setError(batchValidation.error ?? "Invalid files.");
-        return;
-      }
-
-      // Compress all files before upload
-      setCompressing(true);
-      let compressed: File[];
-      try {
-        compressed = await compressJobPhotoBatch(files);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Compression failed.");
-        setCompressing(false);
-        return;
-      } finally {
-        setCompressing(false);
-      }
-
-      // Build FormData with all files in one request
-      setUploading(true);
-      try {
-        const formData = new FormData();
-        formData.append("photoType", photoType);
-        for (const file of compressed) {
-          formData.append("files", file);
-        }
-
-        const response = await fetch(`/api/jobs/${appointmentId}/photos`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          body: formData,
-        });
-
-        const result = (await response.json()) as {
-          uploaded?: UploadedResult[];
-          errors?: UploadErrorItem[];
-          error?: string;
-        };
-
-        if (!response.ok) {
-          setError(result.error ?? "Upload failed. Please try again.");
-          return;
-        }
-
-        if (result.errors && result.errors.length > 0) {
-          setPartialErrors(result.errors);
-        }
-
-        if (result.uploaded && result.uploaded.length > 0) {
-          onPhotosChange();
-        }
-      } catch {
-        setError("An unexpected error occurred. Please try again.");
-      } finally {
-        setUploading(false);
-      }
-    },
-    [session, appointmentId, photoType, onPhotosChange],
+  const failedCount = useMemo(
+    () => items.filter((it) => it.status === "failed").length,
+    [items],
   );
 
-  // ─── Camera handler ───────────────────────────────────────────────────────
+  // Items that should still appear in the progress strip. Once a file reaches
+  // `done` the photo grid below renders its thumbnail, so we drop the row to
+  // avoid duplicating the visual.
+  const visibleItems = useMemo(
+    () => items.filter((it) => it.status !== "done"),
+    [items],
+  );
+
+  useEffect(() => {
+    onUploadingChange?.(isWorking);
+  }, [isWorking, onUploadingChange]);
+
+  // Refetch the grid as soon as each item completes (not just at batch end) so
+  // the new thumbnail replaces the removed progress row without a visual gap.
+  const reportedDoneRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    let hasNewlyDone = false;
+    for (const it of items) {
+      if (it.status === "done" && !reportedDoneRef.current.has(it.id)) {
+        reportedDoneRef.current.add(it.id);
+        hasNewlyDone = true;
+      }
+    }
+    if (hasNewlyDone) onPhotosChange();
+  }, [items, onPhotosChange]);
+
   const handleCameraChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      e.target.value = ""; // allow re-capture
+      e.target.value = "";
       if (!file) return;
 
+      setValidationError(null);
       const validation = validateJobPhotoFile(file);
       if (!validation.valid) {
-        setError(validation.error ?? "Invalid file.");
+        setValidationError(validation.error ?? "Invalid file.");
         return;
       }
-
-      await uploadFiles([file]);
+      start([file]);
     },
-    [uploadFiles],
+    [start],
   );
 
-  // ─── Batch upload handler ─────────────────────────────────────────────────
   const handleUploadChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
-      e.target.value = ""; // allow re-select of same files
+      e.target.value = "";
       if (files.length === 0) return;
-      await uploadFiles(files);
+
+      setValidationError(null);
+      const validation = validateJobPhotoBatch(files);
+      if (!validation.valid) {
+        setValidationError(validation.error ?? "Invalid files.");
+        return;
+      }
+      start(files);
     },
-    [uploadFiles],
+    [start],
   );
 
-  // ─── Delete handler ───────────────────────────────────────────────────────
   const handleDelete = useCallback(
-    async (photoId: string) => {
-      if (!session?.access_token) return;
-      setDeletingId(photoId);
+    async (photo: JobPhoto) => {
+      setDeletingId(photo.id);
+      setDeleteError(null);
       try {
-        const response = await fetch(`/api/jobs/${appointmentId}/photos`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ photoId }),
-        });
-        if (response.ok) {
-          onPhotosChange();
-        } else {
-          const result = (await response.json()) as { error?: string };
-          setError(result.error ?? "Failed to delete photo.");
+        const storagePath = pathFromPublicUrl(photo.photo_url, "job-photos");
+        if (storagePath) {
+          await supabase.storage.from("job-photos").remove([storagePath]);
         }
-      } catch {
-        setError("Failed to delete photo.");
+        const { error } = await supabase.from("job_photos").delete().eq("id", photo.id);
+        if (error) {
+          setDeleteError(error.message);
+          return;
+        }
+        onPhotosChange();
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : "Failed to delete photo.");
       } finally {
         setDeletingId(null);
       }
     },
-    [session, appointmentId, onPhotosChange],
+    [onPhotosChange],
   );
 
-  const isWorking = compressing || uploading;
+  const handleClearFinished = useCallback(() => {
+    if (isWorking) return;
+    reset();
+    setValidationError(null);
+  }, [isWorking, reset]);
 
   return (
     <div className="space-y-4">
       {/* Action buttons */}
       <div className="flex gap-3 flex-wrap">
-        {/* Take photo (camera) */}
         <button
           type="button"
           disabled={isWorking}
@@ -204,7 +166,6 @@ export default function JobPhotoSection({
           Take Photo
         </button>
 
-        {/* Upload batch */}
         <button
           type="button"
           disabled={isWorking}
@@ -218,42 +179,51 @@ export default function JobPhotoSection({
           )}
           Upload Photos
         </button>
+
+        {!isWorking && visibleItems.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClearFinished}
+            className="flex items-center gap-2 px-3 py-2.5 text-gray-500 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
-      {/* Status message while compressing/uploading */}
-      {compressing && (
-        <p className="text-sm text-gray-500 flex items-center gap-1.5">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Compressing photos for upload…
-        </p>
-      )}
-      {uploading && !compressing && (
-        <p className="text-sm text-gray-500 flex items-center gap-1.5">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Uploading…
-        </p>
-      )}
-
-      {/* Error message */}
-      {error && (
+      {/* Validation error (pre-upload) */}
+      {validationError && (
         <div className="flex items-start gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-3">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span>{error}</span>
+          <span>{validationError}</span>
         </div>
       )}
 
-      {/* Partial upload errors */}
-      {partialErrors.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 space-y-1">
-          <p className="text-sm font-medium text-yellow-800">
-            {partialErrors.length} file{partialErrors.length > 1 ? "s" : ""}{" "}
-            failed to upload:
-          </p>
-          <ul className="text-sm text-yellow-700 list-disc list-inside">
-            {partialErrors.map((e) => (
-              <li key={e.fileIndex}>{e.message}</li>
-            ))}
-          </ul>
+      {/* Delete error */}
+      {deleteError && (
+        <div className="flex items-start gap-2 text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg p-3">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>{deleteError}</span>
+        </div>
+      )}
+
+      {/* Per-file progress (done items disappear; the grid below renders them) */}
+      {visibleItems.length > 0 && (
+        <div className="space-y-2">
+          {visibleItems.map((item) => (
+            <UploadProgressRow key={item.id} item={item} />
+          ))}
+
+          {failedCount > 0 && (
+            <button
+              type="button"
+              onClick={retryFailed}
+              className="mt-2 flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry {failedCount} failed
+            </button>
+          )}
         </div>
       )}
 
@@ -270,11 +240,10 @@ export default function JobPhotoSection({
                 alt={`${label} photo`}
                 className="w-full h-full object-cover"
               />
-              {/* Delete overlay */}
               <button
                 type="button"
                 disabled={deletingId === photo.id}
-                onClick={() => handleDelete(photo.id)}
+                onClick={() => handleDelete(photo)}
                 className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 disabled:opacity-50"
                 aria-label="Delete photo"
               >
@@ -288,26 +257,24 @@ export default function JobPhotoSection({
           ))}
         </div>
       ) : (
-        /* Empty state drop zone */
-        <div
-          className="border-2 border-dashed border-gray-300 rounded-lg p-10 text-center cursor-pointer hover:border-primary-400 transition-colors"
-          onClick={() => uploadInputRef.current?.click()}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) =>
-            e.key === "Enter" && uploadInputRef.current?.click()
-          }
-          aria-label={`Upload ${label.toLowerCase()} photos`}
-        >
-          <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-600 mb-1">
-            No {label.toLowerCase()} photos yet
-          </p>
-          <p className="text-xs text-gray-400">
-            Tap "Take Photo" or "Upload Photos" — up to 10 per batch,
-            JPEG/PNG/WebP, max 10 MB each
-          </p>
-        </div>
+        visibleItems.length === 0 && (
+          <div
+            className="border-2 border-dashed border-gray-300 rounded-lg p-10 text-center cursor-pointer hover:border-primary-400 transition-colors"
+            onClick={() => uploadInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === "Enter" && uploadInputRef.current?.click()}
+            aria-label={`Upload ${label.toLowerCase()} photos`}
+          >
+            <ImageIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-600 mb-1">
+              No {label.toLowerCase()} photos yet
+            </p>
+            <p className="text-xs text-gray-400">
+              Tap "Take Photo" or "Upload Photos" — up to 10 per batch
+            </p>
+          </div>
+        )
       )}
 
       {/* Hidden file inputs */}
@@ -323,12 +290,77 @@ export default function JobPhotoSection({
       <input
         ref={uploadInputRef}
         type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
+        accept={IMAGE_ACCEPT_ATTR}
         multiple
         onChange={handleUploadChange}
         className="hidden"
         aria-hidden
       />
+    </div>
+  );
+}
+
+function UploadProgressRow({ item }: { item: UploadItem }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const url = createPreviewUrl(item.file);
+    setThumbUrl(url);
+    return () => revokePreviewUrl(url);
+  }, [item.file]);
+
+  // `done` items are filtered out before this row renders — the photo grid
+  // shows the finished thumbnail. So this row only ever renders an in-progress
+  // or failed state.
+  const statusText: Record<typeof item.status, string> = {
+    queued: "Queued",
+    converting: "Converting HEIC…",
+    compressing: "Compressing…",
+    uploading: "Uploading…",
+    done: "",
+    failed: item.error ?? "Failed",
+  };
+
+  const isInProgress =
+    item.status === "queued" ||
+    item.status === "converting" ||
+    item.status === "compressing" ||
+    item.status === "uploading";
+
+  return (
+    <div
+      className={`flex items-center gap-3 p-2 rounded-lg border ${
+        item.status === "failed"
+          ? "border-red-200 bg-red-50"
+          : "border-gray-200 bg-white"
+      }`}
+    >
+      {thumbUrl ? (
+        <img
+          src={thumbUrl}
+          alt=""
+          className="w-12 h-12 rounded-md object-cover flex-shrink-0"
+        />
+      ) : (
+        <div className="w-12 h-12 rounded-md bg-gray-200 flex-shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-700 truncate">
+          {item.file.name}
+        </p>
+        <p
+          className={`text-xs ${
+            item.status === "failed" ? "text-red-600" : "text-gray-500"
+          }`}
+        >
+          {statusText[item.status]}
+          {item.attempt === 1 && isInProgress && " (retry)"}
+        </p>
+      </div>
+      <div className="flex-shrink-0">
+        {isInProgress && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+        {item.status === "failed" && <AlertCircle className="w-4 h-4 text-red-600" />}
+      </div>
     </div>
   );
 }

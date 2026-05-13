@@ -16,7 +16,12 @@ const ConversationItem = React.memo(function ConversationItem({
   onClick,
   onContextMenu,
 }: ConversationItemProps) {
-  const { other_participant, last_message, unread_count } = conversation;
+  const {
+    other_participant,
+    last_message,
+    last_message_attachment_count,
+    unread_count,
+  } = conversation;
 
   // Only show unread badge/styling when there are unread messages and conversation is NOT selected
   const showUnread = unread_count > 0 && !isSelected;
@@ -36,11 +41,18 @@ const ConversationItem = React.memo(function ConversationItem({
     if (!last_message) return "No messages yet";
 
     const isSentByMe = last_message.sender_id === currentUserId;
-    const preview =
-      last_message.content.length > 50
-        ? `${last_message.content.substring(0, 50)}...`
-        : last_message.content;
+    const trimmed = last_message.content.trim();
+    const attachmentCount = last_message_attachment_count ?? 0;
 
+    // Image-only message: surface "Photo" / "N photos" instead of nothing.
+    if (!trimmed && attachmentCount > 0) {
+      const label =
+        attachmentCount === 1 ? "📷 Photo" : `📷 ${attachmentCount} photos`;
+      return isSentByMe ? `You: ${label}` : label;
+    }
+
+    const preview =
+      trimmed.length > 50 ? `${trimmed.substring(0, 50)}...` : trimmed;
     return isSentByMe ? `You: ${preview}` : preview;
   };
 

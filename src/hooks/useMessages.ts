@@ -150,6 +150,52 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     },
   });
 
+  // Attachments are inserted by the sender RIGHT AFTER the parent message
+  // row. The `messages` realtime event can fire before those attachment rows
+  // are visible, so a bubble can briefly render with empty `attachments`.
+  // This sub patches the cache as attachments land so the photos pop in
+  // without waiting for a full refetch.
+  useSupabaseRealtimeSync({
+    channelName: `message_attachments:conversation:${conversationId ?? ''}`,
+    table: 'message_attachments',
+    enabled: !!conversationId,
+    onEvent: payload => {
+      if (payload.eventType !== 'INSERT') return;
+      const att = payload.new as unknown as MessageAttachment | undefined;
+      if (!att?.message_id) return;
+      return {
+        type: 'patch',
+        key: queryKey,
+        updater: prev => {
+          const list = Array.isArray(prev) ? (prev as MessageWithDetails[]) : [];
+          const idx = list.findIndex(m => m.id === att.message_id);
+          if (idx === -1) return list; // message not in this conversation's cache
+          const existing = list[idx];
+          const existingAtts = existing.attachments ?? [];
+          // Dedupe by file_url — `useSendMessage` optimistically injects
+          // attachments with `pending-` ids, so an id match would miss those
+          // and we'd render every photo twice. file_url is stable between
+          // optimistic and realtime.
+          if (existingAtts.some(a => a.file_url === att.file_url)) {
+            // Upgrade the optimistic entry with the real row (so deletes / ids
+            // work going forward).
+            const next = [...list];
+            next[idx] = {
+              ...existing,
+              attachments: existingAtts.map(a =>
+                a.file_url === att.file_url ? att : a,
+              ),
+            };
+            return next;
+          }
+          const next = [...list];
+          next[idx] = { ...existing, attachments: [...existingAtts, att] };
+          return next;
+        },
+      };
+    },
+  });
+
   // Reset the "marked as read" guard whenever conversation changes.
   useEffect(() => {
     if (conversationId) hasMarkedAsReadRef.current = null;

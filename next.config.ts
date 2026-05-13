@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
-  allowedDevOrigins: ["192.168.1.49"],
+  allowedDevOrigins: ["192.168.1.49", "192.168.68.56"],
   eslint: {
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors.

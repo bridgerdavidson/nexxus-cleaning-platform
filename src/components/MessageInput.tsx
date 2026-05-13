@@ -1,5 +1,5 @@
 import React, { useState, useRef, KeyboardEvent } from "react";
-import { Send, Image as ImageIcon, X, Plus } from "lucide-react";
+import { Send, Image as ImageIcon, X, Plus, Loader2 } from "lucide-react";
 import { createPreviewUrl, revokePreviewUrl } from "../lib/upload";
 
 interface MessageInputProps {
@@ -186,15 +186,15 @@ export default function MessageInput({
 
                 {/* Attachment menu dropdown */}
                 {showAttachmentMenu && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[120px]">
+                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 whitespace-nowrap">
                     <button
                       onClick={() => {
                         fileInputRef.current?.click();
                         setShowAttachmentMenu(false);
                       }}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 whitespace-nowrap"
                     >
-                      <ImageIcon className="w-4 h-4" />
+                      <ImageIcon className="w-4 h-4 flex-shrink-0" />
                       <span>Add image</span>
                     </button>
                   </div>
@@ -206,13 +206,19 @@ export default function MessageInput({
                 onClick={handleSend}
                 disabled={!canSend}
                 className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                  canSend
-                    ? "bg-primary-600 text-white hover:bg-primary-700"
-                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  sending
+                    ? "bg-primary-600 text-white"
+                    : canSend
+                      ? "bg-primary-600 text-white hover:bg-primary-700"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
-                aria-label="Send message"
+                aria-label={sending ? "Sending message" : "Send message"}
               >
-                <Send className="w-4 h-4" />
+                {sending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
