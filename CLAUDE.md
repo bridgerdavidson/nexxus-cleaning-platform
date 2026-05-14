@@ -18,6 +18,40 @@ Supabase CLI is in devDependencies (`npx supabase ...`). Local Supabase config i
 
 Path alias: `@/*` → `./src/*`.
 
+## MCP-backed workflow
+
+Three tools are wired into this project and **must** be used at the right points in any task. They are not optional polish — skipping them is a process bug.
+
+### Context7 — before you write code
+
+Before implementing a new feature, fixing a non-trivial bug, or doing an architectural audit, use the **Context7** MCP server (`mcp__claude_ai_Context7__resolve-library-id` then `mcp__claude_ai_Context7__query-docs`) to pull current docs for any library, framework, SDK, or API you are about to touch. This includes the stack already in this repo (Next.js 16 App Router, React 19, Supabase JS, Stripe Node SDK + Connect, Tailwind v3) — your training data may lag behind real API surface.
+
+Use it for: API syntax, configuration, version-migration questions, library-specific debugging, setup instructions, CLI usage. Skip it for: refactoring, scripts written from scratch, business-logic debugging, code review, general programming concepts.
+
+State in your update message which library you queried (or that no external library is involved) before writing the implementation.
+
+### UI/UX Pro Max — for any UI decision or audit
+
+Whenever a task involves a UI/UX decision (picking a layout, component pattern, color/spacing/typography choice, interaction model, accessibility behavior) or a UI audit/review, invoke the **UI/UX Pro Max** skill (`Skill` tool with `skill: "ui-ux-pro-max:ui-ux-pro-max"`) before proposing or committing the design. Use it to ground the choice in its style/palette/font/UX-guideline catalog and (for component-level work) the shadcn/ui MCP integration it ships with — don't free-hand visual decisions when this is available.
+
+Trigger it for: planning/building/designing/reviewing any page or component, choosing styles (glassmorphism, bento grid, dark mode, etc.), color systems, typography, spacing, accessibility, animation, interaction states, charts, or responsive layout. Skip it for: pure logic/data changes with no visual surface.
+
+State in your update message that you consulted UI/UX Pro Max (and the gist of what it returned) before applying the decision.
+
+### Playwright MCP — at the end of UI work
+
+When an implementation or bug fix touches the UI (any change under `src/app/**`, `src/components/**`, Tailwind config, or anything that renders in the browser), validate with the **Playwright** MCP server before reporting the task done:
+
+1. Make sure the dev server is up (`npm run dev` on :3000) — start it if it isn't.
+2. `mcp__playwright__browser_navigate` to the affected route(s). For role-gated routes (`/{admin,manager,cleaner,homeowner}-dashboard`), sign in with a relevant test account first.
+3. Drive the changed flow with `browser_click` / `browser_fill_form` / `browser_type` so the new state is actually rendered.
+4. `mcp__playwright__browser_snapshot` to inspect the accessibility tree, and `mcp__playwright__browser_take_screenshot` to capture the result.
+5. Check `mcp__playwright__browser_console_messages` for errors/warnings introduced by the change.
+6. Look at the screenshot and judge: is the layout intact at the breakpoint(s) that matter, are spacing/colors/typography consistent with the rest of the app (brand yellow `#F7C41E`, slate secondary), are interactive states (hover, focus, disabled, loading, empty) sensible, is anything overflowing or cut off? Resize with `browser_resize` to spot-check mobile if the change is responsive.
+7. If something looks wrong, fix it and re-validate — don't ship a screenshot of a broken UI.
+
+If Playwright validation truly cannot run (no dev server reachable, auth not available, etc.), say so explicitly in the end-of-turn summary instead of silently skipping. `npm run lint` + `npx tsc --noEmit` only verify code correctness, not that the feature looks right.
+
 ## Architecture
 
 Next.js 16 App Router + React 19 + TypeScript + Tailwind v3, backed by Supabase (Auth, Postgres, Storage, Realtime) and Stripe (Payments + Connect Express for cleaner payouts).
@@ -122,10 +156,6 @@ Required for full functionality:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only admin client (never expose)
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — server Stripe
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
-
-## Visual Testing
-Use the Playwright MCP tools to navigate to the local dev server 
-(http://localhost:3000) and take a screenshot to verify UI changes.
 
 ### Tailwind theme
 
