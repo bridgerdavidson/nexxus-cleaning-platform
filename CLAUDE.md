@@ -29,6 +29,99 @@ Supabase CLI is in devDependencies (`npx supabase ...`). Local Supabase config i
 
 Path alias: `@/*` → `./src/*`.
 
+## Development workflow
+
+This project uses a feature-branch + PR-to-master flow with automated checks in GitHub Actions. **Branch protection on `master` rejects direct pushes** — every change goes through a feature branch and a PR. Skipping any step here breaks the safety net.
+
+### Branches
+
+- **`master`** — production. Deploys to the prod domain on merge. Protected: no direct pushes, PR required, status checks must pass.
+- **`dev`** — persistent staging branch. Stable Vercel preview URL (`nexxus-cleaning-platform-git-dev-cleaning-solutions.vercel.app`) that the **test-mode Stripe webhook** points at. Fast-forward to master periodically so the preview reflects current code. Do not delete this branch — the Stripe webhook URL depends on it existing.
+- **`feat/*` / `fix/*` / `chore/*`** — short-lived branches off `master`. One per task. Deleted after merge.
+
+### The cycle for any change
+
+1. **Start from current master**:
+   ```powershell
+   git checkout master; git pull origin master
+   git checkout -b feat/<name>
+   ```
+
+2. **Run the local environment**. Three terminals:
+   ```powershell
+   npm run dev                                                    # T1: Next.js
+   npx supabase start                                             # T2: local DB (needs Docker Desktop running)
+   stripe listen --forward-to localhost:3000/api/stripe/webhook   # T3: only when working on payment flows
+   ```
+   The Stripe CLI prints a `whsec_...` value when started — paste into `.env.local` as `STRIPE_WEBHOOK_SECRET`.
+
+3. **Write code + tests.** New API routes need a `*.integration.test.ts` co-located next to them, using the helpers in `tests/helpers/`. New pure logic in `src/lib/**` needs a `*.test.ts`.
+
+4. **Before pushing, run the same gates CI will run**:
+   ```powershell
+   npm run test           # all 43 tests (catches code bugs)
+   npx tsc --noEmit       # type errors (catches type bugs)
+   npm run lint           # ESLint
+   ```
+   If you added/changed a migration: `npx supabase db reset` first to verify the schema rebuilds cleanly.
+
+5. **Commit and push**:
+   ```powershell
+   git add <files>
+   git commit -m "<imperative subject>"
+   git push -u origin feat/<name>
+   ```
+   This automatically triggers: `CI`, Vercel preview deploy, `E2E` (after preview is Ready), and `Migrate / migrate-dev` (applies any new migrations to the **shared dev Supabase**).
+
+6. **Open a PR to `master`**. Four checks must all be green before the Merge button activates:
+   - `CI / typecheck + lint`
+   - `CI / unit + integration`
+   - `E2E / Playwright (preview) (1/2)`
+   - `E2E / Playwright (preview) (2/2)`
+
+7. **Merge.** Vercel deploys to prod, `Migrate / migrate-prod` applies migrations to the prod Supabase.
+
+8. **Clean up locally**:
+   ```powershell
+   git checkout master; git pull origin master
+   git branch -d feat/<name>
+   ```
+
+### When a check fails
+
+- **`CI / unit + integration` red** — reproduce locally with `npm run test` (or `npm run test:integration -- <pattern>` for a specific file). Fix, commit, push. CI re-runs automatically on each push to the same branch; the PR updates in place.
+- **`E2E / Playwright (preview)` red** — download the `playwright-report-*` artifact from the failed run (Actions tab → bottom of the run page). Unzip, open `index.html` for screenshots/video/trace. Reproduce locally with `$env:PLAYWRIGHT_BASE_URL = "http://localhost:3000"; npm run test:e2e` against `npm run dev`.
+- **`Migrate / migrate-dev` red** — usually a schema conflict. Add `IF NOT EXISTS` / `IF EXISTS` clauses, or fix the conflicting state. Test with `npx supabase db reset` locally before re-pushing.
+- **`Migrate / migrate-prod` red after merge** — the merge already happened, but prod schema is unchanged until the migration succeeds. Fix the migration in a new PR. If the remote prod has orphaned migration entries from manual edits, run `npx supabase migration repair --status reverted <versions>` (versions are in the error message).
+
+### CI gating caveat
+
+`npx tsc --noEmit` and `npm run lint` are marked `continue-on-error: true` in `.github/workflows/ci.yml` because the codebase has accumulated pre-existing type errors. Failures still surface in the Actions log but do not block merge. **Flip these off** once the pre-existing errors are cleaned up so real type drift fails CI.
+
+### Stripe webhook coverage by environment
+
+- **Local**: `stripe listen` (T3 above) forwards test-mode events to `localhost:3000`. Required only while iterating on payment flows. The CLI's `whsec_...` is short-lived per session.
+- **Preview (dev branch only)**: a test-mode webhook in Stripe Dashboard points at `dev`'s stable URL with `?x-vercel-protection-bypass=...` to get past Vercel SSO.
+- **Other feature-branch previews**: not covered — Stripe events from preview deploys of feature branches fall on the floor unless you merge that branch to `dev` first.
+- **Production**: live-mode webhook configured in Stripe. **Missing 3 events today** (`transfer.reversed`, `payout.paid`, `payout.failed`) — add when ready so prod payouts auto-mark `bank_paid`.
+
+### Things to never do
+
+- Commit directly to `master`. Branch protection rejects it; the workaround (admin bypass) defeats the safety net.
+- Push migrations directly to prod with `supabase db push --linked`. The pipeline does it on merge to master. Exception: recovering from a stuck `migrate-prod` job after fixing the underlying issue.
+- Import `lib/supabase-admin.ts` from client code. Service-role key — server only.
+- Instantiate `new Stripe()` directly. Use `getStripe()` from `lib/stripe.ts`; it respects the `STRIPE_ENABLED` flag.
+- Commit `.env*.local` files (gitignored already) or `.claude/settings.local.json` (per-machine).
+- Move/rename files in `supabase/migrations/` after they've shipped. Migrations are immutable once applied to dev or prod; create a new migration to undo or modify schema instead.
+
+### Pre-push checklist
+
+- [ ] `npm run test` passes locally
+- [ ] `npx tsc --noEmit` shows no errors **you introduced** (pre-existing ones still appear until cleanup)
+- [ ] If you touched a production API route, you wrote or updated its `*.integration.test.ts`
+- [ ] If you added a migration, `npx supabase db reset` rebuilds the schema cleanly + integration tests still pass
+- [ ] No `.env*.local` or `.claude/settings.local.json` in `git status`
+
 ## Architecture
 
 Next.js 16 App Router + React 19 + TypeScript + Tailwind v3, backed by Supabase (Auth, Postgres, Storage, Realtime) and Stripe (Payments + Connect Express for cleaner payouts).
