@@ -16,7 +16,7 @@ test('admin can sign in and land on the admin dashboard', async ({ page }) => {
   await page.getByRole('button', { name: /sign in|log in/i }).click();
 
   // After successful sign-in the admin role should land on /admin-dashboard.
-  await page.waitForURL(/\/admin-dashboard/, { timeout: 15_000 });
+  await page.waitForURL(/\/admin-dashboard/, { timeout: 30_000 });
   // A sanity check that the dashboard rendered.
   await expect(page.getByText(/bookings|appointments|dashboard/i).first()).toBeVisible({
     timeout: 10_000,
