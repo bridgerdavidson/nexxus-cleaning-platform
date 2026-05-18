@@ -8,6 +8,12 @@ name: DB Migrations
 #   - SUPABASE_ACCESS_TOKEN     # https://supabase.com/dashboard/account/tokens
 #   - SUPABASE_DEV_PROJECT_REF  # dev project Reference ID
 #   - SUPABASE_PROD_PROJECT_REF # prod project Reference ID
+#   - SUPABASE_DEV_DB_PASSWORD  # dev project DB password (Settings → Database)
+#   - SUPABASE_PROD_DB_PASSWORD # prod project DB password (Settings → Database)
+#
+# SUPABASE_ACCESS_TOKEN authenticates API operations (linking, listing migrations).
+# SUPABASE_DB_PASSWORD authenticates the direct Postgres connection that `db push`
+# makes to apply migrations. Both are required.
 
 on:
   push:
@@ -29,10 +35,12 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DEV_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
       - name: Push pending migrations
         run: npx supabase db push --linked --include-all
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
 
   migrate-prod:
     # Only run on master, and only after CI (typecheck + lint + tests) is green
@@ -56,7 +64,9 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
       - name: Push pending migrations
         run: npx supabase db push --linked --include-all
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
