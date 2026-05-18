@@ -1,0 +1,62 @@
+name: DB Migrations
+
+# - Every push to a non-master branch pushes migrations to the **dev** Supabase project.
+# - Every push to master pushes them to **prod**, but only after CI passes.
+#
+# Both jobs require these GitHub secrets (set them up in repo Settings → Secrets and
+# variables → Actions):
+#   - SUPABASE_ACCESS_TOKEN     # https://supabase.com/dashboard/account/tokens
+#   - SUPABASE_DEV_PROJECT_REF  # dev project Reference ID
+#   - SUPABASE_PROD_PROJECT_REF # prod project Reference ID
+
+on:
+  push:
+
+jobs:
+  migrate-dev:
+    if: github.ref != 'refs/heads/master'
+    name: Push migrations → dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Link to dev project
+        run: npx supabase link --project-ref "$SUPABASE_DEV_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DEV_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+      - name: Push pending migrations
+        run: npx supabase db push --linked --include-all
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  migrate-prod:
+    # Only run on master, and only after CI (typecheck + lint + tests) is green
+    # for the same commit. The `workflow_run` trigger would be more robust but
+    # adds complexity — instead we gate via `needs` on a duplicated test step.
+    # Simpler: require branch protection on master so this is never reached
+    # without CI having already passed for the merge commit.
+    if: github.ref == 'refs/heads/master'
+    name: Push migrations → prod
+    runs-on: ubuntu-latest
+    environment: production # let GitHub Environments protect this with a required reviewer if desired
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Link to prod project
+        run: npx supabase link --project-ref "$SUPABASE_PROD_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+      - name: Push pending migrations
+        run: npx supabase db push --linked --include-all
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

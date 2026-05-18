@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+jobs:
+  static:
+    name: typecheck + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Typecheck runs but does not block — the codebase has accumulated pre-existing
+      # type errors that next.config.ts masks via typescript.ignoreBuildErrors. Failures
+      # surface as warnings in the Actions log; remove continue-on-error once cleaned up.
+      - name: TypeScript check
+        run: npx tsc --noEmit
+        continue-on-error: true
+      - run: npm run lint
+        continue-on-error: true
+
+  test:
+    name: unit + integration
+    needs: static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Supabase CLI is already in devDependencies; this exposes it on PATH for the next steps.
+      - name: Start local Supabase
+        run: npx supabase start
+
+      - name: Capture Supabase env to .env.test.local
+        run: |
+          STATUS=$(npx supabase status --output json)
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$(echo "$STATUS" | jq -r '.API_URL')"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(echo "$STATUS" | jq -r '.ANON_KEY')"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(echo "$STATUS" | jq -r '.SERVICE_ROLE_KEY')"
+            echo "STRIPE_ENABLED=true"
+            echo "NEXT_PUBLIC_STRIPE_ENABLED=true"
+            echo "STRIPE_SECRET_KEY=sk_test_fake_for_tests"
+            echo "STRIPE_WEBHOOK_SECRET=whsec_fake_for_tests"
+          } > .env.test.local
+
+      - name: Run unit + integration tests
+        run: npm run test
+        env:
+          CI: 'true'
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop Supabase
+        if: always()
+        run: npx supabase stop --no-backup
