@@ -33,6 +33,7 @@ jobs:
         run: npx playwright test --shard=${{ matrix.shard }}
         env:
           PLAYWRIGHT_BASE_URL: ${{ github.event.deployment_status.target_url }}
+          VERCEL_PROTECTION_BYPASS_TOKEN: ${{ secrets.VERCEL_PROTECTION_BYPASS_TOKEN }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
 

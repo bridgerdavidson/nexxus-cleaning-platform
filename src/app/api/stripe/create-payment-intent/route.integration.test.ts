@@ -3,7 +3,6 @@ import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
-import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 describe('POST /api/stripe/create-payment-intent', () => {
   let org: TestOrgFixture;

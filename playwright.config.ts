@@ -2,6 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
 
+// Vercel preview deploys are gated by Deployment Protection. The bypass token
+// (Vercel → Settings → Deployment Protection → Protection Bypass for Automation)
+// lets Playwright through. Sent as a header on every request.
+const bypassToken = process.env.VERCEL_PROTECTION_BYPASS_TOKEN;
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -13,6 +18,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   use: {
     baseURL,
+    extraHTTPHeaders: bypassToken ? { 'x-vercel-protection-bypass': bypassToken } : undefined,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
