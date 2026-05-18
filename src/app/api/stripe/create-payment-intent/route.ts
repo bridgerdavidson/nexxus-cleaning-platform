@@ -1,59 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createPaymentIntent, getDefaultPaymentMethod } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
     return NextResponse.json({ error: 'Stripe disabled' }, { status: 404 });
   }
   try {
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    // Get request body
     const body = await request.json();
     const { appointment_id, organization_id } = body;
 
-    // Validate required fields
     if (!appointment_id) {
       return NextResponse.json(
         { error: 'Missing required field: appointment_id' },
         { status: 400 }
       );
     }
+    if (!organization_id) {
+      return NextResponse.json(
+        { error: 'Missing required field: organization_id' },
+        { status: 400 }
+      );
+    }
 
-    // Fetch appointment details
+    // ── Auth: caller must be in this org with billing-capable role ─────────
+    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin', 'manager'],
+    });
+    if (!auth.ok) return auth.response;
+
+    // ── Scope: appointment must live in caller's org ───────────────────────
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, homeowner_id, total_price, status')
+      .select('id, homeowner_id, total_price, status, organization_id')
       .eq('id', appointment_id)
+      .eq('organization_id', organization_id)
       .single();
 
     if (appointmentError || !appointment) {
-      console.error('Error fetching appointment:', appointmentError);
       return NextResponse.json(
         { error: 'Appointment not found' },
         { status: 404 }
       );
     }
 
-    // Fetch homeowner's Stripe customer ID
     const { data: homeowner, error: homeownerError } = await supabaseAdmin
       .from('user_profiles')
       .select('id, stripe_customer_id, email, first_name, last_name')
-      .eq('id', appointment.homeowner_id)
+      .eq('id', appointment.homeowner_id as string)
       .single();
 
     if (homeownerError || !homeowner) {
-      console.error('Error fetching homeowner:', homeownerError);
       return NextResponse.json(
         { error: 'Homeowner not found' },
         { status: 404 }
@@ -67,8 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the default payment method
-    const paymentMethodId = await getDefaultPaymentMethod(homeowner.stripe_customer_id);
+    const paymentMethodId = await getDefaultPaymentMethod(homeowner.stripe_customer_id as string);
 
     if (!paymentMethodId) {
       return NextResponse.json(
@@ -77,18 +75,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create PaymentIntent
     const paymentIntent = await createPaymentIntent(
-      homeowner.stripe_customer_id,
-      appointment.total_price,
+      homeowner.stripe_customer_id as string,
+      appointment.total_price as number,
       appointment_id,
       paymentMethodId
     );
 
-    // Create or update payment record in database
     const paymentData = {
-      organization_id: organization_id || null,
-      appointment_id: appointment_id,
+      organization_id,
+      appointment_id,
       amount: appointment.total_price,
       status: paymentIntent.status === 'succeeded' ? 'paid' : 'pending',
       payment_method: 'card',
@@ -97,7 +93,6 @@ export async function POST(request: NextRequest) {
       paid_at: paymentIntent.status === 'succeeded' ? new Date().toISOString() : null,
     };
 
-    // Check if payment record already exists for this appointment
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
       .select('id')
@@ -106,24 +101,20 @@ export async function POST(request: NextRequest) {
 
     let paymentRecord;
     if (existingPayment) {
-      // Update existing payment
       const { data, error } = await supabaseAdmin
         .from('payments')
         .update(paymentData)
-        .eq('id', existingPayment.id)
+        .eq('id', (existingPayment as { id: string }).id)
         .select()
         .single();
-      
       if (error) throw error;
       paymentRecord = data;
     } else {
-      // Create new payment
       const { data, error } = await supabaseAdmin
         .from('payments')
         .insert(paymentData)
         .select()
         .single();
-      
       if (error) throw error;
       paymentRecord = data;
     }
@@ -137,15 +128,13 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating PaymentIntent:', error);
-    
-    // Handle Stripe-specific errors
+
     if (error instanceof Error) {
-      // Check for card decline or other Stripe errors
       const stripeError = error as { type?: string; code?: string; decline_code?: string };
       if (stripeError.type === 'StripeCardError') {
         return NextResponse.json(
-          { 
-            error: 'Payment failed', 
+          {
+            error: 'Payment failed',
             details: error.message,
             code: stripeError.code,
             decline_code: stripeError.decline_code,
@@ -156,12 +145,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { 
-        error: 'Failed to process payment', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+      {
+        error: 'Failed to process payment',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );
   }
 }
-

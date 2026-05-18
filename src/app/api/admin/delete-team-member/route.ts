@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '../../../../lib/supabase-admin';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -9,6 +10,22 @@ export async function DELETE(request: NextRequest) {
     if (!userId || !organizationId) {
       return NextResponse.json(
         { success: false, error: 'User ID and Organization ID are required' },
+        { status: 400 }
+      );
+    }
+
+    // ── Auth: caller must be an admin/owner of this org ─────────────────────
+    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin'],
+    });
+    if (!auth.ok) return auth.response;
+
+    // Don't let an admin delete themselves through this endpoint — there are other paths
+    // (account deletion, leave org) for that and the team-member UI shouldn't accidentally
+    // wipe the caller out.
+    if (auth.userId === userId) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot delete yourself through this endpoint' },
         { status: 400 }
       );
     }
@@ -43,7 +60,7 @@ export async function DELETE(request: NextRequest) {
     if (userProfileLookupError) {
       console.error('Error looking up user profile email:', userProfileLookupError);
     }
-    const userEmail = userProfile?.email ? userProfile.email.toLowerCase() : null;
+    const userEmail = userProfile?.email ? (userProfile.email as string).toLowerCase() : null;
 
     // If cleaner, check for active appointments
     if (role === 'cleaner') {
@@ -96,7 +113,6 @@ export async function DELETE(request: NextRequest) {
 
       if (cleanerProfileError) {
         console.error('Error deleting cleaner profile:', cleanerProfileError);
-        // Continue - might not exist
       }
     }
 
@@ -110,13 +126,10 @@ export async function DELETE(request: NextRequest) {
 
       if (permissionsError) {
         console.error('Error deleting manager permissions:', permissionsError);
-        // Continue - might not exist
       }
     }
 
     // Step 4: Delete any invites addressed to this user for this organization.
-    // The FK on invites.invited_by already cascades for invites *sent by* the
-    // user; this handles invites *sent to* them (matched by email + org).
     if (userEmail) {
       const { error: invitesError } = await supabaseAdmin
         .from('invites')
@@ -126,11 +139,10 @@ export async function DELETE(request: NextRequest) {
 
       if (invitesError) {
         console.error('Error deleting invites for user:', invitesError);
-        // Continue - invite cleanup is best-effort and should not block deletion.
       }
     }
 
-    // Step 5: Delete user_profile (cascades to any remaining cleaner_profiles)
+    // Step 5: Delete user_profile
     const { error: userProfileError } = await supabaseAdmin
       .from('user_profiles')
       .delete()
@@ -169,4 +181,3 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
-

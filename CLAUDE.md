@@ -5,52 +5,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev      # Next.js dev server (Turbopack) on :3000
-npm run build    # Production build
-npm run start    # Run the production build
-npm run lint     # ESLint (note: Next.js 16 removed `next lint`, this script now runs `eslint .` directly)
-npx tsc --noEmit # Type-check (no test runner is configured)
+npm run dev               # Next.js dev server (Turbopack) on :3000
+npm run build             # Production build
+npm run start             # Run the production build
+npm run lint              # ESLint (note: Next.js 16 removed `next lint`, this script now runs `eslint .` directly)
+npx tsc --noEmit          # Type-check
+npm run test              # Unit + integration tests (Vitest)
+npm run test:unit         # Unit only (no infra)
+npm run test:integration  # Integration only (needs `npx supabase start` running locally)
+npm run test:e2e          # Playwright (against `npm run dev` locally, or PLAYWRIGHT_BASE_URL in CI)
 ```
 
-There is no test suite. `next.config.ts` deliberately sets `eslint.ignoreDuringBuilds: true` and `typescript.ignoreBuildErrors: true`, so `npm run build` will succeed even with lint or type errors. **Run `npm run lint` and `npx tsc --noEmit` explicitly before considering a change done** — the build will not catch regressions.
+`next.config.ts` deliberately sets `eslint.ignoreDuringBuilds: true` and `typescript.ignoreBuildErrors: true`, so `npm run build` succeeds even with lint or type errors. CI (`.github/workflows/ci.yml`) runs `npx tsc --noEmit`, `npm run lint`, and `npm run test` on every push — **don't rely on `npm run build` alone**.
 
-Supabase CLI is in devDependencies (`npx supabase ...`). Local Supabase config is in `supabase/config.toml` (default ports: API 54321, DB 54322, Studio 54323, Inbucket 54324). Schema lives in `supabase/schema.sql`; incremental changes are numbered files under `supabase/migrations/` (currently up to `046_*`).
+Supabase CLI is in devDependencies (`npx supabase ...`). Local Supabase config is in `supabase/config.toml` (default ports: API 54321, DB 54322, Studio 54323, Inbucket 54324). Migrations live under `supabase/migrations/` — see `supabase/BASELINE.md` for the one-time baseline-dump procedure that has to run before `supabase start` produces a complete schema.
+
+## Running tests
+
+- **Unit tests** (`npm run test:unit`) — pure logic and helpers under `src/lib/**`. No infra. Co-located as `*.test.ts` next to the source.
+- **Integration tests** (`npm run test:integration`) — route handlers under `src/app/api/**`. They call `import { POST } from '.../route'` directly (no HTTP server) and run against a real local Supabase. Co-located as `*.integration.test.ts` next to the route. **Requires `npx supabase start` first** plus `.env.test.local` with the values from `npx supabase status --output json`.
+- **E2E** (`npm run test:e2e`) — Playwright specs under `tests/e2e/`. Locally: have `npm run dev` running. In CI: triggered by Vercel `deployment_status` against the preview URL.
+- **Helpers**: `tests/helpers/{supabase,auth,db,fixtures,stripe}.ts` provide `createTestSupabaseClient()`, `callRoute()`, `withTestOrg()`, and an in-memory Stripe fake. New integration tests should use these — don't roll your own org/user setup.
 
 Path alias: `@/*` → `./src/*`.
-
-## MCP-backed workflow
-
-Three tools are wired into this project and **must** be used at the right points in any task. They are not optional polish — skipping them is a process bug.
-
-### Context7 — before you write code
-
-Before implementing a new feature, fixing a non-trivial bug, or doing an architectural audit, use the **Context7** MCP server (`mcp__claude_ai_Context7__resolve-library-id` then `mcp__claude_ai_Context7__query-docs`) to pull current docs for any library, framework, SDK, or API you are about to touch. This includes the stack already in this repo (Next.js 16 App Router, React 19, Supabase JS, Stripe Node SDK + Connect, Tailwind v3) — your training data may lag behind real API surface.
-
-Use it for: API syntax, configuration, version-migration questions, library-specific debugging, setup instructions, CLI usage. Skip it for: refactoring, scripts written from scratch, business-logic debugging, code review, general programming concepts.
-
-State in your update message which library you queried (or that no external library is involved) before writing the implementation.
-
-### UI/UX Pro Max — for any UI decision or audit
-
-Whenever a task involves a UI/UX decision (picking a layout, component pattern, color/spacing/typography choice, interaction model, accessibility behavior) or a UI audit/review, invoke the **UI/UX Pro Max** skill (`Skill` tool with `skill: "ui-ux-pro-max:ui-ux-pro-max"`) before proposing or committing the design. Use it to ground the choice in its style/palette/font/UX-guideline catalog and (for component-level work) the shadcn/ui MCP integration it ships with — don't free-hand visual decisions when this is available.
-
-Trigger it for: planning/building/designing/reviewing any page or component, choosing styles (glassmorphism, bento grid, dark mode, etc.), color systems, typography, spacing, accessibility, animation, interaction states, charts, or responsive layout. Skip it for: pure logic/data changes with no visual surface.
-
-State in your update message that you consulted UI/UX Pro Max (and the gist of what it returned) before applying the decision.
-
-### Playwright MCP — at the end of UI work
-
-When an implementation or bug fix touches the UI (any change under `src/app/**`, `src/components/**`, Tailwind config, or anything that renders in the browser), validate with the **Playwright** MCP server before reporting the task done:
-
-1. Make sure the dev server is up (`npm run dev` on :3000) — start it if it isn't.
-2. `mcp__playwright__browser_navigate` to the affected route(s). For role-gated routes (`/{admin,manager,cleaner,homeowner}-dashboard`), sign in with a relevant test account first.
-3. Drive the changed flow with `browser_click` / `browser_fill_form` / `browser_type` so the new state is actually rendered.
-4. `mcp__playwright__browser_snapshot` to inspect the accessibility tree, and `mcp__playwright__browser_take_screenshot` to capture the result.
-5. Check `mcp__playwright__browser_console_messages` for errors/warnings introduced by the change.
-6. Look at the screenshot and judge: is the layout intact at the breakpoint(s) that matter, are spacing/colors/typography consistent with the rest of the app (brand yellow `#F7C41E`, slate secondary), are interactive states (hover, focus, disabled, loading, empty) sensible, is anything overflowing or cut off? Resize with `browser_resize` to spot-check mobile if the change is responsive.
-7. If something looks wrong, fix it and re-validate — don't ship a screenshot of a broken UI.
-
-If Playwright validation truly cannot run (no dev server reachable, auth not available, etc.), say so explicitly in the end-of-turn summary instead of silently skipping. `npm run lint` + `npx tsc --noEmit` only verify code correctness, not that the feature looks right.
 
 ## Architecture
 
@@ -156,6 +133,10 @@ Required for full functionality:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only admin client (never expose)
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — server Stripe
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
+
+## Visual Testing
+Use the Playwright MCP tools to navigate to the local dev server 
+(http://localhost:3000) and take a screenshot to verify UI changes.
 
 ### Tailwind theme
 
