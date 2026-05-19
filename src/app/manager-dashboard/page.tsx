@@ -245,10 +245,18 @@ function ManagerDashboardInner() {
     [permissions],
   );
 
+  // Track the conversation the user is actively viewing inside MessagesPage so
+  // we can exclude it from the nav-bar unread dot.
+  const [selectedMessagesConversationId, setSelectedMessagesConversationId] =
+    useState<string | null>(null);
+
   // Calculate if there are any unread messages
   const hasUnreadMessages = useMemo(() => {
-    return conversations.some((conv) => conv.unread_count > 0);
-  }, [conversations]);
+    return conversations.some(
+      (conv) =>
+        conv.unread_count > 0 && conv.id !== selectedMessagesConversationId
+    );
+  }, [conversations, selectedMessagesConversationId]);
 
   // Build navigation groups based on permissions - using useMemo to ensure consistent hook order
   const navigationGroups = useMemo(() => {
@@ -808,6 +816,7 @@ function ManagerDashboardInner() {
       error={conversationsError}
       onRefresh={refetchConversations}
       onUpdateUnreadCount={updateUnreadCount}
+      onSelectedConversationChange={setSelectedMessagesConversationId}
       initialOtherParticipantId={initialMessageRecipientId ?? undefined}
       onInitialParticipantConsumed={() => setInitialMessageRecipientId(null)}
     />

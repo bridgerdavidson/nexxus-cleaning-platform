@@ -136,10 +136,18 @@ function HomeownerDashboardInner() {
     console.log("Delete appointment:", appointmentId);
   };
 
+  // Track the conversation the user is actively viewing inside MessagesPage so
+  // we can exclude it from the nav-bar unread dot.
+  const [selectedMessagesConversationId, setSelectedMessagesConversationId] =
+    useState<string | null>(null);
+
   // Calculate if there are any unread messages
   const hasUnreadMessages = useMemo(() => {
-    return conversations.some((conv) => conv.unread_count > 0);
-  }, [conversations]);
+    return conversations.some(
+      (conv) =>
+        conv.unread_count > 0 && conv.id !== selectedMessagesConversationId
+    );
+  }, [conversations, selectedMessagesConversationId]);
 
   // Today's date string (YYYY-MM-DD) for filtering
   const todayStr = useMemo(() => {
@@ -521,6 +529,7 @@ function HomeownerDashboardInner() {
       error={conversationsError}
       onRefresh={refetchConversations}
       onUpdateUnreadCount={updateUnreadCount}
+      onSelectedConversationChange={setSelectedMessagesConversationId}
     />
   );
 

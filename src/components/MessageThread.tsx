@@ -63,12 +63,8 @@ export default function MessageThread({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     if (scrollContainerRef.current) {
       const scrollHeight = scrollContainerRef.current.scrollHeight;
-      const clientHeight = scrollContainerRef.current.clientHeight;
       // Guard: Don't scroll if container isn't rendered yet (scrollHeight === 0)
-      if (scrollHeight === 0) {
-        console.log('[MessageThread] Skipping scroll - container not ready');
-        return;
-      }
+      if (scrollHeight === 0) return;
       // Prevent handleScroll from triggering load-more while we animate to bottom
       if (behavior === "smooth") {
         isScrollingToBottomRef.current = true;
@@ -86,7 +82,23 @@ export default function MessageThread({
         }
       });
     }
-  }, [messages.length]);
+  }, []);
+
+  // Each image bubble fires this when an attachment image finishes loading.
+  // Without it the auto-scroll runs before images have intrinsic height, so
+  // the latest image-bearing message ends up below the fold. Only re-pins
+  // when the user was already near the bottom — preserves scroll-up-to-read.
+  const handleImageLoad = useCallback(() => {
+    if (!isNearBottomRef.current) return;
+    if (!scrollContainerRef.current) return;
+    requestAnimationFrame(() => {
+      if (!scrollContainerRef.current) return;
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "instant" as ScrollBehavior,
+      });
+    });
+  }, []);
 
   // Auto-scroll logic:
   // - Always scroll when switching conversations
@@ -102,10 +114,16 @@ export default function MessageThread({
     if (messages.length === 0) return;
     
     if (conversationChanged) {
-      // Always scroll to bottom when switching conversations
-      // Use instant scroll for conversation changes to avoid awkward animation
+      // Always scroll to bottom when switching conversations.
+      // Run twice across two frames: the first pass scrolls before cached
+      // images have painted their height; the second pass corrects after they
+      // have. Images that arrive from the network still rely on
+      // handleImageLoad to re-pin.
       scrollToBottom("instant");
       isNearBottomRef.current = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => scrollToBottom("instant"));
+      });
     } else if (newMessagesArrived && isNearBottomRef.current) {
       // Use smooth for scroll effect; isScrollingToBottomRef prevents load-more during animation
       scrollToBottom("smooth");
@@ -287,6 +305,7 @@ export default function MessageThread({
             key={message.id}
             message={message}
             isSent={message.sender_id === currentUserId}
+            onImageLoad={handleImageLoad}
           />
         ))}
 

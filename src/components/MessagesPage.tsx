@@ -17,6 +17,7 @@ interface MessagesPageProps {
   error: string | null;
   onRefresh: () => void;
   onUpdateUnreadCount: (conversationId: string, newCount: number) => void;
+  onSelectedConversationChange?: (conversationId: string | null) => void;
   initialOtherParticipantId?: string;
   onInitialParticipantConsumed?: () => void;
 }
@@ -29,6 +30,7 @@ export default function MessagesPage({
   error,
   onRefresh,
   onUpdateUnreadCount,
+  onSelectedConversationChange,
   initialOtherParticipantId,
   onInitialParticipantConsumed,
 }: MessagesPageProps) {
@@ -127,6 +129,7 @@ export default function MessagesPage({
     setIsSlidingIn(false);
     setIsSlidingOut(false);
     setSelectedConversation(conversation);
+    onSelectedConversationChange?.(conversation.id);
     // Optimistically clear unread badge immediately
     onUpdateUnreadCount(conversation.id, 0);
     // Trigger animation on next frame
@@ -138,12 +141,23 @@ export default function MessagesPage({
   const handleBackToConversations = () => {
     setIsSlidingOut(true);
     setIsSlidingIn(false);
+    onSelectedConversationChange?.(null);
     // Wait for animation to complete before removing the conversation
     setTimeout(() => {
       setSelectedConversation(null);
       setIsSlidingOut(false);
     }, 300);
   };
+
+  // Clear the parent's selected-id when MessagesPage unmounts (e.g. tab switch
+  // away from Messages) so the nav-bar unread dot can light up again for the
+  // previously-open conversation.
+  useEffect(() => {
+    return () => {
+      onSelectedConversationChange?.(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDeleteConversation = async (conversationId: string) => {
     if (deleting) return;
@@ -160,6 +174,7 @@ export default function MessagesPage({
       // If the deleted conversation was selected, clear selection
       if (selectedConversation?.id === conversationId) {
         setSelectedConversation(null);
+        onSelectedConversationChange?.(null);
       }
       // Refresh conversations list
       onRefresh();

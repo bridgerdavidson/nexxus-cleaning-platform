@@ -211,10 +211,19 @@ function AdminDashboardInner() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
+  // Track the conversation the user is actively viewing inside MessagesPage so
+  // we can exclude it from the nav-bar unread dot (matches per-row badge logic
+  // in ConversationItem). Cleared on tab switch / unmount.
+  const [selectedMessagesConversationId, setSelectedMessagesConversationId] =
+    useState<string | null>(null);
+
   // Calculate if there are any unread messages (must be before early return)
   const hasUnreadMessages = useMemo(() => {
-    return conversations.some((conv) => conv.unread_count > 0);
-  }, [conversations]);
+    return conversations.some(
+      (conv) =>
+        conv.unread_count > 0 && conv.id !== selectedMessagesConversationId
+    );
+  }, [conversations, selectedMessagesConversationId]);
 
   // Hierarchical navigation structure (must be before early return)
   const navigationGroups = useMemo(
@@ -629,6 +638,7 @@ function AdminDashboardInner() {
       error={conversationsError}
       onRefresh={refetchConversations}
       onUpdateUnreadCount={updateUnreadCount}
+      onSelectedConversationChange={setSelectedMessagesConversationId}
       initialOtherParticipantId={initialMessageRecipientId ?? undefined}
       onInitialParticipantConsumed={() => setInitialMessageRecipientId(null)}
     />
