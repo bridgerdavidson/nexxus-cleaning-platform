@@ -31,6 +31,7 @@ import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment, acceptCounterProposal } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
+import { isAppointmentOverdue } from "../lib/isAppointmentOverdue";
 
 type ViewType = "list" | "calendar";
 
@@ -264,15 +265,26 @@ export default function BookingsPage({
     return appointment.status === statusFilter;
   };
 
-  // Get appointments requiring reschedule (rejected by cleaner)
+  // "Needs your response" feed for the admin: cleaner-rejected appointments
+  // (counter-proposed or hard-declined) plus Wave 2 overdue appointments
+  // where the cleaner ghosted the assignment past the SLA deadline.
   const rescheduleRequiredAppointments = useMemo(() => {
+    const now = new Date();
     return localAppointments
-      .filter(
-        (apt) =>
-          apt.cleaner_confirmation_status === "rejected" &&
-          apt.status !== "cancelled" &&
-          apt.status !== "completed",
-      )
+      .filter((apt) => {
+        if (apt.status === "cancelled" || apt.status === "completed") {
+          return false;
+        }
+        if (apt.cleaner_confirmation_status === "rejected") return true;
+        return isAppointmentOverdue(
+          {
+            status: apt.status,
+            cleaner_confirmation_status: apt.cleaner_confirmation_status,
+            response_deadline: apt.response_deadline,
+          },
+          now,
+        );
+      })
       .sort((a, b) => {
         const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
         const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);

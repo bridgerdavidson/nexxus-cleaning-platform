@@ -17,6 +17,10 @@ import {
 import { formatTimeTo12h } from "../lib/formatTime";
 import ConfirmAvailabilityModal, { type ConfirmModalMode } from "./ConfirmAvailabilityModal";
 import { deriveFreeSlots, type ScheduleConflictBlock } from "../lib/cleanerFreeSlots";
+import {
+  deadlineUrgency,
+  type DeadlineUrgency,
+} from "../lib/isAppointmentOverdue";
 import type { DeclineReason } from "../types";
 
 interface PendingAppointment {
@@ -24,6 +28,9 @@ interface PendingAppointment {
   scheduled_date: string;
   scheduled_time: string;
   status: string;
+  /** Wave 2 SLA: deadline by which the cleaner must respond. */
+  response_deadline?: string | null;
+  cleaner_confirmation_status?: "awaiting" | "approved" | "rejected" | null;
   homeowner?: {
     first_name: string | null;
     last_name: string | null;
@@ -259,7 +266,7 @@ export default function PendingConfirmationsSection({
                       key={apt.id}
                       className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
                     >
-                      <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate">
                             {getHomeownerName(apt)}
@@ -288,6 +295,7 @@ export default function PendingConfirmationsSection({
                             </div>
                           )}
                         </div>
+                        <DeadlineBadge deadline={apt.response_deadline} />
                       </div>
 
                       {/* Three-button action row: Accept / Propose alternative / Decline.
@@ -339,4 +347,65 @@ export default function PendingConfirmationsSection({
       />
     </>
   );
+}
+
+// Re-render every minute so the countdown stays fresh without flooding the
+// component with refs. Keeping the badge as its own tiny component scopes the
+// state to the rows that need it.
+const BADGE_STYLES: Record<DeadlineUrgency, string> = {
+  plenty: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  soon: "bg-amber-50 text-amber-700 border border-amber-200",
+  urgent: "bg-red-50 text-red-700 border border-red-200",
+  overdue: "bg-red-600 text-white border border-red-700",
+};
+
+function DeadlineBadge({ deadline }: { deadline: string | null | undefined }) {
+  const [now, setNow] = React.useState(() => new Date());
+
+  React.useEffect(() => {
+    if (!deadline) return;
+    const tick = () => setNow(new Date());
+    const id = window.setInterval(tick, 60 * 1000); // 1 min cadence
+    return () => window.clearInterval(id);
+  }, [deadline]);
+
+  if (!deadline) return null;
+  const urgency = deadlineUrgency(
+    {
+      cleaner_confirmation_status: "awaiting",
+      response_deadline: deadline,
+    },
+    null,
+    now,
+  );
+  if (!urgency) return null;
+
+  const deadlineMs = Date.parse(deadline);
+  const remainingMs = deadlineMs - now.getTime();
+  const label = formatRemaining(remainingMs);
+
+  return (
+    <span
+      className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${BADGE_STYLES[urgency]}`}
+      role="status"
+      aria-live="polite"
+      title={`Respond by ${new Date(deadlineMs).toLocaleString()}`}
+    >
+      <Clock className="w-3 h-3" />
+      {label}
+    </span>
+  );
+}
+
+function formatRemaining(remainingMs: number): string {
+  if (remainingMs <= 0) return "Overdue";
+  const totalMin = Math.floor(remainingMs / (60 * 1000));
+  if (totalMin < 60) return `${totalMin}m left`;
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  if (hours < 24) {
+    return mins === 0 ? `${hours}h left` : `${hours}h ${mins}m left`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}d left`;
 }

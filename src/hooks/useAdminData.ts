@@ -53,6 +53,11 @@ export interface AdminAppointment {
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   /**
+   * Wave 2 SLA: timestamp by which the cleaner must respond. Null once they
+   * have. Overdue is derived client-side via isAppointmentOverdue.
+   */
+  response_deadline?: string | null;
+  /**
    * Latest cleaner-availability feedback (counter-proposal data). Joined for
    * the Bookings page's "Needs your response" section so the admin can
    * one-click accept a cleaner-suggested time.
@@ -168,6 +173,7 @@ export function useAdminAppointments() {
           notes,
           series_id,
           cleaner_confirmation_status,
+          response_deadline,
           price_override_enabled,
           price_override_total,
           homeowner_id,
@@ -885,6 +891,9 @@ export async function updateAppointment(
     notes?: string | null;
     status?: string;
     cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+    /** Wave 2 SLA: ISO timestamp by which the cleaner must respond, or null
+        once they have. Callers compute this via computeResponseDeadlineISO. */
+    response_deadline?: string | null;
   }
 ): Promise<{ success: boolean; data?: AdminAppointment; error?: string }> {
   try {

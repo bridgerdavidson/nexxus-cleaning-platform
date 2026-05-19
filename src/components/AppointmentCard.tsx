@@ -59,6 +59,12 @@ export interface AppointmentCardData {
    */
   organization_id?: string | null;
   /**
+   * Wave 2 SLA: cleaner-response deadline. Null once the cleaner responds.
+   * BookingsPage uses `isAppointmentOverdue` against this + status +
+   * cleaner_confirmation_status to compute the overdue surface.
+   */
+  response_deadline?: string | null;
+  /**
    * Latest cleaner-availability feedback for the appointment (joined). When
    * `cleaner_suggested_times` rows exist on this feedback, the row is a
    * counter-proposal that the admin can one-click accept. When only `reason`

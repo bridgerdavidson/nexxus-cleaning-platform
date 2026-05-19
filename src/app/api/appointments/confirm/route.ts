@@ -88,10 +88,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'accept') {
+      // SLA stops once the cleaner has responded — clear the deadline so the
+      // admin overdue surface drops this appointment.
       const updatePayload =
         appointment.status === 'pending'
-          ? { cleaner_confirmation_status: 'approved', status: 'confirmed' }
-          : { cleaner_confirmation_status: 'approved' };
+          ? {
+              cleaner_confirmation_status: 'approved',
+              status: 'confirmed',
+              response_deadline: null,
+            }
+          : { cleaner_confirmation_status: 'approved', response_deadline: null };
 
       const { error: updateError } = await supabaseAdmin
         .from('appointments')
@@ -150,10 +156,19 @@ export async function POST(request: NextRequest) {
           : label;
     }
 
+    // SLA stops once the cleaner has responded — clear the deadline. Both
+    // counter_propose and decline land here.
     const rejectPayload =
       appointment.status === 'confirmed'
-        ? { cleaner_confirmation_status: 'rejected', status: 'pending' }
-        : { cleaner_confirmation_status: 'rejected' };
+        ? {
+            cleaner_confirmation_status: 'rejected',
+            status: 'pending',
+            response_deadline: null,
+          }
+        : {
+            cleaner_confirmation_status: 'rejected',
+            response_deadline: null,
+          };
 
     const { error: rejectError } = await supabaseAdmin
       .from('appointments')

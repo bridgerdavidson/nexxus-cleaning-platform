@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateOccurrences, validateRecurrenceInput } from '@/lib/appointments/recurrence';
+import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
 
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
@@ -157,6 +158,10 @@ export async function POST(request: NextRequest) {
     // 3. Bulk insert appointments
     // Use provided status or default to 'pending' for backward compatibility
     const appointmentStatus: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' = (status as 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled') || 'pending';
+    // Set per-occurrence response_deadline using each occurrence's own
+    // scheduled_at — so an occurrence less than 48h out gets the 4h urgent tier
+    // even though the series stretches further into the future.
+    const now = new Date();
     const appointmentRows = occurrences.map((occ) => ({
       organization_id: organizationId,
       homeowner_id: homeownerId,
@@ -174,6 +179,11 @@ export async function POST(request: NextRequest) {
       status: appointmentStatus,
       series_id: series.id,
       cleaner_confirmation_status: 'awaiting',
+      response_deadline: computeResponseDeadlineISO(
+        occ.scheduled_date,
+        occ.scheduled_time,
+        now,
+      ),
     }));
 
     const { data: appointments, error: appointmentsError } = await supabaseAdmin

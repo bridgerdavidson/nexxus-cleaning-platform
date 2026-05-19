@@ -10,10 +10,12 @@ import {
   Check,
   Calendar,
   Clock,
+  Hourglass,
 } from "lucide-react";
 import CompactAppointmentRow from "./CompactAppointmentRow";
 import { AppointmentCardData } from "./AppointmentCard";
 import { formatTimeTo12h } from "../lib/formatTime";
+import { isAppointmentOverdue } from "../lib/isAppointmentOverdue";
 
 interface SuggestedTimeRow {
   id: string;
@@ -41,6 +43,9 @@ interface RejectedAppointment {
   scheduled_time: string;
   status: string;
   organization_id?: string | null;
+  /** Wave 2: drives the overdue (cleaner ghosted) row variant. */
+  cleaner_confirmation_status?: "awaiting" | "approved" | "rejected" | null;
+  response_deadline?: string | null;
   homeowner?: {
     first_name: string;
     last_name: string;
@@ -162,7 +167,7 @@ export default function RescheduleRequiredSection({
           <div className="text-left">
             <h3 className="text-lg font-bold text-gray-900">Needs your response</h3>
             <p className="text-xs font-medium text-orange-700">
-              Cleaner counter-proposed or declined these appointments
+              Cleaner counter-proposed, declined, or hasn&apos;t responded
             </p>
           </div>
         </div>
@@ -193,6 +198,42 @@ export default function RescheduleRequiredSection({
               const suggestedWindows = feedback?.cleaner_suggested_windows ?? [];
               const hasCounterProposal =
                 suggestedTimes.length > 0 || suggestedWindows.length > 0;
+
+              // Overdue path (cleaner hasn't responded by SLA) — distinct
+              // red-tinted variant so admin sees "ghosted" vs "rejected" at a
+              // glance. Reuses the compact-row shell with custom subline.
+              if (isAppointmentOverdue(apt)) {
+                return (
+                  <CompactAppointmentRow
+                    key={apt.id}
+                    appointment={cardData}
+                    onClick={() => onViewDetails(apt)}
+                    hidePaymentChip
+                    rightSlot={
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReschedule(apt);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-xs font-medium whitespace-nowrap"
+                        title="Reassign cleaner"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Reassign
+                      </button>
+                    }
+                    subline={
+                      <p className="text-xs text-red-700 inline-flex items-center gap-1">
+                        <Hourglass className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">
+                          {cleanerName} hasn&apos;t responded — SLA elapsed
+                        </span>
+                      </p>
+                    }
+                  />
+                );
+              }
 
               // Hard decline path (no suggestions) — keep the existing
               // compact row layout but make the subline show the reason

@@ -21,6 +21,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { updateAppointment } from "../hooks/useAdminData";
 import { formatTimeTo12h } from "../lib/formatTime";
+import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
 import { AppointmentCardData } from "./AppointmentCard";
 
 interface Cleaner {
@@ -362,12 +363,21 @@ export default function RescheduleAppointmentModal({
         console.error("Error deleting old feedback:", deleteErr);
       }
 
+      // SLA: if the reschedule auto-confirms, the cleaner has already
+      // effectively responded — clear the deadline. If it goes back to
+      // awaiting (different cleaner or different time), reset the deadline
+      // using the new scheduled_at so the urgent/standard tier is correct.
+      const nextDeadline = willAutoApprove
+        ? null
+        : computeResponseDeadlineISO(scheduledDate, scheduledTime);
+
       const result = await updateAppointment(appointment.id, {
         scheduled_date: scheduledDate,
         scheduled_time: scheduledTime + ":00",
         cleaner_id: selectedCleaner.id,
         status: willAutoApprove ? "confirmed" : "pending",
         cleaner_confirmation_status: newStatus,
+        response_deadline: nextDeadline,
       });
 
       if (!result.success) {

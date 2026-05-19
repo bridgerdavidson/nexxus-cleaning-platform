@@ -20,6 +20,8 @@ export interface ManagerAppointment {
   special_requests?: string | null;
   notes?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  /** Wave 2 SLA: deadline for cleaner response. Null once cleaner responds. */
+  response_deadline?: string | null;
   price_override_enabled?: boolean;
   price_override_total?: number | null;
   homeowner_id?: string;
@@ -133,6 +135,7 @@ export function useManagerAppointments() {
           special_requests,
           notes,
           cleaner_confirmation_status,
+          response_deadline,
           price_override_enabled,
           price_override_total,
           homeowner_id,
