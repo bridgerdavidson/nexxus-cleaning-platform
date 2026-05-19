@@ -9,7 +9,9 @@ import {
   User,
   Home,
   CheckCircle,
-  Check,
+  CheckCircle2,
+  ChevronDown,
+  Ban,
   Loader2,
   Repeat,
   CreditCard,
@@ -163,6 +165,8 @@ export default function AddAppointmentModal({
   const [cleanersLoading, setCleanersLoading] = useState(false);
   const [cleanerSearch, setCleanerSearch] = useState("");
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
+  // Which unavailable cleaner card is currently expanded (collapse-on-default).
+  const [expandedCleanerId, setExpandedCleanerId] = useState<string | null>(null);
 
   // Org-wide map of cleaner_id → that cleaner's active appointments on the
   // currently-selected `scheduledDate`. Loaded once per date change so the
@@ -1441,6 +1445,286 @@ export default function AddAppointmentModal({
                   />
                 </div>
 
+                {/* Assign Cleaner. Uniform rows for both groups. Available rows
+                    select on click; not-available rows expand on click and only
+                    select when the admin confirms via the inline button. */}
+                <div className="border-t border-gray-200 pt-6 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <User className="w-5 h-5 text-primary-600" />
+                    <h4 className="text-md font-semibold text-gray-900">
+                      Assign Cleaner
+                    </h4>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Search cleaners..."
+                      value={cleanerSearch}
+                      onChange={(e) => setCleanerSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+
+                  {cleanersLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+                    </div>
+                  ) : filteredCleaners.length === 0 ? (
+                    <div className="text-center py-8 text-sm text-gray-500">
+                      No cleaners found
+                    </div>
+                  ) : !candidateSlot ? (
+                    <>
+                      <p className="text-xs text-gray-500">
+                        Pick a date, time, and service above to see who&apos;s
+                        available.
+                      </p>
+                      <div className="space-y-2">
+                        {rankedCleaners
+                          .filter((r) =>
+                            filteredCleaners.some(
+                              (fc) => fc.id === r.cleaner.id,
+                            ),
+                          )
+                          .map(({ cleaner }) => {
+                            const isSelected =
+                              selectedCleaner?.id === cleaner.id;
+                            return (
+                              <button
+                                key={cleaner.id}
+                                type="button"
+                                onClick={() => setSelectedCleaner(cleaner)}
+                                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-left transition-colors ${
+                                  isSelected
+                                    ? "border-2 border-primary-500 bg-primary-50"
+                                    : "border-gray-200 bg-white hover:border-gray-300"
+                                }`}
+                              >
+                                <span className="text-sm font-medium text-gray-900">
+                                  {cleaner.user_profile?.first_name}{" "}
+                                  {cleaner.user_profile?.last_name}
+                                </span>
+                                {isSelected ? (
+                                  <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                                ) : (
+                                  <span className="text-xs text-gray-400">
+                                    Pick a time
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </>
+                  ) : (
+                    (() => {
+                      const visibleRanked = rankedCleaners.filter((r) =>
+                        filteredCleaners.some((fc) => fc.id === r.cleaner.id),
+                      );
+                      const available = visibleRanked.filter(
+                        (r) => r.isAvailable,
+                      );
+                      const unavailable = visibleRanked.filter(
+                        (r) => !r.isAvailable,
+                      );
+                      return (
+                        <div className="space-y-5">
+                          {/* Available group */}
+                          {available.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-gray-500">
+                                Available · {available.length}
+                              </p>
+                              <div className="space-y-2">
+                                {available.map(({ cleaner }) => {
+                                  const isSelected =
+                                    selectedCleaner?.id === cleaner.id;
+                                  return (
+                                    <button
+                                      key={cleaner.id}
+                                      type="button"
+                                      onClick={() => setSelectedCleaner(cleaner)}
+                                      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-left transition-colors ${
+                                        isSelected
+                                          ? "border-2 border-primary-500 bg-primary-50"
+                                          : "border-gray-200 bg-white hover:border-gray-300"
+                                      }`}
+                                    >
+                                      <span className="text-sm font-medium text-gray-900">
+                                        {cleaner.user_profile?.first_name}{" "}
+                                        {cleaner.user_profile?.last_name}
+                                      </span>
+                                      {isSelected ? (
+                                        <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                                      ) : (
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {available.length === 0 && unavailable.length > 0 && (
+                            <p className="text-xs text-gray-500">
+                              No cleaners are free at this time. Expand a
+                              cleaner below to see their conflict and pick them
+                              anyway.
+                            </p>
+                          )}
+
+                          {/* Unavailable group — uniform rows, expand on click */}
+                          {unavailable.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs font-medium text-gray-500">
+                                Not available · {unavailable.length}
+                              </p>
+                              <div className="space-y-2">
+                                {unavailable.map(
+                                  ({ cleaner, conflicts, nextFreeSlot }) => {
+                                    const isSelected =
+                                      selectedCleaner?.id === cleaner.id;
+                                    const isExpanded =
+                                      expandedCleanerId === cleaner.id ||
+                                      isSelected;
+                                    const firstName =
+                                      cleaner.user_profile?.first_name ??
+                                      "Cleaner";
+                                    return (
+                                      <div
+                                        key={cleaner.id}
+                                        className={`rounded-lg border transition-colors ${
+                                          isSelected
+                                            ? "border-2 border-primary-500 bg-primary-50"
+                                            : "border-gray-200 bg-white"
+                                        }`}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setExpandedCleanerId((id) =>
+                                              id === cleaner.id
+                                                ? null
+                                                : cleaner.id,
+                                            )
+                                          }
+                                          aria-expanded={isExpanded}
+                                          className="w-full flex items-center justify-between px-4 py-3 text-left"
+                                        >
+                                          <span className="text-sm font-medium text-gray-900">
+                                            {cleaner.user_profile?.first_name}{" "}
+                                            {cleaner.user_profile?.last_name}
+                                          </span>
+                                          <span className="flex items-center gap-2 flex-shrink-0">
+                                            {isSelected ? (
+                                              <CheckCircle className="w-5 h-5 text-primary-600" />
+                                            ) : (
+                                              <Ban className="w-4 h-4 text-gray-400" />
+                                            )}
+                                            <ChevronDown
+                                              className={`w-4 h-4 text-gray-400 transition-transform ${
+                                                isExpanded ? "rotate-180" : ""
+                                              }`}
+                                            />
+                                          </span>
+                                        </button>
+
+                                        {isExpanded && (
+                                          <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">
+                                            <div>
+                                              <p className="text-xs text-gray-500 mb-1">
+                                                Conflicts with
+                                              </p>
+                                              <ul className="text-sm text-gray-700 space-y-0.5">
+                                                {conflicts
+                                                  .slice(0, 3)
+                                                  .map((c) => (
+                                                    <li key={c.id}>
+                                                      {formatTimeTo12h(
+                                                        c.scheduled_time,
+                                                      )}{" "}
+                                                      ·{" "}
+                                                      {c.duration_minutes} min
+                                                    </li>
+                                                  ))}
+                                                {conflicts.length > 3 && (
+                                                  <li className="text-gray-500">
+                                                    …and {conflicts.length - 3}{" "}
+                                                    more
+                                                  </li>
+                                                )}
+                                              </ul>
+                                            </div>
+                                            {nextFreeSlot ? (
+                                              <p className="text-sm text-gray-700">
+                                                <span className="text-gray-500">
+                                                  Next free for {firstName}:
+                                                </span>{" "}
+                                                <span className="font-medium">
+                                                  {formatTimeTo12h(
+                                                    nextFreeSlot.time,
+                                                  )}
+                                                </span>{" "}
+                                                <span className="text-xs text-gray-500">
+                                                  · drive time not factored in
+                                                </span>
+                                              </p>
+                                            ) : (
+                                              <p className="text-sm text-gray-700">
+                                                <span className="font-medium">
+                                                  No same-day opening.
+                                                </span>{" "}
+                                                Try a different day.
+                                              </p>
+                                            )}
+                                            <div className="flex justify-end">
+                                              {isSelected ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setSelectedCleaner(null)
+                                                  }
+                                                  className="text-xs text-gray-600 hover:text-gray-900 underline"
+                                                >
+                                                  Deselect
+                                                </button>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setSelectedCleaner(cleaner)
+                                                  }
+                                                  className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-1.5 transition-colors"
+                                                >
+                                                  Use {firstName} anyway
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  },
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  {!selectedCleaner && cleaners.length > 0 && (
+                    <p className="text-xs text-gray-500">
+                      Pick a cleaner. They&apos;ll see the assignment and can
+                      decline or counter-propose.
+                    </p>
+                  )}
+                </div>
+
                 {/* Recurrence Section */}
                 <div className="border-t border-gray-200 pt-6">
                   <div className="flex items-center gap-2 mb-4">
@@ -1625,268 +1909,6 @@ export default function AddAppointmentModal({
                   )}
                 </div>
 
-                {/* Assign Cleaner — unified into the details step. Available
-                    cleaners show first; cleaners whose schedules clash with the
-                    chosen slot are de-emphasized and list their conflicts +
-                    next free slot inline. Admin can still pick an unavailable
-                    cleaner; the submit label flips to indicate the override. */}
-                <div className="border-t border-gray-200 pt-6 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary-600" />
-                    <h4 className="text-md font-semibold text-gray-900">
-                      Assign Cleaner
-                    </h4>
-                  </div>
-
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      placeholder="Search cleaners..."
-                      value={cleanerSearch}
-                      onChange={(e) => setCleanerSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </div>
-
-                  {cleanersLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
-                    </div>
-                  ) : filteredCleaners.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      No available cleaners found
-                    </div>
-                  ) : !candidateSlot ? (
-                    <>
-                      <p className="text-xs text-gray-500">
-                        Pick a date, time, and service above to see who&apos;s
-                        available.
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {rankedCleaners
-                          .filter((r) =>
-                            filteredCleaners.some(
-                              (fc) => fc.id === r.cleaner.id,
-                            ),
-                          )
-                          .map(({ cleaner }) => {
-                            const isSelected =
-                              selectedCleaner?.id === cleaner.id;
-                            return (
-                              <button
-                                key={cleaner.id}
-                                type="button"
-                                onClick={() => setSelectedCleaner(cleaner)}
-                                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                  isSelected
-                                    ? "border-primary-500 bg-primary-50"
-                                    : "border-gray-200 hover:border-gray-300"
-                                }`}
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                                      <User className="w-5 h-5 text-gray-500" />
-                                    </div>
-                                    <p className="font-medium text-gray-900">
-                                      {cleaner.user_profile?.first_name}{" "}
-                                      {cleaner.user_profile?.last_name}
-                                    </p>
-                                  </div>
-                                  {isSelected && (
-                                    <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
-                                  )}
-                                </div>
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </>
-                  ) : (
-                    (() => {
-                      const visibleRanked = rankedCleaners.filter((r) =>
-                        filteredCleaners.some((fc) => fc.id === r.cleaner.id),
-                      );
-                      const available = visibleRanked.filter(
-                        (r) => r.isAvailable,
-                      );
-                      const unavailable = visibleRanked.filter(
-                        (r) => !r.isAvailable,
-                      );
-                      return (
-                        <div className="space-y-5">
-                          {/* Available group */}
-                          {available.length > 0 && (
-                            <div className="space-y-2">
-                              <p className="text-xs font-semibold text-success-700 uppercase tracking-wide">
-                                Available for this slot · {available.length}
-                              </p>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {available.map(({ cleaner }) => {
-                                  const isSelected =
-                                    selectedCleaner?.id === cleaner.id;
-                                  return (
-                                    <button
-                                      key={cleaner.id}
-                                      type="button"
-                                      onClick={() => setSelectedCleaner(cleaner)}
-                                      className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                        isSelected
-                                          ? "border-primary-500 bg-primary-50"
-                                          : "border-success-200 bg-success-50 hover:border-success-300"
-                                      }`}
-                                    >
-                                      <div className="flex items-start justify-between">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-10 h-10 bg-success-100 rounded-full flex items-center justify-center">
-                                            <Check className="w-5 h-5 text-success-700" />
-                                          </div>
-                                          <p className="font-medium text-gray-900">
-                                            {cleaner.user_profile?.first_name}{" "}
-                                            {cleaner.user_profile?.last_name}
-                                          </p>
-                                        </div>
-                                        {isSelected && (
-                                          <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
-                                        )}
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {available.length === 0 && unavailable.length > 0 && (
-                            <p className="text-xs text-amber-700">
-                              No cleaners are free at this time. You can still
-                              pick someone below — they&apos;ll see the
-                              conflict and can decline or counter-propose.
-                            </p>
-                          )}
-
-                          {/* Unavailable group */}
-                          {unavailable.length > 0 && (
-                            <div className="space-y-2">
-                              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                                Not available at this time · {unavailable.length}
-                              </p>
-                              <div className="space-y-2">
-                                {unavailable.map(
-                                  ({ cleaner, conflicts, nextFreeSlot }) => {
-                                    const isSelected =
-                                      selectedCleaner?.id === cleaner.id;
-                                    const firstName =
-                                      cleaner.user_profile?.first_name ??
-                                      "Cleaner";
-                                    return (
-                                      <button
-                                        key={cleaner.id}
-                                        type="button"
-                                        onClick={() =>
-                                          setSelectedCleaner(cleaner)
-                                        }
-                                        className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
-                                          isSelected
-                                            ? "border-primary-500 bg-primary-50"
-                                            : "border-amber-200 bg-amber-50 hover:border-amber-300"
-                                        }`}
-                                      >
-                                        <div className="flex items-start justify-between gap-3">
-                                          <div className="flex items-start gap-3 min-w-0 flex-1">
-                                            <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                              <AlertTriangle className="w-5 h-5 text-amber-700" />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                              <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="font-medium text-gray-900">
-                                                  {cleaner.user_profile
-                                                    ?.first_name}{" "}
-                                                  {cleaner.user_profile
-                                                    ?.last_name}
-                                                </p>
-                                                {isSelected && (
-                                                  <span className="inline-flex items-center text-[10px] uppercase tracking-wide font-semibold text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5">
-                                                    Override
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <p className="text-xs text-amber-800 mt-1">
-                                                Conflicts with:
-                                              </p>
-                                              <ul className="text-xs text-amber-900 mt-0.5 space-y-0.5">
-                                                {conflicts
-                                                  .slice(0, 3)
-                                                  .map((c) => (
-                                                    <li key={c.id}>
-                                                      ·{" "}
-                                                      {formatTimeTo12h(
-                                                        c.scheduled_time,
-                                                      )}{" "}
-                                                      for {c.duration_minutes}
-                                                      min
-                                                    </li>
-                                                  ))}
-                                                {conflicts.length > 3 && (
-                                                  <li className="text-amber-700">
-                                                    · …and {conflicts.length - 3}{" "}
-                                                    more
-                                                  </li>
-                                                )}
-                                              </ul>
-                                              {nextFreeSlot ? (
-                                                <p className="text-xs text-amber-900 mt-1.5">
-                                                  <span className="font-semibold">
-                                                    Next free for {firstName}:
-                                                  </span>{" "}
-                                                  {formatTimeTo12h(
-                                                    nextFreeSlot.time,
-                                                  )}{" "}
-                                                  <span className="text-amber-700">
-                                                    · drive time not factored
-                                                    in
-                                                  </span>
-                                                </p>
-                                              ) : (
-                                                <p className="text-xs text-amber-900 mt-1.5">
-                                                  <span className="font-semibold">
-                                                    No same-day opening
-                                                  </span>{" "}
-                                                  — try a different day.
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-                                          {isSelected ? (
-                                            <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0 mt-1" />
-                                          ) : (
-                                            <span className="text-xs font-semibold text-amber-800 bg-white border border-amber-300 rounded-full px-3 py-1 flex-shrink-0 mt-1">
-                                              Select anyway
-                                            </span>
-                                          )}
-                                        </div>
-                                      </button>
-                                    );
-                                  },
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()
-                  )}
-
-                  {!selectedCleaner && cleaners.length > 0 && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <p className="text-sm text-amber-700">
-                        Pick a cleaner. They&apos;ll see the assignment and can
-                        decline or counter-propose.
-                      </p>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
