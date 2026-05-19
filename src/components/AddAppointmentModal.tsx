@@ -9,7 +9,7 @@ import {
   User,
   Home,
   CheckCircle,
-  CheckCircle2,
+  Circle,
   ChevronDown,
   Ban,
   Loader2,
@@ -1559,7 +1559,7 @@ export default function AddAppointmentModal({
                                       {isSelected ? (
                                         <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
                                       ) : (
-                                        <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                        <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                                       )}
                                     </button>
                                   );
@@ -1699,7 +1699,7 @@ export default function AddAppointmentModal({
                                                   }
                                                   className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-1.5 transition-colors"
                                                 >
-                                                  Use {firstName} anyway
+                                                  Select {firstName} anyway
                                                 </button>
                                               )}
                                             </div>
