@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { keys } from '../lib/queryKeys';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
+import { useVisibilityRefetch } from './useVisibilityRefetch';
 import { ConversationWithDetails, UserRole, UserProfile, Message } from '../types';
 
 interface UseConversationsOptions {
@@ -20,6 +21,9 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
   const query = useQuery({
     queryKey,
     enabled: !!userId,
+    // Background safety net for missed realtime events. Foreground only.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data: conversationsData, error: conversationsError } = await supabase
         .from('conversations')
@@ -151,6 +155,12 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
     table: 'message_attachments',
     enabled: !!userId,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+
+  // Recover from missed realtime events on tab focus.
+  useVisibilityRefetch({
+    keys: [queryKey],
+    enabled: !!userId,
   });
 
   // Optimistic unread-count update (used by useMessages on markAsRead).

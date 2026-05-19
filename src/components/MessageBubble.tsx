@@ -6,9 +6,12 @@ import MessageAttachmentsLightbox from "./MessageAttachmentsLightbox";
 interface MessageBubbleProps {
   message: MessageWithDetails;
   isSent: boolean;
+  // Fired once each attachment image finishes loading. Used by MessageThread
+  // to re-pin the scroll to the bottom after layout grows.
+  onImageLoad?: () => void;
 }
 
-export default function MessageBubble({ message, isSent }: MessageBubbleProps) {
+export default function MessageBubble({ message, isSent, onImageLoad }: MessageBubbleProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const attachments = message.attachments ?? [];
 
@@ -54,6 +57,7 @@ export default function MessageBubble({ message, isSent }: MessageBubbleProps) {
                   alt="Attachment"
                   className="w-full h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxIndex(idx)}
+                  onLoad={onImageLoad}
                 />
               </div>
             ))}

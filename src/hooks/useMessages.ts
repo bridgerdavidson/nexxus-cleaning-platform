@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { keys } from '../lib/queryKeys';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
+import { useVisibilityRefetch } from './useVisibilityRefetch';
 import { MessageWithDetails, MessageAttachment, UserProfile } from '../types';
 
 interface UseMessagesOptions {
@@ -61,6 +62,11 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
   const query = useQuery({
     queryKey,
     enabled: !!conversationId && !!userId,
+    // Background safety net: realtime is the primary delivery mechanism; this
+    // catches the rare silent-drop case where a channel fails to resubscribe
+    // after a network blip. Foreground only — no point polling a hidden tab.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data: messagesData, error } = await supabase
         .from('messages')
@@ -95,44 +101,103 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
       if (!row?.id) return;
 
       if (event === 'INSERT') {
-        // Async-enrich and patch into cache. We intentionally skip waiting
-        // here — the cache patch happens once enrichment resolves.
-        void (async () => {
-          const newMsg = payload.new as { id: string; sender_id: string; recipient_id: string; content?: string; conversation_id?: string };
-          const enriched = await enrichMessages([newMsg as Parameters<typeof enrichMessages>[0][number]]);
-          const incoming = enriched[0];
-          if (!incoming) return;
+        const newMsg = payload.new as unknown as MessageWithDetails & {
+          id: string;
+          sender_id: string;
+          recipient_id: string;
+        };
 
-          queryClient.setQueryData<MessageWithDetails[]>(queryKey, prev => {
-            const list = prev ?? [];
-            // Skip if the real ID is already in cache (echo of our own setQueryData).
-            if (list.some(m => m.id === incoming.id)) return list;
-            // Replace any matching optimistic temp- message from this sender.
-            const tempIdx = list.findIndex(
-              m =>
-                m.id.startsWith('temp-') &&
-                m.sender_id === incoming.sender_id &&
-                m.content === incoming.content
-            );
-            const next = tempIdx >= 0
-              ? [...list.slice(0, tempIdx), incoming, ...list.slice(tempIdx + 1)]
-              : [...list, incoming];
-            return next.sort(
-              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-          });
+        // Patch synchronously using profiles already present in the cache —
+        // sender/recipient are stable across a conversation, so prior bubbles
+        // carry the same profile rows we need. Saves two round-trips per
+        // INSERT and removes a failure point. Attachments arrive on a
+        // separate channel; new messages start with `attachments: []` and
+        // get patched in by the message_attachments subscription below.
+        let didEnrichLocally = true;
+        queryClient.setQueryData<MessageWithDetails[]>(queryKey, prev => {
+          const list = prev ?? [];
+          // Skip if the real ID is already in cache (echo of our own setQueryData).
+          if (list.some(m => m.id === newMsg.id)) return list;
 
-          // Auto-mark-as-read for messages this user receives while viewing the
-          // conversation.
-          if (newMsg.recipient_id === userId) {
-            void supabase.from('messages').update({ is_read: true }).eq('id', newMsg.id);
+          const sender =
+            list.find(m => m.sender?.id === newMsg.sender_id)?.sender ??
+            list.find(m => m.recipient?.id === newMsg.sender_id)?.recipient ??
+            null;
+          const recipient =
+            list.find(m => m.recipient?.id === newMsg.recipient_id)?.recipient ??
+            list.find(m => m.sender?.id === newMsg.recipient_id)?.sender ??
+            null;
+
+          if (!sender || !recipient) {
+            didEnrichLocally = false;
+            // Don't commit a half-enriched bubble; let the async fallback
+            // below fetch profiles and patch.
+            return list;
           }
 
-          // Smooth-scroll to the latest message.
+          const incoming: MessageWithDetails = {
+            ...newMsg,
+            sender,
+            recipient,
+            attachments: [],
+          };
+
+          // Replace any matching optimistic temp- message from this sender.
+          const tempIdx = list.findIndex(
+            m =>
+              m.id.startsWith('temp-') &&
+              m.sender_id === incoming.sender_id &&
+              m.content === incoming.content
+          );
+          const next = tempIdx >= 0
+            ? [...list.slice(0, tempIdx), incoming, ...list.slice(tempIdx + 1)]
+            : [...list, incoming];
+          return next.sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        });
+
+        // Auto-mark-as-read for messages this user receives while viewing the
+        // conversation.
+        if (newMsg.recipient_id === userId) {
+          void supabase.from('messages').update({ is_read: true }).eq('id', newMsg.id);
+        }
+
+        // Smooth-scroll to the latest message.
+        if (didEnrichLocally) {
           setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
           }, 50);
-        })();
+        } else {
+          // Cold start: cache had no prior messages, so we couldn't reuse a
+          // profile. Fall back to one-shot enrichment.
+          void (async () => {
+            const enriched = await enrichMessages([
+              newMsg as unknown as Parameters<typeof enrichMessages>[0][number],
+            ]);
+            const incoming = enriched[0];
+            if (!incoming) return;
+            queryClient.setQueryData<MessageWithDetails[]>(queryKey, prev => {
+              const list = prev ?? [];
+              if (list.some(m => m.id === incoming.id)) return list;
+              const tempIdx = list.findIndex(
+                m =>
+                  m.id.startsWith('temp-') &&
+                  m.sender_id === incoming.sender_id &&
+                  m.content === incoming.content
+              );
+              const next = tempIdx >= 0
+                ? [...list.slice(0, tempIdx), incoming, ...list.slice(tempIdx + 1)]
+                : [...list, incoming];
+              return next.sort(
+                (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+            });
+            setTimeout(() => {
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 50);
+          })();
+        }
         return;
       }
 
@@ -194,6 +259,12 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
         },
       };
     },
+  });
+
+  // Recover from missed realtime events on tab focus.
+  useVisibilityRefetch({
+    keys: [queryKey],
+    enabled: !!conversationId && !!userId,
   });
 
   // Reset the "marked as read" guard whenever conversation changes.
