@@ -100,17 +100,32 @@ describe('POST /api/appointments/confirm', () => {
     expect((fb as { reason: string }).reason).toBe('Out of town that day');
   });
 
-  it('counter_propose without feedback.reason → 400', async () => {
-    const { status } = await callRoute(POST, {
+  it('counter_propose without feedback.reason → 200 (reason is optional; null persisted)', async () => {
+    const { status, body } = await callRoute<{ success: boolean; feedbackId: string }>(POST, {
       method: 'POST',
       headers: bearerHeader(org.cleaner.accessToken),
       body: {
         appointmentId: appointmentInOrg1.id,
         action: 'counter_propose',
         organizationId: org.organizationId,
+        feedback: {
+          reason: '',
+          suggestedTimes: [{ date: '2026-06-10', time: '09:00' }],
+        },
       },
     });
-    expect(status).toBe(400);
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const admin = createTestSupabaseClient();
+    const { data: fb } = await admin
+      .from('cleaner_availability_feedback')
+      .select('reason')
+      .eq('appointment_id', appointmentInOrg1.id)
+      .single();
+    // Empty/whitespace reason is normalized to null so the admin UI can hide
+    // the "Reason" sub-section cleanly.
+    expect((fb as { reason: string | null }).reason).toBeNull();
   });
 
   it('cleaner declines via new `action: "decline"` with canned reason → feedback row stores the label', async () => {
