@@ -16,6 +16,13 @@ export interface AppointmentCardData {
   checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
+  /**
+   * Length of the appointment in minutes. Mirrors the DB column (initially
+   * copied from service_type.duration_minutes at create time). Used by the
+   * reschedule modal to compute the appointment's time slot for the soft-
+   * warn double-booking check.
+   */
+  duration_minutes?: number;
   status: string;
   job_progress?: string;
   total_price: number;
@@ -58,6 +65,12 @@ export interface AppointmentCardData {
    * scope; threaded through from `AdminAppointment.organization_id`.
    */
   organization_id?: string | null;
+  /**
+   * Wave 2 SLA: cleaner-response deadline. Null once the cleaner responds.
+   * BookingsPage uses `isAppointmentOverdue` against this + status +
+   * cleaner_confirmation_status to compute the overdue surface.
+   */
+  response_deadline?: string | null;
   /**
    * Latest cleaner-availability feedback for the appointment (joined). When
    * `cleaner_suggested_times` rows exist on this feedback, the row is a

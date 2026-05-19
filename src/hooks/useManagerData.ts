@@ -15,11 +15,15 @@ export interface ManagerAppointment {
   checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
+  /** Length of the appointment in minutes (DB column). */
+  duration_minutes?: number;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  /** Wave 2 SLA: deadline for cleaner response. Null once cleaner responds. */
+  response_deadline?: string | null;
   price_override_enabled?: boolean;
   price_override_total?: number | null;
   homeowner_id?: string;
@@ -128,11 +132,13 @@ export function useManagerAppointments() {
           checklist_id,
           scheduled_date,
           scheduled_time,
+          duration_minutes,
           status,
           total_price,
           special_requests,
           notes,
           cleaner_confirmation_status,
+          response_deadline,
           price_override_enabled,
           price_override_total,
           homeowner_id,

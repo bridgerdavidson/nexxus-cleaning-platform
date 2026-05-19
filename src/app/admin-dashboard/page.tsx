@@ -1,8 +1,10 @@
 ﻿"use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
+import { useToast } from "../../contexts/ToastContext";
+import { isAppointmentOverdue } from "../../lib/isAppointmentOverdue";
 import {
   Calendar,
   Users,
@@ -120,6 +122,7 @@ function AdminDashboardInner() {
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
     useState<AppointmentCardData | null>(null);
   const router = useRouter();
+  const { showToast } = useToast();
 
   // Real data hooks - must be called at top level
   const {
@@ -225,6 +228,58 @@ function AdminDashboardInner() {
     );
   }, [conversations, selectedMessagesConversationId]);
 
+  // Wave 2 SLA: appointments where the cleaner hasn't responded by the
+  // deadline OR has rejected (counter-proposed / hard-declined). Drives the
+  // Bookings nav dot + the on-mount overdue toast.
+  const needsResponseCount = useMemo(() => {
+    const now = new Date();
+    return appointments.filter((apt) => {
+      if (apt.status === "cancelled" || apt.status === "completed") return false;
+      if (apt.cleaner_confirmation_status === "rejected") return true;
+      return isAppointmentOverdue(
+        {
+          status: apt.status,
+          cleaner_confirmation_status: apt.cleaner_confirmation_status,
+          response_deadline: apt.response_deadline,
+        },
+        now,
+      );
+    }).length;
+  }, [appointments]);
+
+  const overdueCount = useMemo(() => {
+    const now = new Date();
+    return appointments.filter((apt) =>
+      isAppointmentOverdue(
+        {
+          status: apt.status,
+          cleaner_confirmation_status: apt.cleaner_confirmation_status,
+          response_deadline: apt.response_deadline,
+        },
+        now,
+      ),
+    ).length;
+  }, [appointments]);
+
+  // Fire the overdue toast once per session per dashboard load. The ref
+  // gates additional fires after the first load even if realtime invalidates
+  // appointments — we don't want to spam the admin on every row update.
+  const overdueToastFiredRef = useRef(false);
+  useEffect(() => {
+    if (appointmentsLoading) return;
+    if (overdueToastFiredRef.current) return;
+    if (overdueCount === 0) return;
+    overdueToastFiredRef.current = true;
+    showToast(
+      `${overdueCount} appointment${overdueCount === 1 ? "" : "s"} awaiting cleaner response past SLA`,
+      {
+        variant: "error",
+        description: "Check the Bookings tab to reassign.",
+        duration: 6000,
+      },
+    );
+  }, [appointmentsLoading, overdueCount, showToast]);
+
   // Hierarchical navigation structure (must be before early return)
   const navigationGroups = useMemo(
     () => ({
@@ -234,7 +289,12 @@ function AdminDashboardInner() {
         icon: LayoutGrid,
         tabs: [
           { id: "home", label: "Overview", icon: Home },
-          { id: "bookings", label: "Bookings", icon: Calendar },
+          {
+            id: "bookings",
+            label: "Bookings",
+            icon: Calendar,
+            hasNotification: needsResponseCount > 0,
+          },
           {
             id: "messages",
             label: "Messages",
@@ -274,7 +334,7 @@ function AdminDashboardInner() {
         ],
       },
     }),
-    [hasUnreadMessages],
+    [hasUnreadMessages, needsResponseCount],
   );
 
   // Get tabs for current group (must be before early return)

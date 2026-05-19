@@ -13,11 +13,15 @@ import {
   Repeat,
   CreditCard,
   DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 import type { RecurrenceType } from "../types";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
+import { findConflicts, findNextAvailableSlot } from "../lib/appointmentConflicts";
+import { formatTimeTo12h } from "../lib/formatTime";
 import PaymentMethodForm from "./PaymentMethodForm";
 
 interface Homeowner {
@@ -157,6 +161,18 @@ export default function AddAppointmentModal({
   const [cleanersLoading, setCleanersLoading] = useState(false);
   const [cleanerSearch, setCleanerSearch] = useState("");
   const [selectedCleaner, setSelectedCleaner] = useState<Cleaner | null>(null);
+
+  // Wave 3: soft-warn double-booking. Holds the selected cleaner's other
+  // active appointments so findConflicts can flag overlaps inline.
+  const [cleanerSchedule, setCleanerSchedule] = useState<
+    Array<{
+      id: string;
+      status: string;
+      scheduled_date: string;
+      scheduled_time: string;
+      duration_minutes: number;
+    }>
+  >([]);
 
   // Step 2 - Price override state
   const [customPrice, setCustomPrice] = useState<string>("");
@@ -466,6 +482,61 @@ export default function AddAppointmentModal({
     }
   };
 
+  // Wave 3: fetch the selected cleaner's other active appointments so
+  // findConflicts can flag overlaps inline. We pull the whole future window —
+  // tiny per-cleaner cardinality makes per-date filtering unnecessary.
+  useEffect(() => {
+    if (!selectedCleaner?.id || !currentOrganizationId) {
+      setCleanerSchedule([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from("appointments")
+        .select("id, status, scheduled_date, scheduled_time, duration_minutes")
+        .eq("organization_id", currentOrganizationId)
+        .eq("cleaner_id", selectedCleaner.id)
+        .in("status", ["pending", "confirmed", "in_progress"]);
+      if (cancelled) return;
+      if (fetchError) {
+        console.warn("Conflict fetch failed:", fetchError.message);
+        setCleanerSchedule([]);
+        return;
+      }
+      setCleanerSchedule((data || []) as typeof cleanerSchedule);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCleaner?.id, currentOrganizationId]);
+
+  // Conflicts the admin is about to override. Recomputed on every input
+  // change — pure, cheap.
+  const conflictingAppointments = (() => {
+    if (!selectedCleaner?.id || !scheduledDate || !scheduledTime || !selectedServiceType) {
+      return [];
+    }
+    return findConflicts(cleanerSchedule, {
+      date: scheduledDate,
+      time: scheduledTime,
+      durationMinutes: selectedServiceType.duration_minutes,
+    });
+  })();
+  const hasConflicts = conflictingAppointments.length > 0;
+
+  // When there's a conflict, surface the next available slot on the same day
+  // as plain text. Display-only (not clickable) since drive time between
+  // properties isn't factored in.
+  const nextAvailableSlot =
+    hasConflicts && selectedCleaner?.id && selectedServiceType
+      ? findNextAvailableSlot(cleanerSchedule, {
+          date: scheduledDate,
+          time: scheduledTime,
+          durationMinutes: selectedServiceType.duration_minutes,
+        })
+      : null;
+
   const handleCreateAppointment = async () => {
     if (
       !selectedHomeowner ||
@@ -594,6 +665,10 @@ export default function AddAppointmentModal({
       }
 
       // Handle single appointment (existing logic)
+      const responseDeadline = computeResponseDeadlineISO(
+        scheduledDate,
+        scheduledTime,
+      );
       const { data: insertData, error: insertError } = await supabase
         .from("appointments")
         .insert({
@@ -615,6 +690,7 @@ export default function AddAppointmentModal({
           special_requests: specialRequests || null,
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
+          response_deadline: responseDeadline,
         });
 
       if (insertError) {
@@ -1736,6 +1812,63 @@ export default function AddAppointmentModal({
               )}
           </div>
 
+          {/* Wave 3: soft-warn double-booking — admin can override.
+              Catches ANY time-slot overlap, not just exact-same-start: if the
+              new slot starts mid-way through an existing booking, ends inside
+              one, or fully contains one, it warns. */}
+          {hasConflicts && selectedCleaner && selectedServiceType && (
+            <div className="px-8 pb-2">
+              <div
+                role="alert"
+                className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-orange-900"
+              >
+                <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm leading-snug">
+                  <p className="font-semibold">
+                    {selectedCleaner.user_profile?.first_name ?? "This cleaner"}
+                    &apos;s schedule overlaps this time slot.
+                  </p>
+                  <p className="text-xs mt-0.5">
+                    New slot:{" "}
+                    <span className="font-medium">
+                      {scheduledTime
+                        ? `${formatTimeTo12h(scheduledTime)} for ${selectedServiceType.duration_minutes}min`
+                        : "—"}
+                    </span>{" "}
+                    · clashes with:
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-xs">
+                    {conflictingAppointments.slice(0, 3).map((c) => (
+                      <li key={c.id}>
+                        · {formatTimeTo12h(c.scheduled_time)} for{" "}
+                        {c.duration_minutes}min
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-xs">
+                    They&apos;ll see both assignments and can decline or
+                    counter-propose. Save anyway, or pick a different time.
+                  </p>
+                  {nextAvailableSlot && (
+                    <p className="mt-2 text-xs border-t border-orange-200 pt-2">
+                      <span className="font-semibold">Next free slot:</span>{" "}
+                      {formatTimeTo12h(nextAvailableSlot.time)} ·{" "}
+                      <span className="text-orange-700/80">
+                        Drive time between properties not factored in.
+                      </span>
+                    </p>
+                  )}
+                  {hasConflicts && !nextAvailableSlot && (
+                    <p className="mt-2 text-xs border-t border-orange-200 pt-2">
+                      <span className="font-semibold">No same-day opening</span> — try a different
+                      day.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Footer */}
           <div className="border-t border-gray-200 px-8 py-4 bg-gray-50">
             <div className="flex justify-between items-center">
@@ -1825,6 +1958,11 @@ export default function AddAppointmentModal({
                       {recurrenceType !== "none"
                         ? "Creating Series..."
                         : "Sending..."}
+                    </>
+                  ) : hasConflicts ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4" />
+                      Save anyway
                     </>
                   ) : (
                     <>

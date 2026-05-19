@@ -20,6 +20,8 @@ export interface CleanerAppointment {
   total_price: number;
   special_requests?: string;
   cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected';
+  /** Wave 2 SLA: cleaner-response deadline (ISO). Null once the cleaner responds. */
+  response_deadline?: string | null;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -173,6 +175,7 @@ export function useCleanerAppointments() {
           total_price,
           special_requests,
           cleaner_confirmation_status,
+          response_deadline,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,

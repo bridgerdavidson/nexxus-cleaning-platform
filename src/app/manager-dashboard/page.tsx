@@ -5,10 +5,13 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   Suspense,
 } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
+import { useToast } from "../../contexts/ToastContext";
+import { isAppointmentOverdue } from "../../lib/isAppointmentOverdue";
 import {
   Calendar,
   Users,
@@ -130,6 +133,7 @@ function ManagerDashboardInner() {
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
     useState<AppointmentCardData | null>(null);
   const router = useRouter();
+  const { showToast } = useToast();
 
   // Real data hooks - must be called at top level
   const {
@@ -258,6 +262,54 @@ function ManagerDashboardInner() {
     );
   }, [conversations, selectedMessagesConversationId]);
 
+  // Wave 2 SLA: count cleaner-rejected + overdue appointments to drive the
+  // Bookings nav-dot and the on-mount overdue toast.
+  const needsResponseCount = useMemo(() => {
+    const now = new Date();
+    return appointments.filter((apt) => {
+      if (apt.status === "cancelled" || apt.status === "completed") return false;
+      if (apt.cleaner_confirmation_status === "rejected") return true;
+      return isAppointmentOverdue(
+        {
+          status: apt.status,
+          cleaner_confirmation_status: apt.cleaner_confirmation_status,
+          response_deadline: apt.response_deadline,
+        },
+        now,
+      );
+    }).length;
+  }, [appointments]);
+
+  const overdueCount = useMemo(() => {
+    const now = new Date();
+    return appointments.filter((apt) =>
+      isAppointmentOverdue(
+        {
+          status: apt.status,
+          cleaner_confirmation_status: apt.cleaner_confirmation_status,
+          response_deadline: apt.response_deadline,
+        },
+        now,
+      ),
+    ).length;
+  }, [appointments]);
+
+  const overdueToastFiredRef = useRef(false);
+  useEffect(() => {
+    if (appointmentsLoading) return;
+    if (overdueToastFiredRef.current) return;
+    if (overdueCount === 0) return;
+    overdueToastFiredRef.current = true;
+    showToast(
+      `${overdueCount} appointment${overdueCount === 1 ? "" : "s"} awaiting cleaner response past SLA`,
+      {
+        variant: "error",
+        description: "Check the Bookings tab to reassign.",
+        duration: 6000,
+      },
+    );
+  }, [appointmentsLoading, overdueCount, showToast]);
+
   // Build navigation groups based on permissions - using useMemo to ensure consistent hook order
   const navigationGroups = useMemo(() => {
     // Debug: Log permissions to help diagnose
@@ -289,7 +341,12 @@ function ManagerDashboardInner() {
 
     // Add bookings if permitted - check explicitly for true
     if (permissions.can_view_bookings === true) {
-      opsTabs.push({ id: "bookings", label: "Bookings", icon: Calendar });
+      opsTabs.push({
+        id: "bookings",
+        label: "Bookings",
+        icon: Calendar,
+        ...(needsResponseCount > 0 ? { hasNotification: true } : {}),
+      });
     }
 
     // Add messages if permitted
@@ -384,7 +441,7 @@ function ManagerDashboardInner() {
     }
 
     return groups;
-  }, [permissions, permissionsLoading, hasUnreadMessages]);
+  }, [permissions, permissionsLoading, hasUnreadMessages, needsResponseCount]);
 
   // Get groups array for sidebar
   const groups = useMemo(

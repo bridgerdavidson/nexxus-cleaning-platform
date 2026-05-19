@@ -163,6 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Atomically (best-effort) flip the appointment to confirmed at the picked time.
+    // Cleaner already responded (suggested the time), so the SLA deadline clears.
     const { error: updateError } = await supabaseAdmin
       .from('appointments')
       .update({
@@ -170,6 +171,7 @@ export async function POST(request: NextRequest) {
         scheduled_time: pickedTime,
         status: 'confirmed',
         cleaner_confirmation_status: 'approved',
+        response_deadline: null,
       })
       .eq('id', appointmentId);
 
