@@ -5,7 +5,7 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  RefreshCw,
+  Calendar,
 } from "lucide-react";
 
 interface StatusBadgeProps {
@@ -13,24 +13,44 @@ interface StatusBadgeProps {
   size?: "sm" | "md" | "lg";
   /**
    * Cleaner-confirmation state for the appointment, if any. When set to
-   * "rejected" it overrides the underlying status with a "Reschedule
-   * Required" badge. Other values defer to the regular status mapping.
+   * `"rejected"`, the badge collapses to either "Counter-proposed" (if the
+   * cleaner has provided suggested alternative times) or "Pending" (hard
+   * decline — appointment falls back into the admin's pending queue).
    */
   cleanerConfirmationStatus?: "awaiting" | "approved" | "rejected" | null;
+  /**
+   * True when the appointment has cleaner-suggested alternative times. Used
+   * with `cleanerConfirmationStatus === "rejected"` to render the
+   * "Counter-proposed" bucket instead of "Pending".
+   */
+  hasSuggestedTimes?: boolean;
 }
 
 export default function StatusBadge({
   status,
   size = "md",
   cleanerConfirmationStatus,
+  hasSuggestedTimes = false,
 }: StatusBadgeProps) {
   const getStatusConfig = () => {
+    // Wave 1: 5 user-visible buckets uniformly across roles:
+    //  Pending / Counter-proposed / Confirmed / In progress / Done.
+    // `cancelled` is rendered but not part of the 5 "live" buckets.
     if (cleanerConfirmationStatus === "rejected") {
+      if (hasSuggestedTimes) {
+        return {
+          bgColor: "bg-orange-50",
+          textColor: "text-orange-700",
+          icon: Calendar,
+          label: "Counter-proposed",
+        };
+      }
+      // Hard decline falls back into the admin's pending queue.
       return {
-        bgColor: "bg-orange-50",
-        textColor: "text-orange-700",
-        icon: RefreshCw,
-        label: "Reschedule Required",
+        bgColor: "bg-amber-50",
+        textColor: "text-amber-700",
+        icon: Clock,
+        label: "Pending",
       };
     }
 
@@ -40,7 +60,7 @@ export default function StatusBadge({
           bgColor: "bg-amber-50",
           textColor: "text-amber-700",
           icon: Clock,
-          label: "Awaiting Cleaner",
+          label: "Pending",
         };
       case "confirmed":
         return {
@@ -54,14 +74,14 @@ export default function StatusBadge({
           bgColor: "bg-cyan-50",
           textColor: "text-cyan-700",
           icon: Loader2,
-          label: "In Progress",
+          label: "In progress",
         };
       case "completed":
         return {
           bgColor: "bg-emerald-50",
           textColor: "text-emerald-700",
           icon: CheckCircle2,
-          label: "Completed",
+          label: "Done",
         };
       case "cancelled":
         return {

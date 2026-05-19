@@ -198,7 +198,7 @@ const PROJECTED_EARNINGS_PRESETS: EarningsRangePreset[] = [
 ];
 
 function CleanerDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     CLEANER_DASHBOARD_TAB_IDS
@@ -430,6 +430,21 @@ function CleanerDashboardInner() {
           if (dateCompare !== 0) return dateCompare;
           return a.scheduled_time.localeCompare(b.scheduled_time);
         }),
+    [appointments]
+  );
+
+  // Cleaner's existing schedule as conflict blocks — feeds the free-slot
+  // chip derivation in PendingConfirmationsSection's "Propose alternative"
+  // modal. Cancelled appointments don't count.
+  const cleanerSchedule = useMemo(
+    () =>
+      appointments
+        .filter((apt) => apt.status !== "cancelled")
+        .map((apt) => ({
+          date: apt.scheduled_date,
+          time: apt.scheduled_time,
+          duration_minutes: apt.service_type?.duration_minutes ?? 60,
+        })),
     [appointments]
   );
 
@@ -1024,6 +1039,8 @@ function CleanerDashboardInner() {
           loading={appointmentsLoading}
           userId={user.id}
           organizationId={currentOrganizationId || ""}
+          cleanerSchedule={cleanerSchedule}
+          accessToken={accessToken}
           onConfirmed={() => {
             // Realtime subscription will auto-update the appointments state
             // No manual refetch needed

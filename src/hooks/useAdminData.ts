@@ -10,6 +10,7 @@ import { keys } from '../lib/queryKeys';
 
 export interface AdminAppointment {
   id: string;
+  organization_id?: string | null;
   service_type_id?: string;
   checklist_id?: string | null;
   scheduled_date: string;
@@ -51,6 +52,26 @@ export interface AdminAppointment {
     price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  /**
+   * Latest cleaner-availability feedback (counter-proposal data). Joined for
+   * the Bookings page's "Needs your response" section so the admin can
+   * one-click accept a cleaner-suggested time.
+   */
+  cleaner_availability_feedback?: Array<{
+    id: string;
+    reason: string | null;
+    cleaner_suggested_times?: Array<{
+      id: string;
+      suggested_date: string;
+      suggested_time: string;
+    }> | null;
+    cleaner_suggested_windows?: Array<{
+      id: string;
+      window_date: string;
+      start_time: string;
+      end_time: string;
+    }> | null;
+  }> | null;
 }
 
 export interface AdminCleaner {
@@ -136,6 +157,7 @@ export function useAdminAppointments() {
         .from('appointments')
         .select(`
           id,
+          organization_id,
           service_type_id,
           checklist_id,
           scheduled_date,
@@ -175,6 +197,12 @@ export function useAdminAppointments() {
           checklist:checklists(
             name,
             price_adder
+          ),
+          cleaner_availability_feedback (
+            id,
+            reason,
+            cleaner_suggested_times ( id, suggested_date, suggested_time ),
+            cleaner_suggested_windows ( id, window_date, start_time, end_time )
           )
         `)
         .eq('organization_id', orgId)
@@ -1893,6 +1921,39 @@ export async function inviteTeamMember(data: {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to invite team member',
+    };
+  }
+}
+
+// Client helper: admin one-click accepts a cleaner-suggested counter-proposal.
+// Posts to /api/appointments/accept-counter-proposal with the picked
+// suggested-time row id. The route updates the appointment to confirmed at
+// the picked date/time and clears the feedback.
+export async function acceptCounterProposal(args: {
+  appointmentId: string;
+  suggestedTimeId: string;
+  organizationId: string;
+  accessToken: string | null | undefined;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { accessToken, ...rest } = args;
+    const response = await fetch('/api/appointments/accept-counter-proposal', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: accessToken ? `Bearer ${accessToken}` : '',
+      },
+      body: JSON.stringify(rest),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      return { success: false, error: result.error || 'Failed to accept counter-proposal' };
+    }
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to accept counter-proposal',
     };
   }
 }

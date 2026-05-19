@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Send,
   SprayCan,
+  Zap,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
@@ -59,6 +60,25 @@ interface RescheduleAppointmentModalProps {
   appointment: AppointmentCardData | null;
   organizationId: string;
 }
+
+// Legacy auto-default reason value persisted by earlier versions of the cleaner-side
+// "Propose alternative" flow. Treated as "no real reason given" so we don't surface
+// the placeholder text to the admin as if the cleaner had typed it.
+const PLACEHOLDER_REASON = "Proposing alternative times";
+
+const formatDateLong = (dateStr: string): string => {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatDateShort = (dateStr: string): string => {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const twoDigitYear = year % 100;
+  return `${month.toString().padStart(2, "0")}/${day.toString().padStart(2, "0")}/${twoDigitYear.toString().padStart(2, "0")}`;
+};
 
 export default function RescheduleAppointmentModal({
   isOpen,
@@ -174,13 +194,13 @@ export default function RescheduleAppointmentModal({
     }
   }, [appointment?.id]);
 
-  // Initialize state when appointment changes
   useEffect(() => {
     if (isOpen && appointment) {
       setScheduledDate(appointment.scheduled_date || "");
       setScheduledTime(appointment.scheduled_time?.slice(0, 5) || "");
       setError(null);
       setSelectedSuggestedTime(null);
+      setSelectedSuggestedWindow(null);
 
       fetchFeedback();
       fetchCleaners();
@@ -194,7 +214,6 @@ export default function RescheduleAppointmentModal({
     fetchAppointmentCleanerId,
   ]);
 
-  // Set selected cleaner once cleaners and originalCleanerId are loaded
   useEffect(() => {
     if (cleaners.length > 0 && originalCleanerId) {
       const currentCleaner = cleaners.find((c) => c.id === originalCleanerId);
@@ -205,12 +224,6 @@ export default function RescheduleAppointmentModal({
   }, [cleaners, originalCleanerId]);
 
   if (!isOpen || !appointment) return null;
-
-  const formatDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split("-").map(Number);
-    const twoDigitYear = year % 100;
-    return `${month.toString().padStart(2, "0")}/${day.toString().padStart(2, "0")}/${twoDigitYear.toString().padStart(2, "0")}`;
-  };
 
   const getHomeownerName = () => {
     if (appointment.homeowner) {
@@ -234,8 +247,14 @@ export default function RescheduleAppointmentModal({
     return "Unknown";
   };
 
+  const getCurrentCleanerName = (): string => {
+    if (!originalCleanerId) return "The cleaner";
+    const current = cleaners.find((c) => c.id === originalCleanerId);
+    if (current) return getCleanerName(current);
+    return "The cleaner";
+  };
+
   const handleSuggestedTimeClick = (st: SuggestedTime) => {
-    // Format time to HH:mm (the input stores HH:mm:ss)
     const timeForInput = st.suggested_time.slice(0, 5);
     setScheduledDate(st.suggested_date);
     setScheduledTime(timeForInput);
@@ -247,7 +266,6 @@ export default function RescheduleAppointmentModal({
   };
 
   const handleSuggestedWindowClick = (sw: SuggestedWindow) => {
-    // Pre-fill with start time of window
     const startTimeForInput = sw.start_time.slice(0, 5);
     setScheduledDate(sw.window_date);
     setScheduledTime(startTimeForInput);
@@ -278,7 +296,6 @@ export default function RescheduleAppointmentModal({
 
   // Check if current date/time matches any suggested time or falls within any window
   const matchesSuggestedTimeOrWindow = () => {
-    // Check specific times
     const matchesSpecificTime = feedback.some((fb) =>
       fb.cleaner_suggested_times.some(
         (st) =>
@@ -286,24 +303,35 @@ export default function RescheduleAppointmentModal({
           st.suggested_time.slice(0, 5) === scheduledTime,
       ),
     );
-
     if (matchesSpecificTime) return true;
-
-    // Check windows
     const matchesWindow = feedback.some((fb) =>
       fb.cleaner_suggested_windows?.some((sw) => {
         if (sw.window_date !== scheduledDate) return false;
-
         const selectedTime = scheduledTime + ":00";
         return selectedTime >= sw.start_time && selectedTime <= sw.end_time;
       }),
     );
-
     return matchesWindow;
   };
 
   const isSameCleaner = selectedCleaner?.id === originalCleanerId;
   const willAutoApprove = isSameCleaner && matchesSuggestedTimeOrWindow();
+
+  // Aggregate the cleaner's latest feedback across all returned rows.
+  const allSuggestedTimes: SuggestedTime[] = feedback.flatMap(
+    (fb) => fb.cleaner_suggested_times ?? [],
+  );
+  const allSuggestedWindows: SuggestedWindow[] = feedback.flatMap(
+    (fb) => fb.cleaner_suggested_windows ?? [],
+  );
+  const hasSuggestions =
+    allSuggestedTimes.length > 0 || allSuggestedWindows.length > 0;
+  const cleanerReason: string | null = (() => {
+    const raw = feedback.find((fb) => fb.reason && fb.reason.trim())?.reason;
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed === PLACEHOLDER_REASON ? null : trimmed;
+  })();
 
   const filteredCleaners = cleaners.filter((c) => {
     if (!cleanerSearch) return true;
@@ -325,8 +353,6 @@ export default function RescheduleAppointmentModal({
 
       const newStatus = willAutoApprove ? "approved" : "awaiting";
 
-      // Delete any existing feedback for this appointment before rescheduling
-      // This cleans up old feedback from previous reschedule cycles
       try {
         await supabase
           .from("cleaner_availability_feedback")
@@ -334,7 +360,6 @@ export default function RescheduleAppointmentModal({
           .eq("appointment_id", appointment.id);
       } catch (deleteErr) {
         console.error("Error deleting old feedback:", deleteErr);
-        // Non-fatal - continue with reschedule
       }
 
       const result = await updateAppointment(appointment.id, {
@@ -349,10 +374,8 @@ export default function RescheduleAppointmentModal({
         throw new Error(result.error || "Failed to reschedule appointment");
       }
 
-      // If awaiting, send in-app notification to cleaner
       if (newStatus === "awaiting" && user?.id) {
         try {
-          // Get or create conversation
           const { data: conversationId, error: convError } = await supabase.rpc(
             "get_or_create_conversation",
             {
@@ -363,7 +386,7 @@ export default function RescheduleAppointmentModal({
 
           if (!convError && conversationId) {
             const homeownerName = getHomeownerName();
-            const newDateFormatted = formatDate(scheduledDate);
+            const newDateFormatted = formatDateShort(scheduledDate);
             const newTimeFormatted = formatTimeTo12h(scheduledTime);
 
             await supabase.from("messages").insert({
@@ -378,7 +401,6 @@ export default function RescheduleAppointmentModal({
           }
         } catch (msgErr) {
           console.error("Error sending reschedule notification:", msgErr);
-          // Non-fatal - don't block the reschedule
         }
       }
 
@@ -402,345 +424,272 @@ export default function RescheduleAppointmentModal({
     setCleanerSearch("");
     setError(null);
     setSelectedSuggestedTime(null);
+    setSelectedSuggestedWindow(null);
     onClose();
   };
 
+  const currentCleanerName = getCurrentCleanerName();
+  const submitLabel = willAutoApprove
+    ? "Confirm reschedule"
+    : "Send to cleaner";
+  const SubmitIcon = willAutoApprove ? CheckCircle : Send;
+
   return (
     <div className="fixed inset-0 z-[300] overflow-y-auto">
-      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
         onClick={handleClose}
       />
 
-      {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full animate-slide-up max-h-[90vh] flex flex-col">
           {/* Header */}
-          <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <RefreshCw className="w-5 h-5 text-red-600" />
+          <div className="flex-shrink-0 flex items-center justify-between gap-4 p-6 border-b border-gray-200">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 bg-amber-100 rounded-lg flex-shrink-0">
+                <RefreshCw className="w-5 h-5 text-amber-600" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">
-                  Reschedule Appointment
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold text-gray-900 leading-tight">
+                  Reschedule appointment
                 </h2>
-                <p className="text-sm text-gray-500">
-                  Change the date, time, or cleaner for this appointment
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {hasSuggestions
+                    ? `Accept ${currentCleanerName}'s suggestion or pick a different time.`
+                    : "Pick a new time or reassign to another cleaner."}
                 </p>
               </div>
             </div>
             <button
               onClick={handleClose}
               disabled={submitting}
-              className="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100"
+              aria-label="Close"
+              className="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100 flex-shrink-0"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Two-column content: mobile = one scroll (details then form); lg = side-by-side with form column scroll */}
+          {/* Body */}
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col lg:flex-row">
             <div className="flex-1 min-h-0 overflow-y-auto modal-scrollbar flex flex-col lg:contents">
-              {/* Left: Appointment details (informational) */}
-              <div className="flex-shrink-0 lg:w-[320px] lg:border-r lg:border-gray-200 bg-gray-50/80 p-6">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
-                  Appointment Details
+              {/* LEFT: Appointment summary (information dense, no actions) */}
+              <aside className="flex-shrink-0 lg:w-[300px] lg:border-r lg:border-gray-200 bg-gray-50/70 p-6">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                  Appointment
                 </h3>
-                <div className="space-y-4">
+                <dl className="space-y-4">
                   <div className="flex items-start gap-3">
-                    <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                    <div className="p-2 bg-white rounded-lg border border-gray-200 shadow-sm flex-shrink-0">
                       <User className="w-4 h-4 text-gray-500" />
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <div className="min-w-0">
+                      <dt className="text-xs font-medium text-gray-500">
                         Customer
-                      </p>
-                      <p className="font-medium text-gray-900 mt-0.5">
+                      </dt>
+                      <dd className="text-sm font-medium text-gray-900 mt-0.5">
                         {getHomeownerName()}
-                      </p>
+                      </dd>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                    <div className="p-2 bg-white rounded-lg border border-gray-200 shadow-sm flex-shrink-0">
                       <MapPin className="w-4 h-4 text-gray-500" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <dt className="text-xs font-medium text-gray-500">
                         Address
-                      </p>
-                      <p className="text-sm text-gray-700 mt-0.5">
+                      </dt>
+                      <dd className="text-sm text-gray-700 mt-0.5 break-words">
                         {getPropertyAddress()}
-                      </p>
+                      </dd>
                     </div>
                   </div>
                   {appointment.service_type && (
                     <div className="flex items-start gap-3">
-                      <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                      <div className="p-2 bg-white rounded-lg border border-gray-200 shadow-sm flex-shrink-0">
                         <SprayCan className="w-4 h-4 text-gray-500" />
                       </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      <div className="min-w-0">
+                        <dt className="text-xs font-medium text-gray-500">
                           Service
-                        </p>
-                        <p className="text-sm text-gray-700 mt-0.5">
+                        </dt>
+                        <dd className="text-sm text-gray-700 mt-0.5 break-words">
                           {appointment.checklist?.name
-                            ? `${appointment.service_type.name} (${appointment.checklist.name})`
+                            ? `${appointment.service_type.name} · ${appointment.checklist.name}`
                             : appointment.service_type.name}
-                        </p>
-                        {appointment.checklist?.name && (
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {appointment.checklist.name}
-                          </p>
-                        )}
+                        </dd>
                       </div>
                     </div>
                   )}
                   <div className="flex items-start gap-3">
-                    <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
+                    <div className="p-2 bg-white rounded-lg border border-gray-200 shadow-sm flex-shrink-0">
                       <Calendar className="w-4 h-4 text-gray-500" />
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Current time
-                      </p>
-                      <p className="text-sm text-gray-700 mt-0.5">
-                        {formatDate(appointment.scheduled_date)} at{" "}
+                    <div className="min-w-0">
+                      <dt className="text-xs font-medium text-gray-500">
+                        Originally
+                      </dt>
+                      <dd className="text-sm text-gray-700 mt-0.5">
+                        {formatDateLong(appointment.scheduled_date)} ·{" "}
                         {formatTimeTo12h(appointment.scheduled_time)}
-                      </p>
+                      </dd>
                     </div>
                   </div>
-                </div>
-              </div>
+                </dl>
+              </aside>
 
-              {/* Right: Rescheduling logic (form + actions) */}
+              {/* RIGHT: Action column */}
               <div className="flex-shrink-0 flex flex-col p-6 lg:flex-1 lg:min-h-0 lg:overflow-y-auto modal-scrollbar">
-                <div className="space-y-5">
-                  {/* Cleaner Feedback Section */}
-                  <div className="border-l-4 border-red-500 bg-red-50 rounded-r-xl p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                      <h3 className="font-semibold text-red-800">
-                        Cleaner Declined This Time
-                      </h3>
+                <div className="space-y-6 flex-1">
+                  {/* Compact decline strip — context, not content */}
+                  <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-amber-900 leading-snug">
+                      <span className="font-semibold">{currentCleanerName}</span>{" "}
+                      declined this time
+                      {cleanerReason ? (
+                        <>
+                          :{" "}
+                          <span className="italic font-medium">
+                            &ldquo;{cleanerReason}&rdquo;
+                          </span>
+                        </>
+                      ) : (
+                        "."
+                      )}
+                    </p>
+                  </div>
+
+                  {feedbackLoading && (
+                    <div className="flex items-center justify-center gap-2 text-gray-500 py-3">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Loading cleaner response…</span>
                     </div>
+                  )}
 
-                    {feedbackLoading ? (
-                      <div className="flex items-center gap-2 text-gray-500">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span className="text-sm">Loading feedback...</span>
-                      </div>
-                    ) : feedback.length > 0 ? (
-                      <div className="space-y-3">
-                        {feedback.map((fb) => (
-                          <div key={fb.id}>
-                            {fb.reason && (
-                              <div className="mb-3">
-                                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-                                  Reason
-                                </p>
-                                <p className="text-sm text-gray-800 bg-white rounded-lg p-3 border border-red-200">
-                                  {fb.reason}
-                                </p>
-                              </div>
-                            )}
-                            {fb.cleaner_suggested_times &&
-                              fb.cleaner_suggested_times.length > 0 && (
-                                <div>
-                                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                                    Suggested Alternative Times{" "}
-                                    <span className="text-gray-400 normal-case">
-                                      (click to select)
-                                    </span>
-                                  </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {fb.cleaner_suggested_times.map((st) => {
-                                      const isSelected =
-                                        isSuggestedTimeSelected(st);
-                                      return (
-                                        <button
-                                          key={st.id}
-                                          type="button"
-                                          onClick={() =>
-                                            handleSuggestedTimeClick(st)
-                                          }
-                                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                            isSelected
-                                              ? "bg-green-600 text-white shadow-md ring-2 ring-green-300"
-                                              : "bg-white text-gray-700 border border-gray-300 hover:border-green-400 hover:bg-green-50"
-                                          }`}
-                                        >
-                                          {isSelected && (
-                                            <CheckCircle className="w-4 h-4" />
-                                          )}
-                                          <Calendar className="w-3.5 h-3.5" />
-                                          <span>
-                                            {formatDate(st.suggested_date)} at{" "}
-                                            {formatTimeTo12h(st.suggested_time)}
-                                          </span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            {fb.cleaner_suggested_windows &&
-                              fb.cleaner_suggested_windows.length > 0 && (
-                                <div className="mt-3">
-                                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                                    Availability Windows{" "}
-                                    <span className="text-gray-400 normal-case">
-                                      (click to select)
-                                    </span>
-                                  </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {fb.cleaner_suggested_windows.map((sw) => {
-                                      const isSelected =
-                                        isSuggestedWindowSelected(sw);
-                                      return (
-                                        <button
-                                          key={sw.id}
-                                          type="button"
-                                          onClick={() =>
-                                            handleSuggestedWindowClick(sw)
-                                          }
-                                          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                                            isSelected
-                                              ? "bg-green-600 text-white shadow-md ring-2 ring-green-300"
-                                              : "bg-white text-gray-700 border border-gray-300 hover:border-green-400 hover:bg-green-50"
-                                          }`}
-                                        >
-                                          {isSelected && (
-                                            <CheckCircle className="w-4 h-4" />
-                                          )}
-                                          <Calendar className="w-3.5 h-3.5" />
-                                          <span>
-                                            {formatDate(sw.window_date)}:{" "}
-                                            {formatTimeTo12h(sw.start_time)} -{" "}
-                                            {formatTimeTo12h(sw.end_time)}
-                                          </span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-red-700">
-                        No detailed feedback provided.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Cleaner Selector */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Assigned Cleaner
-                    </label>
-
-                    {selectedCleaner && (
-                      <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg mb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                            <User className="w-5 h-5 text-gray-600" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {getCleanerName(selectedCleaner)}
-                            </p>
-                            {selectedCleaner.id === originalCleanerId && (
-                              <div className="mt-1">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
-                                  Current
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                  {/* PRIMARY action: Fast path (only when suggestions exist) */}
+                  {hasSuggestions && (
+                    <section className="rounded-2xl border border-primary-200 bg-primary-50/50 p-5">
+                      <header className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900">
+                            Use {currentCleanerName}&apos;s suggestion
+                          </h3>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            Confirms instantly — no second round-trip.
+                          </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCleaner(null)}
-                          className="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1 rounded hover:bg-gray-100"
-                        >
-                          Change
-                        </button>
-                      </div>
-                    )}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-100 text-primary-800 text-[11px] font-semibold uppercase tracking-wide flex-shrink-0">
+                          <Zap className="w-3 h-3" />
+                          Fast path
+                        </span>
+                      </header>
 
-                    {!selectedCleaner && (
-                      <div className="space-y-2">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                          <input
-                            type="text"
-                            placeholder="Search cleaners..."
-                            value={cleanerSearch}
-                            onChange={(e) => setCleanerSearch(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                          />
-                        </div>
-
-                        {cleanersLoading ? (
-                          <div className="flex items-center justify-center py-4">
-                            <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto modal-scrollbar">
-                            {filteredCleaners.map((cleaner) => (
+                      {allSuggestedTimes.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {allSuggestedTimes.map((st) => {
+                            const isSelected = isSuggestedTimeSelected(st);
+                            return (
                               <button
-                                key={cleaner.id}
+                                key={st.id}
                                 type="button"
-                                onClick={() => {
-                                  setSelectedCleaner(cleaner);
-                                  setCleanerSearch("");
-                                  if (cleaner.id !== originalCleanerId) {
-                                    setSelectedSuggestedTime(null);
-                                  }
-                                }}
-                                className={`flex items-center gap-3 p-3 rounded-lg border text-left transition-all hover:shadow-sm ${
-                                  cleaner.id === originalCleanerId
-                                    ? "border-gray-300 bg-gray-50 hover:bg-gray-100"
-                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                                }`}
+                                onClick={() => handleSuggestedTimeClick(st)}
+                                title={`Confirm at ${formatDateLong(st.suggested_date)} at ${formatTimeTo12h(st.suggested_time)}`}
+                                className={
+                                  isSelected
+                                    ? "group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all bg-primary-600 text-white shadow-md ring-2 ring-primary-300 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+                                    : "group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all bg-white text-gray-900 border border-primary-300 hover:border-primary-600 hover:bg-primary-50 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+                                }
                               >
-                                <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <User className="w-4 h-4 text-gray-500" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="font-medium text-sm text-gray-900 truncate">
-                                    {getCleanerName(cleaner)}
-                                  </p>
-                                  {cleaner.id === originalCleanerId && (
-                                    <div className="mt-0.5">
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
-                                        Current
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
+                                {isSelected ? (
+                                  <CheckCircle className="w-4 h-4" />
+                                ) : (
+                                  <Calendar className="w-4 h-4 text-primary-600 group-hover:hidden" />
+                                )}
+                                {!isSelected && (
+                                  <CheckCircle className="w-4 h-4 text-primary-700 hidden group-hover:inline" />
+                                )}
+                                <span>
+                                  {formatDateLong(st.suggested_date)} ·{" "}
+                                  {formatTimeTo12h(st.suggested_time)}
+                                </span>
                               </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
-                  {/* New Date/Time Section */}
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">
-                      Reschedule To
-                    </h3>
+                      {allSuggestedWindows.length > 0 && (
+                        <div className={allSuggestedTimes.length > 0 ? "mt-4" : ""}>
+                          <p className="text-xs font-medium text-gray-500 mb-2">
+                            Any time within these windows:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {allSuggestedWindows.map((sw) => {
+                              const isSelected = isSuggestedWindowSelected(sw);
+                              return (
+                                <button
+                                  key={sw.id}
+                                  type="button"
+                                  onClick={() => handleSuggestedWindowClick(sw)}
+                                  title={`Confirm at ${formatDateLong(sw.window_date)} starting ${formatTimeTo12h(sw.start_time)}`}
+                                  className={
+                                    isSelected
+                                      ? "group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all bg-primary-600 text-white shadow-md ring-2 ring-primary-300 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+                                      : "group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all bg-white text-gray-900 border border-primary-300 hover:border-primary-600 hover:bg-primary-50 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+                                  }
+                                >
+                                  {isSelected ? (
+                                    <CheckCircle className="w-4 h-4" />
+                                  ) : (
+                                    <Clock className="w-4 h-4 text-primary-600 group-hover:hidden" />
+                                  )}
+                                  {!isSelected && (
+                                    <CheckCircle className="w-4 h-4 text-primary-700 hidden group-hover:inline" />
+                                  )}
+                                  <span>
+                                    {formatDateLong(sw.window_date)} ·{" "}
+                                    {formatTimeTo12h(sw.start_time)}–
+                                    {formatTimeTo12h(sw.end_time)}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </section>
+                  )}
+
+                  {/* Or-divider — separates fast path from manual path */}
+                  {hasSuggestions && (
+                    <div className="flex items-center gap-3" aria-hidden="true">
+                      <div className="h-px bg-gray-200 flex-1" />
+                      <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                        Or pick a different time
+                      </span>
+                      <div className="h-px bg-gray-200 flex-1" />
+                    </div>
+                  )}
+
+                  {/* SECONDARY: Manual picker */}
+                  <section className="space-y-4">
+                    {!hasSuggestions && (
+                      <h3 className="text-base font-semibold text-gray-900">
+                        Pick a new time
+                      </h3>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">
+                        <label
+                          htmlFor="reschedule-date"
+                          className="block text-sm font-medium text-gray-700 mb-1"
+                        >
                           Date
                         </label>
                         <input
+                          id="reschedule-date"
                           type="date"
                           value={scheduledDate}
                           onChange={(e) => {
@@ -748,14 +697,18 @@ export default function RescheduleAppointmentModal({
                             setSelectedSuggestedTime(null);
                             setSelectedSuggestedWindow(null);
                           }}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">
+                        <label
+                          htmlFor="reschedule-time"
+                          className="block text-sm font-medium text-gray-700 mb-1"
+                        >
                           Time
                         </label>
                         <input
+                          id="reschedule-time"
                           type="time"
                           value={scheduledTime}
                           onChange={(e) => {
@@ -763,53 +716,146 @@ export default function RescheduleAppointmentModal({
                             setSelectedSuggestedTime(null);
                             setSelectedSuggestedWindow(null);
                           }}
-                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all text-sm"
                         />
                       </div>
                     </div>
 
+                    {/* Cleaner selector */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Assigned cleaner
+                      </label>
+
+                      {selectedCleaner && (
+                        <div className="flex items-center justify-between gap-3 p-3 bg-white border border-gray-200 rounded-lg">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                              <User className="w-4 h-4 text-gray-500" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm text-gray-900 truncate">
+                                {getCleanerName(selectedCleaner)}
+                              </p>
+                              {selectedCleaner.id === originalCleanerId && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 mt-0.5">
+                                  Current
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCleaner(null)}
+                            className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2.5 py-1.5 rounded-md hover:bg-gray-100 transition-colors flex-shrink-0"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      )}
+
+                      {!selectedCleaner && (
+                        <div className="space-y-2">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                            <input
+                              type="text"
+                              placeholder="Search cleaners…"
+                              value={cleanerSearch}
+                              onChange={(e) => setCleanerSearch(e.target.value)}
+                              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                            />
+                          </div>
+                          {cleanersLoading ? (
+                            <div className="flex items-center justify-center py-4">
+                              <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-1.5 max-h-44 overflow-y-auto modal-scrollbar">
+                              {filteredCleaners.map((cleaner) => (
+                                <button
+                                  key={cleaner.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCleaner(cleaner);
+                                    setCleanerSearch("");
+                                  }}
+                                  className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 bg-white hover:border-primary-300 hover:bg-primary-50/30 text-left transition-all focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+                                >
+                                  <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <User className="w-4 h-4 text-gray-500" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-sm text-gray-900 truncate">
+                                      {getCleanerName(cleaner)}
+                                    </p>
+                                    {cleaner.id === originalCleanerId && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 mt-0.5">
+                                        Current
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                              {filteredCleaners.length === 0 && (
+                                <p className="text-sm text-gray-500 px-3 py-4 text-center">
+                                  No cleaners match &ldquo;{cleanerSearch}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Outcome banner — only when picker has a complete value */}
                     {scheduledDate && scheduledTime && selectedCleaner && (
                       <div
-                        className={`mt-3 flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${
+                        className={
                           willAutoApprove
-                            ? "bg-green-50 text-green-700"
-                            : "bg-amber-50 text-amber-700"
-                        }`}
+                            ? "flex items-start gap-2 text-sm px-3 py-2.5 rounded-lg border bg-primary-50 text-primary-800 border-primary-200"
+                            : "flex items-start gap-2 text-sm px-3 py-2.5 rounded-lg border bg-amber-50 text-amber-800 border-amber-200"
+                        }
+                        role="status"
+                        aria-live="polite"
                       >
                         {willAutoApprove ? (
                           <>
-                            <CheckCircle className="w-4 h-4" />
-                            <span>
-                              This matches a suggested time — appointment will
-                              be auto-approved.
+                            <CheckCircle className="w-4 h-4 text-primary-700 mt-0.5 flex-shrink-0" />
+                            <span className="leading-snug">
+                              <span className="font-semibold">
+                                Will auto-confirm
+                              </span>{" "}
+                              — this matches one of {currentCleanerName}&apos;s
+                              suggestions and keeps the same cleaner.
                             </span>
                           </>
                         ) : (
                           <>
-                            <Clock className="w-4 h-4" />
-                            <span>
+                            <Clock className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
+                            <span className="leading-snug">
                               Cleaner will need to confirm this new time.
                             </span>
                           </>
                         )}
                       </div>
                     )}
-                  </div>
 
-                  {error && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                      <span className="text-sm text-red-700">{error}</span>
-                    </div>
-                  )}
+                    {error && (
+                      <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm text-red-700">{error}</span>
+                      </div>
+                    )}
+                  </section>
                 </div>
 
-                {/* Footer - inside right column so it stays with the form */}
-                <div className="flex-shrink-0 pt-6 mt-auto border-t border-gray-200 flex flex-col sm:flex-row gap-3">
+                {/* Footer */}
+                <div className="flex-shrink-0 pt-6 mt-6 border-t border-gray-200 flex flex-col-reverse sm:flex-row gap-3">
                   <button
                     onClick={handleClose}
                     disabled={submitting}
-                    className="flex-1 bg-white border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    className="flex-1 bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -821,26 +867,17 @@ export default function RescheduleAppointmentModal({
                       !scheduledDate ||
                       !scheduledTime
                     }
-                    className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-                      willAutoApprove
-                        ? "bg-green-600 text-white hover:bg-green-700"
-                        : "bg-primary-600 text-white hover:bg-primary-700"
-                    }`}
+                    className="flex-1 bg-primary-600 text-white px-6 py-3 rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:bg-primary-700"
                   >
                     {submitting ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Rescheduling...</span>
-                      </>
-                    ) : willAutoApprove ? (
-                      <>
-                        <RefreshCw className="w-5 h-5" />
-                        <span>Confirm Reschedule</span>
+                        <span>Saving…</span>
                       </>
                     ) : (
                       <>
-                        <Send className="w-5 h-5" />
-                        <span>Send to Cleaner</span>
+                        <SubmitIcon className="w-5 h-5" />
+                        <span>{submitLabel}</span>
                       </>
                     )}
                   </button>

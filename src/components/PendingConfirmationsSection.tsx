@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertCircle,
   Calendar,
@@ -8,13 +8,16 @@ import {
   MapPin,
   CheckCircle,
   XCircle,
+  CalendarPlus,
   ChevronDown,
   ChevronRight,
   Loader2,
   SprayCan,
 } from "lucide-react";
 import { formatTimeTo12h } from "../lib/formatTime";
-import ConfirmAvailabilityModal from "./ConfirmAvailabilityModal";
+import ConfirmAvailabilityModal, { type ConfirmModalMode } from "./ConfirmAvailabilityModal";
+import { deriveFreeSlots, type ScheduleConflictBlock } from "../lib/cleanerFreeSlots";
+import type { DeclineReason } from "../types";
 
 interface PendingAppointment {
   id: string;
@@ -44,23 +47,46 @@ interface PendingConfirmationsSectionProps {
   loading: boolean;
   userId: string;
   organizationId: string;
-  onConfirmed: () => void; // Callback to refresh appointments after action
+  /** Existing schedule blocks used to derive same-time-of-day free-slot candidates. */
+  cleanerSchedule?: ScheduleConflictBlock[];
+  /** Auth token for /api/appointments/confirm — required by requireOrgAuth. */
+  accessToken?: string | null;
+  onConfirmed: () => void;
 }
 
 export default function PendingConfirmationsSection({
   appointments,
   loading,
-  userId,
   organizationId,
+  cleanerSchedule = [],
+  accessToken,
   onConfirmed,
 }: PendingConfirmationsSectionProps) {
+  const authHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (accessToken) h.Authorization = `Bearer ${accessToken}`;
+    return h;
+  };
   const [expanded, setExpanded] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"confirm" | "decline">("confirm");
+  const [modalMode, setModalMode] = useState<ConfirmModalMode>("confirm");
   const [selectedAppointment, setSelectedAppointment] =
     useState<PendingAppointment | null>(null);
 
-  // Don't render while loading or if there are no appointments
+  // Derive free-slot chips for the selected appointment whenever it changes
+  // or the cleaner's schedule does.
+  const freeSlotCandidates = useMemo(() => {
+    if (!selectedAppointment) return [];
+    return deriveFreeSlots(
+      cleanerSchedule.filter((b) => b.date !== selectedAppointment.scheduled_date),
+      {
+        date: selectedAppointment.scheduled_date,
+        time: selectedAppointment.scheduled_time,
+      },
+      { count: 5 },
+    );
+  }, [selectedAppointment, cleanerSchedule]);
+
   if (loading || appointments.length === 0) return null;
 
   const formatDate = (dateStr: string) => {
@@ -89,68 +115,76 @@ export default function PendingConfirmationsSection({
     return "Address not available";
   };
 
-  const handleAvailableClick = (apt: PendingAppointment) => {
+  const openModal = (apt: PendingAppointment, mode: ConfirmModalMode) => {
     setSelectedAppointment(apt);
-    setModalMode("confirm");
-    setModalOpen(true);
-  };
-
-  const handleUnavailableClick = (apt: PendingAppointment) => {
-    setSelectedAppointment(apt);
-    setModalMode("decline");
+    setModalMode(mode);
     setModalOpen(true);
   };
 
   const handleConfirm = async () => {
     if (!selectedAppointment) return;
-
     const response = await fetch("/api/appointments/confirm", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({
         appointmentId: selectedAppointment.id,
-        cleanerId: userId,
-        confirmed: true,
+        action: "accept",
         organizationId,
       }),
     });
-
     const result = await response.json();
     if (!result.success) {
       throw new Error(result.error || "Failed to confirm appointment");
     }
-
     onConfirmed();
   };
 
-  const handleDecline = async (
+  const handlePropose = async (
     reason: string,
     suggestedTimes: { date: string; time: string }[],
-    suggestedWindows: { date: string; startTime: string; endTime: string }[]
+    suggestedWindows: { date: string; startTime: string; endTime: string }[],
   ) => {
     if (!selectedAppointment) return;
-
     const response = await fetch("/api/appointments/confirm", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       body: JSON.stringify({
         appointmentId: selectedAppointment.id,
-        cleanerId: userId,
-        confirmed: false,
+        action: "counter_propose",
         organizationId,
         feedback: {
           reason,
           suggestedTimes: suggestedTimes.filter((st) => st.date && st.time),
-          suggestedWindows: suggestedWindows.filter((sw) => sw.date && sw.startTime && sw.endTime),
+          suggestedWindows: suggestedWindows.filter(
+            (sw) => sw.date && sw.startTime && sw.endTime,
+          ),
         },
       }),
     });
-
     const result = await response.json();
     if (!result.success) {
-      throw new Error(result.error || "Failed to submit feedback");
+      throw new Error(result.error || "Failed to submit proposal");
     }
+    onConfirmed();
+  };
 
+  const handleDecline = async (reason: DeclineReason, other: string) => {
+    if (!selectedAppointment) return;
+    const response = await fetch("/api/appointments/confirm", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        appointmentId: selectedAppointment.id,
+        action: "decline",
+        organizationId,
+        declineReason: reason,
+        declineReasonOther: other,
+      }),
+    });
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || "Failed to submit decline");
+    }
     onConfirmed();
   };
 
@@ -173,11 +207,9 @@ export default function PendingConfirmationsSection({
   return (
     <>
       <div className="relative">
-        {/* Animated attention border */}
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 rounded-2xl opacity-75 animate-pulse" />
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 rounded-2xl opacity-75 motion-safe:animate-pulse" />
 
         <section className="relative bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
-          {/* Header */}
           <button
             onClick={() => setExpanded(!expanded)}
             className="w-full bg-gradient-to-r from-amber-50 to-orange-50 px-4 sm:px-5 py-4 flex items-center justify-between hover:from-amber-100 hover:to-orange-100 transition-colors duration-200 group"
@@ -187,16 +219,13 @@ export default function PendingConfirmationsSection({
                 <div className="p-2 bg-amber-100 rounded-xl">
                   <AlertCircle className="w-5 h-5 text-amber-600" />
                 </div>
-                {/* Ping animation */}
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
                 </span>
               </div>
               <div className="text-left">
-                <h3 className="text-lg font-bold text-gray-900">
-                  Action Required
-                </h3>
+                <h3 className="text-lg font-bold text-gray-900">Action Required</h3>
                 <p className="text-xs font-medium text-amber-700">
                   Confirm your availability for these appointments
                 </p>
@@ -216,7 +245,6 @@ export default function PendingConfirmationsSection({
             </div>
           </button>
 
-          {/* Content */}
           {expanded && (
             <div className="border-t border-amber-100 bg-amber-50/40 p-3 sm:p-4">
               {loading ? (
@@ -256,29 +284,35 @@ export default function PendingConfirmationsSection({
                           {apt.property && (
                             <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
                               <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span className="truncate">
-                                {getPropertyAddress(apt)}
-                              </span>
+                              <span className="truncate">{getPropertyAddress(apt)}</span>
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className="flex gap-2">
+                      {/* Three-button action row: Accept / Propose alternative / Decline.
+                          Stack vertically below 640px so every button stays ≥44px tall. */}
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <button
-                          onClick={() => handleAvailableClick(apt)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors duration-200 font-medium text-sm"
+                          onClick={() => openModal(apt, "confirm")}
+                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-green-500"
                         >
                           <CheckCircle className="w-4 h-4" />
-                          I&apos;m Available
+                          Accept
                         </button>
                         <button
-                          onClick={() => handleUnavailableClick(apt)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium text-sm"
+                          onClick={() => openModal(apt, "propose")}
+                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary-100 text-primary-700 rounded-xl hover:bg-primary-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-primary-500"
+                        >
+                          <CalendarPlus className="w-4 h-4" />
+                          Propose alternative
+                        </button>
+                        <button
+                          onClick={() => openModal(apt, "decline")}
+                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-gray-500"
                         >
                           <XCircle className="w-4 h-4" />
-                          I&apos;m Not Available
+                          Decline
                         </button>
                       </div>
                     </div>
@@ -290,7 +324,6 @@ export default function PendingConfirmationsSection({
         </section>
       </div>
 
-      {/* Modal */}
       <ConfirmAvailabilityModal
         isOpen={modalOpen}
         onClose={() => {
@@ -298,9 +331,11 @@ export default function PendingConfirmationsSection({
           setSelectedAppointment(null);
         }}
         onConfirm={handleConfirm}
+        onPropose={handlePropose}
         onDecline={handleDecline}
         appointment={modalAppointmentInfo}
         mode={modalMode}
+        freeSlotCandidates={freeSlotCandidates}
       />
     </>
   );

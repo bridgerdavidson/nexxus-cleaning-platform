@@ -52,6 +52,33 @@ export interface AppointmentCardData {
     name: string;
     price_adder?: number;
   } | null;
+  /**
+   * Optional org id. Required by the Bookings page's "Needs your response"
+   * section so the admin's accept-counter-proposal API call has the org
+   * scope; threaded through from `AdminAppointment.organization_id`.
+   */
+  organization_id?: string | null;
+  /**
+   * Latest cleaner-availability feedback for the appointment (joined). When
+   * `cleaner_suggested_times` rows exist on this feedback, the row is a
+   * counter-proposal that the admin can one-click accept. When only `reason`
+   * is set, it's a hard decline.
+   */
+  cleaner_availability_feedback?: Array<{
+    id: string;
+    reason: string | null;
+    cleaner_suggested_times?: Array<{
+      id: string;
+      suggested_date: string;
+      suggested_time: string;
+    }> | null;
+    cleaner_suggested_windows?: Array<{
+      id: string;
+      window_date: string;
+      start_time: string;
+      end_time: string;
+    }> | null;
+  }> | null;
 }
 
 interface AppointmentCardProps {
