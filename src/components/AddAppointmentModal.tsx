@@ -176,6 +176,18 @@ export default function AddAppointmentModal({
     Record<string, ScheduleAppointment[]>
   >({});
 
+  // Wave 3: soft-warn double-booking. Holds the selected cleaner's other
+  // active appointments so findConflicts can flag overlaps inline.
+  const [cleanerSchedule, setCleanerSchedule] = useState<
+    Array<{
+      id: string;
+      status: string;
+      scheduled_date: string;
+      scheduled_time: string;
+      duration_minutes: number;
+    }>
+  >([]);
+
   // Step 2 - Price override state
   const [customPrice, setCustomPrice] = useState<string>("");
   const [priceOverrideEnabled, setPriceOverrideEnabled] = useState(false);
@@ -2009,6 +2021,63 @@ export default function AddAppointmentModal({
                 </div>
               )}
           </div>
+
+          {/* Wave 3: soft-warn double-booking — admin can override.
+              Catches ANY time-slot overlap, not just exact-same-start: if the
+              new slot starts mid-way through an existing booking, ends inside
+              one, or fully contains one, it warns. */}
+          {hasConflicts && selectedCleaner && selectedServiceType && (
+            <div className="px-8 pb-2">
+              <div
+                role="alert"
+                className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-orange-900"
+              >
+                <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm leading-snug">
+                  <p className="font-semibold">
+                    {selectedCleaner.user_profile?.first_name ?? "This cleaner"}
+                    &apos;s schedule overlaps this time slot.
+                  </p>
+                  <p className="text-xs mt-0.5">
+                    New slot:{" "}
+                    <span className="font-medium">
+                      {scheduledTime
+                        ? `${formatTimeTo12h(scheduledTime)} for ${selectedServiceType.duration_minutes}min`
+                        : "—"}
+                    </span>{" "}
+                    · clashes with:
+                  </p>
+                  <ul className="mt-1 space-y-0.5 text-xs">
+                    {conflictingAppointments.slice(0, 3).map((c) => (
+                      <li key={c.id}>
+                        · {formatTimeTo12h(c.scheduled_time)} for{" "}
+                        {c.duration_minutes}min
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1.5 text-xs">
+                    They&apos;ll see both assignments and can decline or
+                    counter-propose. Save anyway, or pick a different time.
+                  </p>
+                  {nextAvailableSlot && (
+                    <p className="mt-2 text-xs border-t border-orange-200 pt-2">
+                      <span className="font-semibold">Next free slot:</span>{" "}
+                      {formatTimeTo12h(nextAvailableSlot.time)} ·{" "}
+                      <span className="text-orange-700/80">
+                        Drive time between properties not factored in.
+                      </span>
+                    </p>
+                  )}
+                  {hasConflicts && !nextAvailableSlot && (
+                    <p className="mt-2 text-xs border-t border-orange-200 pt-2">
+                      <span className="font-semibold">No same-day opening</span> — try a different
+                      day.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="border-t border-gray-200 px-8 py-4 bg-gray-50">
