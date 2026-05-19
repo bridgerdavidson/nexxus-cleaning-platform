@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { findConflicts, type ScheduleAppointment } from './appointmentConflicts';
+import {
+  findConflicts,
+  findNextAvailableSlot,
+  type ScheduleAppointment,
+} from './appointmentConflicts';
 
 const apt = (overrides: Partial<ScheduleAppointment>): ScheduleAppointment => ({
   id: 'a1',
@@ -160,5 +164,147 @@ describe('findConflicts', () => {
         durationMinutes: 60,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('findNextAvailableSlot', () => {
+  it('returns the candidate time itself when the cleaner has no appointments', () => {
+    expect(
+      findNextAvailableSlot([], {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '16:00' });
+  });
+
+  it('returns the candidate time when no appointments collide with it', () => {
+    // Existing 9-10am, candidate 4pm → no conflict, candidate is fine
+    const existing = [apt({ id: 'x1', scheduled_time: '09:00', duration_minutes: 60 })];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '16:00' });
+  });
+
+  it('jumps past a single colliding appointment (user-reported 4pm scenario)', () => {
+    // Existing 4-5pm, candidate 4pm 60min → next free is 5:00pm
+    const existing = [apt({ id: 'wanda-4pm', scheduled_time: '16:00', duration_minutes: 60 })];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '17:00' });
+  });
+
+  it('jumps past a colliding appointment when candidate starts mid-way', () => {
+    // Existing 4-5pm, candidate 4:30pm 60min → next free is 5:00pm
+    const existing = [apt({ id: 'x1', scheduled_time: '16:00', duration_minutes: 60 })];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:30',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '17:00' });
+  });
+
+  it('jumps past multiple consecutive blocking appointments', () => {
+    // Existing 4-5pm and 5-6pm; candidate 4pm 60min → next free is 6:00pm
+    const existing = [
+      apt({ id: 'x1', scheduled_time: '16:00', duration_minutes: 60 }),
+      apt({ id: 'x2', scheduled_time: '17:00', duration_minutes: 60 }),
+    ];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '18:00' });
+  });
+
+  it('returns a gap between blocks when the gap fits the duration', () => {
+    // Existing 4-5pm and 6:30-7:30pm, candidate 4pm 60min → 5:00pm fits (5–6 vs 6:30 boundary)
+    const existing = [
+      apt({ id: 'x1', scheduled_time: '16:00', duration_minutes: 60 }),
+      apt({ id: 'x2', scheduled_time: '18:30', duration_minutes: 60 }),
+    ];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '17:00' });
+  });
+
+  it('skips a gap that is too small for the requested duration', () => {
+    // Existing 4-5pm and 5:30-6:30pm; only 30min gap between → 60min candidate must jump to 6:30pm
+    const existing = [
+      apt({ id: 'x1', scheduled_time: '16:00', duration_minutes: 60 }),
+      apt({ id: 'x2', scheduled_time: '17:30', duration_minutes: 60 }),
+    ];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '18:30' });
+  });
+
+  it('ignores cancelled and completed appointments when walking the day', () => {
+    const existing = [
+      apt({ id: 'x1', scheduled_time: '16:00', duration_minutes: 60, status: 'cancelled' }),
+      apt({ id: 'x2', scheduled_time: '17:00', duration_minutes: 60, status: 'completed' }),
+    ];
+    expect(
+      findNextAvailableSlot(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toEqual({ date: '2026-05-20', time: '16:00' });
+  });
+
+  it('returns null when no slot fits within the day', () => {
+    // 11pm candidate for a 90-min appointment; 11pm + 90min = 12:30am next day → no fit
+    expect(
+      findNextAvailableSlot([], {
+        date: '2026-05-20',
+        time: '23:00',
+        durationMinutes: 90,
+      }),
+    ).toBeNull();
+  });
+
+  it('excludes the appointment being rescheduled via excludeAppointmentId', () => {
+    // Same row, but excluded — no collision, candidate is fine
+    const existing = [apt({ id: 'self', scheduled_time: '16:00', duration_minutes: 60 })];
+    expect(
+      findNextAvailableSlot(
+        existing,
+        { date: '2026-05-20', time: '16:00', durationMinutes: 60 },
+        { excludeAppointmentId: 'self' },
+      ),
+    ).toEqual({ date: '2026-05-20', time: '16:00' });
+  });
+
+  it('returns null when candidate time is unparseable', () => {
+    expect(
+      findNextAvailableSlot([], { date: '2026-05-20', time: 'oops', durationMinutes: 60 }),
+    ).toBeNull();
+  });
+
+  it('returns null when durationMinutes is 0 or negative', () => {
+    expect(
+      findNextAvailableSlot([], { date: '2026-05-20', time: '16:00', durationMinutes: 0 }),
+    ).toBeNull();
   });
 });

@@ -23,7 +23,7 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { updateAppointment } from "../hooks/useAdminData";
 import { formatTimeTo12h } from "../lib/formatTime";
 import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
-import { findConflicts } from "../lib/appointmentConflicts";
+import { findConflicts, findNextAvailableSlot } from "../lib/appointmentConflicts";
 import { AppointmentCardData } from "./AppointmentCard";
 
 interface Cleaner {
@@ -404,6 +404,18 @@ export default function RescheduleAppointmentModal({
         )
       : [];
   const hasConflicts = conflictingAppointments.length > 0;
+  const nextAvailableSlot =
+    hasConflicts && selectedCleaner?.id && scheduledDate && scheduledTime
+      ? findNextAvailableSlot(
+          cleanerSchedule,
+          {
+            date: scheduledDate,
+            time: scheduledTime,
+            durationMinutes: candidateDuration,
+          },
+          { excludeAppointmentId: appointment.id },
+        )
+      : null;
 
   const handleSubmit = async () => {
     if (!appointment || !selectedCleaner) return;
@@ -960,6 +972,25 @@ export default function RescheduleAppointmentModal({
                             can decline or counter-propose. Save anyway, or
                             pick a different time.
                           </p>
+                          {nextAvailableSlot && (
+                            <p className="text-xs mt-2 border-t border-orange-200 pt-2">
+                              <span className="font-semibold">
+                                Next free slot:
+                              </span>{" "}
+                              {formatTimeTo12h(nextAvailableSlot.time)} ·{" "}
+                              <span className="text-orange-700/80">
+                                Drive time between properties not factored in.
+                              </span>
+                            </p>
+                          )}
+                          {!nextAvailableSlot && (
+                            <p className="text-xs mt-2 border-t border-orange-200 pt-2">
+                              <span className="font-semibold">
+                                No same-day opening
+                              </span>{" "}
+                              — try a different day.
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
