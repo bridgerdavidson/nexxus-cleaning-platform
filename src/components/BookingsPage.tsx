@@ -29,7 +29,8 @@ import AddAppointmentModal from "./AddAppointmentModal";
 import RescheduleRequiredSection from "./RescheduleRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
-import { updateAppointment } from "../hooks/useAdminData";
+import { updateAppointment, acceptCounterProposal } from "../hooks/useAdminData";
+import { useAuth } from "../hooks/useAuth";
 
 type ViewType = "list" | "calendar";
 
@@ -65,6 +66,7 @@ export default function BookingsPage({
   initialStatusFilter,
   canApproveDecline = false,
 }: BookingsPageProps) {
+  const { accessToken } = useAuth();
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>(
@@ -794,6 +796,24 @@ export default function BookingsPage({
                   onViewDetails={(apt) =>
                     onOpenAppointment((apt as AppointmentCardData).id)
                   }
+                  onAcceptCounterProposal={async ({
+                    appointmentId,
+                    suggestedTimeId,
+                    organizationId,
+                  }) => {
+                    const result = await acceptCounterProposal({
+                      appointmentId,
+                      suggestedTimeId,
+                      organizationId,
+                      accessToken,
+                    });
+                    if (!result.success) {
+                      throw new Error(
+                        result.error || "Failed to accept counter-proposal",
+                      );
+                    }
+                    onRefreshAppointments?.();
+                  }}
                 />
               )}
 

@@ -353,6 +353,62 @@ export interface CleanerFeedbackWithTimes extends CleanerAvailabilityFeedback {
 }
 
 // ==========================================
+// APPOINTMENT BUCKETS (Wave 1 — 5 user-visible buckets)
+// ==========================================
+
+// User-visible status buckets, derived from `appointments.status` +
+// `cleaner_confirmation_status` + whether a counter-proposal exists.
+// `cancelled` is rendered like a bucket but isn't part of the 5 "live" buckets.
+export type AppointmentBucket =
+  | 'pending'
+  | 'counter_proposed'
+  | 'confirmed'
+  | 'in_progress'
+  | 'done'
+  | 'cancelled';
+
+// Canned decline reasons cleaner can pick when hard-declining an assignment.
+// Reason text is stored verbatim in cleaner_availability_feedback.reason; the
+// enum lives client-side until reporting needs a DB-level enum.
+export type DeclineReason = 'sick' | 'not_my_service' | 'too_far' | 'other';
+
+export function declineReasonLabel(reason: DeclineReason): string {
+  switch (reason) {
+    case 'sick':
+      return 'Sick';
+    case 'not_my_service':
+      return 'Not my service';
+    case 'too_far':
+      return 'Too far';
+    case 'other':
+      return 'Other';
+  }
+}
+
+/**
+ * Derive the user-visible bucket for an appointment. Counter-proposed is
+ * recognised by the presence of cleaner-suggested times alongside a
+ * `rejected` confirmation status.
+ */
+export function getAppointmentBucket(
+  appointment: Pick<Appointment, 'status' | 'cleaner_confirmation_status'>,
+  hasSuggestedTimes: boolean,
+): AppointmentBucket {
+  if (appointment.status === 'cancelled') return 'cancelled';
+  if (appointment.status === 'completed') return 'done';
+  if (appointment.status === 'in_progress') return 'in_progress';
+  if (appointment.status === 'confirmed') return 'confirmed';
+  // status === 'pending'
+  if (
+    appointment.cleaner_confirmation_status === 'rejected' &&
+    hasSuggestedTimes
+  ) {
+    return 'counter_proposed';
+  }
+  return 'pending';
+}
+
+// ==========================================
 // JOB WORKFLOW TYPES
 // ==========================================
 

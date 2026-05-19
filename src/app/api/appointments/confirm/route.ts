@@ -2,16 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { formatTimeTo12h } from '@/lib/formatTime';
+import { declineReasonLabel, type DeclineReason } from '@/types';
+
+type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
 interface ConfirmAppointmentInput {
   appointmentId: string;
-  confirmed: boolean;
+  /** Preferred explicit action. Wave 1+: one of 'accept' | 'counter_propose' | 'decline'. */
+  action?: ConfirmAction;
+  /** Legacy boolean. Kept for backward-compat: true → accept, false → counter_propose. */
+  confirmed?: boolean;
+  /** Required when action === 'decline'. */
+  declineReason?: DeclineReason;
+  /** Free-text supplement when declineReason === 'other'. */
+  declineReasonOther?: string;
   organizationId: string;
   feedback?: {
     reason: string;
     suggestedTimes?: { date: string; time: string }[];
     suggestedWindows?: { date: string; startTime: string; endTime: string }[];
   };
+}
+
+function resolveAction(input: ConfirmAppointmentInput): ConfirmAction | null {
+  if (input.action) return input.action;
+  if (input.confirmed === true) return 'accept';
+  if (input.confirmed === false) return 'counter_propose';
+  return null;
 }
 
 function formatDateShort(dateStr: string): string {
@@ -23,11 +40,18 @@ function formatDateShort(dateStr: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body: ConfirmAppointmentInput = await request.json();
-    const { appointmentId, confirmed, organizationId, feedback } = body;
+    const { appointmentId, organizationId, feedback } = body;
+    const action = resolveAction(body);
 
-    if (!appointmentId || confirmed === undefined || !organizationId) {
+    if (!appointmentId || !organizationId) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: appointmentId, confirmed, organizationId' },
+        { success: false, error: 'Missing required fields: appointmentId, organizationId' },
+        { status: 400 }
+      );
+    }
+    if (!action) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required field: action (or legacy `confirmed`)' },
         { status: 400 }
       );
     }
@@ -63,7 +87,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (confirmed) {
+    if (action === 'accept') {
       const updatePayload =
         appointment.status === 'pending'
           ? { cleaner_confirmation_status: 'approved', status: 'confirmed' }
@@ -92,12 +116,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Appointment confirmed successfully' });
     }
 
-    // ===== CLEANER DECLINED =====
-    if (!feedback?.reason) {
-      return NextResponse.json(
-        { success: false, error: 'A reason is required when declining an appointment' },
-        { status: 400 }
-      );
+    // ===== CLEANER DID NOT ACCEPT =====
+    // `counter_propose` (legacy `confirmed: false`) writes feedback + suggested times/windows.
+    // `decline` writes feedback with a canned reason and NO suggested rows. Both flip
+    // cleaner_confirmation_status to 'rejected'; the admin UI distinguishes the two by
+    // whether suggested-times rows exist (counter-proposed vs hard decline).
+    //
+    // For counter-proposals the cleaner doesn't have to explain — the alternative
+    // times speak for themselves. Reason is stored as null when not provided so the
+    // admin UI can hide the "Reason" sub-section cleanly.
+    let reasonText: string | null;
+    if (action === 'counter_propose') {
+      reasonText = feedback?.reason?.trim() ? feedback.reason.trim() : null;
+    } else {
+      // action === 'decline'
+      if (!body.declineReason) {
+        return NextResponse.json(
+          { success: false, error: 'declineReason is required when declining' },
+          { status: 400 }
+        );
+      }
+      const allowed: DeclineReason[] = ['sick', 'not_my_service', 'too_far', 'other'];
+      if (!allowed.includes(body.declineReason)) {
+        return NextResponse.json(
+          { success: false, error: 'declineReason must be one of: sick | not_my_service | too_far | other' },
+          { status: 400 }
+        );
+      }
+      const label = declineReasonLabel(body.declineReason);
+      reasonText =
+        body.declineReason === 'other' && body.declineReasonOther?.trim()
+          ? `${label}: ${body.declineReasonOther.trim()}`
+          : label;
     }
 
     const rejectPayload =
@@ -133,7 +183,7 @@ export async function POST(request: NextRequest) {
       .insert({
         appointment_id: appointmentId,
         cleaner_id: cleanerId,
-        reason: feedback.reason,
+        reason: reasonText,
       })
       .select()
       .single();
@@ -146,7 +196,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (feedback.suggestedTimes && feedback.suggestedTimes.length > 0) {
+    // Suggested times/windows only apply to counter-proposals; declines never write them.
+    if (action === 'counter_propose' && feedback?.suggestedTimes && feedback.suggestedTimes.length > 0) {
       const suggestedTimeRows = feedback.suggestedTimes.map((st) => ({
         feedback_id: (feedbackData as { id: string }).id,
         suggested_date: st.date,
@@ -158,7 +209,7 @@ export async function POST(request: NextRequest) {
       if (timesError) console.error('Error inserting suggested times:', timesError);
     }
 
-    if (feedback.suggestedWindows && feedback.suggestedWindows.length > 0) {
+    if (action === 'counter_propose' && feedback?.suggestedWindows && feedback.suggestedWindows.length > 0) {
       const suggestedWindowRows = feedback.suggestedWindows.map((sw) => ({
         feedback_id: (feedbackData as { id: string }).id,
         window_date: sw.date,
@@ -171,8 +222,10 @@ export async function POST(request: NextRequest) {
       if (windowsError) console.error('Error inserting suggested windows:', windowsError);
     }
 
-    let messageContent = `I'm not available for the appointment on ${formatDateShort(appointment.scheduled_date as string)} at ${formatTimeTo12h(appointment.scheduled_time as string)}.\n\nReason: ${feedback.reason}`;
-    if (feedback.suggestedTimes && feedback.suggestedTimes.length > 0) {
+    let messageContent = `I'm not available for the appointment on ${formatDateShort(appointment.scheduled_date as string)} at ${formatTimeTo12h(appointment.scheduled_time as string)}.${
+      reasonText ? `\n\nReason: ${reasonText}` : ''
+    }`;
+    if (action === 'counter_propose' && feedback?.suggestedTimes && feedback.suggestedTimes.length > 0) {
       messageContent += '\n\nSuggested alternative times:';
       feedback.suggestedTimes.forEach((st) => {
         messageContent += `\n- ${formatDateShort(st.date)} at ${formatTimeTo12h(st.time)}`;
@@ -188,7 +241,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Feedback submitted successfully',
+      message: action === 'decline' ? 'Decline recorded' : 'Counter-proposal submitted',
       feedbackId: (feedbackData as { id: string }).id,
     });
   } catch (error) {
