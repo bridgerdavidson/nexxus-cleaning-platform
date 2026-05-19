@@ -1801,9 +1801,10 @@ export default function AddAppointmentModal({
           </div>
 
           {/* Wave 3: soft-warn double-booking — admin can override.
-              Only render at the final step where date/time/cleaner are all set
-              so we don't false-positive in earlier steps. */}
-          {hasConflicts && (
+              Catches ANY time-slot overlap, not just exact-same-start: if the
+              new slot starts mid-way through an existing booking, ends inside
+              one, or fully contains one, it warns. */}
+          {hasConflicts && selectedCleaner && selectedServiceType && (
             <div className="px-8 pb-2">
               <div
                 role="alert"
@@ -1812,16 +1813,22 @@ export default function AddAppointmentModal({
                 <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm leading-snug">
                   <p className="font-semibold">
-                    {selectedCleaner?.user_profile?.first_name ?? "This cleaner"}{" "}
-                    {conflictingAppointments.length === 1
-                      ? "is already booked at this time"
-                      : `has ${conflictingAppointments.length} appointments overlapping`}
-                    .
+                    {selectedCleaner.user_profile?.first_name ?? "This cleaner"}
+                    &apos;s schedule overlaps this time slot.
+                  </p>
+                  <p className="text-xs mt-0.5">
+                    New slot:{" "}
+                    <span className="font-medium">
+                      {scheduledTime
+                        ? `${formatTimeTo12h(scheduledTime)} for ${selectedServiceType.duration_minutes}min`
+                        : "—"}
+                    </span>{" "}
+                    · clashes with:
                   </p>
                   <ul className="mt-1 space-y-0.5 text-xs">
                     {conflictingAppointments.slice(0, 3).map((c) => (
                       <li key={c.id}>
-                        · {formatTimeTo12h(c.scheduled_time)} ·{" "}
+                        · {formatTimeTo12h(c.scheduled_time)} for{" "}
                         {c.duration_minutes}min
                       </li>
                     ))}

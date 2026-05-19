@@ -15,6 +15,8 @@ export interface ManagerAppointment {
   checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
+  /** Length of the appointment in minutes (DB column). */
+  duration_minutes?: number;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   total_price: number;
   special_requests?: string | null;
@@ -130,6 +132,7 @@ export function useManagerAppointments() {
           checklist_id,
           scheduled_date,
           scheduled_time,
+          duration_minutes,
           status,
           total_price,
           special_requests,

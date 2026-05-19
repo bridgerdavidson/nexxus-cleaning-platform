@@ -10,6 +10,7 @@ import {
   Search,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   CheckCircle,
   RefreshCw,
   Send,
@@ -22,6 +23,7 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { updateAppointment } from "../hooks/useAdminData";
 import { formatTimeTo12h } from "../lib/formatTime";
 import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
+import { findConflicts } from "../lib/appointmentConflicts";
 import { AppointmentCardData } from "./AppointmentCard";
 
 interface Cleaner {
@@ -117,6 +119,19 @@ export default function RescheduleAppointmentModal({
     startTime: string;
     endTime: string;
   } | null>(null);
+
+  // Wave 3: soft-warn double-booking for the reschedule flow. Holds the
+  // chosen cleaner's other active appointments so findConflicts can flag any
+  // overlap with the new date/time slot.
+  const [cleanerSchedule, setCleanerSchedule] = useState<
+    Array<{
+      id: string;
+      status: string;
+      scheduled_date: string;
+      scheduled_time: string;
+      duration_minutes: number;
+    }>
+  >([]);
 
   useBodyScrollLock(isOpen);
 
@@ -223,6 +238,34 @@ export default function RescheduleAppointmentModal({
       }
     }
   }, [cleaners, originalCleanerId]);
+
+  // Wave 3: pull the chosen cleaner's other active appointments so the
+  // double-booking warning fires for any overlap with the new slot.
+  useEffect(() => {
+    if (!selectedCleaner?.id || !organizationId) {
+      setCleanerSchedule([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from("appointments")
+        .select("id, status, scheduled_date, scheduled_time, duration_minutes")
+        .eq("organization_id", organizationId)
+        .eq("cleaner_id", selectedCleaner.id)
+        .in("status", ["pending", "confirmed", "in_progress"]);
+      if (cancelled) return;
+      if (fetchError) {
+        console.warn("Conflict fetch failed:", fetchError.message);
+        setCleanerSchedule([]);
+        return;
+      }
+      setCleanerSchedule((data || []) as typeof cleanerSchedule);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCleaner?.id, organizationId]);
 
   if (!isOpen || !appointment) return null;
 
@@ -340,6 +383,28 @@ export default function RescheduleAppointmentModal({
     return name.includes(cleanerSearch.toLowerCase());
   });
 
+  // Conflict detection: would the picked slot overlap any of the cleaner's
+  // other active appointments? Excludes the appointment being rescheduled so
+  // it doesn't flag itself, and falls back to the service-type's typical
+  // 60-minute duration when the appointment row has no duration on it yet.
+  const candidateDuration =
+    appointment.duration_minutes && appointment.duration_minutes > 0
+      ? appointment.duration_minutes
+      : 60;
+  const conflictingAppointments =
+    selectedCleaner?.id && scheduledDate && scheduledTime
+      ? findConflicts(
+          cleanerSchedule,
+          {
+            date: scheduledDate,
+            time: scheduledTime,
+            durationMinutes: candidateDuration,
+          },
+          { excludeAppointmentId: appointment.id },
+        )
+      : [];
+  const hasConflicts = conflictingAppointments.length > 0;
+
   const handleSubmit = async () => {
     if (!appointment || !selectedCleaner) return;
 
@@ -439,10 +504,18 @@ export default function RescheduleAppointmentModal({
   };
 
   const currentCleanerName = getCurrentCleanerName();
-  const submitLabel = willAutoApprove
-    ? "Confirm reschedule"
-    : "Send to cleaner";
-  const SubmitIcon = willAutoApprove ? CheckCircle : Send;
+  // Conflict state wins over the auto-confirm / send paths in the label so the
+  // admin is reminded they're overriding a clash. The icon mirrors the label.
+  const submitLabel = hasConflicts
+    ? "Save anyway"
+    : willAutoApprove
+      ? "Confirm reschedule"
+      : "Send to cleaner";
+  const SubmitIcon = hasConflicts
+    ? AlertTriangle
+    : willAutoApprove
+      ? CheckCircle
+      : Send;
 
   return (
     <div className="fixed inset-0 z-[300] overflow-y-auto">
@@ -848,6 +921,46 @@ export default function RescheduleAppointmentModal({
                             </span>
                           </>
                         )}
+                      </div>
+                    )}
+
+                    {/* Wave 3: soft-warn double-booking. Fires for ANY overlap,
+                        not just exact matches — a candidate that starts mid-way
+                        through an existing booking, ends inside one, or fully
+                        contains one all trigger this. Admin can override. */}
+                    {hasConflicts && (
+                      <div
+                        role="alert"
+                        className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-orange-900"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm leading-snug">
+                          <p className="font-semibold">
+                            {currentCleanerName}&apos;s schedule overlaps this
+                            time slot.
+                          </p>
+                          <p className="text-xs mt-0.5">
+                            New slot:{" "}
+                            <span className="font-medium">
+                              {formatTimeTo12h(scheduledTime)} for{" "}
+                              {candidateDuration}min
+                            </span>{" "}
+                            · clashes with:
+                          </p>
+                          <ul className="mt-1 space-y-0.5 text-xs">
+                            {conflictingAppointments.slice(0, 3).map((c) => (
+                              <li key={c.id}>
+                                · {formatTimeTo12h(c.scheduled_time)} for{" "}
+                                {c.duration_minutes}min
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="text-xs mt-1.5">
+                            {currentCleanerName} will see both assignments and
+                            can decline or counter-propose. Save anyway, or
+                            pick a different time.
+                          </p>
+                        </div>
                       </div>
                     )}
 

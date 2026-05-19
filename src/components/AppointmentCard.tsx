@@ -16,6 +16,13 @@ export interface AppointmentCardData {
   checklist_id?: string | null;
   scheduled_date: string;
   scheduled_time: string;
+  /**
+   * Length of the appointment in minutes. Mirrors the DB column (initially
+   * copied from service_type.duration_minutes at create time). Used by the
+   * reschedule modal to compute the appointment's time slot for the soft-
+   * warn double-booking check.
+   */
+  duration_minutes?: number;
   status: string;
   job_progress?: string;
   total_price: number;

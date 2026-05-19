@@ -104,6 +104,43 @@ describe('findConflicts', () => {
     ).toHaveLength(0);
   });
 
+  it('flags partial overlap when candidate starts 30min into an existing booking (user-reported scenario)', () => {
+    // Existing: 4:00pm–5:00pm (Wanda already booked at 4pm)
+    // Candidate: 4:30pm for 60min → 4:30pm–5:30pm. Should warn.
+    const existing = [apt({ id: 'wanda-4pm', scheduled_time: '16:00', duration_minutes: 60 })];
+    expect(
+      findConflicts(existing, {
+        date: '2026-05-20',
+        time: '16:30',
+        durationMinutes: 60,
+      }),
+    ).toHaveLength(1);
+  });
+
+  it('flags partial overlap when candidate ENDS during an existing booking', () => {
+    // Existing 4:00pm–5:00pm. Candidate 3:30pm–4:30pm → overlaps 4:00–4:30.
+    const existing = [apt({ id: 'wanda-4pm', scheduled_time: '16:00', duration_minutes: 60 })];
+    expect(
+      findConflicts(existing, {
+        date: '2026-05-20',
+        time: '15:30',
+        durationMinutes: 60,
+      }),
+    ).toHaveLength(1);
+  });
+
+  it('flags overlap when candidate fully contains an existing short booking', () => {
+    // Existing 4:30pm–4:45pm. Candidate 4:00pm–5:00pm → fully contains it.
+    const existing = [apt({ id: 'wanda-short', scheduled_time: '16:30', duration_minutes: 15 })];
+    expect(
+      findConflicts(existing, {
+        date: '2026-05-20',
+        time: '16:00',
+        durationMinutes: 60,
+      }),
+    ).toHaveLength(1);
+  });
+
   it('handles HH:mm:ss times on existing appointments', () => {
     const existing = [apt({ id: 'x1', scheduled_time: '10:00:00' })];
     expect(
