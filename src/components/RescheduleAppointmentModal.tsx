@@ -105,6 +105,10 @@ export default function RescheduleAppointmentModal({
   const [cleanersLoading, setCleanersLoading] = useState(false);
   const [cleanerSearch, setCleanerSearch] = useState("");
   const [feedback, setFeedback] = useState<CleanerFeedback[]>([]);
+  const [latestRouting, setLatestRouting] = useState<{
+    response: string;
+    decline_reason: string | null;
+  } | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   // UI state
@@ -146,6 +150,7 @@ export default function RescheduleAppointmentModal({
       const result = await response.json();
       if (result.success) {
         setFeedback(result.data || []);
+        setLatestRouting(result.latestRouting ?? null);
       }
     } catch (err) {
       console.error("Error fetching feedback:", err);
@@ -370,7 +375,12 @@ export default function RescheduleAppointmentModal({
   );
   const hasSuggestions =
     allSuggestedTimes.length > 0 || allSuggestedWindows.length > 0;
+  const timedOut = latestRouting?.response === "expired";
   const cleanerReason: string | null = (() => {
+    // If the last cleaner timed out, ignore any stale feedback from prior
+    // cleaners on the same appointment — the surface should say "didn't
+    // respond" rather than re-showing the previous cleaner's reason.
+    if (timedOut) return null;
     const raw = feedback.find((fb) => fb.reason && fb.reason.trim())?.reason;
     if (!raw) return null;
     const trimmed = raw.trim();
@@ -641,17 +651,26 @@ export default function RescheduleAppointmentModal({
                   <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-2.5">
                     <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                     <p className="text-sm text-amber-900 leading-snug">
-                      <span className="font-semibold">{currentCleanerName}</span>{" "}
-                      declined this time
-                      {cleanerReason ? (
+                      {timedOut ? (
                         <>
-                          :{" "}
-                          <span className="italic font-medium">
-                            &ldquo;{cleanerReason}&rdquo;
-                          </span>
+                          <span className="font-semibold">{currentCleanerName}</span>{" "}
+                          did not respond before the deadline.
                         </>
                       ) : (
-                        "."
+                        <>
+                          <span className="font-semibold">{currentCleanerName}</span>{" "}
+                          declined this time
+                          {cleanerReason ? (
+                            <>
+                              :{" "}
+                              <span className="italic font-medium">
+                                &ldquo;{cleanerReason}&rdquo;
+                              </span>
+                            </>
+                          ) : (
+                            "."
+                          )}
+                        </>
                       )}
                     </p>
                   </div>

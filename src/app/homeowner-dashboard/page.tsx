@@ -39,6 +39,7 @@ import MessagesPage from "../../components/MessagesPage";
 import AddAppointmentModal from "../../components/AddAppointmentModal";
 import RequestAppointmentButton from "../../components/RequestAppointmentButton";
 import { useHomeownerRequests } from "../../hooks/useHomeownerRequests";
+import { formatDateTimeTo12h } from "../../lib/formatTime";
 import BookingsPage from "../../components/BookingsPage";
 import AppointmentCard from "../../components/AppointmentCard";
 import PropertiesPage from "../../components/PropertiesPage";
@@ -360,13 +361,26 @@ function HomeownerDashboardInner() {
                         ? `${req.property.address}, ${req.property.city}, ${req.property.state}`
                         : "Property"}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {req.requested_slots
                         .slice()
                         .sort((a, b) => a.slot_index - b.slot_index)
                         .map((s) => (
-                          <span key={s.slot_index}>
-                            {s.slot_index === 0 ? "Primary" : `Alt ${s.slot_index}`}: {s.scheduled_date} {s.scheduled_time}
+                          <span
+                            key={s.slot_index}
+                            className={[
+                              "inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs border",
+                              s.slot_index === 0
+                                ? "bg-primary-50 text-primary-700 border-primary-200"
+                                : "bg-gray-50 text-gray-700 border-gray-200",
+                            ].join(" ")}
+                          >
+                            {s.slot_index === 0 && (
+                              <span className="text-[10px] uppercase tracking-wide font-semibold">
+                                Primary
+                              </span>
+                            )}
+                            {formatDateTimeTo12h(s.scheduled_date, s.scheduled_time)}
                           </span>
                         ))}
                     </div>

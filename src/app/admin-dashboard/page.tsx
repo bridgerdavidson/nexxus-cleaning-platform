@@ -542,6 +542,10 @@ function AdminDashboardInner() {
       </div>
 
       <div className="space-y-6">
+        {/* Homeowner-initiated requests waiting for admin action surface first
+            — these block customer onboarding flow until an admin assigns. */}
+        <AwaitingRequestsSection />
+
         <RescheduleRequiredSection
           appointments={rescheduleRequiredAppointments}
           loading={appointmentsLoading}
@@ -578,8 +582,6 @@ function AdminDashboardInner() {
             onAppointmentClick={(apt) => openAppointment(apt.id)}
           />
         </div>
-
-        <AwaitingRequestsSection />
 
         <AwaitingApprovalSection
           appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}

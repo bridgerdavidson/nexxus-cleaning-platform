@@ -14,17 +14,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useAdminPendingRequests, type AdminPendingRequest } from "../../hooks/useAdminPendingRequests";
-import { formatTimeTo12h } from "../../lib/formatTime";
+import { formatDateTimeTo12h } from "../../lib/formatTime";
+import { routingDeclineReasonLabel } from "../../types";
 import AssignCleanerModal from "../AssignCleanerModal";
-
-function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 function stateBadge(state: string) {
   if (state === "needs_admin_attention") {
@@ -72,13 +64,18 @@ export default function AwaitingRequestsSection() {
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden border-l-4 border-l-primary-500">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-primary-600" />
             <h3 className="text-lg font-semibold text-gray-900">Awaiting Requests</h3>
-            <span className="text-sm text-gray-500">({requests.length})</span>
+            <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-xs font-semibold bg-primary-100 text-primary-700 rounded-full">
+              {requests.length}
+            </span>
           </div>
+          <span className="text-xs text-gray-500">
+            Customer-submitted, needs admin assignment
+          </span>
         </div>
         <div className="divide-y divide-gray-200">
           {requests.map((r) => {
@@ -111,13 +108,23 @@ export default function AwaitingRequestsSection() {
                       {` · ${r.duration_minutes} min`}
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {r.requested_slots.map((s) => (
                         <span
                           key={s.slot_index}
-                          className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700"
+                          className={[
+                            "inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg border",
+                            s.slot_index === 0
+                              ? "bg-primary-50 text-primary-700 border-primary-200"
+                              : "bg-gray-50 text-gray-700 border-gray-200",
+                          ].join(" ")}
                         >
-                          {s.slot_index === 0 ? "Primary" : `Alt ${s.slot_index}`}: {formatDate(s.scheduled_date)} {formatTimeTo12h(s.scheduled_time)}
+                          {s.slot_index === 0 && (
+                            <span className="text-[10px] uppercase tracking-wide font-semibold">
+                              Primary
+                            </span>
+                          )}
+                          {formatDateTimeTo12h(s.scheduled_date, s.scheduled_time)}
                         </span>
                       ))}
                     </div>
@@ -142,12 +149,19 @@ export default function AwaitingRequestsSection() {
                     )}
                     {isHistoryOpen && (
                       <ul className="mt-1 ml-5 text-xs text-gray-600 space-y-0.5">
-                        {finishedAttempts.map((a) => (
-                          <li key={a.attempt_index}>
-                            #{a.attempt_index} {a.response}
-                            {a.decline_reason ? ` — ${a.decline_reason}` : ""}
-                          </li>
-                        ))}
+                        {finishedAttempts.map((a) => {
+                          const label =
+                            a.response === "expired"
+                              ? routingDeclineReasonLabel("expired")
+                              : a.decline_reason
+                              ? routingDeclineReasonLabel(a.decline_reason)
+                              : a.response;
+                          return (
+                            <li key={a.attempt_index}>
+                              #{a.attempt_index} — {label}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

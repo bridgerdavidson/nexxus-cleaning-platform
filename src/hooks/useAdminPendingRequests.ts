@@ -105,7 +105,10 @@ export function useAdminPendingRequests() {
         )
         .eq('organization_id', orgId)
         .eq('homeowner_initiated', true)
-        .in('request_state', ['awaiting_admin', 'routing', 'needs_admin_attention'])
+        // Once admin assigns a cleaner the row transitions to 'routing' and is
+        // handled by AwaitingApprovalSection (cleaner_confirmation_status='awaiting').
+        // Awaiting-requests only surfaces what needs the admin's attention.
+        .in('request_state', ['awaiting_admin', 'needs_admin_attention'])
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []).map((row): AdminPendingRequest => {

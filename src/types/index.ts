@@ -427,6 +427,36 @@ export function declineReasonLabel(reason: DeclineReason): string {
 }
 
 /**
+ * Reasons that surface in the admin reschedule modal. Includes the canned
+ * cleaner declines plus 'expired' for SLA timeouts (written by the auto-defer
+ * route into appointment_routing_log.decline_reason when a deadline passes).
+ */
+export type RoutingDeclineReason = DeclineReason | 'expired';
+
+/**
+ * Display label for any string that might land in appointment_routing_log
+ * .decline_reason. Tolerant of unknown values — falls back to a generic
+ * "Unknown reason" rather than silently rendering the wrong canned label.
+ */
+export function routingDeclineReasonLabel(
+  reason: string | null | undefined,
+): string {
+  if (!reason) return 'No reason given';
+  switch (reason) {
+    case 'expired':
+      return 'Did not respond before deadline';
+    case 'sick':
+    case 'not_my_service':
+    case 'too_far':
+    case 'other':
+      return declineReasonLabel(reason);
+    default:
+      // Cleaner may have entered free-text via 'other'; show it as-is.
+      return reason;
+  }
+}
+
+/**
  * Derive the user-visible bucket for an appointment. Counter-proposed is
  * recognised by the presence of cleaner-suggested times alongside a
  * `rejected` confirmation status.
