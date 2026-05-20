@@ -312,7 +312,6 @@ export default function PendingConfirmationsSection({
                       appointment={apt}
                       onAccept={(slotIndex) => acceptSlot(apt, slotIndex)}
                       onDeclineClick={() => openModal(apt, "decline")}
-                      onProposeClick={() => openModal(apt, "propose")}
                     />
                   ))}
                 </div>
@@ -345,14 +344,12 @@ interface PendingConfirmationCardProps {
   appointment: PendingAppointment;
   onAccept: (slotIndex: number) => Promise<void>;
   onDeclineClick: () => void;
-  onProposeClick: () => void;
 }
 
 function PendingConfirmationCard({
   appointment: apt,
   onAccept,
   onDeclineClick,
-  onProposeClick,
 }: PendingConfirmationCardProps) {
   const slots = useMemo(() => getOfferedSlots(apt), [apt]);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(
@@ -360,7 +357,6 @@ function PendingConfirmationCard({
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canCounterPropose = !apt.homeowner_initiated;
 
   const handleAccept = async () => {
     if (selectedSlotIndex === null) return;
@@ -389,8 +385,12 @@ function PendingConfirmationCard({
         <DeadlineBadge deadline={apt.response_deadline} />
       </div>
 
-      {/* Slot chips */}
-      <div className="flex flex-wrap gap-2 mb-3">
+      {/* Slot chips — full-width stack, radio-style selection */}
+      <div
+        className="flex flex-col gap-2 mb-3 w-full"
+        role="radiogroup"
+        aria-label="Available times"
+      >
         {slots.map((s) => {
           const isSelected = selectedSlotIndex === s.slot_index;
           const isPrimary = s.slot_index === 0;
@@ -398,27 +398,43 @@ function PendingConfirmationCard({
             <button
               key={s.slot_index}
               type="button"
+              role="radio"
+              aria-checked={isSelected}
               onClick={() => setSelectedSlotIndex(s.slot_index)}
               className={[
-                "min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-primary-500",
+                "w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-medium bg-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1",
                 isSelected
-                  ? "bg-primary-500 text-white border-2 border-primary-500 shadow-sm"
-                  : "bg-white text-gray-700 border-2 border-gray-200 hover:border-primary-300",
+                  ? "border-2 border-primary-500"
+                  : "border-2 border-gray-200 hover:border-primary-300",
               ].join(" ")}
-              aria-pressed={isSelected}
             >
-              <span>{formatChipDate(s.scheduled_date)}</span>
-              <span className={isSelected ? "text-primary-100" : "text-gray-400"}>·</span>
-              <span>{formatTimeTo12h(s.scheduled_time)}</span>
-              {isPrimary && slots.length > 1 && (
-                <span
-                  className={[
-                    "text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded",
-                    isSelected ? "bg-white/20 text-white" : "bg-primary-100 text-primary-700",
-                  ].join(" ")}
-                >
+              {/* Radio indicator */}
+              <span
+                className={[
+                  "flex items-center justify-center w-5 h-5 rounded-full border-2 flex-shrink-0 transition-colors",
+                  isSelected ? "border-primary-500" : "border-gray-300",
+                ].join(" ")}
+                aria-hidden="true"
+              >
+                {isSelected && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary-500" />
+                )}
+              </span>
+
+              {/* Date + time */}
+              <span className="flex-1 text-left text-gray-800">
+                {formatChipDate(s.scheduled_date)}
+                <span className="text-gray-400 mx-1.5">·</span>
+                {formatTimeTo12h(s.scheduled_time)}
+              </span>
+
+              {/* Primary badge — only when slots offer alternatives */}
+              {isPrimary && slots.length > 1 ? (
+                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary-100 text-primary-700 flex-shrink-0">
                   Primary
                 </span>
+              ) : (
+                <span className="w-12 flex-shrink-0" aria-hidden="true" />
               )}
             </button>
           );
@@ -454,17 +470,6 @@ function PendingConfirmationCard({
           Decline
         </button>
       </div>
-
-      {canCounterPropose && (
-        <button
-          type="button"
-          onClick={onProposeClick}
-          disabled={submitting}
-          className="mt-2 text-xs text-primary-600 hover:text-primary-700 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
-        >
-          Suggest a different time
-        </button>
-      )}
     </div>
   );
 }

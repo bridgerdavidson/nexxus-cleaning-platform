@@ -264,6 +264,17 @@ export function useCleanerAppointments() {
     }),
   });
 
+  // Slot rows are inserted by AddAppointmentModal AFTER the appointment row
+  // lands, so the appointment-table realtime can fire before the slots exist.
+  // Subscribing here ensures the cleaner refetches and sees all offered chips
+  // for admin-direct multi-slot appointments.
+  useSupabaseRealtimeSync({
+    channelName: `appointment_requested_slots:cleaner:${userId}`,
+    table: 'appointment_requested_slots',
+    enabled: !!userId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+
   // Helper for legacy callers; not currently used outside.
   const _setQuery = useCallback(
     (updater: (prev: CleanerAppointment[]) => CleanerAppointment[]) => {
