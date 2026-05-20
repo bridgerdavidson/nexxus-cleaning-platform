@@ -47,6 +47,8 @@ interface PendingAppointment {
   checklist?: {
     name: string;
   };
+  homeowner_initiated?: boolean;
+  requested_slots?: Array<{ slot_index: number; scheduled_date: string; scheduled_time: string }>;
 }
 
 interface PendingConfirmationsSectionProps {
@@ -128,16 +130,18 @@ export default function PendingConfirmationsSection({
     setModalOpen(true);
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (slotIndex: number | null) => {
     if (!selectedAppointment) return;
+    const body: Record<string, unknown> = {
+      appointmentId: selectedAppointment.id,
+      action: "accept",
+      organizationId,
+    };
+    if (slotIndex !== null) body.slotIndex = slotIndex;
     const response = await fetch("/api/appointments/confirm", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({
-        appointmentId: selectedAppointment.id,
-        action: "accept",
-        organizationId,
-      }),
+      body: JSON.stringify(body),
     });
     const result = await response.json();
     if (!result.success) {
@@ -271,13 +275,42 @@ export default function PendingConfirmationsSection({
                           <p className="font-medium text-gray-900 truncate">
                             {getHomeownerName(apt)}
                           </p>
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-                            <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{formatDate(apt.scheduled_date)}</span>
-                            <span className="text-gray-300">|</span>
-                            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{formatTimeTo12h(apt.scheduled_time)}</span>
-                          </div>
+                          {apt.homeowner_initiated && apt.requested_slots && apt.requested_slots.length > 0 ? (
+                            <div className="mt-1 space-y-0.5">
+                              {apt.requested_slots
+                                .slice()
+                                .sort((a, b) => a.slot_index - b.slot_index)
+                                .map((s) => (
+                                  <div
+                                    key={s.slot_index}
+                                    className="flex items-center gap-1.5 text-sm text-gray-500"
+                                  >
+                                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span>{formatDate(s.scheduled_date)}</span>
+                                    <span className="text-gray-300">|</span>
+                                    <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span>{formatTimeTo12h(s.scheduled_time)}</span>
+                                    {s.slot_index === 0 ? (
+                                      <span className="text-xs px-1.5 py-0.5 rounded bg-primary-100 text-primary-700">
+                                        primary
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-500">
+                                        alternate {s.slot_index}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
+                              <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>{formatDate(apt.scheduled_date)}</span>
+                              <span className="text-gray-300">|</span>
+                              <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>{formatTimeTo12h(apt.scheduled_time)}</span>
+                            </div>
+                          )}
                           {apt.service_type && (
                             <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
                               <SprayCan className="w-3.5 h-3.5 flex-shrink-0" />
@@ -298,7 +331,7 @@ export default function PendingConfirmationsSection({
                         <DeadlineBadge deadline={apt.response_deadline} />
                       </div>
 
-                      {/* Three-button action row: Accept / Propose alternative / Decline.
+                      {/* Action row: Accept / [Propose alternative on admin direct-book only] / Decline.
                           Stack vertically below 640px so every button stays ≥44px tall. */}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <button
@@ -308,13 +341,15 @@ export default function PendingConfirmationsSection({
                           <CheckCircle className="w-4 h-4" />
                           Accept
                         </button>
-                        <button
-                          onClick={() => openModal(apt, "propose")}
-                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary-100 text-primary-700 rounded-xl hover:bg-primary-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-primary-500"
-                        >
-                          <CalendarPlus className="w-4 h-4" />
-                          Propose alternative
-                        </button>
+                        {!apt.homeowner_initiated && (
+                          <button
+                            onClick={() => openModal(apt, "propose")}
+                            className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary-100 text-primary-700 rounded-xl hover:bg-primary-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-primary-500"
+                          >
+                            <CalendarPlus className="w-4 h-4" />
+                            Propose alternative
+                          </button>
+                        )}
                         <button
                           onClick={() => openModal(apt, "decline")}
                           className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-gray-500"
@@ -344,6 +379,8 @@ export default function PendingConfirmationsSection({
         appointment={modalAppointmentInfo}
         mode={modalMode}
         freeSlotCandidates={freeSlotCandidates}
+        homeownerInitiated={!!selectedAppointment?.homeowner_initiated}
+        offeredSlots={selectedAppointment?.requested_slots ?? []}
       />
     </>
   );

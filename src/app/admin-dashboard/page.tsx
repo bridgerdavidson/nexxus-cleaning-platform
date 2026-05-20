@@ -66,6 +66,7 @@ import RescheduleRequiredSection from "../../components/RescheduleRequiredSectio
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
+import AwaitingRequestsSection from "../../components/admin-dashboard/AwaitingRequestsSection";
 import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
 import TodayScheduleSection from "../../components/TodayScheduleSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
@@ -577,6 +578,8 @@ function AdminDashboardInner() {
             onAppointmentClick={(apt) => openAppointment(apt.id)}
           />
         </div>
+
+        <AwaitingRequestsSection />
 
         <AwaitingApprovalSection
           appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}

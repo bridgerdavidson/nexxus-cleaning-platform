@@ -43,6 +43,7 @@ export default function ManagerPermissionsModal({
     can_view_messages: false,
     can_view_services: false,
     can_manage_services: false,
+    can_handle_requests: false,
   });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -68,6 +69,7 @@ export default function ManagerPermissionsModal({
         can_view_messages: manager.permissions.can_view_messages ?? false,
         can_view_services: manager.permissions.can_view_services ?? false,
         can_manage_services: manager.permissions.can_manage_services ?? false,
+        can_handle_requests: manager.permissions.can_handle_requests ?? false,
       });
       setHasChanges(false);
       setError("");
@@ -242,6 +244,16 @@ export default function ManagerPermissionsModal({
           key: "can_manage_services" as keyof ManagerPermissions,
           label: "Manage Services",
           description: "Create, edit, and delete service types",
+        },
+      ],
+    },
+    {
+      title: "Booking Requests",
+      permissions: [
+        {
+          key: "can_handle_requests" as keyof ManagerPermissions,
+          label: "Handle Booking Requests",
+          description: "Open Awaiting Requests, assign cleaners, and force-assign on escalation",
         },
       ],
     },

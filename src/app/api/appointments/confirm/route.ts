@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { formatTimeTo12h } from '@/lib/formatTime';
 import { declineReasonLabel, type DeclineReason } from '@/types';
+import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
@@ -17,6 +18,11 @@ interface ConfirmAppointmentInput {
   /** Free-text supplement when declineReason === 'other'. */
   declineReasonOther?: string;
   organizationId: string;
+  /**
+   * Required on accept when the appointment is homeowner_initiated AND has
+   * more than one offered slot. 0 = primary, 1..2 = alternates.
+   */
+  slotIndex?: number;
   feedback?: {
     reason: string;
     suggestedTimes?: { date: string; time: string }[];
@@ -68,7 +74,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org AND this cleaner.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, request_state')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -88,20 +94,60 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'accept') {
+      // For multi-slot homeowner-initiated requests, copy the cleaner's chosen
+      // slot into the appointment row before flipping to confirmed.
+      let acceptedDate = appointment.scheduled_date as string;
+      let acceptedTime = appointment.scheduled_time as string;
+      let acceptedSlotIndex: number | null = null;
+
+      if (appointment.homeowner_initiated) {
+        const { data: slotRows } = await supabaseAdmin
+          .from('appointment_requested_slots')
+          .select('slot_index, scheduled_date, scheduled_time')
+          .eq('appointment_id', appointmentId)
+          .order('slot_index', { ascending: true });
+        const slots = (slotRows ?? []) as Array<{
+          slot_index: number;
+          scheduled_date: string;
+          scheduled_time: string;
+        }>;
+        const requested = body.slotIndex ?? 0;
+        if (slots.length > 1 && body.slotIndex === undefined) {
+          return NextResponse.json(
+            { success: false, error: 'slotIndex is required when accepting a multi-slot request' },
+            { status: 400 },
+          );
+        }
+        const chosen = slots.find((s) => s.slot_index === requested);
+        if (!chosen) {
+          return NextResponse.json(
+            { success: false, error: 'slotIndex does not match an offered slot' },
+            { status: 400 },
+          );
+        }
+        acceptedDate = chosen.scheduled_date;
+        acceptedTime = chosen.scheduled_time;
+        acceptedSlotIndex = chosen.slot_index;
+      }
+
       // SLA stops once the cleaner has responded — clear the deadline so the
       // admin overdue surface drops this appointment.
-      const updatePayload =
-        appointment.status === 'pending'
-          ? {
-              cleaner_confirmation_status: 'approved',
-              status: 'confirmed',
-              response_deadline: null,
-            }
-          : { cleaner_confirmation_status: 'approved', response_deadline: null };
+      const baseUpdate = {
+        cleaner_confirmation_status: 'approved',
+        response_deadline: null,
+      } as Record<string, unknown>;
+      if (appointment.status === 'pending') {
+        baseUpdate.status = 'confirmed';
+      }
+      if (appointment.homeowner_initiated) {
+        baseUpdate.scheduled_date = acceptedDate;
+        baseUpdate.scheduled_time = acceptedTime;
+        baseUpdate.request_state = 'completed';
+      }
 
       const { error: updateError } = await supabaseAdmin
         .from('appointments')
-        .update(updatePayload)
+        .update(baseUpdate)
         .eq('id', appointmentId);
 
       if (updateError) {
@@ -112,14 +158,43 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Mark the latest pending routing_log row (if any) as accepted.
+      if (appointment.homeowner_initiated) {
+        const { data: pendingLog } = await supabaseAdmin
+          .from('appointment_routing_log')
+          .select('id')
+          .eq('appointment_id', appointmentId)
+          .eq('response', 'pending')
+          .order('attempt_index', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (pendingLog?.id) {
+          await supabaseAdmin
+            .from('appointment_routing_log')
+            .update({
+              response: 'accepted',
+              responded_at: new Date().toISOString(),
+              slot_index_chosen: acceptedSlotIndex,
+            })
+            .eq('id', pendingLog.id);
+        }
+      }
+
       await sendMessageToAdmins({
         organizationId,
         senderId: cleanerId,
         appointmentId,
-        content: `I've confirmed my availability for the appointment on ${formatDateShort(appointment.scheduled_date as string)} at ${formatTimeTo12h(appointment.scheduled_time as string)}. I'm ready to go!`,
+        content: `I've confirmed my availability for the appointment on ${formatDateShort(acceptedDate)} at ${formatTimeTo12h(acceptedTime)}. I'm ready to go!`,
       });
 
       return NextResponse.json({ success: true, message: 'Appointment confirmed successfully' });
+    }
+
+    if (action === 'counter_propose' && appointment.homeowner_initiated) {
+      return NextResponse.json(
+        { success: false, error: 'Counter-proposing is not allowed on homeowner-initiated requests' },
+        { status: 400 },
+      );
     }
 
     // ===== CLEANER DID NOT ACCEPT =====
@@ -158,17 +233,20 @@ export async function POST(request: NextRequest) {
 
     // SLA stops once the cleaner has responded — clear the deadline. Both
     // counter_propose and decline land here.
-    const rejectPayload =
-      appointment.status === 'confirmed'
-        ? {
-            cleaner_confirmation_status: 'rejected',
-            status: 'pending',
-            response_deadline: null,
-          }
-        : {
-            cleaner_confirmation_status: 'rejected',
-            response_deadline: null,
-          };
+    //
+    // For homeowner_initiated declines we skip flipping request_state here —
+    // the auto-defer helper at the end of this branch will either route to
+    // another cleaner ('routing') or escalate ('needs_admin_attention').
+    const rejectPayload: Record<string, unknown> = {
+      cleaner_confirmation_status: 'rejected',
+      response_deadline: null,
+    };
+    if (appointment.status === 'confirmed') {
+      rejectPayload.status = 'pending';
+    }
+    if (action === 'decline' && !appointment.homeowner_initiated) {
+      rejectPayload.request_state = 'needs_admin_attention';
+    }
 
     const { error: rejectError } = await supabaseAdmin
       .from('appointments')
@@ -254,10 +332,41 @@ export async function POST(request: NextRequest) {
       content: messageContent,
     });
 
+    // Homeowner-initiated decline: close the pending routing_log row and
+    // advance the chain to the next ranked cleaner (or escalate at 3 attempts).
+    let routingOutcome: string | null = null;
+    if (action === 'decline' && appointment.homeowner_initiated) {
+      const { data: pendingLog } = await supabaseAdmin
+        .from('appointment_routing_log')
+        .select('id')
+        .eq('appointment_id', appointmentId)
+        .eq('response', 'pending')
+        .order('attempt_index', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (pendingLog?.id) {
+        await supabaseAdmin
+          .from('appointment_routing_log')
+          .update({
+            response: 'declined',
+            responded_at: new Date().toISOString(),
+            decline_reason: reasonText,
+          })
+          .eq('id', pendingLog.id);
+      }
+      const outcome = await advanceAppointmentRouting({
+        appointmentId,
+        organizationId,
+        supabaseAdmin,
+      });
+      routingOutcome = outcome.kind;
+    }
+
     return NextResponse.json({
       success: true,
       message: action === 'decline' ? 'Decline recorded' : 'Counter-proposal submitted',
       feedbackId: (feedbackData as { id: string }).id,
+      routingOutcome,
     });
   } catch (error) {
     console.error('Error in appointment confirm POST:', error);

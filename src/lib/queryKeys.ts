@@ -5,6 +5,11 @@ export const keys = {
     byCleaner: (cleanerId: string) => ['appointments', 'cleaner', cleanerId] as const,
     byHomeowner: (homeownerId: string) => ['appointments', 'homeowner', homeownerId] as const,
     detail: (id: string) => ['appointments', 'detail', id] as const,
+    requestsByHomeowner: (homeownerId: string) =>
+      ['appointments', 'requests', 'homeowner', homeownerId] as const,
+    requestsByOrg: (orgId: string) => ['appointments', 'requests', 'org', orgId] as const,
+    routingLog: (appointmentId: string) =>
+      ['appointments', 'routing-log', appointmentId] as const,
   },
   payments: {
     all: ['payments'] as const,

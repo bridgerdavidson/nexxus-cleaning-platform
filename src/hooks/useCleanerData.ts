@@ -22,6 +22,10 @@ export interface CleanerAppointment {
   cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected';
   /** Wave 2 SLA: cleaner-response deadline (ISO). Null once the cleaner responds. */
   response_deadline?: string | null;
+  /** True when this is a homeowner-initiated request (vs admin direct-book). */
+  homeowner_initiated?: boolean;
+  /** Slots offered by the homeowner (1-3 rows). Empty for admin direct-book. */
+  requested_slots?: Array<{ slot_index: number; scheduled_date: string; scheduled_time: string }>;
   homeowner: {
     first_name: string;
     last_name: string;
@@ -176,6 +180,7 @@ export function useCleanerAppointments() {
           special_requests,
           cleaner_confirmation_status,
           response_deadline,
+          homeowner_initiated,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
@@ -197,6 +202,11 @@ export function useCleanerAppointments() {
           checklist:checklists(
             name,
             price_adder
+          ),
+          appointment_requested_slots(
+            slot_index,
+            scheduled_date,
+            scheduled_time
           )
         `)
         .eq('cleaner_id', userId)
@@ -220,14 +230,24 @@ export function useCleanerAppointments() {
         }
       }
 
-      return (data || []).map(appointment => ({
-        ...appointment,
-        homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
-        property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-        service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
-        checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
-        payment_status: paymentStatusMap[appointment.id] || null,
-      })) as CleanerAppointment[];
+      return (data || []).map(appointment => {
+        const a = appointment as typeof appointment & {
+          homeowner_initiated?: boolean;
+          appointment_requested_slots?: Array<{ slot_index: number; scheduled_date: string; scheduled_time: string }>;
+        };
+        return {
+          ...appointment,
+          homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
+          property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
+          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
+          checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
+          payment_status: paymentStatusMap[appointment.id] || null,
+          homeowner_initiated: !!a.homeowner_initiated,
+          requested_slots: (a.appointment_requested_slots ?? []).slice().sort(
+            (x, y) => x.slot_index - y.slot_index,
+          ),
+        };
+      }) as CleanerAppointment[];
     },
   });
 

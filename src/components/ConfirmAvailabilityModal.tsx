@@ -42,7 +42,7 @@ export type ConfirmModalMode = "confirm" | "propose" | "decline";
 interface ConfirmAvailabilityModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => Promise<void>;
+  onConfirm: (slotIndex: number | null) => Promise<void>;
   onPropose: (
     reason: string,
     suggestedTimes: SuggestedTime[],
@@ -53,6 +53,17 @@ interface ConfirmAvailabilityModalProps {
   mode: ConfirmModalMode;
   /** Suggestions auto-derived from cleaner's absence (rendered as one-tap chips). */
   freeSlotCandidates?: FreeSlot[];
+  /**
+   * Whether the parent appointment originated from a homeowner request. Hides
+   * the counter-propose action and (combined with `offeredSlots`) shows the
+   * slot picker on accept.
+   */
+  homeownerInitiated?: boolean;
+  /**
+   * Multi-slot offerings from the homeowner. When more than one is present and
+   * the cleaner accepts, they must pick which slot.
+   */
+  offeredSlots?: Array<{ slot_index: number; scheduled_date: string; scheduled_time: string }>;
 }
 
 const DECLINE_OPTIONS: { value: DeclineReason; label: string; description: string }[] = [
@@ -71,6 +82,8 @@ export default function ConfirmAvailabilityModal({
   appointment,
   mode,
   freeSlotCandidates = [],
+  homeownerInitiated = false,
+  offeredSlots = [],
 }: ConfirmAvailabilityModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reason, setReason] = useState("");
@@ -81,6 +94,13 @@ export default function ConfirmAvailabilityModal({
   // Decline mode state
   const [declineReason, setDeclineReason] = useState<DeclineReason | null>(null);
   const [declineOther, setDeclineOther] = useState("");
+
+  // Slot picker (homeowner-initiated multi-slot accept).
+  const sortedSlots = [...offeredSlots].sort((a, b) => a.slot_index - b.slot_index);
+  const requiresSlotPick = homeownerInitiated && sortedSlots.length > 1;
+  const [chosenSlotIndex, setChosenSlotIndex] = useState<number | null>(
+    requiresSlotPick ? null : (sortedSlots[0]?.slot_index ?? null),
+  );
 
   useBodyScrollLock(isOpen);
 
@@ -112,10 +132,14 @@ export default function ConfirmAvailabilityModal({
   };
 
   const handleConfirm = async () => {
+    if (requiresSlotPick && chosenSlotIndex === null) {
+      setError("Please pick which offered time you can take.");
+      return;
+    }
     try {
       setIsSubmitting(true);
       setError(null);
-      await onConfirm();
+      await onConfirm(homeownerInitiated ? chosenSlotIndex : null);
       handleReset();
       onClose();
     } catch (err) {
@@ -257,23 +281,79 @@ export default function ConfirmAvailabilityModal({
             </div>
 
             <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-2">
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <span className="font-medium text-gray-900">
-                  {formatDate(appointment.scheduled_date)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Clock className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-700">
-                  {formatTimeTo12h(appointment.scheduled_time)}
-                </span>
-              </div>
+              {!requiresSlotPick && (
+                <>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="font-medium text-gray-900">
+                      {formatDate(appointment.scheduled_date)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-700">
+                      {formatTimeTo12h(appointment.scheduled_time)}
+                    </span>
+                  </div>
+                </>
+              )}
               <p className="text-sm text-gray-600">
                 {appointment.homeowner_name} &middot; {appointment.service_name}
               </p>
               <p className="text-sm text-gray-500">{appointment.property_address}</p>
             </div>
+
+            {requiresSlotPick && (
+              <fieldset className="mb-4">
+                <legend className="block text-sm font-medium text-gray-700 mb-2">
+                  Pick which time you can take
+                </legend>
+                <div className="space-y-2" role="radiogroup">
+                  {sortedSlots.map((s) => {
+                    const selected = chosenSlotIndex === s.slot_index;
+                    return (
+                      <label
+                        key={s.slot_index}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                          selected ? "border-primary-500 bg-primary-50" : "border-gray-200 bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="slotPick"
+                          checked={selected}
+                          onChange={() => setChosenSlotIndex(s.slot_index)}
+                          className="sr-only"
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${
+                            selected ? "border-primary-600 bg-primary-600" : "border-gray-300 bg-white"
+                          }`}
+                        >
+                          {selected && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                        </span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">
+                              {s.slot_index === 0 ? "Primary" : `Alternate ${s.slot_index}`}
+                            </span>
+                            {s.slot_index === 0 && (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-primary-100 text-primary-700">
+                                preferred
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {formatDate(s.scheduled_date)} at {formatTimeTo12h(s.scheduled_time)}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            )}
 
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">

@@ -17,6 +17,14 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
 export type JobProgress = 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
 export type CleanerConfirmationStatus = 'awaiting' | 'approved' | 'rejected';
+// Sidecar lifecycle for homeowner-initiated booking requests. NULL on admin
+// direct-book appointments. See migration 059.
+export type AppointmentRequestState =
+  | 'awaiting_admin'
+  | 'routing'
+  | 'needs_admin_attention'
+  | 'completed';
+export type RoutingLogResponse = 'pending' | 'accepted' | 'declined' | 'expired';
 export type InviteStatus = 'pending' | 'accepted' | 'creating' | 'superseded' | 'failed' | 'expired';
 // Display status mirrors InviteStatus 1:1 now that 'expired' is a real DB value;
 // kept as a separate name for callers that previously folded computed expiry in.
@@ -150,8 +158,41 @@ export interface Appointment {
   cleaner_confirmation_status: CleanerConfirmationStatus; // awaiting, approved, or rejected
   price_override_enabled: boolean;
   price_override_total: number | null; // Explicit override when admin/manager customizes total
+  // Routing lifecycle: true when the homeowner submitted this as a request
+  // (vs admin direct-book). Drives the auto-defer chain and hides cleaner
+  // counter-propose.
+  homeowner_initiated: boolean;
+  // Sidecar lifecycle state; NULL on admin direct-book appointments that
+  // aren't going through the routing flow.
+  request_state: AppointmentRequestState | null;
   created_at: string;
   updated_at: string;
+}
+
+// Offered slots for a homeowner-initiated booking request. 1-3 rows per
+// appointment, slot_index 0 = primary, 1..2 = alternates.
+export interface AppointmentRequestedSlot {
+  id: string;
+  appointment_id: string;
+  slot_index: number; // 0..2
+  scheduled_date: string; // date
+  scheduled_time: string; // time
+  created_at: string;
+}
+
+// Routing attempts (max 3 per appointment).
+export interface AppointmentRoutingLog {
+  id: string;
+  appointment_id: string;
+  cleaner_id: string;
+  attempt_index: number; // 1..3
+  sent_at: string;
+  deadline_at: string;
+  response: RoutingLogResponse;
+  responded_at: string | null;
+  decline_reason: string | null;
+  slot_index_chosen: number | null; // populated on accept
+  created_at: string;
 }
 
 // RECURRING APPOINTMENT SERIES
@@ -510,5 +551,8 @@ export interface PricingTier {
 // - Use `special_requests` NOT `special_instructions` (in appointments table)
 // - cleaner_profiles.id IS the user's id (no separate user_id column)
 // - All column names are snake_case in database
+// - appointments.request_state is NULL for admin direct-book appointments;
+//   populated only on homeowner-initiated requests (homeowner_initiated=true).
+//   See migration 059 and appointment_requested_slots / appointment_routing_log.
 // 
 // See DB-SCHEMA-REFERENCE.md for complete schema documentation.
