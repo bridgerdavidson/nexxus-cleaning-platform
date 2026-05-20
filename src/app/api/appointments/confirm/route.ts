@@ -94,31 +94,32 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'accept') {
-      // For multi-slot homeowner-initiated requests, copy the cleaner's chosen
-      // slot into the appointment row before flipping to confirmed.
+      // For multi-slot requests (homeowner-initiated OR admin-direct with alts),
+      // copy the cleaner's chosen slot into the appointment row before flipping
+      // to confirmed. Admin-direct flow always has a primary; alternates land
+      // in appointment_requested_slots when admin filled them at create time.
       let acceptedDate = appointment.scheduled_date as string;
       let acceptedTime = appointment.scheduled_time as string;
       let acceptedSlotIndex: number | null = null;
 
-      if (appointment.homeowner_initiated) {
-        const { data: slotRows } = await supabaseAdmin
-          .from('appointment_requested_slots')
-          .select('slot_index, scheduled_date, scheduled_time')
-          .eq('appointment_id', appointmentId)
-          .order('slot_index', { ascending: true });
-        const slots = (slotRows ?? []) as Array<{
-          slot_index: number;
-          scheduled_date: string;
-          scheduled_time: string;
-        }>;
-        const requested = body.slotIndex ?? 0;
-        if (slots.length > 1 && body.slotIndex === undefined) {
+      const { data: slotRows } = await supabaseAdmin
+        .from('appointment_requested_slots')
+        .select('slot_index, scheduled_date, scheduled_time')
+        .eq('appointment_id', appointmentId)
+        .order('slot_index', { ascending: true });
+      const slots = (slotRows ?? []) as Array<{
+        slot_index: number;
+        scheduled_date: string;
+        scheduled_time: string;
+      }>;
+      if (slots.length > 1) {
+        if (body.slotIndex === undefined) {
           return NextResponse.json(
             { success: false, error: 'slotIndex is required when accepting a multi-slot request' },
             { status: 400 },
           );
         }
-        const chosen = slots.find((s) => s.slot_index === requested);
+        const chosen = slots.find((s) => s.slot_index === body.slotIndex);
         if (!chosen) {
           return NextResponse.json(
             { success: false, error: 'slotIndex does not match an offered slot' },
@@ -128,6 +129,12 @@ export async function POST(request: NextRequest) {
         acceptedDate = chosen.scheduled_date;
         acceptedTime = chosen.scheduled_time;
         acceptedSlotIndex = chosen.slot_index;
+      } else if (appointment.homeowner_initiated && slots.length === 1) {
+        // Single-slot homeowner request — still pull the canonical time from
+        // the slot row so the appointment matches what the homeowner offered.
+        acceptedDate = slots[0].scheduled_date;
+        acceptedTime = slots[0].scheduled_time;
+        acceptedSlotIndex = slots[0].slot_index;
       }
 
       // SLA stops once the cleaner has responded — clear the deadline so the
@@ -139,9 +146,11 @@ export async function POST(request: NextRequest) {
       if (appointment.status === 'pending') {
         baseUpdate.status = 'confirmed';
       }
-      if (appointment.homeowner_initiated) {
+      if (acceptedSlotIndex !== null) {
         baseUpdate.scheduled_date = acceptedDate;
         baseUpdate.scheduled_time = acceptedTime;
+      }
+      if (appointment.homeowner_initiated) {
         baseUpdate.request_state = 'completed';
       }
 
@@ -466,7 +475,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, data: feedback || [] });
+    // Surface the latest routing_log row so the reschedule modal can show the
+    // correct copy when an appointment times out (response='expired') instead
+    // of silently falling back to a feedback row that doesn't exist.
+    const { data: latestRoutingRow } = await supabaseAdmin
+      .from('appointment_routing_log')
+      .select('response, decline_reason, responded_at, attempt_index')
+      .eq('appointment_id', appointmentId)
+      .order('attempt_index', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return NextResponse.json({
+      success: true,
+      data: feedback || [],
+      latestRouting: latestRoutingRow ?? null,
+    });
   } catch (error) {
     console.error('Error in appointment confirm GET:', error);
     return NextResponse.json(

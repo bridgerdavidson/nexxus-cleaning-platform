@@ -27,6 +27,7 @@ import type { ScheduleAppointment } from "../lib/appointmentConflicts";
 import { rankCleanersByAvailability } from "../lib/cleanerAvailability";
 import { formatTimeTo12h } from "../lib/formatTime";
 import PaymentMethodForm from "./PaymentMethodForm";
+import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 
 interface Homeowner {
   id: string;
@@ -148,6 +149,7 @@ export default function AddAppointmentModal({
     useState<ChecklistOption | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const [alternateSlots, setAlternateSlots] = useState<SlotInput[]>([]);
   const [specialRequests, setSpecialRequests] = useState("");
 
   // Recurrence state
@@ -704,7 +706,39 @@ export default function AddAppointmentModal({
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
           response_deadline: responseDeadline,
-        });
+        })
+        .select("id")
+        .single();
+
+      // If admin provided alternates, also write the primary + alts into
+      // appointment_requested_slots so the cleaner sees inline chips and can
+      // accept any of them (parity with the homeowner-initiated flow).
+      if (!insertError && insertData?.id) {
+        const filledAlts = alternateSlots.filter((s) => s.date && s.time);
+        if (filledAlts.length > 0) {
+          const slotRows = [
+            {
+              appointment_id: insertData.id,
+              slot_index: 0,
+              scheduled_date: scheduledDate,
+              scheduled_time: scheduledTime,
+            },
+            ...filledAlts.map((s, i) => ({
+              appointment_id: insertData.id,
+              slot_index: i + 1,
+              scheduled_date: s.date,
+              scheduled_time: s.time,
+            })),
+          ];
+          const { error: slotsError } = await supabase
+            .from("appointment_requested_slots")
+            .insert(slotRows);
+          if (slotsError) {
+            console.error("Failed to insert alternate slots:", slotsError);
+            // Non-fatal: the appointment still exists with its primary time.
+          }
+        }
+      }
 
       if (insertError) {
         console.error("Insert error details:", {
@@ -761,6 +795,7 @@ export default function AddAppointmentModal({
     setSelectedChecklist(null);
     setScheduledDate("");
     setScheduledTime("");
+    setAlternateSlots([]);
     setSpecialRequests("");
     setSelectedCleaner(null);
     setHomeownerSearch("");
@@ -1352,84 +1387,29 @@ export default function AddAppointmentModal({
                   </div>
                 )}
 
-                {/* Date and Time */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Scheduled Date *
-                    </label>
-                    <input
-                      type="date"
-                      value={scheduledDate}
-                      onChange={(e) => {
-                        setScheduledDate(e.target.value);
-                        // Clear time if date changed to today and time is in the past
-                        if (e.target.value === today && scheduledTime) {
-                          const [hours, minutes] = scheduledTime
-                            .split(":")
-                            .map(Number);
-                          const selectedDateTime = new Date();
-                          selectedDateTime.setHours(hours, minutes, 0, 0);
-                          const now = new Date();
-
-                          if (selectedDateTime <= now) {
-                            setScheduledTime("");
-                            setError("Please select a future time for today.");
-                          } else {
-                            setError(null);
-                          }
-                        } else {
-                          setError(null);
-                        }
-                      }}
-                      min={today}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Scheduled Time *
-                    </label>
-                    <input
-                      type="time"
-                      value={scheduledTime}
-                      onChange={(e) => {
-                        setScheduledTime(e.target.value);
-                        // Validate time if date is today
-                        if (scheduledDate === today) {
-                          const selectedTime = e.target.value;
-                          const now = new Date();
-                          const [hours, minutes] = selectedTime
-                            .split(":")
-                            .map(Number);
-                          const selectedDateTime = new Date(now);
-                          selectedDateTime.setHours(hours, minutes, 0, 0);
-
-                          if (selectedDateTime <= now) {
-                            setError(
-                              "Cannot select a time in the past. Please choose a future time.",
-                            );
-                          } else {
-                            setError(null);
-                          }
-                        }
-                      }}
-                      min={scheduledDate === today ? getMinTime() : undefined}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
-                    {scheduledDate === today && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Select a time after{" "}
-                        {new Date().toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    )}
-                  </div>
-                </div>
+                {/* Preferred date & time (primary + up to 2 alternates) */}
+                <SlotPicker
+                  slots={[{ date: scheduledDate, time: scheduledTime }, ...alternateSlots]}
+                  onChange={(next) => {
+                    const primary = next[0] ?? { date: "", time: "" };
+                    setScheduledDate(primary.date);
+                    setScheduledTime(primary.time);
+                    setAlternateSlots(next.slice(1));
+                    setError(null);
+                  }}
+                  minDate={today}
+                  todayLocalStr={today}
+                  minTimeForToday={getMinTime()}
+                />
+                {scheduledDate === today && scheduledTime && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Today selected — pick a time after{" "}
+                    {new Date().toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                )}
 
                 {/* Special Requests */}
                 <div>

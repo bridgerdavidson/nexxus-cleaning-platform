@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { X, Calendar, Home, Plus, Trash2, Loader2 } from "lucide-react";
+import { X, Calendar, Home, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { formatTimeTo12h } from "../lib/formatTime";
+import { formatDateTimeTo12h } from "../lib/formatTime";
+import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 
 interface Property {
   id: string;
@@ -22,11 +23,6 @@ interface ServiceType {
   description: string | null;
   base_price: number;
   duration_minutes: number;
-}
-
-interface SlotState {
-  date: string;
-  time: string;
 }
 
 interface RequestAppointmentModalProps {
@@ -59,7 +55,7 @@ export default function RequestAppointmentModal({
   const [servicesLoading, setServicesLoading] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
 
-  const [slots, setSlots] = useState<SlotState[]>([{ date: "", time: "" }]);
+  const [slots, setSlots] = useState<SlotInput[]>([{ date: "", time: "" }]);
   const [specialRequests, setSpecialRequests] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,17 +136,6 @@ export default function RequestAppointmentModal({
     () => services.find((s) => s.id === selectedServiceId) ?? null,
     [services, selectedServiceId],
   );
-
-  const addSlot = () => {
-    if (slots.length >= 3) return;
-    setSlots([...slots, { date: "", time: "" }]);
-  };
-  const removeSlot = (idx: number) => {
-    setSlots(slots.filter((_, i) => i !== idx));
-  };
-  const updateSlot = (idx: number, key: keyof SlotState, value: string) => {
-    setSlots(slots.map((s, i) => (i === idx ? { ...s, [key]: value } : s)));
-  };
 
   const isValid =
     !!selectedPropertyId &&
@@ -283,56 +268,10 @@ export default function RequestAppointmentModal({
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">
-                    Preferred times
-                    <span className="text-gray-500 font-normal"> (primary required, up to 2 alternates)</span>
-                  </label>
-                  {slots.length < 3 && (
-                    <button
-                      type="button"
-                      onClick={addSlot}
-                      className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" /> Add alternate
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {slots.map((slot, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="text-xs font-medium text-gray-500 w-16">
-                        {idx === 0 ? "Primary" : `Alt ${idx}`}
-                      </div>
-                      <input
-                        type="date"
-                        min={today}
-                        value={slot.date}
-                        onChange={(e) => updateSlot(idx, "date", e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      />
-                      <input
-                        type="time"
-                        value={slot.time}
-                        onChange={(e) => updateSlot(idx, "time", e.target.value)}
-                        className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      />
-                      {idx > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => removeSlot(idx)}
-                          className="p-2 text-gray-400 hover:text-red-500"
-                          aria-label="Remove slot"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <SlotPicker slots={slots} onChange={setSlots} minDate={today} />
                 {slots[0]?.date && slots[0]?.time && (
                   <p className="text-xs text-gray-500 mt-2">
-                    First preference: {slots[0].date} at {formatTimeTo12h(slots[0].time)}
+                    First preference: {formatDateTimeTo12h(slots[0].date, slots[0].time)}
                   </p>
                 )}
               </div>
