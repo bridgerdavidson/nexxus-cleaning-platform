@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
         status: 'cancelled',
         cleaner_confirmation_status: 'rejected',
         response_deadline: null,
+        request_state: null,
       })
       .eq('id', appointmentId);
     if (updateErr) {

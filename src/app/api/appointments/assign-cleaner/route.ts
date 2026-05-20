@@ -90,7 +90,11 @@ export async function POST(request: NextRequest) {
     }
 
     const nextAttempt = ((existingLog ?? []).at(-1)?.attempt_index ?? 0) + 1;
-    if (nextAttempt > 3) {
+    // After the auto-defer chain exhausts (3 attempts), `request_state` flips
+    // to `needs_admin_attention` and admins use this same endpoint to force-
+    // assign past the cap. Without this exemption the force-assign path is
+    // permanently blocked once 3 routing-log rows exist.
+    if (nextAttempt > 3 && appt.request_state !== 'needs_admin_attention') {
       return NextResponse.json(
         { success: false, error: 'Chain limit reached; force-assign required' },
         { status: 409 },

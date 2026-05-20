@@ -151,4 +151,36 @@ describe('POST /api/appointments/assign-cleaner', () => {
     expect(status).toBe(400);
     await otherOrg.cleanup();
   });
+
+  it('admin force-assign succeeds after chain exhaustion (needs_admin_attention)', async () => {
+    // Simulate 3 exhausted routing-log attempts + needs_admin_attention state.
+    const admin = createTestSupabaseClient();
+    for (let i = 1; i <= 3; i++) {
+      await admin.from('appointment_routing_log').insert({
+        appointment_id: appointmentId,
+        cleaner_id: org.cleaner.userId,
+        attempt_index: i,
+        response: 'declined',
+        decline_reason: 'other',
+        deadline_at: new Date(Date.now() + 60_000).toISOString(),
+      });
+    }
+    await admin
+      .from('appointments')
+      .update({ request_state: 'needs_admin_attention' })
+      .eq('id', appointmentId);
+
+    const { status, body } = await callRoute<{ success: boolean; attemptIndex: number }>(assignRoute, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: {
+        appointmentId,
+        cleanerId: org.cleaner.userId,
+        organizationId: org.organizationId,
+      },
+    });
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.attemptIndex).toBe(4);
+  });
 });

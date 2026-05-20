@@ -81,10 +81,13 @@ describe('POST /api/appointments/request/cancel', () => {
     const admin = createTestSupabaseClient();
     const { data } = await admin
       .from('appointments')
-      .select('status')
+      .select('status, request_state')
       .eq('id', appointmentId)
       .single();
-    expect((data as { status: string }).status).toBe('cancelled');
+    expect((data as { status: string; request_state: string | null }).status).toBe('cancelled');
+    // Clearing request_state drops the row out of pending-request queries so
+    // admins don't try to route a cancelled request.
+    expect((data as { status: string; request_state: string | null }).request_state).toBeNull();
   });
 
   it('admin can cancel a homeowner request in their org', async () => {
