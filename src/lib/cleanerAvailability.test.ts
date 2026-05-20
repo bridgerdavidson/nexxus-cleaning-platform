@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { rankCleanersByAvailability, type CleanerLike } from './cleanerAvailability';
+import {
+  rankCleanersByAvailability,
+  rankCleanersByMultiSlotCoverage,
+  type CleanerLike,
+} from './cleanerAvailability';
 import type { ScheduleAppointment } from './appointmentConflicts';
 
 const cleaner = (id: string, first: string, last = ''): CleanerLike => ({
@@ -141,5 +145,111 @@ describe('rankCleanersByAvailability', () => {
     });
     expect(entry.isAvailable).toBe(true);
     expect(entry.conflicts).toHaveLength(0);
+  });
+});
+
+describe('rankCleanersByMultiSlotCoverage', () => {
+  const slots = [
+    { date: '2026-05-20', time: '10:00' },
+    { date: '2026-05-21', time: '14:00' },
+    { date: '2026-05-22', time: '09:00' },
+  ];
+
+  it('scores primary=2 and each alt=1 when fully free', () => {
+    const c = cleaner('a', 'Alice');
+    const result = rankCleanersByMultiSlotCoverage([c], {}, slots, 60);
+    expect(result[0].score).toBe(4);
+    expect(result[0].slotCoverage).toEqual({ primary: true, alt1: true, alt2: true });
+  });
+
+  it('strips primary points when primary slot is conflicted', () => {
+    const c = cleaner('a', 'Alice');
+    const schedules = {
+      a: [apt({ id: 'x', scheduled_date: '2026-05-20', scheduled_time: '10:00' })],
+    };
+    const result = rankCleanersByMultiSlotCoverage([c], schedules, slots, 60);
+    expect(result[0].score).toBe(2);
+    expect(result[0].slotCoverage).toEqual({ primary: false, alt1: true, alt2: true });
+  });
+
+  it('returns zero score when every slot conflicts', () => {
+    const c = cleaner('a', 'Alice');
+    const schedules = {
+      a: [
+        apt({ id: 'x', scheduled_date: '2026-05-20', scheduled_time: '10:00' }),
+        apt({ id: 'y', scheduled_date: '2026-05-21', scheduled_time: '14:00' }),
+        apt({ id: 'z', scheduled_date: '2026-05-22', scheduled_time: '09:00' }),
+      ],
+    };
+    const result = rankCleanersByMultiSlotCoverage([c], schedules, slots, 60);
+    expect(result[0].score).toBe(0);
+    expect(result[0].slotCoverage).toEqual({ primary: false, alt1: false, alt2: false });
+  });
+
+  it('breaks score ties by acceptance rate desc', () => {
+    const cleaners = [cleaner('low', 'Alice'), cleaner('high', 'Bob')];
+    const metrics = {
+      low: { acceptanceRate: 0.5, lastWorkedDaysAgo: null },
+      high: { acceptanceRate: 0.9, lastWorkedDaysAgo: null },
+    };
+    const result = rankCleanersByMultiSlotCoverage(cleaners, {}, slots, 60, metrics);
+    expect(result.map((r) => r.cleaner.id)).toEqual(['high', 'low']);
+  });
+
+  it('breaks remaining ties by last-worked-this-property (recent first, nulls last)', () => {
+    const cleaners = [
+      cleaner('never', 'Alice'),
+      cleaner('week', 'Bob'),
+      cleaner('day', 'Carol'),
+    ];
+    const metrics = {
+      never: { acceptanceRate: null, lastWorkedDaysAgo: null },
+      week: { acceptanceRate: null, lastWorkedDaysAgo: 7 },
+      day: { acceptanceRate: null, lastWorkedDaysAgo: 1 },
+    };
+    const result = rankCleanersByMultiSlotCoverage(cleaners, {}, slots, 60, metrics);
+    expect(result.map((r) => r.cleaner.id)).toEqual(['day', 'week', 'never']);
+  });
+
+  it('falls back to alphabetical for total ties', () => {
+    const cleaners = [
+      cleaner('c', 'Charlie'),
+      cleaner('a', 'Alice'),
+      cleaner('b', 'Bob'),
+    ];
+    const result = rankCleanersByMultiSlotCoverage(cleaners, {}, slots, 60);
+    expect(result.map((r) => r.cleaner.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drops excluded cleaner ids before ranking', () => {
+    const cleaners = [cleaner('a', 'Alice'), cleaner('b', 'Bob'), cleaner('c', 'Carol')];
+    const result = rankCleanersByMultiSlotCoverage(
+      cleaners,
+      {},
+      slots,
+      60,
+      {},
+      ['b'],
+    );
+    expect(result.map((r) => r.cleaner.id)).toEqual(['a', 'c']);
+  });
+
+  it('handles a single offered slot (primary only) without alt scoring', () => {
+    const c = cleaner('a', 'Alice');
+    const result = rankCleanersByMultiSlotCoverage([c], {}, [slots[0]], 60);
+    expect(result[0].score).toBe(2);
+    expect(result[0].slotCoverage).toEqual({ primary: true, alt1: false, alt2: false });
+  });
+
+  it('skips slots missing date or time', () => {
+    const c = cleaner('a', 'Alice');
+    const result = rankCleanersByMultiSlotCoverage(
+      [c],
+      {},
+      [{ date: '2026-05-20', time: '10:00' }, { date: '', time: '' }],
+      60,
+    );
+    expect(result[0].score).toBe(2);
+    expect(result[0].slotCoverage.alt1).toBe(false);
   });
 });

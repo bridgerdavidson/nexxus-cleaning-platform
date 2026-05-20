@@ -37,6 +37,9 @@ import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
 import AddAppointmentModal from "../../components/AddAppointmentModal";
+import RequestAppointmentButton from "../../components/RequestAppointmentButton";
+import { useHomeownerRequests } from "../../hooks/useHomeownerRequests";
+import { formatDateTimeTo12h } from "../../lib/formatTime";
 import BookingsPage from "../../components/BookingsPage";
 import AppointmentCard from "../../components/AppointmentCard";
 import PropertiesPage from "../../components/PropertiesPage";
@@ -103,6 +106,12 @@ function HomeownerDashboardInner() {
     maxChecklistAdderByServiceId,
     refreshMaxChecklistAdders,
   } = useServices();
+  const {
+    requests: homeownerRequests,
+    refetch: refetchHomeownerRequests,
+    cancelRequest,
+    cancelling: cancellingRequest,
+  } = useHomeownerRequests();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -308,6 +317,12 @@ function HomeownerDashboardInner() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                <RequestAppointmentButton
+                  onCreated={() => {
+                    refetchAppointments();
+                    refetchHomeownerRequests();
+                  }}
+                />
                 <button
                   onClick={() => setActiveTab("bookings")}
                   className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
@@ -321,6 +336,73 @@ function HomeownerDashboardInner() {
       </div>
 
       <div className="space-y-6">
+        {/* Pending requests submitted by this homeowner */}
+        {homeownerRequests.length > 0 && (
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 sm:px-5 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">Pending Requests</h3>
+              <p className="text-xs text-gray-500">Awaiting confirmation from your cleaning team</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {homeownerRequests.map((req) => (
+                <div key={req.id} className="px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-gray-900">
+                        {req.service_type?.name ?? "Cleaning"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
+                        <Clock className="w-3 h-3" />
+                        Pending confirmation
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600 truncate">
+                      {req.property
+                        ? `${req.property.address}, ${req.property.city}, ${req.property.state}`
+                        : "Property"}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {req.requested_slots
+                        .slice()
+                        .sort((a, b) => a.slot_index - b.slot_index)
+                        .map((s) => (
+                          <span
+                            key={s.slot_index}
+                            className={[
+                              "inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs border",
+                              s.slot_index === 0
+                                ? "bg-primary-50 text-primary-700 border-primary-200"
+                                : "bg-gray-50 text-gray-700 border-gray-200",
+                            ].join(" ")}
+                          >
+                            {s.slot_index === 0 && (
+                              <span className="text-[10px] uppercase tracking-wide font-semibold">
+                                Primary
+                              </span>
+                            )}
+                            {formatDateTimeTo12h(s.scheduled_date, s.scheduled_time)}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Cancel this request?")) {
+                        cancelRequest(req.id).catch((err) => console.error(err));
+                      }
+                    }}
+                    disabled={cancellingRequest}
+                    className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Active Cleanings — only renders when there are in-progress cleanings */}
         {activeAppointments.length > 0 && (
           <ActiveNowSection

@@ -22,6 +22,7 @@ const ALL_FALSE: ManagerPermissions = {
   can_view_messages: false,
   can_view_services: false,
   can_manage_services: false,
+  can_handle_requests: false,
 };
 
 export function useManagerPermissions() {
@@ -36,7 +37,7 @@ export function useManagerPermissions() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('manager_permissions')
-        .select('can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages, can_view_services, can_manage_services')
+        .select('can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages, can_view_services, can_manage_services, can_handle_requests')
         .eq('manager_id', userId)
         .eq('organization_id', orgId)
         .single();
@@ -63,6 +64,7 @@ export function useManagerPermissions() {
         can_view_messages: Boolean(data.can_view_messages),
         can_view_services: Boolean(data.can_view_services),
         can_manage_services: Boolean(data.can_manage_services),
+        can_handle_requests: Boolean(data.can_handle_requests),
       } as ManagerPermissions;
     },
   });

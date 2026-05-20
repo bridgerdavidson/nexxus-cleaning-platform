@@ -3,16 +3,12 @@
 import React, { useMemo, useState } from "react";
 import {
   AlertCircle,
-  Calendar,
   Clock,
-  MapPin,
   CheckCircle,
   XCircle,
-  CalendarPlus,
   ChevronDown,
   ChevronRight,
   Loader2,
-  SprayCan,
 } from "lucide-react";
 import { formatTimeTo12h } from "../lib/formatTime";
 import ConfirmAvailabilityModal, { type ConfirmModalMode } from "./ConfirmAvailabilityModal";
@@ -22,6 +18,12 @@ import {
   type DeadlineUrgency,
 } from "../lib/isAppointmentOverdue";
 import type { DeclineReason } from "../types";
+
+interface OfferedSlot {
+  slot_index: number;
+  scheduled_date: string;
+  scheduled_time: string;
+}
 
 interface PendingAppointment {
   id: string;
@@ -47,6 +49,8 @@ interface PendingAppointment {
   checklist?: {
     name: string;
   };
+  homeowner_initiated?: boolean;
+  requested_slots?: OfferedSlot[];
 }
 
 interface PendingConfirmationsSectionProps {
@@ -59,6 +63,55 @@ interface PendingConfirmationsSectionProps {
   /** Auth token for /api/appointments/confirm — required by requireOrgAuth. */
   accessToken?: string | null;
   onConfirmed: () => void;
+}
+
+function getHomeownerName(apt: PendingAppointment) {
+  if (apt.homeowner) {
+    const { first_name, last_name } = apt.homeowner;
+    return `${first_name || ""} ${last_name || ""}`.trim() || "Unknown";
+  }
+  return "Unknown";
+}
+
+function getPropertyAddress(apt: PendingAppointment) {
+  if (apt.property) {
+    const { address, city, state } = apt.property;
+    return `${address}, ${city}, ${state}`;
+  }
+  return "Address not available";
+}
+
+function getServiceName(apt: PendingAppointment) {
+  if (!apt.service_type) return "Cleaning Service";
+  return apt.checklist?.name
+    ? `${apt.service_type.name} (${apt.checklist.name})`
+    : apt.service_type.name;
+}
+
+function formatChipDate(dateStr: string) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/** Build the canonical slot list. Falls back to a single synthetic slot for
+ *  legacy admin-direct appointments that have no `appointment_requested_slots`
+ *  rows. */
+function getOfferedSlots(apt: PendingAppointment): OfferedSlot[] {
+  if (apt.requested_slots && apt.requested_slots.length > 0) {
+    return [...apt.requested_slots].sort((a, b) => a.slot_index - b.slot_index);
+  }
+  return [
+    {
+      slot_index: 0,
+      scheduled_date: apt.scheduled_date,
+      scheduled_time: apt.scheduled_time,
+    },
+  ];
 }
 
 export default function PendingConfirmationsSection({
@@ -96,48 +149,45 @@ export default function PendingConfirmationsSection({
 
   if (loading || appointments.length === 0) return null;
 
-  const formatDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const getHomeownerName = (apt: PendingAppointment) => {
-    if (apt.homeowner) {
-      const { first_name, last_name } = apt.homeowner;
-      return `${first_name || ""} ${last_name || ""}`.trim() || "Unknown";
-    }
-    return "Unknown";
-  };
-
-  const getPropertyAddress = (apt: PendingAppointment) => {
-    if (apt.property) {
-      const { address, city, state } = apt.property;
-      return `${address}, ${city}, ${state}`;
-    }
-    return "Address not available";
-  };
-
   const openModal = (apt: PendingAppointment, mode: ConfirmModalMode) => {
     setSelectedAppointment(apt);
     setModalMode(mode);
     setModalOpen(true);
   };
 
-  const handleConfirm = async () => {
-    if (!selectedAppointment) return;
+  /** Short-circuit accept from the card — slot was picked inline. */
+  const acceptSlot = async (apt: PendingAppointment, slotIndex: number) => {
+    const body: Record<string, unknown> = {
+      appointmentId: apt.id,
+      action: "accept",
+      organizationId,
+      slotIndex,
+    };
     const response = await fetch("/api/appointments/confirm", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({
-        appointmentId: selectedAppointment.id,
-        action: "accept",
-        organizationId,
-      }),
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || "Failed to confirm appointment");
+    }
+    onConfirmed();
+  };
+
+  // Handlers below are used by the modal for decline / counter-propose flows.
+  const handleConfirm = async (slotIndex: number | null) => {
+    if (!selectedAppointment) return;
+    const body: Record<string, unknown> = {
+      appointmentId: selectedAppointment.id,
+      action: "accept",
+      organizationId,
+    };
+    if (slotIndex !== null) body.slotIndex = slotIndex;
+    const response = await fetch("/api/appointments/confirm", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(body),
     });
     const result = await response.json();
     if (!result.success) {
@@ -202,12 +252,7 @@ export default function PendingConfirmationsSection({
         scheduled_time: selectedAppointment.scheduled_time,
         homeowner_name: getHomeownerName(selectedAppointment),
         property_address: getPropertyAddress(selectedAppointment),
-        service_name:
-          selectedAppointment.service_type?.name
-            ? selectedAppointment.checklist?.name
-              ? `${selectedAppointment.service_type.name} (${selectedAppointment.checklist.name})`
-              : selectedAppointment.service_type.name
-            : "Cleaning Service",
+        service_name: getServiceName(selectedAppointment),
       }
     : null;
 
@@ -234,7 +279,7 @@ export default function PendingConfirmationsSection({
               <div className="text-left">
                 <h3 className="text-lg font-bold text-gray-900">Action Required</h3>
                 <p className="text-xs font-medium text-amber-700">
-                  Confirm your availability for these appointments
+                  Pick a time and confirm your availability
                 </p>
               </div>
             </div>
@@ -262,68 +307,12 @@ export default function PendingConfirmationsSection({
               ) : (
                 <div className="space-y-3">
                   {appointments.map((apt) => (
-                    <div
+                    <PendingConfirmationCard
                       key={apt.id}
-                      className="bg-white rounded-xl border border-gray-200 shadow-sm p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
-                            {getHomeownerName(apt)}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-                            <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{formatDate(apt.scheduled_date)}</span>
-                            <span className="text-gray-300">|</span>
-                            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span>{formatTimeTo12h(apt.scheduled_time)}</span>
-                          </div>
-                          {apt.service_type && (
-                            <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                              <SprayCan className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span>
-                                {apt.checklist?.name
-                                  ? `${apt.service_type.name} (${apt.checklist.name})`
-                                  : apt.service_type.name}
-                              </span>
-                            </div>
-                          )}
-                          {apt.property && (
-                            <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-0.5">
-                              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span className="truncate">{getPropertyAddress(apt)}</span>
-                            </div>
-                          )}
-                        </div>
-                        <DeadlineBadge deadline={apt.response_deadline} />
-                      </div>
-
-                      {/* Three-button action row: Accept / Propose alternative / Decline.
-                          Stack vertically below 640px so every button stays ≥44px tall. */}
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <button
-                          onClick={() => openModal(apt, "confirm")}
-                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-green-500"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => openModal(apt, "propose")}
-                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-primary-100 text-primary-700 rounded-xl hover:bg-primary-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-primary-500"
-                        >
-                          <CalendarPlus className="w-4 h-4" />
-                          Propose alternative
-                        </button>
-                        <button
-                          onClick={() => openModal(apt, "decline")}
-                          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-gray-500"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Decline
-                        </button>
-                      </div>
-                    </div>
+                      appointment={apt}
+                      onAccept={(slotIndex) => acceptSlot(apt, slotIndex)}
+                      onDeclineClick={() => openModal(apt, "decline")}
+                    />
                   ))}
                 </div>
               )}
@@ -344,8 +333,144 @@ export default function PendingConfirmationsSection({
         appointment={modalAppointmentInfo}
         mode={modalMode}
         freeSlotCandidates={freeSlotCandidates}
+        homeownerInitiated={!!selectedAppointment?.homeowner_initiated}
+        offeredSlots={selectedAppointment?.requested_slots ?? []}
       />
     </>
+  );
+}
+
+interface PendingConfirmationCardProps {
+  appointment: PendingAppointment;
+  onAccept: (slotIndex: number) => Promise<void>;
+  onDeclineClick: () => void;
+}
+
+function PendingConfirmationCard({
+  appointment: apt,
+  onAccept,
+  onDeclineClick,
+}: PendingConfirmationCardProps) {
+  const slots = useMemo(() => getOfferedSlots(apt), [apt]);
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(
+    slots.length === 1 ? slots[0].slot_index : null,
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleAccept = async () => {
+    if (selectedSlotIndex === null) return;
+    try {
+      setSubmitting(true);
+      setError(null);
+      await onAccept(selectedSlotIndex);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to accept");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+      {/* Top row: identity + SLA badge */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 truncate">
+            {getHomeownerName(apt)}
+          </p>
+          <p className="text-sm text-gray-500 truncate">{getServiceName(apt)}</p>
+          <p className="text-sm text-gray-500 truncate">{getPropertyAddress(apt)}</p>
+        </div>
+        <DeadlineBadge deadline={apt.response_deadline} />
+      </div>
+
+      {/* Slot chips — full-width stack, radio-style selection */}
+      <div
+        className="flex flex-col gap-2 mb-3 w-full"
+        role="radiogroup"
+        aria-label="Available times"
+      >
+        {slots.map((s) => {
+          const isSelected = selectedSlotIndex === s.slot_index;
+          const isPrimary = s.slot_index === 0;
+          return (
+            <button
+              key={s.slot_index}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => setSelectedSlotIndex(s.slot_index)}
+              className={[
+                "w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-medium bg-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1",
+                isSelected
+                  ? "border-2 border-primary-500"
+                  : "border-2 border-gray-200 hover:border-primary-300",
+              ].join(" ")}
+            >
+              {/* Radio indicator */}
+              <span
+                className={[
+                  "flex items-center justify-center w-5 h-5 rounded-full border-2 flex-shrink-0 transition-colors",
+                  isSelected ? "border-primary-500" : "border-gray-300",
+                ].join(" ")}
+                aria-hidden="true"
+              >
+                {isSelected && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary-500" />
+                )}
+              </span>
+
+              {/* Date + time */}
+              <span className="flex-1 text-left text-gray-800">
+                {formatChipDate(s.scheduled_date)}
+                <span className="text-gray-400 mx-1.5">·</span>
+                {formatTimeTo12h(s.scheduled_time)}
+              </span>
+
+              {/* Primary badge — only when slots offer alternatives */}
+              {isPrimary && slots.length > 1 ? (
+                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary-100 text-primary-700 flex-shrink-0">
+                  Primary
+                </span>
+              ) : (
+                <span className="w-12 flex-shrink-0" aria-hidden="true" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-600 mb-2" role="alert">
+          {error}
+        </p>
+      )}
+
+      {/* Action row: Accept (gated on chip) / Decline (always live) */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <button
+          onClick={handleAccept}
+          disabled={selectedSlotIndex === null || submitting}
+          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {submitting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <CheckCircle className="w-4 h-4" />
+          )}
+          {selectedSlotIndex === null && slots.length > 1 ? "Pick a time to accept" : "Accept"}
+        </button>
+        <button
+          onClick={onDeclineClick}
+          disabled={submitting}
+          className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors duration-200 font-medium text-sm focus-visible:ring-2 focus-visible:ring-gray-500 disabled:opacity-50"
+        >
+          <XCircle className="w-4 h-4" />
+          Decline
+        </button>
+      </div>
+    </div>
   );
 }
 
