@@ -33,6 +33,7 @@ interface AppointmentRow {
   id: string;
   organization_id: string;
   homeowner_initiated: boolean | null;
+  flow_type: 'homeowner_request' | 'admin_direct' | 'cleaner_availability' | null;
   property_id: string;
   service_type_id: string;
   duration_minutes: number;
@@ -76,7 +77,7 @@ export async function advanceAppointmentRouting({
   const { data: appt, error: apptErr } = await supabaseAdmin
     .from('appointments')
     .select(
-      'id, organization_id, homeowner_initiated, property_id, service_type_id, duration_minutes, cleaner_id, request_state, scheduled_date, scheduled_time',
+      'id, organization_id, homeowner_initiated, flow_type, property_id, service_type_id, duration_minutes, cleaner_id, request_state, scheduled_date, scheduled_time',
     )
     .eq('id', appointmentId)
     .eq('organization_id', organizationId)

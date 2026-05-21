@@ -4,6 +4,10 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { formatTimeTo12h } from '@/lib/formatTime';
 import { declineReasonLabel, type DeclineReason } from '@/types';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
+import {
+  canCounterPropose,
+  usesRequestState,
+} from '@/lib/appointments/flowType';
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org AND this cleaner.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, request_state')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -132,7 +136,7 @@ export async function POST(request: NextRequest) {
         acceptedDate = chosen.scheduled_date;
         acceptedTime = chosen.scheduled_time;
         acceptedSlotIndex = chosen.slot_index;
-      } else if (appointment.homeowner_initiated && slots.length === 1) {
+      } else if (usesRequestState(appointment) && slots.length === 1) {
         // Single-slot homeowner request — still pull the canonical time from
         // the slot row so the appointment matches what the homeowner offered.
         acceptedDate = slots[0].scheduled_date;
@@ -153,7 +157,7 @@ export async function POST(request: NextRequest) {
         baseUpdate.scheduled_date = acceptedDate;
         baseUpdate.scheduled_time = acceptedTime;
       }
-      if (appointment.homeowner_initiated) {
+      if (usesRequestState(appointment)) {
         baseUpdate.request_state = 'completed';
       }
 
@@ -171,7 +175,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Mark the latest pending routing_log row (if any) as accepted.
-      if (appointment.homeowner_initiated) {
+      if (usesRequestState(appointment)) {
         const { data: pendingLog } = await supabaseAdmin
           .from('appointment_routing_log')
           .select('id')
@@ -202,7 +206,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Appointment confirmed successfully' });
     }
 
-    if (action === 'counter_propose' && appointment.homeowner_initiated) {
+    if (action === 'counter_propose' && !canCounterPropose(appointment)) {
       return NextResponse.json(
         { success: false, error: 'Counter-proposing is not allowed on homeowner-initiated requests' },
         { status: 400 },

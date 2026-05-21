@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         cleaner_confirmation_status: 'awaiting',
         homeowner_initiated: true,
+        flow_type: 'homeowner_request',
         request_state: 'awaiting_admin',
       })
       .select('id')
