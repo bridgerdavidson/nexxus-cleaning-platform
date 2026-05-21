@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { homeownerCanCancel } from '@/lib/appointments/flowType';
 
 interface CancelInput {
   appointmentId: string;
@@ -26,14 +27,14 @@ export async function POST(request: NextRequest) {
 
     const { data: appointment, error: apptErr } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id, homeowner_id, status, request_state, homeowner_initiated')
+      .select('id, organization_id, homeowner_id, status, request_state, homeowner_initiated, flow_type')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .maybeSingle();
     if (apptErr || !appointment) {
       return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
     }
-    if (!appointment.homeowner_initiated) {
+    if (!homeownerCanCancel(appointment)) {
       return NextResponse.json(
         { success: false, error: 'Only homeowner-initiated requests can be cancelled here' },
         { status: 400 },

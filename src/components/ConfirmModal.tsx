@@ -3,6 +3,7 @@
 import React from "react";
 import { X, AlertTriangle, AlertCircle, Loader2 } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useEscapeClose } from "../hooks/useEscapeClose";
 
 export type ConfirmModalTone = "danger" | "warning" | "primary";
 
@@ -53,6 +54,7 @@ export default function ConfirmModal({
   isLoading = false,
 }: ConfirmModalProps) {
   useBodyScrollLock(isOpen);
+  useEscapeClose(isOpen, isLoading ? () => undefined : onClose);
 
   if (!isOpen) return null;
 

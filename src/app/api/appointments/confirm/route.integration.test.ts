@@ -399,8 +399,8 @@ describe('POST /api/appointments/confirm', () => {
         .eq('id', appointmentInOrg1.id)
         .single();
       expect((directAppt as { homeowner_initiated: boolean }).homeowner_initiated).toBe(false);
-      // Escalated: surfaces in both admin queue (needs_admin_attention) AND
-      // RescheduleRequiredSection (cleaner_confirmation_status='rejected').
+      // Escalated: surfaces in the unified ActionRequiredSection as
+      // "All cleaners declined" (cleaner_id=null, ccs='rejected').
       expect((directAppt as { request_state: string | null }).request_state).toBe('needs_admin_attention');
       expect((directAppt as { cleaner_confirmation_status: string }).cleaner_confirmation_status).toBe('rejected');
       expect((directAppt as { cleaner_id: string | null }).cleaner_id).toBeNull();
@@ -411,6 +411,46 @@ describe('POST /api/appointments/confirm', () => {
         .eq('appointment_id', appointmentInOrg1.id);
       expect(directLog).toHaveLength(1);
       expect((directLog as Array<{ response: string }>)[0].response).toBe('declined');
+    });
+
+    it('admin-direct accept closes the pending routing_log row so auto-defer does not re-route it', async () => {
+      // Simulates the post-decline reassignment state for an admin-direct
+      // appointment: the cleaner has a pending routing_log row with an
+      // already-elapsed deadline. If the accept handler skips closing this
+      // row, the auto-defer sweep flips it to expired and reassigns the
+      // appointment — silently re-routing an already-accepted job. Regression
+      // guard for the codex review on PR #14.
+      const admin = createTestSupabaseClient();
+      await admin
+        .from('appointment_routing_log')
+        .insert({
+          appointment_id: appointmentInOrg1.id,
+          cleaner_id: org.cleaner.userId,
+          attempt_index: 1,
+          response: 'pending',
+          // Deadline already in the past — proves the pending row would be
+          // swept by auto-defer if we didn't close it on accept.
+          deadline_at: '2020-01-01T00:00:00Z',
+        });
+
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.cleaner.accessToken),
+        body: {
+          appointmentId: appointmentInOrg1.id,
+          action: 'accept',
+          organizationId: org.organizationId,
+        },
+      });
+      expect(status).toBe(200);
+
+      const { data: log } = await admin
+        .from('appointment_routing_log')
+        .select('response, responded_at')
+        .eq('appointment_id', appointmentInOrg1.id)
+        .single();
+      expect((log as { response: string }).response).toBe('accepted');
+      expect((log as { responded_at: string | null }).responded_at).not.toBeNull();
     });
   });
 });

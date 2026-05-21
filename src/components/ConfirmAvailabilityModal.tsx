@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useEscapeClose } from "../hooks/useEscapeClose";
 import { formatTimeTo12h } from "../lib/formatTime";
 import type { FreeSlot } from "../lib/cleanerFreeSlots";
 import type { DeclineReason } from "../types";
@@ -103,6 +104,7 @@ export default function ConfirmAvailabilityModal({
   );
 
   useBodyScrollLock(isOpen);
+  useEscapeClose(isOpen, isSubmitting ? () => undefined : onClose);
 
   if (!isOpen || !appointment) return null;
 

@@ -4,6 +4,11 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { formatTimeTo12h } from '@/lib/formatTime';
 import { declineReasonLabel, type DeclineReason } from '@/types';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
+import {
+  canCounterPropose,
+  usesRequestState,
+} from '@/lib/appointments/flowType';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
@@ -11,7 +16,10 @@ interface ConfirmAppointmentInput {
   appointmentId: string;
   /** Preferred explicit action. Wave 1+: one of 'accept' | 'counter_propose' | 'decline'. */
   action?: ConfirmAction;
-  /** Legacy boolean. Kept for backward-compat: true → accept, false → counter_propose. */
+  /**
+   * @deprecated Use `action` instead. Kept for backward-compat with old clients:
+   * true → accept, false → counter_propose.
+   */
   confirmed?: boolean;
   /** Required when action === 'decline'. */
   declineReason?: DeclineReason;
@@ -74,7 +82,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org AND this cleaner.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, request_state')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -129,7 +137,7 @@ export async function POST(request: NextRequest) {
         acceptedDate = chosen.scheduled_date;
         acceptedTime = chosen.scheduled_time;
         acceptedSlotIndex = chosen.slot_index;
-      } else if (appointment.homeowner_initiated && slots.length === 1) {
+      } else if (usesRequestState(appointment) && slots.length === 1) {
         // Single-slot homeowner request — still pull the canonical time from
         // the slot row so the appointment matches what the homeowner offered.
         acceptedDate = slots[0].scheduled_date;
@@ -150,7 +158,7 @@ export async function POST(request: NextRequest) {
         baseUpdate.scheduled_date = acceptedDate;
         baseUpdate.scheduled_time = acceptedTime;
       }
-      if (appointment.homeowner_initiated) {
+      if (usesRequestState(appointment)) {
         baseUpdate.request_state = 'completed';
       }
 
@@ -167,26 +175,33 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Mark the latest pending routing_log row (if any) as accepted.
-      if (appointment.homeowner_initiated) {
-        const { data: pendingLog } = await supabaseAdmin
+      // Mark the latest pending routing_log row (if any) as accepted. This
+      // runs for every flow type, not just homeowner_request: admin_direct
+      // appointments also accrue routing_log rows after a cleaner decline
+      // (since fe71ea8 routes admin_direct through the chain too), so if we
+      // skipped them here the row would stay `pending` and the auto-defer
+      // sweep would later flip it to `expired` and re-route an
+      // already-accepted appointment.
+      //
+      // Single-slot admin_direct that never saw a decline has no pending row,
+      // so maybeSingle returns null and we no-op.
+      const { data: pendingLog } = await supabaseAdmin
+        .from('appointment_routing_log')
+        .select('id')
+        .eq('appointment_id', appointmentId)
+        .eq('response', 'pending')
+        .order('attempt_index', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (pendingLog?.id) {
+        await supabaseAdmin
           .from('appointment_routing_log')
-          .select('id')
-          .eq('appointment_id', appointmentId)
-          .eq('response', 'pending')
-          .order('attempt_index', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (pendingLog?.id) {
-          await supabaseAdmin
-            .from('appointment_routing_log')
-            .update({
-              response: 'accepted',
-              responded_at: new Date().toISOString(),
-              slot_index_chosen: acceptedSlotIndex,
-            })
-            .eq('id', pendingLog.id);
-        }
+          .update({
+            response: 'accepted',
+            responded_at: new Date().toISOString(),
+            slot_index_chosen: acceptedSlotIndex,
+          })
+          .eq('id', pendingLog.id);
       }
 
       await sendMessageToAdmins({
@@ -196,10 +211,26 @@ export async function POST(request: NextRequest) {
         content: `I've confirmed my availability for the appointment on ${formatDateShort(acceptedDate)} at ${formatTimeTo12h(acceptedTime)}. I'm ready to go!`,
       });
 
+      // Notify both the homeowner (their appointment is confirmed) and admins.
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_accepted',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        recipient_user_id: appointment.homeowner_id as string,
+        payload: { scheduled_date: acceptedDate, scheduled_time: acceptedTime },
+      });
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_accepted',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        // null recipient → fans out to all admins
+        payload: { scheduled_date: acceptedDate, scheduled_time: acceptedTime },
+      });
+
       return NextResponse.json({ success: true, message: 'Appointment confirmed successfully' });
     }
 
-    if (action === 'counter_propose' && appointment.homeowner_initiated) {
+    if (action === 'counter_propose' && !canCounterPropose(appointment)) {
       return NextResponse.json(
         { success: false, error: 'Counter-proposing is not allowed on homeowner-initiated requests' },
         { status: 400 },
@@ -243,14 +274,14 @@ export async function POST(request: NextRequest) {
     // SLA stops once the cleaner has responded — clear the deadline.
     //
     // Decline paths skip the legacy 'rejected' write so the appointment
-    // doesn't briefly surface in RescheduleRequiredSection while we route to
+    // doesn't briefly surface in ActionRequiredSection while we route to
     // the next cleaner. advanceAppointmentRouting (called below) writes the
     // final state atomically — either reassigned (cleaner_id=new,
     // status='awaiting') or escalated (cleaner_id=null + state surfaces in
-    // RescheduleRequired/AwaitingRequests).
+    // ActionRequiredSection).
     //
     // Counter-proposals don't auto-reassign — they stay rejected so the admin
-    // can accept the proposed times in RescheduleRequiredSection.
+    // can accept the proposed times in ActionRequiredSection.
     const rejectPayload: Record<string, unknown> = {
       response_deadline: null,
     };
@@ -397,6 +428,32 @@ export async function POST(request: NextRequest) {
         supabaseAdmin,
       });
       routingOutcome = outcome.kind;
+
+      // Decline event always fires; if the chain exhausts we also emit a
+      // chain_exhausted urgent signal.
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_declined',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        payload: { decline_reason: reasonText, routing_outcome: outcome.kind },
+      });
+      if (outcome.kind === 'escalated') {
+        await recordNotificationEvent(supabaseAdmin, {
+          event_type: 'chain_exhausted',
+          appointment_id: appointmentId,
+          organization_id: organizationId,
+        });
+      }
+    } else if (action === 'counter_propose') {
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_counter_proposed',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        payload: {
+          suggested_times_count: feedback?.suggestedTimes?.length ?? 0,
+          suggested_windows_count: feedback?.suggestedWindows?.length ?? 0,
+        },
+      });
     }
 
     return NextResponse.json({

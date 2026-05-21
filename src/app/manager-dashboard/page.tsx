@@ -73,7 +73,7 @@ import PaymentsPage from "../../components/PaymentsPage";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
-import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
+import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
@@ -605,22 +605,9 @@ function ManagerDashboardInner() {
     .filter((a) => a.status === "in_progress")
     .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
 
-  // Appointments where the cleaner has rejected the time (needs rescheduling)
-  const rescheduleRequiredAppointments = appointments
-    .filter((a) => {
-      if (a.cleaner_confirmation_status !== "rejected") return false;
-      if (a.status === "completed" || a.status === "cancelled") return false;
-      return true;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-  // Appointments awaiting cleaner confirmation — shown in the "Pending Review"
-  // section. Unassigned homeowner-initiated requests live in AwaitingRequests
-  // until an admin picks a cleaner; only show here once a cleaner is assigned.
+  // Appointments awaiting cleaner confirmation — shown in the
+  // AwaitingApprovalSection (informational). The unified ActionRequiredSection
+  // surfaces items where the *admin/manager* needs to act.
   const awaitingCleanerApprovalAppointments = appointments
     .filter((a) => {
       if (!a.cleaner_id) return false;
@@ -729,14 +716,11 @@ function ManagerDashboardInner() {
       </div>
 
       <div className="space-y-6">
-        <RescheduleRequiredSection
-          appointments={rescheduleRequiredAppointments}
-          loading={appointmentsLoading}
-          defaultExpanded={false}
-          onReschedule={(apt) => {
-            setRescheduleModalAppointment(apt as AppointmentCardData);
+        <ActionRequiredSection
+          onReassign={(item) => {
+            const apt = appointments.find((a) => a.id === item.id);
+            if (apt) setRescheduleModalAppointment(apt as AppointmentCardData);
           }}
-          onViewDetails={(apt) => openAppointment(apt.id)}
         />
 
         {activeJobsManager.length > 0 && (

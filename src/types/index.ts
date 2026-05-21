@@ -24,6 +24,13 @@ export type AppointmentRequestState =
   | 'routing'
   | 'needs_admin_attention'
   | 'completed';
+// How the appointment came into existence. Drives flow-specific behavior
+// (counter-propose allowed? request_state state machine?) — see
+// src/lib/appointments/flowType.ts.
+export type AppointmentFlowType =
+  | 'homeowner_request'
+  | 'admin_direct'
+  | 'cleaner_availability';
 export type RoutingLogResponse = 'pending' | 'accepted' | 'declined' | 'expired';
 export type InviteStatus = 'pending' | 'accepted' | 'creating' | 'superseded' | 'failed' | 'expired';
 // Display status mirrors InviteStatus 1:1 now that 'expired' is a real DB value;
@@ -161,7 +168,11 @@ export interface Appointment {
   // Routing lifecycle: true when the homeowner submitted this as a request
   // (vs admin direct-book). Drives the auto-defer chain and hides cleaner
   // counter-propose.
+  /** @deprecated Use `flow_type` instead. Kept for one release cycle. */
   homeowner_initiated: boolean;
+  // The canonical "how was this appointment created" enum. Drives whether
+  // the cleaner can counter-propose, whether request_state applies, etc.
+  flow_type: AppointmentFlowType;
   // Sidecar lifecycle state; NULL on admin direct-book appointments that
   // aren't going through the routing flow.
   request_state: AppointmentRequestState | null;

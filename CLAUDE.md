@@ -226,6 +226,7 @@ Required for full functionality:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only admin client (never expose)
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — server Stripe
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
+- `CRON_SECRET` — shared secret pg_cron uses to authenticate to `/api/appointments/auto-defer/cron`. Generate a random 64-char string. In Postgres, set the matching value via `ALTER SYSTEM SET app.cron_secret = '<value>'` plus `ALTER SYSTEM SET app.api_base_url = 'https://your-host'` so the cron job (migration 064) can call back.
 
 ## Visual Testing
 Use the Playwright MCP tools to navigate to the local dev server 

@@ -28,11 +28,11 @@ const getCleanerName = (a: AppointmentCardData): string | null => {
   return `${profile.first_name} ${profile.last_name}`;
 };
 
-const getHomeownerName = (a: AppointmentCardData): string => {
+const getHomeownerName = (a: AppointmentCardData): string | null => {
   if (a.homeowner) {
     return `${a.homeowner.first_name} ${a.homeowner.last_name}`;
   }
-  return "Unknown";
+  return null;
 };
 
 const formatShortDate = (scheduledDate: string): string => {
@@ -92,8 +92,12 @@ export default function CompactAppointmentRow({
           )}
         </p>
         <p className="text-xs sm:text-sm text-gray-600 truncate">
-          {getHomeownerName(appointment)}
-          {showDate ? ` · ${formatShortDate(appointment.scheduled_date)}` : ""}
+          {(() => {
+            const homeowner = getHomeownerName(appointment);
+            const date = showDate ? formatShortDate(appointment.scheduled_date) : null;
+            if (homeowner && date) return `${homeowner} · ${date}`;
+            return homeowner ?? date ?? null;
+          })()}
         </p>
         {subline && <div className="mt-0.5">{subline}</div>}
       </div>

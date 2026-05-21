@@ -133,7 +133,7 @@ export default function AppointmentCard({
       const { first_name, last_name } = appointment.homeowner;
       return `${first_name} ${last_name}`;
     }
-    return "Unknown";
+    return null;
   };
 
   const getCleanerName = () => {
@@ -358,11 +358,13 @@ export default function AppointmentCard({
           )}
         </div>
 
-        {/* Homeowner */}
-        <div className={`${role === "cleaner" ? (showStartJobButton ? "col-span-2" : "col-span-5") : "col-span-2"} flex items-center gap-1.5 min-w-0`}>
-          <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
-          <p className="font-medium text-sm text-gray-900 truncate">{getHomeownerName()}</p>
-        </div>
+        {/* Homeowner — hidden when viewer is the homeowner (no name to render). */}
+        {getHomeownerName() ? (
+          <div className={`${role === "cleaner" ? (showStartJobButton ? "col-span-2" : "col-span-5") : "col-span-2"} flex items-center gap-1.5 min-w-0`}>
+            <User className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            <p className="font-medium text-sm text-gray-900 truncate">{getHomeownerName()}</p>
+          </div>
+        ) : null}
 
         {/* Cleaner - Hide for cleaner role */}
         {role !== "cleaner" && (
@@ -474,10 +476,12 @@ export default function AppointmentCard({
         {/* Bottom row: People & Money */}
         <div className="flex items-center justify-between gap-4 pl-[42px] pt-2 border-t border-gray-100">
           <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Client</span>
-              <span className="text-xs font-medium text-gray-900">{getHomeownerName()}</span>
-            </div>
+            {getHomeownerName() ? (
+              <div className="flex flex-col">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Client</span>
+                <span className="text-xs font-medium text-gray-900">{getHomeownerName()}</span>
+              </div>
+            ) : null}
             {role !== "cleaner" && (
               <div className="flex flex-col pl-4 border-l border-gray-100">
                 <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Cleaner</span>

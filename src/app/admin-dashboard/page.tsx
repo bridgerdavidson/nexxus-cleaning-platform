@@ -62,11 +62,11 @@ import CleanerManagementPage from "../../components/CleanerManagementPage";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
-import RescheduleRequiredSection from "../../components/RescheduleRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
-import AwaitingRequestsSection from "../../components/admin-dashboard/AwaitingRequestsSection";
+import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
+import { useAdminActionItems } from "../../hooks/useAdminActionItems";
 import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
 import TodayScheduleSection from "../../components/TodayScheduleSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
@@ -229,24 +229,10 @@ function AdminDashboardInner() {
     );
   }, [conversations, selectedMessagesConversationId]);
 
-  // Wave 2 SLA: appointments where the cleaner hasn't responded by the
-  // deadline OR has rejected (counter-proposed / hard-declined). Drives the
-  // Bookings nav dot + the on-mount overdue toast.
-  const needsResponseCount = useMemo(() => {
-    const now = new Date();
-    return appointments.filter((apt) => {
-      if (apt.status === "cancelled" || apt.status === "completed") return false;
-      if (apt.cleaner_confirmation_status === "rejected") return true;
-      return isAppointmentOverdue(
-        {
-          status: apt.status,
-          cleaner_confirmation_status: apt.cleaner_confirmation_status,
-          response_deadline: apt.response_deadline,
-        },
-        now,
-      );
-    }).length;
-  }, [appointments]);
+  // The unified action queue drives both the Bookings nav dot and the body
+  // of the Action Required section. Same source of truth across all surfaces.
+  const { items: actionItems } = useAdminActionItems();
+  const needsResponseCount = actionItems.length;
 
   const overdueCount = useMemo(() => {
     const now = new Date();
@@ -450,22 +436,10 @@ function AdminDashboardInner() {
     .filter((a) => a.status === "in_progress")
     .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
 
-  // Appointments where the cleaner has rejected the time (needs rescheduling)
-  const rescheduleRequiredAppointments = appointments
-    .filter((a) => {
-      if (a.cleaner_confirmation_status !== "rejected") return false;
-      if (a.status === "completed" || a.status === "cancelled") return false;
-      return true;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-  // Appointments awaiting cleaner confirmation — shown in the "Pending Review"
-  // section. Unassigned homeowner-initiated requests live in AwaitingRequests
-  // until an admin picks a cleaner; only show here once a cleaner is assigned.
+  // Appointments awaiting cleaner confirmation — shown in the
+  // AwaitingApprovalSection (informational). The unified ActionRequiredSection
+  // surfaces items where the *admin* needs to act; this list is the
+  // pending-cleaner-response signal.
   const awaitingCleanerApprovalAppointments = appointments
     .filter((a) => {
       if (!a.cleaner_id) return false;
@@ -545,18 +519,15 @@ function AdminDashboardInner() {
       </div>
 
       <div className="space-y-6">
-        {/* Homeowner-initiated requests waiting for admin action surface first
-            — these block customer onboarding flow until an admin assigns. */}
-        <AwaitingRequestsSection />
-
-        <RescheduleRequiredSection
-          appointments={rescheduleRequiredAppointments}
-          loading={appointmentsLoading}
-          defaultExpanded={false}
-          onReschedule={(apt) => {
-            setRescheduleModalAppointment(apt as AppointmentCardData);
+        {/* Unified action queue: everything that needs the admin's response
+            lives here — unassigned requests, escalations, counter-proposals,
+            declines, and SLA timeouts. One source of truth across the
+            overview, the Bookings tab, and the nav-dot count. */}
+        <ActionRequiredSection
+          onReassign={(item) => {
+            const apt = appointments.find((a) => a.id === item.id);
+            if (apt) setRescheduleModalAppointment(apt as AppointmentCardData);
           }}
-          onViewDetails={(apt) => openAppointment(apt.id)}
         />
 
         {activeJobsAdmin.length > 0 && (

@@ -7,7 +7,8 @@ export const keys = {
     detail: (id: string) => ['appointments', 'detail', id] as const,
     requestsByHomeowner: (homeownerId: string) =>
       ['appointments', 'requests', 'homeowner', homeownerId] as const,
-    requestsByOrg: (orgId: string) => ['appointments', 'requests', 'org', orgId] as const,
+    actionItemsByOrg: (orgId: string) =>
+      ['appointments', 'action-items', 'org', orgId] as const,
     routingLog: (appointmentId: string) =>
       ['appointments', 'routing-log', appointmentId] as const,
   },

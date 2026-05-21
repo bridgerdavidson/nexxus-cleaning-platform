@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 interface AutoDeferInput {
   organizationId: string;
@@ -73,6 +74,19 @@ export async function POST(request: NextRequest) {
         supabaseAdmin,
       });
       outcomes.push({ appointmentId: row.appointment_id, outcome: result.kind });
+
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_response_overdue',
+        appointment_id: row.appointment_id,
+        organization_id: organizationId,
+      });
+      if (result.kind === 'escalated') {
+        await recordNotificationEvent(supabaseAdmin, {
+          event_type: 'chain_exhausted',
+          appointment_id: row.appointment_id,
+          organization_id: organizationId,
+        });
+      }
     }
 
     return NextResponse.json({ success: true, processed: outcomes.length, outcomes });
