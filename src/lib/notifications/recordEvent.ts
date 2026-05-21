@@ -2,8 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NotificationEventPayload } from './eventTypes';
 
 /**
- * Append one row per notification event. Failures are swallowed by the caller —
- * the outbox is a best-effort write, not a critical part of the API response.
+ * Append one row per notification event. The outbox is a best-effort write —
+ * callers do not need to wrap this call in try/catch. Any failure (DB error,
+ * malformed client, missing table) is logged and swallowed here so a broken
+ * notification path never crashes the API route that triggered it.
  *
  * If `recipient_user_id` is set, exactly one row is inserted. If not, the
  * helper fans out to every admin/owner of `organization_id` (one row per
@@ -17,24 +19,28 @@ export async function recordNotificationEvent(
   supabaseAdmin: SupabaseClient,
   event: NotificationEventPayload,
 ): Promise<void> {
-  const recipients = event.recipient_user_id
-    ? [event.recipient_user_id]
-    : await resolveOrgAdmins(supabaseAdmin, event.organization_id);
+  try {
+    const recipients = event.recipient_user_id
+      ? [event.recipient_user_id]
+      : await resolveOrgAdmins(supabaseAdmin, event.organization_id);
 
-  if (recipients.length === 0) return;
+    if (recipients.length === 0) return;
 
-  const rows = recipients.map((rid) => ({
-    organization_id: event.organization_id,
-    appointment_id: event.appointment_id,
-    recipient_user_id: rid,
-    event_type: event.event_type,
-    payload: event.payload ?? {},
-    send_after: event.send_after ?? new Date().toISOString(),
-  }));
+    const rows = recipients.map((rid) => ({
+      organization_id: event.organization_id,
+      appointment_id: event.appointment_id,
+      recipient_user_id: rid,
+      event_type: event.event_type,
+      payload: event.payload ?? {},
+      send_after: event.send_after ?? new Date().toISOString(),
+    }));
 
-  const { error } = await supabaseAdmin.from('notification_events').insert(rows);
-  if (error) {
-    console.error('Failed to record notification event:', event.event_type, error);
+    const { error } = await supabaseAdmin.from('notification_events').insert(rows);
+    if (error) {
+      console.error('Failed to record notification event:', event.event_type, error);
+    }
+  } catch (err) {
+    console.error('Failed to record notification event (threw):', event.event_type, err);
   }
 }
 
