@@ -449,7 +449,9 @@ function CleanerDashboardInner() {
     [appointments]
   );
 
-  // Overview-only: today's jobs with no filters (in_progress only under Active Cleanings)
+  // Overview-only: today's jobs with no filters (in_progress only under Active Cleanings).
+  // Excludes pending-confirmation rows — those live in the Action Required section
+  // so the cleaner doesn't see the same appointment twice.
   const overviewTodaysJobs = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
@@ -459,12 +461,15 @@ function CleanerDashboardInner() {
     return appointments
       .filter(
         (apt) =>
-          apt.scheduled_date === today && apt.status !== "in_progress"
+          apt.scheduled_date === today &&
+          apt.status !== "in_progress" &&
+          apt.cleaner_confirmation_status !== "awaiting"
       )
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
   }, [appointments]);
 
-  // Overview-only: upcoming jobs (after today, no filters) for overview preview
+  // Overview-only: upcoming jobs (after today, no filters) for overview preview.
+  // Same dedup as overviewTodaysJobs — pending-confirmation rows live in Action Required.
   const overviewUpcomingJobs = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
@@ -476,7 +481,8 @@ function CleanerDashboardInner() {
         (apt) =>
           apt.scheduled_date > today &&
           apt.status !== "completed" &&
-          apt.status !== "cancelled"
+          apt.status !== "cancelled" &&
+          apt.cleaner_confirmation_status !== "awaiting"
       )
       .sort((a, b) => {
         const dateCompare = a.scheduled_date.localeCompare(b.scheduled_date);

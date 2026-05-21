@@ -5,6 +5,7 @@ import { X, Calendar, Home, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useEscapeClose } from "../hooks/useEscapeClose";
 import { formatDateTimeTo12h } from "../lib/formatTime";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 
@@ -46,6 +47,7 @@ export default function RequestAppointmentModal({
   const orgId = currentOrganizationId ?? "";
 
   useBodyScrollLock(isOpen);
+  useEscapeClose(isOpen, onClose);
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(false);

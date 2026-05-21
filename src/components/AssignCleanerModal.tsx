@@ -5,6 +5,7 @@ import { X, Loader2, UserCheck } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useEscapeClose } from "../hooks/useEscapeClose";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
   rankCleanersByMultiSlotCoverage,
@@ -66,6 +67,7 @@ export default function AssignCleanerModal({
   const { currentOrganizationId, accessToken } = useAuth();
   const orgId = currentOrganizationId ?? "";
   useBodyScrollLock(isOpen);
+  useEscapeClose(isOpen, onClose);
 
   const [loading, setLoading] = useState(false);
   const [ranking, setRanking] = useState<MultiSlotRanking<CleanerLike>[]>([]);

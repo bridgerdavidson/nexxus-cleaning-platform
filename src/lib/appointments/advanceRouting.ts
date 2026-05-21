@@ -101,7 +101,7 @@ export async function advanceAppointmentRouting({
 
   const nextAttempt = (log[log.length - 1]?.attempt_index ?? 0) + 1;
   if (nextAttempt > MAX_ATTEMPTS) {
-    await escalate(appointmentId, !!appointment.homeowner_initiated, supabaseAdmin);
+    await escalate(appointmentId, supabaseAdmin);
     return { kind: 'escalated', reason: 'chain_exhausted' };
   }
 
@@ -123,7 +123,7 @@ export async function advanceAppointmentRouting({
   })) as CleanerLike[];
 
   if (cleaners.length === 0) {
-    await escalate(appointmentId, !!appointment.homeowner_initiated, supabaseAdmin);
+    await escalate(appointmentId, supabaseAdmin);
     return { kind: 'escalated', reason: 'no_cleaners_available' };
   }
 
@@ -177,7 +177,7 @@ export async function advanceAppointmentRouting({
     excludeIds,
   );
   if (ranked.length === 0) {
-    await escalate(appointmentId, !!appointment.homeowner_initiated, supabaseAdmin);
+    await escalate(appointmentId, supabaseAdmin);
     return { kind: 'escalated', reason: 'no_cleaners_available' };
   }
 
@@ -212,16 +212,13 @@ export async function advanceAppointmentRouting({
 
 async function escalate(
   appointmentId: string,
-  _homeownerInitiated: boolean,
   supabaseAdmin: SupabaseClient,
 ): Promise<void> {
-  // Both flows escalate into RescheduleRequiredSection ("Needs your response").
-  // cleaner_id=null + cleaner_confirmation_status='rejected' is the canonical
-  // "all cleaners declined" state — the UI renders a descriptive variant with
-  // force-assign and call-homeowner actions. request_state stays
-  // 'needs_admin_attention' for analytics/state-machine consistency, but
-  // useAdminPendingRequests excludes rejected rows so the appointment doesn't
-  // double-up in AwaitingRequestsSection.
+  // Both flows escalate identically: cleaner_id=null +
+  // cleaner_confirmation_status='rejected' is the canonical "all cleaners
+  // declined" state, plus request_state='needs_admin_attention' for
+  // analytics/state-machine consistency. The unified ActionRequiredSection
+  // renders this with a force-assign + call-homeowner variant.
   await supabaseAdmin
     .from('appointments')
     .update({

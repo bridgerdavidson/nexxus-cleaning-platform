@@ -11,7 +11,10 @@ interface ConfirmAppointmentInput {
   appointmentId: string;
   /** Preferred explicit action. Wave 1+: one of 'accept' | 'counter_propose' | 'decline'. */
   action?: ConfirmAction;
-  /** Legacy boolean. Kept for backward-compat: true → accept, false → counter_propose. */
+  /**
+   * @deprecated Use `action` instead. Kept for backward-compat with old clients:
+   * true → accept, false → counter_propose.
+   */
   confirmed?: boolean;
   /** Required when action === 'decline'. */
   declineReason?: DeclineReason;
