@@ -102,7 +102,7 @@ export async function advanceAppointmentRouting({
 
   const nextAttempt = (log[log.length - 1]?.attempt_index ?? 0) + 1;
   if (nextAttempt > MAX_ATTEMPTS) {
-    await escalate(appointmentId, !!appointment.homeowner_initiated, supabaseAdmin);
+    await escalate(appointmentId, supabaseAdmin);
     return { kind: 'escalated', reason: 'chain_exhausted' };
   }
 
@@ -124,7 +124,7 @@ export async function advanceAppointmentRouting({
   })) as CleanerLike[];
 
   if (cleaners.length === 0) {
-    await escalate(appointmentId, !!appointment.homeowner_initiated, supabaseAdmin);
+    await escalate(appointmentId, supabaseAdmin);
     return { kind: 'escalated', reason: 'no_cleaners_available' };
   }
 
@@ -178,7 +178,7 @@ export async function advanceAppointmentRouting({
     excludeIds,
   );
   if (ranked.length === 0) {
-    await escalate(appointmentId, !!appointment.homeowner_initiated, supabaseAdmin);
+    await escalate(appointmentId, supabaseAdmin);
     return { kind: 'escalated', reason: 'no_cleaners_available' };
   }
 
