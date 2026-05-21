@@ -45,6 +45,7 @@ export interface AdminActionItem {
   requested_slots: Array<{ slot_index: number; scheduled_date: string; scheduled_time: string }>;
   routing_log: Array<{
     cleaner_id: string;
+    cleaner_name: string | null;
     attempt_index: number;
     response: string;
     deadline_at: string;
@@ -98,7 +99,7 @@ export function useAdminActionItems() {
            homeowner:user_profiles!homeowner_id(first_name, last_name, email, phone),
            cleaner_profile:cleaner_profiles(id, user_profile:user_profiles!id(first_name, last_name)),
            appointment_requested_slots(slot_index, scheduled_date, scheduled_time),
-           appointment_routing_log(cleaner_id, attempt_index, response, deadline_at, decline_reason, responded_at),
+           appointment_routing_log(cleaner_id, attempt_index, response, deadline_at, decline_reason, responded_at, cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles!id(first_name, last_name))),
            cleaner_availability_feedback(id, reason, cleaner_suggested_times(id, suggested_date, suggested_time), cleaner_suggested_windows(id, window_date, start_time, end_time))`,
         )
         .eq('organization_id', orgId)
@@ -197,10 +198,36 @@ export function useAdminActionItems() {
               deadline_at: string;
               decline_reason: string | null;
               responded_at: string | null;
+              cleaner?:
+                | { user_profile: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null }
+                | Array<{ user_profile: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null }>
+                | null;
             }>) ?? []
           )
             .slice()
-            .sort((a, b) => a.attempt_index - b.attempt_index),
+            .sort((a, b) => a.attempt_index - b.attempt_index)
+            .map((log) => {
+              const cleanerNode = flatten1(log.cleaner as never) as
+                | { user_profile: unknown }
+                | null;
+              const userProfile = cleanerNode
+                ? (flatten1(cleanerNode.user_profile as never) as
+                    | { first_name: string | null; last_name: string | null }
+                    | null)
+                : null;
+              const fullName = userProfile
+                ? `${userProfile.first_name ?? ''} ${userProfile.last_name ?? ''}`.trim()
+                : '';
+              return {
+                cleaner_id: log.cleaner_id,
+                cleaner_name: fullName || null,
+                attempt_index: log.attempt_index,
+                response: log.response,
+                deadline_at: log.deadline_at,
+                decline_reason: log.decline_reason,
+                responded_at: log.responded_at,
+              };
+            }),
           latest_feedback: feedbackRaw
             ? {
                 id: feedbackRaw.id as string,

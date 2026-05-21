@@ -178,9 +178,12 @@ function AwaitingAssignmentRow({ item, onAssign }: AwaitingAssignmentRowProps) {
                     : a.decline_reason
                     ? routingDeclineReasonLabel(a.decline_reason)
                     : a.response;
+                const who = a.cleaner_name ?? "Unknown cleaner";
                 return (
                   <li key={a.attempt_index}>
-                    #{a.attempt_index} — {label}
+                    <span className="font-medium text-gray-700">{who}</span>
+                    <span className="text-gray-400"> — </span>
+                    <span>{label}</span>
                   </li>
                 );
               })}
