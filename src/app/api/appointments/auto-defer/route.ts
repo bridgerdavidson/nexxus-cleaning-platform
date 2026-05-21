@@ -28,10 +28,15 @@ export async function POST(request: NextRequest) {
     });
     if (!auth.ok) return auth.response;
 
-    // Find expired pending rows for homeowner-initiated requests in this org.
+    // Find expired pending routing rows in this org. Both homeowner-initiated
+    // requests and admin-direct appointments enter the routing chain when a
+    // cleaner declines (confirm/route.ts inserts a routing_log row for both
+    // flows), so the sweep must process both — otherwise the reassigned
+    // cleaner can ghost an admin-direct appointment and it sits in `awaiting`
+    // forever.
     let query = supabaseAdmin
       .from('appointment_routing_log')
-      .select('id, appointment_id, deadline_at, appointment:appointments!inner(id, organization_id, homeowner_initiated)')
+      .select('id, appointment_id, deadline_at, appointment:appointments!inner(id, organization_id)')
       .eq('response', 'pending')
       .lt('deadline_at', new Date().toISOString());
     if (appointmentId) {
@@ -42,13 +47,13 @@ export async function POST(request: NextRequest) {
     type ExpiredRow = {
       id: string;
       appointment_id: string;
-      appointment: { organization_id: string; homeowner_initiated: boolean } |
-                   { organization_id: string; homeowner_initiated: boolean }[] | null;
+      appointment: { organization_id: string } |
+                   { organization_id: string }[] | null;
     };
 
     const expired = ((expiredRows ?? []) as unknown as ExpiredRow[]).filter((row) => {
       const appt = Array.isArray(row.appointment) ? row.appointment[0] : row.appointment;
-      return !!appt && appt.organization_id === organizationId && !!appt.homeowner_initiated;
+      return !!appt && appt.organization_id === organizationId;
     });
 
     const outcomes: Array<{ appointmentId: string; outcome: string }> = [];

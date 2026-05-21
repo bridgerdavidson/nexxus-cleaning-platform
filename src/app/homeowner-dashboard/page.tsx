@@ -53,6 +53,7 @@ import {
 import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
 import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 import { AppointmentCardData } from "../../components/AppointmentCard";
+import ConfirmModal from "../../components/ConfirmModal";
 
 function HomeownerDashboardInner() {
   const { user, loading, signOut } = useAuth();
@@ -71,6 +72,7 @@ function HomeownerDashboardInner() {
   const [showAllFilter, setShowAllFilter] = useState(false);
   const [expandedToday, setExpandedToday] = useState(true);
   const [expandedUpcoming, setExpandedUpcoming] = useState(true);
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const router = useRouter();
 
   // Real data hooks - must be called at top level
@@ -387,11 +389,7 @@ function HomeownerDashboardInner() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm("Cancel this request?")) {
-                        cancelRequest(req.id).catch((err) => console.error(err));
-                      }
-                    }}
+                    onClick={() => setCancelTargetId(req.id)}
                     disabled={cancellingRequest}
                     className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
                   >
@@ -829,6 +827,28 @@ function HomeownerDashboardInner() {
         role="homeowner"
         canEdit={false}
         onRefreshAppointments={refetchAppointments}
+      />
+      <ConfirmModal
+        isOpen={!!cancelTargetId}
+        onClose={() => setCancelTargetId(null)}
+        onConfirm={async () => {
+          const id = cancelTargetId;
+          if (!id) return;
+          try {
+            await cancelRequest(id);
+          } catch (err) {
+            console.error(err);
+          } finally {
+            setCancelTargetId(null);
+          }
+        }}
+        title="Cancel this request?"
+        message="Your cleaning team won't be notified, and you can submit a new request anytime."
+        confirmText="Yes, cancel"
+        cancelText="Go back"
+        loadingText="Cancelling…"
+        tone="warning"
+        isLoading={cancellingRequest}
       />
     </div>
   );

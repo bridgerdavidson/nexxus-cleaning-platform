@@ -142,9 +142,11 @@ export function useManagerAppointments() {
           price_override_enabled,
           price_override_total,
           homeowner_id,
+          cleaner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
+            phone,
             email
           ),
           cleaner_profile:cleaner_profiles(
@@ -168,6 +170,11 @@ export function useManagerAppointments() {
           checklist:checklists(
             name,
             price_adder
+          ),
+          appointment_requested_slots (
+            slot_index,
+            scheduled_date,
+            scheduled_time
           )
         `)
         .eq('organization_id', orgId)

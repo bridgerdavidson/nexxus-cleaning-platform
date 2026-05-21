@@ -7,11 +7,16 @@ interface AssignCleanerInput {
   appointmentId: string;
   cleanerId: string;
   organizationId: string;
+  /** Force-accept on the cleaner's behalf (used by the "all cleaners declined"
+   *  recovery surface). Skips the cleaner-confirmation handshake and marks
+   *  the appointment as confirmed immediately. */
+  forceAssign?: boolean;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { appointmentId, cleanerId, organizationId } = (await request.json()) as AssignCleanerInput;
+    const { appointmentId, cleanerId, organizationId, forceAssign } =
+      (await request.json()) as AssignCleanerInput;
     if (!appointmentId || !cleanerId || !organizationId) {
       return NextResponse.json(
         { success: false, error: 'appointmentId, cleanerId, and organizationId are required' },
@@ -40,7 +45,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Appointment must be in this org and in a routable state.
+    // Appointment must be in this org and in a routable state. Both
+    // homeowner-initiated and admin-direct appointments can land here:
+    // admin-direct ends up needing reassignment when its cleaner declines
+    // and the auto-defer chain exhausts.
     const { data: appt, error: apptErr } = await supabaseAdmin
       .from('appointments')
       .select('id, organization_id, homeowner_initiated, request_state')
@@ -49,12 +57,6 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (apptErr || !appt) {
       return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
-    }
-    if (!appt.homeowner_initiated) {
-      return NextResponse.json(
-        { success: false, error: 'assign-cleaner is only for homeowner-initiated requests' },
-        { status: 400 },
-      );
     }
     if (!['awaiting_admin', 'needs_admin_attention', 'routing'].includes(appt.request_state ?? '')) {
       return NextResponse.json(
@@ -101,24 +103,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Primary slot drives the SLA deadline.
+    // Primary slot drives the SLA deadline. Homeowner-initiated + admin-direct-
+    // with-alts have rows in appointment_requested_slots; admin-direct without
+    // alternates falls back to the appointment's single scheduled slot.
     const { data: primarySlot } = await supabaseAdmin
       .from('appointment_requested_slots')
       .select('scheduled_date, scheduled_time')
       .eq('appointment_id', appointmentId)
       .eq('slot_index', 0)
       .maybeSingle();
-    if (!primarySlot) {
-      return NextResponse.json(
-        { success: false, error: 'Request has no primary slot' },
-        { status: 400 },
-      );
+    let primaryDate: string;
+    let primaryTime: string;
+    if (primarySlot) {
+      primaryDate = primarySlot.scheduled_date as string;
+      primaryTime = primarySlot.scheduled_time as string;
+    } else {
+      const { data: apptSlot } = await supabaseAdmin
+        .from('appointments')
+        .select('scheduled_date, scheduled_time')
+        .eq('id', appointmentId)
+        .maybeSingle();
+      if (!apptSlot) {
+        return NextResponse.json(
+          { success: false, error: 'Request has no primary slot' },
+          { status: 400 },
+        );
+      }
+      primaryDate = (apptSlot as { scheduled_date: string }).scheduled_date;
+      primaryTime = (apptSlot as { scheduled_time: string }).scheduled_time;
     }
-    const deadline = computeResponseDeadlineISO(
-      primarySlot.scheduled_date as string,
-      primarySlot.scheduled_time as string,
-    );
+    const deadline = computeResponseDeadlineISO(primaryDate, primaryTime);
 
+    // Force-assign records the routing log row as already-accepted (admin
+    // accepted on the cleaner's behalf). Normal assign leaves it pending so
+    // the cleaner can respond.
+    const nowIso = new Date().toISOString();
     const { error: insertErr } = await supabaseAdmin
       .from('appointment_routing_log')
       .insert({
@@ -126,22 +145,31 @@ export async function POST(request: NextRequest) {
         cleaner_id: cleanerId,
         attempt_index: nextAttempt,
         deadline_at: deadline,
+        ...(forceAssign
+          ? { response: 'accepted', responded_at: nowIso }
+          : {}),
       });
     if (insertErr) {
       return NextResponse.json({ success: false, error: insertErr.message }, { status: 500 });
     }
 
-    await supabaseAdmin
-      .from('appointments')
-      .update({
-        cleaner_id: cleanerId,
-        cleaner_confirmation_status: 'awaiting',
-        response_deadline: deadline,
-        request_state: 'routing',
-      })
-      .eq('id', appointmentId);
+    const apptUpdate: Record<string, unknown> = forceAssign
+      ? {
+          cleaner_id: cleanerId,
+          cleaner_confirmation_status: 'approved',
+          status: 'confirmed',
+          response_deadline: null,
+          request_state: 'completed',
+        }
+      : {
+          cleaner_id: cleanerId,
+          cleaner_confirmation_status: 'awaiting',
+          response_deadline: deadline,
+          request_state: 'routing',
+        };
+    await supabaseAdmin.from('appointments').update(apptUpdate).eq('id', appointmentId);
 
-    return NextResponse.json({ success: true, attemptIndex: nextAttempt });
+    return NextResponse.json({ success: true, attemptIndex: nextAttempt, forceAssigned: !!forceAssign });
   } catch (error) {
     console.error('Error in appointments/assign-cleaner POST:', error);
     return NextResponse.json(

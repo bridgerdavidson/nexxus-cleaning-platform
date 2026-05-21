@@ -385,9 +385,9 @@ function PendingConfirmationCard({
         <DeadlineBadge deadline={apt.response_deadline} />
       </div>
 
-      {/* Slot chips — full-width stack, radio-style selection */}
+      {/* Slot chips — inline row that wraps on narrow widths, radio-style selection */}
       <div
-        className="flex flex-col gap-2 mb-3 w-full"
+        className="flex flex-wrap gap-2 mb-3 w-full"
         role="radiogroup"
         aria-label="Available times"
       >
@@ -402,7 +402,7 @@ function PendingConfirmationCard({
               aria-checked={isSelected}
               onClick={() => setSelectedSlotIndex(s.slot_index)}
               className={[
-                "w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-medium bg-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1",
+                "flex-1 basis-[180px] min-w-[160px] min-h-[48px] flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm font-medium bg-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1",
                 isSelected
                   ? "border-2 border-primary-500"
                   : "border-2 border-gray-200 hover:border-primary-300",
@@ -422,19 +422,17 @@ function PendingConfirmationCard({
               </span>
 
               {/* Date + time */}
-              <span className="flex-1 text-left text-gray-800">
+              <span className="flex-1 text-left text-gray-800 truncate">
                 {formatChipDate(s.scheduled_date)}
-                <span className="text-gray-400 mx-1.5">·</span>
+                <span className="text-gray-400 mx-1">·</span>
                 {formatTimeTo12h(s.scheduled_time)}
               </span>
 
               {/* Primary badge — only when slots offer alternatives */}
-              {isPrimary && slots.length > 1 ? (
+              {isPrimary && slots.length > 1 && (
                 <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary-100 text-primary-700 flex-shrink-0">
                   Primary
                 </span>
-              ) : (
-                <span className="w-12 flex-shrink-0" aria-hidden="true" />
               )}
             </button>
           );

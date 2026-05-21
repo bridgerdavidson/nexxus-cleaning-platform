@@ -288,6 +288,7 @@ export function useCleanerAppointments() {
     appointments: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
 

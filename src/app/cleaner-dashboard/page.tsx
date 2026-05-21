@@ -232,6 +232,7 @@ function CleanerDashboardInner() {
     appointments,
     loading: appointmentsLoading,
     error: appointmentsError,
+    refetch: refetchAppointments,
   } = useCleanerAppointments();
   const { stats, loading: statsLoading, error: statsError } = useCleanerStats();
   const {
@@ -1042,8 +1043,11 @@ function CleanerDashboardInner() {
           cleanerSchedule={cleanerSchedule}
           accessToken={accessToken}
           onConfirmed={() => {
-            // Realtime subscription will auto-update the appointments state
-            // No manual refetch needed
+            // Realtime fires on cleaner_id=eq.{me}, but when the row's
+            // cleaner_id changes (e.g. decline → routed to next cleaner) the
+            // eq-filtered subscription doesn't notify us. Refetch explicitly
+            // so the card disappears immediately on accept/decline.
+            void refetchAppointments();
           }}
         />
 
@@ -1212,12 +1216,29 @@ function CleanerDashboardInner() {
 
   const renderJobs = () => {
     // Get appointment details if in active job view
-    const activeAppointment = activeJobView 
-      ? appointments.find(a => a.id === activeJobView) 
+    const activeAppointment = activeJobView
+      ? appointments.find(a => a.id === activeJobView)
       : null;
 
     return (
       <div className="space-y-6">
+        {/* Pending Confirmations — surfaced at the top of Jobs so cleaners working
+            from this tab don't miss action-required requests. Hidden in drilled-in
+            single-job view. */}
+        {!activeJobView && (
+          <PendingConfirmationsSection
+            appointments={pendingConfirmations}
+            loading={appointmentsLoading}
+            userId={user.id}
+            organizationId={currentOrganizationId || ""}
+            cleanerSchedule={cleanerSchedule}
+            accessToken={accessToken}
+            onConfirmed={() => {
+              void refetchAppointments();
+            }}
+          />
+        )}
+
         {/* Header - Shows either "Jobs" title or breadcrumb */}
         <div className="flex items-center justify-between gap-4">
           {activeJobView && activeAppointment ? (

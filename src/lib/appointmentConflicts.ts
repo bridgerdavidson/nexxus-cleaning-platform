@@ -13,6 +13,9 @@ export interface ScheduleAppointment {
   scheduled_date: string;
   scheduled_time: string;
   duration_minutes: number;
+  /** Optional — populated by callers that need to surface the conflicting
+   *  appointment's homeowner alongside the conflict (e.g. AssignCleanerModal). */
+  homeowner_name?: string | null;
 }
 
 const TIME_RE = /^(\d{1,2}):(\d{2})(?::\d{2})?$/;

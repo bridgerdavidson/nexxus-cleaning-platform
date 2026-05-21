@@ -54,6 +54,10 @@ export interface CompactAppointmentRowProps {
   showDate?: boolean;
   /** Optional helper line rendered below the homeowner/date sub-text inside the middle column. */
   subline?: React.ReactNode;
+  /** Replaces the top line (cleaner name / "Unassigned" fallback). Use when a
+   *  contextual label is more useful than the default — e.g. surfacing
+   *  "All cleaners declined this job" instead of "Unassigned". */
+  titleOverride?: React.ReactNode;
 }
 
 export default function CompactAppointmentRow({
@@ -63,6 +67,7 @@ export default function CompactAppointmentRow({
   hidePaymentChip = false,
   showDate = true,
   subline,
+  titleOverride,
 }: CompactAppointmentRowProps) {
   const cleanerName = getCleanerName(appointment);
   const paymentChip = getPaymentChip(appointment.payment_status);
@@ -82,7 +87,7 @@ export default function CompactAppointmentRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-900 truncate">
-          {cleanerName ?? (
+          {titleOverride ?? cleanerName ?? (
             <span className="text-gray-400 italic">Unassigned</span>
           )}
         </p>

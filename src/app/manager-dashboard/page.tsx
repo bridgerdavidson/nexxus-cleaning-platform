@@ -618,9 +618,12 @@ function ManagerDashboardInner() {
       return dateA.getTime() - dateB.getTime();
     });
 
-  // Appointments awaiting cleaner confirmation — shown in the "Pending Review" section
+  // Appointments awaiting cleaner confirmation — shown in the "Pending Review"
+  // section. Unassigned homeowner-initiated requests live in AwaitingRequests
+  // until an admin picks a cleaner; only show here once a cleaner is assigned.
   const awaitingCleanerApprovalAppointments = appointments
     .filter((a) => {
+      if (!a.cleaner_id) return false;
       if (a.cleaner_confirmation_status !== "awaiting") return false;
       if (a.status === "completed" || a.status === "cancelled") return false;
       const [year, month, day] = a.scheduled_date.split("-").map(Number);

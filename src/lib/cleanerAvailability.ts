@@ -10,7 +10,6 @@ export interface SlotCandidate {
 }
 
 export interface CleanerMetrics {
-  acceptanceRate: number | null;
   lastWorkedDaysAgo: number | null;
 }
 
@@ -18,8 +17,11 @@ export interface MultiSlotRanking<C extends CleanerLike> {
   cleaner: C;
   score: number;
   slotCoverage: { primary: boolean; alt1: boolean; alt2: boolean };
-  acceptanceRate: number | null;
   lastWorkedDaysAgo: number | null;
+  /** First conflicting appointment found across the offered slots — used by
+   *  the assign UI to explain *why* a cleaner is busy. Null when the cleaner
+   *  is free for every slot. */
+  firstConflict: ScheduleAppointment | null;
 }
 
 export interface CleanerLike {
@@ -78,9 +80,12 @@ export function rankCleanersByAvailability<C extends CleanerLike>(
 
 /**
  * Rank cleaners across multiple offered slots for the homeowner-initiated
- * request flow. The primary slot is worth 2 points, each alternate 1 point.
- * Tiebreakers: acceptance rate desc, last-worked-this-property recency,
- * alphabetical (stable).
+ * request flow.
+ *
+ * Coverage score: primary slot = 2 points, each alternate = 1 point (max 4).
+ *
+ * Sort: cleaners with any free slot first, then more coverage first, then most
+ * recently worked at this property first (null/never last), then alphabetical.
  *
  * Pure function — caller fetches schedules + metrics once per request and
  * passes them in. Cleaners in `excludeCleanerIds` are dropped from the result
@@ -103,6 +108,7 @@ export function rankCleanersByMultiSlotCoverage<C extends CleanerLike>(
       const schedule = schedulesByCleaner[cleaner.id] ?? [];
       const coverage = [false, false, false] as [boolean, boolean, boolean];
       let score = 0;
+      let firstConflict: ScheduleAppointment | null = null;
       validSlots.forEach((slot, i) => {
         if (i > 2) return;
         const conflicts = findConflicts(schedule, {
@@ -113,9 +119,9 @@ export function rankCleanersByMultiSlotCoverage<C extends CleanerLike>(
         const free = conflicts.length === 0;
         coverage[i] = free;
         if (free) score += i === 0 ? 2 : 1;
+        if (!free && firstConflict === null) firstConflict = conflicts[0];
       });
       const metrics = metricsByCleaner[cleaner.id] ?? {
-        acceptanceRate: null,
         lastWorkedDaysAgo: null,
       };
       return {
@@ -126,23 +132,28 @@ export function rankCleanersByMultiSlotCoverage<C extends CleanerLike>(
           alt1: coverage[1],
           alt2: coverage[2],
         },
-        acceptanceRate: metrics.acceptanceRate,
         lastWorkedDaysAgo: metrics.lastWorkedDaysAgo,
+        firstConflict,
       };
     });
 
   candidates.sort((a, b) => {
+    // Anyone who can take at least one slot ranks above anyone who can't.
+    const aHas = a.score > 0;
+    const bHas = b.score > 0;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+
+    // Then by coverage (more free slots first).
     if (a.score !== b.score) return b.score - a.score;
-    // Acceptance rate desc; nulls treated as 0 to put unknowns below proven cleaners.
-    const ar = a.acceptanceRate ?? 0;
-    const br = b.acceptanceRate ?? 0;
-    if (ar !== br) return br - ar;
-    // last-worked-this-property: smaller daysAgo first; nulls last.
+
+    // Then by recency at this property: smaller daysAgo first; never-worked
+    // (null) ranks last.
     const al = a.lastWorkedDaysAgo;
     const bl = b.lastWorkedDaysAgo;
     if (al === null && bl !== null) return 1;
     if (bl === null && al !== null) return -1;
     if (al !== null && bl !== null && al !== bl) return al - bl;
+
     return cleanerSortName(a.cleaner).localeCompare(cleanerSortName(b.cleaner));
   });
 
