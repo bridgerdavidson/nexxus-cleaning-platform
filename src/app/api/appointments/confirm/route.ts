@@ -278,7 +278,7 @@ export async function POST(request: NextRequest) {
     // the next cleaner. advanceAppointmentRouting (called below) writes the
     // final state atomically — either reassigned (cleaner_id=new,
     // status='awaiting') or escalated (cleaner_id=null + state surfaces in
-    // RescheduleRequired/AwaitingRequests).
+    // ActionRequiredSection).
     //
     // Counter-proposals don't auto-reassign — they stay rejected so the admin
     // can accept the proposed times in ActionRequiredSection.
