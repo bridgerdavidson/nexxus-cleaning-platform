@@ -175,26 +175,33 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Mark the latest pending routing_log row (if any) as accepted.
-      if (usesRequestState(appointment)) {
-        const { data: pendingLog } = await supabaseAdmin
+      // Mark the latest pending routing_log row (if any) as accepted. This
+      // runs for every flow type, not just homeowner_request: admin_direct
+      // appointments also accrue routing_log rows after a cleaner decline
+      // (since fe71ea8 routes admin_direct through the chain too), so if we
+      // skipped them here the row would stay `pending` and the auto-defer
+      // sweep would later flip it to `expired` and re-route an
+      // already-accepted appointment.
+      //
+      // Single-slot admin_direct that never saw a decline has no pending row,
+      // so maybeSingle returns null and we no-op.
+      const { data: pendingLog } = await supabaseAdmin
+        .from('appointment_routing_log')
+        .select('id')
+        .eq('appointment_id', appointmentId)
+        .eq('response', 'pending')
+        .order('attempt_index', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (pendingLog?.id) {
+        await supabaseAdmin
           .from('appointment_routing_log')
-          .select('id')
-          .eq('appointment_id', appointmentId)
-          .eq('response', 'pending')
-          .order('attempt_index', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (pendingLog?.id) {
-          await supabaseAdmin
-            .from('appointment_routing_log')
-            .update({
-              response: 'accepted',
-              responded_at: new Date().toISOString(),
-              slot_index_chosen: acceptedSlotIndex,
-            })
-            .eq('id', pendingLog.id);
-        }
+          .update({
+            response: 'accepted',
+            responded_at: new Date().toISOString(),
+            slot_index_chosen: acceptedSlotIndex,
+          })
+          .eq('id', pendingLog.id);
       }
 
       await sendMessageToAdmins({

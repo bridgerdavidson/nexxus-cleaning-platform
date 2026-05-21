@@ -412,5 +412,45 @@ describe('POST /api/appointments/confirm', () => {
       expect(directLog).toHaveLength(1);
       expect((directLog as Array<{ response: string }>)[0].response).toBe('declined');
     });
+
+    it('admin-direct accept closes the pending routing_log row so auto-defer does not re-route it', async () => {
+      // Simulates the post-decline reassignment state for an admin-direct
+      // appointment: the cleaner has a pending routing_log row with an
+      // already-elapsed deadline. If the accept handler skips closing this
+      // row, the auto-defer sweep flips it to expired and reassigns the
+      // appointment — silently re-routing an already-accepted job. Regression
+      // guard for the codex review on PR #14.
+      const admin = createTestSupabaseClient();
+      await admin
+        .from('appointment_routing_log')
+        .insert({
+          appointment_id: appointmentInOrg1.id,
+          cleaner_id: org.cleaner.userId,
+          attempt_index: 1,
+          response: 'pending',
+          // Deadline already in the past — proves the pending row would be
+          // swept by auto-defer if we didn't close it on accept.
+          deadline_at: '2020-01-01T00:00:00Z',
+        });
+
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.cleaner.accessToken),
+        body: {
+          appointmentId: appointmentInOrg1.id,
+          action: 'accept',
+          organizationId: org.organizationId,
+        },
+      });
+      expect(status).toBe(200);
+
+      const { data: log } = await admin
+        .from('appointment_routing_log')
+        .select('response, responded_at')
+        .eq('appointment_id', appointmentInOrg1.id)
+        .single();
+      expect((log as { response: string }).response).toBe('accepted');
+      expect((log as { responded_at: string | null }).responded_at).not.toBeNull();
+    });
   });
 });
