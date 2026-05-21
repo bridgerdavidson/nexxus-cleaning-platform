@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 interface OfferedSlot {
   scheduled_date: string;
@@ -156,6 +157,13 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
+
+    await recordNotificationEvent(supabaseAdmin, {
+      event_type: 'homeowner_request_submitted',
+      appointment_id: appointment.id,
+      organization_id: organizationId,
+      payload: { slot_count: slots.length },
+    });
 
     return NextResponse.json({ success: true, appointmentId: appointment.id });
   } catch (error) {

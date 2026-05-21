@@ -8,6 +8,7 @@ import {
   canCounterPropose,
   usesRequestState,
 } from '@/lib/appointments/flowType';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
@@ -201,6 +202,22 @@ export async function POST(request: NextRequest) {
         senderId: cleanerId,
         appointmentId,
         content: `I've confirmed my availability for the appointment on ${formatDateShort(acceptedDate)} at ${formatTimeTo12h(acceptedTime)}. I'm ready to go!`,
+      });
+
+      // Notify both the homeowner (their appointment is confirmed) and admins.
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_accepted',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        recipient_user_id: appointment.homeowner_id as string,
+        payload: { scheduled_date: acceptedDate, scheduled_time: acceptedTime },
+      });
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_accepted',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        // null recipient → fans out to all admins
+        payload: { scheduled_date: acceptedDate, scheduled_time: acceptedTime },
       });
 
       return NextResponse.json({ success: true, message: 'Appointment confirmed successfully' });
@@ -404,6 +421,32 @@ export async function POST(request: NextRequest) {
         supabaseAdmin,
       });
       routingOutcome = outcome.kind;
+
+      // Decline event always fires; if the chain exhausts we also emit a
+      // chain_exhausted urgent signal.
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_declined',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        payload: { decline_reason: reasonText, routing_outcome: outcome.kind },
+      });
+      if (outcome.kind === 'escalated') {
+        await recordNotificationEvent(supabaseAdmin, {
+          event_type: 'chain_exhausted',
+          appointment_id: appointmentId,
+          organization_id: organizationId,
+        });
+      }
+    } else if (action === 'counter_propose') {
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'cleaner_counter_proposed',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        payload: {
+          suggested_times_count: feedback?.suggestedTimes?.length ?? 0,
+          suggested_windows_count: feedback?.suggestedWindows?.length ?? 0,
+        },
+      });
     }
 
     return NextResponse.json({

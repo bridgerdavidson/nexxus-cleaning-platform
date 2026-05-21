@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth, type OrgRole } from '@/lib/auth/requireOrgAuth';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 interface AssignCleanerInput {
   appointmentId: string;
@@ -168,6 +169,14 @@ export async function POST(request: NextRequest) {
           request_state: 'routing',
         };
     await supabaseAdmin.from('appointments').update(apptUpdate).eq('id', appointmentId);
+
+    await recordNotificationEvent(supabaseAdmin, {
+      event_type: forceAssign ? 'cleaner_force_assigned' : 'cleaner_assigned',
+      appointment_id: appointmentId,
+      organization_id: organizationId,
+      recipient_user_id: cleanerId,
+      payload: { attempt_index: nextAttempt },
+    });
 
     return NextResponse.json({ success: true, attemptIndex: nextAttempt, forceAssigned: !!forceAssign });
   } catch (error) {
