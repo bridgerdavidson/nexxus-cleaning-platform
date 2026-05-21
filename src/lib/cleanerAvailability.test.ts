@@ -186,26 +186,16 @@ describe('rankCleanersByMultiSlotCoverage', () => {
     expect(result[0].slotCoverage).toEqual({ primary: false, alt1: false, alt2: false });
   });
 
-  it('breaks score ties by acceptance rate desc', () => {
-    const cleaners = [cleaner('low', 'Alice'), cleaner('high', 'Bob')];
-    const metrics = {
-      low: { acceptanceRate: 0.5, lastWorkedDaysAgo: null },
-      high: { acceptanceRate: 0.9, lastWorkedDaysAgo: null },
-    };
-    const result = rankCleanersByMultiSlotCoverage(cleaners, {}, slots, 60, metrics);
-    expect(result.map((r) => r.cleaner.id)).toEqual(['high', 'low']);
-  });
-
-  it('breaks remaining ties by last-worked-this-property (recent first, nulls last)', () => {
+  it('breaks score ties by last-worked-this-property (recent first, nulls last)', () => {
     const cleaners = [
       cleaner('never', 'Alice'),
       cleaner('week', 'Bob'),
       cleaner('day', 'Carol'),
     ];
     const metrics = {
-      never: { acceptanceRate: null, lastWorkedDaysAgo: null },
-      week: { acceptanceRate: null, lastWorkedDaysAgo: 7 },
-      day: { acceptanceRate: null, lastWorkedDaysAgo: 1 },
+      never: { lastWorkedDaysAgo: null },
+      week: { lastWorkedDaysAgo: 7 },
+      day: { lastWorkedDaysAgo: 1 },
     };
     const result = rankCleanersByMultiSlotCoverage(cleaners, {}, slots, 60, metrics);
     expect(result.map((r) => r.cleaner.id)).toEqual(['day', 'week', 'never']);
@@ -251,5 +241,91 @@ describe('rankCleanersByMultiSlotCoverage', () => {
     );
     expect(result[0].score).toBe(2);
     expect(result[0].slotCoverage.alt1).toBe(false);
+  });
+
+  it('ranks free + recent above free + older above busy, regardless of how recently the busy one worked here', () => {
+    // Screenshot scenario (primary-only request): Jane is free for the slot
+    // and worked here today; Wanda worked here today too but is busy at the
+    // requested time. Busy must rank below anyone who can take the job.
+    const cleaners = [
+      cleaner('jane', 'Jane', 'Smith'),
+      cleaner('wanda', 'Wanda', 'Jones'),
+      cleaner('charles', 'Charles', 'Brown'),
+      cleaner('jordan', 'Jordan', 'Miles'),
+    ];
+    const primaryOnly = [slots[0]];
+    const schedules = {
+      wanda: [apt({ id: 'b', scheduled_date: '2026-05-20', scheduled_time: '10:00' })],
+    };
+    const metrics = {
+      jane:    { lastWorkedDaysAgo: 0 },
+      wanda:   { lastWorkedDaysAgo: 0 },
+      charles: { lastWorkedDaysAgo: null },
+      jordan:  { lastWorkedDaysAgo: 131 },
+    };
+    const result = rankCleanersByMultiSlotCoverage(cleaners, schedules, primaryOnly, 60, metrics);
+    expect(result.map((r) => r.cleaner.id)).toEqual(['jane', 'jordan', 'charles', 'wanda']);
+  });
+
+  it('surfaces firstConflict (and its homeowner_name) for the first busy slot, null when fully free', () => {
+    const cleaners = [cleaner('a', 'Alice'), cleaner('b', 'Bob')];
+    const schedules = {
+      a: [
+        {
+          id: 'conflict-1',
+          status: 'confirmed',
+          scheduled_date: '2026-05-20',
+          scheduled_time: '10:00',
+          duration_minutes: 60,
+          homeowner_name: 'Acme Co',
+        } as ScheduleAppointment,
+      ],
+    };
+    const result = rankCleanersByMultiSlotCoverage(cleaners, schedules, slots, 60);
+    const a = result.find((r) => r.cleaner.id === 'a')!;
+    const b = result.find((r) => r.cleaner.id === 'b')!;
+    expect(a.firstConflict?.id).toBe('conflict-1');
+    expect(a.firstConflict?.homeowner_name).toBe('Acme Co');
+    expect(b.firstConflict).toBeNull();
+  });
+
+  it('demotes zero-coverage cleaners below everyone with at least one free slot', () => {
+    // Worked here today, but fully busy → must end up last regardless.
+    const cleaners = [
+      cleaner('busy', 'Busy', 'Bee'),
+      cleaner('newcomer', 'Newcomer', 'Person'),
+    ];
+    const schedules = {
+      busy: [
+        apt({ id: 'p', scheduled_date: '2026-05-20', scheduled_time: '10:00' }),
+        apt({ id: 'q', scheduled_date: '2026-05-21', scheduled_time: '14:00' }),
+        apt({ id: 'r', scheduled_date: '2026-05-22', scheduled_time: '09:00' }),
+      ],
+    };
+    const metrics = {
+      busy:     { lastWorkedDaysAgo: 0 },
+      newcomer: { lastWorkedDaysAgo: null },
+    };
+    const result = rankCleanersByMultiSlotCoverage(cleaners, schedules, slots, 60, metrics);
+    expect(result.map((r) => r.cleaner.id)).toEqual(['newcomer', 'busy']);
+  });
+
+  it('weights the primary slot above an alternate at equal accept/recency', () => {
+    // A covers Primary only (2 pts), B covers alt1 only (1 pt). Same metrics.
+    const cleaners = [cleaner('a', 'Alice'), cleaner('b', 'Bob')];
+    const schedules = {
+      a: [
+        apt({ id: 'a1', scheduled_date: '2026-05-21', scheduled_time: '14:00' }),
+        apt({ id: 'a2', scheduled_date: '2026-05-22', scheduled_time: '09:00' }),
+      ],
+      b: [
+        apt({ id: 'b1', scheduled_date: '2026-05-20', scheduled_time: '10:00' }),
+        apt({ id: 'b2', scheduled_date: '2026-05-22', scheduled_time: '09:00' }),
+      ],
+    };
+    const result = rankCleanersByMultiSlotCoverage(cleaners, schedules, slots, 60);
+    expect(result.map((r) => r.cleaner.id)).toEqual(['a', 'b']);
+    expect(result[0].score).toBe(2);
+    expect(result[1].score).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -11,11 +11,14 @@ import {
   Calendar,
   Clock,
   Hourglass,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import CompactAppointmentRow from "./CompactAppointmentRow";
 import { AppointmentCardData } from "./AppointmentCard";
 import { formatTimeTo12h } from "../lib/formatTime";
 import { isAppointmentOverdue } from "../lib/isAppointmentOverdue";
+import AssignCleanerModal from "./AssignCleanerModal";
 
 interface SuggestedTimeRow {
   id: string;
@@ -46,10 +49,16 @@ interface RejectedAppointment {
   /** Wave 2: drives the overdue (cleaner ghosted) row variant. */
   cleaner_confirmation_status?: "awaiting" | "approved" | "rejected" | null;
   response_deadline?: string | null;
+  property_id?: string | null;
+  duration_minutes?: number | null;
+  /** Null when the routing chain exhausted and no cleaner is currently
+   *  assigned — triggers the "All cleaners declined" variant. */
+  cleaner_id?: string | null;
   homeowner?: {
     first_name: string;
     last_name: string;
     email?: string;
+    phone?: string | null;
   } | null;
   cleaner_profile?: {
     user_profile?: {
@@ -69,6 +78,14 @@ interface RejectedAppointment {
   checklist?: {
     name: string;
   } | null;
+  /** Offered slot rows. Present for homeowner-initiated requests and admin-
+   *  direct appointments created with alternates. Empty for admin-direct
+   *  without alts (fallback uses scheduled_date/time). */
+  appointment_requested_slots?: Array<{
+    slot_index: number;
+    scheduled_date: string;
+    scheduled_time: string;
+  }> | null;
   /**
    * Latest cleaner-availability feedback for the appointment. Present when
    * the cleaner counter-proposed alternative times (suggested times/windows
@@ -126,6 +143,23 @@ export default function RescheduleRequiredSection({
 }: RescheduleRequiredSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [forceAssignTarget, setForceAssignTarget] = useState<RejectedAppointment | null>(null);
+
+  const forceAssignSlots = useMemo(() => {
+    if (!forceAssignTarget) return [];
+    const offered = forceAssignTarget.appointment_requested_slots ?? [];
+    if (offered.length > 0) {
+      return [...offered]
+        .sort((a, b) => a.slot_index - b.slot_index)
+        .map((s) => ({ date: s.scheduled_date, time: s.scheduled_time }));
+    }
+    return [
+      {
+        date: forceAssignTarget.scheduled_date,
+        time: forceAssignTarget.scheduled_time,
+      },
+    ];
+  }, [forceAssignTarget]);
 
   if (loading || appointments.length === 0) return null;
 
@@ -198,6 +232,49 @@ export default function RescheduleRequiredSection({
               const suggestedWindows = feedback?.cleaner_suggested_windows ?? [];
               const hasCounterProposal =
                 suggestedTimes.length > 0 || suggestedWindows.length > 0;
+
+              // All cleaners declined (chain exhausted) — compact row mirroring
+              // the hard-decline layout. The top line is overridden to make
+              // the "why" obvious (replaces the default "Unassigned"
+              // placeholder); the subline tells the admin to call the
+              // homeowner and surfaces their phone number.
+              if (!apt.cleaner_id && apt.cleaner_confirmation_status === "rejected") {
+                const phone = apt.homeowner?.phone?.trim() || null;
+                return (
+                  <CompactAppointmentRow
+                    key={apt.id}
+                    appointment={cardData}
+                    onClick={() => onViewDetails(apt)}
+                    hidePaymentChip
+                    titleOverride={
+                      <span className="inline-flex items-center gap-1.5 text-red-700">
+                        <UserX className="w-4 h-4 flex-shrink-0" />
+                        All cleaners declined this job
+                      </span>
+                    }
+                    rightSlot={
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setForceAssignTarget(apt);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors text-xs font-medium whitespace-nowrap"
+                        title="Force assign cleaner"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        Force assign cleaner
+                      </button>
+                    }
+                    subline={
+                      <p className="text-xs text-gray-600">
+                        Call the homeowner to reschedule
+                        {phone ? `: ${phone}` : " (no phone on file)"}
+                      </p>
+                    }
+                  />
+                );
+              }
 
               // Overdue path (cleaner hasn't responded by SLA) — distinct
               // red-tinted variant so admin sees "ghosted" vs "rejected" at a
@@ -375,6 +452,20 @@ export default function RescheduleRequiredSection({
           </div>
         )}
       </div>
+
+      {forceAssignTarget && (
+        <AssignCleanerModal
+          isOpen={!!forceAssignTarget}
+          onClose={() => setForceAssignTarget(null)}
+          onAssigned={() => setForceAssignTarget(null)}
+          appointmentId={forceAssignTarget.id}
+          propertyId={forceAssignTarget.property_id ?? ""}
+          durationMinutes={forceAssignTarget.duration_minutes ?? 60}
+          slots={forceAssignSlots}
+          excludeCleanerIds={[]}
+          forceMode
+        />
+      )}
     </section>
   );
 }

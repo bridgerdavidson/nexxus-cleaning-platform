@@ -15,6 +15,19 @@ import {
 } from "../lib/cleanerAvailability";
 import type { ScheduleAppointment } from "../lib/appointmentConflicts";
 
+/** Compact "Thu May 21 · 8:11 PM" for the conflict-explanation row. */
+function formatDateTimeShort(date: string, time: string): string {
+  if (!date) return formatTimeTo12h(time);
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+  const formattedDate = dt.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return `${formattedDate} · ${formatTimeTo12h(time)}`;
+}
+
 interface AssignCleanerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,6 +37,11 @@ interface AssignCleanerModalProps {
   durationMinutes: number;
   slots: SlotCandidate[];
   excludeCleanerIds?: string[];
+  /** Force-assign past the routing chain (used by RescheduleRequired's
+   *  "all cleaners declined" surface). Hides the offered-slot chip at the top
+   *  and per-cleaner availability badges/conflict line, since the admin is
+   *  explicitly overriding the auto-routing decision. */
+  forceMode?: boolean;
 }
 
 interface RawCleaner {
@@ -34,8 +52,6 @@ interface RawCleaner {
     | null;
 }
 
-const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
-
 export default function AssignCleanerModal({
   isOpen,
   onClose,
@@ -45,6 +61,7 @@ export default function AssignCleanerModal({
   durationMinutes,
   slots,
   excludeCleanerIds = [],
+  forceMode = false,
 }: AssignCleanerModalProps) {
   const { currentOrganizationId, accessToken } = useAuth();
   const orgId = currentOrganizationId ?? "";
@@ -83,37 +100,43 @@ export default function AssignCleanerModal({
         const cleanerIds = cleaners.map((c) => c.id);
         const dates = Array.from(new Set(slots.map((s) => s.date)));
 
-        // Existing schedule for each cleaner on the offered dates.
+        // Existing schedule for each cleaner on the offered dates. Includes
+        // the conflicting appointment's homeowner so we can render
+        // "Booked: <homeowner> · <date time>" in the busy row.
         const { data: scheduleRows } = await supabase
           .from("appointments")
-          .select("id, cleaner_id, status, scheduled_date, scheduled_time, duration_minutes")
+          .select(
+            "id, cleaner_id, status, scheduled_date, scheduled_time, duration_minutes, homeowner:user_profiles!homeowner_id(first_name, last_name)",
+          )
           .in("cleaner_id", cleanerIds)
           .in("scheduled_date", dates);
+        type ScheduleRow = ScheduleAppointment & {
+          cleaner_id: string | null;
+          homeowner:
+            | { first_name: string | null; last_name: string | null }
+            | { first_name: string | null; last_name: string | null }[]
+            | null;
+        };
         const schedulesByCleaner: Record<string, ScheduleAppointment[]> = {};
-        for (const row of (scheduleRows ?? []) as Array<ScheduleAppointment & { cleaner_id: string | null }>) {
+        for (const row of (scheduleRows ?? []) as ScheduleRow[]) {
           if (!row.cleaner_id) continue;
+          const ho = Array.isArray(row.homeowner) ? row.homeowner[0] : row.homeowner;
+          const name = ho
+            ? `${ho.first_name ?? ""} ${ho.last_name ?? ""}`.trim()
+            : "";
           const list = schedulesByCleaner[row.cleaner_id] ?? [];
-          list.push(row);
+          list.push({
+            id: row.id,
+            status: row.status,
+            scheduled_date: row.scheduled_date,
+            scheduled_time: row.scheduled_time,
+            duration_minutes: row.duration_minutes,
+            homeowner_name: name || null,
+          });
           schedulesByCleaner[row.cleaner_id] = list;
         }
 
-        // Acceptance rate over last 60 days.
-        const since = new Date(Date.now() - SIXTY_DAYS_MS).toISOString();
-        const { data: routingRows } = await supabase
-          .from("appointment_routing_log")
-          .select("cleaner_id, response, responded_at")
-          .in("cleaner_id", cleanerIds)
-          .gte("responded_at", since);
-        const totals: Record<string, { total: number; accepted: number }> = {};
-        for (const row of (routingRows ?? []) as Array<{ cleaner_id: string; response: string }>) {
-          if (row.response === "pending") continue;
-          const t = totals[row.cleaner_id] ?? { total: 0, accepted: 0 };
-          t.total += 1;
-          if (row.response === "accepted") t.accepted += 1;
-          totals[row.cleaner_id] = t;
-        }
-
-        // Last-worked-this-property
+        // Last-worked-this-property — drives the recency tiebreak in the ranker.
         const { data: lastWorkedRows } = await supabase
           .from("appointments")
           .select("cleaner_id, scheduled_date")
@@ -127,8 +150,6 @@ export default function AssignCleanerModal({
         const today = new Date();
         const metrics: Record<string, CleanerMetrics> = {};
         for (const id of cleanerIds) {
-          const t = totals[id];
-          const acceptanceRate = t && t.total > 0 ? t.accepted / t.total : null;
           let lastWorkedDaysAgo: number | null = null;
           const d = recent[id];
           if (d) {
@@ -139,7 +160,7 @@ export default function AssignCleanerModal({
               Math.floor((today.getTime() - dt.getTime()) / (24 * 60 * 60 * 1000)),
             );
           }
-          metrics[id] = { acceptanceRate, lastWorkedDaysAgo };
+          metrics[id] = { lastWorkedDaysAgo };
         }
 
         const ranked = rankCleanersByMultiSlotCoverage(
@@ -171,7 +192,12 @@ export default function AssignCleanerModal({
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ appointmentId, cleanerId, organizationId: orgId }),
+        body: JSON.stringify({
+          appointmentId,
+          cleanerId,
+          organizationId: orgId,
+          forceAssign: forceMode,
+        }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
@@ -211,23 +237,29 @@ export default function AssignCleanerModal({
                 <UserCheck className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Assign a cleaner</h2>
+                <h2 className="text-xl font-bold">
+                  {forceMode ? "Force-assign a cleaner" : "Assign a cleaner"}
+                </h2>
                 <p className="text-primary-100 text-sm">
-                  Pick from the ranked list — coverage badges show which offered times they can take.
+                  {forceMode
+                    ? "Pick any cleaner — availability checks are skipped."
+                    : "Pick from the ranked list — coverage badges show which offered times they can take."}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-            <div className="mb-4 text-xs text-gray-500 flex flex-wrap gap-2">
-              {orderedSlots.map((s, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded">
-                  <span className="font-medium">{i === 0 ? "Primary" : `Alt ${i}`}:</span>
-                  {s.date} {formatTimeTo12h(s.time)}
-                </span>
-              ))}
-            </div>
+            {!forceMode && (
+              <div className="mb-4 text-xs text-gray-500 flex flex-wrap gap-2">
+                {orderedSlots.map((s, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded">
+                    <span className="font-medium">{i === 0 ? "Primary" : `Alt ${i}`}:</span>
+                    {formatDateTimeShort(s.date, s.time)}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
@@ -255,27 +287,35 @@ export default function AssignCleanerModal({
                       <div className="flex-1">
                         <div className="font-medium text-gray-900">{name}</div>
                         <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
-                          {(["primary", "alt1", "alt2"] as const)
-                            .filter((k, i) => i < orderedSlots.length)
-                            .map((k, i) => (
-                              <span
-                                key={k}
-                                className={
-                                  "px-1.5 py-0.5 rounded " +
-                                  (r.slotCoverage[k]
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-red-100 text-red-700")
-                                }
-                              >
-                                {i === 0 ? "Primary" : `Alt ${i}`}: {r.slotCoverage[k] ? "free" : "busy"}
-                              </span>
-                            ))}
-                          {r.acceptanceRate !== null && (
+                          {!forceMode &&
+                            (["primary", "alt1", "alt2"] as const)
+                              .filter((k, i) => i < orderedSlots.length)
+                              .map((k, i) => (
+                                <span
+                                  key={k}
+                                  className={
+                                    "px-1.5 py-0.5 rounded " +
+                                    (r.slotCoverage[k]
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-red-100 text-red-700")
+                                  }
+                                >
+                                  {i === 0 ? "Primary" : `Alt ${i}`}: {r.slotCoverage[k] ? "free" : "busy"}
+                                </span>
+                              ))}
+                          {!forceMode && r.firstConflict ? (
                             <span className="text-gray-500">
-                              {Math.round(r.acceptanceRate * 100)}% accept
+                              Booked:{" "}
+                              {r.firstConflict.homeowner_name || "another client"}
+                              {" · "}
+                              {formatDateTimeShort(
+                                r.firstConflict.scheduled_date,
+                                r.firstConflict.scheduled_time,
+                              )}
                             </span>
-                          )}
-                          {r.lastWorkedDaysAgo !== null && (
+                          ) : r.lastWorkedDaysAgo === null ? (
+                            <span className="text-gray-500">Never worked here</span>
+                          ) : (
                             <span className="text-gray-500">
                               {r.lastWorkedDaysAgo === 0
                                 ? "worked here today"

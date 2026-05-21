@@ -377,8 +377,11 @@ describe('POST /api/appointments/confirm', () => {
         .eq('appointment_id', appointmentId);
       expect((log as Array<{ response: string }>)[0].response).toBe('declined');
 
-      // (b) admin direct-book decline: no auto-defer, request_state remains NULL
-      //     (we are using the legacy appointmentInOrg1 fixture, homeowner_initiated=false).
+      // (b) admin direct-book decline: now also runs the auto-defer chain so
+      //     a declining cleaner triggers the same reassign logic as the
+      //     homeowner-initiated flow. With only one cleaner in this test org
+      //     the chain immediately escalates; the routing_log gets one declined
+      //     row for the declining cleaner so future force-assigns skip them.
       const { status: directStatus } = await callRoute(POST, {
         method: 'POST',
         headers: bearerHeader(org.cleaner.accessToken),
@@ -392,18 +395,22 @@ describe('POST /api/appointments/confirm', () => {
       expect(directStatus).toBe(200);
       const { data: directAppt } = await admin
         .from('appointments')
-        .select('request_state, cleaner_id, homeowner_initiated')
+        .select('request_state, cleaner_id, homeowner_initiated, cleaner_confirmation_status')
         .eq('id', appointmentInOrg1.id)
         .single();
       expect((directAppt as { homeowner_initiated: boolean }).homeowner_initiated).toBe(false);
-      // request_state flips to needs_admin_attention so admin queue catches it
+      // Escalated: surfaces in both admin queue (needs_admin_attention) AND
+      // RescheduleRequiredSection (cleaner_confirmation_status='rejected').
       expect((directAppt as { request_state: string | null }).request_state).toBe('needs_admin_attention');
-      // No new routing_log rows for admin direct-book.
+      expect((directAppt as { cleaner_confirmation_status: string }).cleaner_confirmation_status).toBe('rejected');
+      expect((directAppt as { cleaner_id: string | null }).cleaner_id).toBeNull();
+      // Auto-defer chain inserts one declined row for the declining cleaner.
       const { data: directLog } = await admin
         .from('appointment_routing_log')
-        .select('id')
+        .select('cleaner_id, response')
         .eq('appointment_id', appointmentInOrg1.id);
-      expect(directLog).toEqual([]);
+      expect(directLog).toHaveLength(1);
+      expect((directLog as Array<{ response: string }>)[0].response).toBe('declined');
     });
   });
 });

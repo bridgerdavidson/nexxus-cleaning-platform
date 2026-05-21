@@ -96,6 +96,7 @@ export function useAdminPendingRequests() {
         .select(
           `id, homeowner_id, cleaner_id, property_id, service_type_id, duration_minutes,
            status, request_state, total_price, response_deadline, created_at,
+           cleaner_confirmation_status,
            property:properties(name, address, city, state),
            service_type:service_types(name, base_price),
            homeowner:user_profiles!homeowner_id(first_name, last_name, email),
@@ -108,7 +109,11 @@ export function useAdminPendingRequests() {
         // Once admin assigns a cleaner the row transitions to 'routing' and is
         // handled by AwaitingApprovalSection (cleaner_confirmation_status='awaiting').
         // Awaiting-requests only surfaces what needs the admin's attention.
+        // We also exclude rejected rows — when the chain exhausts, the
+        // appointment lands in RescheduleRequiredSection ("All cleaners
+        // declined" variant) and shouldn't duplicate here.
         .in('request_state', ['awaiting_admin', 'needs_admin_attention'])
+        .neq('cleaner_confirmation_status', 'rejected')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []).map((row): AdminPendingRequest => {

@@ -180,10 +180,12 @@ export function useAdminAppointments() {
           price_override_enabled,
           price_override_total,
           homeowner_id,
+          cleaner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,
-            email
+            email,
+            phone
           ),
           cleaner_profile:cleaner_profiles(
             user_profile:user_profiles!id(
@@ -212,6 +214,11 @@ export function useAdminAppointments() {
             reason,
             cleaner_suggested_times ( id, suggested_date, suggested_time ),
             cleaner_suggested_windows ( id, window_date, start_time, end_time )
+          ),
+          appointment_requested_slots (
+            slot_index,
+            scheduled_date,
+            scheduled_time
           )
         `)
         .eq('organization_id', orgId)

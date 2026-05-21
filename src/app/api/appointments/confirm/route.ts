@@ -240,21 +240,25 @@ export async function POST(request: NextRequest) {
           : label;
     }
 
-    // SLA stops once the cleaner has responded — clear the deadline. Both
-    // counter_propose and decline land here.
+    // SLA stops once the cleaner has responded — clear the deadline.
     //
-    // For homeowner_initiated declines we skip flipping request_state here —
-    // the auto-defer helper at the end of this branch will either route to
-    // another cleaner ('routing') or escalate ('needs_admin_attention').
+    // Decline paths skip the legacy 'rejected' write so the appointment
+    // doesn't briefly surface in RescheduleRequiredSection while we route to
+    // the next cleaner. advanceAppointmentRouting (called below) writes the
+    // final state atomically — either reassigned (cleaner_id=new,
+    // status='awaiting') or escalated (cleaner_id=null + state surfaces in
+    // RescheduleRequired/AwaitingRequests).
+    //
+    // Counter-proposals don't auto-reassign — they stay rejected so the admin
+    // can accept the proposed times in RescheduleRequiredSection.
     const rejectPayload: Record<string, unknown> = {
-      cleaner_confirmation_status: 'rejected',
       response_deadline: null,
     };
     if (appointment.status === 'confirmed') {
       rejectPayload.status = 'pending';
     }
-    if (action === 'decline' && !appointment.homeowner_initiated) {
-      rejectPayload.request_state = 'needs_admin_attention';
+    if (action === 'counter_propose') {
+      rejectPayload.cleaner_confirmation_status = 'rejected';
     }
 
     const { error: rejectError } = await supabaseAdmin
@@ -341,10 +345,14 @@ export async function POST(request: NextRequest) {
       content: messageContent,
     });
 
-    // Homeowner-initiated decline: close the pending routing_log row and
-    // advance the chain to the next ranked cleaner (or escalate at 3 attempts).
+    // Decline auto-reassigns to the next cleaner regardless of how the
+    // appointment was created. Homeowner-initiated requests already have a
+    // pending routing_log row from assign-cleaner — close it. Admin-direct
+    // appointments have no log row; insert one so advanceAppointmentRouting
+    // (which derives the chain from the log) treats this cleaner as
+    // already-attempted and won't re-pick them.
     let routingOutcome: string | null = null;
-    if (action === 'decline' && appointment.homeowner_initiated) {
+    if (action === 'decline') {
       const { data: pendingLog } = await supabaseAdmin
         .from('appointment_routing_log')
         .select('id')
@@ -362,6 +370,26 @@ export async function POST(request: NextRequest) {
             decline_reason: reasonText,
           })
           .eq('id', pendingLog.id);
+      } else {
+        const { data: lastLog } = await supabaseAdmin
+          .from('appointment_routing_log')
+          .select('attempt_index')
+          .eq('appointment_id', appointmentId)
+          .order('attempt_index', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const attemptIndex =
+          ((lastLog as { attempt_index?: number } | null)?.attempt_index ?? 0) + 1;
+        const nowIso = new Date().toISOString();
+        await supabaseAdmin.from('appointment_routing_log').insert({
+          appointment_id: appointmentId,
+          cleaner_id: cleanerId,
+          attempt_index: attemptIndex,
+          response: 'declined',
+          responded_at: nowIso,
+          decline_reason: reasonText,
+          deadline_at: nowIso,
+        });
       }
       const outcome = await advanceAppointmentRouting({
         appointmentId,
