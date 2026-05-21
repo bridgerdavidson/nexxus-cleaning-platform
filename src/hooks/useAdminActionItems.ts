@@ -99,7 +99,7 @@ export function useAdminActionItems() {
            homeowner:user_profiles!homeowner_id(first_name, last_name, email, phone),
            cleaner_profile:cleaner_profiles(id, user_profile:user_profiles!id(first_name, last_name)),
            appointment_requested_slots(slot_index, scheduled_date, scheduled_time),
-           appointment_routing_log(cleaner_id, attempt_index, response, deadline_at, decline_reason, responded_at, cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles!id(first_name, last_name))),
+           appointment_routing_log(cleaner_id, attempt_index, response, deadline_at, decline_reason, responded_at),
            cleaner_availability_feedback(id, reason, cleaner_suggested_times(id, suggested_date, suggested_time), cleaner_suggested_windows(id, window_date, start_time, end_time))`,
         )
         .eq('organization_id', orgId)
@@ -119,6 +119,39 @@ export function useAdminActionItems() {
         .order('scheduled_date', { ascending: true });
 
       if (error) throw error;
+
+      // appointment_routing_log has no FK from cleaner_id to cleaner_profiles,
+      // so PostgREST cannot embed the join. Fetch names separately and look up
+      // by id when shaping routing_log entries below.
+      const routingCleanerIds = new Set<string>();
+      for (const row of (data ?? []) as FlatRecord[]) {
+        const logs = (row?.appointment_routing_log as Array<{ cleaner_id?: string | null }> | null) ?? [];
+        for (const l of logs) {
+          if (l?.cleaner_id) routingCleanerIds.add(l.cleaner_id);
+        }
+      }
+      const routingCleanerNames = new Map<
+        string,
+        { first_name: string | null; last_name: string | null }
+      >();
+      if (routingCleanerIds.size > 0) {
+        const { data: cleanerRows } = await supabase
+          .from('cleaner_profiles')
+          .select('id, user_profile:user_profiles!id(first_name, last_name)')
+          .in('id', Array.from(routingCleanerIds));
+        for (const c of (cleanerRows ?? []) as Array<{
+          id: string;
+          user_profile:
+            | { first_name: string | null; last_name: string | null }
+            | Array<{ first_name: string | null; last_name: string | null }>
+            | null;
+        }>) {
+          const up = flatten1(c.user_profile as never) as
+            | { first_name: string | null; last_name: string | null }
+            | null;
+          if (up) routingCleanerNames.set(c.id, up);
+        }
+      }
 
       const now = new Date();
       const items: AdminActionItem[] = [];
@@ -198,23 +231,12 @@ export function useAdminActionItems() {
               deadline_at: string;
               decline_reason: string | null;
               responded_at: string | null;
-              cleaner?:
-                | { user_profile: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null }
-                | Array<{ user_profile: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null }>
-                | null;
             }>) ?? []
           )
             .slice()
             .sort((a, b) => a.attempt_index - b.attempt_index)
             .map((log) => {
-              const cleanerNode = flatten1(log.cleaner as never) as
-                | { user_profile: unknown }
-                | null;
-              const userProfile = cleanerNode
-                ? (flatten1(cleanerNode.user_profile as never) as
-                    | { first_name: string | null; last_name: string | null }
-                    | null)
-                : null;
+              const userProfile = routingCleanerNames.get(log.cleaner_id) ?? null;
               const fullName = userProfile
                 ? `${userProfile.first_name ?? ''} ${userProfile.last_name ?? ''}`.trim()
                 : '';
