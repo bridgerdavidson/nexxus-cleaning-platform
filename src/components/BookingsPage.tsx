@@ -26,12 +26,10 @@ import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
-import RescheduleRequiredSection from "./RescheduleRequiredSection";
+import ActionRequiredSection from "./admin-dashboard/ActionRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
-import { updateAppointment, acceptCounterProposal } from "../hooks/useAdminData";
-import { useAuth } from "../hooks/useAuth";
-import { isAppointmentOverdue } from "../lib/isAppointmentOverdue";
+import { updateAppointment } from "../hooks/useAdminData";
 
 type ViewType = "list" | "calendar";
 
@@ -67,7 +65,6 @@ export default function BookingsPage({
   initialStatusFilter,
   canApproveDecline = false,
 }: BookingsPageProps) {
-  const { accessToken } = useAuth();
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>(
@@ -264,33 +261,6 @@ export default function BookingsPage({
     if (statusFilter === "all") return true;
     return appointment.status === statusFilter;
   };
-
-  // "Needs your response" feed for the admin: cleaner-rejected appointments
-  // (counter-proposed or hard-declined) plus Wave 2 overdue appointments
-  // where the cleaner ghosted the assignment past the SLA deadline.
-  const rescheduleRequiredAppointments = useMemo(() => {
-    const now = new Date();
-    return localAppointments
-      .filter((apt) => {
-        if (apt.status === "cancelled" || apt.status === "completed") {
-          return false;
-        }
-        if (apt.cleaner_confirmation_status === "rejected") return true;
-        return isAppointmentOverdue(
-          {
-            status: apt.status,
-            cleaner_confirmation_status: apt.cleaner_confirmation_status,
-            response_deadline: apt.response_deadline,
-          },
-          now,
-        );
-      })
-      .sort((a, b) => {
-        const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-        const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-        return dateA.getTime() - dateB.getTime();
-      });
-  }, [localAppointments]);
 
   // Get filtered active appointments (in_progress)
   const filteredActiveAppointments = useMemo(() => {
@@ -796,35 +766,14 @@ export default function BookingsPage({
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Reschedule Required Section */}
+              {/* Unified action queue — same as the admin overview. The
+                  section drives its own data via useAdminActionItems. */}
               {(role === "admin" || role === "manager") && (
-                <RescheduleRequiredSection
-                  appointments={rescheduleRequiredAppointments}
-                  loading={loading}
+                <ActionRequiredSection
                   defaultExpanded={false}
-                  onReschedule={(apt) =>
-                    onRescheduleRejected?.(apt as AppointmentCardData)
-                  }
-                  onViewDetails={(apt) =>
-                    onOpenAppointment((apt as AppointmentCardData).id)
-                  }
-                  onAcceptCounterProposal={async ({
-                    appointmentId,
-                    suggestedTimeId,
-                    organizationId,
-                  }) => {
-                    const result = await acceptCounterProposal({
-                      appointmentId,
-                      suggestedTimeId,
-                      organizationId,
-                      accessToken,
-                    });
-                    if (!result.success) {
-                      throw new Error(
-                        result.error || "Failed to accept counter-proposal",
-                      );
-                    }
-                    onRefreshAppointments?.();
+                  onReassign={(item) => {
+                    const apt = localAppointments.find((a) => a.id === item.id);
+                    if (apt) onRescheduleRejected?.(apt as AppointmentCardData);
                   }}
                 />
               )}

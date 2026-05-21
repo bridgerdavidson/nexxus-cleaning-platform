@@ -246,14 +246,14 @@ export async function POST(request: NextRequest) {
     // SLA stops once the cleaner has responded — clear the deadline.
     //
     // Decline paths skip the legacy 'rejected' write so the appointment
-    // doesn't briefly surface in RescheduleRequiredSection while we route to
+    // doesn't briefly surface in ActionRequiredSection while we route to
     // the next cleaner. advanceAppointmentRouting (called below) writes the
     // final state atomically — either reassigned (cleaner_id=new,
     // status='awaiting') or escalated (cleaner_id=null + state surfaces in
     // RescheduleRequired/AwaitingRequests).
     //
     // Counter-proposals don't auto-reassign — they stay rejected so the admin
-    // can accept the proposed times in RescheduleRequiredSection.
+    // can accept the proposed times in ActionRequiredSection.
     const rejectPayload: Record<string, unknown> = {
       response_deadline: null,
     };

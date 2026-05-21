@@ -399,8 +399,8 @@ describe('POST /api/appointments/confirm', () => {
         .eq('id', appointmentInOrg1.id)
         .single();
       expect((directAppt as { homeowner_initiated: boolean }).homeowner_initiated).toBe(false);
-      // Escalated: surfaces in both admin queue (needs_admin_attention) AND
-      // RescheduleRequiredSection (cleaner_confirmation_status='rejected').
+      // Escalated: surfaces in the unified ActionRequiredSection as
+      // "All cleaners declined" (cleaner_id=null, ccs='rejected').
       expect((directAppt as { request_state: string | null }).request_state).toBe('needs_admin_attention');
       expect((directAppt as { cleaner_confirmation_status: string }).cleaner_confirmation_status).toBe('rejected');
       expect((directAppt as { cleaner_id: string | null }).cleaner_id).toBeNull();
