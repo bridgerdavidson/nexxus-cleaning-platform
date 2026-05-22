@@ -34,6 +34,11 @@ interface TopBarProps {
   hasUnreadMessages?: boolean;
   /** When true, leave left padding for the desktop sidebar. Default true. */
   hasSidebar?: boolean;
+  /**
+   * Optional desktop primary action rendered in the right cluster, before the
+   * Messages / Settings icons. Hidden on mobile (mobile uses an in-page CTA).
+   */
+  primaryAction?: React.ReactNode;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -48,6 +53,7 @@ const TopBar: React.FC<TopBarProps> = ({
   showMessagesIcon = false,
   hasUnreadMessages = false,
   hasSidebar = true,
+  primaryAction,
 }) => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -116,6 +122,12 @@ const TopBar: React.FC<TopBarProps> = ({
 
         {/* Settings gear + User Profile - Right */}
         <div className="flex items-center ml-auto gap-1">
+          {primaryAction && (
+            <div className="hidden md:flex items-center gap-3 mr-2">
+              {primaryAction}
+              <span aria-hidden className="h-6 w-px bg-gray-200" />
+            </div>
+          )}
           {showMessagesIcon && (
             <button
               type="button"

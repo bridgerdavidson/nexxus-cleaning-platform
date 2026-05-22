@@ -23,7 +23,6 @@ export const ADMIN_MANAGER_DASHBOARD_TAB_IDS = [
 
 export const HOMEOWNER_DASHBOARD_TAB_IDS = [
   "home",
-  "bookings",
   "messages",
   "services",
   "properties",
