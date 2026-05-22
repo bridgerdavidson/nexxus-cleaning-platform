@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import { MotionConfig } from "motion/react";
 import { useAuth } from "../../hooks/useAuth";
 import {
   Home,
@@ -26,6 +27,7 @@ import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
 import RequestAppointmentButton from "../../components/RequestAppointmentButton";
+import ScrollAwareRequestFab from "../../components/homeowner/ScrollAwareRequestFab";
 import { useHomeownerRequests } from "../../hooks/useHomeownerRequests";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
@@ -349,7 +351,8 @@ function HomeownerDashboardInner() {
   };
 
   return (
-    <div className="min-h-screen bg-white md:bg-gray-100">
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-screen bg-white md:bg-gray-100">
       {/* Persistent Desktop Sidebar */}
       <DesktopSidebar
         tabs={sidebarTabs}
@@ -395,15 +398,13 @@ function HomeownerDashboardInner() {
         </main>
       </div>
 
-      {/* Mobile FAB — primary action visible from every tab on mobile */}
+      {/* Mobile FAB — primary action visible from every tab on mobile.
+          Shrinks to icon on scroll-down, expands on scroll-up. */}
       <div
         className="md:hidden fixed right-4 z-30"
         style={{ bottom: "calc(6.25rem + env(safe-area-inset-bottom))" }}
       >
-        <RequestAppointmentButton
-          onCreated={handleRequestCreated}
-          className="inline-flex items-center gap-2 px-5 py-3.5 bg-primary-600 text-white font-semibold rounded-full shadow-lg hover:bg-primary-700 hover:shadow-xl active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
-        />
+        <ScrollAwareRequestFab onCreated={handleRequestCreated} />
       </div>
 
       <MobileNavigation
@@ -451,7 +452,8 @@ function HomeownerDashboardInner() {
         tone="warning"
         isLoading={cancellingRequest}
       />
-    </div>
+      </div>
+    </MotionConfig>
   );
 }
 
