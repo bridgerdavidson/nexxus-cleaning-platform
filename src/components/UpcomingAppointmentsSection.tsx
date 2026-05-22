@@ -53,10 +53,10 @@ export default function UpcomingAppointmentsSection({
             />
           ))}
           {totalCount > 3 && (
-            <div className="pt-3 border-t border-gray-200">
+            <div className="pt-2">
               <button
                 onClick={onViewAll}
-                className="w-full text-center text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+                className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
               >
                 View all {totalCount} upcoming
               </button>

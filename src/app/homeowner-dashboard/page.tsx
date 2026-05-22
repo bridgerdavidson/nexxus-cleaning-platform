@@ -470,7 +470,7 @@ function HomeownerDashboardInner() {
                 </div>
               ) : todaysAppointments.length > 0 ? (
                 <div className="space-y-3">
-                  {todaysAppointments.map((appointment) => (
+                  {todaysAppointments.slice(0, 3).map((appointment) => (
                     <AppointmentCard
                       key={appointment.id}
                       appointment={
@@ -482,6 +482,17 @@ function HomeownerDashboardInner() {
                       role="homeowner"
                     />
                   ))}
+                  {todaysAppointments.length > 3 && (
+                    <button
+                      onClick={() => {
+                        setShowAllFilter(true);
+                        setActiveTab("bookings");
+                      }}
+                      className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
+                    >
+                      View all ({todaysAppointments.length})
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">
