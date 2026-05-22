@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { motion } from "motion/react";
 import {
   AlertCircle,
   Calendar,
@@ -416,12 +417,12 @@ export default function HomePage({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              {/* Desktop: tiny iOS-style segmented control */}
+              {/* Desktop: iOS-style segmented control with sliding pill */}
               <div
                 role="radiogroup"
                 aria-label="Time range"
                 onClick={(e) => e.stopPropagation()}
-                className="hidden md:inline-flex items-center rounded-full bg-gray-100 p-0.5"
+                className="hidden md:flex items-center w-[180px] rounded-full bg-gray-100 p-0.5"
               >
                 {([7, 30, -1] as UpcomingDays[]).map((d) => {
                   const active = d === upcomingDays;
@@ -436,14 +437,22 @@ export default function HomePage({
                         setUpcomingDays(d);
                         setUpcomingShowAll(false);
                       }}
-                      className={[
-                        "h-8 px-3 rounded-full text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1",
-                        active
-                          ? "bg-primary-600 text-white shadow-sm"
-                          : "text-gray-600 hover:text-gray-900",
-                      ].join(" ")}
+                      className="relative isolate flex-1 min-w-0 h-8 rounded-full text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
                     >
-                      {d === 7 ? "7d" : d === 30 ? "30d" : "All"}
+                      {active && (
+                        <motion.span
+                          layoutId="upcoming-pill-desktop"
+                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                          className="absolute inset-0 -z-10 rounded-full bg-primary-600 shadow-sm"
+                        />
+                      )}
+                      <span
+                        className={`transition-colors duration-200 ${
+                          active ? "text-white" : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        {d === 7 ? "7d" : d === 30 ? "30d" : "All"}
+                      </span>
                     </button>
                   );
                 })}
@@ -463,11 +472,11 @@ export default function HomePage({
               id="upcoming-appointments-body"
               className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4"
             >
-              {/* Mobile: same segmented control as desktop, but in the body */}
+              {/* Mobile: same sliding-pill segmented control, in the body */}
               <div
                 role="radiogroup"
                 aria-label="Time range"
-                className="md:hidden inline-flex items-center rounded-full bg-gray-100 p-0.5 mb-3"
+                className="md:hidden flex items-center w-[240px] rounded-full bg-gray-100 p-0.5 mb-3"
               >
                 {([7, 30, -1] as UpcomingDays[]).map((d) => {
                   const active = d === upcomingDays;
@@ -482,14 +491,22 @@ export default function HomePage({
                         setUpcomingShowAll(false);
                       }}
                       style={{ touchAction: "manipulation" }}
-                      className={[
-                        "h-9 px-4 rounded-full text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1",
-                        active
-                          ? "bg-primary-600 text-white shadow-sm"
-                          : "text-gray-600 hover:text-gray-900",
-                      ].join(" ")}
+                      className="relative isolate flex-1 min-w-0 h-9 rounded-full text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
                     >
-                      {d === 7 ? "7d" : d === 30 ? "30d" : "All"}
+                      {active && (
+                        <motion.span
+                          layoutId="upcoming-pill-mobile"
+                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                          className="absolute inset-0 -z-10 rounded-full bg-primary-600 shadow-sm"
+                        />
+                      )}
+                      <span
+                        className={`transition-colors duration-200 ${
+                          active ? "text-white" : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        {d === 7 ? "7d" : d === 30 ? "30d" : "All"}
+                      </span>
                     </button>
                   );
                 })}
