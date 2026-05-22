@@ -167,13 +167,14 @@ function HomeownerDashboardInner() {
   // Bottom mobile nav — surface the most-used tabs.
   const mobileNavTabs = [
     { id: "home", label: "Home", icon: Home },
+    { id: "payments", label: "Payments", icon: CreditCard },
     {
       id: "messages",
       label: "Messages",
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
-    { id: "payments", label: "Payments", icon: CreditCard },
+    { id: "properties", label: "Properties", icon: Building },
   ];
 
   const renderHome = () => (
