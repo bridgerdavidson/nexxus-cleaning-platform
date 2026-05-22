@@ -12,6 +12,7 @@ import {
   CheckCircle,
   Circle,
   ChevronDown,
+  ChevronLeft,
   Ban,
   Loader2,
   Repeat,
@@ -108,6 +109,12 @@ export default function AddAppointmentModal({
   // When homeowner and property are pre-selected: step 1 = appointment details, step 2 = cleaner
   // When not pre-selected: step 1 = homeowner/property, step 2 = appointment details, step 3 = cleaner
   const [currentStep, setCurrentStep] = useState(1);
+
+  // On mobile, Step 1's combined homeowner+property picker is split into two sub-screens.
+  // Desktop ignores this state (both panels render via sm:block).
+  const [mobileSubStep, setMobileSubStep] = useState<"homeowner" | "property">(
+    "homeowner",
+  );
 
   // Step changes reuse the same scroll containers; reset so each step starts at the top
   useEffect(() => {
@@ -785,6 +792,7 @@ export default function AddAppointmentModal({
   const handleClose = () => {
     // Reset all state
     setCurrentStep(1);
+    setMobileSubStep("homeowner");
     if (!preSelectedHomeownerId) {
       setSelectedHomeowner(null);
     }
@@ -907,7 +915,7 @@ export default function AddAppointmentModal({
 
       {/* Modal */}
       <div
-        className="relative w-full flex flex-col bg-white min-h-dvh overflow-hidden animate-slide-up sm:m-auto sm:max-w-4xl sm:min-h-0 sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl"
+        className="relative w-full flex flex-col bg-white min-h-dvh overflow-hidden animate-sheet-up sm:animate-slide-up sm:m-auto sm:max-w-4xl sm:min-h-0 sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -989,7 +997,13 @@ export default function AddAppointmentModal({
               !preSelectedPropertyId && (
                 <div className="space-y-6">
                   {/* Homeowner Selection */}
-                  <div>
+                  <div
+                    className={`${
+                      mobileSubStep === "homeowner" ? "block" : "hidden"
+                    } sm:block ${
+                      mobileSubStep === "homeowner" ? "animate-slide-in-left" : ""
+                    } sm:animate-none`}
+                  >
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">
                       Select Homeowner
                     </h3>
@@ -1023,12 +1037,16 @@ export default function AddAppointmentModal({
                         No homeowners found
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:max-h-48 sm:overflow-y-auto">
                         {filteredHomeowners.map((homeowner) => (
                           <button
                             key={homeowner.id}
                             type="button"
-                            onClick={() => setSelectedHomeowner(homeowner)}
+                            onClick={() => {
+                              setSelectedHomeowner(homeowner);
+                              // Auto-advance to property sub-step on mobile (no-op visually on desktop)
+                              setMobileSubStep("property");
+                            }}
                             className={`p-4 border-2 rounded-lg text-left transition-all ${
                               selectedHomeowner?.id === homeowner.id
                                 ? "border-primary-500 bg-primary-50"
@@ -1061,7 +1079,34 @@ export default function AddAppointmentModal({
 
                   {/* Property Selection */}
                   {selectedHomeowner && (
-                    <div>
+                    <div
+                      className={`${
+                        mobileSubStep === "property" ? "block" : "hidden"
+                      } sm:block ${
+                        mobileSubStep === "property" ? "animate-slide-in-right" : ""
+                      } sm:animate-none`}
+                    >
+                      {/* Mobile-only: back-to-homeowner pill showing current selection */}
+                      <button
+                        type="button"
+                        onClick={() => setMobileSubStep("homeowner")}
+                        className="sm:hidden w-full flex items-center gap-3 p-3 mb-4 bg-primary-50 border border-primary-200 rounded-lg text-left hover:bg-primary-100 transition-colors"
+                      >
+                        <ChevronLeft className="w-5 h-5 text-primary-700 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-primary-700 font-medium">
+                            Homeowner
+                          </p>
+                          <p className="text-sm text-gray-900 font-semibold truncate">
+                            {selectedHomeowner.first_name}{" "}
+                            {selectedHomeowner.last_name}
+                          </p>
+                        </div>
+                        <span className="text-xs text-primary-700 font-medium">
+                          Change
+                        </span>
+                      </button>
+
                       <h3 className="text-lg font-semibold text-gray-900 mb-3">
                         Select Property
                       </h3>
@@ -1095,7 +1140,7 @@ export default function AddAppointmentModal({
                           No properties found for this homeowner
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:max-h-48 sm:overflow-y-auto">
                           {filteredProperties.map((property) => (
                             <button
                               key={property.id}
@@ -1994,13 +2039,34 @@ export default function AddAppointmentModal({
           <div className="flex-shrink-0 border-t border-gray-200 px-6 sm:px-8 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] bg-gray-50">
             <div className="flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3">
               {currentStep === 1 ? (
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  className="w-full sm:w-auto px-5 py-3 sm:py-2 text-gray-700 hover:bg-gray-100 sm:hover:bg-transparent sm:hover:text-gray-900 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
+                <>
+                  {/* Mobile-only Back button when on property sub-step */}
+                  {!preSelectedHomeownerId &&
+                    !preSelectedPropertyId &&
+                    mobileSubStep === "property" && (
+                      <button
+                        type="button"
+                        onClick={() => setMobileSubStep("homeowner")}
+                        className="sm:hidden w-full px-5 py-3 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+                      >
+                        Back
+                      </button>
+                    )}
+                  {/* Cancel — hidden on mobile when on property sub-step */}
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className={`${
+                      !preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      mobileSubStep === "property"
+                        ? "hidden sm:inline-flex"
+                        : "inline-flex"
+                    } w-full sm:w-auto justify-center px-5 py-3 sm:py-2 text-gray-700 hover:bg-gray-100 sm:hover:bg-transparent sm:hover:text-gray-900 rounded-lg font-medium transition-colors`}
+                  >
+                    Cancel
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
@@ -2022,13 +2088,27 @@ export default function AddAppointmentModal({
                 currentStep < 3) ? (
                 <button
                   type="button"
-                  onClick={handleNext}
+                  onClick={() => {
+                    // Mobile sub-step transition: homeowner → property
+                    if (
+                      currentStep === 1 &&
+                      !preSelectedHomeownerId &&
+                      !preSelectedPropertyId &&
+                      mobileSubStep === "homeowner"
+                    ) {
+                      setMobileSubStep("property");
+                      return;
+                    }
+                    handleNext();
+                  }}
                   disabled={Boolean(
-                    // Step 1: Regular flow needs homeowner/property; homeowner-only flow needs property
+                    // Step 1 (no pre-selection): homeowner sub-step needs homeowner; property sub-step needs both
                     (currentStep === 1 &&
                       !preSelectedHomeownerId &&
                       !preSelectedPropertyId &&
-                      !isStep1Valid) ||
+                      (mobileSubStep === "homeowner"
+                        ? !selectedHomeowner
+                        : !isStep1Valid)) ||
                       (currentStep === 1 &&
                         preSelectedHomeownerId &&
                         !preSelectedPropertyId &&

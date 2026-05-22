@@ -188,7 +188,7 @@ export default function RequestAppointmentModal({
         onClick={onClose}
       />
       <div
-        className="relative w-full flex flex-col bg-white min-h-dvh overflow-hidden animate-slide-up sm:m-auto sm:max-w-2xl sm:min-h-0 sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl"
+        className="relative w-full flex flex-col bg-white min-h-dvh overflow-hidden animate-sheet-up sm:animate-slide-up sm:m-auto sm:max-w-2xl sm:min-h-0 sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex-shrink-0 relative bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 sm:px-8 pt-[max(env(safe-area-inset-top),1.25rem)] pb-5">

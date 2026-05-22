@@ -49,6 +49,9 @@ module.exports = {
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',
         'slide-up': 'slideUp 0.3s ease-out',
+        'sheet-up': 'sheetUp 250ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'slide-in-right': 'slideInRight 250ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'slide-in-left': 'slideInLeft 250ms cubic-bezier(0.32, 0.72, 0, 1)',
         'bounce-gentle': 'bounceGentle 2s infinite',
         'toast-in': 'toast-in 0.3s ease-out forwards',
         'toast-out': 'toast-out 0.25s ease-in forwards',
@@ -61,6 +64,18 @@ module.exports = {
         slideUp: {
           '0%': { transform: 'translateY(10px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        sheetUp: {
+          '0%': { transform: 'translateY(100%)' },
+          '100%': { transform: 'translateY(0)' },
+        },
+        slideInRight: {
+          '0%': { transform: 'translateX(20px)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        slideInLeft: {
+          '0%': { transform: 'translateX(-20px)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
         },
         bounceGentle: {
           '0%, 100%': { transform: 'translateY(0)' },
