@@ -1113,7 +1113,7 @@ function CleanerDashboardInner() {
                 </div>
               ) : overviewTodaysJobs.length > 0 ? (
                 <div className="space-y-3">
-                  {overviewTodaysJobs.map((appointment) => (
+                  {overviewTodaysJobs.slice(0, 3).map((appointment) => (
                     <AppointmentCard
                       key={appointment.id}
                       appointment={convertToCardData(appointment)}
@@ -1122,6 +1122,14 @@ function CleanerDashboardInner() {
                       onStartJob={handleStartJob}
                     />
                   ))}
+                  {overviewTodaysJobs.length > 3 && (
+                    <button
+                      onClick={() => setActiveTab("jobs")}
+                      className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
+                    >
+                      View all ({overviewTodaysJobs.length})
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">
