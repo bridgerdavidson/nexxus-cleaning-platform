@@ -18,7 +18,7 @@ interface MobileNavigationProps {
 }
 
 const PILL_WIDTH = 28;
-const STAGE_MS = 220;
+const SLIDE_MS = 280;
 const EASE = "cubic-bezier(.22,.61,.36,1)";
 
 const MobileNavigation: React.FC<MobileNavigationProps> = ({
@@ -32,7 +32,6 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const isFirstRenderRef = useRef(true);
   const [pillStyle, setPillStyle] = useState<{ left: number; width: number; opacity: number }>({
     left: 0,
     width: PILL_WIDTH,
@@ -41,7 +40,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
 
   const activeIdx = visibleTabs.findIndex((t) => t.id === activeTab);
 
-  // Two-stage liquid-stretch animation when activeTab changes.
+  // Smooth glide: animate the pill's left position; width stays constant.
   useLayoutEffect(() => {
     if (activeIdx < 0) return;
     const btn = tabRefs.current[activeIdx];
@@ -51,27 +50,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
     const btnRect = btn.getBoundingClientRect();
     const parentRect = parent.getBoundingClientRect();
     const newCenter = btnRect.left - parentRect.left + btnRect.width / 2;
-
-    if (isFirstRenderRef.current) {
-      isFirstRenderRef.current = false;
-      setPillStyle({ left: newCenter - PILL_WIDTH / 2, width: PILL_WIDTH, opacity: 1 });
-      return;
-    }
-
-    // Stage 1: stretch the pill to span from current center to new center.
-    setPillStyle((prev) => {
-      const currentCenter = prev.left + prev.width / 2;
-      const minX = Math.min(currentCenter, newCenter);
-      const maxX = Math.max(currentCenter, newCenter);
-      return { left: minX - PILL_WIDTH / 2, width: maxX - minX + PILL_WIDTH, opacity: 1 };
-    });
-
-    // Stage 2: contract back to default width at the destination.
-    const timer = window.setTimeout(() => {
-      setPillStyle({ left: newCenter - PILL_WIDTH / 2, width: PILL_WIDTH, opacity: 1 });
-    }, STAGE_MS);
-
-    return () => window.clearTimeout(timer);
+    setPillStyle({ left: newCenter - PILL_WIDTH / 2, width: PILL_WIDTH, opacity: 1 });
   }, [activeIdx]);
 
   // Re-pin pill on viewport resize (no animation, just snap to new layout).
@@ -99,12 +78,12 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
         {/* Sliding active-pill (lifted out of buttons so it can travel) */}
         <span
           aria-hidden
-          className="absolute bottom-1 h-[3px] rounded-full bg-primary-600 will-change-[left,width]"
+          className="absolute bottom-1 h-[3px] rounded-full bg-primary-600 will-change-[left]"
           style={{
             left: `${pillStyle.left}px`,
             width: `${pillStyle.width}px`,
             opacity: pillStyle.opacity,
-            transition: `left ${STAGE_MS}ms ${EASE}, width ${STAGE_MS}ms ${EASE}, opacity 200ms ease-out`,
+            transition: `left ${SLIDE_MS}ms ${EASE}, opacity 200ms ease-out`,
           }}
         />
 
