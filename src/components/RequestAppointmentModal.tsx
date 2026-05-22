@@ -182,137 +182,137 @@ export default function RequestAppointmentModal({
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[300] overflow-y-auto">
-      <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity" onClick={onClose} />
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div
-          className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden animate-slide-up"
-          onClick={(e) => e.stopPropagation()}
-        >
+    <div className="fixed inset-0 z-[300] flex">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+      <div
+        className="relative w-full flex flex-col bg-white min-h-dvh overflow-hidden animate-slide-up sm:m-auto sm:max-w-2xl sm:min-h-0 sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex-shrink-0 relative bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 sm:px-8 pt-[max(env(safe-area-inset-top),1.25rem)] pb-5">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+            className="absolute top-[max(env(safe-area-inset-top),0.75rem)] right-3 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
             aria-label="Close modal"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
-
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white px-8 py-6">
-            <div className="flex items-center justify-center mb-3">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full">
-                <Calendar className="w-6 h-6" />
-              </div>
-            </div>
-            <h2 className="text-2xl font-bold text-center mb-1">Request Appointment</h2>
-            <p className="text-primary-100 text-center text-sm">
-              Offer up to 3 preferred times. We&apos;ll match you with a cleaner.
-            </p>
-          </div>
-
-          <div className="p-8 overflow-y-auto max-h-[calc(90vh-160px)]">
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Property</label>
-                {propertiesLoading ? (
-                  <div className="flex items-center gap-2 text-gray-500 text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Loading your properties…
-                  </div>
-                ) : properties.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    You don&apos;t have any properties yet. Add one from your profile first.
-                  </p>
-                ) : (
-                  <div className="relative">
-                    <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <select
-                      value={selectedPropertyId}
-                      onChange={(e) => setSelectedPropertyId(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      {properties.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} — {p.address}, {p.city}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Service</label>
-                {servicesLoading ? (
-                  <div className="flex items-center gap-2 text-gray-500 text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Loading services…
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      value={selectedServiceId}
-                      onChange={(e) => setSelectedServiceId(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      {services.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} — ${s.base_price} · {s.duration_minutes} min
-                        </option>
-                      ))}
-                    </select>
-                    {selectedService?.description && (
-                      <p className="text-xs text-gray-500 mt-1">{selectedService.description}</p>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div>
-                <SlotPicker slots={slots} onChange={setSlots} minDate={today} />
-                {slots[0]?.date && slots[0]?.time && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    First preference: {formatDateTimeTo12h(slots[0].date, slots[0].time)}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes for your cleaner (optional)
-                </label>
-                <textarea
-                  value={specialRequests}
-                  onChange={(e) => setSpecialRequests(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  placeholder="Anything specific they should know?"
-                />
-              </div>
+          <div className="flex items-center justify-center mb-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full">
+              <Calendar className="w-6 h-6" />
             </div>
           </div>
+          <h2 className="text-2xl font-bold text-center mb-1">Request Appointment</h2>
+          <p className="text-primary-100 text-center text-sm">
+            Offer up to 3 preferred times. We&apos;ll match you with a cleaner.
+          </p>
+        </div>
 
-          <div className="bg-gray-50 px-8 py-4 flex items-center justify-end gap-3 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!isValid || submitting}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              Submit request
-            </button>
+        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Property</label>
+              {propertiesLoading ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading your properties…
+                </div>
+              ) : properties.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  You don&apos;t have any properties yet. Add one from your profile first.
+                </p>
+              ) : (
+                <div className="relative">
+                  <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <select
+                    value={selectedPropertyId}
+                    onChange={(e) => setSelectedPropertyId(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    {properties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {p.address}, {p.city}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Service</label>
+              {servicesLoading ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading services…
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={selectedServiceId}
+                    onChange={(e) => setSelectedServiceId(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — ${s.base_price} · {s.duration_minutes} min
+                      </option>
+                    ))}
+                  </select>
+                  {selectedService?.description && (
+                    <p className="text-xs text-gray-500 mt-1">{selectedService.description}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div>
+              <SlotPicker slots={slots} onChange={setSlots} minDate={today} />
+              {slots[0]?.date && slots[0]?.time && (
+                <p className="text-xs text-gray-500 mt-3">
+                  First preference: {formatDateTimeTo12h(slots[0].date, slots[0].time)}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Notes for your cleaner (optional)
+              </label>
+              <textarea
+                value={specialRequests}
+                onChange={(e) => setSpecialRequests(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                placeholder="Anything specific they should know?"
+              />
+            </div>
           </div>
+        </div>
+
+        <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 sm:px-8 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full sm:w-auto px-5 py-3 sm:py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!isValid || submitting}
+            className="w-full sm:w-auto px-5 py-3 sm:py-2 bg-primary-600 text-white rounded-lg font-semibold shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Submit request
+          </button>
         </div>
       </div>
     </div>,

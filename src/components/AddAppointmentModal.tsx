@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Calendar,
@@ -891,47 +892,46 @@ export default function AddAppointmentModal({
   };
 
   if (!isOpen) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       ref={overlayScrollRef}
-      className="fixed inset-0 z-[300] overflow-y-auto"
+      className="fixed inset-0 z-[300] flex"
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
         onClick={handleClose}
       />
 
       {/* Modal */}
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div
-          className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-slide-up"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <div
+        className="relative w-full flex flex-col bg-white min-h-dvh overflow-hidden animate-slide-up sm:m-auto sm:max-w-4xl sm:min-h-0 sm:max-h-[90vh] sm:rounded-2xl sm:shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex-shrink-0 relative bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 sm:px-8 pt-[max(env(safe-area-inset-top),1.25rem)] pb-5">
           {/* Close button */}
           <button
             onClick={handleClose}
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
+            className="absolute top-[max(env(safe-area-inset-top),0.75rem)] right-3 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
             aria-label="Close modal"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
-
-          {/* Header */}
-          <div className="bg-gradient-to-r from-primary-600 to-primary-700 text-white px-8 py-6">
-            <div className="flex items-center justify-center mb-3">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full">
-                <Calendar className="w-6 h-6" />
-              </div>
+          <div className="flex items-center justify-center mb-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full">
+              <Calendar className="w-6 h-6" />
             </div>
-            <h2 className="text-2xl font-bold text-center mb-2">
-              New Appointment
-            </h2>
-            <p className="text-primary-100 text-center text-sm">
-              Step {currentStep} of{" "}
-              {preSelectedHomeownerId && preSelectedPropertyId ? 2 : 3}
-            </p>
+          </div>
+          <h2 className="text-2xl font-bold text-center mb-2">
+            New Appointment
+          </h2>
+          <p className="text-primary-100 text-center text-sm">
+            Step {currentStep} of{" "}
+            {preSelectedHomeownerId && preSelectedPropertyId ? 2 : 3}
+          </p>
 
             {/* Step indicator */}
             <div className="flex justify-center gap-2 mt-4">
@@ -975,7 +975,7 @@ export default function AddAppointmentModal({
           {/* Content */}
           <div
             ref={modalBodyScrollRef}
-            className="p-8 overflow-y-auto max-h-[calc(90vh-250px)]"
+            className="flex-1 overflow-y-auto px-6 sm:px-8 py-6"
           >
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
@@ -1991,13 +1991,13 @@ export default function AddAppointmentModal({
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 px-8 py-4 bg-gray-50">
-            <div className="flex justify-between items-center">
+          <div className="flex-shrink-0 border-t border-gray-200 px-6 sm:px-8 py-4 pb-[max(env(safe-area-inset-bottom),1rem)] bg-gray-50">
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3">
               {currentStep === 1 ? (
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-6 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors"
+                  className="w-full sm:w-auto px-5 py-3 sm:py-2 text-gray-700 hover:bg-gray-100 sm:hover:bg-transparent sm:hover:text-gray-900 rounded-lg font-medium transition-colors"
                 >
                   Cancel
                 </button>
@@ -2005,7 +2005,7 @@ export default function AddAppointmentModal({
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="px-6 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors"
+                  className="w-full sm:w-auto px-5 py-3 sm:py-2 text-gray-700 hover:bg-gray-100 sm:hover:bg-transparent sm:hover:text-gray-900 rounded-lg font-medium transition-colors"
                 >
                   Back
                 </button>
@@ -2042,7 +2042,7 @@ export default function AddAppointmentModal({
                       (currentStep === 2 &&
                         (!isStep2Valid || !isStep3Valid)),
                   )}
-                  className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full sm:w-auto px-5 py-3 sm:py-2 bg-primary-600 text-white rounded-lg font-semibold shadow-sm hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>
@@ -2051,7 +2051,7 @@ export default function AddAppointmentModal({
                   type="button"
                   onClick={handleCreateAppointment}
                   disabled={!isStep4Valid || isCreating}
-                  className="px-6 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="w-full sm:w-auto px-5 py-3 sm:py-2 bg-primary-600 text-white rounded-lg font-semibold shadow-sm hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isCreating ? (
                     <>
@@ -2080,7 +2080,7 @@ export default function AddAppointmentModal({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
