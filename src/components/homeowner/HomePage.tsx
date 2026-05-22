@@ -390,6 +390,7 @@ export default function HomePage({
             tabIndex={0}
             onClick={() => setUpcomingExpanded((v) => !v)}
             onKeyDown={(e) => {
+              if (e.currentTarget !== e.target) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 setUpcomingExpanded((v) => !v);
