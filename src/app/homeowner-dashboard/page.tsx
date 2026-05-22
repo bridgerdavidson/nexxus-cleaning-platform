@@ -4,19 +4,13 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
-  Calendar,
   Home,
   MessageCircle,
   CreditCard,
   Building,
-  Clock,
   AlertCircle,
-  Star,
   Loader2,
   Briefcase,
-  MapPin,
-  ChevronDown,
-  ChevronRight,
   User,
 } from "lucide-react";
 import {
@@ -26,26 +20,17 @@ import {
 } from "../../hooks/useHomeownerData";
 import { useConversations } from "../../hooks/useConversations";
 import { useServices } from "../../hooks/useServices";
-import {
-  DASHBOARD_HERO_BACKGROUND,
-  dashboardHeroCardDesktopClass,
-  dashboardHeroCardMobileClass,
-} from "../../lib/dashboardHero";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
-import AddAppointmentModal from "../../components/AddAppointmentModal";
 import RequestAppointmentButton from "../../components/RequestAppointmentButton";
 import { useHomeownerRequests } from "../../hooks/useHomeownerRequests";
-import { formatDateTimeTo12h } from "../../lib/formatTime";
-import BookingsPage from "../../components/BookingsPage";
-import AppointmentCard from "../../components/AppointmentCard";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
-import ActiveNowSection from "../../components/ActiveNowSection";
+import HomePage from "../../components/homeowner/HomePage";
 import {
   HOMEOWNER_DASHBOARD_TAB_IDS,
   usePersistedDashboardTab,
@@ -68,10 +53,6 @@ function HomeownerDashboardInner() {
     closeAppointment,
   } = useAppointmentPanel();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
-  const [showAllFilter, setShowAllFilter] = useState(false);
-  const [expandedToday, setExpandedToday] = useState(true);
-  const [expandedUpcoming, setExpandedUpcoming] = useState(true);
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const router = useRouter();
 
@@ -127,24 +108,8 @@ function HomeownerDashboardInner() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
-  // Handle tab change - reset filters if not navigating from specific sections
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
-    // Only keep filters if we're staying on bookings tab
-    if (tabId !== "bookings") {
-      setShowAllFilter(false);
-    }
-  };
-
-  // Handler functions for BookingsPage
-  const handleCancelAppointment = async (appointmentId: string) => {
-    // TODO: Implement cancel functionality
-    console.log("Cancel appointment:", appointmentId);
-  };
-
-  const handleDeleteAppointment = async (appointmentId: string) => {
-    // TODO: Implement delete functionality
-    console.log("Delete appointment:", appointmentId);
   };
 
   // Track the conversation the user is actively viewing inside MessagesPage so
@@ -160,67 +125,10 @@ function HomeownerDashboardInner() {
     );
   }, [conversations, selectedMessagesConversationId]);
 
-  // Today's date string (YYYY-MM-DD) for filtering
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }, []);
-
-  // Active appointments (in_progress) - shown in Active Cleanings section
-  const activeAppointments = useMemo(
-    () => appointments.filter((a) => a.status === "in_progress"),
-    [appointments],
-  );
-
-  // Today's appointments (not in progress — those appear only under Active Cleanings)
-  const todaysAppointments = useMemo(
-    () =>
-      appointments
-        .filter(
-          (a) => a.scheduled_date === todayStr && a.status !== "in_progress",
-        )
-        .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)),
-    [appointments, todayStr],
-  );
-
-  // Upcoming = after today only (today is in Today's Appointments)
-  const allUpcomingAppointments = appointments
-    .filter((a) => {
-      // After today only; excluding completed/cancelled
-      if (a.scheduled_date <= todayStr) return false;
-      if (a.status === "completed" || a.status === "cancelled") return false;
-      return true;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-  const upcomingAppointments = allUpcomingAppointments.slice(0, 3);
-
-  // Auto-collapse empty sections only after data has loaded; keep expanded when section has items
-  useEffect(() => {
-    if (!appointmentsLoading) {
-      if (todaysAppointments.length > 0) setExpandedToday(true);
-      else setExpandedToday(false);
-    }
-  }, [appointmentsLoading, todaysAppointments.length]);
-  useEffect(() => {
-    if (!appointmentsLoading) {
-      if (allUpcomingAppointments.length > 0) setExpandedUpcoming(true);
-      else setExpandedUpcoming(false);
-    }
-  }, [appointmentsLoading, allUpcomingAppointments.length]);
-
   // Persistent left sidebar tabs (desktop) — mirrors cleaner pattern (Messages + Settings live on top bar).
   const sidebarTabs = useMemo(
     () => [
-      { id: "home", label: "Overview", icon: Home },
-      { id: "bookings", label: "Bookings", icon: Calendar },
+      { id: "home", label: "Home", icon: Home },
       { id: "properties", label: "Properties", icon: Building },
       { id: "payments", label: "Payments", icon: CreditCard },
       { id: "services", label: "Services", icon: Briefcase },
@@ -258,357 +166,33 @@ function HomeownerDashboardInner() {
 
   // Bottom mobile nav — surface the most-used tabs.
   const mobileNavTabs = [
-    { id: "home", label: "Overview", icon: Home },
-    { id: "bookings", label: "Bookings", icon: Calendar },
+    { id: "home", label: "Home", icon: Home },
+    { id: "payments", label: "Payments", icon: CreditCard },
     {
       id: "messages",
       label: "Messages",
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
-    { id: "payments", label: "Payments", icon: CreditCard },
+    { id: "properties", label: "Properties", icon: Building },
   ];
 
-  const renderOverview = () => (
-    <>
-      {/* Mobile Hero */}
-      <div className="md:hidden mb-6 mt-2">
-        <div
-          className={dashboardHeroCardMobileClass}
-          style={DASHBOARD_HERO_BACKGROUND}
-        >
-          <div className="relative">
-            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-2.5 py-0.5 text-[10px] font-semibold text-primary-700 uppercase tracking-wider">
-              <Star className="h-3 w-3" />
-              Homeowner Dashboard
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-              Hello, {user?.profile?.firstName || "there"}
-            </h2>
-            <p className="text-gray-600 mt-1 text-sm font-medium">
-              {new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop Hero */}
-      <div className="hidden md:block mb-6">
-        <div
-          className={dashboardHeroCardDesktopClass}
-          style={DASHBOARD_HERO_BACKGROUND}
-        >
-          <div className="relative flex flex-col gap-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
-                  <Star className="h-3.5 w-3.5" />
-                  Homeowner Dashboard
-                </div>
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
-                  Overview
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm md:text-base text-gray-600">
-                  Track your cleanings, message your team, and view your
-                  properties from one central place.
-                </p>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <RequestAppointmentButton
-                  onCreated={() => {
-                    refetchAppointments();
-                    refetchHomeownerRequests();
-                  }}
-                />
-                <button
-                  onClick={() => setActiveTab("bookings")}
-                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
-                >
-                  View all bookings
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        {/* Pending requests submitted by this homeowner */}
-        {homeownerRequests.length > 0 && (
-          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-4 sm:px-5 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">Pending Requests</h3>
-              <p className="text-xs text-gray-500">Awaiting confirmation from your cleaning team</p>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {homeownerRequests.map((req) => (
-                <div key={req.id} className="px-4 sm:px-5 py-4 flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">
-                        {req.service_type?.name ?? "Cleaning"}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
-                        <Clock className="w-3 h-3" />
-                        Pending confirmation
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600 truncate">
-                      {req.property
-                        ? `${req.property.address}, ${req.property.city}, ${req.property.state}`
-                        : "Property"}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {req.requested_slots
-                        .slice()
-                        .sort((a, b) => a.slot_index - b.slot_index)
-                        .map((s) => (
-                          <span
-                            key={s.slot_index}
-                            className={[
-                              "inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs border",
-                              s.slot_index === 0
-                                ? "bg-primary-50 text-primary-700 border-primary-200"
-                                : "bg-gray-50 text-gray-700 border-gray-200",
-                            ].join(" ")}
-                          >
-                            {s.slot_index === 0 && (
-                              <span className="text-[10px] uppercase tracking-wide font-semibold">
-                                Primary
-                              </span>
-                            )}
-                            {formatDateTimeTo12h(s.scheduled_date, s.scheduled_time)}
-                          </span>
-                        ))}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCancelTargetId(req.id)}
-                    disabled={cancellingRequest}
-                    className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Active Cleanings — only renders when there are in-progress cleanings */}
-        {activeAppointments.length > 0 && (
-          <ActiveNowSection
-            title="Active Cleanings"
-            appointments={
-              activeAppointments as unknown as AppointmentCardData[]
-            }
-            loading={appointmentsLoading}
-          >
-            <div className="space-y-3">
-              {activeAppointments.map((appointment) => (
-                <AppointmentCard
-                  key={appointment.id}
-                  appointment={
-                    appointment as Parameters<
-                      typeof AppointmentCard
-                    >[0]["appointment"]
-                  }
-                  onClick={() => openAppointment(appointment.id)}
-                  role="homeowner"
-                />
-              ))}
-            </div>
-          </ActiveNowSection>
-        )}
-
-        {/* Today's Appointments */}
-        <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setExpandedToday((prev) => !prev)}
-            className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <h3 className="text-lg font-bold text-gray-900">
-                  Today&apos;s Appointments
-                </h3>
-                <span className="text-xs font-medium text-gray-500">
-                  {todaysAppointments.length} scheduled
-                </span>
-              </div>
-            </div>
-            <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
-              {(todaysAppointments.length > 0 || appointmentsLoading
-                ? expandedToday
-                : false) ? (
-                <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
-              ) : (
-                <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
-              )}
-            </div>
-          </button>
-          {(todaysAppointments.length > 0 || appointmentsLoading
-            ? expandedToday
-            : false) && (
-            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
-              {appointmentsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                  <span className="ml-2 text-gray-600">
-                    Loading schedule...
-                  </span>
-                </div>
-              ) : todaysAppointments.length > 0 ? (
-                <div className="space-y-3">
-                  {todaysAppointments.slice(0, 3).map((appointment) => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={
-                        appointment as Parameters<
-                          typeof AppointmentCard
-                        >[0]["appointment"]
-                      }
-                      onClick={() => openAppointment(appointment.id)}
-                      role="homeowner"
-                    />
-                  ))}
-                  {todaysAppointments.length > 3 && (
-                    <button
-                      onClick={() => {
-                        setShowAllFilter(true);
-                        setActiveTab("bookings");
-                      }}
-                      className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
-                    >
-                      View all ({todaysAppointments.length})
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Clock className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-600">
-                    No appointments scheduled for today
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* Upcoming Appointments */}
-        <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setExpandedUpcoming((prev) => !prev)}
-            className="w-full flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors duration-200"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gray-50 text-gray-600 rounded-xl">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <h3 className="text-lg font-bold text-gray-900">
-                  Upcoming Appointments
-                </h3>
-                <span className="text-xs font-medium text-gray-500">
-                  {allUpcomingAppointments.length} future scheduled
-                </span>
-              </div>
-            </div>
-            <div className="p-2 bg-gray-50 rounded-full transition-colors duration-200">
-              {(allUpcomingAppointments.length > 0 || appointmentsLoading
-                ? expandedUpcoming
-                : false) ? (
-                <ChevronDown className="w-5 h-5 text-gray-500 transition-colors" />
-              ) : (
-                <ChevronRight className="w-5 h-5 text-gray-500 transition-colors" />
-              )}
-            </div>
-          </button>
-          {(allUpcomingAppointments.length > 0 || appointmentsLoading
-            ? expandedUpcoming
-            : false) && (
-            <div className="border-t border-gray-100 bg-gray-50/60 p-3 sm:p-4">
-              {appointmentsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                  <span className="ml-2 text-gray-600">Loading...</span>
-                </div>
-              ) : appointmentsError ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-2" />
-                  <p className="text-red-600">Failed to load appointments</p>
-                </div>
-              ) : allUpcomingAppointments.length > 0 ? (
-                <div className="space-y-3">
-                  {upcomingAppointments.map((appointment) => (
-                    <AppointmentCard
-                      key={appointment.id}
-                      appointment={
-                        appointment as Parameters<
-                          typeof AppointmentCard
-                        >[0]["appointment"]
-                      }
-                      onClick={() => openAppointment(appointment.id)}
-                      role="homeowner"
-                    />
-                  ))}
-                  {allUpcomingAppointments.length > 3 && (
-                    <button
-                      onClick={() => {
-                        setShowAllFilter(true);
-                        setActiveTab("bookings");
-                      }}
-                      className="w-full text-center py-3 text-sm font-semibold text-primary-700 bg-white hover:bg-primary-50 transition-colors duration-200 rounded-xl border border-primary-100 shadow-sm"
-                    >
-                      View all ({allUpcomingAppointments.length})
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-600">No upcoming appointments</p>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-      </div>
-    </>
+  const renderHome = () => (
+    <HomePage
+      firstName={user?.profile?.firstName}
+      appointments={appointments as AppointmentCardData[]}
+      appointmentsLoading={appointmentsLoading}
+      appointmentsError={appointmentsError ?? null}
+      pendingRequests={homeownerRequests}
+      cancellingRequest={cancellingRequest}
+      onCancelRequestClick={setCancelTargetId}
+      onOpenAppointment={openAppointment}
+    />
   );
 
-  const renderBookings = () => {
-    // Determine initial status filter based on which "View All" was clicked
-    let initialFilter: string | undefined;
-    if (showAllFilter) {
-      initialFilter = "all";
-    }
-
-    return (
-      <BookingsPage
-        appointments={appointments}
-        loading={appointmentsLoading}
-        onCancelAppointment={handleCancelAppointment}
-        onDeleteAppointment={handleDeleteAppointment}
-        onRefreshAppointments={refetchAppointments}
-        onOpenAppointment={openAppointment}
-        role="homeowner"
-        canEdit={false}
-        initialStatusFilter={initialFilter}
-      />
-    );
+  const handleRequestCreated = () => {
+    refetchAppointments();
+    refetchHomeownerRequests();
   };
 
   const renderMessages = () => (
@@ -737,9 +321,7 @@ function HomeownerDashboardInner() {
   const renderContent = () => {
     switch (activeTab) {
       case "home":
-        return renderOverview();
-      case "bookings":
-        return renderBookings();
+        return renderHome();
       case "messages":
         return renderMessages();
       case "payments":
@@ -762,7 +344,7 @@ function HomeownerDashboardInner() {
       case "settings":
         return <SettingsHub />;
       default:
-        return renderOverview();
+        return renderHome();
     }
   };
 
@@ -792,6 +374,12 @@ function HomeownerDashboardInner() {
             showMessagesIcon
             hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
+            primaryAction={
+              <RequestAppointmentButton
+                onCreated={handleRequestCreated}
+                className="inline-flex items-center gap-2 h-10 px-4 bg-primary-600 text-white text-sm font-semibold rounded-full shadow-sm hover:bg-primary-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
+              />
+            }
           />
         </div>
 
@@ -807,6 +395,17 @@ function HomeownerDashboardInner() {
         </main>
       </div>
 
+      {/* Mobile FAB — primary action visible from every tab on mobile */}
+      <div
+        className="md:hidden fixed right-4 z-30"
+        style={{ bottom: "calc(6.25rem + env(safe-area-inset-bottom))" }}
+      >
+        <RequestAppointmentButton
+          onCreated={handleRequestCreated}
+          className="inline-flex items-center gap-2 px-5 py-3.5 bg-primary-600 text-white font-semibold rounded-full shadow-lg hover:bg-primary-700 hover:shadow-xl active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
+        />
+      </div>
+
       <MobileNavigation
         tabs={mobileNavTabs}
         activeTab={activeTab}
@@ -820,15 +419,6 @@ function HomeownerDashboardInner() {
         tabs={allTabs}
         activeTab={activeTab}
         onTabChange={handleTabChange}
-      />
-      <AddAppointmentModal
-        isOpen={showAddAppointmentModal}
-        onClose={() => setShowAddAppointmentModal(false)}
-        onAppointmentCreated={() => {
-          refetchAppointments();
-        }}
-        preSelectedHomeownerId={user.id}
-        hidePriceOverride={true}
       />
       <AppointmentPanelHost
         appointments={appointments as unknown as AppointmentCardData[]}
