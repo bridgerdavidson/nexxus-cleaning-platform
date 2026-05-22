@@ -39,7 +39,7 @@ export default function ScrollAwareRequestFab({
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
+  const spring = { type: "spring" as const, stiffness: 320, damping: 30 };
 
   return (
     <>
@@ -47,25 +47,18 @@ export default function ScrollAwareRequestFab({
         type="button"
         onClick={() => setOpen(true)}
         initial={false}
-        animate={{
-          paddingLeft: collapsed ? 14 : 20,
-          paddingRight: collapsed ? 14 : 20,
-        }}
+        animate={{ width: collapsed ? 56 : 200 }}
         transition={spring}
-        style={{ touchAction: "manipulation" }}
+        style={{ height: 56, touchAction: "manipulation" }}
         aria-label="Request Cleaning"
-        className="inline-flex items-center py-3.5 bg-primary-600 text-white font-semibold rounded-full shadow-lg hover:bg-primary-700 hover:shadow-xl active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 overflow-hidden"
+        className="flex items-center justify-start gap-2 px-[18px] bg-primary-600 text-white font-semibold rounded-full shadow-lg hover:bg-primary-700 hover:shadow-xl active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 overflow-hidden"
       >
         <CalendarPlus className="w-5 h-5 shrink-0" />
         <motion.span
           initial={false}
-          animate={{
-            maxWidth: collapsed ? 0 : 200,
-            opacity: collapsed ? 0 : 1,
-            marginLeft: collapsed ? 0 : 8,
-          }}
-          transition={spring}
-          className="overflow-hidden whitespace-nowrap"
+          animate={{ opacity: collapsed ? 0 : 1 }}
+          transition={{ duration: collapsed ? 0.12 : 0.2 }}
+          className="whitespace-nowrap"
         >
           Request Cleaning
         </motion.span>
