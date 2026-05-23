@@ -41,8 +41,12 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   const activeIdx = visibleTabs.findIndex((t) => t.id === activeTab);
 
   // Smooth glide: animate the pill's left position; width stays constant.
+  // When the active tab lives in the drawer (not in visibleTabs), hide the pill.
   useLayoutEffect(() => {
-    if (activeIdx < 0) return;
+    if (activeIdx < 0) {
+      setPillStyle((prev) => ({ ...prev, opacity: 0 }));
+      return;
+    }
     const btn = tabRefs.current[activeIdx];
     const parent = containerRef.current;
     if (!btn || !parent) return;
@@ -56,7 +60,10 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   // Re-pin pill on viewport resize (no animation, just snap to new layout).
   useEffect(() => {
     const onResize = () => {
-      if (activeIdx < 0) return;
+      if (activeIdx < 0) {
+        setPillStyle((prev) => ({ ...prev, opacity: 0 }));
+        return;
+      }
       const btn = tabRefs.current[activeIdx];
       const parent = containerRef.current;
       if (!btn || !parent) return;
