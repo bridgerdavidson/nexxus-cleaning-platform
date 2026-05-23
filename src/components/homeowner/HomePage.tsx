@@ -476,7 +476,7 @@ export default function HomePage({
               <div
                 role="radiogroup"
                 aria-label="Time range"
-                className="md:hidden flex items-center w-[240px] rounded-full bg-gray-100 p-0.5 mb-3"
+                className="md:hidden flex items-center w-full rounded-full bg-gray-100 p-0.5 mb-3"
               >
                 {([7, 30, -1] as UpcomingDays[]).map((d) => {
                   const active = d === upcomingDays;
