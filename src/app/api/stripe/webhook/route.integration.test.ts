@@ -11,8 +11,16 @@ vi.mock('@/lib/stripe/transfers', () => ({
   })),
 }));
 
+// Dispute-lost clawback reverses the tenant→cleaner transfer via this module (which would
+// otherwise call getStripe() and throw under the test mock).
+vi.mock('@/lib/stripe/charges/refund', () => ({
+  createRefund: vi.fn(async () => ({ id: 're_test' })),
+  reverseCleanerTransfer: vi.fn(async () => ({ id: 'trr_test' })),
+}));
+
 import { POST } from './route';
 import { createTenantToCleanerTransfer } from '@/lib/stripe/transfers';
+import { reverseCleanerTransfer } from '@/lib/stripe/charges/refund';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -77,7 +85,9 @@ describe('POST /api/stripe/webhook', () => {
     const event = buildPaymentIntentSucceededEvent({
       appointmentId: appt.id,
       amountDollars: 100,
-      eventId: 'evt_test_idempotent',
+      // Unique per run (so webhook_events from a previous run can't pre-empt it), but
+      // identical across the two deliveries below — the point of the idempotency test.
+      eventId: `evt_test_idempotent_${appt.id}`,
     });
     const payload = JSON.stringify(event);
     const sig = signWebhookPayload(payload);
@@ -307,5 +317,257 @@ describe('POST /api/stripe/webhook', () => {
     const admin = createTestSupabaseClient();
     const { data: payouts } = await admin.from('payouts').select('id').eq('appointment_id', appt.id);
     expect(payouts ?? []).toHaveLength(0);
+  });
+
+  // ── Phase 4b: idempotency ledger + dispute / refund confirmation ──────────────
+  it('records the event in webhook_events and skips a duplicate delivery', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+      totalPrice: 100,
+    });
+    const admin = createTestSupabaseClient();
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+    });
+
+    const event = buildPaymentIntentSucceededEvent({
+      appointmentId: appt.id,
+      amountDollars: 100,
+      eventId: `evt_wh_${appt.id}`,
+    });
+    const payload = JSON.stringify(event);
+    const sig = signWebhookPayload(payload);
+
+    const res1 = await callRoute<{ duplicate?: boolean }>(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': sig },
+      body: payload,
+    });
+    expect(res1.status).toBe(200);
+    expect(res1.body.duplicate).toBeUndefined();
+
+    const { data: ev } = await admin
+      .from('webhook_events')
+      .select('status, type')
+      .eq('id', `evt_wh_${appt.id}`)
+      .single();
+    expect((ev as { status: string }).status).toBe('processed');
+
+    const res2 = await callRoute<{ duplicate?: boolean }>(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': sig },
+      body: payload,
+    });
+    expect(res2.status).toBe(200);
+    expect(res2.body.duplicate).toBe(true);
+
+    // Cleanup the global (non-org-scoped) webhook_events row this test created.
+    await admin.from('webhook_events').delete().eq('id', `evt_wh_${appt.id}`);
+  });
+
+  function buildDisputeEvent(opts: {
+    type: 'charge.dispute.created' | 'charge.dispute.closed';
+    appointmentId: string;
+    status: string;
+    amountCents: number;
+  }) {
+    return {
+      id: `evt_disp_${opts.type}_${opts.appointmentId}`,
+      object: 'event',
+      type: opts.type,
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `dp_${opts.appointmentId}`,
+          object: 'dispute',
+          amount: opts.amountCents,
+          charge: `ch_${opts.appointmentId}`,
+          payment_intent: `pi_test_${opts.appointmentId}`,
+          reason: 'fraudulent',
+          status: opts.status,
+          evidence_details: { due_by: Math.floor(Date.now() / 1000) + 7 * 86400 },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+  }
+
+  it('charge.dispute.created records a dispute against the tenant org', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const admin = createTestSupabaseClient();
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+    });
+
+    const payload = JSON.stringify(
+      buildDisputeEvent({ type: 'charge.dispute.created', appointmentId: appt.id, status: 'needs_response', amountCents: 10000 }),
+    );
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: disputes } = await admin
+      .from('disputes')
+      .select('organization_id, amount, status, reason')
+      .eq('stripe_dispute_id', `dp_${appt.id}`);
+    expect(disputes).toHaveLength(1);
+    const d = disputes![0] as { organization_id: string; amount: number; status: string; reason: string };
+    expect(d.organization_id).toBe(org.organizationId);
+    expect(Number(d.amount)).toBe(10000);
+    expect(d.status).toBe('needs_response');
+  });
+
+  it('charge.dispute.closed (lost) claws back the cleaner transfer', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const admin = createTestSupabaseClient();
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+    });
+    await admin.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+      stripe_transfer_id: 'tr_clawback',
+      source_balance_account_id: 'acct_tenant',
+    });
+
+    const payload = JSON.stringify(
+      buildDisputeEvent({ type: 'charge.dispute.closed', appointmentId: appt.id, status: 'lost', amountCents: 10000 }),
+    );
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // Full cleaner share reversed from the tenant balance.
+    expect(vi.mocked(reverseCleanerTransfer)).toHaveBeenCalledWith('tr_clawback', 6000, 'acct_tenant');
+
+    const { data: payouts } = await admin
+      .from('payouts')
+      .select('status')
+      .eq('appointment_id', appt.id);
+    expect((payouts![0] as { status: string }).status).toBe('reversed');
+  });
+
+  it('charge.refunded marks the refund succeeded and the payment refunded', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const admin = createTestSupabaseClient();
+    const { data: pay } = await admin
+      .from('payments')
+      .insert({
+        organization_id: org.organizationId,
+        appointment_id: appt.id,
+        amount: 100,
+        status: 'paid',
+        payment_method: 'card',
+        payment_type: 'revenue',
+        stripe_payment_intent_id: `pi_test_${appt.id}`,
+      })
+      .select('id')
+      .single();
+    await admin.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: (pay as { id: string }).id,
+      appointment_id: appt.id,
+      stripe_refund_id: `re_${appt.id}`,
+      amount: 10000,
+      initiator_user_id: org.admin.userId,
+      status: 'pending',
+    });
+
+    const event = {
+      id: `evt_refund_${appt.id}`,
+      object: 'event',
+      type: 'charge.refunded',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `ch_${appt.id}`,
+          object: 'charge',
+          amount: 10000,
+          amount_refunded: 10000,
+          payment_intent: `pi_test_${appt.id}`,
+          refunds: { object: 'list', data: [{ id: `re_${appt.id}`, object: 'refund' }] },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: refunds } = await admin
+      .from('refunds')
+      .select('status')
+      .eq('stripe_refund_id', `re_${appt.id}`);
+    expect((refunds![0] as { status: string }).status).toBe('succeeded');
+
+    const { data: payment } = await admin
+      .from('payments')
+      .select('status')
+      .eq('id', (pay as { id: string }).id)
+      .single();
+    expect((payment as { status: string }).status).toBe('refunded');
   });
 });
