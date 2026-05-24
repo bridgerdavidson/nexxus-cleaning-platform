@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { constructWebhookEvent, createConnectTransfer } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
+import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import Stripe from 'stripe';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -168,12 +169,17 @@ async function handlePaymentIntentSucceeded(
 
   console.log('Payment record updated for appointment:', appointmentId);
 
-  // Destination charge (new multi-tenant flow): funds settle to the TENANT, not the
-  // platform balance. The cleaner's percentage is transferred from the tenant's balance
-  // post-capture (Phase 3) — NOT via the legacy platform→cleaner transfer below. Skip it
-  // so we never attempt an incorrect transfer from a balance that doesn't hold the funds.
+  // Destination charge (new multi-tenant flow): funds settled to the TENANT, not the
+  // platform balance. Settle the cleaner's percentage FROM THE TENANT'S balance (skips
+  // hourly_external / unconfigured cleaners). This replaces the legacy platform→cleaner
+  // transfer below, which would attempt to move funds the platform doesn't hold.
   if (paymentIntent.transfer_data?.destination) {
-    console.log('Destination charge — deferring cleaner payout to tenant-balance transfer (Phase 3).');
+    const result = await settleCleanerPayout(
+      supabase,
+      appointmentId,
+      (paymentIntent.latest_charge as string | null) ?? null,
+    );
+    console.log('Destination charge cleaner settlement:', result);
     return;
   }
 
