@@ -1,6 +1,6 @@
-import { User, ShieldCheck, Bell, DollarSign, LucideIcon } from 'lucide-react';
+import { User, ShieldCheck, Bell, DollarSign, CreditCard, LucideIcon } from 'lucide-react';
 
-export type SettingsSectionId = 'profile' | 'security' | 'notifications' | 'payouts';
+export type SettingsSectionId = 'profile' | 'security' | 'notifications' | 'payouts' | 'billing';
 
 export interface SettingsSection {
   id: SettingsSectionId;
@@ -20,6 +20,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     label: 'Payouts',
     icon: DollarSign,
     roles: ['cleaner'],
+  },
+  {
+    // Tenant (cleaning company) Stripe Connect onboarding — the org becomes the
+    // merchant of record for homeowner charges. Admin/owner only.
+    id: 'billing',
+    label: 'Payments',
+    icon: CreditCard,
+    roles: ['admin'],
   },
   {
     id: 'security',

@@ -5,6 +5,7 @@ import { getSectionsForRole, SettingsSectionId } from '../lib/settings';
 import { useAuth } from '../hooks/useAuth';
 import SettingsProfileSection from './SettingsProfileSection';
 import SettingsPayoutsSection from './SettingsPayoutsSection';
+import SettingsBillingSection from './SettingsBillingSection';
 
 export default function SettingsHub() {
   const { user } = useAuth();
@@ -25,6 +26,8 @@ export default function SettingsHub() {
         return <SettingsProfileSection />;
       case 'payouts':
         return null;
+      case 'billing':
+        return <SettingsBillingSection />;
       case 'security':
         return (
           <div className="card flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
