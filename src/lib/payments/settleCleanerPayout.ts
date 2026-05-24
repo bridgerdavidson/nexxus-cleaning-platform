@@ -26,13 +26,17 @@ export async function settleCleanerPayout(
 ): Promise<SettleResult> {
   const { data: apptRow } = await supabase
     .from('appointments')
-    .select('cleaner_id, organization_id, total_price')
+    .select('cleaner_id, organization_id, total_price, status')
     .eq('id', appointmentId)
     .maybeSingle();
   const appt = apptRow as
-    | { cleaner_id: string | null; organization_id: string; total_price: number | string }
+    | { cleaner_id: string | null; organization_id: string; total_price: number | string; status: string }
     | null;
   if (!appt?.cleaner_id) return { settled: false, reason: 'no_cleaner' };
+  // A cancelled appointment can still capture money (a cancellation/no-show fee), but the
+  // cleaner is never paid for it — guard against the fee's payment_intent.succeeded webhook
+  // triggering a cleaner transfer (the fee compensates the tenant, not the cleaner).
+  if (appt.status === 'cancelled') return { settled: false, reason: 'appointment_cancelled' };
 
   const { data: cleanerRow } = await supabase
     .from('cleaner_profiles')
