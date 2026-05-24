@@ -89,6 +89,12 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case 'account.updated': {
+        const account = event.data.object as Stripe.Account;
+        await handleAccountUpdated(supabaseAdmin, account);
+        break;
+      }
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -497,4 +503,72 @@ async function handlePayoutFailed(
       console.log(`payout.failed: reverted ${count} row(s) back to paid for cleaner ${cleaner.id}, payout ${payout.id}`);
     }
   }
+}
+
+/**
+ * Handle account.updated — mirror a connected account's capability + requirements
+ * state into our DB. The account may belong to a tenant organization (merchant of
+ * record) or a cleaner (payout recipient); we resolve which by matching
+ * stripe_connect_account_id. This keeps onboarding/capability state fresh without
+ * polling, and is the source of truth that gates whether we can charge on behalf
+ * of a tenant or transfer to a cleaner.
+ */
+async function handleAccountUpdated(
+  supabaseAdmin: unknown,
+  account: Stripe.Account
+) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
+  const acctId = account.id;
+  const chargesEnabled = account.charges_enabled ?? false;
+  const payoutsEnabled = account.payouts_enabled ?? false;
+  const detailsSubmitted = account.details_submitted ?? false;
+  const requirementsDue = account.requirements?.currently_due ?? [];
+
+  // Tenant organization connected account?
+  const { data: org } = await supabase
+    .from('organizations')
+    .select('id, stripe_connect_onboarded_at')
+    .eq('stripe_connect_account_id', acctId)
+    .maybeSingle();
+
+  if (org) {
+    const update: Record<string, unknown> = {
+      stripe_connect_charges_enabled: chargesEnabled,
+      stripe_connect_payouts_enabled: payoutsEnabled,
+      stripe_connect_details_submitted: detailsSubmitted,
+      stripe_connect_requirements_due: requirementsDue,
+    };
+    if (detailsSubmitted && !(org as { stripe_connect_onboarded_at: string | null }).stripe_connect_onboarded_at) {
+      update.stripe_connect_onboarded_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('organizations')
+      .update(update)
+      .eq('id', (org as { id: string }).id);
+
+    if (error) console.error('account.updated: failed to mirror tenant org state:', error);
+    else console.log('account.updated: mirrored tenant org state for', acctId);
+    return;
+  }
+
+  // Cleaner connected account?
+  const { data: cleaner } = await supabase
+    .from('cleaner_profiles')
+    .select('id')
+    .eq('stripe_connect_account_id', acctId)
+    .maybeSingle();
+
+  if (cleaner) {
+    const { error } = await supabase
+      .from('cleaner_profiles')
+      .update({ stripe_connect_onboarding_complete: detailsSubmitted && payoutsEnabled })
+      .eq('id', (cleaner as { id: string }).id);
+
+    if (error) console.error('account.updated: failed to mirror cleaner state:', error);
+    else console.log('account.updated: mirrored cleaner state for', acctId);
+    return;
+  }
+
+  console.log('account.updated: no matching org or cleaner for account', acctId);
 }
