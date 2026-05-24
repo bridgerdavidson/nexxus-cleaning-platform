@@ -77,6 +77,12 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case 'setup_intent.succeeded': {
+        const setupIntent = event.data.object as Stripe.SetupIntent;
+        await handleSetupIntentSucceeded(supabaseAdmin, setupIntent);
+        break;
+      }
+
       case 'transfer.reversed': {
         const transfer = event.data.object as Stripe.Transfer;
         await handleTransferReversed(supabaseAdmin, transfer);
@@ -328,6 +334,39 @@ async function handlePaymentIntentCanceled(
     console.error('payment_intent.canceled: failed to update payment record:', error);
   } else {
     console.log('payment_intent.canceled: marked payment canceled for PI', paymentIntent.id);
+  }
+}
+
+/**
+ * Handle setup_intent.succeeded — a homeowner finished a hosted "card link" and saved a
+ * card. Close the matching homeowner_payment_links row so the admin UI (which subscribes
+ * to it via realtime) reflects "card on file".
+ */
+async function handleSetupIntentSucceeded(
+  supabaseAdmin: unknown,
+  setupIntent: Stripe.SetupIntent
+) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
+  const token = setupIntent.metadata?.token;
+  if (!token) {
+    console.log('setup_intent.succeeded: no card-link token in metadata, skipping');
+    return;
+  }
+
+  const { error } = await supabase
+    .from('homeowner_payment_links')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      setup_intent_id: setupIntent.id,
+    })
+    .eq('token', token)
+    .eq('status', 'pending');
+
+  if (error) {
+    console.error('setup_intent.succeeded: failed to complete card link:', error);
+  } else {
+    console.log('setup_intent.succeeded: card link completed for token (SI', setupIntent.id, ')');
   }
 }
 
