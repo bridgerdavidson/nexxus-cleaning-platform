@@ -63,7 +63,7 @@ describe('POST /api/stripe/tenant/connect/refresh-status', () => {
     const db = createTestSupabaseClient();
     await db
       .from('organizations')
-      .update({ stripe_connect_account_id: 'acct_test_refresh' })
+      .update({ stripe_connect_account_id: `acct_test_refresh_${org.organizationId.slice(0, 12)}` })
       .eq('id', org.organizationId);
 
     const { status, body } = await callRoute<{

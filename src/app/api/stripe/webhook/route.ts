@@ -71,6 +71,12 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case 'payment_intent.canceled': {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        await handlePaymentIntentCanceled(supabaseAdmin, paymentIntent);
+        break;
+      }
+
       case 'transfer.reversed': {
         const transfer = event.data.object as Stripe.Transfer;
         await handleTransferReversed(supabaseAdmin, transfer);
@@ -124,11 +130,14 @@ async function handlePaymentIntentSucceeded(
   }
 
   // Update payment record
+  const nowIso = new Date().toISOString();
   const { error: updateError } = await supabase
     .from('payments')
     .update({
       status: 'paid',
-      paid_at: new Date().toISOString(),
+      paid_at: nowIso,
+      captured_at: nowIso,
+      payment_intent_status: paymentIntent.status,
     })
     .eq('stripe_payment_intent_id', paymentIntent.id);
 
@@ -153,7 +162,16 @@ async function handlePaymentIntentSucceeded(
 
   console.log('Payment record updated for appointment:', appointmentId);
 
-  // --- Automatic cleaner payout via Stripe Connect ---
+  // Destination charge (new multi-tenant flow): funds settle to the TENANT, not the
+  // platform balance. The cleaner's percentage is transferred from the tenant's balance
+  // post-capture (Phase 3) — NOT via the legacy platform→cleaner transfer below. Skip it
+  // so we never attempt an incorrect transfer from a balance that doesn't hold the funds.
+  if (paymentIntent.transfer_data?.destination) {
+    console.log('Destination charge — deferring cleaner payout to tenant-balance transfer (Phase 3).');
+    return;
+  }
+
+  // --- Automatic cleaner payout via Stripe Connect (legacy platform-as-merchant flow) ---
   try {
     const { data: appointment } = await supabase
       .from('appointments')
@@ -288,6 +306,29 @@ async function handlePaymentIntentFailed(
   }
 
   console.log('Payment marked as failed for appointment:', appointmentId);
+}
+
+/**
+ * Handle payment_intent.canceled — a held authorization was released (appointment
+ * cancelled, or auth superseded by a re-auth). Mirror the canceled status; we keep the
+ * payments row (status stays 'pending') for the audit trail rather than deleting it.
+ */
+async function handlePaymentIntentCanceled(
+  supabaseAdmin: unknown,
+  paymentIntent: Stripe.PaymentIntent
+) {
+  const supabase = supabaseAdmin as ReturnType<typeof createClient>;
+
+  const { error } = await supabase
+    .from('payments')
+    .update({ payment_intent_status: 'canceled' })
+    .eq('stripe_payment_intent_id', paymentIntent.id);
+
+  if (error) {
+    console.error('payment_intent.canceled: failed to update payment record:', error);
+  } else {
+    console.log('payment_intent.canceled: marked payment canceled for PI', paymentIntent.id);
+  }
 }
 
 async function handleTransferReversed(
