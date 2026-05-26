@@ -11,10 +11,13 @@ import { claimWebhookEvent, markWebhookProcessed } from './webhookIdempotency';
 function makeSupabase(opts: {
   insertError?: { code?: string; message: string } | null;
   existingStatus?: string | null;
+  existingReceivedAt?: string;
   updateError?: { code?: string; message: string } | null;
 }): SupabaseClient {
   const maybeSingle = vi.fn(async () => ({
-    data: opts.existingStatus ? { status: opts.existingStatus } : null,
+    data: opts.existingStatus
+      ? { status: opts.existingStatus, received_at: opts.existingReceivedAt ?? new Date().toISOString() }
+      : null,
   }));
   const select = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle })) }));
   const insert = vi.fn(async () => ({ error: opts.insertError ?? null }));
@@ -36,11 +39,27 @@ describe('claimWebhookEvent', () => {
     expect(await claimWebhookEvent(supabase, ev)).toBe('duplicate');
   });
 
-  it('re-claims a unique-conflict on a not-yet-finished row (received/failed)', async () => {
-    const received = makeSupabase({ insertError: { code: '23505', message: 'dup' }, existingStatus: 'received' });
-    expect(await claimWebhookEvent(received, ev)).toBe('claimed');
+  it('reclaims a unique-conflict on a failed row (a prior attempt finished with an error)', async () => {
     const failed = makeSupabase({ insertError: { code: '23505', message: 'dup' }, existingStatus: 'failed' });
     expect(await claimWebhookEvent(failed, ev)).toBe('claimed');
+  });
+
+  it('treats a RECENT received row as a duplicate (a concurrent delivery is in-flight)', async () => {
+    const recent = makeSupabase({
+      insertError: { code: '23505', message: 'dup' },
+      existingStatus: 'received',
+      existingReceivedAt: new Date().toISOString(),
+    });
+    expect(await claimWebhookEvent(recent, ev)).toBe('duplicate');
+  });
+
+  it('reclaims a STALE received row (the prior worker likely crashed mid-process)', async () => {
+    const stale = makeSupabase({
+      insertError: { code: '23505', message: 'dup' },
+      existingStatus: 'received',
+      existingReceivedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+    expect(await claimWebhookEvent(stale, ev)).toBe('claimed');
   });
 
   it('throws on a NON-conflict insert error instead of silently claiming', async () => {

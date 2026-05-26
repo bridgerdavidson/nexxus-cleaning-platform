@@ -571,6 +571,123 @@ describe('POST /api/stripe/webhook', () => {
     expect((payment as { status: string }).status).toBe('refunded');
   });
 
+  it('payment_intent.canceled reschedules re-auth when the appointment still claims a dead hold', async () => {
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+      totalPrice: 100,
+    });
+    await admin
+      .from('appointments')
+      .update({ authorization_status: 'authorized', reauth_count: 0, payment_method_id: 'pm_x' })
+      .eq('id', appt.id);
+    const piId = `pi_test_${appt.id}`;
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: piId,
+      payment_intent_status: 'requires_capture',
+    });
+
+    const eventId = `evt_pi_cancel_${appt.id}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'payment_intent.canceled',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: piId, object: 'payment_intent', status: 'canceled', metadata: { appointment_id: appt.id } } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: a } = await admin
+      .from('appointments')
+      .select('authorization_status, reauth_count')
+      .eq('id', appt.id)
+      .single();
+    // Dead hold + active appointment → reset to scheduled (JIT re-authorizes) with a bumped count.
+    expect((a as { authorization_status: string }).authorization_status).toBe('scheduled');
+    expect((a as { reauth_count: number }).reauth_count).toBe(1);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('refund.failed marks the refunds row failed so it stops counting against the cap', async () => {
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const { data: pay } = await admin
+      .from('payments')
+      .insert({
+        organization_id: org.organizationId,
+        appointment_id: appt.id,
+        amount: 100,
+        status: 'paid',
+        payment_method: 'card',
+        payment_type: 'revenue',
+        stripe_payment_intent_id: `pi_test_${appt.id}`,
+      })
+      .select('id')
+      .single();
+    await admin.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: (pay as { id: string }).id,
+      appointment_id: appt.id,
+      stripe_refund_id: `re_fail_${appt.id}`,
+      amount: 5000,
+      initiator_user_id: org.admin.userId,
+      status: 'pending',
+    });
+
+    const eventId = `evt_refund_failed_${appt.id}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'refund.failed',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: `re_fail_${appt.id}`, object: 'refund', status: 'failed', amount: 5000, payment_intent: `pi_test_${appt.id}` } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: r } = await admin.from('refunds').select('status').eq('stripe_refund_id', `re_fail_${appt.id}`);
+    expect((r![0] as { status: string }).status).toBe('failed');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   it('payout.paid without resolvable transfer ids marks only the OLDEST payout, not all', async () => {
     const admin = createTestSupabaseClient();
     const apptOld = await createTestAppointment({

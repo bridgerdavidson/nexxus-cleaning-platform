@@ -69,6 +69,10 @@ export async function dispatchStripeEvent(
     case 'invoice.payment_failed':
       await handleInvoiceEvent(supabase, event.data.object as Stripe.Invoice, event.id, event.type);
       break;
+    case 'refund.failed':
+    case 'refund.updated':
+      await handleRefundStatusChange(supabase, event.data.object as Stripe.Refund, event.id);
+      break;
     default:
       console.log(`Unhandled event type: ${event.type}`);
   }
@@ -280,6 +284,107 @@ async function handlePaymentIntentCanceled(
 
   if (error) console.error('payment_intent.canceled: failed to update payment record:', error);
   else console.log('payment_intent.canceled: marked payment canceled for PI', paymentIntent.id);
+
+  // If the appointment still believes it holds this (now-dead) authorization and no replacement
+  // hold remains, reset it so the JIT authorizer re-authorizes it. Without this, a hold canceled
+  // out-of-band (e.g. Stripe auto-canceling an expired 7-day hold, or a cancel from outside our
+  // routes) leaves the appointment stuck 'authorized' with no live PI — and authorizeAppointment
+  // treats 'authorized' as already-done, so it can never be re-charged without manual repair.
+  const appointmentId =
+    paymentIntent.metadata?.appointment_id ??
+    (await findPaymentByIntent(supabase, paymentIntent.id))?.appointment_id ??
+    null;
+  if (!appointmentId) return;
+
+  const { data: apptRow } = await supabase
+    .from('appointments')
+    .select('status, authorization_status, reauth_count')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  const appt = apptRow as
+    | { status: string; authorization_status: string | null; reauth_count: number | null }
+    | null;
+  // Don't resurrect a deliberately-cancelled/completed appointment, and only act if it still
+  // claims a live hold.
+  if (!appt || appt.status === 'cancelled' || appt.status === 'completed') return;
+  if (appt.authorization_status !== 'authorized') return;
+
+  // A newer requires_capture hold means THIS canceled PI was merely superseded by a re-auth —
+  // leave the appointment authorized against the new hold.
+  const { data: liveHold } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('appointment_id', appointmentId)
+    .eq('payment_intent_status', 'requires_capture')
+    .limit(1);
+  if (liveHold && liveHold.length > 0) return;
+
+  // Bump reauth_count so the replacement authorization gets a fresh idempotency key (the auth key
+  // is auth-${appointmentId}-${reauth_count}); reusing it would just return the canceled PI.
+  await supabase
+    .from('appointments')
+    .update({
+      authorization_status: 'scheduled',
+      authorize_at: new Date().toISOString(),
+      reauth_count: (appt.reauth_count ?? 0) + 1,
+    })
+    .eq('id', appointmentId);
+  await recordPaymentEvent(supabase, {
+    appointmentId,
+    eventType: 'authorization_lost_rescheduled',
+    prevStatus: 'authorized',
+    newStatus: 'scheduled',
+    actor: 'webhook',
+    payload: { payment_intent_id: paymentIntent.id },
+  });
+  console.log('payment_intent.canceled: rescheduled re-authorization for appointment', appointmentId);
+}
+
+/**
+ * Handle refund.failed / refund.updated — sync our refunds ledger to the Stripe refund's
+ * terminal status. Essential for the refundable-amount cap, which sums pending+succeeded
+ * refunds: a refund that later fails or is canceled must stop counting so it doesn't wrongly
+ * block future valid refunds for the payment.
+ */
+async function handleRefundStatusChange(
+  supabase: SupabaseClient,
+  refund: Stripe.Refund,
+  stripeEventId: string,
+) {
+  const mapped =
+    refund.status === 'succeeded'
+      ? 'succeeded'
+      : refund.status === 'failed'
+        ? 'failed'
+        : refund.status === 'canceled'
+          ? 'canceled'
+          : null;
+  if (!mapped) return; // pending / requires_action — nothing terminal to record yet
+
+  const { error } = await supabase
+    .from('refunds')
+    .update({ status: mapped })
+    .eq('stripe_refund_id', refund.id);
+  if (error) {
+    console.error('refund status change: failed to update refunds row:', error);
+    return;
+  }
+
+  const payment = await findPaymentByIntent(
+    supabase,
+    idFromExpandable(refund.payment_intent as string | { id: string } | null),
+  );
+  await recordPaymentEvent(supabase, {
+    paymentId: payment?.id ?? null,
+    appointmentId: payment?.appointment_id ?? null,
+    organizationId: payment?.organization_id ?? null,
+    stripeEventId,
+    eventType: `refund_${mapped}`,
+    newStatus: mapped,
+    actor: 'webhook',
+    amount: refund.amount,
+    payload: { refund_id: refund.id, stripe_status: refund.status },
+  });
 }
 
 /**

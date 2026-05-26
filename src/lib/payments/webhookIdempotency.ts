@@ -13,6 +13,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export type WebhookClaim = 'claimed' | 'duplicate';
 
 /**
+ * A 'received' row younger than this is treated as an in-flight concurrent delivery (skip);
+ * older than this it's assumed a prior worker crashed mid-process and is safe to reclaim. A
+ * normal webhook finishes in seconds, so 60s comfortably separates the two cases.
+ */
+const IN_FLIGHT_WINDOW_MS = 60_000;
+
+/**
  * Try to claim an event for processing. Returns 'duplicate' only when we've already fully
  * processed this exact event id; otherwise 'claimed' (including the first-ever delivery and
  * any re-delivery of an event that previously failed mid-flight).
@@ -39,15 +46,24 @@ export async function claimWebhookEvent(
     throw new Error(`claimWebhookEvent: failed to claim ${ev.id} (${error.code ?? 'unknown'}): ${error.message}`);
   }
 
-  // Conflict on the id: only a *processed* row is a real duplicate; a 'received'/'failed' row
-  // was a prior attempt that didn't finish — allow reprocessing (handlers are idempotent).
+  // Conflict on the id — decide based on the existing row's state:
+  //   processed            → true duplicate (skip)
+  //   failed               → a prior attempt finished with an error; reclaim so a retry reprocesses
+  //   received + recent    → a concurrent delivery is in-flight; skip to avoid PARALLEL double-processing
+  //   received + stale     → the prior worker likely crashed mid-process; reclaim (dead-letter sweep also covers this)
   const { data } = await supabase
     .from('webhook_events')
-    .select('status')
+    .select('status, received_at')
     .eq('id', ev.id)
     .maybeSingle();
-  const status = (data as { status: string } | null)?.status;
-  return status === 'processed' ? 'duplicate' : 'claimed';
+  const row = data as { status: string; received_at: string } | null;
+  if (!row) return 'claimed'; // row vanished between insert and lookup — safe to (re)claim
+  if (row.status === 'processed') return 'duplicate';
+  if (row.status === 'failed') return 'claimed';
+
+  // status === 'received'
+  const ageMs = Date.now() - new Date(row.received_at).getTime();
+  return Number.isFinite(ageMs) && ageMs < IN_FLIGHT_WINDOW_MS ? 'duplicate' : 'claimed';
 }
 
 export async function markWebhookProcessed(supabase: SupabaseClient, id: string): Promise<void> {
