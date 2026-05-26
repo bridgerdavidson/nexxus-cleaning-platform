@@ -154,6 +154,65 @@ export async function reconcileStuckPayments(
   return { checked: list.length, repaired };
 }
 
+// ── 2b) Captured-but-unsettled self-heal ────────────────────────────────────────
+export interface UnsettledCaptureResult {
+  checked: number;
+  settled: number;
+}
+
+/**
+ * Re-run settlement for homeowner charges that were captured (payments.status='paid') but whose
+ * funds were never moved off the platform balance — `transfer_amount` is still null past the SLA.
+ * This covers two drifts the webhook can leave behind:
+ *   - a lost `payment_intent.succeeded` (settlement never ran), and
+ *   - a tenant-leg transfer that failed mid-settlement (settleCleanerPayout bailed before paying
+ *     anyone, so the cleaner payout retry job alone can't recover it).
+ * settleCleanerPayout is fully idempotent (idempotency keys on both transfers), so replaying is
+ * always safe; a charge id isn't needed — it falls back to an available-balance transfer.
+ */
+export async function settleUnsettledCaptures(
+  supabase: SupabaseClient,
+  opts: { batch?: number; staleMinutes?: number } = {},
+): Promise<UnsettledCaptureResult> {
+  const batch = opts.batch ?? DEFAULT_BATCH;
+  const cutoff = staleCutoffIso(opts.staleMinutes ?? DEFAULT_STALE_MINUTES);
+
+  const { data: rows } = await supabase
+    .from('payments')
+    .select('id, appointment_id, organization_id')
+    .eq('status', 'paid')
+    .eq('payment_type', 'revenue')
+    .is('transfer_amount', null)
+    .not('appointment_id', 'is', null)
+    .not('captured_at', 'is', null)
+    .lte('captured_at', cutoff)
+    .limit(batch);
+
+  const list = (rows ?? []) as Array<{
+    id: string;
+    appointment_id: string;
+    organization_id: string | null;
+  }>;
+  let settled = 0;
+
+  for (const p of list) {
+    const result = await settleCleanerPayout(supabase, p.appointment_id, null);
+    if (result.settled) {
+      await recordPaymentEvent(supabase, {
+        paymentId: p.id,
+        appointmentId: p.appointment_id,
+        organizationId: p.organization_id,
+        eventType: 'drift_repaired',
+        actor: 'reconciler',
+        payload: { source: 'settle-unsettled-capture' },
+      });
+      settled++;
+    }
+  }
+
+  return { checked: list.length, settled };
+}
+
 // ── 3) Failed-payout retry ──────────────────────────────────────────────────────
 export interface FailedPayoutResult {
   retried: number;

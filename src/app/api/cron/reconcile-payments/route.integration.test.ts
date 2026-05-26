@@ -238,6 +238,58 @@ describe('POST /api/cron/reconcile-payments', () => {
     expect((pay as { status: string }).status).toBe('pending');
   });
 
+  it('unsettled-capture: settles a captured charge whose funds never moved off the platform', async () => {
+    await makeTenantReady();
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    // Captured (status='paid') but transfer_amount still null + captured a while ago → a lost
+    // payment_intent.succeeded or a tenant-leg failure. The sweep should re-run settlement.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_unsettled_${appt.id}`,
+      payment_intent_status: 'succeeded',
+      captured_at: HOUR_AGO(),
+    });
+
+    const { status, body } = await callRoute<{ unsettledCaptures: { settled: number } }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+    expect(body.unsettledCaptures.settled).toBeGreaterThanOrEqual(1);
+
+    // Tenant remainder ($40) + cleaner 60% ($60) both transferred off the platform.
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls.find((c) => c.destinationAccountId === 'acct_cleaner_recon')?.amountCents).toBe(6000);
+
+    const { data: pay } = await db
+      .from('payments')
+      .select('transfer_amount')
+      .eq('appointment_id', appt.id)
+      .eq('payment_type', 'revenue')
+      .single();
+    expect(Number((pay as { transfer_amount: number }).transfer_amount)).toBe(4000);
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'drift_repaired');
+    expect((events ?? []).length).toBeGreaterThanOrEqual(1);
+  });
+
   it('failed-payout: re-runs cleaner settlement for a payout left failed', async () => {
     await makeTenantReady();
     const db = createTestSupabaseClient();

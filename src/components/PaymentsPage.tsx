@@ -19,6 +19,7 @@ import ApprovePayoutModal from "./ApprovePayoutModal";
 import RefundModal from "./RefundModal";
 import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
 import { useAuth } from "../hooks/useAuth";
+import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 
 type TabType = "transactions" | "payouts" | "invoices";
@@ -120,9 +121,16 @@ export default function PaymentsPage({
   const [showApprovePayoutModal, setShowApprovePayoutModal] = useState(false);
   const [selectedPayout, setSelectedPayout] = useState<AdminPayout | null>(null);
   const [refundPayment, setRefundPayment] = useState<AdminPayment | null>(null);
-  const { currentOrganizationId } = useAuth();
-  // Refunds are only offered for captured card payments and only under the new charge flow.
-  const refundsEnabled = stripeNewChargeFlowUiEnabled();
+  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  // Owners/admins always manage payments; managers need the explicit can_manage_payments flag.
+  const canManagePayments =
+    currentOrgRole === "owner" ||
+    currentOrgRole === "admin" ||
+    (currentOrgRole === "manager" && !!permissions?.can_manage_payments);
+  // Refunds are only offered for captured card payments, under the new charge flow, to staff
+  // who are allowed to manage payments.
+  const refundsEnabled = stripeNewChargeFlowUiEnabled() && canManagePayments;
 
   // Filter by search query
   const filteredPayments = useMemo(() => {

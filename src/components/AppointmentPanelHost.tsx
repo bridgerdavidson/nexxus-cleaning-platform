@@ -9,6 +9,7 @@ import { AppointmentCardData } from "./AppointmentCard";
 import { formatTimeTo12h } from "../lib/formatTime";
 import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 import { useAuth } from "../hooks/useAuth";
+import { useManagerPermissions } from "../hooks/useManagerPermissions";
 
 interface AppointmentPanelHostProps {
   appointments: AppointmentCardData[];
@@ -49,8 +50,15 @@ export default function AppointmentPanelHost({
   onAppointmentUpdated,
   onRescheduleRejected,
 }: AppointmentPanelHostProps) {
-  const { currentOrganizationId } = useAuth();
-  const newChargeFlow = stripeNewChargeFlowUiEnabled();
+  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  // Cancel-with-fee can CAPTURE money, so it's gated like other payment actions: owners/admins
+  // always; managers only with can_manage_payments. Others fall back to the legacy soft-cancel.
+  const canFeeCancel =
+    currentOrgRole === "owner" ||
+    currentOrgRole === "admin" ||
+    (currentOrgRole === "manager" && !!permissions?.can_manage_payments);
+  const newChargeFlow = stripeNewChargeFlowUiEnabled() && canFeeCancel;
 
   const appointment = useMemo(() => {
     if (!appointmentId) return null;

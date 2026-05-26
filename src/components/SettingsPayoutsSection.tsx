@@ -2,6 +2,7 @@
 
 import React from 'react';
 import CleanerStripeConnect from './CleanerStripeConnect';
+import CleanerPayoutsHistory from './CleanerPayoutsHistory';
 import { useAuth } from '../hooks/useAuth';
 
 function stripeUiEnabled(): boolean {
@@ -25,6 +26,7 @@ export default function SettingsPayoutsSection() {
       </div>
 
       <CleanerStripeConnect />
+      <CleanerPayoutsHistory />
     </div>
   );
 }

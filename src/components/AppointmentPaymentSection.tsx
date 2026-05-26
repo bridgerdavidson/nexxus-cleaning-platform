@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CreditCard, Link2, Copy, Check, RefreshCw } from 'lucide-react';
 import { stripeNewChargeFlowUiEnabled } from '@/lib/stripe/flags';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
+import { useSupabaseRealtimeSync } from '@/lib/useSupabaseRealtimeSync';
 
 interface SavedCard {
   id: string;
@@ -74,6 +75,19 @@ export default function AppointmentPaymentSection({ homeownerId, organizationId,
     // onChange intentionally omitted — it's a stable setter from the parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadCards]);
+
+  // Card-link realtime: when the homeowner saves a card via the link we sent, their
+  // homeowner_payment_links row flips — re-pull saved cards so "waiting for card…" becomes
+  // a selectable card without a manual refresh.
+  useSupabaseRealtimeSync({
+    channelName: `homeowner_payment_links:${homeownerId ?? 'none'}`,
+    table: 'homeowner_payment_links',
+    filter: homeownerId ? `homeowner_id=eq.${homeownerId}` : undefined,
+    enabled: !!homeownerId && stripeNewChargeFlowUiEnabled(),
+    onEvent: () => {
+      loadCards();
+    },
+  });
 
   if (!stripeNewChargeFlowUiEnabled()) return null;
 
