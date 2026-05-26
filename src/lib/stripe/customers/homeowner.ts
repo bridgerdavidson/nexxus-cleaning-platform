@@ -47,6 +47,22 @@ export async function listSavedCards(customerId: string): Promise<SavedCard[]> {
 }
 
 /**
+ * Detach a saved card from a homeowner's Customer. Verifies the payment method actually
+ * belongs to the given customer first (so a caller can never detach someone else's card by
+ * id-guessing). Returns false if the PM isn't on this customer.
+ */
+export async function detachPaymentMethod(
+  customerId: string,
+  paymentMethodId: string,
+): Promise<boolean> {
+  const stripe = getStripe();
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (pm.customer !== customerId) return false;
+  await stripe.paymentMethods.detach(paymentMethodId);
+  return true;
+}
+
+/**
  * Create a CustomerSession for the homeowner-facing Payment Element — one widget that
  * shows saved cards, lets them add a new one, save it for later, and remove cards.
  * Replaces the legacy ephemeral-key approach.

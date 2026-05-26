@@ -13,6 +13,7 @@ import {
   Loader2,
   Briefcase,
   User,
+  Wallet,
 } from "lucide-react";
 import {
   useHomeownerAppointments,
@@ -32,6 +33,7 @@ import { useHomeownerRequests } from "../../hooks/useHomeownerRequests";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
 import SettingsHub from "../../components/SettingsHub";
+import PaymentMethodsPage from "../../components/PaymentMethodsPage";
 import HomePage from "../../components/homeowner/HomePage";
 import {
   HOMEOWNER_DASHBOARD_TAB_IDS,
@@ -133,6 +135,7 @@ function HomeownerDashboardInner() {
       { id: "home", label: "Home", icon: Home },
       { id: "properties", label: "Properties", icon: Building },
       { id: "payments", label: "Payments", icon: CreditCard },
+      { id: "payment-methods", label: "Payment Methods", icon: Wallet },
       { id: "services", label: "Services", icon: Briefcase },
     ],
     [],
@@ -328,6 +331,8 @@ function HomeownerDashboardInner() {
         return renderMessages();
       case "payments":
         return renderPayments();
+      case "payment-methods":
+        return <PaymentMethodsPage />;
       case "properties":
         return renderProperties();
       case "services":

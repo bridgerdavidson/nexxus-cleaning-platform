@@ -9,6 +9,8 @@ import {
   usesRequestState,
 } from '@/lib/appointments/flowType';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
+import { authorizeAppointment } from '@/lib/payments/authorizeAppointment';
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
@@ -82,7 +84,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org AND this cleaner.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state, payment_method_id')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -173,6 +175,32 @@ export async function POST(request: NextRequest) {
           { success: false, error: 'Failed to confirm appointment' },
           { status: 500 }
         );
+      }
+
+      // Authorize-on-accept (decision #9): once the appointment is confirmed and the
+      // homeowner saved a card at request time, place the manual-capture hold now. Best-effort
+      // — a failure here (declined/tenant-not-ready) must NOT block the confirmation; the JIT
+      // authorizer cron + the "payments needing attention" surface are the backstops.
+      if (
+        baseUpdate.status === 'confirmed' &&
+        appointment.payment_method_id &&
+        stripeEnabled() &&
+        stripeNewChargeFlowEnabled()
+      ) {
+        try {
+          const outcome = await authorizeAppointment(
+            supabaseAdmin,
+            appointmentId,
+            'confirm:authorize-on-accept',
+          );
+          if (!outcome.ok) {
+            console.warn(
+              `Authorize-on-accept for ${appointmentId} returned ${outcome.code}: ${outcome.message ?? ''}`,
+            );
+          }
+        } catch (authErr) {
+          console.error('Authorize-on-accept failed (non-blocking):', authErr);
+        }
       }
 
       // Mark the latest pending routing_log row (if any) as accepted. This

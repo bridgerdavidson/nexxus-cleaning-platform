@@ -9,6 +9,8 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { formatDateTimeTo12h } from "../lib/formatTime";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
+import HomeownerCardField from "./HomeownerCardField";
+import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 
 interface Property {
   id: string;
@@ -62,6 +64,12 @@ export default function RequestAppointmentModal({
   const [specialRequests, setSpecialRequests] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Optional save-a-card-now step (new charge flow). The hold isn't placed until a cleaner
+  // accepts — saving here just attaches the card so accept-time authorization can run.
+  const newChargeFlow = stripeNewChargeFlowUiEnabled();
+  const [addCardNow, setAddCardNow] = useState(false);
+  const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
 
   // Default property to most-recently-booked
   const fetchProperties = useCallback(async () => {
@@ -131,6 +139,8 @@ export default function RequestAppointmentModal({
       setSpecialRequests("");
       setError(null);
       setSubmitting(false);
+      setAddCardNow(false);
+      setPaymentMethodId(null);
     }
   }, [isOpen]);
 
@@ -163,6 +173,7 @@ export default function RequestAppointmentModal({
           serviceTypeId: selectedServiceId,
           slots: slots.map((s) => ({ scheduled_date: s.date, scheduled_time: s.time })),
           specialRequests: specialRequests.trim() || null,
+          ...(paymentMethodId ? { paymentMethodId } : {}),
         }),
       });
       const result = await response.json();
@@ -293,6 +304,43 @@ export default function RequestAppointmentModal({
                 placeholder="Anything specific they should know?"
               />
             </div>
+
+            {newChargeFlow && homeownerId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment method <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                {paymentMethodId ? (
+                  <HomeownerCardField
+                    homeownerId={homeownerId}
+                    accessToken={accessToken}
+                    savedPaymentMethodId={paymentMethodId}
+                    onSaved={setPaymentMethodId}
+                  />
+                ) : addCardNow ? (
+                  <HomeownerCardField
+                    homeownerId={homeownerId}
+                    accessToken={accessToken}
+                    savedPaymentMethodId={null}
+                    onSaved={setPaymentMethodId}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                    <p className="text-sm text-gray-600">
+                      Add a card now to speed things up. You won&apos;t be charged until your
+                      cleaning is completed — and you can always add one later.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setAddCardNow(true)}
+                      className="mt-2 text-sm font-semibold text-primary-700 hover:underline"
+                    >
+                      + Add a card
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
