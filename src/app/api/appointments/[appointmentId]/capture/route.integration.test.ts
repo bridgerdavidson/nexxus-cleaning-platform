@@ -64,8 +64,22 @@ describe('POST /api/appointments/:appointmentId/capture', () => {
     expect(status).toBe(401);
   });
 
-  it('rejects a cleaner (insufficient role)', async () => {
+  it('allows the ASSIGNED cleaner to capture (capture-on-completion)', async () => {
+    const appt = await makeAuthorizedAppt(); // assigned to org.cleaner
+    const { status, body } = await callRoute<{ success: boolean }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+  });
+
+  it('rejects a cleaner who is NOT the appointment\'s assigned cleaner', async () => {
     const appt = await makeAuthorizedAppt();
+    const db = createTestSupabaseClient();
+    // Unassign so the calling cleaner is no longer the assigned one — the guard must 403.
+    await db.from('appointments').update({ cleaner_id: null }).eq('id', appt.id);
     const { status } = await callRoute(handlerFor(appt.id), {
       method: 'POST',
       headers: bearerHeader(org.cleaner.accessToken),

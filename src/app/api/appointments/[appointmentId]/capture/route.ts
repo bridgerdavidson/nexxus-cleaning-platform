@@ -28,18 +28,24 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const { organization_id } = body as { organization_id?: string };
 
+    // Org staff may capture any appointment in their org; a cleaner may capture ONLY the
+    // appointment they're assigned to (they complete the job → capture-on-completion).
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+      allowedRoles: ['owner', 'admin', 'manager', 'cleaner'],
     });
     if (!auth.ok) return auth.response;
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id')
+      .select('id, organization_id, cleaner_id')
       .eq('id', appointmentId)
       .maybeSingle();
-    if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
+    const appointment = appt as { id: string; organization_id: string; cleaner_id: string | null } | null;
+    if (!appointment || appointment.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
+    }
+    if (auth.role === 'cleaner' && appointment.cleaner_id !== auth.userId) {
+      return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
     }
 
     const { data: payRows } = await supabaseAdmin
