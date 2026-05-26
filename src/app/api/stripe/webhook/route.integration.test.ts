@@ -570,4 +570,94 @@ describe('POST /api/stripe/webhook', () => {
       .single();
     expect((payment as { status: string }).status).toBe('refunded');
   });
+
+  // ── Phase 5: SaaS subscription state mirroring (Scenario 3) ───────────────────
+  it('customer.subscription.updated mirrors subscription state onto the org', async () => {
+    const admin = createTestSupabaseClient();
+    const eventId = `evt_sub_upd_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'customer.subscription.updated',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: 'sub_mirror_1',
+          object: 'subscription',
+          status: 'active',
+          customer: 'cus_unused_here',
+          current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400,
+          metadata: { organization_id: org.organizationId },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: o } = await admin
+      .from('organizations')
+      .select('subscription_id, subscription_status, subscription_current_period_end')
+      .eq('id', org.organizationId)
+      .single();
+    const row = o as { subscription_id: string; subscription_status: string; subscription_current_period_end: string | null };
+    expect(row.subscription_id).toBe('sub_mirror_1');
+    expect(row.subscription_status).toBe('active');
+    expect(row.subscription_current_period_end).not.toBeNull();
+
+    const { data: ev } = await admin
+      .from('tenant_subscription_events')
+      .select('event_type')
+      .eq('stripe_event_id', eventId);
+    expect((ev ?? []).length).toBe(1);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('invoice.payment_failed records a subscription audit event for the org', async () => {
+    const admin = createTestSupabaseClient();
+    const customerId = `cus_inv_${org.organizationId.slice(0, 8)}`;
+    await admin.from('organizations').update({ stripe_customer_id: customerId }).eq('id', org.organizationId);
+
+    const eventId = `evt_inv_fail_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'invoice.payment_failed',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: { id: 'in_1', object: 'invoice', customer: customerId, status: 'open', amount_paid: 0, amount_due: 5000 },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: ev } = await admin
+      .from('tenant_subscription_events')
+      .select('event_type')
+      .eq('stripe_event_id', eventId);
+    expect((ev ?? []).length).toBe(1);
+    expect((ev![0] as { event_type: string }).event_type).toBe('invoice.payment_failed');
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
 });

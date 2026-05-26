@@ -15,6 +15,7 @@ import { createConnectTransfer } from '@/lib/stripe';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { reverseCleanerTransfer } from '@/lib/stripe/charges/refund';
 import { recordPaymentEvent } from '@/lib/payments/events';
+import { mapSubscriptionStatus } from '@/lib/payments/orgBilling';
 
 export async function dispatchStripeEvent(
   supabase: SupabaseClient,
@@ -56,6 +57,17 @@ export async function dispatchStripeEvent(
       break;
     case 'account.updated':
       await handleAccountUpdated(supabase, event.data.object as Stripe.Account);
+      break;
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+      await handleSubscriptionUpsert(supabase, event.data.object as Stripe.Subscription, event.id, event.type);
+      break;
+    case 'customer.subscription.deleted':
+      await handleSubscriptionDeleted(supabase, event.data.object as Stripe.Subscription, event.id);
+      break;
+    case 'invoice.payment_succeeded':
+    case 'invoice.payment_failed':
+      await handleInvoiceEvent(supabase, event.data.object as Stripe.Invoice, event.id, event.type);
       break;
     default:
       console.log(`Unhandled event type: ${event.type}`);
@@ -701,4 +713,103 @@ async function handleAccountUpdated(supabase: SupabaseClient, account: Stripe.Ac
   }
 
   console.log('account.updated: no matching org or cleaner for account', acctId);
+}
+
+// ── SaaS subscription billing (Scenario 3, Phase 5) ──────────────────────────────
+
+/** Resolve the owning org for a subscription: metadata first, then the billing Customer id. */
+async function resolveOrgForSubscription(
+  supabase: SupabaseClient,
+  sub: Stripe.Subscription,
+): Promise<string | null> {
+  const metaOrg = sub.metadata?.organization_id;
+  if (metaOrg) return metaOrg;
+  const customerId = idFromExpandable(sub.customer as string | { id: string } | null);
+  if (!customerId) return null;
+  const { data } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('stripe_customer_id', customerId)
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/** Append a subscription/invoice event to the audit table (idempotent on stripe_event_id). */
+async function recordSubscriptionEvent(
+  supabase: SupabaseClient,
+  organizationId: string,
+  stripeEventId: string,
+  eventType: string,
+  payload: Record<string, unknown>,
+) {
+  const { error } = await supabase.from('tenant_subscription_events').upsert(
+    { organization_id: organizationId, stripe_event_id: stripeEventId, event_type: eventType, payload },
+    { onConflict: 'stripe_event_id', ignoreDuplicates: true },
+  );
+  if (error) console.error('recordSubscriptionEvent: failed to audit subscription event:', error);
+}
+
+async function handleSubscriptionUpsert(
+  supabase: SupabaseClient,
+  sub: Stripe.Subscription,
+  stripeEventId: string,
+  eventType: string,
+) {
+  const orgId = await resolveOrgForSubscription(supabase, sub);
+  if (!orgId) {
+    console.warn(`${eventType}: no matching org for subscription ${sub.id} — skipping`);
+    return;
+  }
+  // current_period_end has moved across Stripe API versions; read it defensively.
+  const cpe = (sub as unknown as { current_period_end?: number }).current_period_end;
+  await supabase
+    .from('organizations')
+    .update({
+      subscription_id: sub.id,
+      subscription_status: mapSubscriptionStatus(sub.status),
+      subscription_current_period_end: cpe ? new Date(cpe * 1000).toISOString() : null,
+    })
+    .eq('id', orgId);
+  await recordSubscriptionEvent(supabase, orgId, stripeEventId, eventType, {
+    subscription_id: sub.id,
+    stripe_status: sub.status,
+  });
+}
+
+async function handleSubscriptionDeleted(
+  supabase: SupabaseClient,
+  sub: Stripe.Subscription,
+  stripeEventId: string,
+) {
+  const orgId = await resolveOrgForSubscription(supabase, sub);
+  if (!orgId) return;
+  await supabase.from('organizations').update({ subscription_status: 'canceled' }).eq('id', orgId);
+  await recordSubscriptionEvent(supabase, orgId, stripeEventId, 'customer.subscription.deleted', {
+    subscription_id: sub.id,
+  });
+}
+
+async function handleInvoiceEvent(
+  supabase: SupabaseClient,
+  invoice: Stripe.Invoice,
+  stripeEventId: string,
+  eventType: string,
+) {
+  const customerId = idFromExpandable(invoice.customer as string | { id: string } | null);
+  if (!customerId) return;
+  const { data } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('stripe_customer_id', customerId)
+    .maybeSingle();
+  const orgId = (data as { id: string } | null)?.id;
+  if (!orgId) return;
+  await recordSubscriptionEvent(supabase, orgId, stripeEventId, eventType, {
+    invoice_id: invoice.id,
+    invoice_status: invoice.status,
+    amount_paid: invoice.amount_paid,
+    amount_due: invoice.amount_due,
+  });
+  // invoice.payment_failed degrading tenant access (subscription_status already mirrored by the
+  // customer.subscription.updated event) is deferred — see plan Phase 5 / open question.
 }
