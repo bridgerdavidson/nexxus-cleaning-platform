@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 import RecordPaymentModal from "./RecordPaymentModal";
 import ApprovePayoutModal from "./ApprovePayoutModal";
+import RefundModal from "./RefundModal";
+import { useAuth } from "../hooks/useAuth";
+import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 
 type TabType = "transactions" | "payouts" | "invoices";
 
@@ -115,6 +118,10 @@ export default function PaymentsPage({
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [showApprovePayoutModal, setShowApprovePayoutModal] = useState(false);
   const [selectedPayout, setSelectedPayout] = useState<AdminPayout | null>(null);
+  const [refundPayment, setRefundPayment] = useState<AdminPayment | null>(null);
+  const { currentOrganizationId } = useAuth();
+  // Refunds are only offered for captured card payments and only under the new charge flow.
+  const refundsEnabled = stripeNewChargeFlowUiEnabled();
 
   // Filter by search query
   const filteredPayments = useMemo(() => {
@@ -407,6 +414,11 @@ export default function PaymentsPage({
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
                         Notes
                       </th>
+                      {refundsEnabled && (
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -441,6 +453,20 @@ export default function PaymentsPage({
                         <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
                           {payment.notes || "-"}
                         </td>
+                        {refundsEnabled && (
+                          <td className="px-4 py-3 text-right">
+                            {payment.status === "paid" && payment.payment_method === "card" ? (
+                              <button
+                                onClick={() => setRefundPayment(payment)}
+                                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                              >
+                                Refund
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -639,6 +665,19 @@ export default function PaymentsPage({
         }}
         payout={selectedPayout}
       />
+
+      {refundPayment && currentOrganizationId && (
+        <RefundModal
+          paymentId={refundPayment.id}
+          organizationId={currentOrganizationId}
+          amountPaid={refundPayment.amount}
+          onClose={() => setRefundPayment(null)}
+          onDone={() => {
+            onRefreshPayments();
+            setRefundPayment(null);
+          }}
+        />
+      )}
     </div>
   );
 }
