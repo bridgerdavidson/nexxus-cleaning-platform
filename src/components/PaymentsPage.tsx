@@ -17,6 +17,7 @@ import {
 import RecordPaymentModal from "./RecordPaymentModal";
 import ApprovePayoutModal from "./ApprovePayoutModal";
 import RefundModal from "./RefundModal";
+import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
 import { useAuth } from "../hooks/useAuth";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 
@@ -270,6 +271,9 @@ export default function PaymentsPage({
           </div>
         </div>
       </div>
+
+      {/* Payments needing attention (failed auths / failed payouts) — new charge flow only */}
+      <PaymentsNeedingAttentionSection onResolved={onRefreshPayments} />
 
       {/* Tabs and Actions */}
       <div className="card">

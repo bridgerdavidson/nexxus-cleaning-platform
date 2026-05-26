@@ -55,6 +55,17 @@ export interface ManagerAppointment {
     price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  /** Card-hold (authorization) lifecycle for the new charge flow (migration 065). */
+  authorization_status?:
+    | 'none'
+    | 'scheduled'
+    | 'authorizing'
+    | 'requires_action'
+    | 'authorized'
+    | 'captured'
+    | 'canceled'
+    | 'failed'
+    | null;
 }
 
 export interface ManagerCleaner {
@@ -135,6 +146,7 @@ export function useManagerAppointments() {
           duration_minutes,
           status,
           total_price,
+          authorization_status,
           special_requests,
           notes,
           cleaner_confirmation_status,

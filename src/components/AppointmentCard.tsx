@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
+import AuthHoldBadge from "./AuthHoldBadge";
 import CompactAppointmentRow from "./CompactAppointmentRow";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
@@ -33,6 +34,16 @@ export interface AppointmentCardData {
   price_override_enabled?: boolean;
   price_override_total?: number | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  authorization_status?:
+    | 'none'
+    | 'scheduled'
+    | 'authorizing'
+    | 'requires_action'
+    | 'authorized'
+    | 'captured'
+    | 'canceled'
+    | 'failed'
+    | null;
   homeowner_id?: string;
   homeowner?: {
     first_name: string;
@@ -393,11 +404,12 @@ export default function AppointmentCard({
             ) : (
               <div className="flex items-center gap-2">
                 {role !== "cleaner" && appointment.status === "in_progress" && appointment.job_progress && (
-                  <CompactJobProgressIndicator 
-                    currentProgress={appointment.job_progress as JobProgress} 
+                  <CompactJobProgressIndicator
+                    currentProgress={appointment.job_progress as JobProgress}
                   />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
+                {role !== "cleaner" && <AuthHoldBadge status={appointment.authorization_status} />}
               </div>
             )}
           </div>
@@ -454,6 +466,7 @@ export default function AppointmentCard({
                   <CompactJobProgressIndicator currentProgress={appointment.job_progress as JobProgress} />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
+                {role !== "cleaner" && <AuthHoldBadge status={appointment.authorization_status} />}
               </div>
             )}
           </div>
