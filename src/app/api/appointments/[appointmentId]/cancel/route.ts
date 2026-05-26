@@ -65,10 +65,6 @@ export async function POST(
     if (!appt || appt.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
-    if (appt.status === 'cancelled') {
-      return NextResponse.json({ success: true, already_cancelled: true, fee_captured_cents: 0 });
-    }
-
     // Org cancellation policy.
     const { data: orgRow } = await supabaseAdmin
       .from('organizations')
@@ -91,14 +87,6 @@ export async function POST(
       scheduledTime: appt.scheduled_time,
     });
 
-    // Mark cancelled FIRST so the fee capture's payment_intent.succeeded webhook sees a
-    // cancelled appointment and skips cleaner settlement (see settleCleanerPayout guard).
-    const nowIso = new Date().toISOString();
-    await supabaseAdmin
-      .from('appointments')
-      .update({ status: 'cancelled', cancelled_at: nowIso, cancellation_reason: reason ?? null })
-      .eq('id', appointmentId);
-
     // Latest authorization for this appointment, if any.
     const { data: payRows } = await supabaseAdmin
       .from('payments')
@@ -113,6 +101,26 @@ export async function POST(
       : null;
 
     const hasLiveHold = !!pay?.stripe_payment_intent_id && pay.payment_intent_status === 'requires_capture';
+
+    // Idempotent + retry-safe: if it's already cancelled AND no hold remains live, a prior
+    // attempt fully settled — nothing left to do. But if a previous attempt marked the
+    // appointment cancelled and then the Stripe capture/release 502'd, the hold is still live
+    // (hasLiveHold === true) and we deliberately fall through to RETRY the capture/release
+    // below rather than returning early and leaving the hold stranded.
+    if (appt.status === 'cancelled' && !hasLiveHold) {
+      return NextResponse.json({ success: true, already_cancelled: true, fee_captured_cents: 0 });
+    }
+
+    // Mark cancelled BEFORE any capture so the fee capture's payment_intent.succeeded webhook
+    // sees a cancelled appointment and skips cleaner settlement (see settleCleanerPayout guard).
+    // Re-running this on a retry is harmless.
+    const nowIso = new Date().toISOString();
+    if (appt.status !== 'cancelled') {
+      await supabaseAdmin
+        .from('appointments')
+        .update({ status: 'cancelled', cancelled_at: nowIso, cancellation_reason: reason ?? null })
+        .eq('id', appointmentId);
+    }
 
     // No live hold → nothing to capture or release. Record intent + return.
     if (!hasLiveHold) {

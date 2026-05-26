@@ -48,12 +48,19 @@ export async function POST(request: NextRequest) {
   }
 
   // Idempotency: claim the event before acting. A previously-processed event short-circuits;
-  // a never-finished one is allowed to reprocess (handlers are idempotent).
-  const claim = await claimWebhookEvent(supabaseAdmin, {
-    id: event.id,
-    type: event.type,
-    accountId: event.account ?? null,
-  });
+  // a never-finished one is allowed to reprocess (handlers are idempotent). A transient failure
+  // to record the claim throws — return 500 so Stripe retries rather than processing unclaimed.
+  let claim;
+  try {
+    claim = await claimWebhookEvent(supabaseAdmin, {
+      id: event.id,
+      type: event.type,
+      accountId: event.account ?? null,
+    });
+  } catch (err) {
+    console.error('Failed to claim webhook event:', err);
+    return NextResponse.json({ error: 'Failed to record webhook event' }, { status: 500 });
+  }
   if (claim === 'duplicate') {
     console.log('Duplicate webhook delivery, skipping:', event.id, event.type);
     return NextResponse.json({ received: true, duplicate: true });

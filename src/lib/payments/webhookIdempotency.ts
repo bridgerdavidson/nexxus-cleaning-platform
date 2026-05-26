@@ -31,8 +31,16 @@ export async function claimWebhookEvent(
 
   if (!error) return 'claimed';
 
-  // A conflict means we've seen this id before. Only a *processed* row is a real duplicate;
-  // a 'received'/'failed' row was a prior attempt that didn't finish — allow reprocessing.
+  // Only a unique-violation (23505) means we've genuinely seen this event id before. Any other
+  // error (transient DB/connection failure, etc.) must NOT fall through to "claimed" — doing so
+  // would let the handler run with no persisted idempotency claim, so a later retry would
+  // reprocess and duplicate side effects. Throw so the caller returns 5xx and Stripe retries.
+  if (error.code !== '23505') {
+    throw new Error(`claimWebhookEvent: failed to claim ${ev.id} (${error.code ?? 'unknown'}): ${error.message}`);
+  }
+
+  // Conflict on the id: only a *processed* row is a real duplicate; a 'received'/'failed' row
+  // was a prior attempt that didn't finish — allow reprocessing (handlers are idempotent).
   const { data } = await supabase
     .from('webhook_events')
     .select('status')

@@ -200,6 +200,49 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
     expect(vi.mocked(cancelAuthorization)).toHaveBeenCalledWith(`pi_${appt.id}`);
   });
 
+  it('resumes the fee capture on retry after a transient Stripe failure (hold not stranded)', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment();
+
+    // First attempt: the Stripe capture fails (e.g. a 502).
+    vi.mocked(capturePaymentIntent).mockRejectedValueOnce(new Error('stripe unavailable'));
+    const first = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(first.status).toBe(502);
+
+    // Appointment is now cancelled, but the hold is still live (capture never succeeded).
+    const db = createTestSupabaseClient();
+    const { data: mid } = await db
+      .from('appointments')
+      .select('status, authorization_status')
+      .eq('id', appt.id)
+      .single();
+    expect((mid as { status: string }).status).toBe('cancelled');
+    expect((mid as { authorization_status: string | null }).authorization_status).not.toBe('captured');
+
+    // Retry (same request): despite already being cancelled, the live hold is resumed + captured
+    // rather than short-circuited by an already_cancelled return.
+    const second = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.fee_captured_cents).toBe(5000);
+    expect(vi.mocked(capturePaymentIntent)).toHaveBeenCalledWith(`pi_${appt.id}`, 5000);
+
+    const { data: done } = await db
+      .from('appointments')
+      .select('authorization_status, cancellation_fee_captured')
+      .eq('id', appt.id)
+      .single();
+    expect((done as { authorization_status: string }).authorization_status).toBe('captured');
+    expect(Number((done as { cancellation_fee_captured: number }).cancellation_fee_captured)).toBe(5000);
+  });
+
   it('no live hold: cancels without charging, even if a fee would apply', async () => {
     await setPolicy({ type: 'flat', value: 50 });
     const appt = await seedAppointment({ withHold: false });
