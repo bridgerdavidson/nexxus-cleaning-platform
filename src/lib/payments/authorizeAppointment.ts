@@ -114,7 +114,6 @@ export async function authorizeAppointment(
       customerId,
       paymentMethodId: appt.payment_method_id,
       tenantAccountId: org.stripe_connect_account_id,
-      platformFeeCents,
       appointmentId: appt.id,
       organizationId: appt.organization_id,
       reauthAttempt: appt.reauth_count ?? 0,

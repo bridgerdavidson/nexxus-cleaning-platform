@@ -6,11 +6,23 @@ import type { NextRequest } from 'next/server';
 // with a leftover row from a prior test/run and the route's insert would silently no-op.
 vi.mock('@/lib/stripe/charges/refund', () => ({
   createRefund: vi.fn(async () => ({ id: `re_test_${crypto.randomUUID()}` })),
-  reverseCleanerTransfer: vi.fn(async () => ({ id: 'trr_test_123' })),
+}));
+
+// Refund reverses the job's outbound transfers (tenant + cleaner) via the PLATFORM. transferGroupFor
+// is pure; listTransfersByGroup returns the two transfers for the job (cleaner 'tr_x' + tenant
+// 'tr_tenant'); reversePlatformTransfer is stubbed so we can assert the proportional clawback.
+vi.mock('@/lib/stripe/transfers', () => ({
+  transferGroupFor: (id: string) => `appt_${id}`,
+  listTransfersByGroup: vi.fn(async () => [
+    { id: 'tr_x', amount: 6000, amount_reversed: 0 },
+    { id: 'tr_tenant', amount: 4000, amount_reversed: 0 },
+  ]),
+  reversePlatformTransfer: vi.fn(async () => ({ id: 'trr_test_123' })),
 }));
 
 import { POST } from './route';
-import { createRefund, reverseCleanerTransfer } from '@/lib/stripe/charges/refund';
+import { createRefund } from '@/lib/stripe/charges/refund';
+import { reversePlatformTransfer } from '@/lib/stripe/transfers';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -115,14 +127,12 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(body.fully_refunded).toBe(true);
     expect(body.amount_cents).toBe(10000);
 
-    // full refund → no explicit amount; full cascade
+    // full refund → no explicit amount; both transfers fully reversed
     expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(createRefund).mock.calls[0][0]).toMatchObject({
-      reverseTransfer: true,
-      refundApplicationFee: true,
-      amountCents: undefined,
-    });
-    expect(vi.mocked(reverseCleanerTransfer)).toHaveBeenCalledWith('tr_x', 6000, 'acct_tenant');
+    expect(vi.mocked(createRefund).mock.calls[0][0]).toMatchObject({ amountCents: undefined });
+    // Cleaner ($60) and tenant remainder ($40) both clawed back to the platform.
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 6000);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000);
 
     const db = createTestSupabaseClient();
     const { data: pay } = await db.from('payments').select('status').eq('id', paymentId).single();
@@ -208,8 +218,9 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(body.fully_refunded).toBe(false);
     expect(body.amount_cents).toBe(4000);
 
-    // 60% payout of $100 = $60; proportional to a $40 refund = $24 = 2400 cents
-    expect(vi.mocked(reverseCleanerTransfer)).toHaveBeenCalledWith('tr_x', 2400, 'acct_tenant');
+    // $40 refund = 40% of gross → cleaner 6000*0.4=2400, tenant 4000*0.4=1600 clawed back.
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 2400);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1600);
 
     const db = createTestSupabaseClient();
     const { data: pay } = await db.from('payments').select('status').eq('id', paymentId).single();

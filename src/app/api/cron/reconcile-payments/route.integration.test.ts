@@ -10,16 +10,20 @@ vi.mock('@/lib/stripe/reconcile', () => ({
 
 // Failed-payout retry → settleCleanerPayout → @/lib/stripe/transfers (getStripe()). Mock it.
 vi.mock('@/lib/stripe/transfers', () => ({
-  resolveTenantChargeId: vi.fn(async () => 'py_tenant_charge'),
-  createTenantToCleanerTransfer: vi.fn(async (p: { appointmentId: string; amountCents: number }) => ({
-    id: `tr_cleaner_${p.appointmentId}`,
-    amount: p.amountCents,
-  })),
+  transferGroupFor: (id: string) => `appt_${id}`,
+  createPlatformTransfer: vi.fn(
+    async (p: { destinationAccountId: string; amountCents: number; appointmentId: string }) => ({
+      id: `tr_${p.appointmentId}_${p.destinationAccountId}`,
+      amount: p.amountCents,
+    }),
+  ),
+  listTransfersByGroup: vi.fn(async () => []),
+  reversePlatformTransfer: vi.fn(async () => ({ id: 'trr_test' })),
 }));
 
 import { POST } from './route';
 import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconcile';
-import { createTenantToCleanerTransfer } from '@/lib/stripe/transfers';
+import { createPlatformTransfer } from '@/lib/stripe/transfers';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -162,14 +166,15 @@ describe('POST /api/cron/reconcile-payments', () => {
       created_at: HOUR_AGO(), // past the SLA window
     });
 
-    // Stripe's truth: the charge actually succeeded — a webhook we never got. Tenant is NOT
-    // marked ready, so settleCleanerPayout short-circuits before any transfer.
+    // Stripe's truth: the charge actually succeeded — a webhook we never got. `on_behalf_of` marks
+    // it a new-flow charge; the tenant is NOT marked ready here, so settle short-circuits (no transfer).
     vi.mocked(retrievePaymentIntent).mockResolvedValue({
       id: piId,
       object: 'payment_intent',
       status: 'succeeded',
+      amount_received: 10000,
       latest_charge: `ch_stuck_${appt.id}`,
-      transfer_data: { destination: 'acct_tenant_x' },
+      on_behalf_of: 'acct_tenant_x',
       metadata: { appointment_id: appt.id },
     } as unknown as Stripe.PaymentIntent);
 
@@ -259,10 +264,12 @@ describe('POST /api/cron/reconcile-payments', () => {
     expect(status).toBe(200);
     expect(body.failedPayouts.settled).toBeGreaterThanOrEqual(1);
 
-    // 60% of $100 = 6000 cents, transferred from the tenant balance.
-    expect(vi.mocked(createTenantToCleanerTransfer)).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(createTenantToCleanerTransfer).mock.calls[0][0];
-    expect(call.amountCents).toBe(6000);
+    // Settles from the platform: tenant remainder ($40) + cleaner 60% ($60). Assert the cleaner leg.
+    const cleanerCall = vi
+      .mocked(createPlatformTransfer)
+      .mock.calls.map((c) => c[0])
+      .find((c) => c.destinationAccountId === 'acct_cleaner_recon');
+    expect(cleanerCall?.amountCents).toBe(6000);
 
     const { data: payout } = await db
       .from('payouts')

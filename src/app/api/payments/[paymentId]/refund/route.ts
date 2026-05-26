@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { createRefund, reverseCleanerTransfer } from '@/lib/stripe/charges/refund';
+import { createRefund } from '@/lib/stripe/charges/refund';
+import { listTransfersByGroup, reversePlatformTransfer, transferGroupFor } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from '@/lib/payments/events';
 
 /**
  * POST /api/payments/:paymentId/refund
  *
- * Tenant admin/owner issues a refund. Unwinds the full cascade:
- *   1) reverse (the proportional part of) the tenant→cleaner transfer (cleaner clawback)
- *   2) refund the homeowner on the platform PaymentIntent with reverse_transfer (claws the
- *      amount back from the tenant) + refund_application_fee (returns the platform's cut)
+ * Tenant admin/owner issues a refund. Unwinds the full cascade (separate charges and transfers):
+ *   1) reverse (proportionally) every outbound transfer for the job — tenant remainder AND cleaner
+ *      payout — so the platform balance is made whole before the refund
+ *   2) refund the homeowner on the platform PaymentIntent (no reverse_transfer/refund_application_fee:
+ *      the charge has no transfer_data, the funds were on the platform)
  * Records a `refunds` row + ledger event; marks the payment 'refunded' on a full refund.
  * The charge.refunded webhook confirms final state.
  *
@@ -85,30 +87,44 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid refund amount' }, { status: 400 });
     }
 
-    // 1) Cleaner clawback (proportional), best-effort — homeowner refund must not be blocked.
+    // 1) Reverse the platform's outbound transfers for this job (tenant remainder AND cleaner
+    //    payout), proportionally to the refund, so the platform has the funds back to refund the
+    //    homeowner. Best-effort per transfer — a failed reversal is logged and never blocks the refund.
+    const transferGroup = transferGroupFor(payment.appointment_id);
+    let jobTransfers: Awaited<ReturnType<typeof listTransfersByGroup>> = [];
+    try {
+      jobTransfers = await listTransfersByGroup(transferGroup);
+    } catch (err) {
+      await recordPaymentEvent(supabaseAdmin, {
+        paymentId: payment.id,
+        appointmentId: payment.appointment_id,
+        organizationId: organization_id,
+        eventType: 'transfer_list_failed',
+        actor: `user:${auth.userId}`,
+        payload: { error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+
+    // The cleaner payout row (if any) so we can mirror its reversed status.
     const { data: payoutRows } = await supabaseAdmin
       .from('payouts')
-      .select('id, amount, stripe_transfer_id, source_balance_account_id, status')
+      .select('id, amount, stripe_transfer_id, status')
       .eq('appointment_id', payment.appointment_id)
       .not('stripe_transfer_id', 'is', null)
       .limit(1);
     const payout = payoutRows && payoutRows.length > 0
-      ? (payoutRows[0] as {
-          id: string;
-          amount: number;
-          stripe_transfer_id: string;
-          source_balance_account_id: string | null;
-          status: string;
-        })
+      ? (payoutRows[0] as { id: string; amount: number; stripe_transfer_id: string; status: string })
       : null;
 
-    if (payout?.stripe_transfer_id && payout.source_balance_account_id) {
-      const payoutCents = Math.round(Number(payout.amount) * 100);
-      const reversalCents = Math.round((payoutCents * refundCents) / grossCents);
-      if (reversalCents > 0) {
-        try {
-          await reverseCleanerTransfer(payout.stripe_transfer_id, reversalCents, payout.source_balance_account_id);
-          const fullyReversed = reversalCents >= payoutCents;
+    for (const t of jobTransfers) {
+      const remainingCents = t.amount - (t.amount_reversed ?? 0);
+      if (remainingCents <= 0) continue;
+      const reversalCents = Math.min(remainingCents, Math.round((t.amount * refundCents) / grossCents));
+      if (reversalCents <= 0) continue;
+      try {
+        await reversePlatformTransfer(t.id, reversalCents);
+        if (payout && t.id === payout.stripe_transfer_id) {
+          const fullyReversed = reversalCents >= Math.round(Number(payout.amount) * 100);
           await supabaseAdmin
             .from('payouts')
             .update({
@@ -116,29 +132,26 @@ export async function POST(
               reversed_at: new Date().toISOString(),
             })
             .eq('id', payout.id);
-        } catch (err) {
-          // Record for the retry job; continue with the homeowner refund.
-          await recordPaymentEvent(supabaseAdmin, {
-            paymentId: payment.id,
-            appointmentId: payment.appointment_id,
-            organizationId: organization_id,
-            eventType: 'cleaner_clawback_failed',
-            actor: `user:${auth.userId}`,
-            amount: reversalCents,
-            payload: { error: err instanceof Error ? err.message : String(err) },
-          });
         }
+      } catch (err) {
+        await recordPaymentEvent(supabaseAdmin, {
+          paymentId: payment.id,
+          appointmentId: payment.appointment_id,
+          organizationId: organization_id,
+          eventType: 'transfer_reversal_failed',
+          actor: `user:${auth.userId}`,
+          amount: reversalCents,
+          payload: { transfer_id: t.id, error: err instanceof Error ? err.message : String(err) },
+        });
       }
     }
 
-    // 2) Homeowner refund (claws back from tenant + returns platform fee).
+    // 2) Refund the homeowner on the platform PaymentIntent (funds reclaimed above).
     let refund;
     try {
       refund = await createRefund({
         paymentIntentId: payment.stripe_payment_intent_id,
         amountCents: isPartial ? refundCents : undefined,
-        reverseTransfer: true,
-        refundApplicationFee: true,
         reason,
         metadata: { appointment_id: payment.appointment_id, initiator_user_id: auth.userId },
       });

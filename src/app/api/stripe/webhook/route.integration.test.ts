@@ -1,26 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// Destination-charge cleaner settlement goes through @/lib/stripe/transfers (which calls
-// getStripe(), stubbed to throw by the global setup). Mock it so settleCleanerPayout runs
-// against the real DB with stubbed Stripe transfer calls.
+// Settlement + refund go through @/lib/stripe/transfers (platform→connected transfers, which
+// call getStripe(), stubbed to throw by the global setup). Mock the module so settleCleanerPayout
+// runs against the real DB with stubbed Stripe transfer calls. transferGroupFor is pure — keep a
+// real impl so the group tag matches what the refund path computes.
 vi.mock('@/lib/stripe/transfers', () => ({
-  resolveTenantChargeId: vi.fn(async () => 'py_tenant_charge'),
-  createTenantToCleanerTransfer: vi.fn(async (p: { appointmentId: string; amountCents: number }) => ({
-    id: `tr_cleaner_${p.appointmentId}`,
-    amount: p.amountCents,
-  })),
+  transferGroupFor: (id: string) => `appt_${id}`,
+  createPlatformTransfer: vi.fn(
+    async (p: { destinationAccountId: string; amountCents: number; appointmentId: string }) => ({
+      id: `tr_${p.appointmentId}_${p.destinationAccountId}`,
+      amount: p.amountCents,
+    }),
+  ),
+  listTransfersByGroup: vi.fn(async () => []),
+  reversePlatformTransfer: vi.fn(async () => ({ id: 'trr_test' })),
 }));
 
-// Dispute-lost clawback reverses the tenant→cleaner transfer via this module (which would
-// otherwise call getStripe() and throw under the test mock).
 vi.mock('@/lib/stripe/charges/refund', () => ({
   createRefund: vi.fn(async () => ({ id: 're_test' })),
-  reverseCleanerTransfer: vi.fn(async () => ({ id: 'trr_test' })),
 }));
 
 import { POST } from './route';
-import { createTenantToCleanerTransfer } from '@/lib/stripe/transfers';
-import { reverseCleanerTransfer } from '@/lib/stripe/charges/refund';
+import { createPlatformTransfer, reversePlatformTransfer } from '@/lib/stripe/transfers';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -210,8 +211,10 @@ describe('POST /api/stripe/webhook', () => {
     expect(status).toBe(400);
   });
 
-  // ── Phase 3: destination-charge cleaner settlement (tenant balance → cleaner) ──
-  function buildDestinationChargeEvent(appointmentId: string, amountDollars: number, tenantAccount: string) {
+  // ── Phase 3: separate charges & transfers settlement (platform → tenant + cleaner) ──
+  // The new-flow PI carries `on_behalf_of` (tenant = merchant of record) and NO transfer_data;
+  // funds are on the platform and settlement fans them out via platform transfers.
+  function buildSeparateChargeEvent(appointmentId: string, amountDollars: number, tenantAccount: string) {
     return {
       id: `evt_dc_${appointmentId}`,
       object: 'event',
@@ -223,10 +226,11 @@ describe('POST /api/stripe/webhook', () => {
           id: `pi_test_${appointmentId}`,
           object: 'payment_intent',
           amount: Math.round(amountDollars * 100),
+          amount_received: Math.round(amountDollars * 100),
           currency: 'usd',
           status: 'succeeded',
           latest_charge: `ch_test_${appointmentId}`,
-          transfer_data: { destination: tenantAccount },
+          on_behalf_of: tenantAccount,
           metadata: { appointment_id: appointmentId },
         },
       },
@@ -268,9 +272,9 @@ describe('POST /api/stripe/webhook', () => {
     return { appt, tenantAccount };
   }
 
-  it('destination charge settles the cleaner from the tenant balance (not the platform)', async () => {
+  it('separate charges & transfers settles BOTH the tenant remainder and the cleaner % from the platform', async () => {
     const { appt, tenantAccount } = await seedForSettlement();
-    const payload = JSON.stringify(buildDestinationChargeEvent(appt.id, 100, tenantAccount));
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 100, tenantAccount));
     const sig = signWebhookPayload(payload);
 
     const res = await callRoute(POST, {
@@ -281,28 +285,29 @@ describe('POST /api/stripe/webhook', () => {
     });
     expect(res.status).toBe(200);
 
-    // Legacy platform→cleaner transfer NOT used; tenant→cleaner transfer used instead.
+    // Legacy platform→cleaner path NOT used; two PLATFORM transfers instead (never connected→connected).
     expect(fake.transferCalls).toHaveLength(0);
-    expect(vi.mocked(createTenantToCleanerTransfer)).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(createTenantToCleanerTransfer).mock.calls[0][0];
-    expect(call.amountCents).toBe(6000); // 60% of $100
-    expect(call.tenantAccountId).toBe(tenantAccount);
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls).toHaveLength(2);
+    const cleanerCall = calls.find((c) => c.destinationAccountId === 'acct_test_fake');
+    const tenantCall = calls.find((c) => c.destinationAccountId === tenantAccount);
+    expect(cleanerCall?.amountCents).toBe(6000); // 60% of $100
+    expect(tenantCall?.amountCents).toBe(4000); // remainder = gross − cleaner − fee
 
     const admin = createTestSupabaseClient();
     const { data: payouts } = await admin
       .from('payouts')
-      .select('amount, status, source_balance_account_id')
+      .select('amount, status')
       .eq('appointment_id', appt.id);
     expect(payouts).toHaveLength(1);
-    const payout = payouts![0] as { amount: number; status: string; source_balance_account_id: string };
+    const payout = payouts![0] as { amount: number; status: string };
     expect(Number(payout.amount)).toBe(60);
     expect(payout.status).toBe('paid');
-    expect(payout.source_balance_account_id).toBe(tenantAccount);
   });
 
-  it('destination charge does NOT pay an hourly_external cleaner', async () => {
+  it('does NOT pay an hourly_external cleaner — the whole amount goes to the tenant', async () => {
     const { appt, tenantAccount } = await seedForSettlement({ hourly: true });
-    const payload = JSON.stringify(buildDestinationChargeEvent(appt.id, 100, tenantAccount));
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 100, tenantAccount));
     const sig = signWebhookPayload(payload);
 
     const res = await callRoute(POST, {
@@ -312,7 +317,12 @@ describe('POST /api/stripe/webhook', () => {
       body: payload,
     });
     expect(res.status).toBe(200);
-    expect(vi.mocked(createTenantToCleanerTransfer)).not.toHaveBeenCalled();
+
+    // Only the tenant transfer (full amount); no cleaner transfer, no payout row.
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].destinationAccountId).toBe(tenantAccount);
+    expect(calls[0].amountCents).toBe(10000);
 
     const admin = createTestSupabaseClient();
     const { data: payouts } = await admin.from('payouts').select('id').eq('appointment_id', appt.id);
@@ -486,8 +496,8 @@ describe('POST /api/stripe/webhook', () => {
     });
     expect(res.status).toBe(200);
 
-    // Full cleaner share reversed from the tenant balance.
-    expect(vi.mocked(reverseCleanerTransfer)).toHaveBeenCalledWith('tr_clawback', 6000, 'acct_tenant');
+    // Full cleaner share reversed (platform-level reversal).
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_clawback', 6000);
 
     const { data: payouts } = await admin
       .from('payouts')

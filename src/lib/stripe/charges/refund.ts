@@ -1,11 +1,11 @@
 /**
- * Refund helpers (Phase 4).
+ * Refund helper (Phase 4).
  *
- * A refund on the platform PaymentIntent with `reverse_transfer` claws the refunded
- * amount back from the tenant's balance, and `refund_application_fee` returns the
- * platform's proportional fee. Stripe does NOT auto-reverse our separate tenant→cleaner
- * transfer, so the route also reverses that (cleaner clawback, decision #12) — which can
- * push the cleaner's connected account negative, recovered from their future earnings.
+ * In the separate-charges-and-transfers model the homeowner charge lives on the PLATFORM
+ * balance, so a plain refund pulls from the platform. Before refunding, the route reverses the
+ * outbound transfers for the job (tenant + cleaner) via `reversePlatformTransfer` so the platform
+ * is made whole — `reverse_transfer` / `refund_application_fee` (destination-charge concepts)
+ * don't apply here and are intentionally omitted.
  */
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
@@ -14,37 +14,15 @@ export interface CreateRefundParams {
   paymentIntentId: string;
   /** Omit for a full refund. */
   amountCents?: number;
-  reverseTransfer: boolean;
-  refundApplicationFee: boolean;
   reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer';
   metadata?: Record<string, string>;
 }
 
 export async function createRefund(params: CreateRefundParams): Promise<Stripe.Refund> {
   const stripe = getStripe();
-  const p: Stripe.RefundCreateParams = {
-    payment_intent: params.paymentIntentId,
-    reverse_transfer: params.reverseTransfer,
-    refund_application_fee: params.refundApplicationFee,
-  };
+  const p: Stripe.RefundCreateParams = { payment_intent: params.paymentIntentId };
   if (typeof params.amountCents === 'number') p.amount = params.amountCents;
   if (params.reason) p.reason = params.reason;
   if (params.metadata) p.metadata = params.metadata;
   return stripe.refunds.create(p);
-}
-
-/**
- * Reverse (part of) a tenant→cleaner transfer — created on the tenant account.
- */
-export async function reverseCleanerTransfer(
-  transferId: string,
-  amountCents: number,
-  tenantAccountId: string,
-): Promise<Stripe.TransferReversal> {
-  const stripe = getStripe();
-  return stripe.transfers.createReversal(
-    transferId,
-    { amount: amountCents },
-    { stripeAccount: tenantAccountId },
-  );
 }
