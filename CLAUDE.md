@@ -164,6 +164,20 @@ A large number of routes under `src/app/api/` and corresponding pages (e.g. `cle
 - Connect (Express) is used for cleaner payouts. `createConnectTransfer` uses an idempotency key of `payout-${appointmentId}` so webhook retries never double-pay — preserve this when adding new transfer call sites.
 - Webhook handler (`api/stripe/webhook/route.ts`) requires `STRIPE_WEBHOOK_SECRET` and constructs its own admin Supabase client (it's `runtime = 'nodejs'` because it needs the raw request body).
 
+#### Multi-tenant restructure (flag-gated — see `docs/stripe-architecture.md`)
+
+The payment architecture has been rebuilt so the **tenant cleaning company is the merchant of record** (destination charges with `on_behalf_of` + `transfer_data.destination` → tenant Express account), with the platform keeping the homeowner Customer. It ships behind two flags (default **off**), so the **legacy platform-as-merchant path still runs in production** until cutover:
+
+- `STRIPE_TENANT_CONNECT_ENABLED` — tenant Connect onboarding + tenant-routed charges.
+- `STRIPE_NEW_CHARGE_FLOW_ENABLED` — save-card / JIT-authorize / capture / cancel / refund routes.
+
+Key conventions when touching this code:
+- New Stripe SDK calls live in focused submodules under `src/lib/stripe/**` (`charges/`, `connect/`, `customers/`, `billing.ts`, `transfers.ts`, `reconcile.ts`) so integration tests can `vi.mock` them; orchestration that mixes Stripe + DB lives in `src/lib/payments/**`.
+- The webhook is a thin route → `claimWebhookEvent` (insert-first idempotency on `webhook_events`; only a `23505` conflict on a `processed` row is a duplicate) → `dispatchStripeEvent` (one idempotent handler per event type).
+- `payment_events` is the append-only forensic ledger; the reconciliation sweep (`/api/cron/reconcile-payments`, migration 067) is the correctness backstop, so DB state never depends on a single webhook delivery.
+- Tenant→cleaner transfers use idempotency key `cleaner-payout-${appointmentId}` and are created on the tenant account (`stripeAccount: tenant`). Cleaner % is of **gross** (decision #11).
+- Cutover (flip prod flags, add the prod webhook events below, remove the legacy charge path) is a deliberate ops step — see the cutover section of `docs/stripe-architecture.md`.
+
 ### Domain types (`src/types/index.ts`)
 
 This file is the source of truth for TypeScript shapes that mirror the database. Read its bottom-of-file "IMPORTANT REMINDERS" before writing any Supabase query — there are non-obvious column-name traps:

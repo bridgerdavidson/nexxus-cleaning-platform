@@ -5,14 +5,17 @@ import { getSectionsForRole, SettingsSectionId } from '../lib/settings';
 import { useAuth } from '../hooks/useAuth';
 import SettingsProfileSection from './SettingsProfileSection';
 import SettingsPayoutsSection from './SettingsPayoutsSection';
+import SettingsBillingSection from './SettingsBillingSection';
 
 export default function SettingsHub() {
-  const { user } = useAuth();
+  const { user, currentOrgRole } = useAuth();
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('profile');
 
   if (!user) return null;
 
-  const sections = getSectionsForRole(user.role);
+  // Pass the OrgRole too so org-scoped sections (e.g. Payments for owner/admin) resolve by
+  // in-org permission, not just the dashboard-level UserRole.
+  const sections = getSectionsForRole(user.role, currentOrgRole ?? undefined);
 
   // Fallback if active section isn't available for role
   const currentSection = sections.find(s => s.id === activeSection) || sections[0];
@@ -25,6 +28,8 @@ export default function SettingsHub() {
         return <SettingsProfileSection />;
       case 'payouts':
         return null;
+      case 'billing':
+        return <SettingsBillingSection />;
       case 'security':
         return (
           <div className="card flex flex-col items-center justify-center text-center py-24 mx-1 md:mx-0 transition-all duration-300 group">
