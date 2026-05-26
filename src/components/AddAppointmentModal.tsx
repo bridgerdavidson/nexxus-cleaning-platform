@@ -32,6 +32,7 @@ import PaymentMethodForm from "./PaymentMethodForm";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 interface Homeowner {
   id: string;
@@ -929,7 +930,11 @@ export default function AddAppointmentModal({
       !priceOverrideEnabled ||
       (customPrice && parseFloat(customPrice) > 0));
   const isStep3Valid = !!selectedCleaner;
-  const isStep4Valid = paymentMethodSaved || skipPaymentMethod;
+  // New charge flow: the Step 3 card picker always yields a completable choice (a saved card,
+  // a send-link, or defer), so the final step is never blocked. Legacy keeps the saved/skip gate.
+  const isStep4Valid = stripeNewChargeFlowUiEnabled()
+    ? true
+    : paymentMethodSaved || skipPaymentMethod;
 
   // Get today's date for min date validation (using local timezone, not UTC)
   const getTodayLocal = () => {
@@ -1523,14 +1528,6 @@ export default function AddAppointmentModal({
                   />
                 </div>
 
-                {/* Payment (new charge flow only; renders null when the flag is off) */}
-                <AppointmentPaymentSection
-                  homeownerId={selectedHomeowner?.id ?? null}
-                  organizationId={currentOrganizationId ?? null}
-                  value={paymentSelection}
-                  onChange={setPaymentSelection}
-                />
-
                 {/* Assign Cleaner. Uniform rows for both groups. Available rows
                     select on click; not-available rows expand on click and only
                     select when the admin confirms via the inline button. */}
@@ -2017,6 +2014,23 @@ export default function AddAppointmentModal({
                     </h3>
                   </div>
 
+                  {stripeNewChargeFlowUiEnabled() ? (
+                    <>
+                      <p className="text-gray-600">
+                        Choose how {selectedHomeowner.first_name}{" "}
+                        {selectedHomeowner.last_name} will pay. The selected card is authorized
+                        when the appointment is created and charged when the job is completed.
+                        You can also defer and collect a card later.
+                      </p>
+                      <AppointmentPaymentSection
+                        homeownerId={selectedHomeowner.id}
+                        organizationId={currentOrganizationId ?? null}
+                        value={paymentSelection}
+                        onChange={setPaymentSelection}
+                      />
+                    </>
+                  ) : (
+                    <>
                   <p className="text-gray-600 mb-4">
                     Collect payment information from{" "}
                     {selectedHomeowner.first_name} {selectedHomeowner.last_name}
@@ -2091,6 +2105,8 @@ export default function AddAppointmentModal({
                         </div>
                       </label>
                     </div>
+                  )}
+                    </>
                   )}
                 </div>
               )}

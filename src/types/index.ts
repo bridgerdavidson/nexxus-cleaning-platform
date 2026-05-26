@@ -81,6 +81,25 @@ export interface Organization {
   logo_url?: string | null;
   created_at: string;
   created_by: string | null;
+  // Stripe tenant Connect (merchant of record) — added in migration 065_stripe_restructure.
+  stripe_connect_account_id?: string | null;
+  stripe_connect_charges_enabled?: boolean;
+  stripe_connect_payouts_enabled?: boolean;
+  stripe_connect_details_submitted?: boolean;
+  stripe_connect_requirements_due?: string[];
+  stripe_connect_onboarded_at?: string | null;
+  // SaaS billing (the org paying Nexxus) — distinct from the Connect account above.
+  stripe_customer_id?: string | null;
+  subscription_status?: 'none' | 'trialing' | 'active' | 'past_due' | 'canceled';
+  subscription_id?: string | null;
+  subscription_current_period_end?: string | null;
+  // Platform fee + per-org policy.
+  platform_fee_bps?: number; // basis points (100 = 1%), default 0
+  default_payout_model?: 'percentage_contractor' | 'hourly_external';
+  cancellation_window_hours?: number; // default 24
+  cancellation_fee_type?: 'none' | 'flat' | 'percent';
+  cancellation_fee_value?: number; // dollars (flat) or percent (percent)
+  billing_email?: string | null;
 }
 
 // ORGANIZATION MEMBERS
