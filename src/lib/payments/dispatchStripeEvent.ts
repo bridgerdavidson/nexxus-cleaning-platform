@@ -539,6 +539,40 @@ async function handleTransferReversed(supabase: SupabaseClient, transfer: Stripe
 }
 
 /**
+ * Fallback when a payout.paid event can't be tied to specific transfer ids: mark only the
+ * SINGLE oldest still-unattributed payout for the cleaner, never the whole set. Stamping every
+ * `stripe_payout_id IS NULL` row with this payout's id would claim unrelated payouts and cause
+ * wrong reversions on a later payout.failed. Under-marking is self-healing — the precise
+ * transfer-id path or the reconcile sweep settles the rest.
+ */
+async function markOldestUnattributedPayout(
+  supabase: SupabaseClient,
+  cleanerId: string,
+  bankPaidUpdate: { status: 'bank_paid'; stripe_payout_id: string; bank_paid_at: string },
+): Promise<number> {
+  const { data: candidate } = await supabase
+    .from('payouts')
+    .select('id')
+    .eq('cleaner_id', cleanerId)
+    .eq('status', 'paid')
+    .is('stripe_payout_id', null)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!candidate) return 0;
+  const { data: updated, error } = await supabase
+    .from('payouts')
+    .update(bankPaidUpdate)
+    .eq('id', (candidate as { id: string }).id)
+    .select('id');
+  if (error) {
+    console.error('payout.paid: DB error during narrowed fallback update:', error);
+    return 0;
+  }
+  return (updated ?? []).length;
+}
+
+/**
  * Handle payout.paid from a connected account — money landed in the cleaner's bank.
  * Connect events arrive with event.account set to the connected account ID.
  */
@@ -597,26 +631,10 @@ async function handlePayoutPaid(
     else count = (updatedRows ?? []).length;
 
     if (count === 0) {
-      const { data: fallbackRows, error: fallbackError } = await supabase
-        .from('payouts')
-        .update(bankPaidUpdate)
-        .eq('cleaner_id', cleaner.id)
-        .eq('status', 'paid')
-        .is('stripe_payout_id', null)
-        .select('id');
-      if (fallbackError) console.error('payout.paid: DB error during fallback update:', fallbackError);
-      else count = (fallbackRows ?? []).length;
+      count = await markOldestUnattributedPayout(supabase, cleaner.id, bankPaidUpdate);
     }
   } else {
-    const { data: updatedRows, error: updateError } = await supabase
-      .from('payouts')
-      .update(bankPaidUpdate)
-      .eq('cleaner_id', cleaner.id)
-      .eq('status', 'paid')
-      .is('stripe_payout_id', null)
-      .select('id');
-    if (updateError) console.error('payout.paid: DB error during fallback update:', updateError);
-    else count = (updatedRows ?? []).length;
+    count = await markOldestUnattributedPayout(supabase, cleaner.id, bankPaidUpdate);
   }
 
   if (count === 0) {

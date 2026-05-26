@@ -149,7 +149,7 @@ export async function POST(
       );
     }
 
-    await supabaseAdmin.from('refunds').insert({
+    const { error: refundInsertError } = await supabaseAdmin.from('refunds').insert({
       organization_id,
       payment_id: payment.id,
       appointment_id: payment.appointment_id,
@@ -159,6 +159,24 @@ export async function POST(
       initiator_user_id: auth.userId,
       status: 'pending',
     });
+    if (refundInsertError) {
+      // The Stripe refund already SUCCEEDED (money is back to the homeowner), so we must not
+      // return a 5xx — a retry would refund again. Instead, flag the ledger gap loudly via the
+      // forensic event so it can be reconciled; the response carries ledger_recorded=false.
+      console.error(
+        `refund: Stripe refund ${refund.id} succeeded but the refunds-row insert failed:`,
+        refundInsertError.message,
+      );
+      await recordPaymentEvent(supabaseAdmin, {
+        paymentId: payment.id,
+        appointmentId: payment.appointment_id,
+        organizationId: organization_id,
+        eventType: 'refund_ledger_write_failed',
+        actor: `user:${auth.userId}`,
+        amount: refundCents,
+        payload: { refund_id: refund.id, error: refundInsertError.message },
+      });
+    }
 
     const nowFullyRefunded = alreadyRefunded + refundCents >= grossCents;
     if (nowFullyRefunded) {
@@ -182,6 +200,7 @@ export async function POST(
       refund_id: refund.id,
       amount_cents: refundCents,
       fully_refunded: nowFullyRefunded,
+      ledger_recorded: !refundInsertError,
     });
   } catch (error) {
     console.error('Error issuing refund:', error);

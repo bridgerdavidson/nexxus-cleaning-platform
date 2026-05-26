@@ -161,6 +161,39 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(body.amount_cents).toBe(10000);
   });
 
+  it('surfaces a failed refunds-row insert (200 with ledger_recorded=false, not a silent success)', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+    const db = createTestSupabaseClient();
+    // Pre-seed a refund row that collides on the unique stripe_refund_id. status='failed' so it
+    // does NOT count toward the refundable cap (prior fix), leaving the refund itself valid.
+    await db.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      appointment_id: appt.id,
+      stripe_refund_id: 're_collide',
+      amount: 10000,
+      initiator_user_id: org.admin.userId,
+      status: 'failed',
+    });
+    vi.mocked(createRefund).mockResolvedValueOnce({ id: 're_collide' } as unknown as Awaited<ReturnType<typeof createRefund>>);
+
+    const { status, body } = await callRoute<{ ledger_recorded: boolean; refund_id: string }>(
+      handlerFor(paymentId),
+      { method: 'POST', headers: bearerHeader(org.admin.accessToken), body: { organization_id: org.organizationId } },
+    );
+    expect(status).toBe(200); // the Stripe refund happened — a 5xx would invite a double-refund
+    expect(body.refund_id).toBe('re_collide');
+    expect(body.ledger_recorded).toBe(false);
+
+    // The gap is flagged for reconciliation rather than silently swallowed.
+    const { data: events } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_ledger_write_failed');
+    expect((events ?? []).length).toBe(1);
+  });
+
   it('partial refund: reverses proportional cleaner amount, payment stays paid', async () => {
     const { paymentId } = await seedPaidPayment();
     const { status, body } = await callRoute<{ fully_refunded: boolean; amount_cents: number }>(

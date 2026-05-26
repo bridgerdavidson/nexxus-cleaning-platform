@@ -571,6 +571,84 @@ describe('POST /api/stripe/webhook', () => {
     expect((payment as { status: string }).status).toBe('refunded');
   });
 
+  it('payout.paid without resolvable transfer ids marks only the OLDEST payout, not all', async () => {
+    const admin = createTestSupabaseClient();
+    const apptOld = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const apptNew = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const { data: oldRow } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: apptOld.id,
+        amount: 60,
+        status: 'paid',
+        created_at: new Date(Date.now() - 3600_000).toISOString(),
+      })
+      .select('id')
+      .single();
+    const { data: newRow } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: apptNew.id,
+        amount: 70,
+        status: 'paid',
+        created_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    // getPayoutTransferIds is globally mocked to return [] → the handler hits the narrowed
+    // fallback, which must touch only one payout. event.account matches the cleaner's account.
+    const eventId = `evt_payout_paid_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'payout.paid',
+      account: 'acct_test_fake',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'po_test_1', object: 'payout', amount: 6000, arrival_date: Math.floor(Date.now() / 1000) } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const oldId = (oldRow as { id: string }).id;
+    const newId = (newRow as { id: string }).id;
+    const { data: oldAfter } = await admin.from('payouts').select('status, stripe_payout_id').eq('id', oldId).single();
+    const { data: newAfter } = await admin.from('payouts').select('status, stripe_payout_id').eq('id', newId).single();
+    // Oldest → bank_paid (stamped with this payout); the newer one is left untouched.
+    expect((oldAfter as { status: string }).status).toBe('bank_paid');
+    expect((oldAfter as { stripe_payout_id: string }).stripe_payout_id).toBe('po_test_1');
+    expect((newAfter as { status: string }).status).toBe('paid');
+    expect((newAfter as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   // ── Phase 5: SaaS subscription state mirroring (Scenario 3) ───────────────────
   it('customer.subscription.updated mirrors subscription state onto the org', async () => {
     const admin = createTestSupabaseClient();
