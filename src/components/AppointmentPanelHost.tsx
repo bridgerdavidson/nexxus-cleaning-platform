@@ -3,9 +3,12 @@
 import React, { useMemo, useState } from "react";
 import AppointmentSidePanel from "./AppointmentSidePanel";
 import CancelConfirmModal from "./CancelConfirmModal";
+import CancelWithFeeModal from "./CancelWithFeeModal";
 import AddAppointmentModal from "./AddAppointmentModal";
 import { AppointmentCardData } from "./AppointmentCard";
 import { formatTimeTo12h } from "../lib/formatTime";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
+import { useAuth } from "../hooks/useAuth";
 
 interface AppointmentPanelHostProps {
   appointments: AppointmentCardData[];
@@ -46,6 +49,9 @@ export default function AppointmentPanelHost({
   onAppointmentUpdated,
   onRescheduleRejected,
 }: AppointmentPanelHostProps) {
+  const { currentOrganizationId } = useAuth();
+  const newChargeFlow = stripeNewChargeFlowUiEnabled();
+
   const appointment = useMemo(() => {
     if (!appointmentId) return null;
     return appointments.find((a) => a.id === appointmentId) ?? null;
@@ -53,13 +59,20 @@ export default function AppointmentPanelHost({
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showFeeModal, setShowFeeModal] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [preFilledDate, setPreFilledDate] = useState<string | undefined>();
   const [preFilledTime, setPreFilledTime] = useState<string | undefined>();
 
   const handleCancelFromPanel = (id: string) => {
     setCancellingId(id);
-    setShowCancelModal(true);
+    // New charge flow: cancel-with-fee modal (releases hold / captures policy fee).
+    // Legacy: soft-cancel/delete confirmation.
+    if (newChargeFlow) {
+      setShowFeeModal(true);
+    } else {
+      setShowCancelModal(true);
+    }
     onClose();
   };
 
@@ -163,6 +176,24 @@ export default function AppointmentPanelHost({
         onDelete={handleDeleteConfirm}
         appointmentInfo={cancelModalInfo}
       />
+      {currentOrganizationId && cancellingAppointment && (
+        <CancelWithFeeModal
+          isOpen={showFeeModal}
+          appointmentId={cancellingAppointment.id}
+          organizationId={currentOrganizationId}
+          totalPrice={cancellingAppointment.total_price ?? 0}
+          scheduledDate={cancellingAppointment.scheduled_date ?? null}
+          scheduledTime={cancellingAppointment.scheduled_time ?? null}
+          homeownerName={cancelModalInfo?.homeowner}
+          onClose={() => {
+            setShowFeeModal(false);
+            setCancellingId(null);
+          }}
+          onDone={() => {
+            if (onRefreshAppointments) onRefreshAppointments();
+          }}
+        />
+      )}
       <AddAppointmentModal
         isOpen={showAddAppointmentModal}
         onClose={() => {
