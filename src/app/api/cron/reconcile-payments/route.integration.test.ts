@@ -196,6 +196,43 @@ describe('POST /api/cron/reconcile-payments', () => {
     expect((events ?? []).length).toBeGreaterThanOrEqual(1);
   });
 
+  it('stuck-payment: leaves a live authorization hold (requires_capture) untouched', async () => {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+      totalPrice: 100,
+    });
+    const piId = `pi_hold_${appt.id}`;
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: piId,
+      payment_intent_status: 'requires_capture', // a valid hold, not drift
+      created_at: HOUR_AGO(),
+    });
+
+    const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+    // The hold is filtered out of the sweep — OUR PI is never retrieved, and the row is left
+    // pending. (Asserted per-PI, not globally: other tests leave stale pending rows in the
+    // shared DB that the sweep legitimately checks.)
+    const retrievedIds = vi.mocked(retrievePaymentIntent).mock.calls.map((c) => c[0]);
+    expect(retrievedIds).not.toContain(piId);
+    const { data: pay } = await db
+      .from('payments')
+      .select('status')
+      .eq('stripe_payment_intent_id', piId)
+      .single();
+    expect((pay as { status: string }).status).toBe('pending');
+  });
+
   it('failed-payout: re-runs cleaner settlement for a payout left failed', async () => {
     await makeTenantReady();
     const db = createTestSupabaseClient();

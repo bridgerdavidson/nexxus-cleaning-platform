@@ -93,6 +93,11 @@ export async function reconcileStuckPayments(
     .select('id, appointment_id, organization_id, status, stripe_payment_intent_id, payment_intent_status')
     .eq('status', 'pending')
     .not('stripe_payment_intent_id', 'is', null)
+    // Exclude live authorization holds (requires_capture): they legitimately stay pending for
+    // days and are owned by the JIT authorizer / auth-expiry watchdog, not this sweep. Without
+    // this filter the batch fills with normal holds, wasting Stripe calls and starving real
+    // drift. Keep null (PI status never recorded) and any non-hold status.
+    .or('payment_intent_status.is.null,payment_intent_status.neq.requires_capture')
     .lte('created_at', cutoff)
     .limit(batch);
 

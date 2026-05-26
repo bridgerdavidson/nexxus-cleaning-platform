@@ -41,7 +41,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   },
 ];
 
-export function getSectionsForRole(role?: string): SettingsSection[] {
-  if (!role) return SETTINGS_SECTIONS.filter((s) => !s.roles);
-  return SETTINGS_SECTIONS.filter((s) => !s.roles || s.roles.includes(role));
+/**
+ * Sections visible to a user. Pass BOTH the UserRole (drives dashboards) and the OrgRole
+ * (drives in-org permissions): a section is shown if either matches. This is why the Payments
+ * section (`roles: ['admin','owner']`) reaches an org owner whose UserRole isn't `admin` —
+ * `owner` only exists as an OrgRole. Matching is additive, so passing the org role can only
+ * reveal sections, never hide them.
+ */
+export function getSectionsForRole(role?: string, orgRole?: string): SettingsSection[] {
+  const roles = [role, orgRole].filter((r): r is string => !!r);
+  if (roles.length === 0) return SETTINGS_SECTIONS.filter((s) => !s.roles);
+  return SETTINGS_SECTIONS.filter((s) => !s.roles || s.roles.some((r) => roles.includes(r)));
 }

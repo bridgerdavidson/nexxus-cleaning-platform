@@ -39,10 +39,13 @@ export interface TenantConnectState {
  * `ConnectAccountOnboarding` component consumes the instance.
  */
 export function useTenantConnect(): TenantConnectState {
-  const { user, currentOrganizationId } = useAuth();
+  const { currentOrganizationId, currentOrgRole } = useAuth();
+  // Gate by OrgRole (owner|admin) to match the backend (requireOrgAuth allows owner+admin).
+  // `user.role` is the UserRole and has no `owner`, so an owner whose UserRole isn't `admin`
+  // would otherwise be locked out of onboarding their own org.
   const enabled =
     !!currentOrganizationId &&
-    user?.role === 'admin' &&
+    (currentOrgRole === 'owner' || currentOrgRole === 'admin') &&
     tenantConnectUiEnabled() &&
     !!PUBLISHABLE_KEY;
 

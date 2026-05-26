@@ -8,12 +8,14 @@ import SettingsPayoutsSection from './SettingsPayoutsSection';
 import SettingsBillingSection from './SettingsBillingSection';
 
 export default function SettingsHub() {
-  const { user } = useAuth();
+  const { user, currentOrgRole } = useAuth();
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('profile');
 
   if (!user) return null;
 
-  const sections = getSectionsForRole(user.role);
+  // Pass the OrgRole too so org-scoped sections (e.g. Payments for owner/admin) resolve by
+  // in-org permission, not just the dashboard-level UserRole.
+  const sections = getSectionsForRole(user.role, currentOrgRole ?? undefined);
 
   // Fallback if active section isn't available for role
   const currentSection = sections.find(s => s.id === activeSection) || sections[0];
