@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import StripeConnectionCard from './StripeConnectionCard';
+import CleanerStripeConnect from './CleanerStripeConnect';
 import { useAuth } from '../hooks/useAuth';
 
 function stripeUiEnabled(): boolean {
@@ -20,11 +20,11 @@ export default function SettingsPayoutsSection() {
       <div className="mb-6">
         <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mb-2">Payouts</h1>
         <p className="text-[15px] text-gray-500">
-          Manage your Stripe Connect account for payouts.
+          Connect and manage your Stripe account for payouts — right here in the app.
         </p>
       </div>
 
-      <StripeConnectionCard />
+      <CleanerStripeConnect />
     </div>
   );
 }

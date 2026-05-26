@@ -25,10 +25,15 @@ export interface StripeConnectStatus {
   payouts_enabled: boolean;
 }
 
+/**
+ * Cleaner Stripe Connect STATUS hook. Reports the cleaner's onboarding/payout state and
+ * exposes the Express-dashboard login link as a fallback. Onboarding itself is now
+ * EMBEDDED (see `useCleanerConnect` + `CleanerStripeConnect`) — this hook no longer drives
+ * an Account-Link redirect.
+ */
 export function useStripeConnect() {
   const { user } = useAuth();
 
-  const [connectLoading, setConnectLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [connectStatus, setConnectStatus] = useState<StripeConnectStatus | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -98,50 +103,6 @@ export function useStripeConnect() {
     },
   });
 
-  const handleConnectWithStripe = useCallback(async () => {
-    if (!user?.id) return;
-    setConnectLoading(true);
-    setConnectError(null);
-
-    try {
-      const token = await getAccessToken();
-      const authHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
-
-      const createRes = await fetch('/api/stripe/connect/create-account', {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ cleaner_id: user.id }),
-      });
-      const createData = await createRes.json();
-      if (!createRes.ok || !createData.success) {
-        throw new Error(createData.error || 'Failed to create Stripe account');
-      }
-
-      const linkRes = await fetch('/api/stripe/connect/onboarding-link', {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ cleaner_id: user.id }),
-      });
-      const linkData = await linkRes.json();
-      if (!linkRes.ok || !linkData.success) {
-        throw new Error(linkData.error || 'Failed to get onboarding link');
-      }
-
-      if (!openStripeUrl(linkData.url)) {
-        throw new Error(
-          'Could not open Stripe in a new tab. Allow pop-ups for this site and try again.'
-        );
-      }
-      setConnectLoading(false);
-    } catch (err) {
-      setConnectError(err instanceof Error ? err.message : 'Something went wrong');
-      setConnectLoading(false);
-    }
-  }, [user?.id]);
-
   const handleOpenStripeDashboard = useCallback(async () => {
     if (!user?.id) return;
     setDashboardLoading(true);
@@ -178,10 +139,8 @@ export function useStripeConnect() {
     enabled,
     connectStatus,
     statusLoading,
-    connectLoading,
     dashboardLoading,
     connectError,
-    handleConnectWithStripe,
     handleOpenStripeDashboard,
     refetchStatus: fetchConnectStatus,
   };
