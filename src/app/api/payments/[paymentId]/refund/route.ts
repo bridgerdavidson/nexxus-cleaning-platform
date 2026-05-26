@@ -64,11 +64,15 @@ export async function POST(
 
     const grossCents = Math.round(Number(payment.amount) * 100);
 
-    // Sum prior refunds (cents) to cap the refundable amount.
+    // Sum prior refunds (cents) to cap the refundable amount. Only count refunds that
+    // returned money or are in-flight ('pending' → confirmed by the charge.refunded webhook,
+    // 'succeeded'). A 'failed'/'canceled' refund returned nothing, so it must not reduce or
+    // block a future valid refund.
     const { data: priorRefunds } = await supabaseAdmin
       .from('refunds')
       .select('amount')
-      .eq('payment_id', payment.id);
+      .eq('payment_id', payment.id)
+      .in('status', ['pending', 'succeeded']);
     const alreadyRefunded = (priorRefunds ?? []).reduce(
       (sum, r) => sum + Number((r as { amount: number }).amount),
       0,

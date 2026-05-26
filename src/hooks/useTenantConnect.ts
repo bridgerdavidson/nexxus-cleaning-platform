@@ -49,7 +49,10 @@ export function useTenantConnect(): TenantConnectState {
   const [connectInstance, setConnectInstance] = useState<StripeConnectInstance | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const initedRef = useRef(false);
+  // Track WHICH org we last initialized for, not just "did we init", so an org switch
+  // (multi-org users, org-switch flows, context refresh) re-creates the Connect instance
+  // instead of keeping a stale one bound to the previous tenant account.
+  const initedForOrgRef = useRef<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     if (!currentOrganizationId) return;
@@ -67,9 +70,13 @@ export function useTenantConnect(): TenantConnectState {
   }, [currentOrganizationId]);
 
   useEffect(() => {
-    if (!enabled || initedRef.current) return;
-    initedRef.current = true;
+    if (!enabled) return;
+    // Re-initialize only when the org actually changes (or on first init for it).
+    if (initedForOrgRef.current === currentOrganizationId) return;
+    initedForOrgRef.current = currentOrganizationId ?? null;
     setLoading(true);
+    setInitError(null);
+    setConnectInstance(null); // drop any stale instance bound to the previous org
 
     const fetchClientSecret = async (): Promise<string> => {
       const token = await getAccessToken();

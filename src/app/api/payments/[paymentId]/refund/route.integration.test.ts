@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
+// Unique refund id per call — refunds.stripe_refund_id is UNIQUE and the refunds table
+// isn't cleaned by org.cleanup() (its FKs are NO ACTION), so a constant id would collide
+// with a leftover row from a prior test/run and the route's insert would silently no-op.
 vi.mock('@/lib/stripe/charges/refund', () => ({
-  createRefund: vi.fn(async () => ({ id: 're_test_123' })),
+  createRefund: vi.fn(async () => ({ id: `re_test_${crypto.randomUUID()}` })),
   reverseCleanerTransfer: vi.fn(async () => ({ id: 'trr_test_123' })),
 }));
 
@@ -128,6 +131,34 @@ describe('POST /api/payments/:paymentId/refund', () => {
     const { data: refunds } = await db.from('refunds').select('amount, status').eq('payment_id', paymentId);
     expect(refunds).toHaveLength(1);
     expect(Number((refunds![0] as { amount: number }).amount)).toBe(10000);
+  });
+
+  it('ignores a prior failed/canceled refund when computing the refundable amount', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+    const db = createTestSupabaseClient();
+    // A prior attempt that returned NO money — must not count against the refundable amount.
+    await db.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      appointment_id: appt.id,
+      stripe_refund_id: `re_failed_${appt.id}`,
+      amount: 10000,
+      initiator_user_id: org.admin.userId,
+      status: 'failed',
+    });
+
+    const { status, body } = await callRoute<{ fully_refunded: boolean; amount_cents: number }>(
+      handlerFor(paymentId),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      },
+    );
+    // Before the fix this returned 400 (the failed $100 row zeroed the refundable amount).
+    expect(status).toBe(200);
+    expect(body.fully_refunded).toBe(true);
+    expect(body.amount_cents).toBe(10000);
   });
 
   it('partial refund: reverses proportional cleaner amount, payment stays paid', async () => {
