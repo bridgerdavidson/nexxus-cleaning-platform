@@ -51,10 +51,16 @@ export async function claimWebhookEvent(
 }
 
 export async function markWebhookProcessed(supabase: SupabaseClient, id: string): Promise<void> {
-  await supabase
+  // Throw on failure: if this write is silently dropped, the route would return 200 while the
+  // row stays non-'processed', so the dead-letter sweep re-dispatches the event and duplicates
+  // side effects. Throwing makes the route return 5xx → Stripe retries → re-claim → re-mark.
+  const { error } = await supabase
     .from('webhook_events')
     .update({ status: 'processed', processed_at: new Date().toISOString(), error: null })
     .eq('id', id);
+  if (error) {
+    throw new Error(`markWebhookProcessed: failed to mark ${id} processed (${error.code ?? 'unknown'}): ${error.message}`);
+  }
 }
 
 export async function markWebhookFailed(
@@ -62,8 +68,11 @@ export async function markWebhookFailed(
   id: string,
   error: string,
 ): Promise<void> {
-  await supabase
+  // Best-effort (already on the failure path). If even this write fails the row stays in its
+  // prior non-'processed' state, so the reconciliation sweep remains the backstop — just log.
+  const { error: updateError } = await supabase
     .from('webhook_events')
     .update({ status: 'failed', error: error.slice(0, 2000) })
     .eq('id', id);
+  if (updateError) console.error('markWebhookFailed: failed to record failure for', id, updateError.message);
 }

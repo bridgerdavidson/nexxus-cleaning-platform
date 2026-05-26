@@ -27,7 +27,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: 'billing',
     label: 'Payments',
     icon: CreditCard,
-    roles: ['admin'],
+    roles: ['admin', 'owner'],
   },
   {
     id: 'security',

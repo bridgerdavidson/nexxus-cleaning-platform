@@ -1,22 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { claimWebhookEvent } from './webhookIdempotency';
+import { claimWebhookEvent, markWebhookProcessed } from './webhookIdempotency';
 
 /**
- * Lightweight inline fake: webhook_events.insert resolves { error }, and the follow-up
- * select(...).eq(...).maybeSingle() resolves { data } with the existing row's status.
+ * Lightweight inline fake covering the three call shapes these helpers use:
+ *   - insert(...)                          → { error }
+ *   - select(...).eq(...).maybeSingle()    → { data }
+ *   - update(...).eq(...)                  → { error }
  */
 function makeSupabase(opts: {
   insertError?: { code?: string; message: string } | null;
   existingStatus?: string | null;
+  updateError?: { code?: string; message: string } | null;
 }): SupabaseClient {
   const maybeSingle = vi.fn(async () => ({
     data: opts.existingStatus ? { status: opts.existingStatus } : null,
   }));
-  const eq = vi.fn(() => ({ maybeSingle }));
-  const select = vi.fn(() => ({ eq }));
+  const select = vi.fn(() => ({ eq: vi.fn(() => ({ maybeSingle })) }));
   const insert = vi.fn(async () => ({ error: opts.insertError ?? null }));
-  const from = vi.fn(() => ({ insert, select }));
+  const update = vi.fn(() => ({ eq: vi.fn(async () => ({ error: opts.updateError ?? null })) }));
+  const from = vi.fn(() => ({ insert, select, update }));
   return { from } as unknown as SupabaseClient;
 }
 
@@ -49,5 +52,17 @@ describe('claimWebhookEvent', () => {
   it('throws on an error with no code (treated as non-conflict)', async () => {
     const supabase = makeSupabase({ insertError: { message: 'mystery' } });
     await expect(claimWebhookEvent(supabase, ev)).rejects.toThrow();
+  });
+});
+
+describe('markWebhookProcessed', () => {
+  it('resolves when the processed-state write succeeds', async () => {
+    const supabase = makeSupabase({ updateError: null });
+    await expect(markWebhookProcessed(supabase, 'evt_1')).resolves.toBeUndefined();
+  });
+
+  it('throws when the processed-state write fails (so the route returns 5xx, not a false 200)', async () => {
+    const supabase = makeSupabase({ updateError: { code: '08006', message: 'connection failure' } });
+    await expect(markWebhookProcessed(supabase, 'evt_1')).rejects.toThrow(/failed to mark/i);
   });
 });
