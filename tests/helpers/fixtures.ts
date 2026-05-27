@@ -18,7 +18,7 @@ export interface TestOrgFixture {
 
 const PASSWORD = 'TestPass123!';
 
-async function createAuthUser(
+export async function createAuthUser(
   email: string,
   role: 'admin' | 'cleaner' | 'homeowner' | 'manager',
   firstName: string,

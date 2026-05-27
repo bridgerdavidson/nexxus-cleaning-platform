@@ -66,6 +66,7 @@ import RescheduleAppointmentModal from "../../components/RescheduleAppointmentMo
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
 import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
+import OwnerSetupChecklist from "../../components/admin-dashboard/OwnerSetupChecklist";
 import { useAdminActionItems } from "../../hooks/useAdminActionItems";
 import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
 import TodayScheduleSection from "../../components/TodayScheduleSection";
@@ -519,6 +520,7 @@ function AdminDashboardInner() {
       </div>
 
       <div className="space-y-6">
+        <OwnerSetupChecklist onNavigate={setActiveTab} />
         {/* Unified action queue: everything that needs the admin's response
             lives here — unassigned requests, escalations, counter-proposals,
             declines, and SLA timeouts. One source of truth across the

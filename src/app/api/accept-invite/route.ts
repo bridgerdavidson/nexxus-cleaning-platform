@@ -109,13 +109,20 @@ export async function POST(request: NextRequest) {
 
     const { role, organization_id: organizationId } = invite;
 
+    // OrgRole 'owner' has no UserRole equivalent (UserRole is
+    // homeowner|cleaner|manager|admin) — a cleaning-company owner uses the admin
+    // dashboard. Keep the raw `role` for organization_members (in-org permissions);
+    // use the mapped UserRole for auth.app_metadata + user_profiles, which drive
+    // dashboard routing and the app_metadata.role-based RLS policies.
+    const userProfileRole = role === 'owner' ? 'admin' : role;
+
     // Set password, role, and display name in auth.users. app_metadata.role
     // mirrors user_profiles.role so the AuthContext fallback path (used when
     // the user_profiles SELECT errors/times out/aborts) returns the correct
     // role instead of defaulting to 'homeowner'.
     const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
       password,
-      app_metadata: { role },
+      app_metadata: { role: userProfileRole },
       user_metadata: {
         first_name: firstName,
         last_name: lastName,
@@ -139,7 +146,7 @@ export async function POST(request: NextRequest) {
         first_name: firstName,
         last_name: lastName,
         phone: phone || null,
-        role,
+        role: userProfileRole,
       }, { onConflict: 'id' });
 
     if (profileError) {
@@ -227,7 +234,7 @@ export async function POST(request: NextRequest) {
       // Non-fatal — profile is already created; log and continue
     }
 
-    return NextResponse.json({ success: true, role }, { status: 200 });
+    return NextResponse.json({ success: true, role: userProfileRole }, { status: 200 });
 
   } catch (error) {
     return NextResponse.json(
