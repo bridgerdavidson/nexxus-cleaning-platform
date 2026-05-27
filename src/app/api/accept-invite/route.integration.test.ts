@@ -13,17 +13,27 @@ async function seedInvite(role: 'owner' | 'cleaner') {
   const db = createTestSupabaseClient();
   const uniq = randomUUID().slice(0, 8);
 
-  const { data: org } = await db
+  const { data: org, error: orgErr } = await db
     .from('organizations')
     .insert({ name: `Accept Org ${uniq}` })
     .select('id')
     .single();
+  if (orgErr || !org) throw new Error(`seed org failed: ${orgErr?.message ?? 'no data'}`);
   const organizationId = (org as { id: string }).id;
 
   const email = `invitee-${uniq}@test.local`;
   const invitee = await createAuthUser(email, 'homeowner', 'Invitee');
 
-  const { data: invite } = await db
+  // invites.invited_by is a FK to user_profiles(id) (NOT auth.users), and local
+  // Supabase has no auth->profile trigger — insert the invitee's profile so the
+  // self-referenced invited_by resolves. accept-invite later upserts it.
+  const { error: profileErr } = await db.from('user_profiles').upsert(
+    { id: invitee.id, email, first_name: 'Invitee', last_name: 'Test', role: 'homeowner' },
+    { onConflict: 'id' },
+  );
+  if (profileErr) throw new Error(`seed profile failed: ${profileErr.message}`);
+
+  const { data: invite, error: inviteErr } = await db
     .from('invites')
     .insert({
       organization_id: organizationId,
@@ -31,10 +41,11 @@ async function seedInvite(role: 'owner' | 'cleaner') {
       role,
       status: 'pending',
       accepted_at: null,
-      invited_by: invitee.id, // invited_by is NOT NULL; any real auth user satisfies the FK
+      invited_by: invitee.id, // FK -> user_profiles(id), satisfied by the upsert above
     })
     .select('id')
     .single();
+  if (inviteErr || !invite) throw new Error(`seed invite failed: ${inviteErr?.message ?? 'no data'}`);
 
   return {
     organizationId,
