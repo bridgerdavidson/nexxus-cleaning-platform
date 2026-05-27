@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CreditCard,
   Loader,
+  Plus,
   RefreshCw,
   Users,
 } from 'lucide-react';
@@ -13,6 +14,7 @@ import { usePlatformOrganizations } from '@/hooks/usePlatformOrganizations';
 import type { PlatformOrgSummary } from '@/types/platform';
 import { PaymentsBadge, SubscriptionBadge } from './statusBadges';
 import { PlatformOrgDetail } from './PlatformOrgDetail';
+import ProvisionTenantModal from './ProvisionTenantModal';
 
 function formatDate(iso: string): string {
   try {
@@ -50,6 +52,7 @@ export function PlatformOverviewPage() {
   const { data: organizations, isLoading, isError, error, refetch, isFetching } =
     usePlatformOrganizations();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [showProvision, setShowProvision] = useState(false);
 
   const stats = useMemo(() => {
     const orgs = organizations ?? [];
@@ -76,19 +79,31 @@ export function PlatformOverviewPage() {
             Every cleaning company on Nexxus, and how they’re doing.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex items-center gap-2 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm font-medium text-secondary-700 transition-colors duration-200 hover:bg-secondary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`}
-            aria-hidden="true"
-          />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center gap-2 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm font-medium text-secondary-700 transition-colors duration-200 hover:bg-secondary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`}
+              aria-hidden="true"
+            />
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowProvision(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white transition-colors duration-200 hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Provision tenant
+          </button>
+        </div>
       </header>
+
+      {showProvision && <ProvisionTenantModal onClose={() => setShowProvision(false)} />}
 
       {/* KPI summary */}
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

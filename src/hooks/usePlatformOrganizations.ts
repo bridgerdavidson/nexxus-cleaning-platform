@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { keys } from '../lib/queryKeys';
 import type { PlatformOrgDetail, PlatformOrgSummary } from '../types/platform';
@@ -43,5 +43,35 @@ export function usePlatformOrganization(id: string | null) {
       return organization;
     },
     enabled: !!accessToken && isPlatformAdmin === true && !!id,
+  });
+}
+
+export interface ProvisionTenantInput {
+  name: string;
+  owner_email: string;
+  billing_email?: string;
+}
+
+/** Provision a new tenant org + owner invite; invalidates the org list on success. */
+export function useProvisionTenant() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ProvisionTenantInput) => {
+      const res = await fetch('/api/platform/organizations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(input),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.platform.organizations.all });
+    },
   });
 }
