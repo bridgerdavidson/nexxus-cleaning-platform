@@ -47,6 +47,24 @@ export async function listSavedCards(customerId: string): Promise<SavedCard[]> {
 }
 
 /**
+ * Whether a PaymentMethod is attached to a given Customer. Used to gate setting a card on an
+ * appointment — staff/homeowner can only select a card that already belongs to the appointment's
+ * homeowner Customer (never an arbitrary id). Returns false if the PM doesn't exist or isn't theirs.
+ */
+export async function paymentMethodBelongsToCustomer(
+  customerId: string,
+  paymentMethodId: string,
+): Promise<boolean> {
+  const stripe = getStripe();
+  try {
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    return pm.customer === customerId;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Detach a saved card from a homeowner's Customer. Verifies the payment method actually
  * belongs to the given customer first (so a caller can never detach someone else's card by
  * id-guessing). Returns false if the PM isn't on this customer.

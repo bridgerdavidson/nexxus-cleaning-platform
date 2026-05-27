@@ -44,6 +44,11 @@ export interface CardPickerHandle {
 interface Props {
   homeownerId: string;
   accessToken: string | null | undefined;
+  /** When set, fetch the homeowner's saved cards as ORG STAFF acting on this homeowner
+   *  (admin-scoped endpoint). When omitted, the authenticated caller manages their OWN cards. */
+  organizationId?: string;
+  /** Saved card id to pre-select (e.g. the card already chosen for an appointment). */
+  initialSelectedId?: string | null;
   /** Reports whether a saved card is selected (drives the Submit button's disabled state). */
   onReadyChange?: (ready: boolean) => void;
 }
@@ -57,7 +62,7 @@ interface Props {
  * new-charge-flow UI flag or publishable key is absent.
  */
 const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function HomeownerCardPicker(
-  { homeownerId, accessToken, onReadyChange },
+  { homeownerId, accessToken, organizationId, initialSelectedId, onReadyChange },
   ref,
 ) {
   const [cards, setCards] = useState<SavedCard[]>([]);
@@ -73,14 +78,18 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     setLoadingCards(true);
     try {
       const token = accessToken ?? (await getAccessToken());
-      const res = await fetch("/api/stripe/my-payment-methods", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      // Staff acting on a homeowner use the admin-scoped endpoint (homeowner_id + org);
+      // a homeowner managing their own cards uses the self-scoped endpoint.
+      const url = organizationId
+        ? `/api/stripe/saved-payment-methods?homeowner_id=${homeownerId}&organization_id=${organizationId}`
+        : "/api/stripe/my-payment-methods";
+      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       const data = await res.json().catch(() => ({}));
       const list = res.ok ? ((data.cards ?? []) as SavedCard[]) : [];
       setCards(list);
       setSelected((prev) => {
         if (prev) return prev;
+        if (initialSelectedId && list.some((c) => c.id === initialSelectedId)) return initialSelectedId;
         const def = list.find((c) => c.isDefault) ?? list[0];
         return def ? def.id : NEW_CARD;
       });
@@ -92,7 +101,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     } finally {
       setLoadingCards(false);
     }
-  }, [accessToken]);
+  }, [accessToken, organizationId, homeownerId, initialSelectedId]);
 
   useEffect(() => {
     void loadCards();
