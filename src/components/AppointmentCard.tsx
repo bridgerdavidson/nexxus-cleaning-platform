@@ -303,20 +303,10 @@ export default function AppointmentCard({
           : "border-gray-200 hover:border-primary-300"
       }`}
     >
-      {/* Payment Status Tab - Hide for cleaner role */}
-      {role !== "cleaner" && (
-        <div
-          className={`absolute right-0 top-0 bottom-0 ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor} flex items-center justify-center px-3 w-20 border-l border-gray-200`}
-        >
-          <span className="font-semibold text-xs whitespace-nowrap">
-            {paymentStatusConfig.label}
-          </span>
-        </div>
-      )}
-      {/* Recurring Icon - Positioned to the left of payment status tab */}
+      {/* Recurring Icon */}
       {appointment.series_id && (
         <div
-          className={`absolute top-1/2 -translate-y-1/2 ${role === "cleaner" ? "right-0" : "right-[88px]"} z-10`}
+          className={`absolute top-1/2 -translate-y-1/2 ${role === "cleaner" ? "right-0" : "right-3"} z-10`}
           title="Recurring appointment"
         >
           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-medium text-primary-700 bg-primary-100 rounded-full">
@@ -324,7 +314,7 @@ export default function AppointmentCard({
           </span>
         </div>
       )}
-      <div className={`flex items-center gap-3 p-3 sm:p-4 lg:p-3 ${role === "cleaner" ? "" : "pr-24"}`}>
+      <div className={`flex items-center gap-3 p-3 sm:p-4 lg:p-3 ${role === "cleaner" ? "" : "pr-10"}`}>
         {/* Checkbox (when in select mode) - Always on left */}
         {isSelectMode && (
           <div className="flex-shrink-0">
@@ -409,6 +399,13 @@ export default function AppointmentCard({
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
               </div>
+            )}
+            {role !== "cleaner" && (
+              <span
+                className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor}`}
+              >
+                {paymentStatusConfig.label}
+              </span>
             )}
           </div>
           {showStartJobButton && (
