@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Calendar, Home, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -9,8 +9,10 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { formatDateTimeTo12h } from "../lib/formatTime";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
-import HomeownerCardField from "./HomeownerCardField";
-import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import HomeownerCardPicker, {
+  homeownerCardPickerAvailable,
+  type CardPickerHandle,
+} from "./HomeownerCardPicker";
 
 interface Property {
   id: string;
@@ -65,11 +67,12 @@ export default function RequestAppointmentModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Optional save-a-card-now step (new charge flow). The hold isn't placed until a cleaner
-  // accepts — saving here just attaches the card so accept-time authorization can run.
-  const newChargeFlow = stripeNewChargeFlowUiEnabled();
-  const [addCardNow, setAddCardNow] = useState(false);
-  const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
+  // Card selection (new charge flow). The hold isn't placed until a cleaner accepts — picking a
+  // card here just attaches it so accept-time authorization can run. Required when the picker is
+  // available; a saved card resolves with no extra step, a new card is confirmed at submit.
+  const paymentRequired = homeownerCardPickerAvailable() && !!homeownerId;
+  const cardPickerRef = useRef<CardPickerHandle>(null);
+  const [cardReady, setCardReady] = useState(false);
 
   // Default property to most-recently-booked
   const fetchProperties = useCallback(async () => {
@@ -139,8 +142,7 @@ export default function RequestAppointmentModal({
       setSpecialRequests("");
       setError(null);
       setSubmitting(false);
-      setAddCardNow(false);
-      setPaymentMethodId(null);
+      setCardReady(false);
     }
   }, [isOpen]);
 
@@ -154,13 +156,27 @@ export default function RequestAppointmentModal({
     !!selectedPropertyId &&
     !!selectedServiceId &&
     slots.length >= 1 &&
-    slots.every((s) => !!s.date && !!s.time);
+    slots.every((s) => !!s.date && !!s.time) &&
+    (!paymentRequired || cardReady);
 
   const handleSubmit = async () => {
     if (!isValid || !accessToken) return;
     setSubmitting(true);
     setError(null);
     try {
+      // Resolve the chosen card first: a saved card returns its id immediately; a new card is
+      // confirmed (and saved off_session) here, so there's no separate "save card" step.
+      let paymentMethodId: string | null = null;
+      if (paymentRequired) {
+        const result = await cardPickerRef.current?.resolve();
+        if (!result || "error" in result) {
+          setError(result?.error ?? "Please choose a payment method.");
+          setSubmitting(false);
+          return;
+        }
+        paymentMethodId = result.paymentMethodId;
+      }
+
       const response = await fetch("/api/appointments/request", {
         method: "POST",
         headers: {
@@ -305,40 +321,17 @@ export default function RequestAppointmentModal({
               />
             </div>
 
-            {newChargeFlow && homeownerId && (
+            {paymentRequired && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment method <span className="font-normal text-gray-400">(optional)</span>
+                  Payment method
                 </label>
-                {paymentMethodId ? (
-                  <HomeownerCardField
-                    homeownerId={homeownerId}
-                    accessToken={accessToken}
-                    savedPaymentMethodId={paymentMethodId}
-                    onSaved={setPaymentMethodId}
-                  />
-                ) : addCardNow ? (
-                  <HomeownerCardField
-                    homeownerId={homeownerId}
-                    accessToken={accessToken}
-                    savedPaymentMethodId={null}
-                    onSaved={setPaymentMethodId}
-                  />
-                ) : (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <p className="text-sm text-gray-600">
-                      Add a card now to speed things up. You won&apos;t be charged until your
-                      cleaning is completed — and you can always add one later.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setAddCardNow(true)}
-                      className="mt-2 text-sm font-semibold text-primary-700 hover:underline"
-                    >
-                      + Add a card
-                    </button>
-                  </div>
-                )}
+                <HomeownerCardPicker
+                  ref={cardPickerRef}
+                  homeownerId={homeownerId}
+                  accessToken={accessToken}
+                  onReadyChange={setCardReady}
+                />
               </div>
             )}
           </div>
