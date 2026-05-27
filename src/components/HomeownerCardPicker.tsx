@@ -220,7 +220,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
           </span>,
         )}
         {selected === NEW_CARD && (
-          <div className="ml-7 rounded-lg border border-gray-200 p-3">
+          <div className="mt-2">
             {siLoading ? (
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading secure card form…
