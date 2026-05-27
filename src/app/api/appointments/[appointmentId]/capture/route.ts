@@ -68,11 +68,20 @@ export async function POST(
     try {
       pi = await capturePaymentIntent(pay.stripe_payment_intent_id);
     } catch (err) {
+      // Reflect the failed capture so the admin pill reads "Failed" (not a stale "Unpaid") and
+      // the appointment surfaces in "Payments needing attention" for re-authorization.
+      await supabaseAdmin.from('payments').update({ status: 'failed' }).eq('id', pay.id);
+      await supabaseAdmin
+        .from('appointments')
+        .update({ authorization_status: 'failed' })
+        .eq('id', appointmentId);
       await recordPaymentEvent(supabaseAdmin, {
         paymentId: pay.id,
         appointmentId,
         organizationId: organization_id,
         eventType: 'capture_failed',
+        prevStatus: pay.status,
+        newStatus: 'failed',
         actor: `user:${auth.userId}`,
         payload: { error: err instanceof Error ? err.message : String(err) },
       });

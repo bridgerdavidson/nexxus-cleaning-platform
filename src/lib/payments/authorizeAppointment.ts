@@ -120,7 +120,43 @@ export async function authorizeAppointment(
     });
   } catch (err) {
     await supabase.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    // Reflect the decline in the payments ledger so the admin payment pill reads "Failed" — the
+    // pill is derived from payments.status, so without a row it would stay a misleading "Unpaid".
+    // Capture the failed PaymentIntent id from the Stripe error when present (the PI is created
+    // before the off_session confirm declines) so payment_intent.payment_failed reconciles the
+    // same row. A later successful re-auth upserts this row back to 'pending'.
+    const failedPi = (err as { payment_intent?: { id?: string; status?: string } }).payment_intent ?? null;
+    const failedRow: Record<string, unknown> = {
+      organization_id: appt.organization_id,
+      appointment_id: appt.id,
+      amount: grossCents / 100,
+      status: 'failed',
+      payment_type: 'revenue',
+      payment_method: 'card',
+    };
+    if (failedPi?.id) {
+      failedRow.stripe_payment_intent_id = failedPi.id;
+      failedRow.payment_intent_status = failedPi.status ?? 'requires_payment_method';
+    }
+    const { data: existingFailRows } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .eq('payment_type', 'revenue')
+      .limit(1);
+    const existingFail =
+      existingFailRows && existingFailRows.length > 0 ? (existingFailRows[0] as { id: string }) : null;
+    let failedPaymentId: string | null = existingFail?.id ?? null;
+    if (existingFail) {
+      await supabase.from('payments').update(failedRow).eq('id', existingFail.id);
+    } else {
+      const { data: insertedFail } = await supabase.from('payments').insert(failedRow).select('id').single();
+      failedPaymentId = (insertedFail as { id: string } | null)?.id ?? null;
+    }
+
     await recordPaymentEvent(supabase, {
+      paymentId: failedPaymentId,
       appointmentId: appt.id,
       organizationId: appt.organization_id,
       eventType: 'authorize_failed',
@@ -128,7 +164,10 @@ export async function authorizeAppointment(
       newStatus: 'failed',
       actor,
       amount: grossCents,
-      payload: { error: err instanceof Error ? err.message : String(err) },
+      payload: {
+        error: err instanceof Error ? err.message : String(err),
+        payment_intent_id: failedPi?.id ?? null,
+      },
     });
     return { ok: false, code: 'declined', message: err instanceof Error ? err.message : 'Authorization declined' };
   }

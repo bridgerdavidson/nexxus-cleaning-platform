@@ -9,6 +9,7 @@ vi.mock('@/lib/stripe/charges/authorize', () => ({
 }));
 
 import { POST } from './route';
+import { createDestinationAuthorization } from '@/lib/stripe/charges/authorize';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -170,5 +171,52 @@ describe('POST /api/appointments/:appointmentId/authorize', () => {
       .select('event_type')
       .eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'authorized')).toBe(true);
+  });
+
+  it('on a declined card: 402, authorization_status=failed, and a FAILED payment row', async () => {
+    await makeTenantReady();
+    const appt = await makeAppt({ withCard: true });
+
+    // Simulate Stripe declining the off_session confirm (the SDK throws, with the failed PI
+    // attached to the error).
+    const declineErr = Object.assign(new Error('Your card was declined.'), {
+      payment_intent: { id: 'pi_test_declined', status: 'requires_payment_method' },
+    });
+    vi.mocked(createDestinationAuthorization).mockRejectedValueOnce(declineErr);
+
+    const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    expect(status).toBe(402);
+    expect(body.success).toBe(false);
+    expect(body.code).toBe('declined');
+
+    const db = createTestSupabaseClient();
+    const { data: apptRow } = await db
+      .from('appointments')
+      .select('authorization_status')
+      .eq('id', appt.id)
+      .single();
+    expect((apptRow as { authorization_status: string }).authorization_status).toBe('failed');
+
+    // The pill is derived from payments.status — a declined auth must leave a 'failed' row so the
+    // admin sees "Failed", not a stale "Unpaid".
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status, stripe_payment_intent_id')
+      .eq('appointment_id', appt.id);
+    expect(payRows).toHaveLength(1);
+    const pay = payRows![0] as { status: string; stripe_payment_intent_id: string | null };
+    expect(pay.status).toBe('failed');
+    expect(pay.stripe_payment_intent_id).toBe('pi_test_declined');
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'authorize_failed')).toBe(true);
   });
 });

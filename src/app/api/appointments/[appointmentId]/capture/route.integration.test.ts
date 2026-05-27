@@ -6,6 +6,7 @@ vi.mock('@/lib/stripe/charges/capture', () => ({
 }));
 
 import { POST } from './route';
+import { capturePaymentIntent } from '@/lib/stripe/charges/capture';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -131,5 +132,31 @@ describe('POST /api/appointments/:appointmentId/capture', () => {
       .eq('id', appt.id)
       .single();
     expect((apptRow as { authorization_status: string }).authorization_status).toBe('captured');
+  });
+
+  it('on capture failure: 502, payment marked failed, authorization_status=failed', async () => {
+    const appt = await makeAuthorizedAppt();
+    vi.mocked(capturePaymentIntent).mockRejectedValueOnce(new Error('card_declined'));
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(502);
+
+    const db = createTestSupabaseClient();
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status')
+      .eq('appointment_id', appt.id);
+    expect((payRows![0] as { status: string }).status).toBe('failed');
+
+    const { data: apptRow } = await db
+      .from('appointments')
+      .select('authorization_status')
+      .eq('id', appt.id)
+      .single();
+    expect((apptRow as { authorization_status: string }).authorization_status).toBe('failed');
   });
 });
