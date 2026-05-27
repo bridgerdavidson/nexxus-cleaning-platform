@@ -1,6 +1,8 @@
 'use client';
 
-import { ArrowLeft, Loader, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Eye, Loader, RefreshCw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 import { usePlatformOrganization } from '@/hooks/usePlatformOrganizations';
 import { PaymentsBadge, SubscriptionBadge } from './statusBadges';
 
@@ -33,6 +35,8 @@ function memberName(m: { first_name: string | null; last_name: string | null; em
 
 export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: () => void }) {
   const { data: org, isLoading, isError, error, refetch } = usePlatformOrganization(orgId);
+  const { startImpersonation } = useAuth();
+  const router = useRouter();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
@@ -69,6 +73,17 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
             <h1 className="text-2xl font-bold text-secondary-900">{org.name}</h1>
             <SubscriptionBadge status={org.subscription_status} />
             <PaymentsBadge org={org} />
+            <button
+              type="button"
+              onClick={() => {
+                startImpersonation(org.id, org.name);
+                router.push('/admin-dashboard');
+              }}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-secondary-300 bg-white px-3 py-2 text-sm font-medium text-secondary-700 transition-colors duration-150 hover:bg-secondary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            >
+              <Eye className="h-4 w-4" aria-hidden="true" />
+              View as this company
+            </button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

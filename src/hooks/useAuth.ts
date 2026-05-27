@@ -15,6 +15,8 @@ export interface AuthState {
   currentOrgRole: OrgRole | null;
   currentOrganization: Organization | null;
   isPlatformAdmin: boolean | null; // null = not yet resolved (see /api/platform/whoami)
+  impersonatingOrgId: string | null; // platform-admin "View as" target, or null
+  impersonatingOrgName: string | null;
 }
 
 export interface AuthActions {
@@ -22,6 +24,9 @@ export interface AuthActions {
   signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role: string }) => Promise<{ error?: string; role?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User['profile']>) => Promise<{ error?: string }>;
+  /** Platform-admin "View as" a tenant (read-only). No-op for non-admins. */
+  startImpersonation: (orgId: string, orgName?: string | null) => void;
+  stopImpersonation: () => void;
 }
 
 export function useAuth(): AuthState & AuthActions {

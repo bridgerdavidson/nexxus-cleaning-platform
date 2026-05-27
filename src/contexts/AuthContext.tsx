@@ -8,6 +8,8 @@ import type { AuthState, AuthActions } from '../hooks/useAuth';
 
 export const AuthContext = React.createContext<(AuthState & AuthActions) | null>(null);
 
+const IMPERSONATION_KEY = 'nexxus_impersonation';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,6 +21,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // null = not yet checked. Consumers (login routing, /owner) wait on non-null
   // so a real platform admin is never bounced before the check resolves.
   const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean | null>(null);
+  // Platform-admin "View as" mode. When set, the exposed currentOrganizationId/
+  // currentOrgRole are overridden so every org-scoped hook reads the impersonated
+  // tenant (allowed by the SELECT-only RLS predicate in migration 069).
+  const [impersonation, setImpersonation] = useState<{ orgId: string; orgName: string | null } | null>(null);
   const isSigningOutRef = useRef(false);
   const isSigningInRef = useRef(false);
   const userRef = useRef<User | null>(null);
@@ -258,6 +264,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user?.id, session?.access_token]);
 
+  // Restore/clear "View as" from sessionStorage once platform-admin status is
+  // known. Only platform admins can be in this mode; a confirmed non-admin clears it.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isPlatformAdmin === true) {
+      const raw = sessionStorage.getItem(IMPERSONATION_KEY);
+      if (raw) {
+        try {
+          setImpersonation(JSON.parse(raw));
+        } catch {
+          sessionStorage.removeItem(IMPERSONATION_KEY);
+        }
+      }
+    } else if (isPlatformAdmin === false) {
+      setImpersonation(null);
+      sessionStorage.removeItem(IMPERSONATION_KEY);
+    }
+  }, [isPlatformAdmin]);
+
+  const clearImpersonation = () => {
+    setImpersonation(null);
+    if (typeof window !== 'undefined') sessionStorage.removeItem(IMPERSONATION_KEY);
+  };
+
+  const postImpersonationAudit = (action: 'start' | 'end', orgId: string) => {
+    const token = session?.access_token;
+    if (!token) return;
+    fetch('/api/platform/impersonation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action, organization_id: orgId }),
+    }).catch(() => {
+      /* best-effort audit; cross-tenant access is gated by RLS regardless */
+    });
+  };
+
+  const startImpersonation = (orgId: string, orgName: string | null = null) => {
+    if (isPlatformAdmin !== true) return;
+    const next = { orgId, orgName };
+    setImpersonation(next);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(next));
+    }
+    postImpersonationAudit('start', orgId);
+  };
+
+  const stopImpersonation = () => {
+    const orgId = impersonation?.orgId;
+    clearImpersonation();
+    if (orgId) postImpersonationAudit('end', orgId);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -301,6 +359,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setCurrentOrganizationId(null);
         setCurrentOrgRole(null);
         setCurrentOrganization(null);
+        clearImpersonation();
         setLoading(false);
         isSigningInRef.current = false;
         return;
@@ -510,6 +569,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      clearImpersonation();
       setLoading(false);
 
       const signOutPromise = supabase.auth.signOut();
@@ -542,6 +602,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      clearImpersonation();
       setLoading(false);
       isSigningOutRef.current = false;
       isSigningInRef.current = false;
@@ -599,10 +660,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     updateProfile,
     accessToken,
     isCleaningUp,
-    currentOrganizationId,
-    currentOrgRole,
+    // When impersonating, override the org context so every org-scoped hook
+    // reads the impersonated tenant (and the admin view renders).
+    currentOrganizationId: impersonation ? impersonation.orgId : currentOrganizationId,
+    currentOrgRole: impersonation ? 'admin' : currentOrgRole,
     currentOrganization,
     isPlatformAdmin,
+    impersonatingOrgId: impersonation?.orgId ?? null,
+    impersonatingOrgName: impersonation?.orgName ?? null,
+    startImpersonation,
+    stopImpersonation,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
