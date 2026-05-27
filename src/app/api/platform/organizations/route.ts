@@ -104,6 +104,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'A valid owner email is required' }, { status: 400 });
   }
 
+  // Ensure the platform admin has a user_profiles row. Both organizations.created_by
+  // and invites.invited_by are FKs to user_profiles(id) (not auth.users); a platform
+  // admin seeded only into platform_admins (no profile, e.g. an env without the
+  // auth->profile trigger) would otherwise hit an FK error here. Insert-if-missing
+  // so an existing profile (name/role) is never clobbered.
+  await supabaseAdmin.from('user_profiles').upsert(
+    { id: auth.userId, email: auth.email ?? `platform-admin-${auth.userId}@nexxus.local` },
+    { onConflict: 'id', ignoreDuplicates: true },
+  );
+
   // 1. Create the org, trialing (no card, no enforcement yet).
   const { data: org, error: orgError } = await supabaseAdmin
     .from('organizations')
