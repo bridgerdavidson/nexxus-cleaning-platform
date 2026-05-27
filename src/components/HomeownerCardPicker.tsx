@@ -5,7 +5,6 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useRef,
   useState,
 } from "react";
 import { loadStripe } from "@stripe/stripe-js";
@@ -37,29 +36,25 @@ interface SavedCard {
 type ResolveResult = { paymentMethodId: string } | { error: string };
 
 export interface CardPickerHandle {
-  /** Resolve the chosen payment method. A saved card returns immediately; a new card is
-   *  confirmed (and saved off_session) at this point so there's no separate "save" step. */
+  /** The chosen (saved) payment method. By submit time a new card has already been saved and
+   *  auto-selected, so this only ever resolves a saved-card id. */
   resolve: () => Promise<ResolveResult>;
-}
-
-interface NewCardHandle {
-  confirm: () => Promise<ResolveResult>;
 }
 
 interface Props {
   homeownerId: string;
   accessToken: string | null | undefined;
-  /** Reports whether a payment method is selected (and, for a new card, the fields are complete). */
+  /** Reports whether a saved card is selected (drives the Submit button's disabled state). */
   onReadyChange?: (ready: boolean) => void;
 }
 
 /**
  * Homeowner card picker for the self-request flow. Saved cards are rendered as our own radio
- * list (selectable with zero Stripe round-trip), and the Stripe Payment Element is mounted only
- * for entering a NEW card. Both the "saved" and "new card" sections are always shown (the saved
- * section shows an empty state when there are none). Selecting a saved card needs no "save" —
- * the parent calls `resolve()` on submit, which returns the saved id directly or confirms the
- * new card inline. Renders nothing when the new-charge-flow UI flag or publishable key is absent.
+ * list (selectable with zero Stripe round-trip). "Use a new card" reveals the Stripe Payment
+ * Element plus an explicit "Save card" button: saving confirms the SetupIntent (off_session),
+ * refetches the saved list, and auto-selects the newly-saved card so it moves into the saved
+ * section. Submit is only enabled once a saved card is selected. Renders nothing when the
+ * new-charge-flow UI flag or publishable key is absent.
  */
 const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function HomeownerCardPicker(
   { homeownerId, accessToken, onReadyChange },
@@ -68,16 +63,13 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
   const [cards, setCards] = useState<SavedCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
-  const [newComplete, setNewComplete] = useState(false);
 
   // SetupIntent for the new-card path — lazily created the first time "Use a new card" is chosen.
   const [siSecret, setSiSecret] = useState<string | null>(null);
   const [siLoading, setSiLoading] = useState(false);
   const [siError, setSiError] = useState<string | null>(null);
 
-  const newCardRef = useRef<NewCardHandle>(null);
-
-  const loadCards = useCallback(async () => {
+  const loadCards = useCallback(async (): Promise<SavedCard[]> => {
     setLoadingCards(true);
     try {
       const token = accessToken ?? (await getAccessToken());
@@ -92,9 +84,11 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
         const def = list.find((c) => c.isDefault) ?? list[0];
         return def ? def.id : NEW_CARD;
       });
+      return list;
     } catch {
       setCards([]);
       setSelected((prev) => prev ?? NEW_CARD);
+      return [];
     } finally {
       setLoadingCards(false);
     }
@@ -132,23 +126,28 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     }
   }, [selected, siSecret, siLoading, siError, fetchSetupIntent]);
 
-  // Report readiness up to the parent (drives the Submit button's disabled state).
+  // Report readiness up to the parent: a card is chosen only when a SAVED card is selected.
   useEffect(() => {
-    const ready =
-      (!!selected && selected !== NEW_CARD) || (selected === NEW_CARD && newComplete);
-    onReadyChange?.(ready);
-  }, [selected, newComplete, onReadyChange]);
+    onReadyChange?.(!!selected && selected !== NEW_CARD);
+  }, [selected, onReadyChange]);
+
+  // After a new card is saved: refetch the saved list and select the newly-saved card, so it
+  // moves into the saved section. Reset the SetupIntent so a future "use a new card" is fresh.
+  const handleNewCardSaved = useCallback(
+    async (pmId: string) => {
+      await loadCards();
+      setSelected(pmId);
+      setSiSecret(null);
+    },
+    [loadCards],
+  );
 
   useImperativeHandle(
     ref,
     () => ({
       async resolve() {
         if (selected && selected !== NEW_CARD) return { paymentMethodId: selected };
-        if (selected === NEW_CARD) {
-          if (!newCardRef.current) return { error: "The card form isn’t ready yet." };
-          return newCardRef.current.confirm();
-        }
-        return { error: "Please choose a payment method." };
+        return { error: "Please save and select a card first." };
       },
     }),
     [selected],
@@ -242,11 +241,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
                 </button>
               </div>
             ) : siSecret ? (
-              <NewCardSection
-                ref={newCardRef}
-                clientSecret={siSecret}
-                onCompleteChange={setNewComplete}
-              />
+              <NewCardSection clientSecret={siSecret} onSaved={handleNewCardSaved} />
             ) : null}
           </div>
         )}
@@ -260,54 +255,85 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
   );
 });
 
-const NewCardSection = forwardRef<NewCardHandle, { clientSecret: string; onCompleteChange: (c: boolean) => void }>(
-  function NewCardSection({ clientSecret, onCompleteChange }, ref) {
-    if (!stripePromise) return null;
-    return (
-      <Elements
-        stripe={stripePromise}
-        options={{ clientSecret, appearance: { variables: { colorPrimary: "#F7C41E" } } }}
+const NewCardSection = ({
+  clientSecret,
+  onSaved,
+}: {
+  clientSecret: string;
+  onSaved: (paymentMethodId: string) => void | Promise<void>;
+}) => {
+  if (!stripePromise) return null;
+  return (
+    <Elements
+      stripe={stripePromise}
+      options={{ clientSecret, appearance: { variables: { colorPrimary: "#F7C41E" } } }}
+    >
+      <NewCardInner onSaved={onSaved} />
+    </Elements>
+  );
+};
+
+function NewCardInner({ onSaved }: { onSaved: (paymentMethodId: string) => void | Promise<void> }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!stripe || !elements) return;
+    setSaving(true);
+    setError(null);
+
+    const { error: submitErr } = await elements.submit();
+    if (submitErr) {
+      setError(submitErr.message ?? "Please check your card details.");
+      setSaving(false);
+      return;
+    }
+
+    const { error: confirmErr, setupIntent } = await stripe.confirmSetup({
+      elements,
+      redirect: "if_required",
+    });
+    if (confirmErr) {
+      setError(confirmErr.message ?? "We couldn’t save your card. Please try again.");
+      setSaving(false);
+      return;
+    }
+
+    const pm =
+      typeof setupIntent?.payment_method === "string"
+        ? setupIntent.payment_method
+        : setupIntent?.payment_method?.id;
+    if (!pm) {
+      setError("Could not read the saved card.");
+      setSaving(false);
+      return;
+    }
+    // Hand the saved card up; the parent refetches + selects it. Keep `saving` true so the
+    // button stays disabled through the collapse (this component unmounts on success).
+    await onSaved(pm);
+  };
+
+  return (
+    <div className="space-y-3">
+      <PaymentElement options={{ wallets: { link: "never" } }} />
+      {error && (
+        <p className="flex items-center gap-2 text-sm text-red-600">
+          <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={save}
+        disabled={!stripe || saving}
+        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
       >
-        <NewCardInner ref={ref} onCompleteChange={onCompleteChange} />
-      </Elements>
-    );
-  },
-);
-
-const NewCardInner = forwardRef<NewCardHandle, { onCompleteChange: (c: boolean) => void }>(
-  function NewCardInner({ onCompleteChange }, ref) {
-    const stripe = useStripe();
-    const elements = useElements();
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        async confirm() {
-          if (!stripe || !elements) return { error: "Payment form isn’t ready yet." };
-          const { error: submitErr } = await elements.submit();
-          if (submitErr) return { error: submitErr.message ?? "Please check your card details." };
-          const { error: confirmErr, setupIntent } = await stripe.confirmSetup({
-            elements,
-            redirect: "if_required",
-          });
-          if (confirmErr) return { error: confirmErr.message ?? "We couldn’t save your card." };
-          const pm =
-            typeof setupIntent?.payment_method === "string"
-              ? setupIntent.payment_method
-              : setupIntent?.payment_method?.id;
-          return pm ? { paymentMethodId: pm } : { error: "Could not read the saved card." };
-        },
-      }),
-      [stripe, elements],
-    );
-
-    return (
-      <PaymentElement
-        onChange={(e) => onCompleteChange(e.complete)}
-        options={{ wallets: { link: "never" } }}
-      />
-    );
-  },
-);
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+        {saving ? "Saving…" : "Save card"}
+      </button>
+    </div>
+  );
+}
 
 export default HomeownerCardPicker;
