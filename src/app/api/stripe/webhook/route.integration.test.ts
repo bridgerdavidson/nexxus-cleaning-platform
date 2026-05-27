@@ -62,6 +62,42 @@ describe('POST /api/stripe/webhook', () => {
     expect(status).toBe(400);
   });
 
+  it('verifies a connected-account event signed with STRIPE_CONNECT_WEBHOOK_SECRET', async () => {
+    const prev = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+    process.env.STRIPE_CONNECT_WEBHOOK_SECRET = 'whsec_connect_test_secret';
+    try {
+      const event = {
+        id: `evt_connect_${Date.now()}`,
+        object: 'event',
+        type: 'account.updated',
+        account: 'acct_unmatched_test',
+        data: {
+          object: {
+            id: 'acct_unmatched_test',
+            charges_enabled: true,
+            payouts_enabled: true,
+            details_submitted: true,
+            requirements: { currently_due: [] },
+          },
+        },
+      };
+      const payload = JSON.stringify(event);
+      // Signed with the CONNECT secret, not STRIPE_WEBHOOK_SECRET — only verifies if the route
+      // tries the second secret. The account matches no org/cleaner, so the handler no-ops → 200.
+      const signature = signWebhookPayload(payload, 'whsec_connect_test_secret');
+      const { status, body } = await callRoute<{ received?: boolean }>(POST, {
+        method: 'POST',
+        url: 'http://test.local/api/stripe/webhook',
+        headers: { 'content-type': 'application/json', 'stripe-signature': signature },
+        body: payload,
+      });
+      expect(status).toBe(200);
+      expect(body.received).toBe(true);
+    } finally {
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET = prev;
+    }
+  });
+
   it('replaying payment_intent.succeeded creates exactly ONE transfer (idempotency)', async () => {
     const appt = await createTestAppointment({
       organizationId: org.organizationId,

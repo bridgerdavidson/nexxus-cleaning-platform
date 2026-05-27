@@ -20,9 +20,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Stripe disabled' }, { status: 404 });
   }
 
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    console.error('STRIPE_WEBHOOK_SECRET not configured');
+  // Platform-account events and connected-account (Connect) events are delivered by Stripe with
+  // different signing secrets when they come from separate Dashboard endpoints. Verify against
+  // either: STRIPE_WEBHOOK_SECRET (platform: payment_intent.*, charge.*, refund.*, …) and the
+  // optional STRIPE_CONNECT_WEBHOOK_SECRET (connected: account.updated, payout.paid/failed). If a
+  // single endpoint carries both under one secret, only STRIPE_WEBHOOK_SECRET is needed.
+  const webhookSecrets = [
+    process.env.STRIPE_WEBHOOK_SECRET,
+    process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+  ].filter((s): s is string => !!s);
+  if (webhookSecrets.length === 0) {
+    console.error('No webhook signing secret configured (STRIPE_WEBHOOK_SECRET)');
     return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
   }
 
@@ -39,11 +47,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
   }
 
-  let event: Stripe.Event;
-  try {
-    event = constructWebhookEvent(body, signature, webhookSecret);
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err);
+  let event: Stripe.Event | null = null;
+  let verifyError: unknown = null;
+  for (const secret of webhookSecrets) {
+    try {
+      event = constructWebhookEvent(body, signature, secret);
+      break;
+    } catch (err) {
+      verifyError = err;
+    }
+  }
+  if (!event) {
+    console.error('Webhook signature verification failed:', verifyError);
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
