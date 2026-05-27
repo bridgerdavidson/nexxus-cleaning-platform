@@ -1,17 +1,24 @@
 /**
- * Settle the cleaner's share after a destination charge is captured (Phase 3).
+ * Settle a captured homeowner charge across the tenant and (Scenario 1) the cleaner.
  *
- * Only percentage_contractor cleaners with a ready Connect account get paid through
- * Stripe; hourly_external (and unconfigured) cleaners are skipped — the tenant keeps the
- * full settlement and pays them outside the app (Scenario 2). The cleaner's amount is a
- * percentage of GROSS (decision #11), transferred from the tenant's balance.
+ * In the separate-charges-and-transfers model the captured funds sit on the PLATFORM balance, so
+ * settlement MUST move them out: the platform transfers the tenant remainder to the tenant
+ * account and the cleaner's percentage to the cleaner account, keeping the platform fee. Both are
+ * platform→connected transfers tagged with the job's transfer_group; connected→connected transfers
+ * are forbidden by Stripe (the bug this replaces).
  *
- * Best-effort + idempotent: a failed transfer records a `failed` payout row (for the
- * retry job) + a ledger event, and never throws back into the webhook.
+ * The split is computed on the AMOUNT ACTUALLY CAPTURED (so partial captures and cancellation
+ * fees are handled correctly), per decision #11 floored so the parts never exceed it. A cancelled
+ * appointment never pays the cleaner — its captured fee goes entirely to the tenant.
+ *
+ * Idempotent (idempotency keys on both transfers) and best-effort: a failed tenant transfer
+ * records a ledger event and bails (the cleaner isn't paid before the tenant is made whole); a
+ * failed cleaner transfer records a `failed` payout row for the retry job. Never throws into the
+ * webhook.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
-import { resolveTenantChargeId, createTenantToCleanerTransfer } from '@/lib/stripe/transfers';
+import { transferGroupFor, createPlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
 
 export interface SettleResult {
@@ -22,7 +29,11 @@ export interface SettleResult {
 export async function settleCleanerPayout(
   supabase: SupabaseClient,
   appointmentId: string,
+  /** The PLATFORM charge id (PaymentIntent.latest_charge) to source the transfers from. */
   platformChargeId: string | null,
+  /** Amount actually captured, in cents (PaymentIntent.amount_received). Falls back to the
+   *  recorded payment / appointment price when omitted (e.g. the reconcile retry path). */
+  capturedCents?: number,
 ): Promise<SettleResult> {
   const { data: apptRow } = await supabase
     .from('appointments')
@@ -32,37 +43,10 @@ export async function settleCleanerPayout(
   const appt = apptRow as
     | { cleaner_id: string | null; organization_id: string; total_price: number | string; status: string }
     | null;
-  if (!appt?.cleaner_id) return { settled: false, reason: 'no_cleaner' };
-  // A cancelled appointment can still capture money (a cancellation/no-show fee), but the
-  // cleaner is never paid for it — guard against the fee's payment_intent.succeeded webhook
-  // triggering a cleaner transfer (the fee compensates the tenant, not the cleaner).
-  if (appt.status === 'cancelled') return { settled: false, reason: 'appointment_cancelled' };
+  if (!appt) return { settled: false, reason: 'no_appointment' };
 
-  const { data: cleanerRow } = await supabase
-    .from('cleaner_profiles')
-    .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
-    .eq('id', appt.cleaner_id)
-    .maybeSingle();
-  const cleaner = cleanerRow as
-    | {
-        payout_model: string | null;
-        stripe_connect_account_id: string | null;
-        stripe_connect_onboarding_complete: boolean;
-        payout_percent: number | string;
-      }
-    | null;
-  if (!cleaner) return { settled: false, reason: 'no_cleaner_profile' };
-  if (cleaner.payout_model === 'hourly_external') return { settled: false, reason: 'hourly_external' };
-
-  const payoutPercent = Number(cleaner.payout_percent);
-  if (
-    !cleaner.stripe_connect_account_id ||
-    !cleaner.stripe_connect_onboarding_complete ||
-    payoutPercent <= 0
-  ) {
-    return { settled: false, reason: 'cleaner_not_payable' };
-  }
-
+  // The tenant MUST be a ready connected account: the funds are on the platform and have to be
+  // transferred out, or no one gets paid.
   const { data: orgRow } = await supabase
     .from('organizations')
     .select('stripe_connect_account_id, platform_fee_bps')
@@ -71,83 +55,161 @@ export async function settleCleanerPayout(
   const org = orgRow as { stripe_connect_account_id: string | null; platform_fee_bps: number } | null;
   if (!org?.stripe_connect_account_id) return { settled: false, reason: 'tenant_not_ready' };
 
-  const grossCents = Math.round(Number(appt.total_price) * 100);
-  const { cleanerCents } = computePaymentSplit({
+  // The revenue payment row drives the captured-amount fallback AND tells us whether the tenant
+  // leg already ran (transfer_amount recorded). On a retry `platformChargeId` is null, so
+  // re-attempting the tenant transfer under the same `tenant-payout-${id}` idempotency key with
+  // different params would be rejected by Stripe and bail before the cleaner leg — so the failed
+  // cleaner payout could never self-heal. Skip the tenant leg once it's already recorded.
+  const { data: payRow } = await supabase
+    .from('payments')
+    .select('amount, transfer_amount')
+    .eq('appointment_id', appointmentId)
+    .eq('payment_type', 'revenue')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const tenantAlreadyTransferred =
+    (payRow as { transfer_amount: number | null } | null)?.transfer_amount != null;
+
+  // Split is of the amount actually captured (handles partial capture + cancellation fees).
+  let grossCents = capturedCents ?? 0;
+  if (!grossCents) {
+    const amt = (payRow as { amount: number | string } | null)?.amount;
+    grossCents = amt != null ? Math.round(Number(amt) * 100) : Math.round(Number(appt.total_price) * 100);
+  }
+  if (grossCents <= 0) return { settled: false, reason: 'nothing_captured' };
+
+  // Cleaner payability — never pay the cleaner for a cancelled job (the captured fee compensates
+  // the tenant, not the cleaner).
+  type CleanerRow = {
+    payout_model: string | null;
+    stripe_connect_account_id: string | null;
+    stripe_connect_onboarding_complete: boolean;
+    payout_percent: number | string;
+  };
+  let cleaner: CleanerRow | null = null;
+  if (appt.cleaner_id && appt.status !== 'cancelled') {
+    const { data: cleanerRow } = await supabase
+      .from('cleaner_profiles')
+      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+      .eq('id', appt.cleaner_id)
+      .maybeSingle();
+    cleaner = cleanerRow as CleanerRow | null;
+  }
+  const cleanerPayable =
+    !!cleaner &&
+    cleaner.payout_model !== 'hourly_external' &&
+    !!cleaner.stripe_connect_account_id &&
+    cleaner.stripe_connect_onboarding_complete &&
+    Number(cleaner.payout_percent) > 0;
+  const payoutPercent = cleanerPayable ? Number(cleaner!.payout_percent) : 0;
+
+  const { cleanerCents, tenantRemainderCents } = computePaymentSplit({
     grossCents,
     payoutPercent,
     platformFeeBps: org.platform_fee_bps ?? 0,
   });
-  if (cleanerCents <= 0) return { settled: false, reason: 'zero_payout' };
 
-  let sourceTxn: string | null = null;
-  if (platformChargeId) {
+  const transferGroup = transferGroupFor(appointmentId);
+
+  // 1) Tenant remainder → tenant connected account. This MUST happen or the tenant never gets
+  //    paid (funds are stranded on the platform); on failure, record + bail before paying the cleaner.
+  if (tenantRemainderCents > 0 && !tenantAlreadyTransferred) {
     try {
-      sourceTxn = await resolveTenantChargeId(platformChargeId);
-    } catch {
-      sourceTxn = null; // fall back to available-balance transfer
+      await createPlatformTransfer({
+        destinationAccountId: org.stripe_connect_account_id,
+        amountCents: tenantRemainderCents,
+        sourceTransactionId: platformChargeId,
+        transferGroup,
+        idempotencyKey: `tenant-payout-${appointmentId}`,
+        appointmentId,
+      });
+      await supabase
+        .from('payments')
+        .update({
+          transfer_amount: tenantRemainderCents,
+          transfer_destination_account_id: org.stripe_connect_account_id,
+        })
+        .eq('appointment_id', appointmentId)
+        .eq('payment_type', 'revenue');
+    } catch (err) {
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'tenant_transfer_failed',
+        newStatus: 'failed',
+        actor: 'webhook',
+        amount: tenantRemainderCents,
+        payload: { error: err instanceof Error ? err.message : String(err) },
+      });
+      return { settled: false, reason: 'tenant_transfer_failed' };
     }
   }
 
-  const payoutBase = {
-    organization_id: appt.organization_id,
-    cleaner_id: appt.cleaner_id,
-    appointment_id: appointmentId,
-    amount: cleanerCents / 100,
-    payout_percent_snapshot: payoutPercent,
-    source_balance_account_id: org.stripe_connect_account_id,
-  };
+  // 2) Cleaner percentage → cleaner connected account (Scenario 1). Soft-fail → 'failed' payout
+  //    row for the retry sweep.
+  if (cleanerPayable && cleanerCents > 0) {
+    const payoutBase = {
+      organization_id: appt.organization_id,
+      cleaner_id: appt.cleaner_id,
+      appointment_id: appointmentId,
+      amount: cleanerCents / 100,
+      payout_percent_snapshot: payoutPercent,
+    };
 
-  async function upsertPayout(fields: Record<string, unknown>) {
-    const { data: existing } = await supabase
-      .from('payouts')
-      .select('id')
-      .eq('appointment_id', appointmentId)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      await supabase.from('payouts').update(fields).eq('id', (existing[0] as { id: string }).id);
-    } else {
-      await supabase.from('payouts').insert(fields);
+    const upsertPayout = async (fields: Record<string, unknown>) => {
+      const { data: existing } = await supabase
+        .from('payouts')
+        .select('id')
+        .eq('appointment_id', appointmentId)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        await supabase.from('payouts').update(fields).eq('id', (existing[0] as { id: string }).id);
+      } else {
+        await supabase.from('payouts').insert(fields);
+      }
+    };
+
+    let transfer;
+    try {
+      transfer = await createPlatformTransfer({
+        destinationAccountId: cleaner!.stripe_connect_account_id!,
+        amountCents: cleanerCents,
+        sourceTransactionId: platformChargeId,
+        transferGroup,
+        idempotencyKey: `cleaner-payout-${appointmentId}`,
+        appointmentId,
+      });
+    } catch (err) {
+      await upsertPayout({ ...payoutBase, status: 'failed' });
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'cleaner_transfer_failed',
+        newStatus: 'failed',
+        actor: 'webhook',
+        amount: cleanerCents,
+        payload: { error: err instanceof Error ? err.message : String(err) },
+      });
+      return { settled: false, reason: 'cleaner_transfer_failed' };
     }
-  }
 
-  let transfer;
-  try {
-    transfer = await createTenantToCleanerTransfer({
-      tenantAccountId: org.stripe_connect_account_id,
-      cleanerAccountId: cleaner.stripe_connect_account_id,
-      amountCents: cleanerCents,
-      sourceTransactionId: sourceTxn,
-      appointmentId,
+    await upsertPayout({
+      ...payoutBase,
+      status: 'paid',
+      stripe_transfer_id: transfer.id,
+      paid_at: new Date().toISOString(),
     });
-  } catch (err) {
-    await upsertPayout({ ...payoutBase, status: 'failed' });
     await recordPaymentEvent(supabase, {
       appointmentId,
       organizationId: appt.organization_id,
-      eventType: 'cleaner_transfer_failed',
-      newStatus: 'failed',
+      eventType: 'cleaner_paid',
+      newStatus: 'paid',
       actor: 'webhook',
       amount: cleanerCents,
-      payload: { error: err instanceof Error ? err.message : String(err) },
+      payload: { transfer_id: transfer.id },
     });
-    return { settled: false, reason: 'transfer_failed' };
   }
-
-  await upsertPayout({
-    ...payoutBase,
-    status: 'paid',
-    stripe_transfer_id: transfer.id,
-    paid_at: new Date().toISOString(),
-  });
-  await recordPaymentEvent(supabase, {
-    appointmentId,
-    organizationId: appt.organization_id,
-    eventType: 'cleaner_paid',
-    newStatus: 'paid',
-    actor: 'webhook',
-    amount: cleanerCents,
-    payload: { transfer_id: transfer.id, source_account: org.stripe_connect_account_id },
-  });
 
   return { settled: true };
 }

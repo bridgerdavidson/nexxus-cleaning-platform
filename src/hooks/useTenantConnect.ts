@@ -19,6 +19,15 @@ async function getAccessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
+export interface TenantConnectStatus {
+  /** Whether the org has a connected account yet. */
+  hasAccount: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  requirementsDue: string[];
+}
+
 export interface TenantConnectState {
   /** True when the tenant Connect UI should render (flag on, admin, publishable key present). */
   enabled: boolean;
@@ -26,7 +35,10 @@ export interface TenantConnectState {
   connectInstance: StripeConnectInstance | null;
   initError: string | null;
   loading: boolean;
-  /** Ask the server to re-pull + mirror the connected account's status (call on onboarding exit). */
+  /** Mirrored connected-account capability state for the org (null until first load). */
+  status: TenantConnectStatus | null;
+  statusLoading: boolean;
+  /** Ask the server to re-pull + mirror the connected account's status, then refresh local state. */
   refreshStatus: () => Promise<void>;
 }
 
@@ -52,10 +64,41 @@ export function useTenantConnect(): TenantConnectState {
   const [connectInstance, setConnectInstance] = useState<StripeConnectInstance | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<TenantConnectStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
   // Track WHICH org we last initialized for, not just "did we init", so an org switch
   // (multi-org users, org-switch flows, context refresh) re-creates the Connect instance
   // instead of keeping a stale one bound to the previous tenant account.
   const initedForOrgRef = useRef<string | null>(null);
+
+  // Read the mirrored capability fields straight from the org row (kept current by the
+  // account.updated webhook + refresh-status). This avoids a Stripe round-trip on render.
+  const loadStatus = useCallback(async () => {
+    if (!currentOrganizationId) return;
+    setStatusLoading(true);
+    const { data } = await supabase
+      .from('organizations')
+      .select(
+        'stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_details_submitted, stripe_connect_requirements_due',
+      )
+      .eq('id', currentOrganizationId)
+      .maybeSingle();
+    const row = (data ?? {}) as {
+      stripe_connect_account_id?: string | null;
+      stripe_connect_charges_enabled?: boolean | null;
+      stripe_connect_payouts_enabled?: boolean | null;
+      stripe_connect_details_submitted?: boolean | null;
+      stripe_connect_requirements_due?: string[] | null;
+    };
+    setStatus({
+      hasAccount: !!row.stripe_connect_account_id,
+      chargesEnabled: !!row.stripe_connect_charges_enabled,
+      payoutsEnabled: !!row.stripe_connect_payouts_enabled,
+      detailsSubmitted: !!row.stripe_connect_details_submitted,
+      requirementsDue: row.stripe_connect_requirements_due ?? [],
+    });
+    setStatusLoading(false);
+  }, [currentOrganizationId]);
 
   const refreshStatus = useCallback(async () => {
     if (!currentOrganizationId) return;
@@ -70,7 +113,18 @@ export function useTenantConnect(): TenantConnectState {
     }).catch(() => {
       /* best-effort; account.updated webhook is the backstop */
     });
-  }, [currentOrganizationId]);
+    // Re-pull the mirrored row regardless — the route just updated it.
+    await loadStatus();
+  }, [currentOrganizationId, loadStatus]);
+
+  // Load mirrored status whenever the org becomes available / changes.
+  useEffect(() => {
+    if (!enabled) {
+      setStatusLoading(false);
+      return;
+    }
+    void loadStatus();
+  }, [enabled, loadStatus]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -115,5 +169,5 @@ export function useTenantConnect(): TenantConnectState {
     }
   }, [enabled, currentOrganizationId]);
 
-  return { enabled, connectInstance, initError, loading, refreshStatus };
+  return { enabled, connectInstance, initError, loading, status, statusLoading, refreshStatus };
 }

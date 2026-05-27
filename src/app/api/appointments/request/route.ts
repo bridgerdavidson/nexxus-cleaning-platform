@@ -15,6 +15,12 @@ interface RequestAppointmentInput {
   checklistId?: string | null;
   slots: OfferedSlot[];
   specialRequests?: string | null;
+  /**
+   * Optional Stripe PaymentMethod the homeowner saved during the request (decision #9:
+   * save at request, no hold). Stored on the appointment so accept-time authorization can
+   * place the hold. Null/absent means "collect later".
+   */
+  paymentMethodId?: string | null;
 }
 
 function isYMD(s: string) {
@@ -27,7 +33,7 @@ function isHMM(s: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as RequestAppointmentInput;
-    const { organizationId, propertyId, serviceTypeId, checklistId, slots, specialRequests } = body;
+    const { organizationId, propertyId, serviceTypeId, checklistId, slots, specialRequests, paymentMethodId } = body;
     if (!organizationId || !propertyId || !serviceTypeId) {
       return NextResponse.json(
         { success: false, error: 'organizationId, propertyId, and serviceTypeId are required' },
@@ -124,6 +130,7 @@ export async function POST(request: NextRequest) {
         duration_minutes: serviceType.duration_minutes,
         total_price: serviceType.base_price,
         special_requests: specialRequests ?? null,
+        payment_method_id: paymentMethodId ?? null,
         status: 'pending',
         cleaner_confirmation_status: 'awaiting',
         homeowner_initiated: true,

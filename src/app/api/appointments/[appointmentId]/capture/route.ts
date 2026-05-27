@@ -28,18 +28,24 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const { organization_id } = body as { organization_id?: string };
 
+    // Org staff may capture any appointment in their org; a cleaner may capture ONLY the
+    // appointment they're assigned to (they complete the job → capture-on-completion).
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+      allowedRoles: ['owner', 'admin', 'manager', 'cleaner'],
     });
     if (!auth.ok) return auth.response;
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id')
+      .select('id, organization_id, cleaner_id')
       .eq('id', appointmentId)
       .maybeSingle();
-    if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
+    const appointment = appt as { id: string; organization_id: string; cleaner_id: string | null } | null;
+    if (!appointment || appointment.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
+    }
+    if (auth.role === 'cleaner' && appointment.cleaner_id !== auth.userId) {
+      return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
     }
 
     const { data: payRows } = await supabaseAdmin
@@ -58,15 +64,51 @@ export async function POST(
       return NextResponse.json({ error: 'No authorization to capture' }, { status: 409 });
     }
 
+    // Idempotent: a prior capture (double-submit, client retry, or the payment_intent.succeeded
+    // webhook) may have already marked this paid. Don't re-capture — Stripe would throw because the
+    // intent is no longer capturable, and we'd wrongly flip a paid job to "failed".
+    if (pay.status === 'paid') {
+      return NextResponse.json({
+        success: true,
+        payment_intent_id: pay.stripe_payment_intent_id,
+        status: 'succeeded',
+        alreadyCaptured: true,
+      });
+    }
+
     let pi;
     try {
       pi = await capturePaymentIntent(pay.stripe_payment_intent_id);
     } catch (err) {
+      // A concurrent capture / webhook may have succeeded between our read and this call. Re-check
+      // before clobbering a now-paid job as failed.
+      const { data: fresh } = await supabaseAdmin
+        .from('payments')
+        .select('status')
+        .eq('id', pay.id)
+        .maybeSingle();
+      if ((fresh as { status: string } | null)?.status === 'paid') {
+        return NextResponse.json({
+          success: true,
+          payment_intent_id: pay.stripe_payment_intent_id,
+          status: 'succeeded',
+          alreadyCaptured: true,
+        });
+      }
+      // Genuine failure: reflect it so the admin pill reads "Failed" (not a stale "Unpaid") and the
+      // appointment surfaces in "Payments needing attention" for re-authorization.
+      await supabaseAdmin.from('payments').update({ status: 'failed' }).eq('id', pay.id);
+      await supabaseAdmin
+        .from('appointments')
+        .update({ authorization_status: 'failed' })
+        .eq('id', appointmentId);
       await recordPaymentEvent(supabaseAdmin, {
         paymentId: pay.id,
         appointmentId,
         organizationId: organization_id,
         eventType: 'capture_failed',
+        prevStatus: pay.status,
+        newStatus: 'failed',
         actor: `user:${auth.userId}`,
         payload: { error: err instanceof Error ? err.message : String(err) },
       });

@@ -72,6 +72,9 @@ export async function createTenantAccountSession(
     components: {
       account_onboarding: { enabled: true },
       account_management: { enabled: true },
+      balances: { enabled: true },
+      payouts: { enabled: true },
+      notification_banner: { enabled: true },
     },
   });
 }

@@ -55,6 +55,20 @@ export interface AdminAppointment {
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   /**
+   * Card-hold (authorization) lifecycle for the new charge flow (migration 065).
+   * Drives the "Card held / Auth failed / Captured" indicator next to the payment badge.
+   */
+  authorization_status?:
+    | 'none'
+    | 'scheduled'
+    | 'authorizing'
+    | 'requires_action'
+    | 'authorized'
+    | 'captured'
+    | 'canceled'
+    | 'failed'
+    | null;
+  /**
    * Wave 2 SLA: timestamp by which the cleaner must respond. Null once they
    * have. Overdue is derived client-side via isAppointmentOverdue.
    */
@@ -172,6 +186,7 @@ export function useAdminAppointments() {
           duration_minutes,
           status,
           total_price,
+          authorization_status,
           special_requests,
           notes,
           series_id,

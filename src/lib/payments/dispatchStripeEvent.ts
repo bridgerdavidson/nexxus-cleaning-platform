@@ -13,7 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 import { createConnectTransfer } from '@/lib/stripe';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
-import { reverseCleanerTransfer } from '@/lib/stripe/charges/refund';
+import { reversePlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { mapSubscriptionStatus } from '@/lib/payments/orgBilling';
 
@@ -135,17 +135,18 @@ async function handlePaymentIntentSucceeded(
 
   console.log('Payment record updated for appointment:', appointmentId);
 
-  // Destination charge (new multi-tenant flow): funds settled to the TENANT, not the
-  // platform balance. Settle the cleaner's percentage FROM THE TENANT'S balance (skips
-  // hourly_external / unconfigured cleaners). This replaces the legacy platform→cleaner
-  // transfer below, which would attempt to move funds the platform doesn't hold.
-  if (paymentIntent.transfer_data?.destination) {
+  // New multi-tenant flow (separate charges and transfers): the charge is created on the
+  // platform with `on_behalf_of` set, so the captured funds are on the PLATFORM balance. Settle
+  // distributes them — tenant remainder → tenant, cleaner % → cleaner — on the AMOUNT CAPTURED.
+  // (Legacy platform-as-merchant charges have no on_behalf_of and fall through to the path below.)
+  if (paymentIntent.on_behalf_of) {
     const result = await settleCleanerPayout(
       supabase,
       appointmentId,
       (paymentIntent.latest_charge as string | null) ?? null,
+      paymentIntent.amount_received ?? undefined,
     );
-    console.log('Destination charge cleaner settlement:', result);
+    console.log('Separate charges/transfers settlement:', result);
     return;
   }
 
@@ -558,10 +559,10 @@ async function handleChargeDisputeClosed(
         })
       : null;
 
-    if (payout?.stripe_transfer_id && payout.source_balance_account_id && payout.status !== 'reversed') {
+    if (payout?.stripe_transfer_id && payout.status !== 'reversed') {
       const cleanerCents = Math.round(Number(payout.amount) * 100);
       try {
-        await reverseCleanerTransfer(payout.stripe_transfer_id, cleanerCents, payout.source_balance_account_id);
+        await reversePlatformTransfer(payout.stripe_transfer_id, cleanerCents);
         await supabase
           .from('payouts')
           .update({ status: 'reversed', reversed_at: new Date().toISOString() })

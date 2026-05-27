@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 import RecordPaymentModal from "./RecordPaymentModal";
 import ApprovePayoutModal from "./ApprovePayoutModal";
+import RefundModal from "./RefundModal";
+import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
+import { useAuth } from "../hooks/useAuth";
+import { useManagerPermissions } from "../hooks/useManagerPermissions";
+import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 
 type TabType = "transactions" | "payouts" | "invoices";
 
@@ -115,6 +120,17 @@ export default function PaymentsPage({
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [showApprovePayoutModal, setShowApprovePayoutModal] = useState(false);
   const [selectedPayout, setSelectedPayout] = useState<AdminPayout | null>(null);
+  const [refundPayment, setRefundPayment] = useState<AdminPayment | null>(null);
+  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  // Owners/admins always manage payments; managers need the explicit can_manage_payments flag.
+  const canManagePayments =
+    currentOrgRole === "owner" ||
+    currentOrgRole === "admin" ||
+    (currentOrgRole === "manager" && !!permissions?.can_manage_payments);
+  // Refunds are only offered for captured card payments, under the new charge flow, to staff
+  // who are allowed to manage payments.
+  const refundsEnabled = stripeNewChargeFlowUiEnabled() && canManagePayments;
 
   // Filter by search query
   const filteredPayments = useMemo(() => {
@@ -264,6 +280,9 @@ export default function PaymentsPage({
         </div>
       </div>
 
+      {/* Payments needing attention (failed auths / failed payouts) — new charge flow only */}
+      <PaymentsNeedingAttentionSection onResolved={onRefreshPayments} />
+
       {/* Tabs and Actions */}
       <div className="card">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -407,6 +426,11 @@ export default function PaymentsPage({
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
                         Notes
                       </th>
+                      {refundsEnabled && (
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -441,6 +465,20 @@ export default function PaymentsPage({
                         <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">
                           {payment.notes || "-"}
                         </td>
+                        {refundsEnabled && (
+                          <td className="px-4 py-3 text-right">
+                            {payment.status === "paid" && payment.payment_method === "card" ? (
+                              <button
+                                onClick={() => setRefundPayment(payment)}
+                                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                              >
+                                Refund
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -639,6 +677,19 @@ export default function PaymentsPage({
         }}
         payout={selectedPayout}
       />
+
+      {refundPayment && currentOrganizationId && (
+        <RefundModal
+          paymentId={refundPayment.id}
+          organizationId={currentOrganizationId}
+          amountPaid={refundPayment.amount}
+          onClose={() => setRefundPayment(null)}
+          onDone={() => {
+            onRefreshPayments();
+            setRefundPayment(null);
+          }}
+        />
+      )}
     </div>
   );
 }

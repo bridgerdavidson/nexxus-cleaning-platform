@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Calendar, Home, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -9,6 +9,10 @@ import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { formatDateTimeTo12h } from "../lib/formatTime";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
+import HomeownerCardPicker, {
+  homeownerCardPickerAvailable,
+  type CardPickerHandle,
+} from "./HomeownerCardPicker";
 
 interface Property {
   id: string;
@@ -62,6 +66,13 @@ export default function RequestAppointmentModal({
   const [specialRequests, setSpecialRequests] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Card selection (new charge flow). The hold isn't placed until a cleaner accepts — picking a
+  // card here just attaches it so accept-time authorization can run. Required when the picker is
+  // available; a saved card resolves with no extra step, a new card is confirmed at submit.
+  const paymentRequired = homeownerCardPickerAvailable() && !!homeownerId;
+  const cardPickerRef = useRef<CardPickerHandle>(null);
+  const [cardReady, setCardReady] = useState(false);
 
   // Default property to most-recently-booked
   const fetchProperties = useCallback(async () => {
@@ -131,6 +142,7 @@ export default function RequestAppointmentModal({
       setSpecialRequests("");
       setError(null);
       setSubmitting(false);
+      setCardReady(false);
     }
   }, [isOpen]);
 
@@ -144,13 +156,27 @@ export default function RequestAppointmentModal({
     !!selectedPropertyId &&
     !!selectedServiceId &&
     slots.length >= 1 &&
-    slots.every((s) => !!s.date && !!s.time);
+    slots.every((s) => !!s.date && !!s.time) &&
+    (!paymentRequired || cardReady);
 
   const handleSubmit = async () => {
     if (!isValid || !accessToken) return;
     setSubmitting(true);
     setError(null);
     try {
+      // Resolve the chosen card first: a saved card returns its id immediately; a new card is
+      // confirmed (and saved off_session) here, so there's no separate "save card" step.
+      let paymentMethodId: string | null = null;
+      if (paymentRequired) {
+        const result = await cardPickerRef.current?.resolve();
+        if (!result || "error" in result) {
+          setError(result?.error ?? "Please choose a payment method.");
+          setSubmitting(false);
+          return;
+        }
+        paymentMethodId = result.paymentMethodId;
+      }
+
       const response = await fetch("/api/appointments/request", {
         method: "POST",
         headers: {
@@ -163,6 +189,7 @@ export default function RequestAppointmentModal({
           serviceTypeId: selectedServiceId,
           slots: slots.map((s) => ({ scheduled_date: s.date, scheduled_time: s.time })),
           specialRequests: specialRequests.trim() || null,
+          ...(paymentMethodId ? { paymentMethodId } : {}),
         }),
       });
       const result = await response.json();
@@ -293,6 +320,20 @@ export default function RequestAppointmentModal({
                 placeholder="Anything specific they should know?"
               />
             </div>
+
+            {paymentRequired && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment method
+                </label>
+                <HomeownerCardPicker
+                  ref={cardPickerRef}
+                  homeownerId={homeownerId}
+                  accessToken={accessToken}
+                  onReadyChange={setCardReady}
+                />
+              </div>
+            )}
           </div>
         </div>
 

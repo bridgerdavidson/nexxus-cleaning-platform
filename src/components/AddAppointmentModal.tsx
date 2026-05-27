@@ -30,6 +30,9 @@ import { rankCleanersByAvailability } from "../lib/cleanerAvailability";
 import { formatTimeTo12h } from "../lib/formatTime";
 import PaymentMethodForm from "./PaymentMethodForm";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
+import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
+import { getAccessToken } from "@/lib/auth/clientAccessToken";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 interface Homeowner {
   id: string;
@@ -159,6 +162,9 @@ export default function AddAppointmentModal({
   const [scheduledTime, setScheduledTime] = useState("");
   const [alternateSlots, setAlternateSlots] = useState<SlotInput[]>([]);
   const [specialRequests, setSpecialRequests] = useState("");
+  // New charge flow: selected card (a pm id), 'send-link', DEFER_CARD, or null. Only a real
+  // pm id triggers an authorization hold on save.
+  const [paymentSelection, setPaymentSelection] = useState<string | null>(null);
 
   // Recurrence state
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>("none");
@@ -634,6 +640,13 @@ export default function AddAppointmentModal({
           ? parseFloat(customPrice)
           : systemCalculatedPrice;
 
+      // Only a concrete saved-card selection becomes the appointment's payment method; the
+      // 'send-link' and defer options leave it unset (collect/authorize later).
+      const paymentMethodId =
+        paymentSelection && paymentSelection !== "send-link" && paymentSelection !== DEFER_CARD
+          ? paymentSelection
+          : null;
+
       // Handle recurring appointments
       if (recurrenceType !== "none") {
         const response = await fetch("/api/recurring-appointments", {
@@ -668,6 +681,7 @@ export default function AddAppointmentModal({
                 : null,
             specialRequests: specialRequests || null,
             status: initialStatus,
+            paymentMethodId,
           }),
         });
 
@@ -711,6 +725,7 @@ export default function AddAppointmentModal({
               ? parseFloat(customPrice)
               : null,
           special_requests: specialRequests || null,
+          payment_method_id: paymentMethodId,
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
           response_deadline: responseDeadline,
@@ -761,6 +776,45 @@ export default function AddAppointmentModal({
 
       console.log("Appointment created successfully:", insertData);
 
+      // If a saved card was chosen, place the authorization hold now (immediate feedback;
+      // the JIT cron is the backstop for deferred/cron-scheduled holds). The appointment
+      // already exists, so an auth failure is surfaced but doesn't undo creation.
+      if (paymentMethodId && insertData?.id) {
+        try {
+          const token = await getAccessToken();
+          const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ organization_id: currentOrganizationId }),
+          });
+          const authResult = await authRes.json().catch(() => ({}));
+          if (!authRes.ok || (authResult.code !== "authorized" && authResult.code !== "requires_action")) {
+            // Refresh the list (the appointment exists) but keep the modal open so the admin
+            // sees why the hold didn't land and can retry from the appointment.
+            onAppointmentCreated();
+            setError(
+              `Appointment created, but the card hold failed: ${
+                authResult.message || authResult.error || "authorization error"
+              }. You can retry from the appointment.`,
+            );
+            setIsCreating(false);
+            return;
+          }
+        } catch (authErr) {
+          onAppointmentCreated();
+          setError(
+            `Appointment created, but the card hold failed: ${
+              authErr instanceof Error ? authErr.message : "authorization error"
+            }. You can retry from the appointment.`,
+          );
+          setIsCreating(false);
+          return;
+        }
+      }
+
       // Success! Close modal and refresh
       onAppointmentCreated();
       handleClose();
@@ -806,6 +860,7 @@ export default function AddAppointmentModal({
     setScheduledTime("");
     setAlternateSlots([]);
     setSpecialRequests("");
+    setPaymentSelection(null);
     setSelectedCleaner(null);
     setHomeownerSearch("");
     setPropertySearch("");
@@ -876,7 +931,11 @@ export default function AddAppointmentModal({
       !priceOverrideEnabled ||
       (customPrice && parseFloat(customPrice) > 0));
   const isStep3Valid = !!selectedCleaner;
-  const isStep4Valid = paymentMethodSaved || skipPaymentMethod;
+  // New charge flow: the Step 3 card picker always yields a completable choice (a saved card,
+  // a send-link, or defer), so the final step is never blocked. Legacy keeps the saved/skip gate.
+  const isStep4Valid = stripeNewChargeFlowUiEnabled()
+    ? true
+    : paymentMethodSaved || skipPaymentMethod;
 
   // Get today's date for min date validation (using local timezone, not UTC)
   const getTodayLocal = () => {
@@ -1956,6 +2015,23 @@ export default function AddAppointmentModal({
                     </h3>
                   </div>
 
+                  {stripeNewChargeFlowUiEnabled() ? (
+                    <>
+                      <p className="text-gray-600">
+                        Choose how {selectedHomeowner.first_name}{" "}
+                        {selectedHomeowner.last_name} will pay. The selected card is authorized
+                        when the appointment is created and charged when the job is completed.
+                        You can also defer and collect a card later.
+                      </p>
+                      <AppointmentPaymentSection
+                        homeownerId={selectedHomeowner.id}
+                        organizationId={currentOrganizationId ?? null}
+                        value={paymentSelection}
+                        onChange={setPaymentSelection}
+                      />
+                    </>
+                  ) : (
+                    <>
                   <p className="text-gray-600 mb-4">
                     Collect payment information from{" "}
                     {selectedHomeowner.first_name} {selectedHomeowner.last_name}
@@ -2030,6 +2106,8 @@ export default function AddAppointmentModal({
                         </div>
                       </label>
                     </div>
+                  )}
+                    </>
                   )}
                 </div>
               )}

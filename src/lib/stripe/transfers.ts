@@ -1,59 +1,71 @@
 /**
- * Tenant → cleaner transfers (Phase 3, marketplace Scenario 1).
+ * Platform → connected-account transfers (marketplace settlement, Scenario 1).
  *
- * After a destination charge is captured, the tenant holds (gross − platform fee). The
- * cleaner's percentage is then transferred FROM THE TENANT'S balance to the cleaner's
- * connected account — a transfer created on the tenant account (`stripeAccount: tenant`).
+ * Funds for a job settle to the PLATFORM balance: the charge is created on the platform with
+ * `on_behalf_of: tenant` and a `transfer_group`, but NO `transfer_data` (separate charges and
+ * transfers). After capture the platform fans the money out with two transfers from its own
+ * balance — tenant remainder → tenant account, cleaner percentage → cleaner account — and keeps
+ * the platform fee.
  *
- * We source it from the tenant's destination-payment charge (`source_transaction`) so the
- * exact funds the tenant received back the cleaner payout (no reliance on general
- * available balance). Idempotency key `cleaner-payout-${appointmentId}` makes webhook
- * retries safe.
+ * Every transfer is created ON THE PLATFORM (no `stripeAccount` header). That is deliberate and
+ * load-bearing: Stripe forbids transfers BETWEEN connected accounts, so the earlier
+ * "tenant → cleaner via `stripeAccount: tenant`" design failed at runtime with
+ * "Cannot create transfers between connected accounts." Omitting the header makes that mistake
+ * structurally impossible. All transfers for a job share a `transfer_group` so a refund can find
+ * and reverse them.
  */
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
 
-/**
- * Given the platform charge id from the PaymentIntent, resolve the charge id as it
- * appears ON THE TENANT's account (the destination payment) — the correct
- * `source_transaction` for the onward tenant→cleaner transfer. Returns null if it can't
- * be resolved (caller falls back to an available-balance transfer).
- */
-export async function resolveTenantChargeId(platformChargeId: string): Promise<string | null> {
-  const stripe = getStripe();
-  const charge = await stripe.charges.retrieve(platformChargeId, { expand: ['transfer'] });
-  const transfer = charge.transfer as Stripe.Transfer | string | null;
-  if (!transfer || typeof transfer === 'string') return null;
-  const destPayment = transfer.destination_payment;
-  if (!destPayment) return null;
-  return typeof destPayment === 'string' ? destPayment : destPayment.id;
+/** Stable transfer-group tag shared by a job's charge and all its transfers. */
+export function transferGroupFor(appointmentId: string): string {
+  return `appt_${appointmentId}`;
 }
 
-export interface TenantToCleanerTransferParams {
-  tenantAccountId: string;
-  cleanerAccountId: string;
+export interface PlatformTransferParams {
+  /** Connected account to receive the funds (tenant or cleaner). */
+  destinationAccountId: string;
   amountCents: number;
+  /** Platform charge id (PaymentIntent.latest_charge) to draw the funds from. */
   sourceTransactionId: string | null;
+  transferGroup: string;
+  /** Idempotency key — e.g. `tenant-payout-${appt}` / `cleaner-payout-${appt}`. */
+  idempotencyKey: string;
   appointmentId: string;
 }
 
-export async function createTenantToCleanerTransfer(
-  p: TenantToCleanerTransferParams,
-): Promise<Stripe.Transfer> {
+/**
+ * Create a transfer FROM the platform balance to a connected account. There is intentionally no
+ * `stripeAccount` header — a platform→connected transfer is the only kind Stripe permits here.
+ */
+export async function createPlatformTransfer(p: PlatformTransferParams): Promise<Stripe.Transfer> {
   const stripe = getStripe();
-
   const params: Stripe.TransferCreateParams = {
     amount: p.amountCents,
     currency: 'usd',
-    destination: p.cleanerAccountId,
+    destination: p.destinationAccountId,
+    transfer_group: p.transferGroup,
     metadata: { appointment_id: p.appointmentId, source: 'nexxus-cleaning-platform' },
   };
-  if (p.sourceTransactionId) {
-    params.source_transaction = p.sourceTransactionId;
-  }
+  if (p.sourceTransactionId) params.source_transaction = p.sourceTransactionId;
+  return stripe.transfers.create(params, { idempotencyKey: p.idempotencyKey });
+}
 
-  return stripe.transfers.create(params, {
-    stripeAccount: p.tenantAccountId,
-    idempotencyKey: `cleaner-payout-${p.appointmentId}`,
-  });
+/** Every transfer Stripe created for a job (by transfer_group) — used to unwind on refund. */
+export async function listTransfersByGroup(transferGroup: string): Promise<Stripe.Transfer[]> {
+  const stripe = getStripe();
+  const res = await stripe.transfers.list({ transfer_group: transferGroup, limit: 100 });
+  return res.data;
+}
+
+/**
+ * Reverse (part of) a transfer. Created on the PLATFORM (no `stripeAccount`), matching how the
+ * transfer was created — claws the funds back to the platform balance.
+ */
+export async function reversePlatformTransfer(
+  transferId: string,
+  amountCents: number,
+): Promise<Stripe.TransferReversal> {
+  const stripe = getStripe();
+  return stripe.transfers.createReversal(transferId, { amount: amountCents });
 }

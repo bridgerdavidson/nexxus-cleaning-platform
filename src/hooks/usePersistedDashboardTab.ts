@@ -27,6 +27,7 @@ export const HOMEOWNER_DASHBOARD_TAB_IDS = [
   "services",
   "properties",
   "payments",
+  "payment-methods",
   "settings",
 ] as const;
 

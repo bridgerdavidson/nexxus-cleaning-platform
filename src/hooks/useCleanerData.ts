@@ -8,6 +8,8 @@ import { useAuth } from './useAuth';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
+import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
+import { getAccessToken } from '../lib/auth/clientAccessToken';
 
 export interface CleanerAppointment {
   id: string;
@@ -834,6 +836,26 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
           .select('organization_id')
           .eq('id', appointmentId)
           .single();
+
+        // New charge flow: capture the held authorization (the assigned cleaner is permitted).
+        // A 409 ("no authorization to capture") for a deferred/uncarded appointment is
+        // non-fatal — the job still completes; payment is collected separately.
+        if (stripeNewChargeFlowUiEnabled()) {
+          const token = await getAccessToken();
+          const captureRes = await fetch(`/api/appointments/${appointmentId}/capture`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ organization_id: appointment?.organization_id }),
+          });
+          const captureResult = await captureRes.json().catch(() => ({}));
+          if (!captureRes.ok) {
+            return { success: true, paymentStatus: 'failed', paymentError: captureResult.error || 'Capture failed' };
+          }
+          return { success: true, paymentStatus: 'paid', paymentIntentId: captureResult.payment_intent_id };
+        }
 
         const response = await fetch('/api/stripe/create-payment-intent', {
           method: 'POST',

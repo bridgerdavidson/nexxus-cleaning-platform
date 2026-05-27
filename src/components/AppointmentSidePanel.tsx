@@ -34,6 +34,8 @@ import {
   DASHBOARD_HERO_SECONDARY_BUTTON_STYLE,
 } from "../lib/dashboardHero";
 import PaymentMethodForm from "./PaymentMethodForm";
+import AppointmentCardManager from "./AppointmentCardManager";
+import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 import JobPhotoLightbox from "./JobPhotoLightbox";
 
 interface CleanerFeedback {
@@ -944,7 +946,14 @@ export default function AppointmentSidePanel({
               <div className="flex-1">
                 <p className="text-sm text-gray-500 mb-2">Payment Method</p>
 
-                {showPaymentForm && appointment.homeowner_id ? (
+                {stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
+                  <AppointmentCardManager
+                    appointmentId={appointment.id}
+                    homeownerId={appointment.homeowner_id}
+                    organizationId={appointment.organization_id ?? ""}
+                    role={role}
+                  />
+                ) : showPaymentForm && appointment.homeowner_id ? (
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <PaymentMethodForm
                       homeownerId={appointment.homeowner_id}
