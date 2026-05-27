@@ -124,7 +124,10 @@ export async function POST(
       try {
         await reversePlatformTransfer(t.id, reversalCents);
         if (payout && t.id === payout.stripe_transfer_id) {
-          const fullyReversed = reversalCents >= Math.round(Number(payout.amount) * 100);
+          // Compare CUMULATIVE reversal (prior + this one) to the payout, so a series of partial
+          // refunds that together fully reverse the transfer flips the payout to 'reversed'.
+          const fullyReversed =
+            (t.amount_reversed ?? 0) + reversalCents >= Math.round(Number(payout.amount) * 100);
           await supabaseAdmin
             .from('payouts')
             .update({

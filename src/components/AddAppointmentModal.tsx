@@ -681,6 +681,7 @@ export default function AddAppointmentModal({
                 : null,
             specialRequests: specialRequests || null,
             status: initialStatus,
+            paymentMethodId,
           }),
         });
 
