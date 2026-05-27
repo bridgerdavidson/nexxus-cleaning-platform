@@ -120,6 +120,52 @@ describe('POST /api/appointments/:appointmentId/payment-method', () => {
     expect((data as { payment_method_id: string }).payment_method_id).toBe('pm_test_card');
   });
 
+  it('changing the card on a FAILED appointment resets it to pending/scheduled', async () => {
+    const appt = await makeAppt();
+    const db = createTestSupabaseClient();
+    // Simulate the prior declined authorization: failed appt + failed revenue payment row.
+    await db
+      .from('appointments')
+      .update({ authorization_status: 'failed', reauth_count: 0 })
+      .eq('id', appt.id);
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'failed',
+      payment_type: 'revenue',
+      payment_method: 'card',
+      stripe_payment_intent_id: 'pi_declined',
+    });
+
+    const { status, body } = await callRoute<{ success: boolean; reset: boolean }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, payment_method_id: 'pm_new_card' },
+    });
+    expect(status).toBe(200);
+    expect(body.reset).toBe(true);
+
+    const { data: apptRow } = await db
+      .from('appointments')
+      .select('authorization_status, reauth_count, payment_method_id')
+      .eq('id', appt.id)
+      .single();
+    const a = apptRow as { authorization_status: string; reauth_count: number; payment_method_id: string };
+    expect(a.authorization_status).toBe('scheduled');
+    expect(a.reauth_count).toBe(1);
+    expect(a.payment_method_id).toBe('pm_new_card');
+
+    // The pill is derived from payments.status — it must flip back to pending ("Unpaid").
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status, stripe_payment_intent_id')
+      .eq('appointment_id', appt.id);
+    const pay = payRows![0] as { status: string; stripe_payment_intent_id: string | null };
+    expect(pay.status).toBe('pending');
+    expect(pay.stripe_payment_intent_id).toBeNull();
+  });
+
   it('the homeowner can set the card on their OWN appointment', async () => {
     const appt = await makeAppt();
     const { status } = await callRoute(handlerFor(appt.id), {
