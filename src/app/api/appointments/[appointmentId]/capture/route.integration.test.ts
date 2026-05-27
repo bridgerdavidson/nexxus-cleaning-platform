@@ -134,6 +134,32 @@ describe('POST /api/appointments/:appointmentId/capture', () => {
     expect((apptRow as { authorization_status: string }).authorization_status).toBe('captured');
   });
 
+  it('is idempotent when the payment is already paid (no re-capture, stays paid)', async () => {
+    const appt = await makeAuthorizedAppt();
+    const db = createTestSupabaseClient();
+    // Simulate a prior successful capture (e.g. the payment_intent.succeeded webhook won the race).
+    await db.from('payments').update({ status: 'paid' }).eq('appointment_id', appt.id);
+    // A second capture would throw "not capturable"; assert we never clobber the paid row.
+    vi.mocked(capturePaymentIntent).mockRejectedValueOnce(new Error('intent not capturable'));
+
+    const { status, body } = await callRoute<{ success: boolean; alreadyCaptured?: boolean }>(
+      handlerFor(appt.id),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      },
+    );
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const { data: paidRows } = await db
+      .from('payments')
+      .select('status')
+      .eq('appointment_id', appt.id);
+    expect((paidRows![0] as { status: string }).status).toBe('paid');
+  });
+
   it('on capture failure: 502, payment marked failed, authorization_status=failed', async () => {
     const appt = await makeAuthorizedAppt();
     vi.mocked(capturePaymentIntent).mockRejectedValueOnce(new Error('card_declined'));

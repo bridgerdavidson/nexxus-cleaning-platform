@@ -55,17 +55,25 @@ export async function settleCleanerPayout(
   const org = orgRow as { stripe_connect_account_id: string | null; platform_fee_bps: number } | null;
   if (!org?.stripe_connect_account_id) return { settled: false, reason: 'tenant_not_ready' };
 
+  // The revenue payment row drives the captured-amount fallback AND tells us whether the tenant
+  // leg already ran (transfer_amount recorded). On a retry `platformChargeId` is null, so
+  // re-attempting the tenant transfer under the same `tenant-payout-${id}` idempotency key with
+  // different params would be rejected by Stripe and bail before the cleaner leg — so the failed
+  // cleaner payout could never self-heal. Skip the tenant leg once it's already recorded.
+  const { data: payRow } = await supabase
+    .from('payments')
+    .select('amount, transfer_amount')
+    .eq('appointment_id', appointmentId)
+    .eq('payment_type', 'revenue')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const tenantAlreadyTransferred =
+    (payRow as { transfer_amount: number | null } | null)?.transfer_amount != null;
+
   // Split is of the amount actually captured (handles partial capture + cancellation fees).
   let grossCents = capturedCents ?? 0;
   if (!grossCents) {
-    const { data: payRow } = await supabase
-      .from('payments')
-      .select('amount')
-      .eq('appointment_id', appointmentId)
-      .eq('payment_type', 'revenue')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
     const amt = (payRow as { amount: number | string } | null)?.amount;
     grossCents = amt != null ? Math.round(Number(amt) * 100) : Math.round(Number(appt.total_price) * 100);
   }
@@ -106,7 +114,7 @@ export async function settleCleanerPayout(
 
   // 1) Tenant remainder → tenant connected account. This MUST happen or the tenant never gets
   //    paid (funds are stranded on the platform); on failure, record + bail before paying the cleaner.
-  if (tenantRemainderCents > 0) {
+  if (tenantRemainderCents > 0 && !tenantAlreadyTransferred) {
     try {
       await createPlatformTransfer({
         destinationAccountId: org.stripe_connect_account_id,

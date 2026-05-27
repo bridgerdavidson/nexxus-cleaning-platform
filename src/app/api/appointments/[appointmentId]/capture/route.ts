@@ -64,12 +64,39 @@ export async function POST(
       return NextResponse.json({ error: 'No authorization to capture' }, { status: 409 });
     }
 
+    // Idempotent: a prior capture (double-submit, client retry, or the payment_intent.succeeded
+    // webhook) may have already marked this paid. Don't re-capture — Stripe would throw because the
+    // intent is no longer capturable, and we'd wrongly flip a paid job to "failed".
+    if (pay.status === 'paid') {
+      return NextResponse.json({
+        success: true,
+        payment_intent_id: pay.stripe_payment_intent_id,
+        status: 'succeeded',
+        alreadyCaptured: true,
+      });
+    }
+
     let pi;
     try {
       pi = await capturePaymentIntent(pay.stripe_payment_intent_id);
     } catch (err) {
-      // Reflect the failed capture so the admin pill reads "Failed" (not a stale "Unpaid") and
-      // the appointment surfaces in "Payments needing attention" for re-authorization.
+      // A concurrent capture / webhook may have succeeded between our read and this call. Re-check
+      // before clobbering a now-paid job as failed.
+      const { data: fresh } = await supabaseAdmin
+        .from('payments')
+        .select('status')
+        .eq('id', pay.id)
+        .maybeSingle();
+      if ((fresh as { status: string } | null)?.status === 'paid') {
+        return NextResponse.json({
+          success: true,
+          payment_intent_id: pay.stripe_payment_intent_id,
+          status: 'succeeded',
+          alreadyCaptured: true,
+        });
+      }
+      // Genuine failure: reflect it so the admin pill reads "Failed" (not a stale "Unpaid") and the
+      // appointment surfaces in "Payments needing attention" for re-authorization.
       await supabaseAdmin.from('payments').update({ status: 'failed' }).eq('id', pay.id);
       await supabaseAdmin
         .from('appointments')
