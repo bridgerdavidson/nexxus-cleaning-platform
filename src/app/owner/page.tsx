@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { PlatformOverviewPage } from '@/components/platform/PlatformOverviewPage';
 
 /**
  * Platform-owner back-office (Nexxus staff). Guard-only shell — the tenant
@@ -35,10 +36,5 @@ export default function OwnerDashboardPage() {
     );
   }
 
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-secondary-900">Platform Owner</h1>
-      <p className="mt-2 text-secondary-500">Tenant overview coming up next.</p>
-    </div>
-  );
+  return <PlatformOverviewPage />;
 }
