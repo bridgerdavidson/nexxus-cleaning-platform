@@ -31,6 +31,7 @@ async function seedInvite(role: 'owner' | 'cleaner') {
       role,
       status: 'pending',
       accepted_at: null,
+      invited_by: invitee.id, // invited_by is NOT NULL; any real auth user satisfies the FK
     })
     .select('id')
     .single();
