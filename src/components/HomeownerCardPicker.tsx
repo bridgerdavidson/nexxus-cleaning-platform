@@ -104,33 +104,33 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     void loadCards();
   }, [loadCards]);
 
-  // Lazily create a SetupIntent once the new-card option is selected.
+  const fetchSetupIntent = useCallback(async () => {
+    setSiLoading(true);
+    setSiError(null);
+    try {
+      const res = await fetch("/api/stripe/create-setup-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ homeowner_id: homeownerId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.client_secret) throw new Error(data.error || "Could not start card setup");
+      setSiSecret(data.client_secret as string);
+    } catch (e) {
+      setSiError(e instanceof Error ? e.message : "Could not start card setup");
+    } finally {
+      setSiLoading(false);
+    }
+  }, [homeownerId]);
+
+  // Lazily create a SetupIntent the first time the new-card option is selected. Idempotent
+  // guards (not a cancel flag) prevent re-fetching: once we have a secret, are mid-flight, or
+  // hit an error, we don't fire again. "Try again" clears siError to re-trigger this.
   useEffect(() => {
-    if (selected !== NEW_CARD || siSecret || siLoading) return;
-    let cancelled = false;
-    (async () => {
-      setSiLoading(true);
-      setSiError(null);
-      try {
-        const res = await fetch("/api/stripe/create-setup-intent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ homeowner_id: homeownerId }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!res.ok || !data.client_secret) throw new Error(data.error || "Could not start card setup");
-        setSiSecret(data.client_secret as string);
-      } catch (e) {
-        if (!cancelled) setSiError(e instanceof Error ? e.message : "Could not start card setup");
-      } finally {
-        if (!cancelled) setSiLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, siSecret, siLoading, homeownerId]);
+    if (selected === NEW_CARD && !siSecret && !siLoading && !siError) {
+      void fetchSetupIntent();
+    }
+  }, [selected, siSecret, siLoading, siError, fetchSetupIntent]);
 
   // Report readiness up to the parent (drives the Submit button's disabled state).
   useEffect(() => {
