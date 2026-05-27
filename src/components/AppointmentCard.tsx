@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
-import AuthHoldBadge from "./AuthHoldBadge";
 import CompactAppointmentRow from "./CompactAppointmentRow";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
@@ -409,7 +408,6 @@ export default function AppointmentCard({
                   />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
-                {role !== "cleaner" && <AuthHoldBadge status={appointment.authorization_status} />}
               </div>
             )}
           </div>
@@ -466,7 +464,6 @@ export default function AppointmentCard({
                   <CompactJobProgressIndicator currentProgress={appointment.job_progress as JobProgress} />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
-                {role !== "cleaner" && <AuthHoldBadge status={appointment.authorization_status} />}
               </div>
             )}
           </div>
