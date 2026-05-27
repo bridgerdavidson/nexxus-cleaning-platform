@@ -14,6 +14,7 @@ export interface AuthState {
   currentOrganizationId: string | null;
   currentOrgRole: OrgRole | null;
   currentOrganization: Organization | null;
+  isPlatformAdmin: boolean | null; // null = not yet resolved (see /api/platform/whoami)
 }
 
 export interface AuthActions {

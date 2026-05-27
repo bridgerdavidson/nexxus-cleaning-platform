@@ -16,6 +16,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrgRole, setCurrentOrgRole] = useState<OrgRole | null>(null);
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
+  // null = not yet checked. Consumers (login routing, /owner) wait on non-null
+  // so a real platform admin is never bounced before the check resolves.
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean | null>(null);
   const isSigningOutRef = useRef(false);
   const isSigningInRef = useRef(false);
   const userRef = useRef<User | null>(null);
@@ -227,6 +230,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loadOrganization();
   }, [user]);
+
+  // Resolve platform-admin status server-side (see /api/platform/whoami). Kept
+  // additive and separate from the fragile auth flow above. Sources the token
+  // from `session` (not the later `accessToken` const) to avoid a temporal
+  // dead zone in the dependency array.
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!user?.id || !token) {
+      setIsPlatformAdmin(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/platform/whoami', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (cancelled || isSigningOutRef.current) return;
+        setIsPlatformAdmin(res.ok);
+      } catch {
+        if (!cancelled && !isSigningOutRef.current) setIsPlatformAdmin(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, session?.access_token]);
 
   useEffect(() => {
     let isMounted = true;
@@ -572,6 +602,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentOrganizationId,
     currentOrgRole,
     currentOrganization,
+    isPlatformAdmin,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
