@@ -301,7 +301,12 @@ const NewCardInner = forwardRef<NewCardHandle, { onCompleteChange: (c: boolean) 
       [stripe, elements],
     );
 
-    return <PaymentElement onChange={(e) => onCompleteChange(e.complete)} />;
+    return (
+      <PaymentElement
+        onChange={(e) => onCompleteChange(e.complete)}
+        options={{ wallets: { link: "never" } }}
+      />
+    );
   },
 );
 
