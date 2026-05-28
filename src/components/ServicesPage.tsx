@@ -205,6 +205,10 @@ interface ChecklistsViewProps {
   onBackToServices: () => void;
   onBackToServiceDetail?: () => void;
   onChecklistPricingChanged?: () => void;
+  // Shown right after a service is created: a first-run intro that explains
+  // checklists + price add-ons and nudges the owner to review the default.
+  showSetupIntro?: boolean;
+  onDismissSetupIntro?: () => void;
 }
 
 function ChecklistsView({
@@ -213,6 +217,8 @@ function ChecklistsView({
   onBackToServices,
   onBackToServiceDetail,
   onChecklistPricingChanged,
+  showSetupIntro = false,
+  onDismissSetupIntro,
 }: ChecklistsViewProps) {
   const {
     checklists,
@@ -460,6 +466,10 @@ function ChecklistsView({
             <p className="text-gray-600 mt-1">
               for <span className="font-medium">{service.name}</span>
             </p>
+            <p className="text-gray-500 text-sm mt-2 max-w-xl">
+              A service can have multiple checklists. Each one can add to the base
+              price — use extra checklists for deeper cleans or add-ons.
+            </p>
           </div>
         </div>
 
@@ -474,6 +484,83 @@ function ChecklistsView({
           </button>
         )}
       </div>
+
+      {/* First-run setup intro (shown right after a service is created) */}
+      {showSetupIntro && (
+        <section
+          aria-label="Set up your checklist"
+          className="rounded-2xl border border-primary-200 bg-primary-50/60 p-5"
+        >
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-primary-100 p-2 flex-shrink-0">
+              <ClipboardList
+                className="h-5 w-5 text-primary-600"
+                aria-hidden="true"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-bold text-secondary-900">
+                Your service is ready — now set up its checklist
+              </h3>
+              <p className="mt-1 text-sm text-secondary-600">
+                We started{" "}
+                <span className="font-semibold text-secondary-900">
+                  {service.name}
+                </span>{" "}
+                with a default checklist below — the steps your cleaners follow on
+                every job. Review it, edit the steps, or rename it.
+              </p>
+              <ul className="mt-3 space-y-1.5 text-sm text-secondary-600">
+                <li className="flex items-start gap-2">
+                  <CheckCircle
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-600"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Add{" "}
+                    <span className="font-semibold text-secondary-900">
+                      more checklists
+                    </span>{" "}
+                    for different levels of clean (e.g. Standard vs. Deep Clean).
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-600"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Give a checklist a{" "}
+                    <span className="font-semibold text-secondary-900">
+                      price add-on
+                    </span>{" "}
+                    — it&apos;s added to the base price when a customer books that
+                    checklist.
+                  </span>
+                </li>
+              </ul>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={onBackToServices}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                >
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                  Looks good — done
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onDismissSetupIntro}
+              className="rounded-lg p-1.5 text-secondary-400 transition-colors hover:bg-white hover:text-secondary-600 flex-shrink-0"
+              aria-label="Dismiss setup tips"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Item Error Banner */}
       {itemError && (
@@ -734,6 +821,12 @@ export default function ServicesPage({
   const [viewingChecklistsForService, setViewingChecklistsForService] =
     useState<ServiceType | null>(null);
 
+  // When set, ChecklistsView shows the first-run setup intro for this service id
+  // (set right after a service is created, cleared when leaving the view).
+  const [setupIntroServiceId, setSetupIntroServiceId] = useState<string | null>(
+    null,
+  );
+
   // Toggle active loading state
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
 
@@ -827,9 +920,17 @@ export default function ServicesPage({
     setShowFormModal(true);
   };
 
+  // Route into a newly created service's checklists with the setup intro, so the
+  // owner reviews/customizes the auto-created default checklist before moving on.
+  const enterChecklistSetup = (created: ServiceType) => {
+    setSetupIntroServiceId(created.id);
+    setViewingChecklistsForService(created);
+  };
+
   // Handle form success
-  const handleFormSuccess = () => {
+  const handleFormSuccess = (created?: ServiceType) => {
     refetch();
+    if (created) enterChecklistSetup(created);
   };
 
   // Handle delete success
@@ -920,10 +1021,12 @@ export default function ServicesPage({
   };
 
   // Handle form success - also update viewing service if it was edited
-  const handleFormSuccessWithUpdate = () => {
+  const handleFormSuccessWithUpdate = (created?: ServiceType) => {
     refetch();
-    // We'll update the viewing service after refetch completes
-    // For now, just close the modal - the service list will refresh
+    // Creating from the detail view isn't a normal path (detail only edits),
+    // but handle it for consistency so a created service still gets checklist setup.
+    if (created) enterChecklistSetup(created);
+    // For edits, just close the modal - the service list will refresh.
   };
 
   // Handle view checklists for a service
@@ -936,12 +1039,14 @@ export default function ServicesPage({
   // Handle back from checklists to service detail
   const handleBackToServiceDetail = () => {
     setViewingChecklistsForService(null);
+    setSetupIntroServiceId(null);
   };
 
   // Handle back from checklists to services list
   const handleBackToServicesFromChecklists = () => {
     setViewingChecklistsForService(null);
     setViewingService(null);
+    setSetupIntroServiceId(null);
   };
 
   // If viewing checklists for a service, show the checklists view
@@ -959,6 +1064,8 @@ export default function ServicesPage({
           viewingService ? handleBackToServiceDetail : undefined
         }
         onChecklistPricingChanged={refreshMaxChecklistAdders}
+        showSetupIntro={setupIntroServiceId === latestService.id}
+        onDismissSetupIntro={() => setSetupIntroServiceId(null)}
       />
     );
   }
