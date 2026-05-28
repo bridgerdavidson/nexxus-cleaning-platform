@@ -87,16 +87,7 @@ export default function OrgPaymentSettings() {
   }
 
   return (
-    <div className="card py-6 px-5 md:px-8 mx-1 md:mx-0 mt-6">
-      <div className="mb-5">
-        <h2 className="text-xl font-bold tracking-tight text-gray-900">Cancellation policy</h2>
-        <p className="text-gray-500 mt-1 max-w-xl text-sm">
-          When a homeowner cancels late (inside the window) or no-shows, this fee is captured from
-          their card hold; the rest of the hold is released. Cleaner-caused or on-time cancellations
-          are always free.
-        </p>
-      </div>
-
+    <div>
       {loading ? (
         <div className="flex items-center gap-2 text-gray-500 py-6">
           <Loader2 className="w-5 h-5 animate-spin" /> Loading…

@@ -49,13 +49,6 @@ export default function SettingsProfileSection() {
 
   return (
     <div>
-        <div className="mb-6">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mb-2">Profile Settings</h1>
-        <p className="text-[15px] text-gray-500">
-          Manage your account information and profile picture.
-        </p>
-      </div>
-
       {/* Avatar section */}
       <div className="card mb-6 md:mb-8 group">
         <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-6 group-hover:text-primary-600 transition-colors">Profile Picture</h2>

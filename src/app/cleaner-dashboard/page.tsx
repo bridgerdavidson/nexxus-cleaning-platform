@@ -61,7 +61,6 @@ import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
-import SettingsHub from "../../components/SettingsHub";
 import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
 import { format, startOfWeek, endOfWeek } from "date-fns";
@@ -335,9 +334,6 @@ function CleanerDashboardInner() {
       hasNotification: hasUnreadMessages,
     },
   ];
-  if (!allTabs.find((t) => t.id === "settings")) {
-    allTabs.push({ id: "settings", label: "Settings", icon: User });
-  }
 
   const handleLogout = async () => {
     await signOut();
@@ -1938,8 +1934,6 @@ function CleanerDashboardInner() {
             refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
-      case "settings":
-        return <SettingsHub />;
       default:
         return renderSchedule();
     }

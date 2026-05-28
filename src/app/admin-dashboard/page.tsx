@@ -11,7 +11,6 @@ import {
   MessageCircle,
   DollarSign,
   BarChart3,
-  Settings,
   TrendingUp,
   UserCheck,
   Home,
@@ -61,7 +60,6 @@ import PaymentsPage from "../../components/PaymentsPage";
 import CleanerManagementPage from "../../components/CleanerManagementPage";
 import AnalyticsPage from "../../components/AnalyticsPage";
 import ServicesPage from "../../components/ServicesPage";
-import SettingsHub from "../../components/SettingsHub";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
@@ -373,9 +371,6 @@ function AdminDashboardInner() {
   const allTabs = Array.from(
     new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values(),
   );
-  if (!allTabs.find((t) => t.id === "settings")) {
-    allTabs.push({ id: "settings", label: "Settings", icon: Settings });
-  }
 
   // Handle group change - switch to first tab of new group (group derives from tab via ADMIN_MANAGER_TAB_TO_GROUP)
   const handleGroupChange = (groupId: string) => {
@@ -785,8 +780,6 @@ function AdminDashboardInner() {
             refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
-      case "settings":
-        return null; // Settings is rendered separately and pre-mounted below
       default:
         return renderOverview();
     }
@@ -822,7 +815,6 @@ function AdminDashboardInner() {
           />
         </div>
 
-        {/* Main Content Area - Settings page is always mounted so it's ready when user clicks */}
         <main
           className={`${
             activeTab === "messages"
@@ -830,10 +822,7 @@ function AdminDashboardInner() {
               : "p-4 sm:p-6 lg:p-8"
           } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
-          <div className={activeTab === "settings" ? "block" : "hidden"}>
-            <SettingsHub />
-          </div>
-          {activeTab !== "settings" && renderContent()}
+          {renderContent()}
         </main>
       </div>
 

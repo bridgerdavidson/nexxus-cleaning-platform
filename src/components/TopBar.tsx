@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Menu,
   LucideIcon,
@@ -58,6 +60,8 @@ const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const onSettingsRoute = pathname?.startsWith("/settings") ?? false;
   // Platform-admin "View as" mode — used to hide per-user affordances
   // (Messages) that would surface the admin's own data, not the tenant's.
   const { impersonatingOrgId } = useAuth();
@@ -154,27 +158,20 @@ const TopBar: React.FC<TopBarProps> = ({
             </button>
           )}
           {showSettingsIcon && (
-            <button
-              type="button"
-              onClick={() => onTabChange("settings")}
+            <Link
+              href="/settings"
               className="p-2 rounded-lg text-gray-600 hover:text-primary-600 hover:bg-gray-50 transition-colors"
               aria-label="Open settings"
             >
               <Settings
-                className={`w-5 h-5 ${
-                  activeTab === "settings" ? "text-primary-600" : ""
-                }`}
+                className={`w-5 h-5 ${onSettingsRoute ? "text-primary-600" : ""}`}
               />
-            </button>
+            </Link>
           )}
           {user && !profileClickNavigatesToSettings && (
           <div className="hidden md:block relative" ref={dropdownRef}>
             <button
-              onClick={() =>
-                profileClickNavigatesToSettings
-                  ? onTabChange("settings")
-                  : setIsUserDropdownOpen(!isUserDropdownOpen)
-              }
+              onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
               className="flex items-center space-x-3 text-gray-700 hover:text-primary-600 transition-colors duration-200 px-3 py-2 rounded-lg hover:bg-gray-50"
             >
               <div className="w-9 h-9 bg-primary-100 rounded-full overflow-hidden flex items-center justify-center">

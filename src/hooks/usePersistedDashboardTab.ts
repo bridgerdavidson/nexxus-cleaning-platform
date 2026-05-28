@@ -18,7 +18,6 @@ export const ADMIN_MANAGER_DASHBOARD_TAB_IDS = [
   "invites",
   "payments",
   "analytics",
-  "settings",
 ] as const;
 
 export const HOMEOWNER_DASHBOARD_TAB_IDS = [
@@ -28,7 +27,6 @@ export const HOMEOWNER_DASHBOARD_TAB_IDS = [
   "properties",
   "payments",
   "payment-methods",
-  "settings",
 ] as const;
 
 export const CLEANER_DASHBOARD_TAB_IDS = [
@@ -37,7 +35,6 @@ export const CLEANER_DASHBOARD_TAB_IDS = [
   "messages",
   "earnings",
   "services",
-  "settings",
 ] as const;
 
 /**

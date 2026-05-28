@@ -24,7 +24,6 @@ import {
   UserCheck,
   TrendingUp,
   Building,
-  Settings,
   LayoutGrid,
   BarChart3,
   Briefcase,
@@ -72,7 +71,6 @@ import AnalyticsPage from "../../components/AnalyticsPage";
 import PaymentsPage from "../../components/PaymentsPage";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
-import SettingsHub from "../../components/SettingsHub";
 import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
@@ -222,7 +220,6 @@ function ManagerDashboardInner() {
 
       switch (tabId) {
         case "home":
-        case "settings":
           return true;
         case "bookings":
           return permissions.can_view_bookings || false;
@@ -475,9 +472,6 @@ function ManagerDashboardInner() {
         groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab]),
       ).values(),
     );
-    if (!tabs.find((t) => t.id === "settings")) {
-      tabs.push({ id: "settings", label: "Settings", icon: Settings });
-    }
     return tabs;
   }, [groups]);
 
@@ -994,8 +988,6 @@ function ManagerDashboardInner() {
             refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
-      case "settings":
-        return null; // Settings is rendered separately and pre-mounted below
       default:
         return renderOverview();
     }
@@ -1031,7 +1023,6 @@ function ManagerDashboardInner() {
           />
         </div>
 
-        {/* Main Content Area - Settings page is always mounted so it's ready when user clicks */}
         <main
           className={`${
             activeTab === "messages"
@@ -1039,10 +1030,7 @@ function ManagerDashboardInner() {
               : "p-4 sm:p-6 lg:p-8"
           } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
-          <div className={activeTab === "settings" ? "block" : "hidden"}>
-            <SettingsHub />
-          </div>
-          {activeTab !== "settings" && renderContent()}
+          {renderContent()}
         </main>
       </div>
 

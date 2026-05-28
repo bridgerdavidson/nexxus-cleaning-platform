@@ -1,20 +1,41 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server';
+
+const DASHBOARD_ROUTES = [
+  '/admin-dashboard',
+  '/manager-dashboard',
+  '/cleaner-dashboard',
+  '/homeowner-dashboard',
+];
+
+// Known section ids → /settings/<section>. Anything else falls back to /settings.
+const SECTION_REDIRECTS: Record<string, string> = {
+  profile: '/settings/profile',
+  payments: '/settings/payments',
+  billing: '/settings/payments', // legacy alias from SettingsHub
+  payouts: '/settings/payouts',
+  'cancellation-policy': '/settings/cancellation-policy',
+  security: '/settings/security',
+  notifications: '/settings/notifications',
+};
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, searchParams } = request.nextUrl;
 
-  // Public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/signup', '/about', '/services', '/contact']
-  const isPublicRoute = publicRoutes.includes(pathname)
+  // Legacy ?tab=settings on any dashboard → 307 to the new /settings/* route.
+  // 307 (temporary) — the dashboard URL itself is still valid for any other tab value.
+  if (
+    DASHBOARD_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/')) &&
+    searchParams.get('tab') === 'settings'
+  ) {
+    const section = searchParams.get('section');
+    const target = section ? SECTION_REDIRECTS[section] ?? '/settings' : '/settings';
+    const url = request.nextUrl.clone();
+    url.pathname = target;
+    url.search = '';
+    return NextResponse.redirect(url, 307);
+  }
 
-  // Dashboard routes that require authentication
-  const dashboardRoutes = ['/admin-dashboard', '/cleaner-dashboard', '/homeowner-dashboard']
-  const isDashboardRoute = dashboardRoutes.some(route => pathname.startsWith(route))
-
-  // For now, let client-side auth handle redirects
-  // This middleware will be enhanced later for server-side session management
-  
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
 export const config = {
@@ -24,8 +45,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-}
+};

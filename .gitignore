@@ -47,6 +47,9 @@ Thumbs.db
 # Playwright MCP session artifacts
 .playwright-mcp/
 
+# Superpowers brainstorm session (visual companion mockups, audit screenshots)
+.superpowers/
+
 # Design iteration / verification screenshots (root only — keep public/ assets tracked)
 /*.png
 /*.jpg
