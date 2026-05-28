@@ -5,9 +5,12 @@ import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   addOwnerToOrg,
+  withPlatformAdmin,
   type TestOrgFixture,
   type OwnerMemberHandle,
+  type PlatformAdminFixture,
 } from '../../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
 /**
@@ -71,5 +74,75 @@ describe('POST /api/admin/send-invite (owner authorization)', () => {
       body: { email: 'someone@test.local', role: 'cleaner', organizationId: org.organizationId },
     });
     expect(status).toBe(401);
+  });
+});
+
+/**
+ * Regression for "Failed to clear stale auth user: Database error deleting user":
+ * inviting an email that belongs to a REAL account (a platform admin, or a member
+ * of another org) used to fall through to the "stale invitee" cleanup and try to
+ * DELETE that live user. It must instead be blocked, and the account left intact.
+ */
+describe('POST /api/admin/send-invite (never deletes a real account)', () => {
+  let org: TestOrgFixture | null = null;
+  let owner: OwnerMemberHandle | null = null;
+  let platformAdmin: PlatformAdminFixture | null = null;
+  let otherOrg: TestOrgFixture | null = null;
+
+  afterEach(async () => {
+    await owner?.cleanup();
+    await Promise.all([platformAdmin?.cleanup(), otherOrg?.cleanup(), org?.cleanup()]);
+    org = null;
+    owner = null;
+    platformAdmin = null;
+    otherOrg = null;
+  });
+
+  it("refuses to invite a platform admin's email and does NOT delete them", async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    platformAdmin = await withPlatformAdmin();
+
+    const { status, body } = await callRoute<{ error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(owner.accessToken),
+      body: { email: platformAdmin.email, role: 'cleaner', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/already belongs to a Nexxus account/i);
+
+    // The live account must still exist — the bug tried to delete it.
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('user_profiles')
+      .select('id')
+      .eq('id', platformAdmin.userId)
+      .maybeSingle();
+    expect(data).not.toBeNull();
+  });
+
+  it('refuses to invite an email that is active in another org', async () => {
+    [org, otherOrg] = await Promise.all([withTestOrg(), withTestOrg()]);
+    owner = await addOwnerToOrg(org.organizationId);
+
+    const { status, body } = await callRoute<{ error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(owner.accessToken),
+      body: { email: otherOrg.cleaner.email, role: 'cleaner', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/already belongs to a Nexxus account/i);
+
+    // Still a member of the other org.
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('organization_members')
+      .select('user_id')
+      .eq('user_id', otherOrg.cleaner.userId)
+      .eq('organization_id', otherOrg.organizationId)
+      .maybeSingle();
+    expect(data).not.toBeNull();
   });
 });
