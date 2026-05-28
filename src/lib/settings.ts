@@ -5,6 +5,11 @@ import {
   DollarSign,
   CreditCard,
   Receipt,
+  Building2,
+  Users,
+  Percent,
+  CalendarClock,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import type { ManagerPermissions } from '@/hooks/useAdminData';
@@ -15,7 +20,12 @@ export type SettingsSectionId =
   | 'notifications'
   | 'payouts'
   | 'payments'
-  | 'cancellation-policy';
+  | 'cancellation-policy'
+  | 'organization'
+  | 'team'
+  | 'cleaner-payouts'
+  | 'payout-model'
+  | 'business-hours';
 
 export type SettingsGroup = 'account' | 'business' | 'earnings';
 
@@ -44,6 +54,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'account',
   },
   {
+    // Org-wide name/logo/billing-email. Founder-only — owners alone can rebrand.
+    id: 'organization',
+    label: 'Organization',
+    icon: Building2,
+    href: '/settings/organization',
+    group: 'account',
+    roles: ['owner'],
+  },
+  {
     id: 'security',
     label: 'Security',
     icon: ShieldCheck,
@@ -58,6 +77,17 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     href: '/settings/notifications',
     group: 'account',
     comingSoon: true,
+  },
+  {
+    // Manager-permissions editor lives here now (was a modal in TeamMembersPage).
+    // Managers can reach it only if they're allowed to manage other cleaners/staff.
+    id: 'team',
+    label: 'Team & permissions',
+    icon: Users,
+    href: '/settings/team',
+    group: 'business',
+    roles: ['admin', 'owner', 'manager'],
+    managerPermission: 'can_manage_cleaners',
   },
   {
     // Tenant (cleaning company) Stripe Connect — the org is the merchant of record.
@@ -79,6 +109,37 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     group: 'business',
     roles: ['admin', 'owner', 'manager'],
     managerPermission: 'can_manage_payments',
+  },
+  {
+    // Org default % + per-cleaner table. Replaces the inline editor in
+    // CleanerManagementPage as the canonical home for payout-% config.
+    id: 'cleaner-payouts',
+    label: 'Cleaner payouts',
+    icon: Percent,
+    href: '/settings/cleaner-payouts',
+    group: 'business',
+    roles: ['admin', 'owner', 'manager'],
+    managerPermission: 'can_manage_payments',
+  },
+  {
+    // Payout MODEL (percentage_contractor | hourly_external). Owner-only;
+    // hourly_external is exposed but disabled until that flow ships.
+    id: 'payout-model',
+    label: 'Payout model',
+    icon: Wallet,
+    href: '/settings/payout-model',
+    group: 'business',
+    roles: ['owner'],
+  },
+  {
+    // Weekly business hours + IANA timezone (drives default availability bounds).
+    id: 'business-hours',
+    label: 'Business hours',
+    icon: CalendarClock,
+    href: '/settings/business-hours',
+    group: 'business',
+    roles: ['admin', 'owner', 'manager'],
+    managerPermission: 'can_manage_cleaners',
   },
   {
     // Cleaner Stripe Connect payouts.

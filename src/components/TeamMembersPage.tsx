@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search,
   Loader2,
@@ -19,7 +20,6 @@ import {
 import { TeamMember, deleteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import AddTeamMemberModal from "./AddTeamMemberModal";
-import ManagerPermissionsModal from "./ManagerPermissionsModal";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import TeamMemberSidePanel from "./TeamMemberSidePanel";
 
@@ -38,6 +38,7 @@ export default function TeamMembersPage({
   onRefresh,
   onMemberUpdated,
 }: TeamMembersPageProps) {
+  const router = useRouter();
   const { currentOrganizationId, user } = useAuth();
 
   const canManagePermissionsForMember = (member: TeamMember) =>
@@ -54,10 +55,6 @@ export default function TeamMembersPage({
 
   // Modal state
   const [showAddTeamMemberModal, setShowAddTeamMemberModal] = useState(false);
-  const [selectedManager, setSelectedManager] = useState<TeamMember | null>(
-    null
-  );
-  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
 
   // Side panel state
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
@@ -158,11 +155,12 @@ export default function TeamMembersPage({
     }
   };
 
-  // Handle permissions
+  // Handle permissions — navigates to /settings/team/[managerId]. This used to
+  // open a modal; the editor moved into the settings family so admins / owners
+  // can deep-link straight to a permissions page.
   const handleManagePermissions = (member: TeamMember) => {
-    setSelectedManager(member);
-    setShowPermissionsModal(true);
     setIsSidePanelOpen(false);
+    router.push(`/settings/team/${member.id}`);
   };
 
   // Handle card click to open side panel
@@ -483,18 +481,6 @@ export default function TeamMembersPage({
         isOpen={showAddTeamMemberModal}
         onClose={() => setShowAddTeamMemberModal(false)}
         onTeamMemberCreated={() => {
-          if (onRefresh) onRefresh();
-        }}
-      />
-
-      <ManagerPermissionsModal
-        isOpen={showPermissionsModal}
-        onClose={() => {
-          setShowPermissionsModal(false);
-          setSelectedManager(null);
-        }}
-        manager={selectedManager}
-        onPermissionsUpdated={() => {
           if (onRefresh) onRefresh();
         }}
       />
