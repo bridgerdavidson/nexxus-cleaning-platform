@@ -38,6 +38,28 @@ export function tenantStatusKind(
 }
 
 /**
+ * Return true when the iframe-bearing `<ConnectComponentsProvider>` MUST be replaced
+ * with the loading skeleton.
+ *
+ * The critical invariant (incident 2026-05-28 follow-up): once we've successfully
+ * loaded a `status` snapshot, this stays false for the rest of the session — even
+ * while a background `statusLoading` refresh (kicked off by `onStepChange` /
+ * `onLoadError` / `onExit`) is in flight. Toggling true after the first paint
+ * unmounts the iframe; that destroys the popup window's `opener` reference and
+ * the Stripe "Use existing Stripe account" / 2FA popup gets stuck on the loader
+ * shim forever.
+ */
+export function shouldShowConnectSkeleton(args: {
+  loading: boolean;
+  connectInstance: unknown | null;
+  status: TenantConnectStatus | null;
+  statusLoading: boolean;
+}): boolean {
+  const { loading, connectInstance, status, statusLoading } = args;
+  return loading || !connectInstance || (!status && statusLoading);
+}
+
+/**
  * Embedded Stripe Connect for the tenant — JUST the iframe portion.
  *
  * The status banner, the balance row, and the "Open Stripe dashboard" CTA all
@@ -110,9 +132,9 @@ export default function TenantStripeConnect() {
     !!status?.hasAccount &&
     (status?.detailsSubmitted || (status?.requirementsDue?.length ?? 0) > 0);
 
-  // Skeleton while either the Connect instance or the mirrored status is loading.
-  // StripeFramedCard's min-height is the same across loading and loaded states.
-  if (loading || statusLoading || !connectInstance) {
+  // Skeleton ONLY on first load — see shouldShowConnectSkeleton's JSDoc for why
+  // we cannot ever unmount the iframe-bearing provider once it has rendered.
+  if (shouldShowConnectSkeleton({ loading, connectInstance, status, statusLoading })) {
     return <StripeFramedCard loading />;
   }
 
@@ -130,7 +152,7 @@ export default function TenantStripeConnect() {
       )}
 
       <StripeFramedCard>
-        <ConnectComponentsProvider connectInstance={connectInstance}>
+        <ConnectComponentsProvider connectInstance={connectInstance!}>
           <ConnectNotificationBanner />
           {isActive ? (
             <ConnectPayouts />

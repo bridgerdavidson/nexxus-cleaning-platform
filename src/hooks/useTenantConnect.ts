@@ -86,12 +86,18 @@ export function useTenantConnect(): TenantConnectState {
   // (multi-org users, org-switch flows, context refresh) re-creates the Connect instance
   // instead of keeping a stale one bound to the previous tenant account.
   const initedForOrgRef = useRef<string | null>(null);
+  // After the first successful loadStatus we stop flickering statusLoading. Subsequent
+  // calls (from onStepChange / onExit / onLoadError) must NOT toggle it true→false:
+  // TenantStripeConnect's render guard would tear down ConnectComponentsProvider,
+  // unmounting the iframe — which orphans any popup window Stripe spawned for the
+  // "Use existing Stripe account" / 2FA path (its window.opener goes dead).
+  const statusInitializedRef = useRef(false);
 
   // Read the mirrored capability fields straight from the org row (kept current by the
   // account.updated webhook + refresh-status). This avoids a Stripe round-trip on render.
   const loadStatus = useCallback(async () => {
     if (!currentOrganizationId) return;
-    setStatusLoading(true);
+    if (!statusInitializedRef.current) setStatusLoading(true);
     const { data } = await supabase
       .from('organizations')
       .select(
@@ -113,6 +119,7 @@ export function useTenantConnect(): TenantConnectState {
       detailsSubmitted: !!row.stripe_connect_details_submitted,
       requirementsDue: row.stripe_connect_requirements_due ?? [],
     });
+    statusInitializedRef.current = true;
     setStatusLoading(false);
   }, [currentOrganizationId]);
 
