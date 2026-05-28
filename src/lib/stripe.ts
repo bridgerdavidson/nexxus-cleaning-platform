@@ -242,22 +242,26 @@ export function constructWebhookEvent(
 
 export async function createConnectAccount(
   email: string,
-  name: string
+  name: string,
+  options?: { idempotencyKey?: string }
 ): Promise<Stripe.Account> {
   const stripe = getStripe();
 
-  const account = await stripe.accounts.create({
-    type: 'express',
-    email,
-    business_type: 'individual',
-    individual: { first_name: name.split(' ')[0], last_name: name.split(' ').slice(1).join(' ') || undefined },
-    capabilities: {
-      transfers: { requested: true },
+  const account = await stripe.accounts.create(
+    {
+      type: 'express',
+      email,
+      business_type: 'individual',
+      individual: { first_name: name.split(' ')[0], last_name: name.split(' ').slice(1).join(' ') || undefined },
+      capabilities: {
+        transfers: { requested: true },
+      },
+      metadata: {
+        source: 'nexxus-cleaning-platform',
+      },
     },
-    metadata: {
-      source: 'nexxus-cleaning-platform',
-    },
-  });
+    options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined,
+  );
 
   return account;
 }

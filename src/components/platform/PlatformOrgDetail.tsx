@@ -10,6 +10,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { keys } from '@/lib/queryKeys';
 import { PaymentsBadge, SubscriptionBadge } from './statusBadges';
 import DeleteOrgDialog from './DeleteOrgDialog';
+import TenantConnectResetButton from './TenantConnectResetButton';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -139,7 +140,17 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
 
             {/* Payments / Connect */}
             <section className="rounded-xl border border-secondary-200 bg-white p-5 shadow-sm">
-              <h2 className="mb-4 text-sm font-semibold text-secondary-900">Payments (Stripe Connect)</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-secondary-900">Payments (Stripe Connect)</h2>
+                <TenantConnectResetButton
+                  orgId={org.id}
+                  orgName={org.name}
+                  currentAccountId={org.stripe_connect_account_id}
+                  onReset={() => {
+                    void refetch();
+                  }}
+                />
+              </div>
               <dl className="grid grid-cols-2 gap-4">
                 <Field label="Charges">{org.stripe_connect_charges_enabled ? 'Enabled' : 'Off'}</Field>
                 <Field label="Payouts">{org.stripe_connect_payouts_enabled ? 'Enabled' : 'Off'}</Field>

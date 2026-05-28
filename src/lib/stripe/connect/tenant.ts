@@ -31,30 +31,39 @@ export interface TenantConnectStatus {
  * `business_type` is intentionally omitted so the cleaning company can choose
  * company vs. sole-proprietor/individual during onboarding. Capabilities cover
  * the full merchant-of-record + onward-transfer role.
+ *
+ * Pass `idempotencyKey` (typically `tenant-connect-${org_id}-${env}`) so
+ * concurrent or retried `/start` calls within Stripe's 24h dedup window resolve
+ * to the same account instead of creating an orphan stub. The DB-side
+ * claim/commit slot is the primary guard; the Stripe key is a backstop.
  */
 export async function createTenantConnectAccount(
   organizationId: string,
   email: string,
   orgName: string,
+  options?: { idempotencyKey?: string },
 ): Promise<Stripe.Account> {
   const stripe = getStripe();
 
-  return stripe.accounts.create({
-    type: 'express',
-    email: email || undefined,
-    capabilities: {
-      card_payments: { requested: true },
-      transfers: { requested: true },
+  return stripe.accounts.create(
+    {
+      type: 'express',
+      email: email || undefined,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+      business_profile: {
+        name: orgName || undefined,
+      },
+      metadata: {
+        organization_id: organizationId,
+        account_role: 'tenant',
+        source: 'nexxus-cleaning-platform',
+      },
     },
-    business_profile: {
-      name: orgName || undefined,
-    },
-    metadata: {
-      organization_id: organizationId,
-      account_role: 'tenant',
-      source: 'nexxus-cleaning-platform',
-    },
-  });
+    options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : undefined,
+  );
 }
 
 /**

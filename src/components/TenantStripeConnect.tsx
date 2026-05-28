@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { CreditCard } from 'lucide-react';
+import { AlertTriangle, CreditCard } from 'lucide-react';
 import {
   ConnectComponentsProvider,
   ConnectAccountOnboarding,
@@ -49,8 +49,16 @@ export function tenantStatusKind(
  * `useTenantConnect()` so callers can decide how to chrome the page.
  */
 export default function TenantStripeConnect() {
-  const { enabled, connectInstance, initError, loading, status, statusLoading, refreshStatus } =
-    useTenantConnect();
+  const {
+    enabled,
+    connectInstance,
+    initError,
+    loading,
+    status,
+    statusLoading,
+    drift,
+    refreshStatus,
+  } = useTenantConnect();
 
   if (!enabled) {
     return (
@@ -67,6 +75,31 @@ export default function TenantStripeConnect() {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         {initError}
+      </div>
+    );
+  }
+
+  // Hard-stop banner when drift is detected. The stored account ID and the one
+  // Stripe is actually onboarding into don't match (incident 2026-05-28 pattern).
+  // Self-recovery is unsafe — direct the user to platform support so an admin
+  // can run the "Reset Connect" action.
+  if (drift) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">
+        <div className="mb-2 flex items-center gap-2 font-semibold">
+          <AlertTriangle className="h-5 w-5" />
+          Stripe account mismatch detected
+        </div>
+        <p className="mb-3">
+          Your tenant is linked to one Stripe Connect account, but our system observed
+          onboarding progress on a different account (
+          <span className="font-mono text-xs">{drift.observed_account_id}</span>). To
+          avoid mis-routed payouts we’ve paused onboarding for this tenant.
+        </p>
+        <p>
+          Please contact Nexxus support so we can reset your Stripe Connect link and
+          retry from a clean slate.
+        </p>
       </div>
     );
   }
@@ -105,6 +138,17 @@ export default function TenantStripeConnect() {
             <ConnectAccountOnboarding
               onExit={() => {
                 // Mirror the latest capability/requirements state into our DB + refresh.
+                void refreshStatus();
+              }}
+              // Fires when Stripe finishes its required-info checks even before the
+              // user closes the iframe. Mirror + drift-check immediately so we catch
+              // the "use existing Stripe account" path (incident 2026-05-28) at the
+              // earliest possible signal.
+              onStepChange={() => {
+                void refreshStatus();
+              }}
+              onLoadError={(err) => {
+                console.error('Connect onboarding load error:', err);
                 void refreshStatus();
               }}
             />

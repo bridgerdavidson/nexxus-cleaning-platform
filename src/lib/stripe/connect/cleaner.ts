@@ -15,12 +15,20 @@
 import type Stripe from 'stripe';
 import { getStripe, createConnectAccount } from '@/lib/stripe';
 
-/** Create the cleaner's Express (transfers-only) connected account. */
+/**
+ * Create the cleaner's Express (transfers-only) connected account.
+ *
+ * Pass `idempotencyKey` (typically `cleaner-connect-${cleaner_id}-${env}`) so
+ * concurrent or retried `/start` calls within Stripe's 24h dedup window resolve
+ * to the same account instead of creating an orphan stub. The DB-side
+ * claim/commit slot is the primary guard; the Stripe key is a backstop.
+ */
 export async function createCleanerConnectAccount(
   email: string,
   name: string,
+  options?: { idempotencyKey?: string },
 ): Promise<Stripe.Account> {
-  return createConnectAccount(email, name);
+  return createConnectAccount(email, name, options);
 }
 
 /**

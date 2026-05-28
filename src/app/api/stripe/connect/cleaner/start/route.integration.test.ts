@@ -96,4 +96,75 @@ describe('POST /api/stripe/connect/cleaner/start', () => {
     expect(first.body.account_id).toBe(second.body.account_id);
     expect(vi.mocked(createCleanerConnectAccount)).toHaveBeenCalledTimes(1);
   });
+
+  it('passes a per-cleaner idempotency key to stripe.accounts.create', async () => {
+    await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { cleaner_id: org.cleaner.userId },
+    });
+
+    expect(vi.mocked(createCleanerConnectAccount)).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(createCleanerConnectAccount).mock.calls[0];
+    // signature: (email, name, options)
+    // Key shape: cleaner-connect-<cleaner-uuid>-<env>-<attempt_number>
+    expect(call[2]).toEqual(
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          new RegExp(`^cleaner-connect-${org.cleaner.userId}-[\\w-]+-\\d+$`),
+        ),
+      }),
+    );
+  });
+
+  it('concurrent /start calls produce exactly one Stripe account (race-safe)', async () => {
+    vi.mocked(createCleanerConnectAccount).mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+      return { id: 'acct_test_cleaner' } as never;
+    });
+
+    const headers = bearerHeader(org.cleaner.accessToken);
+    const reqBody = { cleaner_id: org.cleaner.userId };
+
+    const [a, b] = await Promise.all([
+      callRoute<{ account_id: string }>(POST, { method: 'POST', headers, body: reqBody }),
+      callRoute<{ account_id: string }>(POST, { method: 'POST', headers, body: reqBody }),
+    ]);
+
+    expect(vi.mocked(createCleanerConnectAccount)).toHaveBeenCalledTimes(1);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(a.body.account_id).toBe(b.body.account_id);
+
+    const db = createTestSupabaseClient();
+    const { data: row } = await db
+      .from('cleaner_profiles')
+      .select('stripe_connect_account_id')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect((row as { stripe_connect_account_id: string | null }).stripe_connect_account_id).toBe(
+      a.body.account_id,
+    );
+  });
+
+  it('releases the slot back to NULL when stripe.accounts.create throws', async () => {
+    vi.mocked(createCleanerConnectAccount).mockImplementationOnce(async () => {
+      throw new Error('Stripe is down');
+    });
+
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { cleaner_id: org.cleaner.userId },
+    });
+    expect(status).toBe(500);
+
+    const db = createTestSupabaseClient();
+    const { data: row } = await db
+      .from('cleaner_profiles')
+      .select('stripe_connect_account_id')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect((row as { stripe_connect_account_id: string | null }).stripe_connect_account_id).toBeNull();
+  });
 });

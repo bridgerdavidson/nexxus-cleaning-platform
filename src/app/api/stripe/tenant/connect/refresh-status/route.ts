@@ -9,8 +9,14 @@ import { getTenantConnectStatus } from '@/lib/stripe/connect/tenant';
  *
  * Owner/admin. Re-fetches the tenant's connected account from Stripe and mirrors
  * its capability + requirements state into `organizations`. Called from the
- * embedded onboarding component's onExit, and as a manual refresh. The
- * `account.updated` webhook keeps this current between calls.
+ * embedded onboarding component's onExit/onStepChange/onLoadError callbacks,
+ * and as a manual refresh. The `account.updated` webhook keeps this current
+ * between calls and is also where drift (the "use existing Stripe account"
+ * mismatch from the 2026-05-28 incident) is recorded — Stripe's API does NOT
+ * support `accounts.search`, so we can't poll for drift here; the webhook
+ * fires `account.updated` for the drifted acct (it carries our
+ * `metadata.organization_id`) and `dispatchStripeEvent.handleAccountUpdated`
+ * writes the drift event. The hook re-reads drift events directly.
  *
  * Body: { organization_id: string }
  * Returns: { success, status }
@@ -38,14 +44,15 @@ export async function POST(request: NextRequest) {
     if (orgError || !org) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
-    if (!org.stripe_connect_account_id) {
+    const storedAccountId = org.stripe_connect_account_id as string | null;
+    if (!storedAccountId || !storedAccountId.startsWith('acct_')) {
       return NextResponse.json(
         { error: 'No connected account for this organization' },
         { status: 400 },
       );
     }
 
-    const status = await getTenantConnectStatus(org.stripe_connect_account_id);
+    const status = await getTenantConnectStatus(storedAccountId);
 
     const update: Record<string, unknown> = {
       stripe_connect_charges_enabled: status.chargesEnabled,
