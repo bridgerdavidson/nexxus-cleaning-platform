@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-admin';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,6 +32,14 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // ── Auth: caller must be an owner/admin of this org ─────────────────────
+    // This route previously had NO caller auth — anyone who could reach it could
+    // grant themselves (or any manager) arbitrary permissions in any org.
+    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin'],
+    });
+    if (!auth.ok) return auth.response;
 
     // Verify manager belongs to organization
     const { data: orgMember, error: orgMemberError } = await supabaseAdmin

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-admin';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -9,6 +10,45 @@ export async function DELETE(request: NextRequest) {
     if (!cleanerId) {
       return NextResponse.json(
         { success: false, error: 'Cleaner ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // ── Auth: caller must be an owner/admin of the cleaner's org ─────────────
+    // Derive the org from the cleaner's own profile (no client-supplied org to
+    // spoof), then authorize the caller against THAT org. This route previously
+    // had NO caller auth — anyone who could reach it could delete any cleaner.
+    const { data: cleanerOrgRow, error: cleanerOrgError } = await supabaseAdmin
+      .from('cleaner_profiles')
+      .select('organization_id')
+      .eq('id', cleanerId)
+      .maybeSingle();
+
+    if (cleanerOrgError) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to look up cleaner' },
+        { status: 500 }
+      );
+    }
+    if (!cleanerOrgRow) {
+      return NextResponse.json(
+        { success: false, error: 'Cleaner not found or already removed' },
+        { status: 404 }
+      );
+    }
+
+    const auth = await requireOrgAuth(
+      request,
+      (cleanerOrgRow as { organization_id: string }).organization_id,
+      supabaseAdmin,
+      { allowedRoles: ['owner', 'admin'] },
+    );
+    if (!auth.ok) return auth.response;
+
+    // Don't let a caller delete their own account through this endpoint.
+    if (auth.userId === cleanerId) {
+      return NextResponse.json(
+        { success: false, error: 'You cannot delete yourself through this endpoint' },
         { status: 400 }
       );
     }
