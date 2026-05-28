@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { ArrowLeft, Eye, Loader, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -37,6 +38,28 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
   const { data: org, isLoading, isError, error, refetch } = usePlatformOrganization(orgId);
   const { startImpersonation } = useAuth();
   const router = useRouter();
+  // Surfaces an audit-log failure: startImpersonation is audit-first, so it
+  // refuses to enter the impersonated view if /api/platform/impersonation can't
+  // record the entry. The admin sees the reason rather than silently failing.
+  const [impersonationError, setImpersonationError] = useState<string | null>(null);
+  const [startingImpersonation, setStartingImpersonation] = useState(false);
+
+  const handleStartImpersonation = async (targetOrgId: string, targetName: string | null) => {
+    setImpersonationError(null);
+    setStartingImpersonation(true);
+    try {
+      const ok = await startImpersonation(targetOrgId, targetName);
+      if (!ok) {
+        setImpersonationError(
+          "Couldn’t start “View as”: the audit log entry failed. Please try again.",
+        );
+        return;
+      }
+      router.push('/admin-dashboard');
+    } finally {
+      setStartingImpersonation(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
@@ -76,15 +99,24 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
             <button
               type="button"
               onClick={() => {
-                startImpersonation(org.id, org.name);
-                router.push('/admin-dashboard');
+                void handleStartImpersonation(org.id, org.name);
               }}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-secondary-300 bg-white px-3 py-2 text-sm font-medium text-secondary-700 transition-colors duration-150 hover:bg-secondary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              disabled={startingImpersonation}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-secondary-300 bg-white px-3 py-2 text-sm font-medium text-secondary-700 transition-colors duration-150 hover:bg-secondary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Eye className="h-4 w-4" aria-hidden="true" />
-              View as this company
+              {startingImpersonation ? 'Starting…' : 'View as this company'}
             </button>
           </div>
+
+          {impersonationError && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {impersonationError}
+            </div>
+          )}
 
           <div className="grid gap-4 md:grid-cols-2">
             {/* Billing */}

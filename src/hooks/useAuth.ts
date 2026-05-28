@@ -24,8 +24,12 @@ export interface AuthActions {
   signUp: (email: string, password: string, userData: { firstName: string; lastName: string; role: string }) => Promise<{ error?: string; role?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User['profile']>) => Promise<{ error?: string }>;
-  /** Platform-admin "View as" a tenant (read-only). No-op for non-admins. */
-  startImpersonation: (orgId: string, orgName?: string | null) => void;
+  /**
+   * Platform-admin "View as" a tenant (read-only). Audit-first: returns true
+   * only if the audit log was written; false (no state change) on audit failure
+   * or for non-admins. Callers must await.
+   */
+  startImpersonation: (orgId: string, orgName?: string | null) => Promise<boolean>;
   stopImpersonation: () => void;
 }
 

@@ -288,32 +288,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') sessionStorage.removeItem(IMPERSONATION_KEY);
   };
 
-  const postImpersonationAudit = (action: 'start' | 'end', orgId: string) => {
+  const postImpersonationAudit = async (
+    action: 'start' | 'end',
+    orgId: string,
+  ): Promise<boolean> => {
     const token = session?.access_token;
-    if (!token) return;
-    fetch('/api/platform/impersonation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ action, organization_id: orgId }),
-    }).catch(() => {
-      /* best-effort audit; cross-tenant access is gated by RLS regardless */
-    });
+    if (!token) return false;
+    try {
+      const res = await fetch('/api/platform/impersonation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action, organization_id: orgId }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   };
 
-  const startImpersonation = (orgId: string, orgName: string | null = null) => {
-    if (isPlatformAdmin !== true) return;
+  const startImpersonation = async (
+    orgId: string,
+    orgName: string | null = null,
+  ): Promise<boolean> => {
+    if (isPlatformAdmin !== true) return false;
+    // Audit-first: PR #29 promises "every entry/exit is auditable". If the
+    // audit POST fails (network error / 5xx) we must NOT enter impersonation,
+    // otherwise the admin reads tenant data with no audit record.
+    const ok = await postImpersonationAudit('start', orgId);
+    if (!ok) return false;
     const next = { orgId, orgName };
     setImpersonation(next);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(next));
     }
-    postImpersonationAudit('start', orgId);
+    return true;
   };
 
   const stopImpersonation = () => {
     const orgId = impersonation?.orgId;
+    // Always clear locally so a misbehaving audit endpoint can never trap the
+    // admin in impersonation; the audit attempt for 'end' is best-effort.
     clearImpersonation();
-    if (orgId) postImpersonationAudit('end', orgId);
+    if (orgId) void postImpersonationAudit('end', orgId);
   };
 
   useEffect(() => {
