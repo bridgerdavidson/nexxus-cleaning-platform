@@ -32,7 +32,6 @@ import ScrollAwareRequestFab from "../../components/homeowner/ScrollAwareRequest
 import { useHomeownerRequests } from "../../hooks/useHomeownerRequests";
 import PropertiesPage from "../../components/PropertiesPage";
 import ServicesPage from "../../components/ServicesPage";
-import SettingsHub from "../../components/SettingsHub";
 import PaymentMethodsPage from "../../components/PaymentMethodsPage";
 import HomePage from "../../components/homeowner/HomePage";
 import {
@@ -166,7 +165,6 @@ function HomeownerDashboardInner() {
       icon: MessageCircle,
       hasNotification: hasUnreadMessages,
     },
-    { id: "settings", label: "Settings", icon: User },
   ];
 
   // Bottom mobile nav — surface the most-used tabs.
@@ -348,8 +346,6 @@ function HomeownerDashboardInner() {
             refreshMaxChecklistAdders={refreshMaxChecklistAdders}
           />
         );
-      case "settings":
-        return <SettingsHub />;
       default:
         return renderHome();
     }

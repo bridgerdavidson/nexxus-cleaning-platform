@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { X, User, LogOut, ChevronRight, LucideIcon } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
@@ -38,6 +39,7 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
   onTabChange,
 }) => {
   const { user, signOut } = useAuth();
+  const router = useRouter();
 
   useBodyScrollLock(isOpen);
 
@@ -91,8 +93,8 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
   };
 
   const handleProfileTap = () => {
-    onTabChange?.("settings");
     onClose();
+    router.push("/settings");
   };
 
   const handleLogout = async () => {
@@ -181,10 +183,7 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive =
-              activeTab === "settings"
-                ? tab.id === "settings"
-                : activeTab === tab.id;
+            const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}

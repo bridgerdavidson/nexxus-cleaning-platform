@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { CheckCircle2, Circle, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrgQuery } from '@/lib/useOrgQuery';
@@ -15,13 +16,17 @@ interface SetupStatus {
  * First-run checklist for a cleaning-company OWNER (org_role='owner'), shown on
  * the admin-dashboard home tab. Links to existing surfaces; done-state is read
  * live from the org's data. Hides itself once all three steps are complete.
- * `onNavigate` switches the dashboard tab.
+ *
+ * `onNavigate` switches the dashboard tab (used for steps that live inside the
+ * dashboard, e.g. services / invites). Steps with an `href` instead push that
+ * route directly — used for the Stripe step which now lives at /settings/payments.
  */
 export default function OwnerSetupChecklist({
   onNavigate,
 }: {
   onNavigate: (tab: string) => void;
 }) {
+  const router = useRouter();
   const { currentOrgRole, currentOrganization } = useAuth();
 
   const { data } = useOrgQuery<SetupStatus>({
@@ -55,14 +60,22 @@ export default function OwnerSetupChecklist({
 
   if (currentOrgRole !== 'owner' || !data) return null;
 
-  const steps = [
+  const steps: Array<{
+    key: string;
+    done: boolean;
+    title: string;
+    desc: string;
+    cta: string;
+    tab?: string;
+    href?: string;
+  }> = [
     {
       key: 'stripe',
       done: data.chargesEnabled,
       title: 'Connect payments',
       desc: 'Set up Stripe so you can charge customers and pay your cleaners.',
       cta: 'Connect',
-      tab: 'settings',
+      href: '/settings/payments',
     },
     {
       key: 'service',
@@ -130,7 +143,13 @@ export default function OwnerSetupChecklist({
             ) : (
               <button
                 type="button"
-                onClick={() => onNavigate(step.tab)}
+                onClick={() => {
+                  if (step.href) {
+                    router.push(step.href);
+                  } else if (step.tab) {
+                    onNavigate(step.tab);
+                  }
+                }}
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 {step.cta}

@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Eye, Loader, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Eye, Loader, RefreshCw, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePlatformOrganization } from '@/hooks/usePlatformOrganizations';
+import { useToast } from '@/contexts/ToastContext';
+import { keys } from '@/lib/queryKeys';
 import { PaymentsBadge, SubscriptionBadge } from './statusBadges';
+import DeleteOrgDialog from './DeleteOrgDialog';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -38,11 +42,14 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
   const { data: org, isLoading, isError, error, refetch } = usePlatformOrganization(orgId);
   const { startImpersonation } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
   // Surfaces an audit-log failure: startImpersonation is audit-first, so it
   // refuses to enter the impersonated view if /api/platform/impersonation can't
   // record the entry. The admin sees the reason rather than silently failing.
   const [impersonationError, setImpersonationError] = useState<string | null>(null);
   const [startingImpersonation, setStartingImpersonation] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const handleStartImpersonation = async (targetOrgId: string, targetName: string | null) => {
     setImpersonationError(null);
@@ -148,6 +155,53 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
               )}
             </section>
           </div>
+
+          {/* Danger Zone */}
+          <section
+            className="mt-6 rounded-xl border border-red-200 bg-white shadow-sm"
+            aria-labelledby="danger-zone-heading"
+          >
+            <div className="border-b border-red-100 bg-red-50 px-5 py-3">
+              <h2 id="danger-zone-heading" className="text-sm font-semibold text-red-800">
+                Danger zone
+              </h2>
+            </div>
+            <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-secondary-900">Delete this tenant</h3>
+                <p className="mt-0.5 text-sm text-secondary-600">
+                  Removes the organization, all of its data (appointments, properties, services,
+                  payments), and any users that belong only to this tenant. Users that also belong
+                  to other tenants are detached, not deleted.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete organization
+              </button>
+            </div>
+          </section>
+
+          <DeleteOrgDialog
+            open={deleteOpen}
+            orgId={org.id}
+            orgName={org.name}
+            memberCount={org.member_counts.total}
+            appointmentCount={org.counts.appointments}
+            stripeConnected={Boolean(org.stripe_connect_account_id)}
+            onClose={() => setDeleteOpen(false)}
+            onDeleted={() => {
+              setDeleteOpen(false);
+              showToast(`Deleted ${org.name}`, { variant: 'success' });
+              // Wipe the list cache so the org disappears from /owner immediately.
+              queryClient.invalidateQueries({ queryKey: keys.platform.organizations.all });
+              onBack();
+            }}
+          />
 
           {/* Members */}
           <section className="mt-4 rounded-xl border border-secondary-200 bg-white shadow-sm">
