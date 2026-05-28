@@ -116,22 +116,34 @@ async function createAndCommit(
   pendingToken: string,
   authEmail: string | null,
 ): Promise<string> {
-  const { data: userProfile } = await supabaseAdmin
-    .from('user_profiles')
-    .select('email, first_name, last_name')
-    .eq('id', subject.id)
-    .maybeSingle();
+  const [{ data: userProfile }, { data: cleanerRow }] = await Promise.all([
+    supabaseAdmin
+      .from('user_profiles')
+      .select('email, first_name, last_name')
+      .eq('id', subject.id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('cleaner_profiles')
+      .select('stripe_connect_attempt_number')
+      .eq('id', subject.id)
+      .maybeSingle(),
+  ]);
 
   const email = (userProfile?.email as string | null) || authEmail || '';
   const name =
     `${(userProfile?.first_name as string | null) ?? ''} ${(userProfile?.last_name as string | null) ?? ''}`.trim() ||
     'Cleaner';
   const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown';
+  // Mirrors the tenant pattern: a future cleaner reset (or any out-of-band
+  // nullification of stripe_connect_account_id) bumps this counter so the next
+  // /start doesn't replay Stripe's cached accounts.create response.
+  const attemptNumber =
+    ((cleanerRow as { stripe_connect_attempt_number: number | null } | null)?.stripe_connect_attempt_number) ?? 0;
 
   let account: Stripe.Account;
   try {
     account = await createCleanerConnectAccount(email, name, {
-      idempotencyKey: `cleaner-connect-${subject.id}-${env}`,
+      idempotencyKey: `cleaner-connect-${subject.id}-${env}-${attemptNumber}`,
     });
   } catch (err) {
     await releaseConnectAccountSlot(supabaseAdmin, subject, pendingToken).catch((e) =>

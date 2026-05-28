@@ -42,7 +42,7 @@ export async function POST(
 
   const { data: org, error: orgErr } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, stripe_connect_account_id')
+    .select('id, name, stripe_connect_account_id, stripe_connect_attempt_number')
     .eq('id', orgId)
     .maybeSingle();
   if (orgErr) {
@@ -54,8 +54,14 @@ export async function POST(
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-  const orgRow = org as { id: string; name: string; stripe_connect_account_id: string | null };
+  const orgRow = org as {
+    id: string;
+    name: string;
+    stripe_connect_account_id: string | null;
+    stripe_connect_attempt_number: number | null;
+  };
   const before = orgRow.stripe_connect_account_id;
+  const previousAttempt = orgRow.stripe_connect_attempt_number ?? 0;
 
   // Best-effort Stripe-side delete. Skip if no stored ID, if Stripe is disabled,
   // or if the stored value is still a `pending:` placeholder (no real account
@@ -77,7 +83,10 @@ export async function POST(
 
   // Clear local state regardless of Stripe outcome — operator can finish the
   // Stripe-side delete manually if needed; what matters is that the tenant can
-  // start over.
+  // start over. Bump the attempt counter so the next /start uses a fresh Stripe
+  // idempotency key and Stripe's 24h dedup cache can't replay the just-deleted
+  // account.
+  const nextAttempt = previousAttempt + 1;
   const { error: clearErr } = await supabaseAdmin
     .from('organizations')
     .update({
@@ -87,6 +96,7 @@ export async function POST(
       stripe_connect_details_submitted: false,
       stripe_connect_requirements_due: [],
       stripe_connect_onboarded_at: null,
+      stripe_connect_attempt_number: nextAttempt,
     })
     .eq('id', orgId);
   if (clearErr) {
@@ -112,6 +122,8 @@ export async function POST(
     before_account_id: before,
     stripe_delete_status: stripeStatus,
     stripe_delete_error: stripeError,
+    previous_attempt_number: previousAttempt,
+    new_attempt_number: nextAttempt,
   };
   const { error: auditErr } = await supabaseAdmin.from('platform_audit_log').insert({
     actor_user_id: auth.userId,

@@ -122,7 +122,7 @@ async function createAndCommit(
 ): Promise<string> {
   const { data: org } = await supabaseAdmin
     .from('organizations')
-    .select('id, name, billing_email')
+    .select('id, name, billing_email, stripe_connect_attempt_number')
     .eq('id', subject.id)
     .maybeSingle();
 
@@ -134,11 +134,16 @@ async function createAndCommit(
   const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown';
   const email = ((org as { billing_email: string | null }).billing_email) || authEmail || '';
   const orgName = (org as { name: string }).name;
+  // Bumped by /api/platform/organizations/[id]/connect/reset so a retry within
+  // Stripe's 24h idempotency window doesn't replay the cached create response
+  // for the just-deleted account. Defaults to 0 for first-ever onboarding.
+  const attemptNumber =
+    ((org as { stripe_connect_attempt_number: number | null }).stripe_connect_attempt_number) ?? 0;
 
   let account: Stripe.Account;
   try {
     account = await createTenantConnectAccount(subject.id, email, orgName, {
-      idempotencyKey: `tenant-connect-${subject.id}-${env}`,
+      idempotencyKey: `tenant-connect-${subject.id}-${env}-${attemptNumber}`,
     });
   } catch (err) {
     await releaseConnectAccountSlot(supabaseAdmin, subject, pendingToken).catch((e) =>

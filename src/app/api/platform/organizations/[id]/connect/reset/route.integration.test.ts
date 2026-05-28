@@ -121,7 +121,7 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
     const { data: row } = await db
       .from('organizations')
       .select(
-        'stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_details_submitted, stripe_connect_requirements_due, stripe_connect_onboarded_at',
+        'stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_details_submitted, stripe_connect_requirements_due, stripe_connect_onboarded_at, stripe_connect_attempt_number',
       )
       .eq('id', org.organizationId)
       .single();
@@ -132,6 +132,10 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
     expect(r.stripe_connect_details_submitted).toBe(false);
     expect(r.stripe_connect_requirements_due).toEqual([]);
     expect(r.stripe_connect_onboarded_at).toBeNull();
+    // Counter bumped from 0 (default) to 1 so the next /start uses a fresh
+    // Stripe idempotency key — Stripe's 24h dedup cache can't replay the
+    // just-deleted account.
+    expect(r.stripe_connect_attempt_number).toBe(1);
 
     const { data: audit } = await db
       .from('platform_audit_log')
@@ -143,6 +147,8 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
     expect(a.action).toBe('reset_tenant_connect');
     expect(a.metadata.before_account_id).toBe(seededAccountId);
     expect(a.metadata.stripe_delete_status).toBe('deleted');
+    expect(a.metadata.previous_attempt_number).toBe(0);
+    expect(a.metadata.new_attempt_number).toBe(1);
   });
 
   it('still clears local state when stripe.accounts.del throws', async () => {

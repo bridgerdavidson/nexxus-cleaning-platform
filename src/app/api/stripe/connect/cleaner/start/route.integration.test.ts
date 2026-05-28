@@ -107,9 +107,12 @@ describe('POST /api/stripe/connect/cleaner/start', () => {
     expect(vi.mocked(createCleanerConnectAccount)).toHaveBeenCalledTimes(1);
     const call = vi.mocked(createCleanerConnectAccount).mock.calls[0];
     // signature: (email, name, options)
+    // Key shape: cleaner-connect-<cleaner-uuid>-<env>-<attempt_number>
     expect(call[2]).toEqual(
       expect.objectContaining({
-        idempotencyKey: expect.stringMatching(new RegExp(`^cleaner-connect-${org.cleaner.userId}-`)),
+        idempotencyKey: expect.stringMatching(
+          new RegExp(`^cleaner-connect-${org.cleaner.userId}-[\\w-]+-\\d+$`),
+        ),
       }),
     );
   });

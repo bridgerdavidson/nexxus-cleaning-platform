@@ -123,11 +123,32 @@ describe('POST /api/stripe/tenant/connect/start', () => {
     expect(vi.mocked(createTenantConnectAccount)).toHaveBeenCalledTimes(1);
     const call = vi.mocked(createTenantConnectAccount).mock.calls[0];
     // signature: (organizationId, email, orgName, options)
+    // Key shape: tenant-connect-<org-uuid>-<env>-<attempt_number>
     expect(call[3]).toEqual(
       expect.objectContaining({
-        idempotencyKey: expect.stringMatching(new RegExp(`^tenant-connect-${org.organizationId}-`)),
+        idempotencyKey: expect.stringMatching(
+          new RegExp(`^tenant-connect-${org.organizationId}-[\\w-]+-\\d+$`),
+        ),
       }),
     );
+  });
+
+  it('uses an incremented idempotency key after a reset bumps the attempt counter', async () => {
+    const db = createTestSupabaseClient();
+    // Simulate a previous reset by pre-bumping the counter.
+    await db
+      .from('organizations')
+      .update({ stripe_connect_attempt_number: 3 })
+      .eq('id', org.organizationId);
+
+    await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    const call = vi.mocked(createTenantConnectAccount).mock.calls[0];
+    expect((call[3] as { idempotencyKey: string }).idempotencyKey).toMatch(/-3$/);
   });
 
   it('concurrent /start calls produce exactly one Stripe account (race-safe)', async () => {
