@@ -13,9 +13,13 @@ import {
 } from '@/lib/settings';
 
 /**
- * Persistent left rail on desktop (>= md). Returns null below md — the section
- * pages render their own header-back-arrow, and `/settings` itself swaps to the
- * mobile menu list.
+ * Persistent left rail on desktop (>= md). Hidden below md — the section
+ * pages render their own header back-arrow, and `/settings` itself swaps to
+ * the mobile menu list.
+ *
+ * Visual treatment matches the dashboard's `<DesktopSidebar>` so the chrome
+ * feels continuous: bg-gray-50 panel, items use the same active/hover states
+ * (white card + primary ring + left yellow bar).
  */
 export default function SettingsRail() {
   const pathname = usePathname();
@@ -29,25 +33,27 @@ export default function SettingsRail() {
   const dashboardHref = role ? `/${role}-dashboard` : '/';
 
   return (
-    <aside className="hidden border-r border-gray-200 bg-white px-3 py-6 md:block md:w-60 lg:w-64">
-      <Link
-        href={dashboardHref}
-        className="mb-5 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to dashboard
-      </Link>
+    <aside className="hidden md:flex md:flex-col md:w-[260px] flex-shrink-0 bg-gray-50">
+      <div className="px-6 pt-6 pb-2">
+        <Link
+          href={dashboardHref}
+          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-white/80 hover:text-gray-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to dashboard
+        </Link>
+      </div>
 
-      <nav aria-label="Settings sections">
+      <nav aria-label="Settings sections" className="flex-1 overflow-y-auto px-3 pb-6">
         {SETTINGS_GROUPS.map((group) => {
           const items = grouped[group.id];
           if (!items?.length) return null;
           return (
-            <div key={group.id} className="mb-4">
-              <h2 className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+            <div key={group.id} className="mt-4 first:mt-2">
+              <h2 className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                 {group.label}
               </h2>
-              <ul className="space-y-0.5">
+              <ul className="space-y-1">
                 {items.map((section) => (
                   <li key={section.id}>
                     <RailLink section={section} active={pathname === section.href} />
@@ -74,19 +80,30 @@ function RailLink({
     <Link
       href={section.href}
       aria-current={active ? 'page' : undefined}
-      className={
+      className={`relative flex items-center px-4 py-3 rounded-lg transition-all duration-200 ${
         active
-          ? 'flex items-center gap-2.5 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-700 shadow-[inset_3px_0_0_var(--tw-shadow-color)] shadow-primary-600'
-          : 'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50'
-      }
+          ? 'bg-white text-primary-700 ring-1 ring-primary-100/80'
+          : 'text-gray-600 hover:bg-white/80 hover:text-gray-900'
+      }`}
     >
+      {active && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary-600 rounded-r-full" />
+      )}
       <Icon
-        className={`h-4 w-4 ${active ? 'text-primary-600' : 'text-gray-400'}`}
+        className={`flex-shrink-0 w-5 h-5 mr-3 ${
+          active ? 'text-primary-600' : 'text-gray-400'
+        }`}
         aria-hidden="true"
       />
-      <span className="flex-1">{section.label}</span>
+      <span
+        className={`flex-1 text-sm truncate ${
+          active ? 'font-semibold' : 'font-medium'
+        }`}
+      >
+        {section.label}
+      </span>
       {section.comingSoon ? (
-        <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+        <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
           Soon
         </span>
       ) : null}
