@@ -18,7 +18,7 @@ export interface TestOrgFixture {
 
 const PASSWORD = 'TestPass123!';
 
-async function createAuthUser(
+export async function createAuthUser(
   email: string,
   role: 'admin' | 'cleaner' | 'homeowner' | 'manager',
   firstName: string,
@@ -141,6 +141,92 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
         admin.auth.admin.deleteUser(cleanerUser.id),
         admin.auth.admin.deleteUser(homeownerUser.id),
       ]);
+    },
+  };
+}
+
+export interface OwnerMemberHandle extends TestUserHandle {
+  cleanup(): Promise<void>;
+}
+
+/**
+ * Adds an OrgRole 'owner' member to an existing org. `withTestOrg` only seeds
+ * admin/cleaner/homeowner, but an org founder is OrgRole 'owner'. The owner's
+ * UserRole is 'admin', mirroring the accept-invite mapping (OrgRole 'owner' ->
+ * UserRole 'admin'). Returns a handle with its own cleanup that deletes the auth
+ * user (the org-delete cascade in withTestOrg removes the membership row).
+ */
+export async function addOwnerToOrg(organizationId: string): Promise<OwnerMemberHandle> {
+  const db = createTestSupabaseClient();
+  const uniq = randomUUID().slice(0, 8);
+  const email = `owner-${uniq}@test.local`;
+  const owner = await createAuthUser(email, 'admin', 'Owner');
+
+  const { error: profileErr } = await db.from('user_profiles').upsert(
+    { id: owner.id, email, first_name: 'Olive', last_name: 'Owner', role: 'admin' },
+    { onConflict: 'id' },
+  );
+  if (profileErr) throw new Error(`seed owner profile failed: ${profileErr.message}`);
+
+  const { error: memErr } = await db
+    .from('organization_members')
+    .insert({ user_id: owner.id, organization_id: organizationId, role: 'owner' });
+  if (memErr) throw new Error(`seed owner member failed: ${memErr.message}`);
+
+  return {
+    userId: owner.id,
+    email,
+    password: PASSWORD,
+    accessToken: owner.accessToken,
+    async cleanup() {
+      await db.auth.admin.deleteUser(owner.id);
+    },
+  };
+}
+
+export interface PlatformAdminFixture {
+  userId: string;
+  email: string;
+  password: string;
+  accessToken: string;
+  cleanup(): Promise<void>;
+}
+
+/**
+ * Creates a platform admin: an auth user with a row in `platform_admins`. The
+ * user's UserRole is deliberately 'homeowner' (not 'admin') so tests prove that
+ * platform-admin status is orthogonal to org roles — and so the cross-org RLS
+ * tests in 069 can't accidentally pass via the pre-existing admin god-mode
+ * policies.
+ */
+export async function withPlatformAdmin(): Promise<PlatformAdminFixture> {
+  const admin = createTestSupabaseClient();
+  const uniq = randomUUID().slice(0, 8);
+  const user = await createAuthUser(`platform-${uniq}@test.local`, 'homeowner', 'Platform');
+
+  const { error: profileError } = await admin.from('user_profiles').upsert(
+    { id: user.id, email: user.email, first_name: 'Platform', last_name: 'Admin', role: 'homeowner' },
+    { onConflict: 'id' },
+  );
+  if (profileError) {
+    throw new Error(`failed to insert platform admin profile: ${profileError.message}`);
+  }
+
+  const { error } = await admin.from('platform_admins').insert({ user_id: user.id });
+  if (error) {
+    throw new Error(`failed to insert platform_admin: ${error.message}`);
+  }
+
+  return {
+    userId: user.id,
+    email: user.email,
+    password: PASSWORD,
+    accessToken: user.accessToken,
+    async cleanup() {
+      // ON DELETE CASCADE on platform_admins.user_id clears the row, but delete
+      // explicitly first in case the auth user delete is what's flaky.
+      await admin.from('platform_admins').delete().eq('user_id', user.id);
+      await admin.auth.admin.deleteUser(user.id);
     },
   };
 }

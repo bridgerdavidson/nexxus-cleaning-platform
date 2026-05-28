@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  ClipboardList,
 } from "lucide-react";
 import {
   ServiceType,
@@ -33,7 +34,9 @@ export type ServiceUpdateDiagnostic = {
 interface ServiceFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  // On create, receives the newly created service so the parent can route into
+  // checklist setup. On edit, called with no argument.
+  onSuccess: (created?: ServiceType) => void;
   service?: ServiceType | null; // If provided, we're editing
 }
 
@@ -196,7 +199,9 @@ export default function ServiceFormModal({
       }
 
       if (result.success) {
-        onSuccess();
+        // On create, hand the new service back so the parent can route into
+        // checklist setup. On edit, there's nothing to set up.
+        onSuccess(isEditing ? undefined : result.data);
         onClose();
       } else {
         const errMsg = result.error || "Failed to save service";
@@ -504,6 +509,22 @@ export default function ServiceFormModal({
               Service is active and available for booking
             </label>
           </div>
+
+          {/* Checklist heads-up (create only) */}
+          {!isEditing && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-primary-200 bg-primary-50/60 p-3">
+              <ClipboardList
+                className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-600"
+                aria-hidden="true"
+              />
+              <p className="text-xs text-secondary-600">
+                Next, you&apos;ll set up this service&apos;s{" "}
+                <span className="font-semibold text-secondary-900">checklist</span> — the steps
+                your cleaners follow. We&apos;ll start you with a default one; you can edit it or
+                add more checklists (like a deep clean) that add to the price.
+              </p>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">

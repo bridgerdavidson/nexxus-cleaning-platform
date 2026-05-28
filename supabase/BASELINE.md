@@ -87,3 +87,17 @@ npm run test:integration
 ```
 
 (The integration test loader strips UTF-8 BOM if your shell happens to add one, but BOM-free is cleaner.)
+
+## Seeding the platform admin (migration 068)
+
+`068_platform_admins.sql` seeds the founding platform admin by email (`mvbdavidson@gmail.com`). The `INSERT ... SELECT ... WHERE email = ...` inserts **zero rows** (no error) if that auth user doesn't exist in the target environment at migrate time — e.g. on a brand-new prod project where the account hasn't been created yet.
+
+If the seed didn't take (you log in and don't land on `/owner`), create the account first, then run once against the linked project:
+
+```sql
+INSERT INTO public.platform_admins (user_id)
+SELECT id FROM auth.users WHERE email = 'mvbdavidson@gmail.com'
+ON CONFLICT (user_id) DO NOTHING;
+```
+
+To grant additional platform admins later, insert their `auth.users.id` the same way (optionally set `granted_by`).

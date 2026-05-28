@@ -9,6 +9,7 @@ import {
   Settings,
   MessageCircle,
 } from "lucide-react";
+import { useAuth } from "../hooks/useAuth";
 
 interface Tab {
   id: string;
@@ -57,6 +58,9 @@ const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Platform-admin "View as" mode — used to hide per-user affordances
+  // (Messages) that would surface the admin's own data, not the tenant's.
+  const { impersonatingOrgId } = useAuth();
 
   // Close dropdown when clicking outside (only when dropdown is used)
   useEffect(() => {
@@ -128,7 +132,11 @@ const TopBar: React.FC<TopBarProps> = ({
               <span aria-hidden className="h-6 w-px bg-gray-200" />
             </div>
           )}
-          {showMessagesIcon && (
+          {/* Messages is a per-user inbox (filters conversations by user.id), so it
+              shows the platform admin's own messages — not the tenant's — while
+              impersonating. Hide it during "View as" instead of showing an
+              empty/misleading inbox. */}
+          {showMessagesIcon && !impersonatingOrgId && (
             <button
               type="button"
               onClick={() => onTabChange("messages")}

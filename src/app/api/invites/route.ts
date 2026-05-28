@@ -57,8 +57,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Allow admins, or managers with can_manage_cleaners.
-    let isAuthorized = membership.role === 'admin';
+    // Allow org owners and admins, or managers with can_manage_cleaners.
+    // (An org owner's organization_members.role is 'owner', not 'admin' — the
+    // accept-invite mapping keeps OrgRole 'owner' while setting UserRole 'admin'.)
+    let isAuthorized = membership.role === 'owner' || membership.role === 'admin';
     if (!isAuthorized && membership.role === 'manager') {
       const { data: managerPerms, error: permsError } = await supabaseAdmin
         .from('manager_permissions')

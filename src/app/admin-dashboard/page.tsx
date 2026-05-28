@@ -66,6 +66,7 @@ import RescheduleAppointmentModal from "../../components/RescheduleAppointmentMo
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
 import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
+import OwnerSetupChecklist from "../../components/admin-dashboard/OwnerSetupChecklist";
 import { useAdminActionItems } from "../../hooks/useAdminActionItems";
 import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
 import TodayScheduleSection from "../../components/TodayScheduleSection";
@@ -80,7 +81,7 @@ import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
 import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 
 function AdminDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken, impersonatingOrgId } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
@@ -274,6 +275,9 @@ function AdminDashboardInner() {
         id: "operations" as const,
         label: "Operations",
         icon: LayoutGrid,
+        // Messages is a per-user inbox (filtered by participant user_id), so it
+        // would show the platform admin's own messages — not the tenant's —
+        // while impersonating. Hide rather than render an empty/misleading tab.
         tabs: [
           { id: "home", label: "Overview", icon: Home },
           {
@@ -282,12 +286,16 @@ function AdminDashboardInner() {
             icon: Calendar,
             hasNotification: needsResponseCount > 0,
           },
-          {
-            id: "messages",
-            label: "Messages",
-            icon: MessageCircle,
-            hasNotification: hasUnreadMessages,
-          },
+          ...(impersonatingOrgId
+            ? []
+            : [
+                {
+                  id: "messages",
+                  label: "Messages",
+                  icon: MessageCircle,
+                  hasNotification: hasUnreadMessages,
+                },
+              ]),
           { id: "customers", label: "Customers", icon: Users },
           { id: "services", label: "Services", icon: Briefcase },
         ],
@@ -321,7 +329,7 @@ function AdminDashboardInner() {
         ],
       },
     }),
-    [hasUnreadMessages, needsResponseCount],
+    [hasUnreadMessages, needsResponseCount, impersonatingOrgId],
   );
 
   // Get tabs for current group (must be before early return)
@@ -519,6 +527,7 @@ function AdminDashboardInner() {
       </div>
 
       <div className="space-y-6">
+        <OwnerSetupChecklist onNavigate={setActiveTab} />
         {/* Unified action queue: everything that needs the admin's response
             lives here — unassigned requests, escalations, counter-proposals,
             declines, and SLA timeouts. One source of truth across the

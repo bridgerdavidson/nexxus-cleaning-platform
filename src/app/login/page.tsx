@@ -13,16 +13,17 @@ function LoginContent() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const { signIn, user, loading, isCleaningUp } = useAuth();
+  const { signIn, user, loading, isCleaningUp, isPlatformAdmin } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect if already logged in
-    if (user) {
-      const dashboardPath = getDashboardPath(user.role);
-      router.push(dashboardPath);
+    // Redirect if already logged in. Wait for the platform-admin check to
+    // resolve (non-null) so a platform admin lands on /owner instead of being
+    // briefly bounced to a tenant dashboard.
+    if (user && isPlatformAdmin !== null) {
+      router.push(isPlatformAdmin ? "/owner" : getDashboardPath(user.role));
     }
-  }, [user, router]);
+  }, [user, isPlatformAdmin, router]);
 
   const getDashboardPath = (userRole: string) => {
     switch (userRole) {

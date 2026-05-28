@@ -45,8 +45,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Allow admins, or managers with can_manage_cleaners permission.
-    let isAuthorized = membership.role === 'admin';
+    // Allow org owners and admins, or managers with can_manage_cleaners.
+    // (An org owner's organization_members.role is 'owner', not 'admin' — the
+    // accept-invite mapping keeps OrgRole 'owner' while setting UserRole 'admin'.)
+    let isAuthorized = membership.role === 'owner' || membership.role === 'admin';
     if (!isAuthorized && membership.role === 'manager') {
       const { data: managerPerms, error: permsError } = await supabaseAdmin
         .from('manager_permissions')
@@ -131,23 +133,52 @@ export async function POST(request: NextRequest) {
     }
 
     if (existingProfile) {
-      const { data: activeMembership, error: activeMembershipError } = await supabaseAdmin
+      // Look at ALL of this user's memberships, not just the current org. A user
+      // active in ANY org — or a platform admin — is a real, onboarded account,
+      // never a stale invite, so we must not delete/recreate it below.
+      const { data: memberships, error: membershipsError } = await supabaseAdmin
         .from('organization_members')
-        .select('user_id')
-        .eq('user_id', existingProfile.id)
-        .eq('organization_id', organizationId)
-        .maybeSingle();
+        .select('organization_id')
+        .eq('user_id', existingProfile.id);
 
-      if (activeMembershipError) {
+      if (membershipsError) {
         return NextResponse.json(
           { success: false, error: 'Failed to check organization membership' },
           { status: 500 }
         );
       }
 
-      if (activeMembership) {
+      if ((memberships ?? []).some((m) => m.organization_id === organizationId)) {
         return NextResponse.json(
           { success: false, error: 'This user already has an active account in this organization.' },
+          { status: 400 }
+        );
+      }
+
+      const { data: platformAdmin, error: platformAdminError } = await supabaseAdmin
+        .from('platform_admins')
+        .select('user_id')
+        .eq('user_id', existingProfile.id)
+        .maybeSingle();
+
+      if (platformAdminError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to verify the account for this email' },
+          { status: 500 }
+        );
+      }
+
+      // Active in another org or platform staff → a real account. Block here
+      // instead of falling through to the "stale invitee" cleanup below, which
+      // would try to DELETE this live user — the "Database error deleting user"
+      // the admin hit, and a destructive bug had the FK delete actually succeeded.
+      if ((memberships ?? []).length > 0 || platformAdmin) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'This email already belongs to a Nexxus account, so it can’t be invited as a new team member here.',
+          },
           { status: 400 }
         );
       }
@@ -172,9 +203,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Delete stale auth user if one exists but has never completed onboarding
-    // The profile row (and auth user) were created by the previous invite.
-    // Deleting the auth user cascades to user_profiles via ON DELETE CASCADE.
+    // ── Delete the prior incomplete invitee's auth user ──────────────────────
+    // Only reached when the existing profile has NO membership in any org and
+    // isn't a platform admin (Guard 2 above blocked every real account) — i.e. a
+    // previous invite that was never completed. inviteUserByEmail can't reuse an
+    // existing email, so clear it first. Cascades to user_profiles.
     if (existingProfile) {
       const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(
         existingProfile.id
@@ -182,7 +215,11 @@ export async function POST(request: NextRequest) {
 
       if (deleteAuthError) {
         return NextResponse.json(
-          { success: false, error: 'Failed to clear stale auth user: ' + deleteAuthError.message },
+          {
+            success: false,
+            error:
+              'Failed to clear a prior incomplete invite for this email: ' + deleteAuthError.message,
+          },
           { status: 500 }
         );
       }

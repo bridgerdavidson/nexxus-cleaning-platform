@@ -673,8 +673,12 @@ export async function updateCleanerAvailability(cleanerId: string, isAvailable: 
 // Helper function to delete a cleaner
 export async function deleteCleaner(cleanerId: string) {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch(`/api/admin/delete-cleaner?id=${encodeURIComponent(cleanerId)}`, {
       method: 'DELETE',
+      headers: {
+        Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+      },
     });
 
     const data = await response.json();

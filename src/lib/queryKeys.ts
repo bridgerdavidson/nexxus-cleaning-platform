@@ -86,4 +86,10 @@ export const keys = {
     projected: (cleanerId: string, start: string, end: string) =>
       ['cleaner-earnings', 'projected', cleanerId, start, end] as const,
   },
+  platform: {
+    organizations: {
+      all: ['platform', 'organizations'] as const,
+      detail: (id: string) => ['platform', 'organizations', 'detail', id] as const,
+    },
+  },
 };
