@@ -58,6 +58,8 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const isDashboard = pathname?.includes('-dashboard');
   const isFullScreen =
     isDashboard ||
+    pathname === '/settings' ||
+    pathname?.startsWith('/settings/') ||
     pathname?.startsWith('/accept-invite') ||
     pathname?.startsWith('/forgot-password') ||
     pathname?.startsWith('/reset-password');

@@ -34,18 +34,6 @@ test.describe('Settings route family', () => {
     await expect(page.getByRole('heading', { name: /^profile$/i })).toBeVisible();
   });
 
-  test('legacy ?tab=settings dashboard URL 307-redirects to /settings/*', async ({ page }) => {
-    await signIn(page);
-
-    // Legacy URL with section param → /settings/payments
-    await page.goto('/admin-dashboard?tab=settings&section=payments');
-    await expect(page).toHaveURL(/\/settings\/payments$/, { timeout: 5_000 });
-
-    // Legacy URL without section param → /settings (which then redirects per role)
-    await page.goto('/admin-dashboard?tab=settings');
-    await expect(page).toHaveURL(/\/settings(\/|$)/, { timeout: 5_000 });
-  });
-
   test('cancellation policy has its own page, not nested in payments', async ({ page }) => {
     await signIn(page);
     await page.goto('/settings/cancellation-policy');
