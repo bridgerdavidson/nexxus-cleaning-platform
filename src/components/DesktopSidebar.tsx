@@ -37,7 +37,7 @@ interface DesktopSidebarProps {
   onLogout: () => void;
   /** When provided (admin/manager), show profile card above Sign Out */
   user?: SidebarUser | null;
-  /** When "settings", no sidebar group is shown as active */
+  /** Currently active tab id (used in flat-tab mode for highlighting). */
   activeTab?: string;
 }
 
@@ -71,8 +71,7 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           {tabs && onTabChange
             ? tabs.map((tab) => {
                 const Icon = tab.icon;
-                const isActive =
-                  activeTab !== "settings" && activeTab === tab.id;
+                const isActive = activeTab === tab.id;
                 return (
                   <button
                     key={tab.id}
@@ -108,8 +107,7 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               })
             : (groups ?? []).map((group) => {
                 const Icon = group.icon;
-                const isActive =
-                  activeTab !== "settings" && activeGroup === group.id;
+                const isActive = activeGroup === group.id;
                 return (
                   <button
                     key={group.id}

@@ -24,13 +24,13 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
   // render with comfortable padding.
   const isRoot = pathname === '/settings';
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen">
       <SettingsRail />
       <main
         className={
           isRoot
-            ? 'flex-1'
-            : 'flex-1 px-4 py-6 sm:px-6 md:px-10 md:py-10 lg:px-12'
+            ? 'flex-1 bg-white md:bg-gray-100'
+            : 'flex-1 bg-white md:bg-gray-100 px-4 py-6 sm:px-6 md:px-10 md:py-10 lg:px-12'
         }
       >
         <div className="mx-auto w-full max-w-3xl">{children}</div>
