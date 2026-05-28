@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
@@ -31,6 +32,7 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
   let org: TestOrgFixture;
   let platformAdmin: PlatformAdminFixture;
   let originalFlag: string | undefined;
+  let seededAccountId: string;
 
   beforeEach(async () => {
     originalFlag = process.env.STRIPE_ENABLED;
@@ -40,12 +42,14 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
 
     [org, platformAdmin] = await Promise.all([withTestOrg(), withPlatformAdmin()]);
 
-    // Seed a Connect account on the org so reset has something to clear.
+    // Per-test unique seed so the partial UNIQUE index on
+    // organizations.stripe_connect_account_id never collides across the suite.
+    seededAccountId = `acct_test_stuck_${randomUUID().slice(0, 8)}`;
     const db = createTestSupabaseClient();
-    await db
+    const { error: seedErr } = await db
       .from('organizations')
       .update({
-        stripe_connect_account_id: 'acct_test_stuck',
+        stripe_connect_account_id: seededAccountId,
         stripe_connect_charges_enabled: true,
         stripe_connect_payouts_enabled: true,
         stripe_connect_details_submitted: true,
@@ -53,6 +57,7 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
         stripe_connect_onboarded_at: new Date().toISOString(),
       })
       .eq('id', org.organizationId);
+    if (seedErr) throw new Error(`seed UPDATE failed: ${seedErr.message}`);
   });
 
   afterEach(async () => {
@@ -108,9 +113,9 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
 
     expect(status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.before_account_id).toBe('acct_test_stuck');
+    expect(body.before_account_id).toBe(seededAccountId);
     expect(body.stripe_delete_status).toBe('deleted');
-    expect(mockAccountsDel).toHaveBeenCalledWith('acct_test_stuck');
+    expect(mockAccountsDel).toHaveBeenCalledWith(seededAccountId);
 
     const db = createTestSupabaseClient();
     const { data: row } = await db
@@ -136,7 +141,7 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
       .single();
     const a = audit as { action: string; target_org_id: string; metadata: Record<string, unknown> };
     expect(a.action).toBe('reset_tenant_connect');
-    expect(a.metadata.before_account_id).toBe('acct_test_stuck');
+    expect(a.metadata.before_account_id).toBe(seededAccountId);
     expect(a.metadata.stripe_delete_status).toBe('deleted');
   });
 
@@ -174,7 +179,7 @@ describe('POST /api/platform/organizations/:id/connect/reset', () => {
       .insert({
         organization_id: org.organizationId,
         cleaner_id: null,
-        expected_account_id: 'acct_test_stuck',
+        expected_account_id: seededAccountId,
         observed_account_id: 'acct_other_real',
         source: 'webhook',
         metadata: {},
