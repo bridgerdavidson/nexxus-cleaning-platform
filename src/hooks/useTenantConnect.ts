@@ -28,6 +28,19 @@ export interface TenantConnectStatus {
   requirementsDue: string[];
 }
 
+/**
+ * Drift state for the tenant org: we stored acct `expected_account_id` but Stripe
+ * appears to have onboarded the user into `observed_account_id` instead (the
+ * "Use existing Stripe account" path from incident 2026-05-28). The UI gates the
+ * iframe and directs the user to platform support — manual reset clears it.
+ */
+export interface TenantConnectDrift {
+  observed_account_id: string;
+  expected_account_id: string | null;
+  source: 'webhook' | 'refresh-status' | 'manual';
+  detected_at: string;
+}
+
 export interface TenantConnectState {
   /** True when the tenant Connect UI should render (flag on, admin, publishable key present). */
   enabled: boolean;
@@ -38,6 +51,8 @@ export interface TenantConnectState {
   /** Mirrored connected-account capability state for the org (null until first load). */
   status: TenantConnectStatus | null;
   statusLoading: boolean;
+  /** Open drift event for the org if one exists — UI must gate the iframe when truthy. */
+  drift: TenantConnectDrift | null;
   /** Ask the server to re-pull + mirror the connected account's status, then refresh local state. */
   refreshStatus: () => Promise<void>;
 }
@@ -66,6 +81,7 @@ export function useTenantConnect(): TenantConnectState {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<TenantConnectStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [drift, setDrift] = useState<TenantConnectDrift | null>(null);
   // Track WHICH org we last initialized for, not just "did we init", so an org switch
   // (multi-org users, org-switch flows, context refresh) re-creates the Connect instance
   // instead of keeping a stale one bound to the previous tenant account.
@@ -100,6 +116,39 @@ export function useTenantConnect(): TenantConnectState {
     setStatusLoading(false);
   }, [currentOrganizationId]);
 
+  // Check the drift-events table for an open event on this org. RLS lets owner+admin
+  // SELECT their own org's events; webhook handler + refresh-status are the writers.
+  const loadDrift = useCallback(async () => {
+    if (!currentOrganizationId) {
+      setDrift(null);
+      return;
+    }
+    const { data } = await supabase
+      .from('connect_account_drift_events')
+      .select('observed_account_id, expected_account_id, source, detected_at')
+      .eq('organization_id', currentOrganizationId)
+      .is('resolved_at', null)
+      .order('detected_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data) {
+      setDrift(null);
+      return;
+    }
+    const row = data as {
+      observed_account_id: string;
+      expected_account_id: string | null;
+      source: 'webhook' | 'refresh-status' | 'manual';
+      detected_at: string;
+    };
+    setDrift({
+      observed_account_id: row.observed_account_id,
+      expected_account_id: row.expected_account_id,
+      source: row.source,
+      detected_at: row.detected_at,
+    });
+  }, [currentOrganizationId]);
+
   const refreshStatus = useCallback(async () => {
     if (!currentOrganizationId) return;
     const token = await getAccessToken();
@@ -113,18 +162,19 @@ export function useTenantConnect(): TenantConnectState {
     }).catch(() => {
       /* best-effort; account.updated webhook is the backstop */
     });
-    // Re-pull the mirrored row regardless — the route just updated it.
-    await loadStatus();
-  }, [currentOrganizationId, loadStatus]);
+    // Re-pull the mirrored row + drift state regardless — the route just updated both.
+    await Promise.all([loadStatus(), loadDrift()]);
+  }, [currentOrganizationId, loadStatus, loadDrift]);
 
-  // Load mirrored status whenever the org becomes available / changes.
+  // Load mirrored status + drift whenever the org becomes available / changes.
   useEffect(() => {
     if (!enabled) {
       setStatusLoading(false);
       return;
     }
     void loadStatus();
-  }, [enabled, loadStatus]);
+    void loadDrift();
+  }, [enabled, loadStatus, loadDrift]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -169,5 +219,5 @@ export function useTenantConnect(): TenantConnectState {
     }
   }, [enabled, currentOrganizationId]);
 
-  return { enabled, connectInstance, initError, loading, status, statusLoading, refreshStatus };
+  return { enabled, connectInstance, initError, loading, status, statusLoading, drift, refreshStatus };
 }

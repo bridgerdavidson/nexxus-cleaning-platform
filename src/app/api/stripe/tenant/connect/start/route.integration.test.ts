@@ -112,4 +112,75 @@ describe('POST /api/stripe/tenant/connect/start', () => {
     // account created exactly once; the second call only made a fresh Account Session
     expect(vi.mocked(createTenantConnectAccount)).toHaveBeenCalledTimes(1);
   });
+
+  it('passes a per-org idempotency key to stripe.accounts.create', async () => {
+    await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    expect(vi.mocked(createTenantConnectAccount)).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(createTenantConnectAccount).mock.calls[0];
+    // signature: (organizationId, email, orgName, options)
+    expect(call[3]).toEqual(
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(new RegExp(`^tenant-connect-${org.organizationId}-`)),
+      }),
+    );
+  });
+
+  it('concurrent /start calls produce exactly one Stripe account (race-safe)', async () => {
+    // Widen the race window: any second request that races past the DB read but
+    // before the first writes back must NOT trigger a second accounts.create.
+    vi.mocked(createTenantConnectAccount).mockImplementationOnce(async (orgId: string) => {
+      await new Promise((r) => setTimeout(r, 200));
+      return { id: `acct_test_${orgId.slice(0, 8)}` } as never;
+    });
+
+    const headers = bearerHeader(org.admin.accessToken);
+    const reqBody = { organization_id: org.organizationId };
+
+    const [a, b] = await Promise.all([
+      callRoute<{ account_id: string }>(POST, { method: 'POST', headers, body: reqBody }),
+      callRoute<{ account_id: string }>(POST, { method: 'POST', headers, body: reqBody }),
+    ]);
+
+    expect(vi.mocked(createTenantConnectAccount)).toHaveBeenCalledTimes(1);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(a.body.account_id).toBe(b.body.account_id);
+
+    const db = createTestSupabaseClient();
+    const { data: orgRow } = await db
+      .from('organizations')
+      .select('stripe_connect_account_id')
+      .eq('id', org.organizationId)
+      .single();
+    expect((orgRow as { stripe_connect_account_id: string | null }).stripe_connect_account_id).toBe(
+      a.body.account_id,
+    );
+  });
+
+  it('releases the slot back to NULL when stripe.accounts.create throws', async () => {
+    vi.mocked(createTenantConnectAccount).mockImplementationOnce(async () => {
+      throw new Error('Stripe is down');
+    });
+
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(500);
+
+    const db = createTestSupabaseClient();
+    const { data: orgRow } = await db
+      .from('organizations')
+      .select('stripe_connect_account_id')
+      .eq('id', org.organizationId)
+      .single();
+    // Slot returned to NULL — next /start call can claim cleanly.
+    expect((orgRow as { stripe_connect_account_id: string | null }).stripe_connect_account_id).toBeNull();
+  });
 });

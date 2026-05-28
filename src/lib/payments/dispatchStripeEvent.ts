@@ -836,6 +836,60 @@ async function handleAccountUpdated(supabase: SupabaseClient, account: Stripe.Ac
     return;
   }
 
+  // Fallback: stored-ID lookup missed. If this account carries metadata.organization_id
+  // identifying a known org with a DIFFERENT stored id, we're seeing drift (incident
+  // 2026-05-28: "use existing Stripe account" can land onboarding on an acct we never
+  // saved). Record to connect_account_drift_events for the platform admin to reconcile —
+  // do NOT auto-rewrite the stored id.
+  const metaOrgId = account.metadata?.organization_id;
+  if (metaOrgId) {
+    const { data: metaOrg } = await supabase
+      .from('organizations')
+      .select('id, stripe_connect_account_id')
+      .eq('id', metaOrgId)
+      .maybeSingle();
+    if (metaOrg) {
+      const expected = (metaOrg as { stripe_connect_account_id: string | null }).stripe_connect_account_id;
+      if (expected !== acctId) {
+        const { data: alreadyOpen } = await supabase
+          .from('connect_account_drift_events')
+          .select('id')
+          .eq('organization_id', metaOrgId)
+          .eq('observed_account_id', acctId)
+          .is('resolved_at', null)
+          .maybeSingle();
+        if (!alreadyOpen) {
+          const { error: driftErr } = await supabase.from('connect_account_drift_events').insert({
+            organization_id: metaOrgId,
+            cleaner_id: null,
+            expected_account_id: expected,
+            observed_account_id: acctId,
+            source: 'webhook',
+            metadata: {
+              charges_enabled: chargesEnabled,
+              payouts_enabled: payoutsEnabled,
+              details_submitted: detailsSubmitted,
+              account_metadata: account.metadata ?? {},
+            },
+          });
+          if (driftErr) {
+            console.error('account.updated: failed to record drift event:', driftErr);
+          } else {
+            console.warn(
+              'account.updated: recorded drift event for org',
+              metaOrgId,
+              'expected',
+              expected,
+              'observed',
+              acctId,
+            );
+          }
+        }
+        return;
+      }
+    }
+  }
+
   console.log('account.updated: no matching org or cleaner for account', acctId);
 }
 

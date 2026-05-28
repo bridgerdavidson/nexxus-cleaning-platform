@@ -1,18 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type Stripe from 'stripe';
 import {
   createCleanerConnectAccount,
   createCleanerAccountSession,
 } from '@/lib/stripe/connect/cleaner';
+import { getStripe } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import {
+  claimConnectAccountSlot,
+  commitConnectAccountSlot,
+  releaseConnectAccountSlot,
+  isPendingToken,
+  isStripeAccountId,
+  type ConnectSlotSubject,
+} from '@/lib/stripe/connect/accountSlot';
 
 /**
  * POST /api/stripe/connect/cleaner/start
  *
- * Cleaner-self only. Ensures the cleaner has an Express connected account (creating
- * one on first call) and returns an Account Session client secret for EMBEDDED
- * onboarding — so the cleaner finishes payout setup without leaving the app.
- * Idempotent: re-calling reuses the existing account and just mints a fresh session.
+ * Cleaner-self only. Ensures the cleaner has an Express connected account
+ * (creating one on first call) and returns an Account Session client secret
+ * for embedded onboarding.
+ *
+ * Race-safety (incident 2026-05-28, shared shape with tenant /start):
+ *   • DB-side claim/commit slot via migration-072 RPCs.
+ *   • Stripe-side idempotency key `cleaner-connect-${cleaner_id}-${env}`.
  *
  * Body: { cleaner_id: string }
  * Returns: { success, account_id, client_secret }
@@ -42,49 +55,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required field: cleaner_id' }, { status: 400 });
     }
 
-    // A cleaner can only onboard their own payout account.
     if (authUser.id !== cleaner_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { data: cleaner, error: cleanerError } = await supabaseAdmin
-      .from('cleaner_profiles')
-      .select('id, stripe_connect_account_id')
-      .eq('id', cleaner_id)
-      .single();
+    const subject: ConnectSlotSubject = { kind: 'cleaner', id: cleaner_id };
 
-    if (cleanerError || !cleaner) {
-      return NextResponse.json({ error: 'Cleaner not found' }, { status: 404 });
+    let claim;
+    try {
+      claim = await claimConnectAccountSlot(supabaseAdmin, subject);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('not found')) {
+        return NextResponse.json({ error: 'Cleaner not found' }, { status: 404 });
+      }
+      throw err;
     }
 
-    let accountId = cleaner.stripe_connect_account_id as string | null;
+    let accountId: string;
 
-    if (!accountId) {
-      const { data: userProfile } = await supabaseAdmin
-        .from('user_profiles')
-        .select('email, first_name, last_name')
-        .eq('id', cleaner_id)
-        .single();
-
-      const email = userProfile?.email ?? '';
-      const name =
-        `${userProfile?.first_name ?? ''} ${userProfile?.last_name ?? ''}`.trim() || 'Cleaner';
-
-      const account = await createCleanerConnectAccount(email, name);
-      accountId = account.id;
-
-      const { error: updateError } = await supabaseAdmin
-        .from('cleaner_profiles')
-        .update({ stripe_connect_account_id: accountId })
-        .eq('id', cleaner_id);
-
-      if (updateError) {
-        console.error('Error saving cleaner stripe_connect_account_id:', updateError);
+    if (isStripeAccountId(claim.accountId)) {
+      accountId = claim.accountId;
+    } else if (claim.claimed && claim.pendingToken) {
+      accountId = await createAndCommit(subject, claim.pendingToken, authUser.email ?? null);
+    } else if (isPendingToken(claim.accountId) && !claim.claimed) {
+      const resolved = await waitForCommit(cleaner_id);
+      if (!resolved) {
         return NextResponse.json(
-          { error: 'Failed to persist connected account' },
-          { status: 500 },
+          { error: 'Stripe Connect onboarding is in progress — please retry in a moment' },
+          { status: 409 },
         );
       }
+      accountId = resolved;
+    } else {
+      console.error('Unexpected claimConnectAccountSlot result (cleaner):', claim);
+      return NextResponse.json({ error: 'Unexpected Connect slot state' }, { status: 500 });
     }
 
     const session = await createCleanerAccountSession(accountId);
@@ -104,4 +109,74 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+async function createAndCommit(
+  subject: ConnectSlotSubject,
+  pendingToken: string,
+  authEmail: string | null,
+): Promise<string> {
+  const { data: userProfile } = await supabaseAdmin
+    .from('user_profiles')
+    .select('email, first_name, last_name')
+    .eq('id', subject.id)
+    .maybeSingle();
+
+  const email = (userProfile?.email as string | null) || authEmail || '';
+  const name =
+    `${(userProfile?.first_name as string | null) ?? ''} ${(userProfile?.last_name as string | null) ?? ''}`.trim() ||
+    'Cleaner';
+  const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown';
+
+  let account: Stripe.Account;
+  try {
+    account = await createCleanerConnectAccount(email, name, {
+      idempotencyKey: `cleaner-connect-${subject.id}-${env}`,
+    });
+  } catch (err) {
+    await releaseConnectAccountSlot(supabaseAdmin, subject, pendingToken).catch((e) =>
+      console.error('Failed to release cleaner Connect slot after Stripe error:', e),
+    );
+    throw err;
+  }
+
+  const committed = await commitConnectAccountSlot(
+    supabaseAdmin,
+    subject,
+    pendingToken,
+    account.id,
+  );
+  if (committed) return account.id;
+
+  const { data: reread } = await supabaseAdmin
+    .from('cleaner_profiles')
+    .select('stripe_connect_account_id')
+    .eq('id', subject.id)
+    .maybeSingle();
+  const stored = (reread?.stripe_connect_account_id as string | null) ?? null;
+
+  if (stored && isStripeAccountId(stored) && stored !== account.id) {
+    try {
+      await getStripe().accounts.del(account.id);
+    } catch (delErr) {
+      console.error('Failed to delete orphan Stripe account', account.id, delErr);
+    }
+    return stored;
+  }
+  return account.id;
+}
+
+async function waitForCommit(cleanerId: string): Promise<string | null> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    const { data } = await supabaseAdmin
+      .from('cleaner_profiles')
+      .select('stripe_connect_account_id')
+      .eq('id', cleanerId)
+      .maybeSingle();
+    const stored = (data?.stripe_connect_account_id as string | null) ?? null;
+    if (stored && isStripeAccountId(stored)) return stored;
+    if (stored === null) return null;
+  }
+  return null;
 }
