@@ -145,6 +145,45 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
   };
 }
 
+export interface OwnerMemberHandle extends TestUserHandle {
+  cleanup(): Promise<void>;
+}
+
+/**
+ * Adds an OrgRole 'owner' member to an existing org. `withTestOrg` only seeds
+ * admin/cleaner/homeowner, but an org founder is OrgRole 'owner'. The owner's
+ * UserRole is 'admin', mirroring the accept-invite mapping (OrgRole 'owner' ->
+ * UserRole 'admin'). Returns a handle with its own cleanup that deletes the auth
+ * user (the org-delete cascade in withTestOrg removes the membership row).
+ */
+export async function addOwnerToOrg(organizationId: string): Promise<OwnerMemberHandle> {
+  const db = createTestSupabaseClient();
+  const uniq = randomUUID().slice(0, 8);
+  const email = `owner-${uniq}@test.local`;
+  const owner = await createAuthUser(email, 'admin', 'Owner');
+
+  const { error: profileErr } = await db.from('user_profiles').upsert(
+    { id: owner.id, email, first_name: 'Olive', last_name: 'Owner', role: 'admin' },
+    { onConflict: 'id' },
+  );
+  if (profileErr) throw new Error(`seed owner profile failed: ${profileErr.message}`);
+
+  const { error: memErr } = await db
+    .from('organization_members')
+    .insert({ user_id: owner.id, organization_id: organizationId, role: 'owner' });
+  if (memErr) throw new Error(`seed owner member failed: ${memErr.message}`);
+
+  return {
+    userId: owner.id,
+    email,
+    password: PASSWORD,
+    accessToken: owner.accessToken,
+    async cleanup() {
+      await db.auth.admin.deleteUser(owner.id);
+    },
+  };
+}
+
 export interface PlatformAdminFixture {
   userId: string;
   email: string;
