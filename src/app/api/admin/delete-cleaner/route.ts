@@ -37,13 +37,41 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const cleanerOrganizationId = (cleanerOrgRow as { organization_id: string }).organization_id;
     const auth = await requireOrgAuth(
       request,
-      (cleanerOrgRow as { organization_id: string }).organization_id,
+      cleanerOrganizationId,
       supabaseAdmin,
-      { allowedRoles: ['owner', 'admin'] },
+      // Managers are admitted past the gate; the can_manage_cleaners check
+      // below decides whether they may actually delete. Matches the
+      // invites/send-invite pattern so manager cleaner-management workflows
+      // (used by CleanerManagementPage when can_manage_cleaners is granted)
+      // keep working.
+      { allowedRoles: ['owner', 'admin', 'manager'] },
     );
     if (!auth.ok) return auth.response;
+
+    if (auth.role === 'manager') {
+      const { data: managerPerms, error: permsError } = await supabaseAdmin
+        .from('manager_permissions')
+        .select('can_manage_cleaners')
+        .eq('manager_id', auth.userId)
+        .eq('organization_id', cleanerOrganizationId)
+        .maybeSingle();
+
+      if (permsError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to check manager permissions' },
+          { status: 500 }
+        );
+      }
+      if (managerPerms?.can_manage_cleaners !== true) {
+        return NextResponse.json(
+          { success: false, error: 'Manager does not have permission to manage cleaners' },
+          { status: 403 }
+        );
+      }
+    }
 
     // Don't let a caller delete their own account through this endpoint.
     if (auth.userId === cleanerId) {
