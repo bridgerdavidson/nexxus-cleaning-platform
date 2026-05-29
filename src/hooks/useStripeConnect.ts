@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './useAuth';
 import { supabase } from '../lib/supabase';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
@@ -38,6 +38,15 @@ export function useStripeConnect() {
   const [connectStatus, setConnectStatus] = useState<StripeConnectStatus | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  // After the first successful fetchConnectStatus we stop flickering statusLoading.
+  // Subsequent calls (kicked off by the cleaner_profiles realtime subscription,
+  // by the stripe_return / stripe_refresh URL params, or by the embedded
+  // ConnectAccountOnboarding's onExit / onStepChange / onLoadError callbacks)
+  // must NOT toggle statusLoading true → false: CleanerStripeConnect's render
+  // guard would tear down ConnectComponentsProvider and unmount the iframe in
+  // the middle of bank-linking — exactly the incident that left the cleaner
+  // looping on "Select an account for payouts" forever.
+  const statusInitializedRef = useRef(false);
 
   const enabled = !!user?.id && user.role === 'cleaner' && stripeUiEnabled();
 
@@ -47,7 +56,7 @@ export function useStripeConnect() {
       return;
     }
 
-    setStatusLoading(true);
+    if (!statusInitializedRef.current) setStatusLoading(true);
     try {
       const token = await getAccessToken();
       const res = await fetch('/api/stripe/connect/account-status', {
@@ -65,6 +74,7 @@ export function useStripeConnect() {
           onboarding_complete: data.onboarding_complete,
           payouts_enabled: data.payouts_enabled,
         });
+        statusInitializedRef.current = true;
       } else {
         setConnectError('Unable to check payout status. Please try again.');
       }
