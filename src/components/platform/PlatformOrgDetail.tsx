@@ -11,6 +11,7 @@ import { keys } from '@/lib/queryKeys';
 import { PaymentsBadge, SubscriptionBadge } from './statusBadges';
 import DeleteOrgDialog from './DeleteOrgDialog';
 import TenantConnectResetButton from './TenantConnectResetButton';
+import CleanerConnectResetButton from './CleanerConnectResetButton';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -232,6 +233,7 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
                       <th scope="col" className="px-5 py-2.5">Name</th>
                       <th scope="col" className="px-5 py-2.5">Email</th>
                       <th scope="col" className="px-5 py-2.5">Role</th>
+                      <th scope="col" className="px-5 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-secondary-100">
@@ -240,6 +242,18 @@ export function PlatformOrgDetail({ orgId, onBack }: { orgId: string; onBack: ()
                         <td className="px-5 py-2.5 font-medium text-secondary-900">{memberName(m)}</td>
                         <td className="px-5 py-2.5 text-secondary-600">{m.email || '—'}</td>
                         <td className="px-5 py-2.5 capitalize text-secondary-600">{m.role}</td>
+                        <td className="px-5 py-2.5 text-right">
+                          {m.role === 'cleaner' && (
+                            <CleanerConnectResetButton
+                              cleanerId={m.user_id}
+                              cleanerName={memberName(m)}
+                              currentAccountId={null}
+                              onReset={() => {
+                                void refetch();
+                              }}
+                            />
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
