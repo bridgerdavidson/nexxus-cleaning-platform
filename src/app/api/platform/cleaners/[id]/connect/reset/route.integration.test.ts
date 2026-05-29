@@ -43,20 +43,16 @@ describe('POST /api/platform/cleaners/:id/connect/reset', () => {
 
     [org, platformAdmin] = await Promise.all([withTestOrg(), withPlatformAdmin()]);
 
-    // Seed the cleaner with a real-looking Connect account. Per-test unique ID
-    // so any unique constraints on cleaner_profiles.stripe_connect_account_id
-    // never collide across the suite.
+    // Seed the cleaner with a real-looking Connect account. cleaner_profiles
+    // only stores stripe_connect_account_id + onboarding_complete + attempt
+    // counter (per migration 000_baseline + 073); the *_enabled / requirements
+    // mirror lives on `organizations`, not here.
     seededAccountId = `acct_test_stuck_${randomUUID().slice(0, 8)}`;
     const db = createTestSupabaseClient();
     const { error: seedErr } = await db
       .from('cleaner_profiles')
       .update({
         stripe_connect_account_id: seededAccountId,
-        stripe_connect_charges_enabled: true,
-        stripe_connect_payouts_enabled: true,
-        stripe_connect_details_submitted: true,
-        stripe_connect_requirements_due: ['individual.id_number'],
-        stripe_connect_onboarded_at: new Date().toISOString(),
         stripe_connect_onboarding_complete: true,
       })
       .eq('id', org.cleaner.userId);
@@ -216,17 +212,12 @@ describe('POST /api/platform/cleaners/:id/connect/reset', () => {
     const { data: row } = await db
       .from('cleaner_profiles')
       .select(
-        'stripe_connect_account_id, stripe_connect_charges_enabled, stripe_connect_payouts_enabled, stripe_connect_details_submitted, stripe_connect_requirements_due, stripe_connect_onboarded_at, stripe_connect_onboarding_complete, stripe_connect_attempt_number',
+        'stripe_connect_account_id, stripe_connect_onboarding_complete, stripe_connect_attempt_number',
       )
       .eq('id', org.cleaner.userId)
       .single();
     const r = row as Record<string, unknown>;
     expect(r.stripe_connect_account_id).toBeNull();
-    expect(r.stripe_connect_charges_enabled).toBe(false);
-    expect(r.stripe_connect_payouts_enabled).toBe(false);
-    expect(r.stripe_connect_details_submitted).toBe(false);
-    expect(r.stripe_connect_requirements_due).toEqual([]);
-    expect(r.stripe_connect_onboarded_at).toBeNull();
     expect(r.stripe_connect_onboarding_complete).toBe(false);
     // Counter bumped from 0 → 1 so the next /start uses a fresh Stripe
     // idempotency key — Stripe's 24h dedup cache can't replay the just-deleted
@@ -301,6 +292,41 @@ describe('POST /api/platform/cleaners/:id/connect/reset', () => {
     expect(body.success).toBe(true);
     expect(body.before_account_id).toBe(placeholder);
     expect(body.stripe_delete_status).toBe('skipped');
+    expect(mockAccountsDel).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 in_flight_payouts for status=paid too (the cleaner_profiles lookup-by-account-id window)', async () => {
+    // payout.paid webhook handler looks up the cleaner by
+    // stripe_connect_account_id (handlePayoutPaid in dispatchStripeEvent.ts).
+    // If we reset while a paid payout is mid-flight (transfer succeeded,
+    // bank payout pending), the lookup fails on the now-null account_id and
+    // the row stays at 'paid' forever. The guard must include 'paid'.
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+    });
+    const db = createTestSupabaseClient();
+    const { error: payoutErr } = await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+    });
+    if (payoutErr) throw new Error(`payout seed failed: ${payoutErr.message}`);
+
+    const { status, body } = await callRoute<{
+      error: string;
+      payout_count: number;
+    }>(postHandler(org.cleaner.userId), {
+      method: 'POST',
+      headers: bearerHeader(platformAdmin.accessToken),
+      body: { confirm: true },
+    });
+    expect(status).toBe(409);
+    expect(body.error).toBe('in_flight_payouts');
+    expect(body.payout_count).toBe(1);
     expect(mockAccountsDel).not.toHaveBeenCalled();
   });
 

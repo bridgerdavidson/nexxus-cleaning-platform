@@ -21,10 +21,13 @@ import { stripeEnabled } from '@/lib/stripe/flags';
  *   3) Best-effort stripe.accounts.del(stored). Failure is non-fatal — the
  *      local clear must succeed regardless. Common failure: account has a
  *      non-zero balance (operator must finish manually in Stripe).
- *   4) NULL the cleaner_profiles stripe_connect_* columns + bump
- *      stripe_connect_attempt_number so the next /api/stripe/connect/cleaner/start
- *      uses a fresh Stripe idempotency key (Stripe's 24h dedup cache can't
- *      replay the just-deleted account).
+ *   4) NULL stripe_connect_account_id + stripe_connect_onboarding_complete on
+ *      cleaner_profiles (the only Stripe-Connect-related columns the table
+ *      actually has — see migration 000_baseline.sql; capability flags like
+ *      *_enabled / requirements_due / onboarded_at live on `organizations`,
+ *      NOT on `cleaner_profiles`). Bump stripe_connect_attempt_number so the
+ *      next /api/stripe/connect/cleaner/start uses a fresh Stripe idempotency
+ *      key (Stripe's 24h dedup cache can't replay the just-deleted account).
  *   5) Resolve any open connect_account_drift_events for this cleaner.
  *   6) Insert a platform_audit_log row tagged 'reset_cleaner_connect'.
  *
@@ -79,13 +82,23 @@ export async function POST(
   const previousAttempt = row.stripe_connect_attempt_number ?? 0;
 
   // In-flight payout guard. Resetting (and best-effort-deleting the Stripe
-  // account) orphans any payout whose transfer hasn't completed yet. Block
-  // unless the caller explicitly accepts the risk via force:true.
+  // account) orphans any payout whose transfer hasn't fully landed yet:
+  //   - 'pending' / 'approved'        — transfer not even created yet
+  //   - 'paid'                        — Stripe transfer succeeded but the
+  //                                     bank payout from the connected account
+  //                                     hasn't arrived; handlePayoutPaid in
+  //                                     dispatchStripeEvent looks up the cleaner
+  //                                     by stripe_connect_account_id, which we
+  //                                     null below — without this guard the
+  //                                     later payout.paid webhook can't find
+  //                                     the cleaner and the row stays at
+  //                                     'paid' until manual reconcile.
+  // Block unless the caller explicitly accepts the risk via force:true.
   const { count: inFlightPayoutCount, error: payoutErr } = await supabaseAdmin
     .from('payouts')
     .select('id', { count: 'exact', head: true })
     .eq('cleaner_id', cleanerId)
-    .in('status', ['pending', 'approved']);
+    .in('status', ['pending', 'approved', 'paid']);
   if (payoutErr) {
     return NextResponse.json(
       { error: 'Failed to check in-flight payouts', details: payoutErr.message },
@@ -131,11 +144,6 @@ export async function POST(
     .from('cleaner_profiles')
     .update({
       stripe_connect_account_id: null,
-      stripe_connect_charges_enabled: false,
-      stripe_connect_payouts_enabled: false,
-      stripe_connect_details_submitted: false,
-      stripe_connect_requirements_due: [],
-      stripe_connect_onboarded_at: null,
       stripe_connect_onboarding_complete: false,
       stripe_connect_attempt_number: nextAttempt,
     })
