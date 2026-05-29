@@ -23,6 +23,29 @@ export function cleanerStatusKind(
 }
 
 /**
+ * Return true when the iframe-bearing `<ConnectComponentsProvider>` MUST be replaced
+ * with the loading skeleton.
+ *
+ * The critical invariant (mirrors the tenant fix in `TenantStripeConnect`): once
+ * we've successfully loaded a `connectStatus` snapshot, this stays false for the
+ * rest of the session — even while a background `statusLoading` refresh (kicked
+ * off by realtime, stripe_return URL params, or `onStepChange` / `onLoadError`
+ * / `onExit` callbacks) is in flight. Toggling true after the first paint
+ * unmounts the iframe; that destroys any popup Stripe spawned for the
+ * Plaid / bank-login / "Allow" handshake (its `window.opener` goes dead) and
+ * loops the cleaner back to "Select an account for payouts" every time.
+ */
+export function shouldShowCleanerConnectSkeleton(args: {
+  loading: boolean;
+  connectInstance: unknown | null;
+  connectStatus: StripeConnectStatus | null;
+  statusLoading: boolean;
+}): boolean {
+  const { loading, connectInstance, connectStatus, statusLoading } = args;
+  return loading || !connectInstance || (!connectStatus && statusLoading);
+}
+
+/**
  * Embedded Stripe Connect for the cleaner — JUST the iframe portion.
  *
  * The status hero, the balance row, and the "Open Stripe dashboard" CTA all
@@ -53,7 +76,10 @@ export default function CleanerStripeConnect() {
     );
   }
 
-  if (loading || statusLoading || !connectInstance) {
+  // Skeleton ONLY on first load — see shouldShowCleanerConnectSkeleton's JSDoc
+  // for why we cannot ever unmount the iframe-bearing provider once it has
+  // rendered.
+  if (shouldShowCleanerConnectSkeleton({ loading, connectInstance, connectStatus, statusLoading })) {
     return <StripeFramedCard loading />;
   }
 
@@ -65,12 +91,23 @@ export default function CleanerStripeConnect() {
         <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{connectError}</div>
       )}
       <StripeFramedCard>
-        <ConnectComponentsProvider connectInstance={connectInstance}>
+        <ConnectComponentsProvider connectInstance={connectInstance!}>
           {isActive ? (
             <ConnectPayouts />
           ) : (
             <ConnectAccountOnboarding
               onExit={() => {
+                void refetchStatus();
+              }}
+              // Fires when Stripe finishes a step (e.g. bank attach) before the
+              // user closes the iframe. Mirror the latest capability state into
+              // our DB at the earliest possible signal so the status hero flips
+              // to "Active" without waiting for the user to click "Done".
+              onStepChange={() => {
+                void refetchStatus();
+              }}
+              onLoadError={(err) => {
+                console.error('Cleaner Connect onboarding load error:', err);
                 void refetchStatus();
               }}
             />
