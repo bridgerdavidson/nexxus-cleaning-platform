@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { verifyAccessToken } from './verifyToken';
 
 /**
  * Server-side gate for the platform-owner back-office (/api/platform/*).
@@ -37,16 +38,15 @@ export async function requirePlatformAdmin(
     return { ok: false, response: json(401, { error: 'Missing authorization token' }) };
   }
 
-  const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !userData?.user) {
+  const verified = await verifyAccessToken(supabaseAdmin, token);
+  if (!verified) {
     return { ok: false, response: json(401, { error: 'Invalid or expired token' }) };
   }
-  const user = userData.user;
 
   const { data: adminRow, error: adminError } = await supabaseAdmin
     .from('platform_admins')
     .select('user_id')
-    .eq('user_id', user.id)
+    .eq('user_id', verified.userId)
     .maybeSingle();
 
   if (adminError) {
@@ -56,5 +56,5 @@ export async function requirePlatformAdmin(
     return { ok: false, response: json(403, { error: 'Not a platform admin' }) };
   }
 
-  return { ok: true, userId: user.id, email: user.email ?? null };
+  return { ok: true, userId: verified.userId, email: verified.email };
 }

@@ -1,7 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "../components/LayoutWrapper";
 import { APP_BG_COLOR } from "../constants/theme";
+
+// Self-host Inter at build time instead of a render-blocking
+// `@import url(fonts.googleapis.com...)` in globals.css. Eliminates an external
+// request on the critical path and avoids the FOUT/layout-shift that blocked
+// first paint. Exposed as a CSS variable consumed by globals.css.
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "Nexxus Cleaning Solutions",
@@ -25,7 +37,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-white">
         <LayoutWrapper>
           {children}

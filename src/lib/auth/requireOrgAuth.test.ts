@@ -12,6 +12,10 @@ function makeRequest(headers: Record<string, string> = {}): NextRequest {
 
 function makeSupabaseAdmin(opts: {
   getUserResult?: { data: { user: { id: string; email: string } | null }; error: unknown };
+  // When provided, the admin exposes auth.getClaims (the preferred path). When
+  // omitted, getClaims is absent so verifyAccessToken falls back to getUser —
+  // exactly the behavior under a project still on the HS256 symmetric secret.
+  getClaimsResult?: { data: { claims: Record<string, unknown> } | null; error: unknown };
   membership?: { role: string } | null;
   membershipError?: unknown;
 }): SupabaseClient {
@@ -28,8 +32,13 @@ function makeSupabaseAdmin(opts: {
     opts.getUserResult ?? { data: { user: { id: 'u1', email: 'u@test.local' } }, error: null },
   );
 
+  const auth: Record<string, unknown> = { getUser };
+  if (opts.getClaimsResult) {
+    auth.getClaims = vi.fn().mockResolvedValue(opts.getClaimsResult);
+  }
+
   return {
-    auth: { getUser },
+    auth,
     from,
   } as unknown as SupabaseClient;
 }
@@ -96,6 +105,42 @@ describe('requireOrgAuth', () => {
       expect(result.role).toBe('admin');
       expect(result.email).toBe('u@test.local');
     }
+  });
+
+  it('verifies via getClaims (no getUser call) when available and valid', async () => {
+    const supabaseAdmin = makeSupabaseAdmin({
+      getClaimsResult: {
+        data: { claims: { sub: 'claims-user', email: 'claims@test.local' } },
+        error: null,
+      },
+      membership: { role: 'admin' },
+    });
+    const result = await requireOrgAuth(
+      makeRequest({ Authorization: 'Bearer good' }),
+      'org-1',
+      supabaseAdmin,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.userId).toBe('claims-user');
+      expect(result.email).toBe('claims@test.local');
+    }
+    // getUser must NOT be hit when getClaims resolves the token locally.
+    expect((supabaseAdmin.auth as unknown as { getUser: ReturnType<typeof vi.fn> }).getUser).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when getClaims reports an auth error', async () => {
+    const supabaseAdmin = makeSupabaseAdmin({
+      getClaimsResult: { data: null, error: new Error('token is expired') },
+      membership: { role: 'admin' },
+    });
+    const result = await requireOrgAuth(
+      makeRequest({ Authorization: 'Bearer expired' }),
+      'org-1',
+      supabaseAdmin,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it('respects custom allowedRoles list (cleaner allowed)', async () => {
