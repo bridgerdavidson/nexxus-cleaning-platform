@@ -16,6 +16,7 @@ import {
 export const AuthContext = React.createContext<(AuthState & AuthActions) | null>(null);
 
 const IMPERSONATION_KEY = 'nexxus_impersonation';
+const PLATFORM_ADMIN_CACHE_PREFIX = 'nexxus_is_platform_admin:';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -388,6 +389,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let cancelled = false;
+    // Cache platform-admin status per user for the tab session. /api/platform/whoami
+    // is backed by a slow GoTrue token validation in prod, and this effect re-runs on
+    // every token rotation — without the cache that re-hits the gate repeatedly. Keyed
+    // by user id so a different account never reads a stale value; a fresh browser
+    // session (new sessionStorage) re-resolves, which is a fine freshness boundary for
+    // the rarely-changing platform-admin set.
+    const cacheKey = `${PLATFORM_ADMIN_CACHE_PREFIX}${user.id}`;
+    if (typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached === 'true' || cached === 'false') {
+        setIsPlatformAdmin(cached === 'true');
+        return;
+      }
+    }
     (async () => {
       try {
         const res = await fetch('/api/platform/whoami', {
@@ -395,6 +410,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (cancelled || isSigningOutRef.current) return;
         setIsPlatformAdmin(res.ok);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(cacheKey, res.ok ? 'true' : 'false');
+        }
       } catch {
         if (!cancelled && !isSigningOutRef.current) setIsPlatformAdmin(false);
       }

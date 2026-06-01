@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { verifyAccessToken } from './verifyToken';
 
 export type OrgRole = 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner';
 
@@ -46,16 +47,15 @@ export async function requireOrgAuth(
     return { ok: false, response: json(401, { error: 'Missing authorization token' }) };
   }
 
-  const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !userData?.user) {
+  const verified = await verifyAccessToken(supabaseAdmin, token);
+  if (!verified) {
     return { ok: false, response: json(401, { error: 'Invalid or expired token' }) };
   }
-  const user = userData.user;
 
   const { data: membership, error: membershipError } = await supabaseAdmin
     .from('organization_members')
     .select('role')
-    .eq('user_id', user.id)
+    .eq('user_id', verified.userId)
     .eq('organization_id', organizationId)
     .maybeSingle();
 
@@ -71,5 +71,5 @@ export async function requireOrgAuth(
     return { ok: false, response: json(403, { error: 'Insufficient role for this action' }) };
   }
 
-  return { ok: true, userId: user.id, email: user.email ?? null, role };
+  return { ok: true, userId: verified.userId, email: verified.email, role };
 }
