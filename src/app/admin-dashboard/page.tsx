@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
+import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import { useToast } from "../../contexts/ToastContext";
 import { isAppointmentOverdue } from "../../lib/isAppointmentOverdue";
 import {
@@ -79,7 +80,7 @@ import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
 import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 
 function AdminDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId, accessToken, impersonatingOrgId } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken, impersonatingOrgId, orgStatus, reloadOrganization } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
@@ -348,8 +349,10 @@ function AdminDashboardInner() {
     [activeGroup, currentGroupTabs],
   );
 
-  // Show loading while checking auth
-  if (loading || !user) {
+  // Show loading while checking auth or while the org context is still resolving
+  // (org id is null during 'idle'/'loading', which would otherwise disable every
+  // org-scoped query and render a blank dashboard).
+  if (loading || !user || orgStatus === "idle" || orgStatus === "loading") {
     return (
       <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -358,6 +361,12 @@ function AdminDashboardInner() {
         </div>
       </div>
     );
+  }
+
+  // Org context failed to load (transient). Offer an in-place retry instead of a
+  // silent blank dashboard.
+  if (orgStatus === "error") {
+    return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
   }
 
   const handleLogout = async () => {

@@ -29,7 +29,7 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
   activeTab,
   onTabChange,
 }) => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, signOutEverywhere } = useAuth();
 
   // Close sidebar on escape key + lock body scroll only while open
   useEffect(() => {
@@ -183,6 +183,12 @@ const DesktopMenuDropdown: React.FC<DesktopMenuDropdownProps> = ({
             >
               <LogOut className="w-5 h-5" />
               <span>Sign Out</span>
+            </button>
+            <button
+              onClick={() => void signOutEverywhere()}
+              className="mt-2 w-full text-center text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Sign out of all devices
             </button>
           </div>
         </div>

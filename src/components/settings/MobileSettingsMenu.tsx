@@ -17,7 +17,7 @@ import {
  * /settings/[section]; native back returns here.
  */
 export default function MobileSettingsMenu() {
-  const { user, currentOrgRole, signOut } = useAuth();
+  const { user, currentOrgRole, signOut, signOutEverywhere } = useAuth();
   const { permissions } = useManagerPermissions();
 
   const role = user?.role;
@@ -85,6 +85,13 @@ export default function MobileSettingsMenu() {
         >
           <LogOut className="h-5 w-5" aria-hidden="true" />
           Log out
+        </button>
+        <button
+          type="button"
+          onClick={() => void signOutEverywhere()}
+          className="flex w-full items-center bg-white px-4 py-3 text-left text-xs font-medium text-gray-500 transition hover:bg-gray-50"
+        >
+          Sign out of all devices
         </button>
       </nav>
     </div>

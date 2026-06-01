@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { MotionConfig } from "motion/react";
 import { useAuth } from "../../hooks/useAuth";
+import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import {
   Home,
   MessageCircle,
@@ -44,7 +45,7 @@ import { AppointmentCardData } from "../../components/AppointmentCard";
 import ConfirmModal from "../../components/ConfirmModal";
 
 function HomeownerDashboardInner() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, orgStatus, reloadOrganization } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     HOMEOWNER_DASHBOARD_TAB_IDS,
@@ -140,8 +141,8 @@ function HomeownerDashboardInner() {
     [],
   );
 
-  // Show loading while checking auth
-  if (loading || !user) {
+  // Show loading while checking auth or while the org context is still resolving.
+  if (loading || !user || orgStatus === "idle" || orgStatus === "loading") {
     return (
       <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -150,6 +151,11 @@ function HomeownerDashboardInner() {
         </div>
       </div>
     );
+  }
+
+  // Org context failed to load (transient) — offer retry, not a blank dashboard.
+  if (orgStatus === "error") {
+    return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
   }
 
   const handleLogout = async () => {

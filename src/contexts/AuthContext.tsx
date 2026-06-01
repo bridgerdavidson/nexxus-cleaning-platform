@@ -5,6 +5,13 @@ import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { User, OrgRole, Organization } from '../types';
 import type { AuthState, AuthActions } from '../hooks/useAuth';
+import { authDebug, tokenTail } from '../lib/authDebug';
+import {
+  type OrgStatus,
+  classifyOrgLoadResult,
+  isRetryableOutcome,
+  resolveTerminalOrgState,
+} from '../lib/orgLoad';
 
 export const AuthContext = React.createContext<(AuthState & AuthActions) | null>(null);
 
@@ -18,6 +25,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrgRole, setCurrentOrgRole] = useState<OrgRole | null>(null);
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
+  // Lifecycle of the org-context load. 'error' is a transient/retryable failure
+  // (kept distinct from 'no-org') so a recoverable blip never silently disables
+  // every org-scoped query and blanks the dashboard.
+  const [orgStatus, setOrgStatus] = useState<OrgStatus>('idle');
   // null = not yet checked. Consumers (login routing, /owner) wait on non-null
   // so a real platform admin is never bounced before the check resolves.
   const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean | null>(null);
@@ -32,6 +43,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const lastSignOutTimeRef = useRef<number>(0);
   const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isCleaningUpRef = useRef(false);
+  // Org-load coordination: a sequence guard so a newer load supersedes an older
+  // in-flight one, an abort handle, and the latest org id / status read inside
+  // the async loader. lastOrgUserId/Token gate the trigger effect so a token
+  // refresh only re-loads when not already 'loaded'.
+  const orgLoadAbortRef = useRef<AbortController | null>(null);
+  const orgLoadSeqRef = useRef(0);
+  const currentOrgIdRef = useRef<string | null>(null);
+  const orgStatusRef = useRef<OrgStatus>('idle');
+  const lastOrgUserIdRef = useRef<string | null>(null);
+  const lastOrgTokenRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     userRef.current = user;
@@ -40,6 +61,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     isCleaningUpRef.current = isCleaningUp;
   }, [isCleaningUp]);
+
+  useEffect(() => {
+    currentOrgIdRef.current = currentOrganizationId;
+  }, [currentOrganizationId]);
+
+  useEffect(() => {
+    orgStatusRef.current = orgStatus;
+  }, [orgStatus]);
 
   const loadUserProfile = useCallback(async (supabaseUser: SupabaseUser) => {
     if (isSigningOutRef.current) return;
@@ -187,55 +216,166 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Resilient, self-healing org-context load. The previous one-shot version had
+  // no retry, collapsed error+empty into null, and re-ran only on user-object
+  // identity — so a single transient failure (the org query racing an in-flight
+  // token rotation) permanently nulled currentOrganizationId, which silently
+  // disables every org-scoped query (useOrgQuery gate) and blanks the dashboard
+  // while the user stays logged in. This retries with backoff + a fresh token,
+  // and never wipes an already-loaded org on a transient blip.
+  const loadOrganization = useCallback(async (): Promise<void> => {
+    const currentUser = userRef.current;
+    if (!currentUser) {
+      setCurrentOrganizationId(null);
+      setCurrentOrgRole(null);
+      setCurrentOrganization(null);
+      setOrgStatus('idle');
+      return;
+    }
+    if (isSigningOutRef.current) return;
+
+    // Supersede any in-flight load so a newer trigger wins the race.
+    if (orgLoadAbortRef.current) orgLoadAbortRef.current.abort();
+    const seq = ++orgLoadSeqRef.current;
+    const isStale = () => seq !== orgLoadSeqRef.current || isSigningOutRef.current;
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    type OrgJoinRow = { id: string; name: string; logo_url: string | null };
+    type OrgMembershipRow = {
+      organization_id: string;
+      role: string;
+      organizations: OrgJoinRow | OrgJoinRow[] | null;
+    };
+
+    setOrgStatus('loading');
+
+    const backoffs = [300, 800]; // gaps between 3 attempts
+    const maxAttempts = backoffs.length + 1;
+    let lastOutcome: 'empty' | 'error' = 'error';
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (isStale()) return;
+
+      // Re-read the freshest token before a retry: a member can momentarily get
+      // 0 rows (RLS sees a null uid mid-rotation) or a 401 — refreshing first is
+      // what rescues that window.
+      if (attempt > 0) {
+        try {
+          await supabase.auth.getSession();
+        } catch {
+          /* ignore — proceed with whatever token we have */
+        }
+        if (isStale()) return;
+      }
+
+      const ac = new AbortController();
+      orgLoadAbortRef.current = ac;
+      const timeoutId = setTimeout(() => ac.abort(), 5000);
+
+      const query = supabase
+        .from('organization_members')
+        .select('organization_id, role, organizations ( id, name, logo_url )')
+        .eq('user_id', currentUser.id)
+        .limit(1);
+
+      const abortPromise = new Promise<never>((_, reject) => {
+        ac.signal.addEventListener('abort', () => reject(new Error('Org query aborted')));
+      });
+
+      let result: { data: OrgMembershipRow[] | null; error: unknown };
+      try {
+        result = (await Promise.race([query, abortPromise])) as {
+          data: OrgMembershipRow[] | null;
+          error: unknown;
+        };
+        clearTimeout(timeoutId);
+      } catch {
+        clearTimeout(timeoutId);
+        if (orgLoadAbortRef.current === ac) orgLoadAbortRef.current = null;
+        lastOutcome = 'error';
+        authDebug('org-load', { attempt, result: 'abort' });
+        if (isStale()) return;
+        if (attempt < maxAttempts - 1) {
+          await delay(backoffs[attempt]);
+          continue;
+        }
+        break;
+      }
+      if (orgLoadAbortRef.current === ac) orgLoadAbortRef.current = null;
+      if (isStale()) return;
+
+      const outcome = classifyOrgLoadResult({ error: result.error, data: result.data });
+      authDebug('org-load', { attempt, result: outcome });
+
+      if (outcome === 'rows') {
+        const membership = result.data![0];
+        const orgData = membership.organizations;
+        const org = Array.isArray(orgData) ? orgData[0] : orgData;
+        setCurrentOrganizationId(membership.organization_id);
+        setCurrentOrgRole(membership.role as OrgRole);
+        setCurrentOrganization(
+          org
+            ? {
+                id: org.id,
+                name: org.name,
+                logo_url: org.logo_url || undefined,
+                created_at: new Date().toISOString(),
+                created_by: null,
+              }
+            : null,
+        );
+        setOrgStatus('loaded');
+        return;
+      }
+
+      lastOutcome = outcome; // 'empty' | 'error'
+      if (isRetryableOutcome(outcome) && attempt < maxAttempts - 1) {
+        await delay(backoffs[attempt]);
+        continue;
+      }
+      break;
+    }
+
+    if (isStale()) return;
+    const hadOrg = !!currentOrgIdRef.current;
+    const terminal = resolveTerminalOrgState(lastOutcome, hadOrg);
+    if (terminal.clearOrg) {
+      setCurrentOrganizationId(null);
+      setCurrentOrgRole(null);
+      setCurrentOrganization(null);
+    }
+    setOrgStatus(terminal.status);
+    authDebug('org-load:terminal', { lastOutcome, hadOrg, status: terminal.status });
+  }, []);
+
+  // Trigger: (re)load on a new user, and self-heal on a token refresh when the
+  // org isn't loaded yet. Depending on access_token — not just the user object —
+  // is what lets a refreshed token recover a stuck-null org without a full reload.
   useEffect(() => {
     if (!user) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setOrgStatus('idle');
+      lastOrgUserIdRef.current = null;
+      lastOrgTokenRef.current = undefined;
       return;
     }
 
-    const loadOrganization = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('organization_members')
-          .select('organization_id, role, organizations ( id, name, logo_url )')
-          .eq('user_id', user.id)
-          .limit(1);
+    const token = session?.access_token ?? null;
+    const userChanged = lastOrgUserIdRef.current !== user.id;
+    const tokenChanged = lastOrgTokenRef.current !== token;
+    lastOrgUserIdRef.current = user.id;
+    lastOrgTokenRef.current = token;
 
-        if (error || !data || data.length === 0) {
-          setCurrentOrganizationId(null);
-          setCurrentOrgRole(null);
-          setCurrentOrganization(null);
-          return;
-        }
-
-        const membership = data[0];
-        const orgData = membership.organizations as { id: string; name: string; logo_url: string | null } | { id: string; name: string; logo_url: string | null }[] | null;
-        const org = Array.isArray(orgData) ? orgData[0] : orgData;
-
-        setCurrentOrganizationId(membership.organization_id);
-        setCurrentOrgRole(membership.role as OrgRole);
-        if (org) {
-          setCurrentOrganization({
-            id: org.id,
-            name: org.name,
-            logo_url: org.logo_url || undefined,
-            created_at: new Date().toISOString(),
-            created_by: null,
-          });
-        } else {
-          setCurrentOrganization(null);
-        }
-      } catch (err) {
-        setCurrentOrganizationId(null);
-        setCurrentOrgRole(null);
-        setCurrentOrganization(null);
-      }
-    };
-
-    loadOrganization();
-  }, [user]);
+    if (userChanged) {
+      void loadOrganization();
+      return;
+    }
+    if (tokenChanged && orgStatusRef.current !== 'loaded') {
+      void loadOrganization();
+    }
+  }, [user, session?.access_token, loadOrganization]);
 
   // Resolve platform-admin status server-side (see /api/platform/whoami). Kept
   // additive and separate from the fragile auth flow above. Sources the token
@@ -369,15 +509,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, sess) => {
       if (!isMounted) return;
 
+      authDebug('auth-event', {
+        event,
+        hasSess: !!sess,
+        tokenTail: tokenTail(sess?.access_token),
+        isSigningOut: isSigningOutRef.current,
+      });
+
       if (event === 'SIGNED_OUT' || !sess) {
-        setSession(null);
-        setUser(null);
-        setCurrentOrganizationId(null);
-        setCurrentOrgRole(null);
-        setCurrentOrganization(null);
-        clearImpersonation();
-        setLoading(false);
-        isSigningInRef.current = false;
+        const wipe = () => {
+          setSession(null);
+          setUser(null);
+          setCurrentOrganizationId(null);
+          setCurrentOrgRole(null);
+          setCurrentOrganization(null);
+          setOrgStatus('idle');
+          clearImpersonation();
+          setLoading(false);
+          isSigningInRef.current = false;
+        };
+
+        // A sign-out we initiated locally clears immediately and unconditionally.
+        if (isSigningOutRef.current) {
+          wipe();
+          return;
+        }
+
+        // Otherwise the event may be spurious (a cross-tab / init race, or a
+        // single failed refresh) while a valid session still lives in storage.
+        // Confirm with one race-guarded getSession before tearing everything
+        // down, so a transient blip doesn't bounce the user to /login. A genuine
+        // revocation clears storage first, so getSession returns null here → wipe.
+        try {
+          const confirm = (await Promise.race([
+            supabase.auth.getSession(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('confirm timeout')), 5000),
+            ),
+          ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>;
+          if (!isMounted) return;
+          if (isSigningOutRef.current) {
+            wipe();
+            return;
+          }
+          const confirmedSession = confirm?.data?.session ?? null;
+          if (confirmedSession?.user && confirmedSession.user.id === userRef.current?.id) {
+            authDebug('auth-event:spurious-signout-ignored', {
+              tokenTail: tokenTail(confirmedSession.access_token),
+            });
+            setSession(confirmedSession);
+            return;
+          }
+        } catch {
+          /* fall through to wipe */
+        }
+        if (!isMounted) return;
+        wipe();
         return;
       }
 
@@ -569,7 +756,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = async (): Promise<void> => {
+  const performSignOut = async (scope: 'local' | 'global'): Promise<void> => {
     try {
       isSigningOutRef.current = true;
       isSigningInRef.current = false;
@@ -579,16 +766,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
+      if (orgLoadAbortRef.current) {
+        orgLoadAbortRef.current.abort();
+        orgLoadAbortRef.current = null;
+      }
 
       setUser(null);
       setSession(null);
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setOrgStatus('idle');
       clearImpersonation();
       setLoading(false);
 
-      const signOutPromise = supabase.auth.signOut();
+      // Default to local scope so logging out on one device no longer revokes a
+      // shared account's sessions on every other device — Supabase's signOut
+      // defaults to 'global'. 'global' is opt-in via signOutEverywhere().
+      const signOutPromise = supabase.auth.signOut({ scope });
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Sign out timeout')), 5000)
       );
@@ -618,12 +813,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setOrgStatus('idle');
       clearImpersonation();
       setLoading(false);
       isSigningOutRef.current = false;
       isSigningInRef.current = false;
     }
   };
+
+  const signOut = (): Promise<void> => performSignOut('local');
+  const signOutEverywhere = (): Promise<void> => performSignOut('global');
 
   const updateProfile = async (updates: Partial<User['profile']>): Promise<{ error?: string }> => {
     if (!user) return { error: 'No user logged in' };
@@ -673,14 +872,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signOut,
+    signOutEverywhere,
+    reloadOrganization: loadOrganization,
     updateProfile,
     accessToken,
     isCleaningUp,
     // When impersonating, override the org context so every org-scoped hook
-    // reads the impersonated tenant (and the admin view renders).
+    // reads the impersonated tenant (and the admin view renders). orgStatus is
+    // forced 'loaded' so the dashboard gate never blocks the "View as" view on
+    // the admin's own membership load.
     currentOrganizationId: impersonation ? impersonation.orgId : currentOrganizationId,
     currentOrgRole: impersonation ? 'admin' : currentOrgRole,
     currentOrganization,
+    orgStatus: impersonation ? 'loaded' : orgStatus,
     isPlatformAdmin,
     impersonatingOrgId: impersonation?.orgId ?? null,
     impersonatingOrgName: impersonation?.orgName ?? null,
