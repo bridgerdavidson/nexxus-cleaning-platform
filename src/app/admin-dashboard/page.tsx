@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useAuth } from "../../hooks/useAuth";
 import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import { useToast } from "../../contexts/ToastContext";
@@ -51,16 +52,25 @@ import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
-import BookingsPage from "../../components/BookingsPage";
-import MessagesPage from "../../components/MessagesPage";
-import CustomersPage from "../../components/CustomersPage";
-import PropertiesPage from "../../components/PropertiesPage";
-import TeamMembersPage from "../../components/TeamMembersPage";
-import InvitesPage from "../../components/InvitesPage";
-import PaymentsPage from "../../components/PaymentsPage";
-import CleanerManagementPage from "../../components/CleanerManagementPage";
-import AnalyticsPage from "../../components/AnalyticsPage";
-import ServicesPage from "../../components/ServicesPage";
+// Tab content is code-split: only the active tab's chunk loads, keeping the
+// initial dashboard bundle small (the default "overview" tab uses inline
+// sections below, not these). ssr:false is correct — the whole page is behind a
+// client-side auth gate, so these never render server-side anyway.
+const tabFallback = () => (
+  <div className="flex items-center justify-center py-20">
+    <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+  </div>
+);
+const BookingsPage = dynamic(() => import("../../components/BookingsPage"), { ssr: false, loading: tabFallback });
+const MessagesPage = dynamic(() => import("../../components/MessagesPage"), { ssr: false, loading: tabFallback });
+const CustomersPage = dynamic(() => import("../../components/CustomersPage"), { ssr: false, loading: tabFallback });
+const PropertiesPage = dynamic(() => import("../../components/PropertiesPage"), { ssr: false, loading: tabFallback });
+const TeamMembersPage = dynamic(() => import("../../components/TeamMembersPage"), { ssr: false, loading: tabFallback });
+const InvitesPage = dynamic(() => import("../../components/InvitesPage"), { ssr: false, loading: tabFallback });
+const PaymentsPage = dynamic(() => import("../../components/PaymentsPage"), { ssr: false, loading: tabFallback });
+const CleanerManagementPage = dynamic(() => import("../../components/CleanerManagementPage"), { ssr: false, loading: tabFallback });
+const AnalyticsPage = dynamic(() => import("../../components/AnalyticsPage"), { ssr: false, loading: tabFallback });
+const ServicesPage = dynamic(() => import("../../components/ServicesPage"), { ssr: false, loading: tabFallback });
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
 import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
