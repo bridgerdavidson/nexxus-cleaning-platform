@@ -1,9 +1,21 @@
 name: CI
 
 on:
+  # Feature branches get CI through the pull_request event. We deliberately do
+  # NOT run `push:` on every branch — a push to a PR branch would otherwise
+  # trigger BOTH a push-run and a pull_request-run of this same workflow (the
+  # duplicate "CI (push)" + "CI (pull_request)" checks), doubling runner usage
+  # and flake exposure. Pushes to the long-lived branches still run CI.
   push:
+    branches: [master, dev]
   pull_request:
     branches: [master]
+
+# Cancel superseded in-progress runs for the same branch (e.g. rapid pushes to an
+# open PR) so only the latest commit's CI consumes a runner.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   static:

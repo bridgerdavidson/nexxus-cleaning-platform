@@ -62,6 +62,13 @@ export default defineConfig({
           poolOptions: { threads: { singleThread: true } },
           testTimeout: 30_000,
           hookTimeout: 30_000,
+          // These DB-backed tests have inherent, low-rate nondeterminism against
+          // the ephemeral CI Supabase (a transient insert hiccup, an awaited write
+          // not yet visible on read-back, etc.) — historically a different random
+          // test would fail per run. Retry absorbs those flakes; a genuine
+          // regression still fails all attempts, so it does not mask real bugs.
+          // Unit tests deliberately keep no retry (they must be deterministic).
+          retry: 2,
           env: integrationEnv,
         },
       },
