@@ -23,13 +23,19 @@ describe('GET /api/platform/whoami', () => {
     expect(status).toBe(401);
   });
 
-  it('returns 403 for a normal org user (not a platform admin)', async () => {
+  it('returns 200 + isPlatformAdmin:false for a normal org user (not a platform admin)', async () => {
+    // A valid token that simply isn't in platform_admins is a definitive,
+    // non-error answer ("you're not a platform admin"), returned as 200 so it
+    // doesn't surface as a console 403 on every dashboard load and so the client
+    // can cache it. Authorization for the actual /api/platform/* data routes is
+    // still enforced with 403 by requirePlatformAdmin.
     org = await withTestOrg();
-    const { status } = await callRoute(GET, {
+    const { status, body } = await callRoute<{ isPlatformAdmin: boolean }>(GET, {
       method: 'GET',
       headers: bearerHeader(org.admin.accessToken),
     });
-    expect(status).toBe(403);
+    expect(status).toBe(200);
+    expect(body.isPlatformAdmin).toBe(false);
   });
 
   it('returns 200 + isPlatformAdmin:true for a platform admin', async () => {
