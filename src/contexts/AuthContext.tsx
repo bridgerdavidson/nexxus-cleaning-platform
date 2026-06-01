@@ -409,9 +409,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (cancelled || isSigningOutRef.current) return;
-        setIsPlatformAdmin(res.ok);
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(cacheKey, res.ok ? 'true' : 'false');
+        if (res.ok) {
+          // Definitive answer (admin → true, or non-admin → false; whoami now
+          // returns 200 with the boolean for both). Safe to cache.
+          const body = (await res.json().catch(() => null)) as { isPlatformAdmin?: boolean } | null;
+          const isAdmin = body?.isPlatformAdmin === true;
+          if (cancelled || isSigningOutRef.current) return;
+          setIsPlatformAdmin(isAdmin);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem(cacheKey, isAdmin ? 'true' : 'false');
+          }
+        } else {
+          // Transient/auth error (401 expired token, 500 lookup failure, ...).
+          // Do NOT cache — leave it unresolved for this load so a later token
+          // rotation or revisit can recover (a real admin is never locked out
+          // of /owner by a cached transient failure).
+          setIsPlatformAdmin(false);
         }
       } catch {
         if (!cancelled && !isSigningOutRef.current) setIsPlatformAdmin(false);
