@@ -543,16 +543,8 @@ function ManagerDashboardInner() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
-  // Show loading while checking auth, permissions, or while the org context is
-  // still resolving - MUST be after all hooks
-  if (
-    loading ||
-    !user ||
-    permissionsLoading ||
-    !permissions ||
-    orgStatus === "idle" ||
-    orgStatus === "loading"
-  ) {
+  // Auth not ready yet - MUST be after all hooks.
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -564,8 +556,24 @@ function ManagerDashboardInner() {
   }
 
   // Org context failed to load (transient) — offer retry, not a blank dashboard.
+  // MUST come before the permissions gate: a failed org load leaves
+  // currentOrganizationId null, which disables useManagerPermissions (permissions
+  // stays null). Checking !permissions first would trap the manager on an
+  // indefinite spinner and never reach this retry screen.
   if (orgStatus === "error") {
     return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
+  }
+
+  // Still resolving permissions or the org context.
+  if (permissionsLoading || !permissions || orgStatus === "idle" || orgStatus === "loading") {
+    return (
+      <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleLogout = async () => {
