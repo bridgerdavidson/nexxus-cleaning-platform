@@ -8,6 +8,7 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
 import Navbar from './Navbar';
 import AuthQueryBridge from './AuthQueryBridge';
+import AuthDebugOverlay from './AuthDebugOverlay';
 import { ImpersonationBanner } from './platform/ImpersonationBanner';
 import { makeQueryClient } from '../lib/queryClient';
 //import { useTabVisibility } from '../hooks/useTabVisibility';
@@ -69,6 +70,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <AuthQueryBridge />
+          <AuthDebugOverlay />
           <ImpersonationBanner />
           {!isFullScreen && <Navbar />}
           <div className={!isFullScreen ? 'pt-16' : ''}>

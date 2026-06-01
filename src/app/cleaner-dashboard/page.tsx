@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
+import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import {
   SprayCan,
   Calendar,
@@ -197,7 +198,7 @@ const PROJECTED_EARNINGS_PRESETS: EarningsRangePreset[] = [
 ];
 
 function CleanerDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken, orgStatus, reloadOrganization } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     CLEANER_DASHBOARD_TAB_IDS
@@ -756,8 +757,8 @@ function CleanerDashboardInner() {
       else setExpandedUpcoming(false);
     }
   }, [appointmentsLoading, overviewUpcomingJobs.length]);
-  // Show loading while checking auth
-  if (loading || !user) {
+  // Show loading while checking auth or while the org context is still resolving.
+  if (loading || !user || orgStatus === "idle" || orgStatus === "loading") {
     return (
       <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -766,6 +767,11 @@ function CleanerDashboardInner() {
         </div>
       </div>
     );
+  }
+
+  // Org context failed to load (transient) — offer retry, not a blank dashboard.
+  if (orgStatus === "error") {
+    return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
   }
 
   // Helper functions

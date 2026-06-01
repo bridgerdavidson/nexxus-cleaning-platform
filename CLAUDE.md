@@ -242,6 +242,10 @@ Required for full functionality:
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
 - `CRON_SECRET` — shared secret pg_cron uses to authenticate to `/api/appointments/auto-defer/cron`. Generate a random 64-char string. In Postgres, set the matching value via `ALTER SYSTEM SET app.cron_secret = '<value>'` plus `ALTER SYSTEM SET app.api_base_url = 'https://your-host'` so the cron job (migration 064) can call back.
 
+Optional / debug:
+
+- `NEXT_PUBLIC_AUTH_DEBUG` — set to `"true"` to enable auth/session diagnostics (`src/lib/authDebug.ts`): `[authdbg]` console logs across the auth event stream, org-context load, token rotation, and disabled org-scoped queries, plus an on-screen corner badge (`AuthDebugOverlay`) showing `user / orgStatus / orgId / token`. Off (and a no-op) by default; safe to leave unset in prod. Used to reproduce the concurrent-session blank-dashboard class of bug.
+
 ## Visual Testing
 Use the Playwright MCP tools to navigate to the local dev server 
 (http://localhost:3000) and take a screenshot to verify UI changes.

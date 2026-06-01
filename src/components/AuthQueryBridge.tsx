@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
+import { authDebug, tokenTail } from '../lib/authDebug';
 
 export default function AuthQueryBridge() {
   const { accessToken } = useAuth();
@@ -12,6 +13,10 @@ export default function AuthQueryBridge() {
 
   useEffect(() => {
     if (lastTokenRef.current !== undefined && lastTokenRef.current !== accessToken) {
+      authDebug('token-change', {
+        from: tokenTail(lastTokenRef.current),
+        to: tokenTail(accessToken),
+      });
       // Hand the rotated JWT to the realtime websocket. Without this the
       // socket keeps the old token forever and Postgres RLS silently rejects
       // events after the ~1h expiry — the "laptop slept, had to reload"

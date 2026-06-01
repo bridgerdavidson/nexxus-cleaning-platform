@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
+import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import { useToast } from "../../contexts/ToastContext";
 import { isAppointmentOverdue } from "../../lib/isAppointmentOverdue";
 import {
@@ -88,7 +89,7 @@ import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
 import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 
 function ManagerDashboardInner() {
-  const { user, loading, signOut, currentOrganizationId, accessToken } = useAuth();
+  const { user, loading, signOut, currentOrganizationId, accessToken, orgStatus, reloadOrganization } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
     "home",
     ADMIN_MANAGER_DASHBOARD_TAB_IDS,
@@ -542,8 +543,16 @@ function ManagerDashboardInner() {
     window.scrollTo(0, 0);
   }, [activeTab]);
 
-  // Show loading while checking auth and permissions - MUST be after all hooks
-  if (loading || !user || permissionsLoading || !permissions) {
+  // Show loading while checking auth, permissions, or while the org context is
+  // still resolving - MUST be after all hooks
+  if (
+    loading ||
+    !user ||
+    permissionsLoading ||
+    !permissions ||
+    orgStatus === "idle" ||
+    orgStatus === "loading"
+  ) {
     return (
       <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
         <div className="text-center">
@@ -552,6 +561,11 @@ function ManagerDashboardInner() {
         </div>
       </div>
     );
+  }
+
+  // Org context failed to load (transient) — offer retry, not a blank dashboard.
+  if (orgStatus === "error") {
+    return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
   }
 
   const handleLogout = async () => {
