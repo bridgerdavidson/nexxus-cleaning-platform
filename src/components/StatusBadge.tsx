@@ -8,6 +8,7 @@ import {
   Calendar,
   Building2,
   DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 
 interface StatusBadgeProps {
@@ -107,6 +108,15 @@ export default function StatusBadge({
           textColor: "text-blue-700",
           icon: Building2,
           label: "Owned by us",
+        };
+      // Self-pay gate: the assigned cleaner can't receive a company-card payout yet
+      // (no finished Stripe onboarding, or no payout %). Amber = needs attention.
+      case "not_payout_ready":
+        return {
+          bgColor: "bg-amber-50",
+          textColor: "text-amber-700",
+          icon: AlertTriangle,
+          label: "Not payout-ready",
         };
       default:
         return {

@@ -19,20 +19,26 @@ import {
   CreditCard,
   DollarSign,
   AlertTriangle,
+  Building2,
 } from "lucide-react";
+import Link from "next/link";
 import type { RecurrenceType } from "../types";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
+import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
 import type { ScheduleAppointment } from "../lib/appointmentConflicts";
 import { rankCleanersByAvailability } from "../lib/cleanerAvailability";
 import { formatTimeTo12h } from "../lib/formatTime";
+import { isCleanerPayable } from "@/lib/payments/isCleanerPayable";
+import { computeSelfPayAmounts } from "@/lib/payments/selfPayMath";
 import PaymentMethodForm from "./PaymentMethodForm";
+import StatusBadge from "./StatusBadge";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
-import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
+import { stripeNewChargeFlowUiEnabled, stripeSelfPayUiEnabled } from "@/lib/stripe/flags";
 
 interface Homeowner {
   id: string;
@@ -48,7 +54,9 @@ interface Property {
   city: string;
   state: string;
   zip_code: string;
-  owner_id: string;
+  // Null when the property is owned by the organization (no homeowner). Self-pay
+  // is the only billing option for such properties.
+  owner_id: string | null;
 }
 
 interface ServiceType {
@@ -68,11 +76,27 @@ interface ChecklistOption {
 
 interface Cleaner {
   id: string;
+  // Self-pay only: payout-readiness fields so the modal can gate which cleaners
+  // can receive a company-card-funded payout. Undefined in legacy fetches.
+  payout_model?: string | null;
+  stripe_connect_account_id?: string | null;
+  stripe_connect_onboarding_complete?: boolean | null;
+  payout_percent?: number | string | null;
   user_profile: {
     first_name: string;
     last_name: string;
     avatar_url: string | null;
   } | null;
+}
+
+/** A masked saved card as returned by the org saved-payment-methods route. */
+interface OrgSavedCard {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
 }
 
 interface AddAppointmentModalProps {
@@ -96,7 +120,17 @@ export default function AddAppointmentModal({
   preFilledTime,
   hidePriceOverride = false,
 }: AddAppointmentModalProps) {
-  const { currentOrganizationId } = useAuth();
+  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+
+  // Self-pay is gated behind the client flag AND the actor's role: owner/admin always,
+  // or a manager only if they hold can_manage_payments. When this is false the modal
+  // behaves exactly as it did before self-pay shipped (no bill-to choice, homeowner path).
+  const canSelfPay =
+    stripeSelfPayUiEnabled() &&
+    (currentOrgRole === "owner" ||
+      currentOrgRole === "admin" ||
+      (currentOrgRole === "manager" && permissions?.can_manage_payments === true));
 
   // Appointments requiring cleaner availability confirmation should always start pending.
   const initialStatus = "pending";
@@ -118,6 +152,12 @@ export default function AddAppointmentModal({
   const [mobileSubStep, setMobileSubStep] = useState<"homeowner" | "property">(
     "homeowner",
   );
+
+  // Self-pay bill-to choice (only meaningful when canSelfPay and no homeowner is
+  // pre-selected). "homeowner" = a customer pays (legacy behavior); "self" = the
+  // company pays on its own card. An org-owned property forces "self".
+  const [billTo, setBillTo] = useState<"homeowner" | "self">("homeowner");
+  const selfPay = canSelfPay && billTo === "self";
 
   // Step changes reuse the same scroll containers; reset so each step starts at the top
   useEffect(() => {
@@ -199,6 +239,12 @@ export default function AddAppointmentModal({
   // Step 4 - Payment method state
   const [paymentMethodSaved, setPaymentMethodSaved] = useState(false);
   const [skipPaymentMethod, setSkipPaymentMethod] = useState(false);
+
+  // Self-pay company-card state: the org's saved card(s), loaded lazily when the
+  // self-pay payment step is reached.
+  const [orgCards, setOrgCards] = useState<OrgSavedCard[]>([]);
+  const [orgCardsLoading, setOrgCardsLoading] = useState(false);
+  const [orgCardsLoaded, setOrgCardsLoaded] = useState(false);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -299,9 +345,13 @@ export default function AddAppointmentModal({
     preFilledTime,
   ]);
 
-  // Fetch properties when homeowner is selected (only when not pre-selected)
+  // Fetch properties when homeowner is selected (only when not pre-selected).
+  // In self-pay mode we load ALL org properties (any property can be company-paid),
+  // not just the selected homeowner's.
   useEffect(() => {
-    if (selectedHomeowner && !preSelectedHomeownerId) {
+    if (selfPay) {
+      fetchOrgProperties();
+    } else if (selectedHomeowner && !preSelectedHomeownerId) {
       fetchProperties(selectedHomeowner.id);
     } else if (!selectedHomeowner && !preSelectedHomeownerId) {
       // Clear properties if homeowner is deselected
@@ -309,7 +359,25 @@ export default function AddAppointmentModal({
       setSelectedProperty(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHomeowner, preSelectedHomeownerId]);
+  }, [selectedHomeowner, preSelectedHomeownerId, selfPay]);
+
+  // An org-owned property (owner_id === null) can only be company-paid, so lock the
+  // bill-to choice to self-pay whenever such a property is selected (pre-selected or picked).
+  useEffect(() => {
+    if (canSelfPay && selectedProperty && selectedProperty.owner_id === null) {
+      setBillTo("self");
+    }
+  }, [selectedProperty, canSelfPay]);
+
+  // Self-pay does not support recurrence (no self-pay path in the recurring route), so
+  // force a one-off and clear any recurrence choice when self-pay turns on.
+  useEffect(() => {
+    if (selfPay && recurrenceType !== "none") {
+      setRecurrenceType("none");
+      setSelectedDaysOfWeek([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selfPay]);
 
   const fetchHomeowners = async () => {
     if (!currentOrganizationId) return;
@@ -379,6 +447,53 @@ export default function AddAppointmentModal({
       setError("Failed to load properties");
     } finally {
       setPropertiesLoading(false);
+    }
+  };
+
+  // Self-pay: load EVERY property in the org (company-owned and homeowner-owned alike),
+  // since the company can pay for a cleaning on any of them.
+  const fetchOrgProperties = async () => {
+    if (!currentOrganizationId) return;
+
+    try {
+      setPropertiesLoading(true);
+      const { data, error } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("organization_id", currentOrganizationId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setProperties(data || []);
+    } catch (err) {
+      console.error("Error fetching org properties:", err);
+      setError("Failed to load properties");
+    } finally {
+      setPropertiesLoading(false);
+    }
+  };
+
+  // Self-pay: load the org's saved company card(s) for the payment step. Lazy — only
+  // called when the self-pay payment step is reached.
+  const fetchOrgCards = async () => {
+    if (!currentOrganizationId) return;
+
+    try {
+      setOrgCardsLoading(true);
+      const token = await getAccessToken();
+      const res = await fetch(
+        `/api/stripe/org/saved-payment-methods?organization_id=${currentOrganizationId}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to load company card");
+      setOrgCards((data.cards ?? []) as OrgSavedCard[]);
+    } catch (err) {
+      console.error("Error fetching org company card:", err);
+      setOrgCards([]);
+    } finally {
+      setOrgCardsLoading(false);
+      setOrgCardsLoaded(true);
     }
   };
 
@@ -470,6 +585,10 @@ export default function AddAppointmentModal({
         .select(
           `
           id,
+          payout_model,
+          stripe_connect_account_id,
+          stripe_connect_onboarding_complete,
+          payout_percent,
           user_profile:user_profiles!id(
             first_name,
             last_name,
@@ -566,9 +685,72 @@ export default function AddAppointmentModal({
   );
   const hasConflicts = !!selectedCleanerEntry && !selectedCleanerEntry.isAvailable;
 
+  // ── Self-pay derived values ───────────────────────────────────────────────
+  // The picked property is org-owned (no homeowner) — self-pay is then the only option.
+  const propertyOrgOwned = selfPay && selectedProperty?.owner_id === null;
+
+  // Is the currently-selected cleaner payout-capable? In self-pay mode this gates submit
+  // (the org card is charged the cleaner's grossed-up cut, then 100% transferred to them).
+  const selectedCleanerPayable = isCleanerPayable(selectedCleaner);
+
+  // Selection guard: in self-pay mode a non-payout-ready cleaner can't be chosen (the charge
+  // amount derives from their %, and they must be able to receive the transfer). No-ops the
+  // pick instead of selecting. Outside self-pay it's a plain setter.
+  const selectCleaner = useCallback(
+    (cleaner: Cleaner | null) => {
+      if (selfPay && cleaner && !isCleanerPayable(cleaner)) return;
+      setSelectedCleaner(cleaner);
+    },
+    [selfPay],
+  );
+
+  // The org's default company card (or the first on file). Drives the company-card summary
+  // and the "no card → submit disabled" gate.
+  const orgDefaultCard = useMemo(
+    () => orgCards.find((c) => c.isDefault) ?? orgCards[0] ?? null,
+    [orgCards],
+  );
+
+  // "You'll be charged ≈ $X" transparency math, only when a payable cleaner is chosen.
+  const selfPayAmounts = useMemo(() => {
+    if (!selfPay || !selectedCleaner || !selectedCleanerPayable) return null;
+    const finalPrice =
+      priceOverrideEnabled && customPrice
+        ? parseFloat(customPrice)
+        : getSystemCalculatedPrice();
+    const jobGrossCents = Math.round((Number.isFinite(finalPrice) ? finalPrice : 0) * 100);
+    if (jobGrossCents <= 0) return null;
+    return computeSelfPayAmounts({
+      jobGrossCents,
+      payoutPercent: Number(selectedCleaner.payout_percent ?? 0),
+    });
+  }, [
+    selfPay,
+    selectedCleaner,
+    selectedCleanerPayable,
+    priceOverrideEnabled,
+    customPrice,
+    getSystemCalculatedPrice,
+  ]);
+
+  // Which step is the payment step, given the pre-selection mode? (1-indexed)
+  const paymentStep =
+    preSelectedHomeownerId && preSelectedPropertyId ? 2 : 3;
+
+  // Lazy-load the org company card when the self-pay payment step is reached.
+  useEffect(() => {
+    if (selfPay && currentStep === paymentStep && currentOrganizationId && !orgCardsLoaded) {
+      fetchOrgCards();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selfPay, currentStep, paymentStep, currentOrganizationId, orgCardsLoaded]);
+
   const handleCreateAppointment = async () => {
+    // In self-pay mode on an org-owned property there is no homeowner; every other
+    // path (including self-pay comping a real homeowner) still requires one.
+    const homeownerRequired = !propertyOrgOwned;
     if (
-      !selectedHomeowner ||
+      (homeownerRequired && !selectedHomeowner) ||
       !selectedProperty ||
       !selectedServiceType ||
       !selectedChecklist ||
@@ -583,6 +765,22 @@ export default function AddAppointmentModal({
     if (!selectedCleaner) {
       setError("Please select a cleaner");
       return;
+    }
+
+    // Self-pay requires a payout-capable cleaner and a company card on file.
+    if (selfPay) {
+      if (!selectedCleanerPayable) {
+        setError(
+          "This cleaner is not payout-ready. Pick a cleaner who has finished Stripe onboarding and has a payout percentage.",
+        );
+        return;
+      }
+      if (!orgDefaultCard) {
+        setError(
+          "No company card on file. Add one in Settings, Payments before booking a company-paid cleaning.",
+        );
+        return;
+      }
     }
 
     // Validate that the appointment is not in the past
@@ -647,8 +845,10 @@ export default function AddAppointmentModal({
           ? paymentSelection
           : null;
 
-      // Handle recurring appointments
-      if (recurrenceType !== "none") {
+      // Handle recurring appointments. Self-pay does not support recurrence (the
+      // recurring-appointments route has no self-pay path), and the recurrence UI is
+      // hidden in self-pay mode, so this branch never runs without a homeowner.
+      if (recurrenceType !== "none" && !selfPay && selectedHomeowner) {
         const response = await fetch("/api/recurring-appointments", {
           method: "POST",
           headers: {
@@ -706,11 +906,16 @@ export default function AddAppointmentModal({
         scheduledDate,
         scheduledTime,
       );
+      // Self-pay on an org-owned property has no homeowner (homeowner_id = null); self-pay
+      // comping a real homeowner keeps the owner. The DB CHECK (is_self_pay = true OR
+      // homeowner_id IS NOT NULL) is satisfied either way.
+      const homeownerIdForInsert =
+        selfPay && propertyOrgOwned ? null : selectedHomeowner?.id ?? null;
       const { data: insertData, error: insertError } = await supabase
         .from("appointments")
         .insert({
           organization_id: currentOrganizationId,
-          homeowner_id: selectedHomeowner.id,
+          homeowner_id: homeownerIdForInsert,
           cleaner_id: selectedCleaner.id,
           property_id: selectedProperty.id,
           service_type_id: selectedServiceType.id,
@@ -725,7 +930,10 @@ export default function AddAppointmentModal({
               ? parseFloat(customPrice)
               : null,
           special_requests: specialRequests || null,
-          payment_method_id: paymentMethodId,
+          // Self-pay charges the org's company Customer (not appointment.payment_method_id),
+          // so leave the homeowner card unset in self-pay mode.
+          payment_method_id: selfPay ? null : paymentMethodId,
+          is_self_pay: selfPay,
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
           response_deadline: responseDeadline,
@@ -776,10 +984,12 @@ export default function AddAppointmentModal({
 
       console.log("Appointment created successfully:", insertData);
 
-      // If a saved card was chosen, place the authorization hold now (immediate feedback;
-      // the JIT cron is the backstop for deferred/cron-scheduled holds). The appointment
-      // already exists, so an auth failure is surfaced but doesn't undo creation.
-      if (paymentMethodId && insertData?.id) {
+      // Place the authorization hold now for immediate feedback (the JIT cron is the backstop
+      // for deferred/cron-scheduled holds). Fires when a homeowner card was chosen OR this is a
+      // self-pay job (which holds the org's company card, routed server-side via
+      // authorizeAppointmentAuto → authorizeSelfPayAppointment). The appointment already exists,
+      // so an auth failure is surfaced but doesn't undo creation.
+      if ((paymentMethodId || selfPay) && insertData?.id) {
         try {
           const token = await getAccessToken();
           const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
@@ -847,6 +1057,9 @@ export default function AddAppointmentModal({
     // Reset all state
     setCurrentStep(1);
     setMobileSubStep("homeowner");
+    setBillTo("homeowner");
+    setOrgCards([]);
+    setOrgCardsLoaded(false);
     if (!preSelectedHomeownerId) {
       setSelectedHomeowner(null);
     }
@@ -920,8 +1133,11 @@ export default function AddAppointmentModal({
     );
   });
 
-  // Validation
-  const isStep1Valid = selectedHomeowner && selectedProperty;
+  // Validation. In self-pay mode step 1 only needs a property (no homeowner for an
+  // org-owned property; comping a real homeowner still selects one via the property).
+  const isStep1Valid = selfPay
+    ? !!selectedProperty
+    : selectedHomeowner && selectedProperty;
   const isStep2Valid =
     selectedServiceType &&
     selectedChecklist &&
@@ -930,12 +1146,16 @@ export default function AddAppointmentModal({
     (hidePriceOverride ||
       !priceOverrideEnabled ||
       (customPrice && parseFloat(customPrice) > 0));
-  const isStep3Valid = !!selectedCleaner;
+  // A cleaner must be chosen; in self-pay mode they must also be payout-capable.
+  const isStep3Valid = !!selectedCleaner && (!selfPay || selectedCleanerPayable);
   // New charge flow: the Step 3 card picker always yields a completable choice (a saved card,
   // a send-link, or defer), so the final step is never blocked. Legacy keeps the saved/skip gate.
-  const isStep4Valid = stripeNewChargeFlowUiEnabled()
-    ? true
-    : paymentMethodSaved || skipPaymentMethod;
+  // Self-pay requires a company card on file before submit.
+  const isStep4Valid = selfPay
+    ? !!orgDefaultCard
+    : stripeNewChargeFlowUiEnabled()
+      ? true
+      : paymentMethodSaved || skipPaymentMethod;
 
   // Get today's date for min date validation (using local timezone, not UTC)
   const getTodayLocal = () => {
@@ -956,6 +1176,50 @@ export default function AddAppointmentModal({
       return `${hours}:${minutes}`;
     }
     return "00:00";
+  };
+
+  // Single property-card renderer reused by the homeowner-mode and self-pay-mode pickers.
+  // In self-pay mode an org-owned property gets an "Owned by us" badge; a homeowner-owned
+  // property keeps its homeowner-name subtitle.
+  const renderPropertyCard = (property: Property) => {
+    const isSelected = selectedProperty?.id === property.id;
+    const orgOwned = property.owner_id === null;
+    return (
+      <button
+        key={property.id}
+        type="button"
+        onClick={() => setSelectedProperty(property)}
+        className={`p-4 border-2 rounded-lg text-left transition-all ${
+          isSelected
+            ? "border-primary-500 bg-primary-50"
+            : "border-gray-200 hover:border-gray-300"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Home className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900 truncate">
+                {property.name}
+              </p>
+              <p className="text-sm text-gray-600 truncate">
+                {property.address}, {property.city}
+              </p>
+              {selfPay && orgOwned && (
+                <div className="mt-1.5">
+                  <StatusBadge status="org_owned" size="sm" />
+                </div>
+              )}
+            </div>
+          </div>
+          {isSelected && (
+            <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          )}
+        </div>
+      </button>
+    );
   };
 
   if (!isOpen) return null;
@@ -1055,6 +1319,117 @@ export default function AddAppointmentModal({
               !preSelectedHomeownerId &&
               !preSelectedPropertyId && (
                 <div className="space-y-6">
+                  {/* Bill-to choice (self-pay only). Leads step 1: who pays for this cleaning? */}
+                  {canSelfPay && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                        Who pays for this cleaning?
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setBillTo("homeowner")}
+                          disabled={propertyOrgOwned}
+                          className={`p-4 border-2 rounded-lg text-left transition-all ${
+                            billTo === "homeowner"
+                              ? "border-primary-500 bg-primary-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          } ${propertyOrgOwned ? "opacity-50 cursor-not-allowed hover:border-gray-200" : ""}`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                                <User className="w-5 h-5 text-primary-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  A homeowner
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Bill a customer
+                                </p>
+                              </div>
+                            </div>
+                            {billTo === "homeowner" && (
+                              <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBillTo("self")}
+                          className={`p-4 border-2 rounded-lg text-left transition-all ${
+                            billTo === "self"
+                              ? "border-primary-500 bg-primary-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <Building2 className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  Us, company pays
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Our company card
+                                </p>
+                              </div>
+                            </div>
+                            {billTo === "self" && (
+                              <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                      {propertyOrgOwned && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          This property has no homeowner.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Self-pay property picker: every property in the org, billed to the company card. */}
+                  {selfPay ? (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                        Select Property
+                      </h3>
+
+                      <div className="flex gap-2 mb-4">
+                        <div className="flex-1 relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <input
+                            type="text"
+                            placeholder="Search properties..."
+                            value={propertySearch}
+                            onChange={(e) => setPropertySearch(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          />
+                        </div>
+                      </div>
+
+                      {propertiesLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+                        </div>
+                      ) : filteredProperties.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          No properties found
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:max-h-48 sm:overflow-y-auto">
+                          {filteredProperties.map((property) =>
+                            renderPropertyCard(property),
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                  <>
                   {/* Homeowner Selection */}
                   <div
                     className={`${
@@ -1200,40 +1575,14 @@ export default function AddAppointmentModal({
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:max-h-48 sm:overflow-y-auto">
-                          {filteredProperties.map((property) => (
-                            <button
-                              key={property.id}
-                              type="button"
-                              onClick={() => setSelectedProperty(property)}
-                              className={`p-4 border-2 rounded-lg text-left transition-all ${
-                                selectedProperty?.id === property.id
-                                  ? "border-primary-500 bg-primary-50"
-                                  : "border-gray-200 hover:border-gray-300"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                    <Home className="w-5 h-5 text-blue-600" />
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-gray-900">
-                                      {property.name}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      {property.address}, {property.city}
-                                    </p>
-                                  </div>
-                                </div>
-                                {selectedProperty?.id === property.id && (
-                                  <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
-                                )}
-                              </div>
-                            </button>
-                          ))}
+                          {filteredProperties.map((property) =>
+                            renderPropertyCard(property),
+                          )}
                         </div>
                       )}
                     </div>
+                  )}
+                  </>
                   )}
                 </div>
               )}
@@ -1575,23 +1924,37 @@ export default function AddAppointmentModal({
                           .map(({ cleaner }) => {
                             const isSelected =
                               selectedCleaner?.id === cleaner.id;
+                            const notPayable =
+                              selfPay && !isCleanerPayable(cleaner);
                             return (
                               <button
                                 key={cleaner.id}
                                 type="button"
-                                onClick={() => setSelectedCleaner(cleaner)}
-                                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-left transition-colors ${
+                                onClick={() => selectCleaner(cleaner)}
+                                disabled={notPayable}
+                                className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-lg border text-left transition-colors ${
                                   isSelected
                                     ? "border-2 border-primary-500 bg-primary-50"
-                                    : "border-gray-200 bg-white hover:border-gray-300"
+                                    : notPayable
+                                      ? "border-gray-200 bg-white opacity-50 cursor-not-allowed"
+                                      : "border-gray-200 bg-white hover:border-gray-300"
                                 }`}
                               >
-                                <span className="text-sm font-medium text-gray-900">
-                                  {cleaner.user_profile?.first_name}{" "}
-                                  {cleaner.user_profile?.last_name}
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-medium text-gray-900 truncate">
+                                    {cleaner.user_profile?.first_name}{" "}
+                                    {cleaner.user_profile?.last_name}
+                                  </span>
+                                  {notPayable && (
+                                    <span className="mt-0.5 block text-xs text-gray-500">
+                                      Needs Stripe onboarding or a payout %
+                                    </span>
+                                  )}
                                 </span>
                                 {isSelected ? (
                                   <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                                ) : notPayable ? (
+                                  <StatusBadge status="not_payout_ready" size="sm" />
                                 ) : (
                                   <span className="text-xs text-gray-400">
                                     Pick a time
@@ -1625,23 +1988,37 @@ export default function AddAppointmentModal({
                                 {available.map(({ cleaner }) => {
                                   const isSelected =
                                     selectedCleaner?.id === cleaner.id;
+                                  const notPayable =
+                                    selfPay && !isCleanerPayable(cleaner);
                                   return (
                                     <button
                                       key={cleaner.id}
                                       type="button"
-                                      onClick={() => setSelectedCleaner(cleaner)}
-                                      className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-left transition-colors ${
+                                      onClick={() => selectCleaner(cleaner)}
+                                      disabled={notPayable}
+                                      className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-lg border text-left transition-colors ${
                                         isSelected
                                           ? "border-2 border-primary-500 bg-primary-50"
-                                          : "border-gray-200 bg-white hover:border-gray-300"
+                                          : notPayable
+                                            ? "border-gray-200 bg-white opacity-50 cursor-not-allowed"
+                                            : "border-gray-200 bg-white hover:border-gray-300"
                                       }`}
                                     >
-                                      <span className="text-sm font-medium text-gray-900">
-                                        {cleaner.user_profile?.first_name}{" "}
-                                        {cleaner.user_profile?.last_name}
+                                      <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-gray-900 truncate">
+                                          {cleaner.user_profile?.first_name}{" "}
+                                          {cleaner.user_profile?.last_name}
+                                        </span>
+                                        {notPayable && (
+                                          <span className="mt-0.5 block text-xs text-gray-500">
+                                            Needs Stripe onboarding or a payout %
+                                          </span>
+                                        )}
                                       </span>
                                       {isSelected ? (
                                         <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                                      ) : notPayable ? (
+                                        <StatusBadge status="not_payout_ready" size="sm" />
                                       ) : (
                                         <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                                       )}
@@ -1677,6 +2054,8 @@ export default function AddAppointmentModal({
                                     const firstName =
                                       cleaner.user_profile?.first_name ??
                                       "Cleaner";
+                                    const notPayable =
+                                      selfPay && !isCleanerPayable(cleaner);
                                     return (
                                       <div
                                         key={cleaner.id}
@@ -1684,7 +2063,7 @@ export default function AddAppointmentModal({
                                           isSelected
                                             ? "border-2 border-primary-500 bg-primary-50"
                                             : "border-gray-200 bg-white"
-                                        }`}
+                                        } ${notPayable && !isSelected ? "opacity-50" : ""}`}
                                       >
                                         <button
                                           type="button"
@@ -1696,13 +2075,16 @@ export default function AddAppointmentModal({
                                             )
                                           }
                                           aria-expanded={isExpanded}
-                                          className="w-full flex items-center justify-between px-4 py-3 text-left"
+                                          className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left"
                                         >
-                                          <span className="text-sm font-medium text-gray-900">
+                                          <span className="text-sm font-medium text-gray-900 truncate">
                                             {cleaner.user_profile?.first_name}{" "}
                                             {cleaner.user_profile?.last_name}
                                           </span>
                                           <span className="flex items-center gap-2 flex-shrink-0">
+                                            {notPayable && !isSelected && (
+                                              <StatusBadge status="not_payout_ready" size="sm" />
+                                            )}
                                             {isSelected ? (
                                               <CheckCircle className="w-5 h-5 text-primary-600" />
                                             ) : (
@@ -1764,6 +2146,15 @@ export default function AddAppointmentModal({
                                                 Try a different day.
                                               </p>
                                             )}
+                                            {notPayable && (
+                                              <p className="text-xs text-gray-500">
+                                                {firstName} is not payout-ready
+                                                (needs Stripe onboarding or a
+                                                payout %), so they can&apos;t be
+                                                booked for a company-paid
+                                                cleaning.
+                                              </p>
+                                            )}
                                             <div className="flex justify-end">
                                               {isSelected ? (
                                                 <button
@@ -1779,9 +2170,10 @@ export default function AddAppointmentModal({
                                                 <button
                                                   type="button"
                                                   onClick={() =>
-                                                    setSelectedCleaner(cleaner)
+                                                    selectCleaner(cleaner)
                                                   }
-                                                  className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-1.5 transition-colors"
+                                                  disabled={notPayable}
+                                                  className="text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-600"
                                                 >
                                                   Select {firstName} anyway
                                                 </button>
@@ -1809,7 +2201,20 @@ export default function AddAppointmentModal({
                   )}
                 </div>
 
-                {/* Recurrence Section */}
+                {/* Self-pay money transparency: what the company card is charged vs. what the
+                    cleaner nets. Only once a payout-ready cleaner and a positive price exist. */}
+                {selfPay && selfPayAmounts && (
+                  <div className="rounded-lg bg-primary-50 p-3 text-sm text-gray-800">
+                    Your company card will be charged ≈ $
+                    {(selfPayAmounts.chargeCents / 100).toFixed(2)}. Your cleaner
+                    receives $
+                    {(selfPayAmounts.cleanerCutCents / 100).toFixed(2)} (their{" "}
+                    {Number(selectedCleaner?.payout_percent ?? 0)}%).
+                  </div>
+                )}
+
+                {/* Recurrence Section — hidden in self-pay mode (no self-pay recurring path). */}
+                {!selfPay && (
                 <div className="border-t border-gray-200 pt-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Repeat className="w-5 h-5 text-primary-600" />
@@ -1992,6 +2397,7 @@ export default function AddAppointmentModal({
                     </div>
                   )}
                 </div>
+                )}
 
               </div>
             )}
@@ -2006,7 +2412,7 @@ export default function AddAppointmentModal({
               (!preSelectedHomeownerId &&
                 !preSelectedPropertyId &&
                 currentStep === 3)) &&
-              selectedHomeowner && (
+              (selectedHomeowner || selfPay) && (
                 <div className="space-y-6">
                   <div className="flex items-center gap-2 mb-4">
                     <CreditCard className="w-5 h-5 text-primary-600" />
@@ -2015,7 +2421,55 @@ export default function AddAppointmentModal({
                     </h3>
                   </div>
 
-                  {stripeNewChargeFlowUiEnabled() ? (
+                  {selfPay ? (
+                    /* Self-pay: the org's saved company card (no homeowner card picker). */
+                    <div className="space-y-4">
+                      <p className="text-gray-600">
+                        This cleaning is paid by your company. The card below is
+                        authorized when the appointment is created and charged
+                        when the job is completed.
+                      </p>
+                      {orgCardsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+                        </div>
+                      ) : orgDefaultCard ? (
+                        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="h-5 w-5 text-gray-500 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 capitalize">
+                                {orgDefaultCard.brand} •••• {orgDefaultCard.last4}
+                                {orgDefaultCard.isDefault && (
+                                  <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                                    Default
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Company card · Expires{" "}
+                                {String(orgDefaultCard.expMonth).padStart(2, "0")}
+                                /{orgDefaultCard.expYear}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
+                          <Building2 className="mx-auto h-8 w-8 text-gray-300" />
+                          <p className="mx-auto mt-3 max-w-sm text-sm text-gray-500">
+                            No company card on file
+                          </p>
+                          <Link
+                            href="/settings/payments"
+                            className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
+                          >
+                            Add a company card
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  ) : !selectedHomeowner ? null : stripeNewChargeFlowUiEnabled() ? (
                     <>
                       <p className="text-gray-600">
                         Choose how {selectedHomeowner.first_name}{" "}
@@ -2167,11 +2621,13 @@ export default function AddAppointmentModal({
                 <button
                   type="button"
                   onClick={() => {
-                    // Mobile sub-step transition: homeowner → property
+                    // Mobile sub-step transition: homeowner → property (homeowner-pay only;
+                    // self-pay step 1 has no homeowner sub-step).
                     if (
                       currentStep === 1 &&
                       !preSelectedHomeownerId &&
                       !preSelectedPropertyId &&
+                      !selfPay &&
                       mobileSubStep === "homeowner"
                     ) {
                       setMobileSubStep("property");
@@ -2180,13 +2636,16 @@ export default function AddAppointmentModal({
                     handleNext();
                   }}
                   disabled={Boolean(
-                    // Step 1 (no pre-selection): homeowner sub-step needs homeowner; property sub-step needs both
+                    // Step 1 (no pre-selection): self-pay needs a property; homeowner-pay's
+                    // homeowner sub-step needs a homeowner, property sub-step needs both.
                     (currentStep === 1 &&
                       !preSelectedHomeownerId &&
                       !preSelectedPropertyId &&
-                      (mobileSubStep === "homeowner"
-                        ? !selectedHomeowner
-                        : !isStep1Valid)) ||
+                      (selfPay
+                        ? !isStep1Valid
+                        : mobileSubStep === "homeowner"
+                          ? !selectedHomeowner
+                          : !isStep1Valid)) ||
                       (currentStep === 1 &&
                         preSelectedHomeownerId &&
                         !preSelectedPropertyId &&
