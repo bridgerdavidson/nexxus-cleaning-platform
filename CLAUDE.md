@@ -113,6 +113,7 @@ This project uses a feature-branch + PR-to-master flow with automated checks in 
 - Instantiate `new Stripe()` directly. Use `getStripe()` from `lib/stripe.ts`; it respects the `STRIPE_ENABLED` flag.
 - Commit `.env*.local` files (gitignored already) or `.claude/settings.local.json` (per-machine).
 - Move/rename files in `supabase/migrations/` after they've shipped. Migrations are immutable once applied to dev or prod; create a new migration to undo or modify schema instead.
+- Use em dashes (the `—` character) in any user-facing web app copy: UI text, labels, buttons, toasts, emails, error messages. They read as AI-written. Use a period, comma, parentheses, or the word "to" for ranges instead. (Pre-existing em dashes will be swept out later; just never add new ones. This applies to product copy, not code comments or this doc.)
 
 ### Pre-push checklist
 

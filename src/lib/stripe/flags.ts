@@ -56,4 +56,26 @@ export function stripeNewChargeFlowUiEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STRIPE_NEW_CHARGE_FLOW_ENABLED === "true";
 }
 
+/**
+ * Organization self-pay (default OFF).
+ *
+ * STRIPE_SELF_PAY_ENABLED — gates the ability for an org to own homeowner-less
+ *   properties and pay for a cleaning on its own company card (charging the
+ *   cleaner's cut grossed-up for Stripe fees and settling 100% to the cleaner).
+ *
+ * DEPENDENCY: self-pay reuses the new-charge-flow authorize / capture / refund
+ * routes, which no-op unless stripeNewChargeFlowEnabled() is also true. Treat
+ * STRIPE_SELF_PAY_ENABLED as implying STRIPE_NEW_CHARGE_FLOW_ENABLED — enabling
+ * self-pay without the new charge flow has no effect.
+ */
+
+/** Server: org self-pay (company-card-funded cleanings) enabled. */
+export function stripeSelfPayEnabled(): boolean {
+  return process.env.STRIPE_SELF_PAY_ENABLED === "true";
+}
+
+/** Client: show org self-pay UI (bill-to choice, company card section, owned-by-us). */
+export function stripeSelfPayUiEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STRIPE_SELF_PAY_ENABLED === "true";
+}
 

@@ -10,7 +10,7 @@ import {
 } from '@/lib/appointments/flowType';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { authorizeAppointment } from '@/lib/payments/authorizeAppointment';
+import { authorizeAppointmentAuto } from '@/lib/payments/authorizeDispatch';
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org AND this cleaner.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state, payment_method_id')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state, payment_method_id, is_self_pay')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -183,12 +183,12 @@ export async function POST(request: NextRequest) {
       // authorizer cron + the "payments needing attention" surface are the backstops.
       if (
         baseUpdate.status === 'confirmed' &&
-        appointment.payment_method_id &&
+        (appointment.payment_method_id || appointment.is_self_pay) &&
         stripeEnabled() &&
         stripeNewChargeFlowEnabled()
       ) {
         try {
-          const outcome = await authorizeAppointment(
+          const outcome = await authorizeAppointmentAuto(
             supabaseAdmin,
             appointmentId,
             'confirm:authorize-on-accept',

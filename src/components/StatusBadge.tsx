@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   XCircle,
   Calendar,
+  Building2,
+  DollarSign,
 } from "lucide-react";
 
 interface StatusBadgeProps {
@@ -89,6 +91,22 @@ export default function StatusBadge({
           textColor: "text-slate-600",
           icon: XCircle,
           label: "Cancelled",
+        };
+      // Self-pay tags (orthogonal to the lifecycle buckets above): the org paid for the
+      // cleaning, and/or the property is org-owned (no homeowner attached).
+      case "self_pay":
+        return {
+          bgColor: "bg-primary-100",
+          textColor: "text-primary-700",
+          icon: DollarSign,
+          label: "Self-pay",
+        };
+      case "org_owned":
+        return {
+          bgColor: "bg-blue-50",
+          textColor: "text-blue-700",
+          icon: Building2,
+          label: "Owned by us",
         };
       default:
         return {

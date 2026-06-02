@@ -49,7 +49,7 @@ export async function POST(
 
     const { data: apptRow } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id, status, total_price, scheduled_date, scheduled_time')
+      .select('id, organization_id, status, total_price, scheduled_date, scheduled_time, is_self_pay')
       .eq('id', appointmentId)
       .maybeSingle();
     const appt = apptRow as
@@ -60,6 +60,7 @@ export async function POST(
           total_price: number | string;
           scheduled_date: string | null;
           scheduled_time: string | null;
+          is_self_pay: boolean;
         }
       | null;
     if (!appt || appt.organization_id !== organization_id) {
@@ -76,16 +77,24 @@ export async function POST(
       | null;
 
     const grossCents = Math.round(Number(appt.total_price) * 100);
-    const { feeCents, insideWindow } = computeCancellationFee({
-      party,
-      noShow: no_show,
-      grossCents,
-      windowHours: org?.cancellation_window_hours ?? 24,
-      feeType: org?.cancellation_fee_type ?? 'none',
-      feeValue: Number(org?.cancellation_fee_value ?? 0),
-      scheduledDate: appt.scheduled_date,
-      scheduledTime: appt.scheduled_time,
-    });
+    // Self-pay has no homeowner to charge a cancellation fee to (the org would be charging
+    // itself), so a self-pay cancel always releases the hold for $0 — skip the policy entirely.
+    let feeCents = 0;
+    let insideWindow = false;
+    if (!appt.is_self_pay) {
+      const fee = computeCancellationFee({
+        party,
+        noShow: no_show,
+        grossCents,
+        windowHours: org?.cancellation_window_hours ?? 24,
+        feeType: org?.cancellation_fee_type ?? 'none',
+        feeValue: Number(org?.cancellation_fee_value ?? 0),
+        scheduledDate: appt.scheduled_date,
+        scheduledTime: appt.scheduled_time,
+      });
+      feeCents = fee.feeCents;
+      insideWindow = fee.insideWindow;
+    }
 
     // Latest authorization for this appointment, if any.
     const { data: payRows } = await supabaseAdmin

@@ -5,8 +5,8 @@ import {
   X,
   Home,
   Search,
-  Plus,
   User,
+  Building2,
   CheckCircle,
   Loader2,
   Camera,
@@ -23,6 +23,7 @@ import {
   IMAGE_ACCEPT_ATTR,
 } from "../lib/upload";
 import { uploadOne } from "../lib/image-upload/uploadOne";
+import { stripeSelfPayUiEnabled } from "../lib/stripe/flags";
 
 interface Homeowner {
   id: string;
@@ -50,6 +51,8 @@ export default function AddPropertyModal({
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
 
+  const selfPayUi = stripeSelfPayUiEnabled();
+
   // Step management - always start at step 1
   // When homeowner is pre-selected: step 1 = property info, step 2 = optional details
   // When not pre-selected: step 1 = select homeowner, step 2 = property info, step 3 = optional details
@@ -61,6 +64,11 @@ export default function AddPropertyModal({
   const [homeownerSearch, setHomeownerSearch] = useState("");
   const [selectedHomeowner, setSelectedHomeowner] = useState<Homeowner | null>(
     null,
+  );
+  // Self-pay: an admin can create a property the ORG owns (no homeowner) and
+  // attach a homeowner later. Only offered when the self-pay UI is enabled.
+  const [ownershipMode, setOwnershipMode] = useState<"homeowner" | "org">(
+    "homeowner",
   );
 
   // Step 2 state
@@ -106,6 +114,7 @@ export default function AddPropertyModal({
     if (!isOpen) {
       setCurrentStep(1);
       setSelectedHomeowner(null);
+      setOwnershipMode("homeowner");
       setPropertyName("");
       setAddress("");
       setCity("");
@@ -235,8 +244,9 @@ export default function AddPropertyModal({
   }, [propertyPhotoPreview]);
 
   const handleCreateProperty = async () => {
+    const needsHomeowner = ownershipMode === "homeowner";
     if (
-      !selectedHomeowner ||
+      (needsHomeowner && !selectedHomeowner) ||
       !propertyName ||
       !address ||
       !city ||
@@ -255,7 +265,7 @@ export default function AddPropertyModal({
       const { data: insertData, error: insertError } = await supabase
         .from("properties")
         .insert({
-          owner_id: selectedHomeowner.id,
+          owner_id: ownershipMode === "org" ? null : selectedHomeowner!.id,
           organization_id: currentOrganizationId,
           name: propertyName,
           address: address,
@@ -347,6 +357,7 @@ export default function AddPropertyModal({
     // Reset all state
     setCurrentStep(preSelectedHomeownerId ? 2 : 1);
     setSelectedHomeowner(null);
+    setOwnershipMode("homeowner");
     setPropertyName("");
     setAddress("");
     setCity("");
@@ -382,8 +393,8 @@ export default function AddPropertyModal({
     );
   });
 
-  // Validation
-  const isStep1Valid = selectedHomeowner !== null;
+  // Validation — org-owned needs no homeowner.
+  const isStep1Valid = ownershipMode === "org" || selectedHomeowner !== null;
   const isStep2Valid =
     propertyName.trim() !== "" &&
     address.trim() !== "" &&
@@ -479,6 +490,73 @@ export default function AddPropertyModal({
             {/* Step 1: Select Homeowner (only when homeowner is NOT pre-selected) */}
             {currentStep === 1 && !preSelectedHomeownerId && (
               <div className="space-y-6">
+                {selfPayUi && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                      Who owns this property?
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setOwnershipMode("homeowner")}
+                        className={`p-4 border-2 rounded-lg text-left transition-all ${
+                          ownershipMode === "homeowner"
+                            ? "border-primary-500 bg-primary-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                              <User className="w-5 h-5 text-primary-600" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">A homeowner</p>
+                              <p className="text-sm text-gray-600">Belongs to a customer</p>
+                            </div>
+                          </div>
+                          {ownershipMode === "homeowner" && (
+                            <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOwnershipMode("org")}
+                        className={`p-4 border-2 rounded-lg text-left transition-all ${
+                          ownershipMode === "org"
+                            ? "border-primary-500 bg-primary-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <Building2 className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">Owned by us</p>
+                              <p className="text-sm text-gray-600">No homeowner</p>
+                            </div>
+                          </div>
+                          {ownershipMode === "org" && (
+                            <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {ownershipMode === "org" && (
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-blue-800">
+                    This property will be owned by your organization with no
+                    homeowner. You can attach a homeowner later from the
+                    property&apos;s page.
+                  </div>
+                )}
+
+                {ownershipMode === "homeowner" && (
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
                     Select Homeowner
@@ -541,6 +619,7 @@ export default function AddPropertyModal({
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )}
 

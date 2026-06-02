@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { authorizeAppointment, type AuthorizeCode } from '@/lib/payments/authorizeAppointment';
+import { authorizeAppointmentAuto, type AnyAuthorizeCode } from '@/lib/payments/authorizeDispatch';
 
 /**
  * POST /api/appointments/:appointmentId/authorize
@@ -13,13 +13,15 @@ import { authorizeAppointment, type AuthorizeCode } from '@/lib/payments/authori
  *
  * Body: { organization_id }
  */
-const HTTP_BY_CODE: Record<AuthorizeCode, number> = {
+const HTTP_BY_CODE: Record<AnyAuthorizeCode, number> = {
   authorized: 200,
   requires_action: 402,
   declined: 402,
   no_card: 409,
   tenant_not_ready: 409,
   not_authorizable: 409,
+  no_org_card: 409,
+  cleaner_not_payable: 409,
   error: 500,
 };
 
@@ -51,7 +53,7 @@ export async function POST(
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
 
-    const outcome = await authorizeAppointment(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+    const outcome = await authorizeAppointmentAuto(supabaseAdmin, appointmentId, `user:${auth.userId}`);
 
     return NextResponse.json(
       {

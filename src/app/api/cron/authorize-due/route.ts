@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { authorizeAppointment } from '@/lib/payments/authorizeAppointment';
+import { authorizeAppointmentAuto } from '@/lib/payments/authorizeDispatch';
 import { cancelAuthorization } from '@/lib/stripe/charges/cancel';
 
 /**
@@ -40,14 +40,16 @@ export async function POST(request: NextRequest) {
     .select('id')
     .not('authorize_at', 'is', null)
     .lte('authorize_at', nowIso)
-    .not('payment_method_id', 'is', null)
+    // Homeowner-paid jobs need a saved card on the appointment; self-pay jobs are funded by the
+    // org's company card (no payment_method_id on the appointment), so include them too.
+    .or('payment_method_id.not.is.null,is_self_pay.eq.true')
     .not('status', 'in', '(cancelled,completed)')
     .or('authorization_status.is.null,authorization_status.eq.scheduled')
     .limit(BATCH);
 
   for (const row of due ?? []) {
     const id = (row as { id: string }).id;
-    const outcome = await authorizeAppointment(supabaseAdmin, id, 'cron:authorize-due');
+    const outcome = await authorizeAppointmentAuto(supabaseAdmin, id, 'cron:authorize-due');
     if (outcome.ok) authorized++;
     else errors.push({ appointmentId: id, code: outcome.code });
   }
@@ -94,7 +96,7 @@ export async function POST(request: NextRequest) {
       .update({ reauth_count: (appt.reauth_count ?? 0) + 1, authorization_status: 'scheduled' })
       .eq('id', p.appointment_id);
 
-    const outcome = await authorizeAppointment(supabaseAdmin, p.appointment_id, 'cron:reauth');
+    const outcome = await authorizeAppointmentAuto(supabaseAdmin, p.appointment_id, 'cron:reauth');
     if (outcome.ok) reauthorized++;
     else errors.push({ appointmentId: p.appointment_id, code: outcome.code });
   }
