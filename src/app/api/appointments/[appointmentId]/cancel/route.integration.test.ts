@@ -260,4 +260,91 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
     const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
     expect((a as { status: string }).status).toBe('cancelled');
   });
+
+  // ── Self-pay: cancellation is always release-only (the org can't charge itself a fee) ──
+  async function seedSelfPayAppointment(opts: { scheduledDate?: string; scheduledTime?: string } = {}) {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'confirmed',
+      scheduledDate: opts.scheduledDate ?? today(),
+      scheduledTime: opts.scheduledTime ?? '12:00:00',
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+    // Live self-pay hold to be released.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 62.11, // grossed-up self-pay charge (60% of $100)
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      is_self_pay: true,
+      stripe_payment_intent_id: `pi_selfpay_${appt.id}`,
+      payment_intent_status: 'requires_capture',
+      authorized_at: new Date().toISOString(),
+    });
+    return appt;
+  }
+
+  it('self-pay no-show inside window: releases the hold and charges $0 (no fee, no capture)', async () => {
+    // Even with an aggressive cancellation-fee policy, self-pay never captures a fee.
+    await setPolicy({ type: 'flat', value: 50, windowHours: 48 });
+    const appt = await seedSelfPayAppointment();
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(status).toBe(200);
+    expect(body.fee_captured_cents).toBe(0);
+    // Release path taken (the self-pay PI), NOT capture.
+    expect(vi.mocked(cancelAuthorization)).toHaveBeenCalledWith(`pi_selfpay_${appt.id}`);
+    expect(vi.mocked(capturePaymentIntent)).not.toHaveBeenCalled();
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db
+      .from('appointments')
+      .select('status, authorization_status, cancellation_fee_captured')
+      .eq('id', appt.id)
+      .single();
+    const appointment = a as {
+      status: string;
+      authorization_status: string;
+      cancellation_fee_captured: number | null;
+    };
+    expect(appointment.status).toBe('cancelled');
+    expect(appointment.authorization_status).toBe('canceled');
+    // No fee captured.
+    expect(Number(appointment.cancellation_fee_captured ?? 0)).toBe(0);
+
+    // The self-pay payment row is marked canceled, not paid.
+    const { data: p } = await db
+      .from('payments')
+      .select('payment_intent_status, status')
+      .eq('appointment_id', appt.id)
+      .single();
+    expect((p as { payment_intent_status: string }).payment_intent_status).toBe('canceled');
+    expect((p as { status: string }).status).not.toBe('paid');
+  });
+
+  it('self-pay late-cancel inside the percent-fee window also releases (no percent fee)', async () => {
+    await setPolicy({ type: 'percent', value: 20, windowHours: 24 });
+    const appt = await seedSelfPayAppointment({ scheduledDate: today(), scheduledTime: '12:00:00' });
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: false },
+    });
+    expect(status).toBe(200);
+    expect(body.fee_captured_cents).toBe(0);
+    expect(vi.mocked(cancelAuthorization)).toHaveBeenCalledWith(`pi_selfpay_${appt.id}`);
+    expect(vi.mocked(capturePaymentIntent)).not.toHaveBeenCalled();
+  });
 });

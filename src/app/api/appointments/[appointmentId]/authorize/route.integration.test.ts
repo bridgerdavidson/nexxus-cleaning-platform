@@ -8,8 +8,29 @@ vi.mock('@/lib/stripe/charges/authorize', () => ({
   createDestinationAuthorization: vi.fn(async () => ({ id: 'pi_test_auth', status: 'requires_capture' })),
 }));
 
+// Self-pay path: authorizeSelfPayAppointment calls createSelfPayAuthorization (getStripe →
+// throws under the global mock) and listSavedCards (also getStripe). Stub both per-file so the
+// self-pay orchestration + gross-up math + ledger run for real against the DB.
+vi.mock('@/lib/stripe/charges/authorizeSelfPay', () => ({
+  createSelfPayAuthorization: vi.fn(async () => ({
+    id: 'pi_selfpay_auth',
+    status: 'requires_capture',
+    latest_charge: 'ch_selfpay',
+    amount: 0,
+    metadata: { self_pay: 'true' },
+  })),
+}));
+vi.mock('@/lib/stripe/customers/homeowner', () => ({
+  listSavedCards: vi.fn(async () => [
+    { id: 'pm_company_card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true },
+  ]),
+}));
+
 import { POST } from './route';
 import { createDestinationAuthorization } from '@/lib/stripe/charges/authorize';
+import { createSelfPayAuthorization } from '@/lib/stripe/charges/authorizeSelfPay';
+import { listSavedCards } from '@/lib/stripe/customers/homeowner';
+import { computeSelfPayAmounts } from '@/lib/payments/selfPayMath';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -218,5 +239,173 @@ describe('POST /api/appointments/:appointmentId/authorize', () => {
       .select('event_type')
       .eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'authorize_failed')).toBe(true);
+  });
+});
+
+describe('POST /api/appointments/:appointmentId/authorize — self-pay', () => {
+  let org: TestOrgFixture;
+  let originalNewFlow: string | undefined;
+
+  beforeEach(async () => {
+    originalNewFlow = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    // Payout-capable cleaner: Connect onboarded, account present, payout% > 0.
+    org = await withTestOrg({
+      stripeConnectAccountId: 'acct_selfpay_cleaner',
+      stripeConnectOnboardingComplete: true,
+      payoutPercent: 60,
+    });
+    vi.mocked(createSelfPayAuthorization).mockClear();
+    vi.mocked(listSavedCards).mockClear();
+    vi.mocked(createSelfPayAuthorization).mockResolvedValue({
+      id: 'pi_selfpay_auth',
+      status: 'requires_capture',
+      latest_charge: 'ch_selfpay',
+      amount: 0,
+      metadata: { self_pay: 'true' },
+    } as never);
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalNewFlow;
+    await org.cleanup();
+  });
+
+  /** A self-pay appointment on an org-owned property (no homeowner). */
+  async function makeSelfPayAppt() {
+    return createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'confirmed',
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+  }
+
+  async function giveOrgCard() {
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ stripe_self_pay_customer_id: `cus_selfpay_${org.organizationId.slice(0, 12)}` })
+      .eq('id', org.organizationId);
+  }
+
+  it('authorizes a self-pay appointment: 200, grossed-up charge, pending self-pay payment + ledger', async () => {
+    await giveOrgCard();
+    const appt = await makeSelfPayAppt();
+    // $100 job, 60% → cleaner cut $60.00 (6000¢) grossed up for Stripe's 2.9%+30¢:
+    // ceil((6000 + 30) / (1 - 0.029)) = ceil(6210.09) = 6211¢.
+    const { chargeCents } = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 60 });
+    expect(chargeCents).toBe(6211);
+
+    const { status, body } = await callRoute<{ success: boolean; code: string; payment_intent_id: string }>(
+      handlerFor(appt.id),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.code).toBe('authorized');
+    expect(body.payment_intent_id).toBe('pi_selfpay_auth');
+
+    // createSelfPayAuthorization called with the grossed-up chargeCents (and the company card).
+    expect(vi.mocked(createSelfPayAuthorization)).toHaveBeenCalledTimes(1);
+    const arg = vi.mocked(createSelfPayAuthorization).mock.calls[0][0];
+    expect(arg.chargeCents).toBe(chargeCents);
+    expect(arg.customerId).toBe(`cus_selfpay_${org.organizationId.slice(0, 12)}`);
+    expect(arg.paymentMethodId).toBe('pm_company_card');
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db
+      .from('appointments')
+      .select('authorization_status')
+      .eq('id', appt.id)
+      .single();
+    expect((a as { authorization_status: string }).authorization_status).toBe('authorized');
+
+    // A single pending self-pay payment row for the grossed-up amount.
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status, is_self_pay, amount, stripe_payment_intent_id')
+      .eq('appointment_id', appt.id);
+    expect(payRows).toHaveLength(1);
+    const pay = payRows![0] as { status: string; is_self_pay: boolean; amount: number; stripe_payment_intent_id: string };
+    expect(pay.status).toBe('pending');
+    expect(pay.is_self_pay).toBe(true);
+    expect(Number(pay.amount)).toBe(chargeCents / 100);
+    expect(pay.stripe_payment_intent_id).toBe('pi_selfpay_auth');
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'authorized')).toBe(true);
+  });
+
+  it('409 no_org_card when the org has no company card on file (no Stripe auth attempted)', async () => {
+    // org.stripe_self_pay_customer_id is null by default.
+    const appt = await makeSelfPayAppt();
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(409);
+    expect(body.code).toBe('no_org_card');
+    expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
+  });
+
+  it('409 cleaner_not_payable when the assigned cleaner is not Connect-onboarded', async () => {
+    await giveOrgCard();
+    const db = createTestSupabaseClient();
+    await db
+      .from('cleaner_profiles')
+      .update({ stripe_connect_onboarding_complete: false })
+      .eq('id', org.cleaner.userId);
+    const appt = await makeSelfPayAppt();
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(409);
+    expect(body.code).toBe('cleaner_not_payable');
+    expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
+  });
+
+  it('409 cleaner_not_payable when the assigned cleaner has payout_percent = 0', async () => {
+    await giveOrgCard();
+    const db = createTestSupabaseClient();
+    await db.from('cleaner_profiles').update({ payout_percent: 0 }).eq('id', org.cleaner.userId);
+    const appt = await makeSelfPayAppt();
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(409);
+    expect(body.code).toBe('cleaner_not_payable');
+    expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cleaner caller (403) even on a self-pay appointment', async () => {
+    await giveOrgCard();
+    const appt = await makeSelfPayAppt();
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
   });
 });
