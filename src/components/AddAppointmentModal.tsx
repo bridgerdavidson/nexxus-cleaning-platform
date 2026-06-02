@@ -740,6 +740,8 @@ export default function AddAppointmentModal({
     preSelectedHomeownerId && preSelectedPropertyId ? 2 : 3;
 
   // Lazy-load the org company card when the self-pay payment step is reached.
+  // orgCardsLoaded gates a single fetch per modal session; toggling bill-to back and
+  // forth does NOT re-fetch. Cards are cleared and the flag reset in handleClose.
   useEffect(() => {
     if (selfPay && currentStep === paymentStep && currentOrganizationId && !orgCardsLoaded) {
       fetchOrgCards();
@@ -1197,16 +1199,16 @@ export default function AddAppointmentModal({
             : "border-gray-200 hover:border-gray-300"
         }`}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className={`flex items-start justify-between${selfPay ? " gap-2" : ""}`}>
+          <div className={`flex items-center gap-3${selfPay ? " min-w-0" : ""}`}>
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
               <Home className="w-5 h-5 text-blue-600" />
             </div>
             <div className="min-w-0">
-              <p className="font-medium text-gray-900 truncate">
+              <p className={`font-medium text-gray-900${selfPay ? " truncate" : ""}`}>
                 {property.name}
               </p>
-              <p className="text-sm text-gray-600 truncate">
+              <p className={`text-sm text-gray-600${selfPay ? " truncate" : ""}`}>
                 {property.address}, {property.city}
               </p>
               {selfPay && orgOwned && (
@@ -1595,6 +1597,10 @@ export default function AddAppointmentModal({
               )}
 
             {/* Step 1: Select Property (when only homeowner is pre-selected) */}
+            {/* NOTE: Intentionally NOT migrated to renderPropertyCard. This block is the
+                pre-selected-homeowner path (homeowner fixed, property still needed). Self-pay
+                never reaches it (self-pay has no preSelectedHomeownerId). Keeping it separate
+                avoids any risk of destabilizing the pre-selection flow with self-pay logic. */}
             {currentStep === 1 &&
               preSelectedHomeownerId &&
               !preSelectedPropertyId && (
