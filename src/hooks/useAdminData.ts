@@ -467,10 +467,13 @@ export function useAdminStats() {
         .eq('status', 'pending');
       const { data: payments } = await supabase
         .from('payments')
-        .select('amount')
+        .select('amount, is_self_pay')
         .eq('organization_id', orgId)
         .eq('status', 'paid');
-      const totalRevenue = (payments ?? []).reduce((s, p) => s + Number(p.amount), 0);
+      const totalRevenue = (payments ?? []).reduce(
+        (s, p) => (p.is_self_pay === true ? s : s + Number(p.amount)),
+        0,
+      );
       const { count: completedJobs } = await supabase
         .from('appointments')
         .select('*', { count: 'exact', head: true })
@@ -748,7 +751,8 @@ export function usePaymentStats() {
         .select('amount')
         .eq('organization_id', orgId)
         .eq('status', 'paid')
-        .eq('payment_type', 'revenue');
+        .eq('payment_type', 'revenue')
+        .eq('is_self_pay', false);
       const totalRevenue = (revenueData ?? []).reduce((s, p) => s + Number(p.amount), 0);
 
       const { data: payoutsData } = await supabase
@@ -766,6 +770,7 @@ export function usePaymentStats() {
         .eq('organization_id', orgId)
         .eq('status', 'paid')
         .eq('payment_type', 'revenue')
+        .eq('is_self_pay', false)
         .gte('created_at', firstDayOfMonth);
       const thisMonthRevenue = (monthData ?? []).reduce((s, p) => s + Number(p.amount), 0);
 
