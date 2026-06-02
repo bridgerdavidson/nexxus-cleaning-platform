@@ -18,6 +18,7 @@ import {
   CheckCircle,
   UserPlus,
 } from "lucide-react";
+import StatusBadge from "./StatusBadge";
 import { createPortal } from "react-dom";
 import { PropertyCardData } from "./PropertyCard";
 import AddAppointmentModal from "./AddAppointmentModal";
@@ -624,6 +625,14 @@ export default function PropertySidePanel({
             </div>
           )}
 
+          {/* Org-owned badge — no homeowner attached, staff only */}
+          {role !== "homeowner" && property.homeowner === null && !stripeSelfPayUiEnabled() && (
+            <div>
+              <p className="text-sm text-gray-500 mb-3">Homeowner</p>
+              <StatusBadge status="org_owned" size="sm" />
+            </div>
+          )}
+
           {/* Attach a homeowner - org-owned properties (owner_id null), staff only, flag-gated */}
           {role !== "homeowner" &&
             property.homeowner === null &&
@@ -631,17 +640,20 @@ export default function PropertySidePanel({
               <div>
                 <p className="text-sm text-gray-500 mb-3">Homeowner</p>
                 {!showAttachHomeowner ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAttachHomeowner(true);
-                      fetchAttachHomeowners();
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    Attach a homeowner
-                  </button>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <StatusBadge status="org_owned" size="sm" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachHomeowner(true);
+                        fetchAttachHomeowners();
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      Attach a homeowner
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {/* Search input */}

@@ -1,5 +1,6 @@
 import React from "react";
 import { Home, MapPin, User, Bed, Bath, Square, CheckSquare, Square as SquareIcon, Trash2, Eye, Edit2 } from "lucide-react";
+import StatusBadge from "./StatusBadge";
 
 export interface PropertyCardData {
   id: string;
@@ -146,10 +147,16 @@ export default function PropertyCard({
         </div>
 
         {/* Homeowner - Only show for admin/manager */}
-        {role !== "homeowner" && property.homeowner && (
+        {role !== "homeowner" && (
           <div className="flex items-center justify-center gap-2 text-sm text-gray-600 mb-3">
-            <User className="w-4 h-4 text-gray-400" />
-            <span className="truncate">{getHomeownerName()}</span>
+            {property.homeowner ? (
+              <>
+                <User className="w-4 h-4 text-gray-400" />
+                <span className="truncate">{getHomeownerName()}</span>
+              </>
+            ) : (
+              <StatusBadge status="org_owned" size="sm" />
+            )}
           </div>
         )}
 

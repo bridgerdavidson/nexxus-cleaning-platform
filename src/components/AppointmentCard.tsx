@@ -70,6 +70,11 @@ export interface AppointmentCardData {
     price_adder?: number;
   } | null;
   /**
+   * True when the org is paying for this cleaning from its company card
+   * (no homeowner involved). Rendered as a StatusBadge alongside the status chip.
+   */
+  is_self_pay?: boolean;
+  /**
    * Optional org id. Required by the Bookings page's "Needs your response"
    * section so the admin's accept-counter-proposal API call has the org
    * scope; threaded through from `AdminAppointment.organization_id`.
@@ -398,6 +403,9 @@ export default function AppointmentCard({
                   />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
+                {appointment.is_self_pay && (
+                  <StatusBadge status="self_pay" size="sm" />
+                )}
               </div>
             )}
             {role !== "cleaner" && (
@@ -461,6 +469,9 @@ export default function AppointmentCard({
                   <CompactJobProgressIndicator currentProgress={appointment.job_progress as JobProgress} />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
+                {appointment.is_self_pay && (
+                  <StatusBadge status="self_pay" size="sm" />
+                )}
               </div>
             )}
           </div>

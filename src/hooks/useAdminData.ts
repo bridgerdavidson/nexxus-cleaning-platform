@@ -54,6 +54,8 @@ export interface AdminAppointment {
     price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  /** True when the org paid from its company card (no homeowner involved). */
+  is_self_pay?: boolean;
   /**
    * Card-hold (authorization) lifecycle for the new charge flow (migration 065).
    * Drives the "Card held / Auth failed / Captured" indicator next to the payment badge.
@@ -134,6 +136,8 @@ export interface AdminPayment {
   status: 'pending' | 'paid' | 'failed' | 'refunded';
   paid_at?: string;
   created_at: string;
+  /** True when this payment was funded by an org self-pay charge (no homeowner). */
+  is_self_pay?: boolean;
   appointment: {
     scheduled_date: string;
     homeowner: {
@@ -195,6 +199,7 @@ export function useAdminAppointments() {
           price_override_enabled,
           price_override_total,
           homeowner_id,
+          is_self_pay,
           cleaner_id,
           homeowner:user_profiles!homeowner_id(
             first_name,
@@ -537,6 +542,7 @@ export function useAdminPayments() {
           notes,
           paid_at,
           created_at,
+          is_self_pay,
           appointment:appointments(
             scheduled_date,
             homeowner:user_profiles!homeowner_id(
