@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getOrCreateStripeCustomer, createSetupIntent } from '@/lib/stripe';
+import { getOrCreateOrgSelfPayCustomer, createSetupIntent } from '@/lib/stripe';
 import { stripeEnabled, stripeSelfPayEnabled } from '@/lib/stripe/flags';
 import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
 
@@ -35,7 +35,8 @@ export async function POST(request: NextRequest) {
       | null;
     if (!org) return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
 
-    const customer = await getOrCreateStripeCustomer(
+    const customer = await getOrCreateOrgSelfPayCustomer(
+      org.id,
       org.billing_email || auth.email || `org-${org.id}@nexxuscleaning.com`,
       org.name || 'Organization',
       org.stripe_self_pay_customer_id,

@@ -26,10 +26,19 @@ vi.mock('@/lib/stripe', async (importOriginal) => {
     },
     // Mirror the real contract: if the org already has a customer id, return it unchanged;
     // otherwise mint the (org-unique) new one.
+    // Legacy helper — kept so unrelated tests that still import it don't break.
     getOrCreateStripeCustomer: vi.fn(async (_email: string, _name: string, existing?: string | null) => ({
       id: existing ?? nextNewCustomerId,
       object: 'customer',
     })),
+    // Dedicated org self-pay helper — used by create-setup-intent after the Fix 1 patch.
+    getOrCreateOrgSelfPayCustomer: vi.fn(
+      async (_orgId: string, _email: string, _name: string, existing?: string | null) => ({
+        id: existing ?? nextNewCustomerId,
+        object: 'customer',
+        deleted: false,
+      }),
+    ),
     createSetupIntent: vi.fn(async (customerId: string) => ({
       id: 'seti_test_1',
       object: 'setup_intent',
@@ -41,7 +50,7 @@ vi.mock('@/lib/stripe', async (importOriginal) => {
 });
 
 import { POST } from './route';
-import { getOrCreateStripeCustomer, createSetupIntent } from '@/lib/stripe';
+import { getOrCreateOrgSelfPayCustomer, createSetupIntent } from '@/lib/stripe';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -63,7 +72,7 @@ describe('POST /api/stripe/org/create-setup-intent', () => {
     [org, org2] = await Promise.all([withTestOrg(), withTestOrg()]);
     // Org-unique customer id (avoids the unique-index collision with leaked rows).
     nextNewCustomerId = `cus_selfpay_${org.organizationId.slice(0, 12)}`;
-    vi.mocked(getOrCreateStripeCustomer).mockClear();
+    vi.mocked(getOrCreateOrgSelfPayCustomer).mockClear();
     vi.mocked(createSetupIntent).mockClear();
   });
 
@@ -89,7 +98,7 @@ describe('POST /api/stripe/org/create-setup-intent', () => {
       body: { organization_id: org.organizationId },
     });
     expect(status).toBe(401);
-    expect(vi.mocked(getOrCreateStripeCustomer)).not.toHaveBeenCalled();
+    expect(vi.mocked(getOrCreateOrgSelfPayCustomer)).not.toHaveBeenCalled();
   });
 
   it('rejects a cleaner (403) before any Stripe call', async () => {
@@ -99,7 +108,7 @@ describe('POST /api/stripe/org/create-setup-intent', () => {
       body: { organization_id: org.organizationId },
     });
     expect(status).toBe(403);
-    expect(vi.mocked(getOrCreateStripeCustomer)).not.toHaveBeenCalled();
+    expect(vi.mocked(getOrCreateOrgSelfPayCustomer)).not.toHaveBeenCalled();
   });
 
   it('rejects a homeowner (403)', async () => {
@@ -164,7 +173,7 @@ describe('POST /api/stripe/org/create-setup-intent', () => {
       body: { organization_id: org.organizationId },
     });
     expect(status).toBe(403);
-    expect(vi.mocked(getOrCreateStripeCustomer)).not.toHaveBeenCalled();
+    expect(vi.mocked(getOrCreateOrgSelfPayCustomer)).not.toHaveBeenCalled();
   });
 
   it('owner happy path: creates the customer, returns a client secret, and persists stripe_self_pay_customer_id', async () => {
@@ -184,7 +193,7 @@ describe('POST /api/stripe/org/create-setup-intent', () => {
       expect(body.success).toBe(true);
       expect(body.client_secret).toBe('seti_test_1_secret_abc');
       expect(body.customer_id).toBe(nextNewCustomerId);
-      expect(vi.mocked(getOrCreateStripeCustomer)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(getOrCreateOrgSelfPayCustomer)).toHaveBeenCalledTimes(1);
 
       // The new self-pay Customer id is persisted on the org.
       const db = createTestSupabaseClient();

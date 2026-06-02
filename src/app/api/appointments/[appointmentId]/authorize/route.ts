@@ -46,11 +46,25 @@ export async function POST(
     // Verify the appointment belongs to the caller's org (don't leak existence).
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('organization_id')
+      .select('organization_id, is_self_pay')
       .eq('id', appointmentId)
       .maybeSingle();
     if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
+    }
+
+    // Self-pay appointments place a hold on the org's company card — require the Manage Payments
+    // permission for managers (owner/admin always pass; non-self-pay behavior is unchanged).
+    if ((appt as { is_self_pay: boolean }).is_self_pay === true && auth.role === 'manager') {
+      const { data: perms } = await supabaseAdmin
+        .from('manager_permissions')
+        .select('can_manage_payments')
+        .eq('manager_id', auth.userId)
+        .eq('organization_id', organization_id!)
+        .maybeSingle();
+      if (!(perms as { can_manage_payments: boolean } | null)?.can_manage_payments) {
+        return NextResponse.json({ error: 'Requires the Manage Payments permission' }, { status: 403 });
+      }
     }
 
     const outcome = await authorizeAppointmentAuto(supabaseAdmin, appointmentId, `user:${auth.userId}`);

@@ -240,6 +240,34 @@ describe('POST /api/appointments/:appointmentId/authorize', () => {
       .eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'authorize_failed')).toBe(true);
   });
+
+  it('non-self-pay appointment: manager WITHOUT can_manage_payments still passes auth (legacy unaffected)', async () => {
+    await makeTenantReady();
+    const db = createTestSupabaseClient();
+    // Normal (non-self-pay) appointment with a card.
+    const appt = await makeAppt({ withCard: true });
+
+    // Promote the homeowner user to manager but deny payments permission.
+    await db
+      .from('organization_members')
+      .update({ role: 'manager' })
+      .eq('user_id', org.homeowner.userId)
+      .eq('organization_id', org.organizationId);
+    await db.from('manager_permissions').insert({
+      manager_id: org.homeowner.userId,
+      organization_id: org.organizationId,
+      can_manage_payments: false,
+    });
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    // The payments-permission gate ONLY applies to self-pay — regular managers must still pass.
+    expect(status).not.toBe(403);
+    expect(vi.mocked(createDestinationAuthorization)).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('POST /api/appointments/:appointmentId/authorize — self-pay', () => {
@@ -408,4 +436,57 @@ describe('POST /api/appointments/:appointmentId/authorize — self-pay', () => {
     expect(status).toBe(403);
     expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
   });
+
+  it('403 when a manager WITHOUT can_manage_payments tries to authorize a self-pay appointment', async () => {
+    await giveOrgCard();
+    const appt = await makeSelfPayAppt();
+    const db = createTestSupabaseClient();
+    // Promote the homeowner user to manager with no payments permission.
+    await db
+      .from('organization_members')
+      .update({ role: 'manager' })
+      .eq('user_id', org.homeowner.userId)
+      .eq('organization_id', org.organizationId);
+    await db.from('manager_permissions').insert({
+      manager_id: org.homeowner.userId,
+      organization_id: org.organizationId,
+      can_manage_payments: false,
+    });
+
+    const { status, body } = await callRoute<{ error: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(body.error).toBe('Requires the Manage Payments permission');
+    expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
+  });
+
+  it('allows a manager WITH can_manage_payments to authorize a self-pay appointment (not 403)', async () => {
+    await giveOrgCard();
+    const appt = await makeSelfPayAppt();
+    const db = createTestSupabaseClient();
+    // Promote the homeowner user to manager and grant payments permission.
+    await db
+      .from('organization_members')
+      .update({ role: 'manager' })
+      .eq('user_id', org.homeowner.userId)
+      .eq('organization_id', org.organizationId);
+    await db.from('manager_permissions').insert({
+      manager_id: org.homeowner.userId,
+      organization_id: org.organizationId,
+      can_manage_payments: true,
+    });
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    // 200 (authorized) — the auth gate passes, outcome from the mocked authorizer.
+    expect(status).not.toBe(403);
+    expect(vi.mocked(createSelfPayAuthorization)).toHaveBeenCalledTimes(1);
+  });
+
 });
