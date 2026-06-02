@@ -57,6 +57,8 @@ interface Property {
   // Null when the property is owned by the organization (no homeowner). Self-pay
   // is the only billing option for such properties.
   owner_id: string | null;
+  // Joined only by fetchOrgProperties (self-pay path); null for org-owned rows.
+  owner?: { first_name: string; last_name: string } | null;
 }
 
 interface ServiceType {
@@ -459,7 +461,7 @@ export default function AddAppointmentModal({
       setPropertiesLoading(true);
       const { data, error } = await supabase
         .from("properties")
-        .select("*")
+        .select("*, owner:user_profiles!owner_id(first_name, last_name)")
         .eq("organization_id", currentOrganizationId)
         .order("created_at", { ascending: false });
 
@@ -1211,6 +1213,11 @@ export default function AddAppointmentModal({
                 <div className="mt-1.5">
                   <StatusBadge status="org_owned" size="sm" />
                 </div>
+              )}
+              {selfPay && !orgOwned && property.owner && (
+                <p className="text-sm text-gray-600 truncate">
+                  Homeowner: {property.owner.first_name} {property.owner.last_name}
+                </p>
               )}
             </div>
           </div>
