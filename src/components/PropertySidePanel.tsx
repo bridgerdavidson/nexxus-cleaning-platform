@@ -17,6 +17,7 @@ import {
   Search,
   CheckCircle,
   UserPlus,
+  Trash2,
 } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import { createPortal } from "react-dom";
@@ -44,6 +45,12 @@ interface PropertySidePanelProps {
   onPropertyUpdated?: (updatedProperty: PropertyCardData) => void;
   onRefreshAppointments?: () => void;
   role: "admin" | "manager" | "homeowner";
+  // When the panel opens with this true, it starts in edit mode (used by the card's
+  // "Edit" action). Resets to view mode on close.
+  startInEdit?: boolean;
+  // Delete the property (runs the parent's existing delete-confirm flow). When set,
+  // a small trash-can button appears in the header next to Edit (staff only).
+  onDelete?: (propertyId: string) => void;
 }
 
 export default function PropertySidePanel({
@@ -53,6 +60,8 @@ export default function PropertySidePanel({
   onPropertyUpdated,
   onRefreshAppointments,
   role,
+  startInEdit = false,
+  onDelete,
 }: PropertySidePanelProps) {
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
@@ -92,11 +101,14 @@ export default function PropertySidePanel({
     setMounted(true);
   }, []);
 
-  // Start animating when opened
+  // Start animating when opened. When opened via the card's "Edit" action
+  // (startInEdit), enter edit mode immediately; otherwise open in view mode.
   useEffect(() => {
     if (isOpen) {
       setIsAnimating(true);
+      setIsEditing(startInEdit);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Update edited property when property prop changes
@@ -368,13 +380,30 @@ export default function PropertySidePanel({
           {/* Edit Toggle */}
           <div className="flex justify-end">
             {!isEditing ? (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
-              >
-                <Edit2 className="w-4 h-4" />
-                Edit Property
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  Edit Property
+                </button>
+                {/* Small trash-can delete — staff only, when a handler is provided */}
+                {role !== "homeowner" && onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDelete(property.id);
+                      handleClose();
+                    }}
+                    aria-label="Delete property"
+                    title="Delete property"
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="flex gap-2">
                 <button
@@ -825,8 +854,11 @@ export default function PropertySidePanel({
         </div>
       </div>
 
-      {/* Add Appointment Modal - Rendered via portal, has higher z-index */}
-      {showAddAppointmentModal && property.homeowner && (
+      {/* Add Appointment Modal - Rendered via portal, has higher z-index.
+          Opens pre-filled to this property on step 2 of the full 3-step flow (Back
+          returns to an editable step 1). No homeowner gate: org-owned properties
+          (homeowner === null) open in self-pay mode. */}
+      {showAddAppointmentModal && (
         <AddAppointmentModal
           isOpen={showAddAppointmentModal}
           onClose={() => setShowAddAppointmentModal(false)}
@@ -837,8 +869,9 @@ export default function PropertySidePanel({
               onRefreshAppointments();
             }
           }}
-          preSelectedHomeownerId={property.homeowner.id}
+          preSelectedHomeownerId={property.homeowner?.id}
           preSelectedPropertyId={property.id}
+          startOnDetailsStep
         />
       )}
     </div>

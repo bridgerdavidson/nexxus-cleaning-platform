@@ -107,6 +107,13 @@ interface AddAppointmentModalProps {
   onAppointmentCreated: () => void;
   preSelectedHomeownerId?: string;
   preSelectedPropertyId?: string;
+  // Book-from-property mode (additive). When true, the modal pre-fills the homeowner
+  // (if a homeowner id is given) and property from the preselected ids but renders the
+  // FULL 3-step flow (NOT the 2-step preselection collapse), starting on step 2 so the
+  // user can press Back to a pre-filled, editable step 1. For an org-owned property (no
+  // homeowner id) the org-owned → self-pay lock engages automatically.
+  // The legacy collapse modes (preselected ids WITHOUT this flag) are untouched.
+  startOnDetailsStep?: boolean;
   preFilledDate?: string; // YYYY-MM-DD format
   preFilledTime?: string; // HH:mm format
   hidePriceOverride?: boolean; // Hide price override UI for homeowner role
@@ -118,6 +125,7 @@ export default function AddAppointmentModal({
   onAppointmentCreated,
   preSelectedHomeownerId,
   preSelectedPropertyId,
+  startOnDetailsStep = false,
   preFilledDate,
   preFilledTime,
   hidePriceOverride = false,
@@ -136,6 +144,15 @@ export default function AddAppointmentModal({
 
   // Appointments requiring cleaner availability confirmation should always start pending.
   const initialStatus = "pending";
+
+  // Book-from-property mode renders the FULL no-preselection 3-step flow with the
+  // homeowner/property pre-filled. The raw preSelected* props are still used to KNOW
+  // what to pre-fill (see the prefill fetch effect), but every render / footer / step
+  // decision keys off these EFFECTIVE flags, which are undefined in this mode so the
+  // step machinery behaves exactly like the no-preselection path (3 steps, step 1 =
+  // selection UI). Outside this mode they equal the raw props (legacy behavior intact).
+  const preHomeownerId = startOnDetailsStep ? undefined : preSelectedHomeownerId;
+  const prePropertyId = startOnDetailsStep ? undefined : preSelectedPropertyId;
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
@@ -315,14 +332,68 @@ export default function AddAppointmentModal({
     }
   };
 
+  // Book-from-property (startOnDetailsStep) prefill: load the property — and its
+  // homeowner when one is given — into the selection state, then let the normal
+  // no-preselection effects take over (the selectedHomeowner / selfPay watcher loads
+  // the matching property list so the pre-filled property reads as selected on step 1).
+  // For an org-owned property (owner_id === null, no homeowner) only the property is set;
+  // the org-owned → self-pay effect then flips bill-to to the company.
+  const fetchPrefillSelections = async () => {
+    if (!preSelectedPropertyId || !currentOrganizationId) return;
+    try {
+      if (preSelectedHomeownerId) {
+        const { data: homeownerData, error: homeownerError } = await supabase
+          .from("user_profiles")
+          .select("id, first_name, last_name, email")
+          .eq("id", preSelectedHomeownerId)
+          .single();
+        if (homeownerError) throw homeownerError;
+        if (homeownerData) {
+          setSelectedHomeowner({
+            id: homeownerData.id,
+            first_name: homeownerData.first_name,
+            last_name: homeownerData.last_name,
+            email: homeownerData.email,
+          });
+        }
+      }
+
+      const { data: propertyData, error: propertyError } = await supabase
+        .from("properties")
+        .select("*")
+        .eq("id", preSelectedPropertyId)
+        .single();
+      if (propertyError) throw propertyError;
+      if (propertyData) {
+        setSelectedProperty({
+          id: propertyData.id,
+          name: propertyData.name,
+          address: propertyData.address,
+          city: propertyData.city,
+          state: propertyData.state,
+          zip_code: propertyData.zip_code,
+          owner_id: propertyData.owner_id,
+        });
+      }
+    } catch (err) {
+      console.error("Error pre-filling property booking:", err);
+      setError("Failed to load property information");
+    }
+  };
+
   // Fetch homeowners on modal open
   useEffect(() => {
     if (isOpen && currentOrganizationId) {
       fetchServiceTypes();
       fetchCleaners();
 
-      // If homeowner is pre-selected, fetch homeowner (and property if also pre-selected)
-      if (preSelectedHomeownerId) {
+      if (startOnDetailsStep) {
+        // Book-from-property: pre-fill selections AND load the homeowners list so the
+        // (full) step-1 selection UI is usable when the user presses Back.
+        fetchPrefillSelections();
+        fetchHomeowners();
+      } else if (preSelectedHomeownerId) {
+        // Legacy preselection: fetch homeowner (and property if also pre-selected).
         fetchPreSelectedHomeowner();
       } else {
         // Otherwise, fetch all homeowners
@@ -341,6 +412,7 @@ export default function AddAppointmentModal({
   }, [
     isOpen,
     currentOrganizationId,
+    startOnDetailsStep,
     preSelectedHomeownerId,
     preSelectedPropertyId,
     preFilledDate,
@@ -353,15 +425,15 @@ export default function AddAppointmentModal({
   useEffect(() => {
     if (selfPay) {
       fetchOrgProperties();
-    } else if (selectedHomeowner && !preSelectedHomeownerId) {
+    } else if (selectedHomeowner && !preHomeownerId) {
       fetchProperties(selectedHomeowner.id);
-    } else if (!selectedHomeowner && !preSelectedHomeownerId) {
+    } else if (!selectedHomeowner && !preHomeownerId) {
       // Clear properties if homeowner is deselected
       setProperties([]);
       setSelectedProperty(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHomeowner, preSelectedHomeownerId, selfPay]);
+  }, [selectedHomeowner, preHomeownerId, selfPay]);
 
   // An org-owned property (owner_id === null) has no homeowner, so automatically
   // switch to company billing when such a property is selected.
@@ -380,6 +452,14 @@ export default function AddAppointmentModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selfPay]);
+
+  // Book-from-property: open on step 2 (appointment details), so Back lands on a
+  // pre-filled, editable step 1. handleClose resets currentStep to 1.
+  useEffect(() => {
+    if (isOpen && startOnDetailsStep) {
+      setCurrentStep(2);
+    }
+  }, [isOpen, startOnDetailsStep]);
 
   const fetchHomeowners = async () => {
     if (!currentOrganizationId) return;
@@ -736,8 +816,8 @@ export default function AddAppointmentModal({
   ]);
 
   // Which step is the payment step, given the pre-selection mode? (1-indexed)
-  const paymentStep =
-    preSelectedHomeownerId && preSelectedPropertyId ? 2 : 3;
+  // Uses the effective flags so book-from-property (full 3-step) reports step 3.
+  const paymentStep = preHomeownerId && prePropertyId ? 2 : 3;
 
   // Lazy-load the org company card when the self-pay payment step is reached.
   // orgCardsLoaded gates a single fetch per modal session; toggling bill-to back and
@@ -1064,10 +1144,11 @@ export default function AddAppointmentModal({
     setBillTo("homeowner");
     setOrgCards([]);
     setOrgCardsLoaded(false);
-    if (!preSelectedHomeownerId) {
+    // Effective flags: book-from-property fully resets (it re-prefills on each open).
+    if (!preHomeownerId) {
       setSelectedHomeowner(null);
     }
-    if (!preSelectedPropertyId) {
+    if (!prePropertyId) {
       setSelectedProperty(null);
     }
     setSelectedServiceType(null);
@@ -1269,13 +1350,12 @@ export default function AddAppointmentModal({
             New Appointment
           </h2>
           <p className="text-primary-100 text-center text-sm">
-            Step {currentStep} of{" "}
-            {preSelectedHomeownerId && preSelectedPropertyId ? 2 : 3}
+            Step {currentStep} of {preHomeownerId && prePropertyId ? 2 : 3}
           </p>
 
             {/* Step indicator */}
             <div className="flex justify-center gap-2 mt-4">
-              {preSelectedHomeownerId && preSelectedPropertyId ? (
+              {preHomeownerId && prePropertyId ? (
                 // 2 steps: details + cleaner (combined), payment
                 <>
                   <div
@@ -1325,8 +1405,8 @@ export default function AddAppointmentModal({
 
             {/* Step 1: Select Homeowner & Property (skip if pre-selected) */}
             {currentStep === 1 &&
-              !preSelectedHomeownerId &&
-              !preSelectedPropertyId && (
+              !preHomeownerId &&
+              !prePropertyId && (
                 <div className="space-y-6">
                   {/* Bill-to choice (self-pay only). Leads step 1: who pays for this cleaning? */}
                   {canSelfPay && (
@@ -1603,8 +1683,8 @@ export default function AddAppointmentModal({
                 never reaches it (self-pay has no preSelectedHomeownerId). Keeping it separate
                 avoids any risk of destabilizing the pre-selection flow with self-pay logic. */}
             {currentStep === 1 &&
-              preSelectedHomeownerId &&
-              !preSelectedPropertyId && (
+              preHomeownerId &&
+              !prePropertyId && (
                 <div className="space-y-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">
                     Select Property
@@ -1677,14 +1757,14 @@ export default function AddAppointmentModal({
               )}
 
             {/* Step 2: Appointment Details (or Step 1 when homeowner/property pre-selected) */}
-            {((preSelectedHomeownerId &&
-              preSelectedPropertyId &&
+            {((preHomeownerId &&
+              prePropertyId &&
               currentStep === 1) ||
-              (preSelectedHomeownerId &&
-                !preSelectedPropertyId &&
+              (preHomeownerId &&
+                !prePropertyId &&
                 currentStep === 2) ||
-              (!preSelectedHomeownerId &&
-                !preSelectedPropertyId &&
+              (!preHomeownerId &&
+                !prePropertyId &&
                 currentStep === 2)) && (
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -2417,14 +2497,14 @@ export default function AddAppointmentModal({
             )}
 
             {/* Payment Method (step 3 normally, step 2 when homeowner/property pre-selected) */}
-            {((preSelectedHomeownerId &&
-              preSelectedPropertyId &&
+            {((preHomeownerId &&
+              prePropertyId &&
               currentStep === 2) ||
-              (preSelectedHomeownerId &&
-                !preSelectedPropertyId &&
+              (preHomeownerId &&
+                !prePropertyId &&
                 currentStep === 3) ||
-              (!preSelectedHomeownerId &&
-                !preSelectedPropertyId &&
+              (!preHomeownerId &&
+                !prePropertyId &&
                 currentStep === 3)) &&
               (selectedHomeowner || selfPay) && (
                 <div className="space-y-6">
@@ -2587,8 +2667,8 @@ export default function AddAppointmentModal({
               {currentStep === 1 ? (
                 <>
                   {/* Mobile-only Back button when on property sub-step */}
-                  {!preSelectedHomeownerId &&
-                    !preSelectedPropertyId &&
+                  {!preHomeownerId &&
+                    !prePropertyId &&
                     mobileSubStep === "property" && (
                       <button
                         type="button"
@@ -2603,8 +2683,8 @@ export default function AddAppointmentModal({
                     type="button"
                     onClick={handleClose}
                     className={`${
-                      !preSelectedHomeownerId &&
-                      !preSelectedPropertyId &&
+                      !preHomeownerId &&
+                      !prePropertyId &&
                       mobileSubStep === "property"
                         ? "hidden sm:inline-flex"
                         : "inline-flex"
@@ -2623,14 +2703,14 @@ export default function AddAppointmentModal({
                 </button>
               )}
 
-              {(preSelectedHomeownerId &&
-                preSelectedPropertyId &&
+              {(preHomeownerId &&
+                prePropertyId &&
                 currentStep < 2) ||
-              (preSelectedHomeownerId &&
-                !preSelectedPropertyId &&
+              (preHomeownerId &&
+                !prePropertyId &&
                 currentStep < 3) ||
-              (!preSelectedHomeownerId &&
-                !preSelectedPropertyId &&
+              (!preHomeownerId &&
+                !prePropertyId &&
                 currentStep < 3) ? (
                 <button
                   type="button"
@@ -2639,8 +2719,8 @@ export default function AddAppointmentModal({
                     // self-pay step 1 has no homeowner sub-step).
                     if (
                       currentStep === 1 &&
-                      !preSelectedHomeownerId &&
-                      !preSelectedPropertyId &&
+                      !preHomeownerId &&
+                      !prePropertyId &&
                       !selfPay &&
                       mobileSubStep === "homeowner"
                     ) {
@@ -2653,21 +2733,21 @@ export default function AddAppointmentModal({
                     // Step 1 (no pre-selection): self-pay needs a property; homeowner-pay's
                     // homeowner sub-step needs a homeowner, property sub-step needs both.
                     (currentStep === 1 &&
-                      !preSelectedHomeownerId &&
-                      !preSelectedPropertyId &&
+                      !preHomeownerId &&
+                      !prePropertyId &&
                       (selfPay
                         ? !isStep1Valid
                         : mobileSubStep === "homeowner"
                           ? !selectedHomeowner
                           : !isStep1Valid)) ||
                       (currentStep === 1 &&
-                        preSelectedHomeownerId &&
-                        !preSelectedPropertyId &&
+                        preHomeownerId &&
+                        !prePropertyId &&
                         !isStep1Valid) ||
                       // Step 1 (both pre-selected): combined details + cleaner
                       (currentStep === 1 &&
-                        preSelectedHomeownerId &&
-                        preSelectedPropertyId &&
+                        preHomeownerId &&
+                        prePropertyId &&
                         (!isStep2Valid || !isStep3Valid)) ||
                       // Step 2 (other flows): combined details + cleaner
                       (currentStep === 2 &&
