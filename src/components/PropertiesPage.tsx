@@ -9,7 +9,6 @@ import {
   CheckSquare,
   Square,
   Trash2,
-  Home,
   AlertCircle,
   ChevronDown,
 } from "lucide-react";
