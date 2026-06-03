@@ -18,6 +18,9 @@ interface ConfirmModalProps {
   loadingText?: string;
   tone?: ConfirmModalTone;
   isLoading?: boolean;
+  /** Override the overlay z-index (default "z-50"). Use a higher value when stacking
+   *  this dialog over an already-elevated modal (e.g. "z-[400]" over a z-[300] modal). */
+  zIndexClassName?: string;
 }
 
 const TONE_STYLES: Record<
@@ -52,6 +55,7 @@ export default function ConfirmModal({
   loadingText = "Working…",
   tone = "danger",
   isLoading = false,
+  zIndexClassName = "z-50",
 }: ConfirmModalProps) {
   useBodyScrollLock(isOpen);
   useEscapeClose(isOpen, isLoading ? () => undefined : onClose);
@@ -62,7 +66,7 @@ export default function ConfirmModal({
   const Icon = tone === "primary" ? AlertCircle : AlertTriangle;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className={`fixed inset-0 ${zIndexClassName} overflow-y-auto`}>
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
         onClick={isLoading ? undefined : onClose}

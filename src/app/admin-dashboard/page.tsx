@@ -52,6 +52,7 @@ import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
+import { useReopenableModalUrl } from "../../hooks/useReopenableModalUrl";
 // Tab content is code-split: only the active tab's chunk loads, keeping the
 // initial dashboard bundle small (the default "overview" tab uses inline
 // sections below, not these). ssr:false is correct — the whole page is behind a
@@ -117,6 +118,13 @@ function AdminDashboardInner() {
   const [showPendingFilter, setShowPendingFilter] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
   const [showAddCleanerModal, setShowAddCleanerModal] = useState(false);
+  // Reopen-on-reload marker for AddCleanerModal: a hard reload restores the modal (and the
+  // modal restores its own sessionStorage draft). Shared key with the manager dashboard.
+  const {
+    isOpenFromUrl: addCleanerOpenFromUrl,
+    openModalUrl: openAddCleanerUrl,
+    closeModalUrl: closeAddCleanerUrl,
+  } = useReopenableModalUrl("add-cleaner");
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
     isOpen: boolean;
     cleanerId: string | null;
@@ -682,7 +690,10 @@ function AdminDashboardInner() {
           cleanerName: name,
         })
       }
-      onAddCleaner={() => setShowAddCleanerModal(true)}
+      onAddCleaner={() => {
+        setShowAddCleanerModal(true);
+        openAddCleanerUrl();
+      }}
       onBulkPayoutsUpdated={(updates) =>
         updates.forEach(({ id, payout_percent }) =>
           updateCleanerInState(id, { payout_percent }),
@@ -867,8 +878,11 @@ function AdminDashboardInner() {
 
       {/* Modals */}
       <AddCleanerModal
-        isOpen={showAddCleanerModal}
-        onClose={() => setShowAddCleanerModal(false)}
+        isOpen={showAddCleanerModal || addCleanerOpenFromUrl}
+        onClose={() => {
+          setShowAddCleanerModal(false);
+          closeAddCleanerUrl();
+        }}
       />
 
       <DeleteConfirmModal

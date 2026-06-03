@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   X,
   Home,
@@ -24,6 +30,10 @@ import {
 } from "../lib/upload";
 import { uploadOne } from "../lib/image-upload/uploadOne";
 import { stripeSelfPayUiEnabled } from "../lib/stripe/flags";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import { useFormDraft } from "../hooks/useFormDraft";
+import { createDraftStore } from "@/lib/formDraft";
+import DiscardChangesDialog from "./DiscardChangesDialog";
 
 interface Homeowner {
   id: string;
@@ -38,6 +48,53 @@ interface AddPropertyModalProps {
   onPropertyCreated?: (property?: CustomerProperty) => void;
   preSelectedHomeownerId?: string;
 }
+
+// --- Reload-restore draft -----------------------------------------------------------
+// The add-property wizard's in-progress state, persisted to sessionStorage so a full page
+// reload (or an accidental navigation and return) restores it. The selected homeowner is
+// stored as a whole object so hydration is a single setState batch. A 6h TTL + org check
+// (in the store) keep a draft from resurrecting stale or across tenants. Zero server cost.
+//
+// The optional property photo is intentionally NOT persisted: it is a File plus an
+// object-URL preview, neither of which is JSON-serializable. The photo simply has to be
+// re-chosen after a reload; everything else restores.
+interface PropertyDraftBody {
+  currentStep: number;
+  ownershipMode: "homeowner" | "org";
+  selectedHomeowner: Homeowner | null;
+  propertyName: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  squareFeet: number | null;
+  specialInstructions: string;
+  accessInstructions: string;
+}
+
+const INITIAL_PROPERTY_DRAFT: PropertyDraftBody = {
+  currentStep: 1,
+  ownershipMode: "homeowner",
+  selectedHomeowner: null,
+  propertyName: "",
+  address: "",
+  city: "",
+  state: "",
+  zipCode: "",
+  bedrooms: null,
+  bathrooms: null,
+  squareFeet: null,
+  specialInstructions: "",
+  accessInstructions: "",
+};
+
+const propertyDraftStore = createDraftStore<PropertyDraftBody>({
+  key: "nexxus.propertyDraft.v1",
+  version: 1,
+  initial: INITIAL_PROPERTY_DRAFT,
+});
 
 export default function AddPropertyModal({
   isOpen,
@@ -95,6 +152,85 @@ export default function AddPropertyModal({
     string | null
   >(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // --- Reload-restore wiring --------------------------------------------------------
+  // Only the non-preselected create flow is persistable/restorable. A launch with a
+  // pre-selected homeowner (from CustomerDetailModal) is excluded so a preselected draft
+  // never resurrects and that contextual launch stays non-persistent.
+  const persistEligible = !preSelectedHomeownerId;
+
+  // The current draft body, recomputed each render. The photo File + its object-URL
+  // preview are intentionally excluded (not JSON-serializable).
+  const draftBody = useMemo<PropertyDraftBody>(
+    () => ({
+      currentStep,
+      ownershipMode,
+      selectedHomeowner,
+      propertyName,
+      address,
+      city,
+      state,
+      zipCode,
+      bedrooms,
+      bathrooms,
+      squareFeet,
+      specialInstructions,
+      accessInstructions,
+    }),
+    [
+      currentStep,
+      ownershipMode,
+      selectedHomeowner,
+      propertyName,
+      address,
+      city,
+      state,
+      zipCode,
+      bedrooms,
+      bathrooms,
+      squareFeet,
+      specialInstructions,
+      accessInstructions,
+    ],
+  );
+
+  useFormDraft({
+    store: propertyDraftStore,
+    orgId: currentOrganizationId,
+    isOpen,
+    eligible: persistEligible,
+    body: draftBody,
+  });
+
+  // Restore a saved draft once per open (after the org id resolves). There is no
+  // homeowner-change watcher that resets a dependent field here, so a single restore
+  // is sufficient (no deferred second phase needed). The photo is not restored.
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      draftHydratedRef.current = false;
+      return;
+    }
+    if (draftHydratedRef.current || !persistEligible || !currentOrganizationId) {
+      return;
+    }
+    draftHydratedRef.current = true;
+    const draft = propertyDraftStore.load(currentOrganizationId);
+    if (!draft) return;
+    setOwnershipMode(draft.ownershipMode);
+    setSelectedHomeowner(draft.selectedHomeowner);
+    setPropertyName(draft.propertyName);
+    setAddress(draft.address);
+    setCity(draft.city);
+    setState(draft.state);
+    setZipCode(draft.zipCode);
+    setBedrooms(draft.bedrooms);
+    setBathrooms(draft.bathrooms);
+    setSquareFeet(draft.squareFeet);
+    setSpecialInstructions(draft.specialInstructions);
+    setAccessInstructions(draft.accessInstructions);
+    setCurrentStep(draft.currentStep);
+  }, [isOpen, persistEligible, currentOrganizationId]);
 
   // Fetch homeowners on modal open
   useEffect(() => {
@@ -354,6 +490,9 @@ export default function AddPropertyModal({
   };
 
   const handleClose = () => {
+    // A deliberate close (and the submit-success path, which routes through here) drops
+    // the saved draft; it only exists to survive a reload.
+    propertyDraftStore.clear();
     // Reset all state
     setCurrentStep(preSelectedHomeownerId ? 2 : 1);
     setSelectedHomeowner(null);
@@ -372,6 +511,35 @@ export default function AddPropertyModal({
     setError(null);
     onClose();
   };
+
+  // Dirty if any user-entered/selected field differs from its initial value.
+  // When a homeowner is pre-selected the modal opens with that homeowner
+  // already chosen and ownershipMode "homeowner", so neither counts as dirty
+  // on its own; only a *different* homeowner selection does.
+  const isDirty =
+    (preSelectedHomeownerId
+      ? selectedHomeowner !== null &&
+        selectedHomeowner.id !== preSelectedHomeownerId
+      : selectedHomeowner !== null || ownershipMode !== "homeowner") ||
+    homeownerSearch.trim() !== "" ||
+    propertyName.trim() !== "" ||
+    address.trim() !== "" ||
+    city.trim() !== "" ||
+    state.trim() !== "" ||
+    zipCode.trim() !== "" ||
+    bedrooms !== null ||
+    bathrooms !== null ||
+    squareFeet !== null ||
+    specialInstructions.trim() !== "" ||
+    accessInstructions.trim() !== "" ||
+    propertyPhotoFile !== null;
+
+  const guard = useDismissGuard({
+    isOpen,
+    isDirty,
+    isSubmitting: isCreating,
+    onConfirmClose: handleClose,
+  });
 
   const handleNext = () => {
     setError(null);
@@ -405,11 +573,12 @@ export default function AddPropertyModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
-        onClick={handleClose}
+        onClick={guard.requestClose}
       />
 
       {/* Modal */}
@@ -417,7 +586,7 @@ export default function AddPropertyModal({
         <div className="relative bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-slide-up">
           {/* Close button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors z-10"
             aria-label="Close modal"
           >
@@ -858,7 +1027,7 @@ export default function AddPropertyModal({
               {currentStep === 1 ? (
                 <button
                   type="button"
-                  onClick={handleClose}
+                  onClick={guard.requestClose}
                   className="px-6 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors"
                 >
                   Cancel
@@ -917,5 +1086,11 @@ export default function AddPropertyModal({
         </div>
       </div>
     </div>
+    <DiscardChangesDialog
+      isOpen={guard.confirmOpen}
+      onConfirm={guard.confirmDiscard}
+      onCancel={guard.cancelDiscard}
+    />
+    </>
   );
 }

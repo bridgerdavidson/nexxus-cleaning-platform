@@ -37,6 +37,11 @@ import PaymentMethodForm from "./PaymentMethodForm";
 import StatusBadge from "./StatusBadge";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
+import { OrgCardFormPanel } from "./OrgCardForm";
+import DiscardChangesDialog from "./DiscardChangesDialog";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import { useFormDraft } from "../hooks/useFormDraft";
+import { createDraftStore } from "@/lib/formDraft";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { stripeNewChargeFlowUiEnabled, stripeSelfPayUiEnabled } from "@/lib/stripe/flags";
 
@@ -118,6 +123,63 @@ interface AddAppointmentModalProps {
   preFilledTime?: string; // HH:mm format
   hidePriceOverride?: boolean; // Hide price override UI for homeowner role
 }
+
+// --- Reload-restore draft -----------------------------------------------------------
+// The booking wizard's in-progress state, persisted to sessionStorage so a full page reload
+// (or an accidental navigation and return) restores it. Selected entities are stored as whole
+// objects so hydration is a single setState batch. A 6h TTL + org check (in the store) keep a
+// draft from resurrecting stale or across tenants. Zero server/database cost.
+interface BookingDraftBody {
+  currentStep: number;
+  billTo: "homeowner" | "self";
+  selectedHomeowner: Homeowner | null;
+  selectedProperty: Property | null;
+  selectedServiceType: ServiceType | null;
+  selectedChecklist: ChecklistOption | null;
+  scheduledDate: string;
+  scheduledTime: string;
+  alternateSlots: SlotInput[];
+  specialRequests: string;
+  paymentSelection: string | null;
+  recurrenceType: RecurrenceType;
+  recurrenceInterval: number;
+  selectedDaysOfWeek: number[];
+  recurrenceEndType: "date" | "occurrences";
+  recurrenceEndDate: string;
+  recurrenceMaxOccurrences: number;
+  customPrice: string;
+  priceOverrideEnabled: boolean;
+  selectedCleaner: Cleaner | null;
+}
+
+const INITIAL_BOOKING_DRAFT: BookingDraftBody = {
+  currentStep: 1,
+  billTo: "homeowner",
+  selectedHomeowner: null,
+  selectedProperty: null,
+  selectedServiceType: null,
+  selectedChecklist: null,
+  scheduledDate: "",
+  scheduledTime: "",
+  alternateSlots: [],
+  specialRequests: "",
+  paymentSelection: null,
+  recurrenceType: "none",
+  recurrenceInterval: 1,
+  selectedDaysOfWeek: [],
+  recurrenceEndType: "date",
+  recurrenceEndDate: "",
+  recurrenceMaxOccurrences: 10,
+  customPrice: "",
+  priceOverrideEnabled: false,
+  selectedCleaner: null,
+};
+
+const bookingDraftStore = createDraftStore<BookingDraftBody>({
+  key: "nexxus.bookingDraft.v1",
+  version: 1,
+  initial: INITIAL_BOOKING_DRAFT,
+});
 
 export default function AddAppointmentModal({
   isOpen,
@@ -264,6 +326,8 @@ export default function AddAppointmentModal({
   const [orgCards, setOrgCards] = useState<OrgSavedCard[]>([]);
   const [orgCardsLoading, setOrgCardsLoading] = useState(false);
   const [orgCardsLoaded, setOrgCardsLoaded] = useState(false);
+  // Inline "add a company card" flow shown on the self-pay payment step when no card is on file.
+  const [addingOrgCard, setAddingOrgCard] = useState(false);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -275,6 +339,123 @@ export default function AddAppointmentModal({
       selectedServiceType.base_price + (selectedChecklist.price_adder || 0)
     );
   }, [selectedChecklist, selectedServiceType]);
+
+  // --- Reload-restore wiring --------------------------------------------------------
+  // Only the no-preselection full flow is persistable/restorable. Book-from-property and
+  // legacy preselection launches are excluded so a preselected draft never resurrects.
+  const persistEligible =
+    !preSelectedHomeownerId && !preSelectedPropertyId && !startOnDetailsStep;
+
+  const draftBody = useMemo<BookingDraftBody>(
+    () => ({
+      currentStep,
+      billTo,
+      selectedHomeowner,
+      selectedProperty,
+      selectedServiceType,
+      selectedChecklist,
+      scheduledDate,
+      scheduledTime,
+      alternateSlots,
+      specialRequests,
+      paymentSelection,
+      recurrenceType,
+      recurrenceInterval,
+      selectedDaysOfWeek,
+      recurrenceEndType,
+      recurrenceEndDate,
+      recurrenceMaxOccurrences,
+      customPrice,
+      priceOverrideEnabled,
+      selectedCleaner,
+    }),
+    [
+      currentStep,
+      billTo,
+      selectedHomeowner,
+      selectedProperty,
+      selectedServiceType,
+      selectedChecklist,
+      scheduledDate,
+      scheduledTime,
+      alternateSlots,
+      specialRequests,
+      paymentSelection,
+      recurrenceType,
+      recurrenceInterval,
+      selectedDaysOfWeek,
+      recurrenceEndType,
+      recurrenceEndDate,
+      recurrenceMaxOccurrences,
+      customPrice,
+      priceOverrideEnabled,
+      selectedCleaner,
+    ],
+  );
+
+  useFormDraft({
+    store: bookingDraftStore,
+    orgId: currentOrganizationId,
+    isOpen,
+    eligible: persistEligible,
+    body: draftBody,
+  });
+
+  // Restore a saved draft once per open (after the org id resolves). Selected objects restore
+  // directly; the service type's checklist + custom price are deferred to a second phase below
+  // because setting the service type triggers fetchChecklists, which auto-selects the first
+  // checklist (and recomputes the custom price) and would otherwise clobber the saved values.
+  const draftHydratedRef = useRef(false);
+  const pendingDraftRef = useRef<BookingDraftBody | null>(null);
+  useEffect(() => {
+    if (!isOpen) {
+      draftHydratedRef.current = false;
+      pendingDraftRef.current = null;
+      return;
+    }
+    if (draftHydratedRef.current || !persistEligible || !currentOrganizationId) {
+      return;
+    }
+    draftHydratedRef.current = true;
+    const draft = bookingDraftStore.load(currentOrganizationId);
+    if (!draft) return;
+    setBillTo(draft.billTo);
+    setSelectedHomeowner(draft.selectedHomeowner);
+    setSelectedProperty(draft.selectedProperty);
+    setScheduledDate(draft.scheduledDate);
+    setScheduledTime(draft.scheduledTime);
+    setAlternateSlots(draft.alternateSlots);
+    setSpecialRequests(draft.specialRequests);
+    setPaymentSelection(draft.paymentSelection);
+    setRecurrenceType(draft.recurrenceType);
+    setRecurrenceInterval(draft.recurrenceInterval);
+    setSelectedDaysOfWeek(draft.selectedDaysOfWeek);
+    setRecurrenceEndType(draft.recurrenceEndType);
+    setRecurrenceEndDate(draft.recurrenceEndDate);
+    setRecurrenceMaxOccurrences(draft.recurrenceMaxOccurrences);
+    setPriceOverrideEnabled(draft.priceOverrideEnabled);
+    setSelectedCleaner(draft.selectedCleaner);
+    setCurrentStep(draft.currentStep);
+    // Triggers fetchChecklists; the second phase re-applies the saved checklist + price.
+    setSelectedServiceType(draft.selectedServiceType);
+    pendingDraftRef.current = draft;
+  }, [isOpen, persistEligible, currentOrganizationId]);
+
+  // Second phase: re-apply the saved checklist + custom price once the restored service type's
+  // checklists have loaded, overriding fetchChecklists' auto-select of the first option.
+  useEffect(() => {
+    const draft = pendingDraftRef.current;
+    if (!draft) return;
+    if (draft.selectedServiceType && checklistsLoading) return; // wait for the list to load
+    if (draft.selectedChecklist) {
+      const match = checklists.find((c) => c.id === draft.selectedChecklist!.id);
+      if (match) setSelectedChecklist(match);
+    }
+    if (draft.priceOverrideEnabled && draft.customPrice) {
+      setCustomPrice(draft.customPrice);
+    }
+    pendingDraftRef.current = null;
+  }, [checklists, checklistsLoading]);
 
   // Fetch and set pre-selected homeowner
   const fetchPreSelectedHomeowner = async () => {
@@ -1138,12 +1319,15 @@ export default function AddAppointmentModal({
   };
 
   const handleClose = () => {
+    // A deliberate close drops the saved draft (it only exists to survive a reload).
+    bookingDraftStore.clear();
     // Reset all state
     setCurrentStep(1);
     setMobileSubStep("homeowner");
     setBillTo("homeowner");
     setOrgCards([]);
     setOrgCardsLoaded(false);
+    setAddingOrgCard(false);
     // Effective flags: book-from-property fully resets (it re-prefills on each open).
     if (!preHomeownerId) {
       setSelectedHomeowner(null);
@@ -1179,6 +1363,29 @@ export default function AddAppointmentModal({
     setError(null);
     onClose();
   };
+
+  // The modal is "dirty" once the user has engaged any content field. Pre-filled selections
+  // (homeowner/property in a preselection launch) and pre-filled date/time are excluded, so a
+  // freshly-opened pre-filled modal never prompts before the user has typed anything.
+  const isBookingDirty =
+    !!selectedServiceType ||
+    !!selectedCleaner ||
+    specialRequests.trim() !== "" ||
+    (scheduledDate !== "" && scheduledDate !== (preFilledDate ?? "")) ||
+    (scheduledTime !== "" && scheduledTime !== (preFilledTime ?? "")) ||
+    paymentSelection !== null ||
+    priceOverrideEnabled ||
+    alternateSlots.length > 0 ||
+    recurrenceType !== "none" ||
+    (persistEligible &&
+      (!!selectedHomeowner || !!selectedProperty || billTo !== "homeowner"));
+
+  const guard = useDismissGuard({
+    isOpen,
+    isDirty: isBookingDirty,
+    isSubmitting: isCreating,
+    onConfirmClose: handleClose,
+  });
 
   const handleNext = () => {
     setError(null);
@@ -1316,6 +1523,7 @@ export default function AddAppointmentModal({
   if (typeof document === "undefined") return null;
 
   return createPortal(
+    <>
     <div
       ref={overlayScrollRef}
       className="fixed inset-0 z-[300] flex"
@@ -1323,7 +1531,7 @@ export default function AddAppointmentModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-        onClick={handleClose}
+        onClick={guard.requestClose}
       />
 
       {/* Modal */}
@@ -1335,7 +1543,7 @@ export default function AddAppointmentModal({
         <div className="flex-shrink-0 relative bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 sm:px-8 pt-[max(env(safe-area-inset-top),1.25rem)] pb-5">
           {/* Close button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="absolute top-[max(env(safe-area-inset-top),0.75rem)] right-3 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
             aria-label="Close modal"
           >
@@ -2548,18 +2756,38 @@ export default function AddAppointmentModal({
                             </div>
                           </div>
                         </div>
+                      ) : addingOrgCard ? (
+                        <OrgCardFormPanel
+                          organizationId={currentOrganizationId ?? ""}
+                          onCancel={() => setAddingOrgCard(false)}
+                          onSaved={async () => {
+                            setAddingOrgCard(false);
+                            setOrgCardsLoaded(false);
+                            await fetchOrgCards();
+                          }}
+                        />
                       ) : (
                         <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
                           <Building2 className="mx-auto h-8 w-8 text-gray-300" />
                           <p className="mx-auto mt-3 max-w-sm text-sm text-gray-500">
                             No company card on file
                           </p>
-                          <Link
-                            href="/settings/payments"
+                          <button
+                            type="button"
+                            onClick={() => setAddingOrgCard(true)}
                             className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
                           >
                             Add a company card
-                          </Link>
+                          </button>
+                          <p className="mt-3 text-xs text-gray-400">
+                            or{" "}
+                            <Link
+                              href="/settings/payments"
+                              className="font-medium text-gray-500 underline hover:text-gray-700"
+                            >
+                              manage cards in settings
+                            </Link>
+                          </p>
                         </div>
                       )}
                     </div>
@@ -2681,7 +2909,7 @@ export default function AddAppointmentModal({
                   {/* Cancel — hidden on mobile when on property sub-step */}
                   <button
                     type="button"
-                    onClick={handleClose}
+                    onClick={guard.requestClose}
                     className={`${
                       !preHomeownerId &&
                       !prePropertyId &&
@@ -2791,7 +3019,14 @@ export default function AddAppointmentModal({
             </div>
           </div>
         </div>
-    </div>,
+    </div>
+    <DiscardChangesDialog
+      isOpen={guard.confirmOpen}
+      onConfirm={guard.confirmDiscard}
+      onCancel={guard.cancelDiscard}
+      zIndexClassName="z-[400]"
+    />
+    </>,
     document.body,
   );
 }

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import AddTeamMemberModal from './AddTeamMemberModal';
+import { useReopenableModalUrl } from '../hooks/useReopenableModalUrl';
 import InviteStatusBadge from './InviteStatusBadge';
 import { getRoleBadgeClasses } from '../lib/roleStyles';
 import type { Invite, InviteDisplayStatus } from '../types';
@@ -102,6 +103,13 @@ export default function InvitesPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterId>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  // Keep the add-team-member modal's open state in the URL so a reload reopens it
+  // and AddTeamMemberModal restores its saved draft.
+  const {
+    isOpenFromUrl: addTmOpenFromUrl,
+    openModalUrl: openAddTmUrl,
+    closeModalUrl: closeAddTmUrl,
+  } = useReopenableModalUrl("add-team-member");
   const [resendingId, setResendingId] = useState<string | null>(null);
   // Ids of invites the admin has just clicked Resend on. Used to swap the
   // button to a disabled "Sent" state immediately, even before realtime
@@ -204,7 +212,7 @@ export default function InvitesPage({
         </div>
         {canResend && (
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={() => { setShowAddModal(true); openAddTmUrl(); }}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
           >
             <Plus className="w-5 h-5" />
@@ -304,7 +312,7 @@ export default function InvitesPage({
           </p>
           {canResend && invites.length === 0 && (
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => { setShowAddModal(true); openAddTmUrl(); }}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -419,8 +427,8 @@ export default function InvitesPage({
 
       {/* Add modal — reuses existing send-invite flow */}
       <AddTeamMemberModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        isOpen={showAddModal || addTmOpenFromUrl}
+        onClose={() => { setShowAddModal(false); closeAddTmUrl(); }}
         onTeamMemberCreated={refetch}
       />
     </div>
