@@ -1585,29 +1585,18 @@ export async function updateProperty(
 // Helper function to delete a property
 export async function deleteProperty(propertyId: string, organizationId: string) {
   try {
-    // First verify the property belongs to a homeowner in this organization
-    const { data: orgMembers } = await supabase
-      .from('organization_members')
-      .select('user_id')
-      .eq('organization_id', organizationId)
-      .eq('role', 'homeowner');
-
-    if (!orgMembers || orgMembers.length === 0) {
-      return { success: false, error: 'No homeowners found in organization' };
-    }
-
-    const homeownerIds = orgMembers.map(m => m.user_id);
-
-    // Check if property belongs to a homeowner in this organization
+    // Verify the property belongs to this organization. Both homeowner-owned and org-owned
+    // (owner_id IS NULL) properties carry organization_id, so scope by that, not by homeowner
+    // membership (which excludes org-owned properties). RLS enforces the actual delete permission.
     const { data: property, error: checkError } = await supabase
       .from('properties')
-      .select('owner_id')
+      .select('organization_id')
       .eq('id', propertyId)
       .single();
 
     if (checkError) throw checkError;
 
-    if (!property || !homeownerIds.includes(property.owner_id)) {
+    if (!property || property.organization_id !== organizationId) {
       return { success: false, error: 'Property not found or does not belong to this organization' };
     }
 
@@ -1627,23 +1616,11 @@ export async function deleteProperty(propertyId: string, organizationId: string)
 // Helper function to delete multiple properties
 export async function deleteProperties(propertyIds: string[], organizationId: string) {
   try {
-    // First verify the properties belong to homeowners in this organization
-    const { data: orgMembers } = await supabase
-      .from('organization_members')
-      .select('user_id')
-      .eq('organization_id', organizationId)
-      .eq('role', 'homeowner');
-
-    if (!orgMembers || orgMembers.length === 0) {
-      return { success: false, error: 'No homeowners found in organization' };
-    }
-
-    const homeownerIds = orgMembers.map(m => m.user_id);
-
-    // Check if properties belong to homeowners in this organization
+    // Scope by organization_id so org-owned properties (owner_id IS NULL) are deletable too,
+    // not just homeowner-owned ones. RLS enforces the actual delete permission.
     const { data: properties, error: checkError } = await supabase
       .from('properties')
-      .select('id, owner_id')
+      .select('id, organization_id')
       .in('id', propertyIds);
 
     if (checkError) throw checkError;
@@ -1654,7 +1631,7 @@ export async function deleteProperties(propertyIds: string[], organizationId: st
 
     // Filter to only delete properties that belong to this organization
     const validPropertyIds = properties
-      .filter(p => homeownerIds.includes(p.owner_id))
+      .filter(p => p.organization_id === organizationId)
       .map(p => p.id);
 
     if (validPropertyIds.length === 0) {
