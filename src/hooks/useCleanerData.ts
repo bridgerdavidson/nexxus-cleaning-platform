@@ -183,6 +183,7 @@ export function useCleanerAppointments() {
           cleaner_confirmation_status,
           response_deadline,
           homeowner_initiated,
+          is_self_pay,
           homeowner:user_profiles!homeowner_id(
             first_name,
             last_name,

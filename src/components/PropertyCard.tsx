@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Home, MapPin, User, Bed, Bath, Square, CheckSquare, Square as SquareIcon, Trash2, Edit2, MoreVertical, Calendar, ChevronRight } from "lucide-react";
+import { Home, MapPin, User, Bed, Bath, Square, CheckSquare, Square as SquareIcon, Trash2, Edit2, MoreVertical, Calendar } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 
 export interface PropertyCardData {
@@ -143,7 +143,7 @@ export default function PropertyCard({
         <div ref={menuRef} className="absolute top-3 right-3 z-10">
           <button
             onClick={handleMenuToggle}
-            className="p-1.5 bg-white rounded-lg shadow-sm hover:bg-gray-50 transition-colors border border-gray-200"
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             title="More options"
           >
             <MoreVertical className="w-4 h-4 text-gray-500" />
@@ -255,13 +255,8 @@ export default function PropertyCard({
           </div>
         )}
 
-        {/* Spacer + chevron row to signal clickable */}
+        {/* Spacer to keep cards in a row equal height */}
         <div className="flex-1" />
-        {!isSelectMode && (
-          <div className="flex items-center justify-end pt-3 border-t border-gray-100">
-            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400 transition-colors" />
-          </div>
-        )}
       </div>
     </div>
   );
