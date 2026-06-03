@@ -28,6 +28,7 @@ import { updateAppointment } from "../hooks/useAdminData";
 import { supabase } from "../lib/supabase";
 import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useAuth } from "../hooks/useAuth";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
   DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
@@ -99,6 +100,7 @@ export default function AppointmentSidePanel({
 }: AppointmentSidePanelProps) {
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
+  const { currentOrganization } = useAuth();
 
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -407,6 +409,11 @@ export default function AppointmentSidePanel({
       const { first_name, last_name } = appointment.homeowner;
       return `${first_name} ${last_name}`;
     }
+    // Self-pay appointments have no homeowner; show the organization as the client so the panel
+    // reads exactly like a homeowner booking (just the org name in place of a person's name).
+    if (appointment.is_self_pay) {
+      return currentOrganization?.name || "Company";
+    }
     return "Unknown";
   };
 
@@ -599,16 +606,11 @@ export default function AppointmentSidePanel({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-2">Status</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <StatusBadge
-                  status={appointment.status}
-                  size="lg"
-                  cleanerConfirmationStatus={appointment.cleaner_confirmation_status}
-                />
-                {appointment.is_self_pay && (
-                  <StatusBadge status="self_pay" size="lg" />
-                )}
-              </div>
+              <StatusBadge
+                status={appointment.status}
+                size="lg"
+                cleanerConfirmationStatus={appointment.cleaner_confirmation_status}
+              />
             </div>
             {canEdit && !isEditing && (
               <div className="flex items-center gap-2">
@@ -795,20 +797,14 @@ export default function AppointmentSidePanel({
             <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-sm text-gray-500">Homeowner</p>
-              {appointment.homeowner === null ? (
-                <StatusBadge status="org_owned" size="sm" />
-              ) : (
-                <>
-                  <p className="font-medium text-gray-900">{getHomeownerName()}</p>
-                  {appointment.homeowner?.email && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {appointment.homeowner.email}
-                      </p>
-                    </div>
-                  )}
-                </>
+              <p className="font-medium text-gray-900">{getHomeownerName()}</p>
+              {appointment.homeowner?.email && (
+                <div className="flex items-center gap-1 mt-1">
+                  <Mail className="w-4 h-4 text-gray-400" />
+                  <p className="text-sm text-gray-600">
+                    {appointment.homeowner.email}
+                  </p>
+                </div>
               )}
             </div>
           </div>

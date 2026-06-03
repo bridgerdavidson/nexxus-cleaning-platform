@@ -9,6 +9,7 @@ import {
 } from "../lib/dashboardHero";
 import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
 import { JobProgress } from "../types";
+import { useAuth } from "../hooks/useAuth";
 
 export interface AppointmentCardData {
   id: string;
@@ -131,6 +132,7 @@ export default function AppointmentCard({
   onStartJob,
 }: AppointmentCardProps) {
   const [isStarting, setIsStarting] = useState(false);
+  const { currentOrganization } = useAuth();
 
   const formatDateTime = (date: string, time: string) => {
     const [year, month, day] = date.split('-').map(Number);
@@ -147,6 +149,11 @@ export default function AppointmentCard({
     if (appointment.homeowner) {
       const { first_name, last_name } = appointment.homeowner;
       return `${first_name} ${last_name}`;
+    }
+    // Self-pay appointments have no homeowner; show the organization as the client so the card
+    // reads exactly like a homeowner booking (just the org name in place of a person's name).
+    if (appointment.is_self_pay) {
+      return currentOrganization?.name || "Company";
     }
     return null;
   };
@@ -403,9 +410,6 @@ export default function AppointmentCard({
                   />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
-                {appointment.is_self_pay && (
-                  <StatusBadge status="self_pay" size="sm" />
-                )}
               </div>
             )}
             {role !== "cleaner" && (
@@ -469,9 +473,6 @@ export default function AppointmentCard({
                   <CompactJobProgressIndicator currentProgress={appointment.job_progress as JobProgress} />
                 )}
                 <StatusBadge status={appointment.status} size="sm" />
-                {appointment.is_self_pay && (
-                  <StatusBadge status="self_pay" size="sm" />
-                )}
               </div>
             )}
           </div>
