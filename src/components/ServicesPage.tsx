@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   ChevronDown,
@@ -51,6 +52,7 @@ import DeleteServiceModal from "./DeleteServiceModal";
 import ServiceDetailView from "./ServiceDetailView";
 import ChecklistFormModal from "./ChecklistFormModal";
 import DeleteChecklistModal from "./DeleteChecklistModal";
+import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 
 interface ServicesPageProps {
   services: ServiceType[];
@@ -240,6 +242,16 @@ function ChecklistsView({
   const [selectedChecklist, setSelectedChecklist] =
     useState<ChecklistWithItems | null>(null);
 
+  // Keep the Add Checklist modal in the URL (?modal=add-checklist) so a full reload reopens it
+  // and ChecklistFormModal restores its saved draft. Only the CREATE flow drives this marker;
+  // the edit flow never sets it. On a fresh reload selectedChecklist is null, so a URL reopen
+  // lands in CREATE mode.
+  const {
+    isOpenFromUrl: addChecklistOpenFromUrl,
+    openModalUrl: openAddChecklistUrl,
+    closeModalUrl: closeAddChecklistUrl,
+  } = useReopenableModalUrl("add-checklist");
+
   // Inline editing state for line items
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemText, setEditingItemText] = useState("");
@@ -309,9 +321,12 @@ function ChecklistsView({
   const handleAddChecklist = () => {
     setSelectedChecklist(null);
     setShowChecklistFormModal(true);
+    // CREATE mode only: mark the URL so a reload reopens this modal (in create mode).
+    openAddChecklistUrl();
   };
 
   const handleEditChecklist = (checklist: ChecklistWithItems) => {
+    // Edit mode is intentionally NOT reopenable: no openAddChecklistUrl() here.
     setSelectedChecklist(checklist);
     setShowChecklistFormModal(true);
   };
@@ -766,10 +781,11 @@ function ChecklistsView({
 
       {/* Checklist Form Modal */}
       <ChecklistFormModal
-        isOpen={showChecklistFormModal}
+        isOpen={showChecklistFormModal || addChecklistOpenFromUrl}
         onClose={() => {
           setShowChecklistFormModal(false);
           setSelectedChecklist(null);
+          closeAddChecklistUrl();
         }}
         onSuccess={handleChecklistFormSuccess}
         checklist={selectedChecklist}
@@ -832,6 +848,48 @@ export default function ServicesPage({
 
   // Toggle error state
   const [toggleError, setToggleError] = useState<string | null>(null);
+
+  // URL-route the nested detail/checklists views (?service=<id>, ?checklists=<id>) so a full
+  // reload restores them. Without this they live only in component state and reset on reload,
+  // which also strands the reopened ChecklistFormModal (it lives inside the checklists view).
+  // Leaving the checklists view also drops the ?modal marker.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const syncViewUrl = useCallback(
+    (serviceId: string | null, checklistsId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (serviceId) params.set("service", serviceId);
+      else params.delete("service");
+      if (checklistsId) {
+        params.set("checklists", checklistsId);
+      } else {
+        params.delete("checklists");
+        params.delete("modal");
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  // Restore the nested view once, after services have loaded, from the URL.
+  const viewRestoredRef = useRef(false);
+  useEffect(() => {
+    if (viewRestoredRef.current || loading) return;
+    viewRestoredRef.current = true;
+    const serviceParam = searchParams.get("service");
+    const checklistsParam = searchParams.get("checklists");
+    if (serviceParam) {
+      const svc = services.find((s) => s.id === serviceParam);
+      if (svc) setViewingService(svc);
+    }
+    if (checklistsParam) {
+      const svc = services.find((s) => s.id === checklistsParam);
+      if (svc) setViewingChecklistsForService(svc);
+    }
+  }, [loading, services, searchParams]);
 
   // Filter services
   const filteredServices = useMemo(() => {
@@ -925,6 +983,7 @@ export default function ServicesPage({
   const enterChecklistSetup = (created: ServiceType) => {
     setSetupIntroServiceId(created.id);
     setViewingChecklistsForService(created);
+    syncViewUrl(viewingService?.id ?? null, created.id);
   };
 
   // Handle form success
@@ -937,16 +996,19 @@ export default function ServicesPage({
   const handleDeleteSuccess = () => {
     refetch();
     setViewingService(null);
+    syncViewUrl(null, null);
   };
 
   // Handle view service details
   const handleViewService = (service: ServiceType) => {
     setViewingService(service);
+    syncViewUrl(service.id, null);
   };
 
   // Handle back to list
   const handleBackToList = () => {
     setViewingService(null);
+    syncViewUrl(null, null);
   };
 
   // Handle toggle from detail view (optimistic update with rollback)
@@ -1034,12 +1096,14 @@ export default function ServicesPage({
     // Set both states so breadcrumbs work from either entry point
     setViewingService(service);
     setViewingChecklistsForService(service);
+    syncViewUrl(service.id, service.id);
   };
 
   // Handle back from checklists to service detail
   const handleBackToServiceDetail = () => {
     setViewingChecklistsForService(null);
     setSetupIntroServiceId(null);
+    syncViewUrl(viewingService?.id ?? null, null);
   };
 
   // Handle back from checklists to services list
@@ -1047,6 +1111,7 @@ export default function ServicesPage({
     setViewingChecklistsForService(null);
     setViewingService(null);
     setSetupIntroServiceId(null);
+    syncViewUrl(null, null);
   };
 
   // If viewing checklists for a service, show the checklists view

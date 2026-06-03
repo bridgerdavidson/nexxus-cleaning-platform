@@ -20,6 +20,7 @@ import {
 import { TeamMember, deleteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import AddTeamMemberModal from "./AddTeamMemberModal";
+import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import TeamMemberSidePanel from "./TeamMemberSidePanel";
 
@@ -55,6 +56,13 @@ export default function TeamMembersPage({
 
   // Modal state
   const [showAddTeamMemberModal, setShowAddTeamMemberModal] = useState(false);
+  // Keep the add-team-member modal's open state in the URL so a reload reopens it
+  // and AddTeamMemberModal restores its saved draft.
+  const {
+    isOpenFromUrl: addTmOpenFromUrl,
+    openModalUrl: openAddTmUrl,
+    closeModalUrl: closeAddTmUrl,
+  } = useReopenableModalUrl("add-team-member");
 
   // Side panel state
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
@@ -202,7 +210,7 @@ export default function TeamMembersPage({
           </p>
         </div>
         <button
-          onClick={() => setShowAddTeamMemberModal(true)}
+          onClick={() => { setShowAddTeamMemberModal(true); openAddTmUrl(); }}
           className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
         >
           <Plus className="w-5 h-5" />
@@ -335,7 +343,7 @@ export default function TeamMembersPage({
           </p>
           {!searchQuery && (
             <button
-              onClick={() => setShowAddTeamMemberModal(true)}
+              onClick={() => { setShowAddTeamMemberModal(true); openAddTmUrl(); }}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -478,8 +486,8 @@ export default function TeamMembersPage({
 
       {/* Modals */}
       <AddTeamMemberModal
-        isOpen={showAddTeamMemberModal}
-        onClose={() => setShowAddTeamMemberModal(false)}
+        isOpen={showAddTeamMemberModal || addTmOpenFromUrl}
+        onClose={() => { setShowAddTeamMemberModal(false); closeAddTmUrl(); }}
         onTeamMemberCreated={() => {
           if (onRefresh) onRefresh();
         }}

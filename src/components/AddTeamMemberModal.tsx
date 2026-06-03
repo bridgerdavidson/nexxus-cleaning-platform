@@ -1,11 +1,34 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { X, Users, UserCheck, Loader2, Send, ShieldCheck } from "lucide-react";
 import { inviteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import { useFormDraft } from "../hooks/useFormDraft";
+import { createDraftStore } from "@/lib/formDraft";
+import DiscardChangesDialog from "./DiscardChangesDialog";
 import { useToast } from "../contexts/ToastContext";
+
+// Reload-restore: the in-progress invite (email + role) is persisted to sessionStorage so a
+// full page reload survives. A 6h TTL + org check (in the store) keep a stale or cross-tenant
+// draft from resurrecting.
+interface TeamMemberDraftBody {
+  email: string;
+  role: "cleaner" | "manager" | "admin";
+}
+
+const INITIAL_TEAM_MEMBER_DRAFT: TeamMemberDraftBody = {
+  email: "",
+  role: "cleaner",
+};
+
+const teamMemberDraftStore = createDraftStore<TeamMemberDraftBody>({
+  key: "nexxus.teamMemberDraft.v1",
+  version: 1,
+  initial: INITIAL_TEAM_MEMBER_DRAFT,
+});
 
 interface AddTeamMemberModalProps {
   isOpen: boolean;
@@ -90,6 +113,9 @@ export default function AddTeamMemberModal({
           variant: 'email',
         });
 
+        // A successful submit drops the saved draft.
+        teamMemberDraftStore.clear();
+
         // Reset form
         setEmail("");
         setRole("cleaner");
@@ -118,6 +144,8 @@ export default function AddTeamMemberModal({
 
   // Reset form when modal closes
   const handleClose = () => {
+    // A deliberate close drops the saved draft (it only exists to survive a reload).
+    teamMemberDraftStore.clear();
     setEmail("");
     setRole("cleaner");
     setEmailError("");
@@ -126,14 +154,54 @@ export default function AddTeamMemberModal({
     onClose();
   };
 
+  const isDirty = email.trim() !== "" || role !== "cleaner";
+  const guard = useDismissGuard({
+    isOpen,
+    isDirty,
+    isSubmitting,
+    onConfirmClose: handleClose,
+  });
+
+  // Reload-restore (WRITE side): debounced persist of the in-progress invite while open.
+  const persistEligible = true;
+  const draftBody = useMemo<TeamMemberDraftBody>(
+    () => ({ email, role }),
+    [email, role],
+  );
+  useFormDraft({
+    store: teamMemberDraftStore,
+    orgId: currentOrganizationId,
+    isOpen,
+    eligible: persistEligible,
+    body: draftBody,
+  });
+
+  // Reload-restore (READ side): hydrate the saved draft once per open.
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      draftHydratedRef.current = false;
+      return;
+    }
+    if (draftHydratedRef.current || !persistEligible || !currentOrganizationId) {
+      return;
+    }
+    draftHydratedRef.current = true;
+    const draft = teamMemberDraftStore.load(currentOrganizationId);
+    if (!draft) return;
+    setEmail(draft.email);
+    setRole(draft.role);
+  }, [isOpen, persistEligible, currentOrganizationId]);
+
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
-        onClick={handleClose}
+        onClick={guard.requestClose}
       />
 
       {/* Modal */}
@@ -141,7 +209,7 @@ export default function AddTeamMemberModal({
         <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-slide-up">
           {/* Close button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
             aria-label="Close modal"
           >
@@ -265,7 +333,7 @@ export default function AddTeamMemberModal({
 
           {/* Cancel Button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="w-full bg-white border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors"
           >
             Cancel
@@ -273,5 +341,11 @@ export default function AddTeamMemberModal({
         </div>
       </div>
     </div>
+    <DiscardChangesDialog
+      isOpen={guard.confirmOpen}
+      onConfirm={guard.confirmDiscard}
+      onCancel={guard.cancelDiscard}
+    />
+    </>
   );
 }

@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { X, Users, Phone } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import { useAuth } from "../hooks/useAuth";
+import { useFormDraft } from "../hooks/useFormDraft";
+import { createDraftStore } from "@/lib/formDraft";
+import DiscardChangesDialog from "./DiscardChangesDialog";
 
 interface AddCustomerModalProps {
   isOpen: boolean;
@@ -10,11 +15,38 @@ interface AddCustomerModalProps {
   onCustomerCreated?: () => void;
 }
 
+// --- Reload-restore draft -----------------------------------------------------------
+// The add-customer form's in-progress text, persisted to sessionStorage so a full page reload
+// (or an accidental navigation and return) restores it. Only user-typed scalar fields are
+// stored; validation/touched flags are derived and recomputed on blur. A 6h TTL + org check
+// (in the store) keep a draft from resurrecting stale or across tenants. Zero server cost.
+interface CustomerDraftBody {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+}
+
+const INITIAL_CUSTOMER_DRAFT: CustomerDraftBody = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+};
+
+const customerDraftStore = createDraftStore<CustomerDraftBody>({
+  key: "nexxus.customerDraft.v1",
+  version: 1,
+  initial: INITIAL_CUSTOMER_DRAFT,
+});
+
 export default function AddCustomerModal({
   isOpen,
   onClose,
   onCustomerCreated,
 }: AddCustomerModalProps) {
+  const { currentOrganizationId } = useAuth();
+
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
 
@@ -26,6 +58,43 @@ export default function AddCustomerModal({
   const [emailTouched, setEmailTouched] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+
+  // --- Reload-restore wiring --------------------------------------------------------
+  // Plain create flow with no preselection, so persistence is always eligible (still gated on
+  // an org id inside the store/hook).
+  const persistEligible = true;
+
+  const draftBody = useMemo<CustomerDraftBody>(
+    () => ({ firstName, lastName, email, phone }),
+    [firstName, lastName, email, phone],
+  );
+
+  useFormDraft({
+    store: customerDraftStore,
+    orgId: currentOrganizationId,
+    isOpen,
+    eligible: persistEligible,
+    body: draftBody,
+  });
+
+  // Restore a saved draft once per open (after the org id resolves).
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      draftHydratedRef.current = false;
+      return;
+    }
+    if (draftHydratedRef.current || !persistEligible || !currentOrganizationId) {
+      return;
+    }
+    draftHydratedRef.current = true;
+    const draft = customerDraftStore.load(currentOrganizationId);
+    if (!draft) return;
+    setFirstName(draft.firstName);
+    setLastName(draft.lastName);
+    setEmail(draft.email);
+    setPhone(draft.phone);
+  }, [isOpen, persistEligible, currentOrganizationId]);
 
   // Email validation regex
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -140,6 +209,9 @@ export default function AddCustomerModal({
 
   // Reset form when modal closes
   const handleClose = () => {
+    // A deliberate close (or a successful submit, which calls this) drops the saved draft;
+    // it only exists to survive a reload.
+    customerDraftStore.clear();
     setFirstName("");
     setLastName("");
     setEmail("");
@@ -151,14 +223,22 @@ export default function AddCustomerModal({
     onClose();
   };
 
+  const isDirty =
+    firstName.trim() !== "" ||
+    lastName.trim() !== "" ||
+    email.trim() !== "" ||
+    phone.trim() !== "";
+  const guard = useDismissGuard({ isOpen, isDirty, onConfirmClose: handleClose });
+
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
-        onClick={handleClose}
+        onClick={guard.requestClose}
       />
 
       {/* Modal */}
@@ -166,7 +246,7 @@ export default function AddCustomerModal({
         <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-slide-up">
           {/* Close button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
             aria-label="Close modal"
           >
@@ -299,7 +379,7 @@ export default function AddCustomerModal({
 
           {/* Cancel Button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="w-full bg-white border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors"
           >
             Cancel
@@ -307,6 +387,12 @@ export default function AddCustomerModal({
         </div>
       </div>
     </div>
+    <DiscardChangesDialog
+      isOpen={guard.confirmOpen}
+      onConfirm={guard.confirmDiscard}
+      onCancel={guard.cancelDiscard}
+    />
+    </>
   );
 }
 
