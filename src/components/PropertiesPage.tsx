@@ -482,6 +482,10 @@ export default function PropertiesPage({
                   } as React.MouseEvent);
                 }
               }}
+              onBook={() => {
+                setSelectedProperty(property);
+                setShowSidePanel(true);
+              }}
               role={role}
             />
           ))}

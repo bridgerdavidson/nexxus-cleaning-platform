@@ -76,14 +76,17 @@ export default function PropertySidePanel({
     square_feet: null as number | null,
   });
 
-  // Attach-homeowner state (self-pay org-owned properties)
-  const [showAttachHomeowner, setShowAttachHomeowner] = useState(false);
+  // Homeowner picker state (attach / change / remove — self-pay flag-gated)
+  // pickerMode: "attach" = no current homeowner; "change" = replacing existing
+  const [showHomeownerPicker, setShowHomeownerPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<"attach" | "change">("attach");
   const [attachHomeowners, setAttachHomeowners] = useState<AttachHomeowner[]>([]);
   const [attachHomeownersLoading, setAttachHomeownersLoading] = useState(false);
   const [attachHomeownerSearch, setAttachHomeownerSearch] = useState("");
   const [selectedAttachHomeowner, setSelectedAttachHomeowner] =
     useState<AttachHomeowner | null>(null);
   const [isAttaching, setIsAttaching] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -116,7 +119,8 @@ export default function PropertySidePanel({
   useEffect(() => {
     if (!isOpen) {
       setIsEditing(false);
-      setShowAttachHomeowner(false);
+      setShowHomeownerPicker(false);
+      setPickerMode("attach");
       setAttachHomeowners([]);
       setAttachHomeownerSearch("");
       setSelectedAttachHomeowner(null);
@@ -257,7 +261,7 @@ export default function PropertySidePanel({
     }
   };
 
-  const handleAttachHomeowner = async () => {
+  const handleConfirmHomeownerChange = async () => {
     if (!property || !selectedAttachHomeowner) return;
     setIsAttaching(true);
     try {
@@ -266,9 +270,11 @@ export default function PropertySidePanel({
         .update({ owner_id: selectedAttachHomeowner.id })
         .eq("id", property.id);
       if (error) throw error;
-      showToast("Homeowner attached. They can now see this property's cleanings.", {
-        variant: "success",
-      });
+      const msg =
+        pickerMode === "attach"
+          ? "Homeowner attached. They can now see this property's cleanings."
+          : "Homeowner updated.";
+      showToast(msg, { variant: "success" });
       const updatedProperty: PropertyCardData = {
         ...property,
         homeowner: {
@@ -278,19 +284,48 @@ export default function PropertySidePanel({
           email: selectedAttachHomeowner.email,
         },
       };
-      setShowAttachHomeowner(false);
+      setShowHomeownerPicker(false);
       setAttachHomeownerSearch("");
       setSelectedAttachHomeowner(null);
       if (onPropertyUpdated) {
         onPropertyUpdated(updatedProperty);
       }
     } catch (err) {
-      console.error("Error attaching homeowner:", err);
-      showToast("Failed to attach homeowner. Please try again.", {
+      console.error("Error updating homeowner:", err);
+      showToast("Failed to update homeowner. Please try again.", {
         variant: "error",
       });
     } finally {
       setIsAttaching(false);
+    }
+  };
+
+  const handleRemoveHomeowner = async () => {
+    if (!property) return;
+    setIsRemoving(true);
+    try {
+      const { error } = await supabase
+        .from("properties")
+        .update({ owner_id: null })
+        .eq("id", property.id);
+      if (error) throw error;
+      showToast("Homeowner removed. This property is now company-owned.", {
+        variant: "success",
+      });
+      const updatedProperty: PropertyCardData = {
+        ...property,
+        homeowner: null,
+      };
+      if (onPropertyUpdated) {
+        onPropertyUpdated(updatedProperty);
+      }
+    } catch (err) {
+      console.error("Error removing homeowner:", err);
+      showToast("Failed to remove homeowner. Please try again.", {
+        variant: "error",
+      });
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -602,50 +637,77 @@ export default function PropertySidePanel({
             </div>
           )}
 
-          {/* Homeowner - Only show for admin/manager */}
-          {role !== "homeowner" && property.homeowner && (
+          {/* Homeowner section — staff only */}
+          {role !== "homeowner" && (
             <div>
               <p className="text-sm text-gray-500 mb-3">Homeowner</p>
-              <div className="flex items-start gap-2">
-                <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {getHomeownerName()}
-                  </p>
-                  {property.homeowner.email && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <p className="text-sm text-gray-600">
-                        {property.homeowner.email}
-                      </p>
-                    </div>
-                  )}
+
+              {/* Current homeowner display */}
+              {property.homeowner && (
+                <div className="flex items-start gap-2 mb-3">
+                  <User className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {getHomeownerName()}
+                    </p>
+                    {property.homeowner.email && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        <p className="text-sm text-gray-600">
+                          {property.homeowner.email}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* Org-owned badge — no homeowner attached, staff only */}
-          {role !== "homeowner" && property.homeowner === null && !stripeSelfPayUiEnabled() && (
-            <div>
-              <p className="text-sm text-gray-500 mb-3">Homeowner</p>
-              <StatusBadge status="org_owned" size="sm" />
-            </div>
-          )}
+              {/* No homeowner: org-owned badge (flag off) or attach action (flag on) */}
+              {property.homeowner === null && !stripeSelfPayUiEnabled() && (
+                <StatusBadge status="org_owned" size="sm" />
+              )}
 
-          {/* Attach a homeowner - org-owned properties (owner_id null), staff only, flag-gated */}
-          {role !== "homeowner" &&
-            property.homeowner === null &&
-            stripeSelfPayUiEnabled() && (
-              <div>
-                <p className="text-sm text-gray-500 mb-3">Homeowner</p>
-                {!showAttachHomeowner ? (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <StatusBadge status="org_owned" size="sm" />
+              {property.homeowner === null && stripeSelfPayUiEnabled() && (
+                <StatusBadge status="org_owned" size="sm" />
+              )}
+
+              {/* Self-pay flag: change / remove / attach actions */}
+              {stripeSelfPayUiEnabled() && !showHomeownerPicker && (
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  {property.homeowner ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickerMode("change");
+                          setShowHomeownerPicker(true);
+                          fetchAttachHomeowners();
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Change homeowner
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveHomeowner}
+                        disabled={isRemoving}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium disabled:opacity-60"
+                      >
+                        {isRemoving ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <User className="w-4 h-4" />
+                        )}
+                        Remove homeowner
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => {
-                        setShowAttachHomeowner(true);
+                        setPickerMode("attach");
+                        setShowHomeownerPicker(true);
                         fetchAttachHomeowners();
                       }}
                       className="flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
@@ -653,99 +715,102 @@ export default function PropertySidePanel({
                       <UserPlus className="w-4 h-4" />
                       Attach a homeowner
                     </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Search input */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <input
-                        type="text"
-                        placeholder="Search homeowners..."
-                        value={attachHomeownerSearch}
-                        onChange={(e) =>
-                          setAttachHomeownerSearch(e.target.value)
-                        }
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                      />
-                    </div>
+                  )}
+                </div>
+              )}
 
-                    {/* Results list */}
-                    {attachHomeownersLoading ? (
-                      <div className="flex items-center justify-center py-6">
-                        <Loader2 className="w-5 h-5 animate-spin text-primary-600" />
-                      </div>
-                    ) : filteredAttachHomeowners.length === 0 ? (
-                      <p className="text-sm text-gray-500 text-center py-4">
-                        No homeowners found
-                      </p>
-                    ) : (
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {filteredAttachHomeowners.map((homeowner) => (
-                          <button
-                            key={homeowner.id}
-                            type="button"
-                            onClick={() =>
-                              setSelectedAttachHomeowner(homeowner)
-                            }
-                            className={`w-full p-3 border-2 rounded-lg text-left transition-all ${
-                              selectedAttachHomeowner?.id === homeowner.id
-                                ? "border-primary-500 bg-primary-50"
-                                : "border-gray-200 hover:border-gray-300"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <User className="w-4 h-4 text-primary-600" />
-                                </div>
-                                <div>
-                                  <p className="font-medium text-gray-900 text-sm">
-                                    {homeowner.first_name} {homeowner.last_name}
-                                  </p>
-                                  <p className="text-xs text-gray-600">
-                                    {homeowner.email}
-                                  </p>
-                                </div>
+              {/* Picker (attach or change) */}
+              {stripeSelfPayUiEnabled() && showHomeownerPicker && (
+                <div className="space-y-3 mt-2">
+                  <p className="text-xs font-medium text-gray-600">
+                    {pickerMode === "attach" ? "Select a homeowner to attach" : "Select a new homeowner"}
+                  </p>
+                  {/* Search input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Search homeowners..."
+                      value={attachHomeownerSearch}
+                      onChange={(e) => setAttachHomeownerSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                    />
+                  </div>
+
+                  {/* Results list */}
+                  {attachHomeownersLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary-600" />
+                    </div>
+                  ) : filteredAttachHomeowners.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      No homeowners found
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {filteredAttachHomeowners.map((homeowner) => (
+                        <button
+                          key={homeowner.id}
+                          type="button"
+                          onClick={() => setSelectedAttachHomeowner(homeowner)}
+                          className={`w-full p-3 border-2 rounded-lg text-left transition-all ${
+                            selectedAttachHomeowner?.id === homeowner.id
+                              ? "border-primary-500 bg-primary-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <User className="w-4 h-4 text-primary-600" />
                               </div>
-                              {selectedAttachHomeowner?.id === homeowner.id && (
-                                <CheckCircle className="w-4 h-4 text-primary-600 flex-shrink-0" />
-                              )}
+                              <div>
+                                <p className="font-medium text-gray-900 text-sm">
+                                  {homeowner.first_name} {homeowner.last_name}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {homeowner.email}
+                                </p>
+                              </div>
                             </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Action buttons */}
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAttachHomeowner(false);
-                          setAttachHomeownerSearch("");
-                          setSelectedAttachHomeowner(null);
-                        }}
-                        className="flex-1 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleAttachHomeowner}
-                        disabled={!selectedAttachHomeowner || isAttaching}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-60 transition-colors"
-                      >
-                        {isAttaching ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : null}
-                        Confirm
-                      </button>
+                            {selectedAttachHomeowner?.id === homeowner.id && (
+                              <CheckCircle className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      ))}
                     </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHomeownerPicker(false);
+                        setAttachHomeownerSearch("");
+                        setSelectedAttachHomeowner(null);
+                      }}
+                      className="flex-1 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmHomeownerChange}
+                      disabled={!selectedAttachHomeowner || isAttaching}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium disabled:opacity-60 transition-colors"
+                    >
+                      {isAttaching ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : null}
+                      Confirm
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Floating Action Footer */}
