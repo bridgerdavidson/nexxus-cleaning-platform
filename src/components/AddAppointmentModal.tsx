@@ -122,7 +122,7 @@ export default function AddAppointmentModal({
   preFilledTime,
   hidePriceOverride = false,
 }: AddAppointmentModalProps) {
-  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
 
   // Self-pay is gated behind the client flag AND the actor's role: owner/admin always,
@@ -363,8 +363,8 @@ export default function AddAppointmentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHomeowner, preSelectedHomeownerId, selfPay]);
 
-  // An org-owned property (owner_id === null) can only be company-paid, so lock the
-  // bill-to choice to self-pay whenever such a property is selected (pre-selected or picked).
+  // An org-owned property (owner_id === null) has no homeowner, so automatically
+  // switch to company billing when such a property is selected.
   useEffect(() => {
     if (canSelfPay && selectedProperty && selectedProperty.owner_id === null) {
       setBillTo("self");
@@ -1337,13 +1337,19 @@ export default function AddAppointmentModal({
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           type="button"
-                          onClick={() => setBillTo("homeowner")}
-                          disabled={propertyOrgOwned}
+                          onClick={() => {
+                            setBillTo("homeowner");
+                            // An org-owned property has no homeowner; clear it so the user
+                            // picks a homeowner-owned property through the normal flow.
+                            if (selectedProperty && selectedProperty.owner_id === null) {
+                              setSelectedProperty(null);
+                            }
+                          }}
                           className={`p-4 border-2 rounded-lg text-left transition-all ${
                             billTo === "homeowner"
                               ? "border-primary-500 bg-primary-50"
                               : "border-gray-200 hover:border-gray-300"
-                          } ${propertyOrgOwned ? "opacity-50 cursor-not-allowed hover:border-gray-200" : ""}`}
+                          }`}
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -1374,13 +1380,13 @@ export default function AddAppointmentModal({
                           }`}
                         >
                           <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
                                 <Building2 className="w-5 h-5 text-blue-600" />
                               </div>
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  Us, company pays
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900 truncate">
+                                  {currentOrganization?.name || "Our company"}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   Our company card
@@ -1393,11 +1399,6 @@ export default function AddAppointmentModal({
                           </div>
                         </button>
                       </div>
-                      {propertyOrgOwned && (
-                        <p className="mt-2 text-xs text-gray-500">
-                          This property has no homeowner.
-                        </p>
-                      )}
                     </div>
                   )}
 
