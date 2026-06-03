@@ -1,5 +1,6 @@
-import React from "react";
-import { Home, MapPin, User, Bed, Bath, Square, CheckSquare, Square as SquareIcon, Trash2, Eye, Edit2 } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Home, MapPin, User, Bed, Bath, Square, CheckSquare, Square as SquareIcon, Trash2, Edit2, MoreVertical, Calendar } from "lucide-react";
+import StatusBadge from "./StatusBadge";
 
 export interface PropertyCardData {
   id: string;
@@ -28,6 +29,7 @@ interface PropertyCardProps {
   onToggleSelect?: () => void;
   onDelete?: (propertyId: string) => void;
   onEdit?: () => void;
+  onBook?: () => void;
   role?: "admin" | "manager" | "homeowner";
 }
 
@@ -39,8 +41,12 @@ export default function PropertyCard({
   onToggleSelect,
   onDelete,
   onEdit,
+  onBook,
   role = "admin",
 }: PropertyCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const getHomeownerName = () => {
     if (property.homeowner) {
       const { first_name, last_name } = property.homeowner;
@@ -49,11 +55,24 @@ export default function PropertyCard({
     return "Unknown";
   };
 
-  const handleCardClick = (e: React.MouseEvent) => {
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  const handleCardClick = () => {
     if (isSelectMode && onToggleSelect) {
       onToggleSelect();
+    } else if (!isSelectMode) {
+      onClick();
     }
-    // In non-select mode, clicking the card does nothing - use action buttons instead
   };
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
@@ -63,24 +82,34 @@ export default function PropertyCard({
     }
   };
 
-  const handleViewClick = (e: React.MouseEvent) => {
+  const handleMenuToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onClick();
+    setMenuOpen((prev) => !prev);
   };
 
-  const handleEditClick = (e: React.MouseEvent) => {
+  const handleMenuEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setMenuOpen(false);
     if (onEdit) {
       onEdit();
     } else {
-      onClick(); // Fallback to onClick if no edit handler
+      onClick();
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
+  const handleMenuDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
+    setMenuOpen(false);
     if (onDelete) {
       onDelete(property.id);
+    }
+  };
+
+  const handleMenuBook = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    if (onBook) {
+      onBook();
     }
   };
 
@@ -109,6 +138,49 @@ export default function PropertyCard({
         </div>
       )}
 
+      {/* Overflow (...) menu - top right, hidden in select mode */}
+      {!isSelectMode && (role === "admin" || role === "manager") && (
+        <div ref={menuRef} className="absolute top-3 right-3 z-10">
+          <button
+            onClick={handleMenuToggle}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            title="More options"
+          >
+            <MoreVertical className="w-4 h-4 text-gray-500" />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden z-20">
+              <button
+                onClick={handleMenuEdit}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left"
+              >
+                <Edit2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                Edit
+              </button>
+              {onBook && (
+                <button
+                  onClick={handleMenuBook}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left border-t border-gray-100"
+                >
+                  <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  Book a cleaning
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={handleMenuDelete}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left border-t border-gray-100"
+                >
+                  <Trash2 className="w-4 h-4 flex-shrink-0" />
+                  Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Card Content */}
       <div className="p-5 flex flex-col flex-1">
         {/* Circular Image Area with Property Name Overlay */}
@@ -125,7 +197,7 @@ export default function PropertyCard({
               <Home className="w-12 h-12 text-primary-600" />
             )}
           </div>
-          
+
           {/* Property name badge overlaying bottom of circle */}
           <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2">
             <span className="inline-block px-4 py-1.5 bg-primary-600 text-white rounded-full text-sm font-semibold shadow-lg whitespace-nowrap max-w-[180px] truncate">
@@ -146,10 +218,16 @@ export default function PropertyCard({
         </div>
 
         {/* Homeowner - Only show for admin/manager */}
-        {role !== "homeowner" && property.homeowner && (
+        {role !== "homeowner" && (
           <div className="flex items-center justify-center gap-2 text-sm text-gray-600 mb-3">
-            <User className="w-4 h-4 text-gray-400" />
-            <span className="truncate">{getHomeownerName()}</span>
+            {property.homeowner ? (
+              <>
+                <User className="w-4 h-4 text-gray-400" />
+                <span className="truncate">{getHomeownerName()}</span>
+              </>
+            ) : (
+              <StatusBadge status="org_owned" size="sm" />
+            )}
           </div>
         )}
 
@@ -177,36 +255,8 @@ export default function PropertyCard({
           </div>
         )}
 
-        {/* Spacer to push buttons to bottom */}
+        {/* Spacer to keep cards in a row equal height */}
         <div className="flex-1" />
-
-        {/* Action Buttons */}
-        {!isSelectMode && (
-          <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-            <button
-              onClick={handleViewClick}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <Eye className="w-4 h-4" />
-              <span>View</span>
-            </button>
-            <button
-              onClick={handleEditClick}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-primary-600 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
-            {onDelete && (
-              <button
-                onClick={handleDeleteClick}
-                className="flex items-center justify-center px-3 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-                title="Delete property"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

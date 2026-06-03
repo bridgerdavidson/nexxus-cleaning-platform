@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { authorizeAppointment, type AuthorizeCode } from '@/lib/payments/authorizeAppointment';
+import { authorizeAppointmentAuto, type AnyAuthorizeCode } from '@/lib/payments/authorizeDispatch';
 
 /**
  * POST /api/appointments/:appointmentId/authorize
@@ -13,13 +13,15 @@ import { authorizeAppointment, type AuthorizeCode } from '@/lib/payments/authori
  *
  * Body: { organization_id }
  */
-const HTTP_BY_CODE: Record<AuthorizeCode, number> = {
+const HTTP_BY_CODE: Record<AnyAuthorizeCode, number> = {
   authorized: 200,
   requires_action: 402,
   declined: 402,
   no_card: 409,
   tenant_not_ready: 409,
   not_authorizable: 409,
+  no_org_card: 409,
+  cleaner_not_payable: 409,
   error: 500,
 };
 
@@ -44,14 +46,28 @@ export async function POST(
     // Verify the appointment belongs to the caller's org (don't leak existence).
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('organization_id')
+      .select('organization_id, is_self_pay')
       .eq('id', appointmentId)
       .maybeSingle();
     if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
 
-    const outcome = await authorizeAppointment(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+    // Self-pay appointments place a hold on the org's company card — require the Manage Payments
+    // permission for managers (owner/admin always pass; non-self-pay behavior is unchanged).
+    if ((appt as { is_self_pay: boolean }).is_self_pay === true && auth.role === 'manager') {
+      const { data: perms } = await supabaseAdmin
+        .from('manager_permissions')
+        .select('can_manage_payments')
+        .eq('manager_id', auth.userId)
+        .eq('organization_id', organization_id!)
+        .maybeSingle();
+      if (!(perms as { can_manage_payments: boolean } | null)?.can_manage_payments) {
+        return NextResponse.json({ error: 'Requires the Manage Payments permission' }, { status: 403 });
+      }
+    }
+
+    const outcome = await authorizeAppointmentAuto(supabaseAdmin, appointmentId, `user:${auth.userId}`);
 
     return NextResponse.json(
       {

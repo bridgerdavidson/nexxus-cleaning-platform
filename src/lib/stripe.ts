@@ -71,6 +71,34 @@ export async function getOrCreateStripeCustomer(
   return newCustomer;
 }
 
+/**
+ * Resolve the ORG's dedicated self-pay Stripe Customer (its company card lives here).
+ * Unlike getOrCreateStripeCustomer, this NEVER looks a Customer up by email — an email match
+ * could alias onto another org's Customer or a homeowner's Customer and leak/charge their saved
+ * cards. When there's no existing id, always create a fresh org-scoped Customer.
+ */
+export async function getOrCreateOrgSelfPayCustomer(
+  organizationId: string,
+  email: string,
+  name: string,
+  existingCustomerId?: string | null,
+): Promise<Stripe.Customer> {
+  const stripe = getStripe();
+  if (existingCustomerId) {
+    try {
+      const existing = await stripe.customers.retrieve(existingCustomerId);
+      if (!existing.deleted) return existing as Stripe.Customer;
+    } catch {
+      // fall through and create a fresh one
+    }
+  }
+  return stripe.customers.create({
+    email,
+    name,
+    metadata: { organization_id: organizationId, self_pay: 'true', source: 'nexxus-cleaning-platform' },
+  });
+}
+
 // Helper function to create a SetupIntent for collecting payment method
 export async function createSetupIntent(
   customerId: string

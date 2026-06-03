@@ -18,6 +18,7 @@ import RecordPaymentModal from "./RecordPaymentModal";
 import ApprovePayoutModal from "./ApprovePayoutModal";
 import RefundModal from "./RefundModal";
 import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
+import StatusBadge from "./StatusBadge";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
@@ -40,6 +41,7 @@ interface AdminPayment {
   notes?: string;
   paid_at?: string;
   created_at: string;
+  is_self_pay?: boolean;
   appointment: {
     scheduled_date: string;
     homeowner: {
@@ -451,13 +453,18 @@ export default function PaymentsPage({
                           ${payment.amount.toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                              payment.status
-                            )}`}
-                          >
-                            {payment.status}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                                payment.status
+                              )}`}
+                            >
+                              {payment.status}
+                            </span>
+                            {payment.is_self_pay && (
+                              <StatusBadge status="self_pay" size="sm" />
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {payment.payment_method || "manual"}

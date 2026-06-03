@@ -233,6 +233,13 @@ export async function withPlatformAdmin(): Promise<PlatformAdminFixture> {
 
 /**
  * Insert a minimal appointment row for use in route tests.
+ *
+ * Self-pay (migration 077) options:
+ *   - `orgOwnedProperty: true` → the property is org-owned (owner_id = null) instead of
+ *     belonging to the homeowner. Models a property the org cleans for itself.
+ *   - `selfPay: true` → the appointment is self-pay (is_self_pay = true). When combined with
+ *     `orgOwnedProperty`, homeowner_id is set to null too (the org pays, there is no homeowner).
+ *     The DB CHECK `is_self_pay = true OR homeowner_id IS NOT NULL` stays satisfied either way.
  */
 export async function createTestAppointment(args: {
   organizationId: string;
@@ -242,15 +249,19 @@ export async function createTestAppointment(args: {
   status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   scheduledDate?: string;
   scheduledTime?: string;
-}): Promise<{ id: string }> {
+  /** Insert the property as org-owned (owner_id = null) instead of homeowner-owned. */
+  orgOwnedProperty?: boolean;
+  /** Mark the appointment self-pay; with orgOwnedProperty, also nulls homeowner_id. */
+  selfPay?: boolean;
+}): Promise<{ id: string; propertyId: string; serviceTypeId: string }> {
   const admin = createTestSupabaseClient();
 
-  // Need a property and service_type first.
+  // Need a property and service_type first. owner_id is null for org-owned properties.
   const { data: prop, error: propErr } = await admin
     .from('properties')
     .insert({
       organization_id: args.organizationId,
-      owner_id: args.homeownerId,
+      owner_id: args.orgOwnedProperty ? null : args.homeownerId,
       name: 'Test Property',
       address: '1 Test Lane',
       city: 'Testville',
@@ -274,12 +285,16 @@ export async function createTestAppointment(args: {
     .single();
   if (svcErr || !svc) throw new Error(`service_type insert failed: ${svcErr?.message}`);
 
+  // Self-pay + org-owned ⇒ no homeowner. Self-pay on a homeowner-owned property keeps the
+  // homeowner_id (it's still self-pay; the org is footing the bill for a homeowner property).
+  const homeownerId = args.selfPay && args.orgOwnedProperty ? null : args.homeownerId;
+
   const { data: appt, error: apptErr } = await admin
     .from('appointments')
     .insert({
       organization_id: args.organizationId,
       cleaner_id: args.cleanerId,
-      homeowner_id: args.homeownerId,
+      homeowner_id: homeownerId,
       property_id: prop.id,
       service_type_id: svc.id,
       scheduled_date: args.scheduledDate ?? '2026-06-01',
@@ -287,23 +302,43 @@ export async function createTestAppointment(args: {
       duration_minutes: 60,
       total_price: args.totalPrice ?? 100,
       status: args.status ?? 'pending',
+      is_self_pay: args.selfPay ?? false,
     })
     .select('id')
     .single();
   if (apptErr || !appt) throw new Error(`appointment insert failed: ${apptErr?.message}`);
-  return { id: appt.id };
+  return { id: appt.id, propertyId: prop.id as string, serviceTypeId: svc.id as string };
 }
 
 /**
  * Build a synthetic Stripe payment_intent.succeeded event payload for webhook tests.
  * The amount is in dollars; converted to cents internally.
+ *
+ * Optional knobs for the new charge flows:
+ *   - `selfPay: true`         → adds `metadata.self_pay = 'true'` (routes the handler to
+ *                               settleSelfPay) and forces `on_behalf_of: null`.
+ *   - `onBehalfOf`            → sets `on_behalf_of` (separate-charges/tenant settlement path).
+ *   - `latestCharge`          → override `latest_charge` (default `ch_test_<appt>`); pass null
+ *                               to omit it.
+ *   - `extraMetadata`         → merge additional metadata keys (e.g. organization_id).
  */
 export function buildPaymentIntentSucceededEvent(args: {
   appointmentId: string;
   amountDollars: number;
   eventId?: string;
+  selfPay?: boolean;
+  onBehalfOf?: string | null;
+  latestCharge?: string | null;
+  extraMetadata?: Record<string, string>;
 }): Record<string, unknown> {
   const eventId = args.eventId ?? `evt_test_${randomUUID()}`;
+  const latestCharge =
+    args.latestCharge === undefined ? `ch_test_${args.appointmentId}` : args.latestCharge;
+  const metadata: Record<string, string> = {
+    appointment_id: args.appointmentId,
+    ...(args.selfPay ? { self_pay: 'true' } : {}),
+    ...(args.extraMetadata ?? {}),
+  };
   return {
     id: eventId,
     object: 'event',
@@ -315,10 +350,14 @@ export function buildPaymentIntentSucceededEvent(args: {
         id: `pi_test_${args.appointmentId}`,
         object: 'payment_intent',
         amount: Math.round(args.amountDollars * 100),
+        amount_received: Math.round(args.amountDollars * 100),
         currency: 'usd',
         status: 'succeeded',
-        latest_charge: `ch_test_${args.appointmentId}`,
-        metadata: { appointment_id: args.appointmentId },
+        latest_charge: latestCharge,
+        // self-pay PIs carry no on_behalf_of (the org pays for its own cleaning); the handler
+        // checks self_pay BEFORE on_behalf_of, so this null is the load-bearing branch guard.
+        on_behalf_of: args.selfPay ? null : args.onBehalfOf ?? null,
+        metadata,
       },
     },
     livemode: false,

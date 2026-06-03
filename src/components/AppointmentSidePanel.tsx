@@ -28,6 +28,7 @@ import { updateAppointment } from "../hooks/useAdminData";
 import { supabase } from "../lib/supabase";
 import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useAuth } from "../hooks/useAuth";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
   DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
@@ -99,6 +100,7 @@ export default function AppointmentSidePanel({
 }: AppointmentSidePanelProps) {
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
+  const { currentOrganization } = useAuth();
 
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -406,6 +408,11 @@ export default function AppointmentSidePanel({
     if (appointment.homeowner) {
       const { first_name, last_name } = appointment.homeowner;
       return `${first_name} ${last_name}`;
+    }
+    // Self-pay appointments have no homeowner; show the organization as the client so the panel
+    // reads exactly like a homeowner booking (just the org name in place of a person's name).
+    if (appointment.is_self_pay) {
+      return currentOrganization?.name || "Company";
     }
     return "Unknown";
   };

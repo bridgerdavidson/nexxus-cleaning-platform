@@ -133,7 +133,7 @@ export interface CleanerProfile {
 // PROPERTIES
 export interface Property {
   id: string;
-  owner_id: string; // References user_profiles(id)
+  owner_id: string | null; // References user_profiles(id); NULL = org/admin-owned (no homeowner attached yet)
   organization_id: string | null;
   name: string;
   address: string;
@@ -167,7 +167,8 @@ export interface ServiceTypeRecord {
 export interface Appointment {
   id: string;
   organization_id: string | null;
-  homeowner_id: string; // References user_profiles(id)
+  homeowner_id: string | null; // References user_profiles(id); NULL only on self-pay (org-owned property)
+  is_self_pay: boolean; // true → the org pays from its company card; settles 100% to the cleaner
   cleaner_id: string | null; // References cleaner_profiles(id)
   property_id: string;
   service_type_id: string;
@@ -229,7 +230,8 @@ export interface AppointmentRoutingLog {
 export interface RecurringAppointmentSeries {
   id: string;
   organization_id: string;
-  homeowner_id: string; // References user_profiles(id)
+  homeowner_id: string | null; // References user_profiles(id); NULL only on self-pay (org-owned property)
+  is_self_pay: boolean; // propagates to every generated occurrence
   cleaner_id: string | null; // References cleaner_profiles(id)
   property_id: string;
   service_type_id: string;
@@ -259,6 +261,7 @@ export interface Payment {
   amount: number; // numeric(10,2)
   status: PaymentStatus;
   payment_type: PaymentType;
+  is_self_pay: boolean; // true → org-funded self-pay charge; excluded from revenue stats
   payment_method: PaymentMethod;
   stripe_payment_intent_id: string | null;
   stripe_setup_intent_id: string | null;
@@ -279,6 +282,7 @@ export interface Payout {
   stripe_transfer_id: string | null;
   stripe_payout_id: string | null;
   payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time
+  is_self_pay: boolean; // true → cleaner payout funded by an org self-pay charge
   notes: string | null;
   approved_at: string | null;
   paid_at: string | null;

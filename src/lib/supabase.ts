@@ -103,7 +103,7 @@ export type Database = {
       properties: {
         Row: {
           id: string
-          owner_id: string
+          owner_id: string | null
           organization_id: string | null
           address: string
           city: string
@@ -118,7 +118,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          owner_id: string
+          owner_id: string | null
           organization_id?: string | null
           address: string
           city: string
@@ -189,7 +189,8 @@ export type Database = {
         Row: {
           id: string
           organization_id: string | null
-          homeowner_id: string
+          homeowner_id: string | null
+          is_self_pay: boolean
           cleaner_id: string | null
           property_id: string
           service_type_id: string
@@ -211,7 +212,8 @@ export type Database = {
         Insert: {
           id?: string
           organization_id?: string | null
-          homeowner_id: string
+          homeowner_id?: string | null
+          is_self_pay?: boolean
           cleaner_id?: string | null
           property_id: string
           service_type_id: string
@@ -303,7 +305,8 @@ export type Database = {
         Row: {
           id: string
           organization_id: string
-          homeowner_id: string
+          homeowner_id: string | null
+          is_self_pay: boolean
           cleaner_id: string | null
           property_id: string
           service_type_id: string
@@ -327,7 +330,8 @@ export type Database = {
         Insert: {
           id?: string
           organization_id: string
-          homeowner_id: string
+          homeowner_id?: string | null
+          is_self_pay?: boolean
           cleaner_id?: string | null
           property_id: string
           service_type_id: string

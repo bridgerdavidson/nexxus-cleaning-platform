@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 import { createConnectTransfer } from '@/lib/stripe';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
+import { settleSelfPay } from '@/lib/payments/settleSelfPay';
 import { reversePlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { mapSubscriptionStatus } from '@/lib/payments/orgBilling';
@@ -134,6 +135,21 @@ async function handlePaymentIntentSucceeded(
   }
 
   console.log('Payment record updated for appointment:', appointmentId);
+
+  // Org self-pay (no on_behalf_of): the org paid for its OWN cleaning. Settle the single cleaner
+  // transfer from the platform balance — no tenant remainder, no platform fee, cleaner gets the
+  // exact cut (the gross-up overshoot stays on the platform). This MUST run before the
+  // `on_behalf_of` check below: a self-pay PI has no on_behalf_of and would otherwise fall through
+  // to the legacy path and pay the cleaner the wrong amount.
+  if (paymentIntent.metadata?.self_pay === 'true') {
+    const result = await settleSelfPay(
+      supabase,
+      appointmentId,
+      (paymentIntent.latest_charge as string | null) ?? null,
+    );
+    console.log('Self-pay settlement:', result);
+    return;
+  }
 
   // New multi-tenant flow (separate charges and transfers): the charge is created on the
   // platform with `on_behalf_of` set, so the captured funds are on the PLATFORM balance. Settle

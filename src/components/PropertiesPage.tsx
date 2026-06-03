@@ -9,7 +9,6 @@ import {
   CheckSquare,
   Square,
   Trash2,
-  Home,
   AlertCircle,
   ChevronDown,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import PropertySidePanel from "./PropertySidePanel";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddPropertyModal from "./AddPropertyModal";
+import AddAppointmentModal from "./AddAppointmentModal";
 import {
   AdminProperty,
   deleteProperty,
@@ -60,6 +60,14 @@ export default function PropertiesPage({
   const [selectedProperty, setSelectedProperty] =
     useState<PropertyCardData | null>(null);
   const [showSidePanel, setShowSidePanel] = useState(false);
+  // True when the drawer should open straight into edit mode (card "Edit" action).
+  const [openInEdit, setOpenInEdit] = useState(false);
+
+  // Book-from-property modal: opens AddAppointmentModal pre-filled to a property,
+  // on step 2 of the full 3-step flow (the card's "Book a cleaning" action).
+  const [bookingProperty, setBookingProperty] =
+    useState<PropertyCardData | null>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
 
   // Delete modal state
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
@@ -251,6 +259,7 @@ export default function PropertiesPage({
       toggleSelection(property.id);
     } else {
       setSelectedProperty(property);
+      setOpenInEdit(false);
       setShowSidePanel(true);
     }
   };
@@ -469,7 +478,9 @@ export default function PropertiesPage({
               isSelected={selectedIds.has(property.id)}
               onToggleSelect={() => toggleSelection(property.id)}
               onEdit={() => {
+                // Open the drawer directly in edit mode.
                 setSelectedProperty(property);
+                setOpenInEdit(true);
                 setShowSidePanel(true);
               }}
               onDelete={(propertyId) => {
@@ -481,6 +492,12 @@ export default function PropertiesPage({
                     stopPropagation: () => {},
                   } as React.MouseEvent);
                 }
+              }}
+              onBook={() => {
+                // Open the real booking modal pre-filled to this property,
+                // on step 2 of the full 3-step flow.
+                setBookingProperty(property);
+                setShowBookingModal(true);
               }}
               role={role}
             />
@@ -518,6 +535,19 @@ export default function PropertiesPage({
         }}
         onRefreshAppointments={onRefreshAppointments}
         role={role}
+        startInEdit={openInEdit}
+        onDelete={(propertyId) => {
+          // Reuse the existing card delete-confirm flow. The panel closes itself;
+          // the page-level DeleteConfirmModal then runs the actual delete.
+          const prop =
+            filteredProperties.find((p) => p.id === propertyId) ||
+            (selectedProperty?.id === propertyId ? selectedProperty : null);
+          if (prop) {
+            handleDeleteClick(prop, {
+              stopPropagation: () => {},
+            } as React.MouseEvent);
+          }
+        }}
       />
 
       {/* Delete Confirmation Modal */}
@@ -561,6 +591,30 @@ export default function PropertiesPage({
           }
         }}
       />
+
+      {/* Book-from-property modal (card "Book a cleaning"). Pre-fills the homeowner
+          (if any) + property and opens on step 2 of the full 3-step flow. Org-owned
+          properties (no homeowner) open in self-pay mode. Mounted only while open so
+          the preselected ids are re-applied on each open. */}
+      {showBookingModal && bookingProperty && (
+        <AddAppointmentModal
+          isOpen={showBookingModal}
+          onClose={() => {
+            setShowBookingModal(false);
+            setBookingProperty(null);
+          }}
+          onAppointmentCreated={() => {
+            setShowBookingModal(false);
+            setBookingProperty(null);
+            if (onRefreshAppointments) {
+              onRefreshAppointments();
+            }
+          }}
+          preSelectedHomeownerId={bookingProperty.homeowner?.id}
+          preSelectedPropertyId={bookingProperty.id}
+          startOnDetailsStep
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,9 @@ import {
   CheckCircle2,
   XCircle,
   Calendar,
+  Building2,
+  DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 
 interface StatusBadgeProps {
@@ -89,6 +92,31 @@ export default function StatusBadge({
           textColor: "text-slate-600",
           icon: XCircle,
           label: "Cancelled",
+        };
+      // Self-pay tags (orthogonal to the lifecycle buckets above): the org paid for the
+      // cleaning, and/or the property is org-owned (no homeowner attached).
+      case "self_pay":
+        return {
+          bgColor: "bg-primary-100",
+          textColor: "text-primary-700",
+          icon: DollarSign,
+          label: "Self-pay",
+        };
+      case "org_owned":
+        return {
+          bgColor: "bg-blue-50",
+          textColor: "text-blue-700",
+          icon: Building2,
+          label: "Owned by us",
+        };
+      // Self-pay gate: the assigned cleaner can't receive a company-card payout yet
+      // (no finished Stripe onboarding, or no payout %). Amber = needs attention.
+      case "not_payout_ready":
+        return {
+          bgColor: "bg-amber-50",
+          textColor: "text-amber-700",
+          icon: AlertTriangle,
+          label: "Not payout-ready",
         };
       default:
         return {

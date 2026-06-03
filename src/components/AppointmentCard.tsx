@@ -9,6 +9,7 @@ import {
 } from "../lib/dashboardHero";
 import CompactJobProgressIndicator from "./CompactJobProgressIndicator";
 import { JobProgress } from "../types";
+import { useAuth } from "../hooks/useAuth";
 
 export interface AppointmentCardData {
   id: string;
@@ -70,6 +71,11 @@ export interface AppointmentCardData {
     price_adder?: number;
   } | null;
   /**
+   * True when the org is paying for this cleaning from its company card
+   * (no homeowner involved). Rendered as a StatusBadge alongside the status chip.
+   */
+  is_self_pay?: boolean;
+  /**
    * Optional org id. Required by the Bookings page's "Needs your response"
    * section so the admin's accept-counter-proposal API call has the org
    * scope; threaded through from `AdminAppointment.organization_id`.
@@ -126,6 +132,7 @@ export default function AppointmentCard({
   onStartJob,
 }: AppointmentCardProps) {
   const [isStarting, setIsStarting] = useState(false);
+  const { currentOrganization } = useAuth();
 
   const formatDateTime = (date: string, time: string) => {
     const [year, month, day] = date.split('-').map(Number);
@@ -142,6 +149,11 @@ export default function AppointmentCard({
     if (appointment.homeowner) {
       const { first_name, last_name } = appointment.homeowner;
       return `${first_name} ${last_name}`;
+    }
+    // Self-pay appointments have no homeowner; show the organization as the client so the card
+    // reads exactly like a homeowner booking (just the org name in place of a person's name).
+    if (appointment.is_self_pay) {
+      return currentOrganization?.name || "Company";
     }
     return null;
   };

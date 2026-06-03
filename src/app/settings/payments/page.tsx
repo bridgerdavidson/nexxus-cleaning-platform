@@ -15,6 +15,7 @@ import StripeBalanceRow from '@/components/settings/StripeBalanceRow';
 import TenantStripeConnect, {
   tenantStatusKind,
 } from '@/components/TenantStripeConnect';
+import OrgPaymentMethodSection from '@/components/OrgPaymentMethodSection';
 
 type TenantBalance = {
   connected: boolean;
@@ -106,6 +107,12 @@ export default function PaymentsSettingsPage() {
   const kind = tenantStatusKind(status, connectLoading || statusLoading);
   const heroCopy = useMemo(() => buildHeroCopy(status, kind), [status, kind]);
 
+  // Owner/admin always manage payments; managers need the explicit can_manage_payments flag.
+  const canManagePayments =
+    currentOrgRole === 'owner' ||
+    currentOrgRole === 'admin' ||
+    (currentOrgRole === 'manager' && !!permissions?.can_manage_payments);
+
   return (
     <>
       <SettingsPageHeader
@@ -148,6 +155,10 @@ export default function PaymentsSettingsPage() {
             loading={balanceLoading && !balance}
           />
         </section>
+      )}
+
+      {canManagePayments && currentOrganizationId && (
+        <OrgPaymentMethodSection organizationId={currentOrganizationId} />
       )}
 
       <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
