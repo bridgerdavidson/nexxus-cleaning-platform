@@ -14,10 +14,11 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
     { id: 'pm_org_1', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true },
   ]),
   detachPaymentMethod: vi.fn(async () => true),
+  setDefaultPaymentMethod: vi.fn(async () => true),
 }));
 
-import { GET, DELETE } from './route';
-import { listSavedCards, detachPaymentMethod } from '@/lib/stripe/customers/homeowner';
+import { GET, PATCH, DELETE } from './route';
+import { listSavedCards, detachPaymentMethod, setDefaultPaymentMethod } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import { withTestOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
@@ -37,6 +38,7 @@ describe('GET/DELETE /api/stripe/org/saved-payment-methods', () => {
     [org, org2] = await Promise.all([withTestOrg(), withTestOrg()]);
     vi.mocked(listSavedCards).mockClear();
     vi.mocked(detachPaymentMethod).mockClear();
+    vi.mocked(setDefaultPaymentMethod).mockClear();
   });
 
   afterEach(async () => {
@@ -161,6 +163,52 @@ describe('GET/DELETE /api/stripe/org/saved-payment-methods', () => {
     vi.mocked(detachPaymentMethod).mockResolvedValueOnce(false);
     const { status } = await callRoute(DELETE, {
       method: 'DELETE',
+      headers: bearerHeader(org.admin.accessToken),
+      url: url(org.organizationId, '&payment_method_id=pm_not_here'),
+    });
+    expect(status).toBe(404);
+  });
+
+  // ── PATCH (set default) ──────────────────────────────────────────────────────
+  it('PATCH rejects a cleaner (403) before setting default', async () => {
+    await giveOrgCard();
+    const { status } = await callRoute(PATCH, {
+      method: 'PATCH',
+      headers: bearerHeader(org.cleaner.accessToken),
+      url: url(org.organizationId, '&payment_method_id=pm_org_1'),
+    });
+    expect(status).toBe(403);
+    expect(vi.mocked(setDefaultPaymentMethod)).not.toHaveBeenCalled();
+  });
+
+  it('PATCH returns 400 when payment_method_id is missing (authorized admin)', async () => {
+    await giveOrgCard();
+    const { status } = await callRoute(PATCH, {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      url: url(org.organizationId),
+    });
+    expect(status).toBe(400);
+    expect(vi.mocked(setDefaultPaymentMethod)).not.toHaveBeenCalled();
+  });
+
+  it('PATCH (admin) makes the card the org self-pay customer default', async () => {
+    await giveOrgCard();
+    const { status, body } = await callRoute<{ success: boolean }>(PATCH, {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      url: url(org.organizationId, '&payment_method_id=pm_org_1'),
+    });
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(vi.mocked(setDefaultPaymentMethod)).toHaveBeenCalledWith(orgCardCustomer(), 'pm_org_1');
+  });
+
+  it('PATCH returns 404 when the card is not on this org customer', async () => {
+    await giveOrgCard();
+    vi.mocked(setDefaultPaymentMethod).mockResolvedValueOnce(false);
+    const { status } = await callRoute(PATCH, {
+      method: 'PATCH',
       headers: bearerHeader(org.admin.accessToken),
       url: url(org.organizationId, '&payment_method_id=pm_not_here'),
     });
