@@ -4,6 +4,12 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { authorizeAppointmentAuto, type AnyAuthorizeCode } from '@/lib/payments/authorizeDispatch';
 
+// Placing the hold does an auth token-verify + several Supabase reads + a Stripe PaymentIntent
+// create + writes. Under production latency that can run well past the default function cap and
+// get killed (the client then sees a non-JSON 504). Give it real headroom; the JIT cron is still
+// the backstop if it does fail.
+export const maxDuration = 60;
+
 /**
  * POST /api/appointments/:appointmentId/authorize
  *

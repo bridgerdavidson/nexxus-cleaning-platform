@@ -68,33 +68,39 @@ export async function authorizeSelfPayAppointment(
     return { ok: true, code: 'authorized', message: 'Already authorized' };
   }
 
-  // The org must have a saved company card (its self-pay platform Customer + a PaymentMethod).
-  const { data: orgData } = await supabase
-    .from('organizations')
-    .select('stripe_self_pay_customer_id')
-    .eq('id', appt.organization_id)
-    .maybeSingle();
-  const customerId = (orgData as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
-  if (!customerId) {
-    return { ok: false, code: 'no_org_card', message: 'Organization has no company card on file' };
-  }
-
-  // The assigned cleaner must be payout-capable (the charge amount depends on their %).
+  // The org's company card and the assigned cleaner are independent reads — fetch them
+  // concurrently to shave a round-trip off the hot path (this runs inside a request that has to
+  // beat the function timeout).
   type CleanerRow = {
     payout_model: string | null;
     stripe_connect_account_id: string | null;
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
   };
-  let cleaner: CleanerRow | null = null;
-  if (appt.cleaner_id) {
-    const { data: cleanerRow } = await supabase
-      .from('cleaner_profiles')
-      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
-      .eq('id', appt.cleaner_id)
-      .maybeSingle();
-    cleaner = cleanerRow as CleanerRow | null;
+  const [orgRes, cleanerRes] = await Promise.all([
+    supabase
+      .from('organizations')
+      .select('stripe_self_pay_customer_id')
+      .eq('id', appt.organization_id)
+      .maybeSingle(),
+    appt.cleaner_id
+      ? supabase
+          .from('cleaner_profiles')
+          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+          .eq('id', appt.cleaner_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null as CleanerRow | null }),
+  ]);
+
+  // The org must have a saved company card (its self-pay platform Customer + a PaymentMethod).
+  const customerId =
+    (orgRes.data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
+  if (!customerId) {
+    return { ok: false, code: 'no_org_card', message: 'Organization has no company card on file' };
   }
+
+  // The assigned cleaner must be payout-capable (the charge amount depends on their %).
+  const cleaner = cleanerRes.data as CleanerRow | null;
   const cleanerPayable =
     !!cleaner &&
     cleaner.payout_model !== 'hourly_external' &&

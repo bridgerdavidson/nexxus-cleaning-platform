@@ -12,6 +12,10 @@ import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { authorizeAppointmentAuto } from '@/lib/payments/authorizeDispatch';
 
+// Confirming can place the authorization hold (auth + Supabase reads + Stripe PI create + writes),
+// which can run past the default function cap under production latency. Headroom prevents a 504.
+export const maxDuration = 60;
+
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
 
 interface ConfirmAppointmentInput {

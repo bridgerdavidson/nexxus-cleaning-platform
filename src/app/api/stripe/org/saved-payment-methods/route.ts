@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { stripeEnabled, stripeSelfPayEnabled } from '@/lib/stripe/flags';
 import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
-import { listSavedCards, detachPaymentMethod } from '@/lib/stripe/customers/homeowner';
+import { listSavedCards, detachPaymentMethod, setDefaultPaymentMethod } from '@/lib/stripe/customers/homeowner';
 
 /**
  * GET    /api/stripe/org/saved-payment-methods?organization_id=...   → list the org's company cards
+ * PATCH  /api/stripe/org/saved-payment-methods?organization_id=...&payment_method_id=...  → make default
  * DELETE /api/stripe/org/saved-payment-methods?organization_id=...&payment_method_id=...  → remove one
  *
  * The org's self-pay company card(s). Owner/admin or manager with can_manage_payments. Returns
@@ -38,6 +39,38 @@ export async function GET(request: NextRequest) {
     console.error('Error listing org saved cards:', error);
     return NextResponse.json(
       { error: 'Failed to list saved cards', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  if (!stripeEnabled() || !stripeSelfPayEnabled()) {
+    return NextResponse.json({ error: 'Self-pay is not enabled' }, { status: 404 });
+  }
+  try {
+    const url = new URL(request.url);
+    const organizationId = url.searchParams.get('organization_id');
+    const paymentMethodId = url.searchParams.get('payment_method_id');
+    if (!paymentMethodId) {
+      return NextResponse.json({ error: 'Missing payment_method_id' }, { status: 400 });
+    }
+
+    const auth = await requireOrgPaymentsAuth(request, organizationId, supabaseAdmin);
+    if (!auth.ok) return auth.response;
+
+    const customerId = await loadOrgCustomerId(organizationId!);
+    if (!customerId) return NextResponse.json({ error: 'No company card on file' }, { status: 404 });
+
+    // Self-pay charges read the Customer's default PaymentMethod, so "use this card" = make it default.
+    const ok = await setDefaultPaymentMethod(customerId, paymentMethodId);
+    if (!ok) return NextResponse.json({ error: 'Card not found on this organization' }, { status: 404 });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error setting default org card:', error);
+    return NextResponse.json(
+      { error: 'Failed to set default card', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 },
     );
   }

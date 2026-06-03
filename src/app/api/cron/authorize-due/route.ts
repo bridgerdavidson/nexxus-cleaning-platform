@@ -44,7 +44,11 @@ export async function POST(request: NextRequest) {
     // org's company card (no payment_method_id on the appointment), so include them too.
     .or('payment_method_id.not.is.null,is_self_pay.eq.true')
     .not('status', 'in', '(cancelled,completed)')
-    .or('authorization_status.is.null,authorization_status.eq.scheduled')
+    // null/scheduled = never attempted; 'authorizing' = a prior immediate attempt was orphaned
+    // mid-flight (e.g. its request timed out before resolving). Re-running is safe: the
+    // auth-${id}-${attempt} / selfpay-auth-${id}-${attempt} idempotency key returns the same
+    // PaymentIntent, so a stuck hold is recovered without any risk of double-charging.
+    .or('authorization_status.is.null,authorization_status.eq.scheduled,authorization_status.eq.authorizing')
     .limit(BATCH);
 
   for (const row of due ?? []) {

@@ -81,6 +81,24 @@ export async function detachPaymentMethod(
 }
 
 /**
+ * Make a saved card the Customer's default PaymentMethod (what off-session charges read). Verifies
+ * the card belongs to this Customer first so a caller can never promote an arbitrary id. Returns
+ * false if the PM isn't on this customer.
+ */
+export async function setDefaultPaymentMethod(
+  customerId: string,
+  paymentMethodId: string,
+): Promise<boolean> {
+  const stripe = getStripe();
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (pm.customer !== customerId) return false;
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+  return true;
+}
+
+/**
  * Create a CustomerSession for the homeowner-facing Payment Element — one widget that
  * shows saved cards, lets them add a new one, save it for later, and remove cards.
  * Replaces the legacy ephemeral-key approach.

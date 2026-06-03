@@ -27,6 +27,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useToast } from "../contexts/ToastContext";
 import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
 import type { ScheduleAppointment } from "../lib/appointmentConflicts";
 import { rankCleanersByAvailability } from "../lib/cleanerAvailability";
@@ -38,6 +39,7 @@ import StatusBadge from "./StatusBadge";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
 import { OrgCardFormPanel } from "./OrgCardForm";
+import OrgCardPicker from "./OrgCardPicker";
 import DiscardChangesDialog from "./DiscardChangesDialog";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import { useFormDraft } from "../hooks/useFormDraft";
@@ -194,6 +196,7 @@ export default function AddAppointmentModal({
 }: AddAppointmentModalProps) {
   const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
+  const { showToast } = useToast();
 
   // Self-pay is gated behind the client flag AND the actor's role: owner/admin always,
   // or a manager only if they hold can_manage_payments. When this is false the modal
@@ -328,6 +331,8 @@ export default function AddAppointmentModal({
   const [orgCardsLoaded, setOrgCardsLoaded] = useState(false);
   // Inline "add a company card" flow shown on the self-pay payment step when no card is on file.
   const [addingOrgCard, setAddingOrgCard] = useState(false);
+  // Inline "change company card" panel (switch default / add / remove) on the self-pay payment step.
+  const [managingCard, setManagingCard] = useState(false);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -1199,6 +1204,10 @@ export default function AddAppointmentModal({
           // so leave the homeowner card unset in self-pay mode.
           payment_method_id: selfPay ? null : paymentMethodId,
           is_self_pay: selfPay,
+          // Self-pay holds the company card immediately below, but that call is best-effort. Set
+          // authorize_at so the JIT cron (authorize-due) is a real backstop if the immediate hold
+          // fails or times out — without it, a self-pay one-off would never be retried.
+          authorize_at: selfPay ? new Date().toISOString() : null,
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
           response_deadline: responseDeadline,
@@ -1255,37 +1264,62 @@ export default function AddAppointmentModal({
       // authorizeAppointmentAuto → authorizeSelfPayAppointment). The appointment already exists,
       // so an auth failure is surfaced but doesn't undo creation.
       if ((paymentMethodId || selfPay) && insertData?.id) {
+        // Best-effort immediate hold. The appointment already exists and the JIT cron is the
+        // backstop, so distinguish a DEFINITIVE failure (a real decline we can surface) from an
+        // INDETERMINATE one (a slow / timed-out request that returns no usable body) and never
+        // show a scary error for the latter.
+        let definitiveError: string | null = null;
+        let placed = false;
         try {
           const token = await getAccessToken();
-          const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ organization_id: currentOrganizationId }),
-          });
-          const authResult = await authRes.json().catch(() => ({}));
-          if (!authRes.ok || (authResult.code !== "authorized" && authResult.code !== "requires_action")) {
-            // Refresh the list (the appointment exists) but keep the modal open so the admin
-            // sees why the hold didn't land and can retry from the appointment.
-            onAppointmentCreated();
-            setError(
-              `Appointment created, but the card hold failed: ${
-                authResult.message || authResult.error || "authorization error"
-              }. You can retry from the appointment.`,
-            );
-            setIsCreating(false);
-            return;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          let authResult: { code?: string; message?: string } | null = null;
+          try {
+            const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({ organization_id: currentOrganizationId }),
+              signal: controller.signal,
+            });
+            authResult = await authRes.json().catch(() => null);
+          } finally {
+            clearTimeout(timeoutId);
           }
-        } catch (authErr) {
+          const code = authResult?.code;
+          if (code === "authorized" || code === "requires_action") {
+            placed = true;
+          } else if (code && authResult?.message) {
+            // A real, actionable decline (declined / no_org_card / cleaner_not_payable / not_authorizable).
+            definitiveError = authResult.message;
+          }
+          // Otherwise (empty / unparseable body, e.g. a timeout-shaped 504) leave both false so we
+          // fall into the calm "pending" path below.
+        } catch {
+          // Abort (our timeout) or a network error: indeterminate, treat as pending.
+        }
+
+        if (definitiveError) {
+          // Keep the modal open so the admin sees the real reason and can act.
           onAppointmentCreated();
           setError(
-            `Appointment created, but the card hold failed: ${
-              authErr instanceof Error ? authErr.message : "authorization error"
-            }. You can retry from the appointment.`,
+            `Appointment created, but the card hold didn't go through: ${definitiveError} You can place the hold from the appointment.`,
           );
           setIsCreating(false);
+          return;
+        }
+        if (!placed) {
+          // The hold is still being placed and the JIT cron will finish it; close cleanly with a
+          // calm note instead of a red error implying the booking broke.
+          onAppointmentCreated();
+          showToast("Appointment created", {
+            variant: "success",
+            description: "We're placing the card hold; it will be confirmed automatically.",
+          });
+          handleClose();
           return;
         }
       }
@@ -1328,6 +1362,7 @@ export default function AddAppointmentModal({
     setOrgCards([]);
     setOrgCardsLoaded(false);
     setAddingOrgCard(false);
+    setManagingCard(false);
     // Effective flags: book-from-property fully resets (it re-prefills on each open).
     if (!preHomeownerId) {
       setSelectedHomeowner(null);
@@ -2736,26 +2771,46 @@ export default function AddAppointmentModal({
                           <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
                         </div>
                       ) : orgDefaultCard ? (
-                        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <CreditCard className="h-5 w-5 text-gray-500 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 capitalize">
-                                {orgDefaultCard.brand} •••• {orgDefaultCard.last4}
-                                {orgDefaultCard.isDefault && (
-                                  <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
-                                    Default
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Company card · Expires{" "}
-                                {String(orgDefaultCard.expMonth).padStart(2, "0")}
-                                /{orgDefaultCard.expYear}
-                              </p>
+                        managingCard ? (
+                          <OrgCardPicker
+                            organizationId={currentOrganizationId ?? ""}
+                            cards={orgCards}
+                            loading={orgCardsLoading}
+                            onChanged={async () => {
+                              setOrgCardsLoaded(false);
+                              await fetchOrgCards();
+                            }}
+                            onClose={() => setManagingCard(false)}
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <CreditCard className="h-5 w-5 text-gray-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 capitalize">
+                                  {orgDefaultCard.brand} •••• {orgDefaultCard.last4}
+                                  {orgDefaultCard.isDefault && (
+                                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                                      Default
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Company card · Expires{" "}
+                                  {String(orgDefaultCard.expMonth).padStart(2, "0")}
+                                  /{orgDefaultCard.expYear}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setManagingCard(true)}
+                                className="flex-shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                              >
+                                Change
+                              </button>
                             </div>
                           </div>
-                        </div>
+                        )
                       ) : addingOrgCard ? (
                         <OrgCardFormPanel
                           organizationId={currentOrganizationId ?? ""}
