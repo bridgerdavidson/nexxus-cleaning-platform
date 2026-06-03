@@ -24,6 +24,7 @@ import {
   deleteProperties,
 } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
+import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 
 interface PropertiesPageProps {
   properties: AdminProperty[];
@@ -54,6 +55,15 @@ export default function PropertiesPage({
   const [homeownerFilter, setHomeownerFilter] = useState<string>("all");
   const [cityFilter, setCityFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
+
+  // Reload-restore: keep the add-property modal's open state in the URL so a full page
+  // reload reopens it, and AddPropertyModal restores its saved sessionStorage draft. Only
+  // the non-preselected create flow opened from this host persists.
+  const {
+    isOpenFromUrl: addPropertyOpenFromUrl,
+    openModalUrl: openAddPropertyUrl,
+    closeModalUrl: closeAddPropertyUrl,
+  } = useReopenableModalUrl("add-property");
 
   // Modal state
   const [showAddPropertyModal, setShowAddPropertyModal] = useState(false);
@@ -271,7 +281,10 @@ export default function PropertiesPage({
         <h2 className="text-4xl font-bold text-gray-900">Properties</h2>
         {role !== "homeowner" && (
           <button
-            onClick={() => setShowAddPropertyModal(true)}
+            onClick={() => {
+              setShowAddPropertyModal(true);
+              openAddPropertyUrl();
+            }}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
           >
             <Plus className="w-5 h-5" />
@@ -459,7 +472,10 @@ export default function PropertiesPage({
             cityFilter === "all" &&
             stateFilter === "all" && (
               <button
-                onClick={() => setShowAddPropertyModal(true)}
+                onClick={() => {
+                  setShowAddPropertyModal(true);
+                  openAddPropertyUrl();
+                }}
                 className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
               >
                 <Plus className="w-5 h-5" />
@@ -579,8 +595,11 @@ export default function PropertiesPage({
 
       {/* Add Property Modal */}
       <AddPropertyModal
-        isOpen={showAddPropertyModal}
-        onClose={() => setShowAddPropertyModal(false)}
+        isOpen={showAddPropertyModal || addPropertyOpenFromUrl}
+        onClose={() => {
+          setShowAddPropertyModal(false);
+          closeAddPropertyUrl();
+        }}
         onPropertyCreated={() => {
           // Refresh properties and appointments (appointments might show property info)
           if (onRefreshProperties) {

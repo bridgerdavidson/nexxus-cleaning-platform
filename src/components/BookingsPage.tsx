@@ -30,6 +30,7 @@ import ActionRequiredSection from "./admin-dashboard/ActionRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
+import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 
 type ViewType = "list" | "calendar";
 
@@ -75,6 +76,14 @@ export default function BookingsPage({
     "upcoming" | "past" | "all"
   >("upcoming");
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
+  // Keep the New Appointment modal in the URL (?modal=add-appointment) so a full reload reopens
+  // it and AddAppointmentModal restores its saved draft. Only the no-preselection flow opened
+  // from this host persists, so this is where the reopen marker is driven.
+  const {
+    isOpenFromUrl: addApptOpenFromUrl,
+    openModalUrl: openAddApptUrl,
+    closeModalUrl: closeAddApptUrl,
+  } = useReopenableModalUrl("add-appointment");
 
   // Calendar-specific state
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
@@ -492,12 +501,16 @@ export default function BookingsPage({
     [],
   );
 
-  const handleSlotSelect = useCallback((date: Date, time: string) => {
-    // Pre-fill date and time for quick add
-    setPreFilledDate(format(date, "yyyy-MM-dd"));
-    setPreFilledTime(time);
-    setShowAddAppointmentModal(true);
-  }, []);
+  const handleSlotSelect = useCallback(
+    (date: Date, time: string) => {
+      // Pre-fill date and time for quick add
+      setPreFilledDate(format(date, "yyyy-MM-dd"));
+      setPreFilledTime(time);
+      setShowAddAppointmentModal(true);
+      openAddApptUrl();
+    },
+    [openAddApptUrl],
+  );
 
   // Immediate DB reschedule (legacy fallback)
   const handleReschedule = useCallback(
@@ -572,15 +585,17 @@ export default function BookingsPage({
       setPreFilledTime(undefined); // Will use default time
       setShowDayDetailSidebar(false);
       setShowAddAppointmentModal(true);
+      openAddApptUrl();
     }
-  }, [selectedDate]);
+  }, [selectedDate, openAddApptUrl]);
 
   const handleOpenAddAppointmentModal = useCallback(() => {
     // Clear pre-filled values when opening normally
     setPreFilledDate(undefined);
     setPreFilledTime(undefined);
     setShowAddAppointmentModal(true);
-  }, []);
+    openAddApptUrl();
+  }, [openAddApptUrl]);
 
   // Check if all displayed (current tab) are selected
   const isAllSelected =
@@ -1048,11 +1063,12 @@ export default function BookingsPage({
 
       {/* Add Appointment Modal */}
       <AddAppointmentModal
-        isOpen={showAddAppointmentModal}
+        isOpen={showAddAppointmentModal || addApptOpenFromUrl}
         onClose={() => {
           setShowAddAppointmentModal(false);
           setPreFilledDate(undefined);
           setPreFilledTime(undefined);
+          closeAddApptUrl();
         }}
         onAppointmentCreated={() => {
           if (onRefreshAppointments) {

@@ -24,6 +24,7 @@ import {
   deleteCustomers,
 } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
+import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 import AddCustomerModal from "./AddCustomerModal";
 import CustomerDetailModal from "./CustomerDetailModal";
 import DeleteConfirmModal from "./DeleteConfirmModal";
@@ -60,8 +61,14 @@ export default function CustomersPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "recent" | "spent">("recent");
 
-  // Modal state
+  // Modal state. The add-customer modal also lives in the URL (`?modal=add-customer`) so a full
+  // reload reopens it and AddCustomerModal restores its saved draft.
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const {
+    isOpenFromUrl: addCustomerOpenFromUrl,
+    openModalUrl: openAddCustomerUrl,
+    closeModalUrl: closeAddCustomerUrl,
+  } = useReopenableModalUrl("add-customer");
   const [selectedCustomer, setSelectedCustomer] =
     useState<AdminCustomer | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -265,7 +272,10 @@ export default function CustomersPage({
         </div>
         {canEdit && (
           <button
-            onClick={() => setShowAddCustomerModal(true)}
+            onClick={() => {
+              setShowAddCustomerModal(true);
+              openAddCustomerUrl();
+            }}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"
           >
             <Plus className="w-5 h-5" />
@@ -447,7 +457,10 @@ export default function CustomersPage({
           </p>
           {!searchQuery && (
             <button
-              onClick={() => setShowAddCustomerModal(true)}
+              onClick={() => {
+                setShowAddCustomerModal(true);
+                openAddCustomerUrl();
+              }}
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -563,8 +576,11 @@ export default function CustomersPage({
 
       {/* Modals */}
       <AddCustomerModal
-        isOpen={showAddCustomerModal}
-        onClose={() => setShowAddCustomerModal(false)}
+        isOpen={showAddCustomerModal || addCustomerOpenFromUrl}
+        onClose={() => {
+          setShowAddCustomerModal(false);
+          closeAddCustomerUrl();
+        }}
         onCustomerCreated={() => {
           // Refresh customers, appointments, and properties when customer is created
           if (onRefreshCustomers) {

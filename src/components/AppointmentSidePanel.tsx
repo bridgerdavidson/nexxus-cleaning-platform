@@ -38,6 +38,8 @@ import PaymentMethodForm from "./PaymentMethodForm";
 import AppointmentCardManager from "./AppointmentCardManager";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 import JobPhotoLightbox from "./JobPhotoLightbox";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import DiscardChangesDialog from "./DiscardChangesDialog";
 
 interface CleanerFeedback {
   id: string;
@@ -387,6 +389,57 @@ export default function AppointmentSidePanel({
     }
   }, [isOpen]);
 
+  // Dirty = in EDIT mode AND an editable field differs from the loaded appointment values.
+  // In read-only/view mode this is always false, so closing a view-only panel never prompts.
+  // The baseline normalization here mirrors the load effect / handleCancelEdit exactly.
+  const isDirty = useMemo(() => {
+    if (!isEditing || !appointment) return false;
+    const baseline = {
+      scheduled_date: appointment.scheduled_date || "",
+      scheduled_time: appointment.scheduled_time?.slice(0, 5) || "",
+      service_type_id: appointment.service_type_id || "",
+      checklist_id: appointment.checklist_id || "",
+      total_price: appointment.total_price || 0,
+      price_override_enabled: appointment.price_override_enabled || false,
+      price_override_total:
+        appointment.price_override_total != null
+          ? appointment.price_override_total.toString()
+          : "",
+      special_requests: appointment.special_requests || "",
+      notes: appointment.notes || "",
+    };
+    return (
+      editedAppointment.scheduled_date !== baseline.scheduled_date ||
+      editedAppointment.scheduled_time !== baseline.scheduled_time ||
+      editedAppointment.service_type_id !== baseline.service_type_id ||
+      editedAppointment.checklist_id !== baseline.checklist_id ||
+      editedAppointment.total_price !== baseline.total_price ||
+      editedAppointment.price_override_enabled !==
+        baseline.price_override_enabled ||
+      editedAppointment.price_override_total !==
+        baseline.price_override_total ||
+      editedAppointment.special_requests !== baseline.special_requests ||
+      editedAppointment.notes !== baseline.notes
+    );
+  }, [isEditing, appointment, editedAppointment]);
+
+  const handleClose = () => {
+    setIsAnimating(false);
+    setTimeout(() => {
+      onClose();
+    }, 300); // match duration-300
+  };
+
+  // App-wide discard guard: protects only against losing UNSAVED EDITS. When dirty, any close
+  // request (backdrop / X / back / Cancel / Escape) surfaces the confirmation dialog first;
+  // a pristine or view-only panel closes silently. The guard owns Escape for this panel.
+  const guard = useDismissGuard({
+    isOpen,
+    isDirty,
+    isSubmitting: isSaving,
+    onConfirmClose: handleClose,
+  });
+
   if (!mounted || (!isOpen && !isAnimating) || !appointment) return null;
 
   const formatDateTime = (date: string, time: string) => {
@@ -539,22 +592,9 @@ export default function AppointmentSidePanel({
     setIsEditing(false);
   };
 
-  const handleClose = () => {
-    // Don't close if editing
-    if (isEditing) return;
-
-    setIsAnimating(false);
-    setTimeout(() => {
-      onClose();
-    }, 300); // match duration-300
-  };
-
   const handleBackdropClick = (e: React.MouseEvent) => {
-    // Don't close if editing
-    if (isEditing) return;
-
     if (e.target === e.currentTarget) {
-      handleClose();
+      guard.requestClose();
     }
   };
 
@@ -577,7 +617,7 @@ export default function AppointmentSidePanel({
           {/* Mobile: back arrow on the left + title */}
           <div className="flex items-center gap-3 lg:hidden">
             <button
-              onClick={handleClose}
+              onClick={guard.requestClose}
               className="-ml-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Back"
             >
@@ -591,7 +631,7 @@ export default function AppointmentSidePanel({
               Appointment Details
             </h2>
             <button
-              onClick={handleClose}
+              onClick={guard.requestClose}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               aria-label="Close"
             >
@@ -1368,6 +1408,12 @@ export default function AppointmentSidePanel({
         index={lightboxIndex ?? 0}
         onClose={() => setLightboxIndex(null)}
         appointmentId={appointment.id}
+      />
+      <DiscardChangesDialog
+        isOpen={guard.confirmOpen}
+        onConfirm={guard.confirmDiscard}
+        onCancel={guard.cancelDiscard}
+        zIndexClassName="z-[300]"
       />
     </>,
     document.body,
