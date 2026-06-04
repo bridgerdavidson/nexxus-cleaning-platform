@@ -1627,18 +1627,6 @@ function CleanerDashboardInner() {
         role="cleaner"
       />
 
-      {/* Side Panel (URL-backed, with by-id fallback for deep-links) */}
-      <AppointmentPanelHost
-        appointments={appointments as unknown as AppointmentCardData[]}
-        appointmentId={openAppointmentId}
-        isOpen={isAppointmentPanelOpen}
-        onClose={closeAppointment}
-        role="cleaner"
-        canEdit={false}
-        onStartJob={handleStartJob}
-        onCompleteJob={handleCompleteJob}
-        onRefreshAppointments={refetchAppointments}
-      />
           </>
         )}
       </div>
@@ -2002,6 +1990,20 @@ function CleanerDashboardInner() {
         tabs={allTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+      />
+
+      {/* Appointment drawer, mounted page-level so notification deep-links open
+          it over any tab (URL-backed, with by-id fallback). */}
+      <AppointmentPanelHost
+        appointments={appointments as unknown as AppointmentCardData[]}
+        appointmentId={openAppointmentId}
+        isOpen={isAppointmentPanelOpen}
+        onClose={closeAppointment}
+        role="cleaner"
+        canEdit={false}
+        onStartJob={handleStartJob}
+        onCompleteJob={handleCompleteJob}
+        onRefreshAppointments={refetchAppointments}
       />
     </div>
   );
