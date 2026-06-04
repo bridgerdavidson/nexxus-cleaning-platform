@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -40,6 +40,13 @@ interface ActionRequiredSectionProps {
   onReassign?: (item: AdminActionItem) => void;
   /** Defaults to true. Set to false to start collapsed on mobile. */
   defaultExpanded?: boolean;
+  /**
+   * Notification deep-link: when set to an appointment id present in this queue,
+   * auto-open the cleaner-assignment modal for it (force mode for a fully
+   * declined chain). Cleared via `onAssignHandled` once consumed.
+   */
+  assignAppointmentId?: string | null;
+  onAssignHandled?: () => void;
 }
 
 interface GroupHeaderProps {
@@ -372,6 +379,8 @@ export default function ActionRequiredSection({
   onAppointmentClick: _onAppointmentClick,
   onReassign,
   defaultExpanded = true,
+  assignAppointmentId,
+  onAssignHandled,
 }: ActionRequiredSectionProps) {
   const { orderedGroups, items, loading, refetch, acceptCounterProposal } =
     useAdminActionItems();
@@ -391,6 +400,21 @@ export default function ActionRequiredSection({
     }
     return [{ date: target.scheduled_date, time: target.scheduled_time }];
   }, [assignTarget, forceAssignTarget]);
+
+  // Notification "Assign cleaner" deep-link: open the assignment modal for the
+  // targeted appointment once it's present in the queue, then clear the intent.
+  useEffect(() => {
+    if (!assignAppointmentId) return;
+    for (const g of orderedGroups) {
+      const target = g.items.find((i) => i.id === assignAppointmentId);
+      if (target) {
+        if (g.reason === "awaiting_assignment") setAssignTarget(target);
+        else setForceAssignTarget(target);
+        break;
+      }
+    }
+    onAssignHandled?.();
+  }, [assignAppointmentId, orderedGroups, onAssignHandled]);
 
   if (loading) {
     return (

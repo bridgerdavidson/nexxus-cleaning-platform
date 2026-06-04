@@ -390,6 +390,7 @@ function HomeownerDashboardInner() {
                 className="inline-flex items-center gap-2 h-10 px-4 bg-primary-600 text-white text-sm font-semibold rounded-full shadow-sm hover:bg-primary-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2"
               />
             }
+            onOpenAppointment={(id) => openAppointment(id)}
           />
         </div>
 

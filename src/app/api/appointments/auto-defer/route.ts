@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 interface AutoDeferInput {
   organizationId: string;
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     // forever.
     let query = supabaseAdmin
       .from('appointment_routing_log')
-      .select('id, appointment_id, deadline_at, appointment:appointments!inner(id, organization_id)')
+      .select('id, appointment_id, cleaner_id, deadline_at, appointment:appointments!inner(id, organization_id)')
       .eq('response', 'pending')
       .lt('deadline_at', new Date().toISOString());
     if (appointmentId) {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
     type ExpiredRow = {
       id: string;
       appointment_id: string;
+      cleaner_id: string | null;
       appointment: { organization_id: string } |
                    { organization_id: string }[] | null;
     };
@@ -75,16 +77,22 @@ export async function POST(request: NextRequest) {
       });
       outcomes.push({ appointmentId: row.appointment_id, outcome: result.kind });
 
+      const deferCtx = await loadNotificationContext(supabaseAdmin, {
+        appointmentId: row.appointment_id,
+        cleanerId: row.cleaner_id,
+      });
       await recordNotificationEvent(supabaseAdmin, {
         event_type: 'cleaner_response_overdue',
         appointment_id: row.appointment_id,
         organization_id: organizationId,
+        payload: { ...deferCtx, audience: 'admin' },
       });
       if (result.kind === 'escalated') {
         await recordNotificationEvent(supabaseAdmin, {
           event_type: 'chain_exhausted',
           appointment_id: row.appointment_id,
           organization_id: organizationId,
+          payload: { ...deferCtx, audience: 'admin' },
         });
       }
     }

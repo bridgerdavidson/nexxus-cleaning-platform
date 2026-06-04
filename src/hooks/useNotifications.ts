@@ -71,8 +71,11 @@ export function useNotifications() {
       if (payload.eventType === 'INSERT') {
         const row = payload.new as Partial<NotificationItem> | undefined;
         if (row?.event_type) {
-          const d = describeNotification(row.event_type);
-          showToast(d.label, { variant: toastVariantForTone(d.tone) });
+          const d = describeNotification(row.event_type, row.payload);
+          showToast(d.title, {
+            variant: toastVariantForTone(d.tone),
+            description: d.detail,
+          });
         }
       }
       return { type: 'invalidate', keys: [queryKey] };
@@ -133,6 +136,52 @@ export function useNotifications() {
     [markReadMutation],
   );
 
+  const markManyRead = useCallback(
+    (ids: string[]) => {
+      if (ids.length > 0) markReadMutation.mutate(ids);
+    },
+    [markReadMutation],
+  );
+
+  // One-click accept of a cleaner's counter-proposed time, straight from the bell.
+  // The notification row carries the organization_id and (in its payload) the
+  // suggested_time_id, so no extra lookup is needed.
+  const acceptCounterMutation = useMutation<
+    unknown,
+    Error,
+    { appointmentId: string; organizationId: string; suggestedTimeId: string }
+  >({
+    mutationFn: async ({ appointmentId, organizationId, suggestedTimeId }) => {
+      const res = await fetch('/api/appointments/accept-counter-proposal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ appointmentId, organizationId, suggestedTimeId }),
+      });
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(e.error || 'Failed to accept the proposed time');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      showToast('Time confirmed', { variant: 'success' });
+      queryClient.invalidateQueries({ queryKey: keys.appointments.all });
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      showToast(err.message, { variant: 'error' });
+    },
+  });
+
+  const acceptCounterProposal = useCallback(
+    (args: { appointmentId: string; organizationId: string; suggestedTimeId: string }) =>
+      acceptCounterMutation.mutateAsync(args).catch(() => undefined),
+    [acceptCounterMutation],
+  );
+
   return {
     notifications: items,
     unreadCount,
@@ -140,5 +189,8 @@ export function useNotifications() {
     error: query.error?.message ?? null,
     markAllRead,
     markOneRead,
+    markManyRead,
+    acceptCounterProposal,
+    acceptCounterPending: acceptCounterMutation.isPending,
   };
 }
