@@ -12,6 +12,19 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import NotificationBell from "./NotificationBell";
+
+// Which tab each role's appointments live under, so clicking a notification
+// tied to an appointment jumps to the right place.
+const NOTIFICATION_APPOINTMENT_TAB: Record<
+  "homeowner" | "cleaner" | "manager" | "admin",
+  string
+> = {
+  admin: "bookings",
+  manager: "bookings",
+  cleaner: "jobs",
+  homeowner: "home",
+};
 
 interface Tab {
   id: string;
@@ -135,6 +148,14 @@ const TopBar: React.FC<TopBarProps> = ({
               {primaryAction}
               <span aria-hidden className="h-6 w-px bg-gray-200" />
             </div>
+          )}
+          {/* In-app notifications. Hidden during platform-admin "View as" for the
+              same reason as Messages below: the bell renders the admin's own feed,
+              not the tenant's. */}
+          {!impersonatingOrgId && (
+            <NotificationBell
+              onOpenAppointment={() => onTabChange(NOTIFICATION_APPOINTMENT_TAB[role])}
+            />
           )}
           {/* Messages is a per-user inbox (filters conversations by user.id), so it
               shows the platform admin's own messages — not the tenant's — while

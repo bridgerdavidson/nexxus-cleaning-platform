@@ -579,6 +579,29 @@ export function useAdminPayments() {
     },
   });
 
+  // Refund and chargeback settlements arrive async from Stripe webhooks. Refresh
+  // the payments list + stats so a refunded/disputed payment reflects live.
+  useSupabaseRealtimeSync({
+    channelName: `refunds:${orgId}`,
+    table: 'refunds',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payments.byOrg(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+  useSupabaseRealtimeSync({
+    channelName: `disputes:${orgId}`,
+    table: 'disputes',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payments.byOrg(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+
   return {
     payments: query.data ?? [],
     loading: query.isLoading,
@@ -652,6 +675,20 @@ export function useAdminPayouts() {
     },
   });
 
+  // Payout lifecycle (pending -> approved -> paid -> bank_paid) is driven by
+  // approvals + Stripe webhooks. Refresh the payouts list and the payment stats
+  // tile (pendingPayouts) so the admin sees status flips without reloading.
+  useSupabaseRealtimeSync({
+    channelName: `payouts:${orgId}`,
+    table: 'payouts',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payouts.byOrg(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+
   return {
     payouts: query.data ?? [],
     loading: query.isLoading,
@@ -711,6 +748,16 @@ export function useAdminInvoices() {
           : invoice.homeowner,
       })) as AdminInvoice[];
     },
+  });
+
+  // Invoice status (draft -> sent -> paid) and amount edits should reflect live
+  // across tabs / staff.
+  useSupabaseRealtimeSync({
+    channelName: `invoices:${orgId}`,
+    table: 'invoices',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({ type: 'invalidate', keys: [keys.invoices.byOrg(orgId)] }),
   });
 
   return {
