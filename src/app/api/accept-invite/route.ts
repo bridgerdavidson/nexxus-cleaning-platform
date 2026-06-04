@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { verifyAccessToken } from '@/lib/auth/verifyToken';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,17 +14,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify the token and get the user
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(accessToken);
+    // Verify the token and get the caller. Prefers local getClaims verification
+    // (no GoTrue /user round-trip on asymmetric signing keys), falling back to
+    // getUser otherwise.
+    const verified = await verifyAccessToken(supabaseAdmin, accessToken);
 
-    if (userError || !user) {
+    if (!verified) {
       return NextResponse.json(
         { success: false, error: 'Invalid or expired session. Please request a new invite.' },
         { status: 401 }
       );
     }
 
-    const email = user.email?.trim().toLowerCase();
+    const email = verified.email?.trim().toLowerCase();
     if (!email) {
       return NextResponse.json(
         { success: false, error: 'No email associated with this invite token.' },
@@ -120,7 +123,7 @@ export async function POST(request: NextRequest) {
     // mirrors user_profiles.role so the AuthContext fallback path (used when
     // the user_profiles SELECT errors/times out/aborts) returns the correct
     // role instead of defaulting to 'homeowner'.
-    const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
+    const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(verified.userId, {
       password,
       app_metadata: { role: userProfileRole },
       user_metadata: {
@@ -141,7 +144,7 @@ export async function POST(request: NextRequest) {
     const { error: profileError } = await supabaseAdmin
       .from('user_profiles')
       .upsert({
-        id: user.id,
+        id: verified.userId,
         email,
         first_name: firstName,
         last_name: lastName,
@@ -161,7 +164,7 @@ export async function POST(request: NextRequest) {
       .from('organization_members')
       .insert({
         organization_id: organizationId,
-        user_id: user.id,
+        user_id: verified.userId,
         role,
       });
 
@@ -177,7 +180,7 @@ export async function POST(request: NextRequest) {
       const { error: cleanerProfileError } = await supabaseAdmin
         .from('cleaner_profiles')
         .insert({
-          id: user.id,
+          id: verified.userId,
           organization_id: organizationId,
         });
 
@@ -193,7 +196,7 @@ export async function POST(request: NextRequest) {
         .from('manager_permissions')
         .upsert(
           {
-            manager_id: user.id,
+            manager_id: verified.userId,
             organization_id: organizationId,
             can_view_customers: true,
             can_edit_customers: true,

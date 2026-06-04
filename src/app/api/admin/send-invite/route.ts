@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-admin';
+import { verifyAccessToken } from '../../../../lib/auth/verifyToken';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,9 +15,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 });
     }
 
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    const verified = await verifyAccessToken(supabaseAdmin, token);
 
-    if (userError || !user) {
+    if (!verified) {
       return NextResponse.json(
         { success: false, error: 'Failed to get user' },
         { status: 401 }
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     const { data: membership, error: membershipError } = await supabaseAdmin
       .from('organization_members')
       .select('role')
-      .eq('user_id', user.id)
+      .eq('user_id', verified.userId)
       .eq('organization_id', organizationId)
       .maybeSingle();
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       const { data: managerPerms, error: permsError } = await supabaseAdmin
         .from('manager_permissions')
         .select('can_manage_cleaners')
-        .eq('manager_id', user.id)
+        .eq('manager_id', verified.userId)
         .eq('organization_id', organizationId)
         .maybeSingle();
 
@@ -234,7 +235,7 @@ export async function POST(request: NextRequest) {
         role,
         status: 'creating',
         accepted_at: null,
-        invited_by: user.id,
+        invited_by: verified.userId,
       })
       .select()
       .single();

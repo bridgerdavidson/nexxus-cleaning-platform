@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { verifyAccessToken } from '@/lib/auth/verifyToken';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { listSavedCards, detachPaymentMethod } from '@/lib/stripe/customers/homeowner';
 
@@ -12,16 +13,16 @@ import { listSavedCards, detachPaymentMethod } from '@/lib/stripe/customers/home
  *   DELETE → detach one of the caller's saved cards ({ payment_method_id })
  */
 async function resolveCustomerId(token: string): Promise<{ customerId: string | null; userId: string } | null> {
-  const { data: userData, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !userData?.user) return null;
+  const verified = await verifyAccessToken(supabaseAdmin, token);
+  if (!verified) return null;
   const { data: profile } = await supabaseAdmin
     .from('user_profiles')
     .select('stripe_customer_id')
-    .eq('id', userData.user.id)
+    .eq('id', verified.userId)
     .maybeSingle();
   return {
     customerId: (profile as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null,
-    userId: userData.user.id,
+    userId: verified.userId,
   };
 }
 
