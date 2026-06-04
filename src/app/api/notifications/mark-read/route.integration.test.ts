@@ -117,4 +117,29 @@ describe('POST /api/notifications/mark-read', () => {
     expect(status).toBe(200);
     expect(body.updated).toBe(0);
   });
+
+  it('rejects a malformed ids (bare string, not array) with 400 and does NOT mark all read', async () => {
+    const a = await seedNotification(org.organizationId, org.admin.userId);
+    const b = await seedNotification(org.organizationId, org.admin.userId);
+
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { ids: a }, // a bare string instead of [a] -- a client serialization bug
+    });
+
+    expect(status).toBe(400);
+    // The whole feed must NOT be cleared by a malformed request.
+    expect(await readDispatched(a)).toBeNull();
+    expect(await readDispatched(b)).toBeNull();
+  });
+
+  it('rejects an ids array containing a non-string with 400', async () => {
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { ids: ['ok', 123] },
+    });
+    expect(status).toBe(400);
+  });
 });

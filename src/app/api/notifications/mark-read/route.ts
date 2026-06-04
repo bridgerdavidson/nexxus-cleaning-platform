@@ -27,15 +27,28 @@ export async function POST(request: NextRequest) {
     const verified = await verifyAccessToken(supabaseAdmin, token);
     if (!verified) return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
 
-    const body = await request.json().catch(() => ({}));
-    const rawIds = (body as { ids?: unknown }).ids;
-    const ids = Array.isArray(rawIds)
-      ? rawIds.filter((v): v is string => typeof v === 'string')
-      : null;
+    const body = await request.json().catch(() => ({} as unknown));
 
-    // Nothing to do if an explicit (but empty) id list was sent.
-    if (ids && ids.length === 0) {
-      return NextResponse.json({ success: true, updated: 0 });
+    // Distinguish "ids absent" (intentional mark-all) from "ids present but
+    // malformed" (e.g. a client serialization bug sending a bare string). The
+    // latter must NOT silently fall through to mark-all and wipe the feed.
+    const hasIdsField =
+      typeof body === 'object' &&
+      body !== null &&
+      'ids' in body &&
+      (body as { ids?: unknown }).ids !== undefined;
+
+    let ids: string[] | null = null;
+    if (hasIdsField) {
+      const rawIds = (body as { ids?: unknown }).ids;
+      if (!Array.isArray(rawIds) || !rawIds.every((v) => typeof v === 'string')) {
+        return NextResponse.json({ error: 'ids must be an array of strings' }, { status: 400 });
+      }
+      // Explicit empty list: nothing to mark (do NOT fall through to mark-all).
+      if (rawIds.length === 0) {
+        return NextResponse.json({ success: true, updated: 0 });
+      }
+      ids = rawIds;
     }
 
     let query = supabaseAdmin
