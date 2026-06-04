@@ -1,13 +1,40 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { X, Users } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import { useAuth } from "../hooks/useAuth";
+import { useFormDraft } from "../hooks/useFormDraft";
+import { createDraftStore } from "@/lib/formDraft";
+import DiscardChangesDialog from "./DiscardChangesDialog";
 
 interface AddCleanerModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+// --- Reload-restore draft -----------------------------------------------------------
+// The add-cleaner form's in-progress input, persisted to sessionStorage so a full page
+// reload (or an accidental navigation and return) restores it. A 6h TTL + org check (in
+// the store) keep a draft from resurrecting stale or across tenants. Zero server cost.
+interface CleanerDraftBody {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+const INITIAL_CLEANER_DRAFT: CleanerDraftBody = {
+  firstName: "",
+  lastName: "",
+  email: "",
+};
+
+const cleanerDraftStore = createDraftStore<CleanerDraftBody>({
+  key: "nexxus.cleanerDraft.v1",
+  version: 1,
+  initial: INITIAL_CLEANER_DRAFT,
+});
 
 export default function AddCleanerModal({
   isOpen,
@@ -16,11 +43,47 @@ export default function AddCleanerModal({
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
 
+  const { currentOrganizationId } = useAuth();
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [emailError, setEmailError] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
+
+  // --- Reload-restore wiring --------------------------------------------------------
+  const persistEligible = true;
+
+  const draftBody = useMemo<CleanerDraftBody>(
+    () => ({ firstName, lastName, email }),
+    [firstName, lastName, email],
+  );
+
+  useFormDraft({
+    store: cleanerDraftStore,
+    orgId: currentOrganizationId,
+    isOpen,
+    eligible: persistEligible,
+    body: draftBody,
+  });
+
+  // Restore a saved draft once per open (after the org id resolves).
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      draftHydratedRef.current = false;
+      return;
+    }
+    if (draftHydratedRef.current || !persistEligible || !currentOrganizationId) {
+      return;
+    }
+    draftHydratedRef.current = true;
+    const draft = cleanerDraftStore.load(currentOrganizationId);
+    if (!draft) return;
+    setFirstName(draft.firstName);
+    setLastName(draft.lastName);
+    setEmail(draft.email);
+  }, [isOpen, persistEligible, currentOrganizationId]);
 
   // Email validation regex
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -70,6 +133,8 @@ export default function AddCleanerModal({
 
   // Reset form when modal closes
   const handleClose = () => {
+    // A deliberate close drops the saved draft (it only exists to survive a reload).
+    cleanerDraftStore.clear();
     setFirstName("");
     setLastName("");
     setEmail("");
@@ -78,14 +143,25 @@ export default function AddCleanerModal({
     onClose();
   };
 
+  const isDirty =
+    firstName.trim() !== "" ||
+    lastName.trim() !== "" ||
+    email.trim() !== "";
+  const guard = useDismissGuard({
+    isOpen,
+    isDirty,
+    onConfirmClose: handleClose,
+  });
+
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
-        onClick={handleClose}
+        onClick={guard.requestClose}
       />
 
       {/* Modal */}
@@ -93,7 +169,7 @@ export default function AddCleanerModal({
         <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 animate-slide-up">
           {/* Close button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
             aria-label="Close modal"
           >
@@ -196,7 +272,7 @@ export default function AddCleanerModal({
 
           {/* Cancel Button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="w-full bg-white border-2 border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors"
           >
             Cancel
@@ -204,5 +280,11 @@ export default function AddCleanerModal({
         </div>
       </div>
     </div>
+    <DiscardChangesDialog
+      isOpen={guard.confirmOpen}
+      onConfirm={guard.confirmDiscard}
+      onCancel={guard.cancelDiscard}
+    />
+    </>
   );
 }

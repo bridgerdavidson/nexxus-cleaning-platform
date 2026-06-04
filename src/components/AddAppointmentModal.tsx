@@ -27,6 +27,7 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useToast } from "../contexts/ToastContext";
 import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
 import type { ScheduleAppointment } from "../lib/appointmentConflicts";
 import { rankCleanersByAvailability } from "../lib/cleanerAvailability";
@@ -37,6 +38,12 @@ import PaymentMethodForm from "./PaymentMethodForm";
 import StatusBadge from "./StatusBadge";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
+import { OrgCardFormPanel } from "./OrgCardForm";
+import OrgCardPicker from "./OrgCardPicker";
+import DiscardChangesDialog from "./DiscardChangesDialog";
+import { useDismissGuard } from "../hooks/useDismissGuard";
+import { useFormDraft } from "../hooks/useFormDraft";
+import { createDraftStore } from "@/lib/formDraft";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { stripeNewChargeFlowUiEnabled, stripeSelfPayUiEnabled } from "@/lib/stripe/flags";
 
@@ -119,6 +126,63 @@ interface AddAppointmentModalProps {
   hidePriceOverride?: boolean; // Hide price override UI for homeowner role
 }
 
+// --- Reload-restore draft -----------------------------------------------------------
+// The booking wizard's in-progress state, persisted to sessionStorage so a full page reload
+// (or an accidental navigation and return) restores it. Selected entities are stored as whole
+// objects so hydration is a single setState batch. A 6h TTL + org check (in the store) keep a
+// draft from resurrecting stale or across tenants. Zero server/database cost.
+interface BookingDraftBody {
+  currentStep: number;
+  billTo: "homeowner" | "self";
+  selectedHomeowner: Homeowner | null;
+  selectedProperty: Property | null;
+  selectedServiceType: ServiceType | null;
+  selectedChecklist: ChecklistOption | null;
+  scheduledDate: string;
+  scheduledTime: string;
+  alternateSlots: SlotInput[];
+  specialRequests: string;
+  paymentSelection: string | null;
+  recurrenceType: RecurrenceType;
+  recurrenceInterval: number;
+  selectedDaysOfWeek: number[];
+  recurrenceEndType: "date" | "occurrences";
+  recurrenceEndDate: string;
+  recurrenceMaxOccurrences: number;
+  customPrice: string;
+  priceOverrideEnabled: boolean;
+  selectedCleaner: Cleaner | null;
+}
+
+const INITIAL_BOOKING_DRAFT: BookingDraftBody = {
+  currentStep: 1,
+  billTo: "homeowner",
+  selectedHomeowner: null,
+  selectedProperty: null,
+  selectedServiceType: null,
+  selectedChecklist: null,
+  scheduledDate: "",
+  scheduledTime: "",
+  alternateSlots: [],
+  specialRequests: "",
+  paymentSelection: null,
+  recurrenceType: "none",
+  recurrenceInterval: 1,
+  selectedDaysOfWeek: [],
+  recurrenceEndType: "date",
+  recurrenceEndDate: "",
+  recurrenceMaxOccurrences: 10,
+  customPrice: "",
+  priceOverrideEnabled: false,
+  selectedCleaner: null,
+};
+
+const bookingDraftStore = createDraftStore<BookingDraftBody>({
+  key: "nexxus.bookingDraft.v1",
+  version: 1,
+  initial: INITIAL_BOOKING_DRAFT,
+});
+
 export default function AddAppointmentModal({
   isOpen,
   onClose,
@@ -132,6 +196,7 @@ export default function AddAppointmentModal({
 }: AddAppointmentModalProps) {
   const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
+  const { showToast } = useToast();
 
   // Self-pay is gated behind the client flag AND the actor's role: owner/admin always,
   // or a manager only if they hold can_manage_payments. When this is false the modal
@@ -264,6 +329,10 @@ export default function AddAppointmentModal({
   const [orgCards, setOrgCards] = useState<OrgSavedCard[]>([]);
   const [orgCardsLoading, setOrgCardsLoading] = useState(false);
   const [orgCardsLoaded, setOrgCardsLoaded] = useState(false);
+  // Inline "add a company card" flow shown on the self-pay payment step when no card is on file.
+  const [addingOrgCard, setAddingOrgCard] = useState(false);
+  // Inline "change company card" panel (switch default / add / remove) on the self-pay payment step.
+  const [managingCard, setManagingCard] = useState(false);
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -275,6 +344,123 @@ export default function AddAppointmentModal({
       selectedServiceType.base_price + (selectedChecklist.price_adder || 0)
     );
   }, [selectedChecklist, selectedServiceType]);
+
+  // --- Reload-restore wiring --------------------------------------------------------
+  // Only the no-preselection full flow is persistable/restorable. Book-from-property and
+  // legacy preselection launches are excluded so a preselected draft never resurrects.
+  const persistEligible =
+    !preSelectedHomeownerId && !preSelectedPropertyId && !startOnDetailsStep;
+
+  const draftBody = useMemo<BookingDraftBody>(
+    () => ({
+      currentStep,
+      billTo,
+      selectedHomeowner,
+      selectedProperty,
+      selectedServiceType,
+      selectedChecklist,
+      scheduledDate,
+      scheduledTime,
+      alternateSlots,
+      specialRequests,
+      paymentSelection,
+      recurrenceType,
+      recurrenceInterval,
+      selectedDaysOfWeek,
+      recurrenceEndType,
+      recurrenceEndDate,
+      recurrenceMaxOccurrences,
+      customPrice,
+      priceOverrideEnabled,
+      selectedCleaner,
+    }),
+    [
+      currentStep,
+      billTo,
+      selectedHomeowner,
+      selectedProperty,
+      selectedServiceType,
+      selectedChecklist,
+      scheduledDate,
+      scheduledTime,
+      alternateSlots,
+      specialRequests,
+      paymentSelection,
+      recurrenceType,
+      recurrenceInterval,
+      selectedDaysOfWeek,
+      recurrenceEndType,
+      recurrenceEndDate,
+      recurrenceMaxOccurrences,
+      customPrice,
+      priceOverrideEnabled,
+      selectedCleaner,
+    ],
+  );
+
+  useFormDraft({
+    store: bookingDraftStore,
+    orgId: currentOrganizationId,
+    isOpen,
+    eligible: persistEligible,
+    body: draftBody,
+  });
+
+  // Restore a saved draft once per open (after the org id resolves). Selected objects restore
+  // directly; the service type's checklist + custom price are deferred to a second phase below
+  // because setting the service type triggers fetchChecklists, which auto-selects the first
+  // checklist (and recomputes the custom price) and would otherwise clobber the saved values.
+  const draftHydratedRef = useRef(false);
+  const pendingDraftRef = useRef<BookingDraftBody | null>(null);
+  useEffect(() => {
+    if (!isOpen) {
+      draftHydratedRef.current = false;
+      pendingDraftRef.current = null;
+      return;
+    }
+    if (draftHydratedRef.current || !persistEligible || !currentOrganizationId) {
+      return;
+    }
+    draftHydratedRef.current = true;
+    const draft = bookingDraftStore.load(currentOrganizationId);
+    if (!draft) return;
+    setBillTo(draft.billTo);
+    setSelectedHomeowner(draft.selectedHomeowner);
+    setSelectedProperty(draft.selectedProperty);
+    setScheduledDate(draft.scheduledDate);
+    setScheduledTime(draft.scheduledTime);
+    setAlternateSlots(draft.alternateSlots);
+    setSpecialRequests(draft.specialRequests);
+    setPaymentSelection(draft.paymentSelection);
+    setRecurrenceType(draft.recurrenceType);
+    setRecurrenceInterval(draft.recurrenceInterval);
+    setSelectedDaysOfWeek(draft.selectedDaysOfWeek);
+    setRecurrenceEndType(draft.recurrenceEndType);
+    setRecurrenceEndDate(draft.recurrenceEndDate);
+    setRecurrenceMaxOccurrences(draft.recurrenceMaxOccurrences);
+    setPriceOverrideEnabled(draft.priceOverrideEnabled);
+    setSelectedCleaner(draft.selectedCleaner);
+    setCurrentStep(draft.currentStep);
+    // Triggers fetchChecklists; the second phase re-applies the saved checklist + price.
+    setSelectedServiceType(draft.selectedServiceType);
+    pendingDraftRef.current = draft;
+  }, [isOpen, persistEligible, currentOrganizationId]);
+
+  // Second phase: re-apply the saved checklist + custom price once the restored service type's
+  // checklists have loaded, overriding fetchChecklists' auto-select of the first option.
+  useEffect(() => {
+    const draft = pendingDraftRef.current;
+    if (!draft) return;
+    if (draft.selectedServiceType && checklistsLoading) return; // wait for the list to load
+    if (draft.selectedChecklist) {
+      const match = checklists.find((c) => c.id === draft.selectedChecklist!.id);
+      if (match) setSelectedChecklist(match);
+    }
+    if (draft.priceOverrideEnabled && draft.customPrice) {
+      setCustomPrice(draft.customPrice);
+    }
+    pendingDraftRef.current = null;
+  }, [checklists, checklistsLoading]);
 
   // Fetch and set pre-selected homeowner
   const fetchPreSelectedHomeowner = async () => {
@@ -1018,6 +1204,10 @@ export default function AddAppointmentModal({
           // so leave the homeowner card unset in self-pay mode.
           payment_method_id: selfPay ? null : paymentMethodId,
           is_self_pay: selfPay,
+          // Self-pay holds the company card immediately below, but that call is best-effort. Set
+          // authorize_at so the JIT cron (authorize-due) is a real backstop if the immediate hold
+          // fails or times out — without it, a self-pay one-off would never be retried.
+          authorize_at: selfPay ? new Date().toISOString() : null,
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
           response_deadline: responseDeadline,
@@ -1074,37 +1264,62 @@ export default function AddAppointmentModal({
       // authorizeAppointmentAuto → authorizeSelfPayAppointment). The appointment already exists,
       // so an auth failure is surfaced but doesn't undo creation.
       if ((paymentMethodId || selfPay) && insertData?.id) {
+        // Best-effort immediate hold. The appointment already exists and the JIT cron is the
+        // backstop, so distinguish a DEFINITIVE failure (a real decline we can surface) from an
+        // INDETERMINATE one (a slow / timed-out request that returns no usable body) and never
+        // show a scary error for the latter.
+        let definitiveError: string | null = null;
+        let placed = false;
         try {
           const token = await getAccessToken();
-          const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ organization_id: currentOrganizationId }),
-          });
-          const authResult = await authRes.json().catch(() => ({}));
-          if (!authRes.ok || (authResult.code !== "authorized" && authResult.code !== "requires_action")) {
-            // Refresh the list (the appointment exists) but keep the modal open so the admin
-            // sees why the hold didn't land and can retry from the appointment.
-            onAppointmentCreated();
-            setError(
-              `Appointment created, but the card hold failed: ${
-                authResult.message || authResult.error || "authorization error"
-              }. You can retry from the appointment.`,
-            );
-            setIsCreating(false);
-            return;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          let authResult: { code?: string; message?: string } | null = null;
+          try {
+            const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({ organization_id: currentOrganizationId }),
+              signal: controller.signal,
+            });
+            authResult = await authRes.json().catch(() => null);
+          } finally {
+            clearTimeout(timeoutId);
           }
-        } catch (authErr) {
+          const code = authResult?.code;
+          if (code === "authorized" || code === "requires_action") {
+            placed = true;
+          } else if (code && authResult?.message) {
+            // A real, actionable decline (declined / no_org_card / cleaner_not_payable / not_authorizable).
+            definitiveError = authResult.message;
+          }
+          // Otherwise (empty / unparseable body, e.g. a timeout-shaped 504) leave both false so we
+          // fall into the calm "pending" path below.
+        } catch {
+          // Abort (our timeout) or a network error: indeterminate, treat as pending.
+        }
+
+        if (definitiveError) {
+          // Keep the modal open so the admin sees the real reason and can act.
           onAppointmentCreated();
           setError(
-            `Appointment created, but the card hold failed: ${
-              authErr instanceof Error ? authErr.message : "authorization error"
-            }. You can retry from the appointment.`,
+            `Appointment created, but the card hold didn't go through: ${definitiveError} You can place the hold from the appointment.`,
           );
           setIsCreating(false);
+          return;
+        }
+        if (!placed) {
+          // The hold is still being placed and the JIT cron will finish it; close cleanly with a
+          // calm note instead of a red error implying the booking broke.
+          onAppointmentCreated();
+          showToast("Appointment created", {
+            variant: "success",
+            description: "We're placing the card hold; it will be confirmed automatically.",
+          });
+          handleClose();
           return;
         }
       }
@@ -1138,12 +1353,16 @@ export default function AddAppointmentModal({
   };
 
   const handleClose = () => {
+    // A deliberate close drops the saved draft (it only exists to survive a reload).
+    bookingDraftStore.clear();
     // Reset all state
     setCurrentStep(1);
     setMobileSubStep("homeowner");
     setBillTo("homeowner");
     setOrgCards([]);
     setOrgCardsLoaded(false);
+    setAddingOrgCard(false);
+    setManagingCard(false);
     // Effective flags: book-from-property fully resets (it re-prefills on each open).
     if (!preHomeownerId) {
       setSelectedHomeowner(null);
@@ -1179,6 +1398,29 @@ export default function AddAppointmentModal({
     setError(null);
     onClose();
   };
+
+  // The modal is "dirty" once the user has engaged any content field. Pre-filled selections
+  // (homeowner/property in a preselection launch) and pre-filled date/time are excluded, so a
+  // freshly-opened pre-filled modal never prompts before the user has typed anything.
+  const isBookingDirty =
+    !!selectedServiceType ||
+    !!selectedCleaner ||
+    specialRequests.trim() !== "" ||
+    (scheduledDate !== "" && scheduledDate !== (preFilledDate ?? "")) ||
+    (scheduledTime !== "" && scheduledTime !== (preFilledTime ?? "")) ||
+    paymentSelection !== null ||
+    priceOverrideEnabled ||
+    alternateSlots.length > 0 ||
+    recurrenceType !== "none" ||
+    (persistEligible &&
+      (!!selectedHomeowner || !!selectedProperty || billTo !== "homeowner"));
+
+  const guard = useDismissGuard({
+    isOpen,
+    isDirty: isBookingDirty,
+    isSubmitting: isCreating,
+    onConfirmClose: handleClose,
+  });
 
   const handleNext = () => {
     setError(null);
@@ -1316,6 +1558,7 @@ export default function AddAppointmentModal({
   if (typeof document === "undefined") return null;
 
   return createPortal(
+    <>
     <div
       ref={overlayScrollRef}
       className="fixed inset-0 z-[300] flex"
@@ -1323,7 +1566,7 @@ export default function AddAppointmentModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-        onClick={handleClose}
+        onClick={guard.requestClose}
       />
 
       {/* Modal */}
@@ -1335,7 +1578,7 @@ export default function AddAppointmentModal({
         <div className="flex-shrink-0 relative bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 sm:px-8 pt-[max(env(safe-area-inset-top),1.25rem)] pb-5">
           {/* Close button */}
           <button
-            onClick={handleClose}
+            onClick={guard.requestClose}
             className="absolute top-[max(env(safe-area-inset-top),0.75rem)] right-3 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
             aria-label="Close modal"
           >
@@ -2528,38 +2771,78 @@ export default function AddAppointmentModal({
                           <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
                         </div>
                       ) : orgDefaultCard ? (
-                        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <CreditCard className="h-5 w-5 text-gray-500 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 capitalize">
-                                {orgDefaultCard.brand} •••• {orgDefaultCard.last4}
-                                {orgDefaultCard.isDefault && (
-                                  <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
-                                    Default
-                                  </span>
-                                )}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Company card · Expires{" "}
-                                {String(orgDefaultCard.expMonth).padStart(2, "0")}
-                                /{orgDefaultCard.expYear}
-                              </p>
+                        managingCard ? (
+                          <OrgCardPicker
+                            organizationId={currentOrganizationId ?? ""}
+                            cards={orgCards}
+                            loading={orgCardsLoading}
+                            onChanged={async () => {
+                              setOrgCardsLoaded(false);
+                              await fetchOrgCards();
+                            }}
+                            onClose={() => setManagingCard(false)}
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <CreditCard className="h-5 w-5 text-gray-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 capitalize">
+                                  {orgDefaultCard.brand} •••• {orgDefaultCard.last4}
+                                  {orgDefaultCard.isDefault && (
+                                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                                      Default
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Company card · Expires{" "}
+                                  {String(orgDefaultCard.expMonth).padStart(2, "0")}
+                                  /{orgDefaultCard.expYear}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setManagingCard(true)}
+                                className="flex-shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                              >
+                                Change
+                              </button>
                             </div>
                           </div>
-                        </div>
+                        )
+                      ) : addingOrgCard ? (
+                        <OrgCardFormPanel
+                          organizationId={currentOrganizationId ?? ""}
+                          onCancel={() => setAddingOrgCard(false)}
+                          onSaved={async () => {
+                            setAddingOrgCard(false);
+                            setOrgCardsLoaded(false);
+                            await fetchOrgCards();
+                          }}
+                        />
                       ) : (
                         <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
                           <Building2 className="mx-auto h-8 w-8 text-gray-300" />
                           <p className="mx-auto mt-3 max-w-sm text-sm text-gray-500">
                             No company card on file
                           </p>
-                          <Link
-                            href="/settings/payments"
+                          <button
+                            type="button"
+                            onClick={() => setAddingOrgCard(true)}
                             className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
                           >
                             Add a company card
-                          </Link>
+                          </button>
+                          <p className="mt-3 text-xs text-gray-400">
+                            or{" "}
+                            <Link
+                              href="/settings/payments"
+                              className="font-medium text-gray-500 underline hover:text-gray-700"
+                            >
+                              manage cards in settings
+                            </Link>
+                          </p>
                         </div>
                       )}
                     </div>
@@ -2681,7 +2964,7 @@ export default function AddAppointmentModal({
                   {/* Cancel — hidden on mobile when on property sub-step */}
                   <button
                     type="button"
-                    onClick={handleClose}
+                    onClick={guard.requestClose}
                     className={`${
                       !preHomeownerId &&
                       !prePropertyId &&
@@ -2791,7 +3074,14 @@ export default function AddAppointmentModal({
             </div>
           </div>
         </div>
-    </div>,
+    </div>
+    <DiscardChangesDialog
+      isOpen={guard.confirmOpen}
+      onConfirm={guard.confirmDiscard}
+      onCancel={guard.cancelDiscard}
+      zIndexClassName="z-[400]"
+    />
+    </>,
     document.body,
   );
 }

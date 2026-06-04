@@ -104,6 +104,43 @@ describe('POST /api/cron/authorize-due', () => {
     expect((apptRow as { authorization_status: string }).authorization_status).toBe('authorized');
   });
 
+  it('recovers an appointment orphaned in "authorizing" (a prior immediate hold that died mid-flight)', async () => {
+    await makeTenantReady('stuck');
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'confirmed',
+    });
+    // authorize_at in the past + status 'authorizing' = an immediate hold whose request died
+    // before resolving. The cron must pick it up (re-running is idempotency-key safe).
+    await db
+      .from('appointments')
+      .update({
+        payment_method_id: 'pm_stuck',
+        authorize_at: new Date(Date.now() - 60_000).toISOString(),
+        authorization_status: 'authorizing',
+      })
+      .eq('id', appt.id);
+
+    const { status, body } = await callRoute<{ success: boolean; authorized: number }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+    expect(body.authorized).toBeGreaterThanOrEqual(1);
+
+    const { data: apptRow } = await db
+      .from('appointments')
+      .select('authorization_status')
+      .eq('id', appt.id)
+      .single();
+    expect((apptRow as { authorization_status: string }).authorization_status).toBe('authorized');
+  });
+
   it('re-authorizes a hold nearing expiry and bumps reauth_count', async () => {
     await makeTenantReady('reauth');
     const db = createTestSupabaseClient();
