@@ -61,13 +61,22 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
     },
   });
 
-  // Live checklists scoped to the active service type. checklist_line_items
-  // are not in the publication (back-office table); local mutations call the
-  // applyLineItem* helpers below, and full refetch picks up cross-tab edits.
+  // Live checklists scoped to the active service type.
   useSupabaseRealtimeSync({
     channelName: `checklists:${serviceTypeId ?? ''}`,
     table: 'checklists',
     filter: serviceTypeId ? `service_type_id=eq.${serviceTypeId}` : undefined,
+    enabled: !!serviceTypeId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+
+  // checklist_line_items carries only checklist_id (no service_type_id), so we
+  // can't DB-filter by the active service type. Subscribe unfiltered + invalidate
+  // the active query; RLS applies, and refetch re-reads only this service type's
+  // checklists. Local edits still use the applyLineItem* helpers for instant UI.
+  useSupabaseRealtimeSync({
+    channelName: `checklist_line_items:${serviceTypeId ?? ''}`,
+    table: 'checklist_line_items',
     enabled: !!serviceTypeId,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });

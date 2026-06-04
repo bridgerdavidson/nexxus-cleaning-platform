@@ -5,6 +5,7 @@ import { loadConnectAndInitialize } from '@stripe/connect-js';
 import type { StripeConnectInstance } from '@stripe/connect-js';
 import { useAuth } from './useAuth';
 import { supabase } from '../lib/supabase';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
@@ -182,6 +183,20 @@ export function useTenantConnect(): TenantConnectState {
     void loadStatus();
     void loadDrift();
   }, [enabled, loadStatus, loadDrift]);
+
+  // Drift events are written by the account.updated webhook + refresh-status and
+  // the nightly reconcile cron. Subscribe so the drift banner appears/clears live
+  // for owner/admin without a manual refresh. RLS scopes events to the org.
+  useSupabaseRealtimeSync({
+    channelName: `connect_drift:${currentOrganizationId ?? ''}`,
+    table: 'connect_account_drift_events',
+    filter: currentOrganizationId ? `organization_id=eq.${currentOrganizationId}` : undefined,
+    enabled: enabled && !!currentOrganizationId,
+    onEvent: () => {
+      void loadDrift();
+      void loadStatus();
+    },
+  });
 
   useEffect(() => {
     if (!enabled) return;

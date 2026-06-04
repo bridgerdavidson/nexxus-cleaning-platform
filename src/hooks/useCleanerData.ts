@@ -634,6 +634,25 @@ export function useCleanerStripeSummary() {
     },
   });
 
+  // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven
+  // by approvals + Stripe webhooks on the payouts table. Refresh the cleaner's
+  // earnings summary + history + stats tiles so the dashboard updates live.
+  useSupabaseRealtimeSync({
+    channelName: `payouts:cleaner:${userId}`,
+    table: 'payouts',
+    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [
+        keys.cleanerEarnings.summary(userId),
+        ['cleaner-earnings', 'history', userId],
+        keys.stats.cleaner(userId),
+        keys.payouts.byCleaner(userId),
+      ],
+    }),
+  });
+
   const data = query.data ?? {
     inStripe: 0,
     latestBankPayoutAmount: null,
@@ -799,6 +818,17 @@ export function useCleanerPhotos() {
           : photo.appointment,
       })) as CleanerPhoto[];
     },
+  });
+
+  // job_photos carries only appointment_id (no org/cleaner column), so we can't
+  // DB-filter. Subscribe unfiltered + invalidate: Supabase realtime applies RLS,
+  // so the cleaner only receives events for their own appointments' photos.
+  // Lets uploads from the field appear without a manual refresh.
+  useSupabaseRealtimeSync({
+    channelName: `job_photos:cleaner:${userId}`,
+    table: 'job_photos',
+    enabled: !!userId,
+    onEvent: () => ({ type: 'invalidate', keys: [['job-photos', 'cleaner', userId]] }),
   });
 
   return {
