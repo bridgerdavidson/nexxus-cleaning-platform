@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createExpressDashboardLoginLink } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { verifyAccessToken } from '@/lib/auth/verifyToken';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
@@ -15,8 +16,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 });
     }
 
-    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !authUser) {
+    const verified = await verifyAccessToken(supabaseAdmin, token);
+    if (!verified) {
       return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
     }
 
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required field: cleaner_id' }, { status: 400 });
     }
 
-    if (authUser.id !== cleaner_id) {
+    if (verified.userId !== cleaner_id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

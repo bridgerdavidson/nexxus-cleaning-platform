@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { verifyAccessToken } from '@/lib/auth/verifyToken';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,17 +14,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve the auth user from the invite token
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(accessToken);
+    // Resolve the caller from the invite token. Prefers local getClaims
+    // verification (no GoTrue /user round-trip on asymmetric signing keys).
+    const verified = await verifyAccessToken(supabaseAdmin, accessToken);
 
-    if (userError || !user) {
+    if (!verified) {
       return NextResponse.json(
         { success: false, status: 'invalid', message: 'Invalid or expired invite token. Please request a new invite.' },
         { status: 401 }
       );
     }
 
-    const email = user.email?.trim().toLowerCase();
+    const email = verified.email?.trim().toLowerCase();
     if (!email) {
       return NextResponse.json(
         { success: false, status: 'invalid', message: 'No email associated with this invite token.' },

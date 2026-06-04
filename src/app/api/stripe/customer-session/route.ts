@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { verifyAccessToken } from '@/lib/auth/verifyToken';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import {
   getOrCreateStripeCustomer,
@@ -26,16 +27,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing authorization token' }, { status: 401 });
     }
 
-    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
-    if (userError || !userData?.user) {
+    const verified = await verifyAccessToken(supabaseAdmin, token);
+    if (!verified) {
       return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
     }
-    const user = userData.user;
 
     const { data: profileRow } = await supabaseAdmin
       .from('user_profiles')
       .select('email, first_name, last_name, stripe_customer_id')
-      .eq('id', user.id)
+      .eq('id', verified.userId)
       .maybeSingle();
     if (!profileRow) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const name = `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || 'Customer';
     const customer = await getOrCreateStripeCustomer(profile.email, name, profile.stripe_customer_id);
     if (customer.id !== profile.stripe_customer_id) {
-      await supabaseAdmin.from('user_profiles').update({ stripe_customer_id: customer.id }).eq('id', user.id);
+      await supabaseAdmin.from('user_profiles').update({ stripe_customer_id: customer.id }).eq('id', verified.userId);
     }
 
     const session = await createHomeownerCustomerSession(customer.id);
