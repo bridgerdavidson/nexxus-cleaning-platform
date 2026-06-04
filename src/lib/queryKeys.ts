@@ -49,6 +49,9 @@ export const keys = {
   messages: {
     byConversation: (convId: string) => ['messages', 'conversation', convId] as const,
   },
+  notifications: {
+    byUser: (userId: string) => ['notifications', 'user', userId] as const,
+  },
   stats: {
     admin: (orgId: string) => ['stats', 'admin', orgId] as const,
     cleaner: (cleanerId: string) => ['stats', 'cleaner', cleanerId] as const,

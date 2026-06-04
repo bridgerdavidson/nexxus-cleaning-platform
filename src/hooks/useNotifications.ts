@@ -1,0 +1,144 @@
+'use client';
+
+import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './useAuth';
+import { useToast } from '../contexts/ToastContext';
+import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
+import { keys } from '../lib/queryKeys';
+import { describeNotification, toastVariantForTone } from '../lib/notifications/labels';
+
+export interface NotificationItem {
+  id: string;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  appointment_id: string | null;
+  organization_id: string;
+  created_at: string;
+  in_app_dispatched_at: string | null;
+}
+
+const PAGE_SIZE = 30;
+
+// Stable empty reference so unreadCount's useMemo doesn't recompute every render
+// while the query is still loading (query.data is undefined).
+const EMPTY_ITEMS: NotificationItem[] = [];
+
+/**
+ * The user's in-app notification feed, backed by the notification_events outbox.
+ *
+ * RLS scopes rows to recipient_user_id = auth.uid(), so the query is per-user
+ * (not org-scoped). Realtime keeps it live: an INSERT also fires a toast, and
+ * both INSERT and UPDATE invalidate the (newest-first) list so it re-sorts
+ * correctly rather than appending to the end. Read state is the
+ * in_app_dispatched_at timestamp, flipped via the service-role mark-read route
+ * (the table has no client UPDATE policy).
+ */
+export function useNotifications() {
+  const { user, accessToken } = useAuth();
+  const userId = user?.id ?? '';
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+
+  const queryKey = keys.notifications.byUser(userId);
+
+  const query = useQuery({
+    queryKey,
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('notification_events')
+        .select(
+          'id, event_type, payload, appointment_id, organization_id, created_at, in_app_dispatched_at',
+        )
+        .eq('recipient_user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+      if (error) throw error;
+      return (data ?? []) as NotificationItem[];
+    },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `notifications:${userId}`,
+    table: 'notification_events',
+    filter: userId ? `recipient_user_id=eq.${userId}` : undefined,
+    events: ['INSERT', 'UPDATE'],
+    enabled: !!userId,
+    onEvent: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
+      if (payload.eventType === 'INSERT') {
+        const row = payload.new as Partial<NotificationItem> | undefined;
+        if (row?.event_type) {
+          const d = describeNotification(row.event_type);
+          showToast(d.label, { variant: toastVariantForTone(d.tone) });
+        }
+      }
+      return { type: 'invalidate', keys: [queryKey] };
+    },
+  });
+
+  const items = query.data ?? EMPTY_ITEMS;
+  const unreadCount = useMemo(
+    () => items.filter((n) => !n.in_app_dispatched_at).length,
+    [items],
+  );
+
+  // Mark read via the service-role route. Optimistically flip in_app_dispatched_at
+  // so the badge/highlight clears instantly; roll back on error; reconcile on settle.
+  const markReadMutation = useMutation<{ updated: number }, Error, string[] | undefined, { prev?: NotificationItem[] }>({
+    mutationFn: async (ids) => {
+      const res = await fetch('/api/notifications/mark-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify(ids ? { ids } : {}),
+      });
+      if (!res.ok) throw new Error('Failed to mark notifications read');
+      return res.json();
+    },
+    onMutate: async (ids) => {
+      await queryClient.cancelQueries({ queryKey });
+      const prev = queryClient.getQueryData<NotificationItem[]>(queryKey);
+      const stamp = new Date().toISOString();
+      queryClient.setQueryData<NotificationItem[]>(queryKey, (old) =>
+        (old ?? []).map((n) =>
+          (!ids || ids.includes(n.id)) && !n.in_app_dispatched_at
+            ? { ...n, in_app_dispatched_at: stamp }
+            : n,
+        ),
+      );
+      return { prev };
+    },
+    onError: (_err, _ids, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(queryKey, ctx.prev);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const markAllRead = useCallback(() => {
+    if (unreadCount === 0) return;
+    markReadMutation.mutate(undefined);
+  }, [markReadMutation, unreadCount]);
+
+  const markOneRead = useCallback(
+    (id: string) => {
+      markReadMutation.mutate([id]);
+    },
+    [markReadMutation],
+  );
+
+  return {
+    notifications: items,
+    unreadCount,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    markAllRead,
+    markOneRead,
+  };
+}
