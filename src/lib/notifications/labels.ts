@@ -6,42 +6,246 @@ import {
   Clock,
   AlertTriangle,
   AlarmClock,
+  Banknote,
+  PlayCircle,
+  Sparkles,
+  ShieldAlert,
+  CreditCard,
   Bell,
   type LucideIcon,
 } from 'lucide-react';
+import { formatTimeTo12h, formatDateShort } from '../formatTime';
 import type { NotificationEventType } from './eventTypes';
 
 /**
- * Presentation metadata for each notification event_type: a short human label,
- * a tone (drives the icon color in the bell), and a lucide icon. Kept pure (no
- * React) so it's unit-testable and shared by the bell list + the live toast.
- *
- * No em dashes in labels (user-facing copy rule).
+ * Presentation metadata for a notification row: a two-line label (bold `title`
+ * + muted `detail`), a tone (drives the bell icon color), and a lucide icon.
+ * Pure (no React) so it's unit-testable and shared by the bell list + the live
+ * toast. `describeNotification` reads the denormalized fields written into the
+ * row's `payload` at emit time; every field is optional, so a row with no
+ * context still renders sensible generic copy. No em dashes (user-facing copy).
  */
 export type NotificationTone = 'success' | 'error' | 'warning' | 'info';
 
 export interface NotificationDescriptor {
-  label: string;
+  title: string;
+  detail?: string;
   tone: NotificationTone;
   icon: LucideIcon;
 }
 
-const DESCRIPTORS: Record<NotificationEventType, NotificationDescriptor> = {
-  homeowner_request_submitted: { label: 'New booking request', tone: 'info', icon: CalendarPlus },
-  cleaner_assigned: { label: 'You were assigned a job', tone: 'info', icon: UserCheck },
-  cleaner_force_assigned: { label: 'A job was assigned to you', tone: 'info', icon: UserCheck },
-  cleaner_accepted: { label: 'Cleaner accepted the job', tone: 'success', icon: CheckCircle },
-  cleaner_declined: { label: 'Cleaner declined the job', tone: 'error', icon: XCircle },
-  cleaner_counter_proposed: { label: 'Cleaner proposed a new time', tone: 'warning', icon: Clock },
-  chain_exhausted: { label: 'All cleaners declined, action needed', tone: 'error', icon: AlertTriangle },
-  cleaner_response_overdue: { label: 'Cleaner response overdue', tone: 'warning', icon: AlarmClock },
-};
+type Payload = Record<string, unknown> | null | undefined;
 
-const FALLBACK: NotificationDescriptor = { label: 'Update', tone: 'info', icon: Bell };
+function str(payload: Payload, key: string): string | undefined {
+  const v = payload?.[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
 
-/** Describe any event_type for display. Unknown/future types get a safe fallback. */
-export function describeNotification(eventType: string): NotificationDescriptor {
-  return DESCRIPTORS[eventType as NotificationEventType] ?? FALLBACK;
+function num(payload: Payload, key: string): number | undefined {
+  const v = payload?.[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+function money(cents: number | undefined): string | undefined {
+  if (cents === undefined) return undefined;
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/** "MM/DD/YY at h:mm AM/PM", or whichever half is present. */
+function whenLabel(date?: string, time?: string): string | undefined {
+  const d = date ? formatDateShort(date) : '';
+  const t = time ? formatTimeTo12h(time) : '';
+  if (d && t) return `${d} at ${t}`;
+  return d || t || undefined;
+}
+
+function joinDetail(...parts: (string | undefined)[]): string | undefined {
+  const kept = parts.filter((p): p is string => !!p && p.trim().length > 0);
+  return kept.length ? kept.join(' • ') : undefined;
+}
+
+function dueDateLabel(iso?: string): string | undefined {
+  if (!iso) return undefined;
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return undefined;
+  return new Date(ms).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function build(eventType: NotificationEventType, payload: Payload): NotificationDescriptor {
+  const cleaner = str(payload, 'cleaner_name');
+  const nextCleaner = str(payload, 'next_cleaner_name');
+  const customer = str(payload, 'customer_name');
+  const property = str(payload, 'property_label');
+  const date = str(payload, 'scheduled_date');
+  const time = str(payload, 'scheduled_time');
+  const when = whenLabel(date, time);
+  const dateShort = date ? formatDateShort(date) : undefined;
+  const timeShort = time ? formatTimeTo12h(time) : undefined;
+  const amount = money(num(payload, 'amount_cents'));
+
+  switch (eventType) {
+    case 'homeowner_request_submitted':
+      return {
+        title: customer ? `New booking request from ${customer}` : 'New booking request',
+        detail: joinDetail(property, when),
+        tone: 'info',
+        icon: CalendarPlus,
+      };
+
+    case 'cleaner_assigned':
+      return {
+        title: 'New job assigned to you',
+        detail: joinDetail(property, when),
+        tone: 'info',
+        icon: UserCheck,
+      };
+
+    case 'cleaner_force_assigned':
+      return {
+        title: 'A job was assigned to you',
+        detail: joinDetail(property, when),
+        tone: 'info',
+        icon: UserCheck,
+      };
+
+    case 'cleaner_accepted': {
+      const forHomeowner = str(payload, 'audience') === 'homeowner';
+      if (forHomeowner) {
+        return {
+          title: cleaner ? `${cleaner} is confirmed for your cleaning` : 'Your cleaning is confirmed',
+          detail: when,
+          tone: 'success',
+          icon: CheckCircle,
+        };
+      }
+      return {
+        title: cleaner ? `${cleaner} accepted a job` : 'Cleaner accepted the job',
+        detail: joinDetail(when, property),
+        tone: 'success',
+        icon: CheckCircle,
+      };
+    }
+
+    case 'cleaner_declined': {
+      const reassigned = !!nextCleaner;
+      return {
+        title: cleaner ? `${cleaner} declined a job` : 'Cleaner declined the job',
+        detail: reassigned ? `Reassigned to ${nextCleaner}` : 'Needs a new cleaner',
+        tone: reassigned ? 'warning' : 'error',
+        icon: XCircle,
+      };
+    }
+
+    case 'chain_exhausted':
+      return {
+        title: 'All cleaners declined, action needed',
+        detail: joinDetail(property, when),
+        tone: 'error',
+        icon: AlertTriangle,
+      };
+
+    case 'cleaner_counter_proposed': {
+      const suggested = whenLabel(str(payload, 'suggested_date'), str(payload, 'suggested_time'));
+      const count = num(payload, 'suggested_times_count');
+      const detail =
+        suggested ??
+        (count && count > 0
+          ? `${count} alternative ${count === 1 ? 'time' : 'times'}`
+          : undefined);
+      return {
+        title: cleaner ? `${cleaner} proposed a new time` : 'Cleaner proposed a new time',
+        detail,
+        tone: 'warning',
+        icon: Clock,
+      };
+    }
+
+    case 'cleaner_response_overdue':
+      return {
+        title: cleaner ? `${cleaner} hasn't responded` : 'Cleaner response overdue',
+        detail: joinDetail('Response overdue', property),
+        tone: 'warning',
+        icon: AlarmClock,
+      };
+
+    case 'cleaner_paid':
+      return {
+        title: amount ? `You were paid ${amount}` : 'You were paid',
+        detail: joinDetail(property, dateShort),
+        tone: 'success',
+        icon: Banknote,
+      };
+
+    case 'job_started':
+      return {
+        title: cleaner ? `${cleaner} started the cleaning` : 'Cleaning started',
+        detail: joinDetail(property, timeShort),
+        tone: 'info',
+        icon: PlayCircle,
+      };
+
+    case 'job_completed':
+      return {
+        title: cleaner ? `${cleaner} finished the cleaning` : 'Cleaning completed',
+        detail: property,
+        tone: 'success',
+        icon: Sparkles,
+      };
+
+    case 'dispute_opened': {
+      const due = dueDateLabel(str(payload, 'evidence_due_by'));
+      return {
+        title: 'Payment dispute opened',
+        detail: joinDetail(amount, due ? `respond by ${due}` : undefined),
+        tone: 'error',
+        icon: ShieldAlert,
+      };
+    }
+
+    case 'authorization_failed':
+      return {
+        title: customer ? `Card hold failed for ${customer}` : 'Card hold failed',
+        detail: joinDetail(property, amount),
+        tone: 'error',
+        icon: CreditCard,
+      };
+
+    default:
+      return FALLBACK;
+  }
+}
+
+const FALLBACK: NotificationDescriptor = { title: 'Update', tone: 'info', icon: Bell };
+
+const KNOWN_TYPES = new Set<string>([
+  'homeowner_request_submitted',
+  'cleaner_assigned',
+  'cleaner_force_assigned',
+  'cleaner_accepted',
+  'cleaner_declined',
+  'chain_exhausted',
+  'cleaner_counter_proposed',
+  'cleaner_response_overdue',
+  'cleaner_paid',
+  'job_started',
+  'job_completed',
+  'dispute_opened',
+  'authorization_failed',
+]);
+
+/**
+ * Describe a notification for display. Unknown/future event types get a safe
+ * fallback so an unrecognized row never crashes the bell.
+ */
+export function describeNotification(
+  eventType: string,
+  payload?: Payload,
+): NotificationDescriptor {
+  if (!KNOWN_TYPES.has(eventType)) return FALLBACK;
+  return build(eventType as NotificationEventType, payload);
 }
 
 const TONE_TO_TOAST: Record<NotificationTone, 'success' | 'error' | 'info'> = {

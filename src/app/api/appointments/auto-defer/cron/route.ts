@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 export const runtime = 'nodejs';
 
@@ -22,13 +23,14 @@ export async function POST(request: NextRequest) {
 
   const { data: expired } = await supabaseAdmin
     .from('appointment_routing_log')
-    .select('id, appointment_id, appointments!inner(organization_id)')
+    .select('id, appointment_id, cleaner_id, appointments!inner(organization_id)')
     .eq('response', 'pending')
     .lt('deadline_at', new Date().toISOString());
 
   type ExpiredRow = {
     id: string;
     appointment_id: string;
+    cleaner_id: string | null;
     appointments: { organization_id: string } | { organization_id: string }[] | null;
   };
 
@@ -61,16 +63,22 @@ export async function POST(request: NextRequest) {
     });
     outcomes.push({ appointmentId: row.appointment_id, outcome: outcome.kind });
 
+    const deferCtx = await loadNotificationContext(supabaseAdmin, {
+      appointmentId: row.appointment_id,
+      cleanerId: row.cleaner_id,
+    });
     await recordNotificationEvent(supabaseAdmin, {
       event_type: 'cleaner_response_overdue',
       appointment_id: row.appointment_id,
       organization_id: organizationId,
+      payload: { ...deferCtx, audience: 'admin' },
     });
     if (outcome.kind === 'escalated') {
       await recordNotificationEvent(supabaseAdmin, {
         event_type: 'chain_exhausted',
         appointment_id: row.appointment_id,
         organization_id: organizationId,
+        payload: { ...deferCtx, audience: 'admin' },
       });
     }
   }

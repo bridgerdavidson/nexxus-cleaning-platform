@@ -10,6 +10,7 @@ import { formatTimeTo12h } from "../lib/formatTime";
 import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
+import { useAppointmentById } from "../hooks/useAppointmentById";
 
 interface AppointmentPanelHostProps {
   appointments: AppointmentCardData[];
@@ -27,6 +28,9 @@ interface AppointmentPanelHostProps {
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
   /** Triggered when the panel asks to reschedule a rejected appointment. */
   onRescheduleRejected?: (apt: AppointmentCardData) => void;
+  /** Cleaner job actions (forwarded to the side panel for role="cleaner"). */
+  onStartJob?: (appointmentId: string) => void;
+  onCompleteJob?: (appointmentId: string) => void;
 }
 
 /**
@@ -49,6 +53,8 @@ export default function AppointmentPanelHost({
   onRefreshAppointments,
   onAppointmentUpdated,
   onRescheduleRejected,
+  onStartJob,
+  onCompleteJob,
 }: AppointmentPanelHostProps) {
   const { currentOrganizationId, currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
@@ -60,10 +66,17 @@ export default function AppointmentPanelHost({
     (currentOrgRole === "manager" && !!permissions?.can_manage_payments);
   const newChargeFlow = stripeNewChargeFlowUiEnabled() && canFeeCancel;
 
-  const appointment = useMemo(() => {
+  const inList = useMemo(() => {
     if (!appointmentId) return null;
     return appointments.find((a) => a.id === appointmentId) ?? null;
   }, [appointments, appointmentId]);
+
+  // Notification deep-link fallback: if the target isn't in the loaded list,
+  // fetch it by id so the drawer still opens. Disabled (no query) on the common
+  // in-list path.
+  const needsFetch = isOpen && !!appointmentId && !inList;
+  const { data: fetched } = useAppointmentById(needsFetch ? appointmentId : null);
+  const appointment = inList ?? fetched ?? null;
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -170,6 +183,8 @@ export default function AppointmentPanelHost({
           canEdit && onDeleteAppointment ? handleDeleteFromPanel : undefined
         }
         onReschedule={canReschedule ? handleRescheduleFromPanel : undefined}
+        onStartJob={onStartJob}
+        onCompleteJob={onCompleteJob}
         role={role}
         canEdit={canEdit}
         canApproveDecline={canApproveDecline}

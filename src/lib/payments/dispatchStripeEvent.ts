@@ -16,6 +16,8 @@ import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { settleSelfPay } from '@/lib/payments/settleSelfPay';
 import { reversePlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from '@/lib/payments/events';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 import { mapSubscriptionStatus } from '@/lib/payments/orgBilling';
 
 export async function dispatchStripeEvent(
@@ -522,7 +524,24 @@ async function handleChargeDisputeCreated(
     amount: dispute.amount,
     payload: { dispute_id: dispute.id, reason: dispute.reason, evidence_due_by: evidenceDueBy },
   });
-  // TODO(ops): notify the tenant admin with the evidence due-by date (alerting channel).
+
+  // Alert the tenant admins in-app, with the evidence due-by date.
+  if (payment.appointment_id) {
+    const ctx = await loadNotificationContext(supabase, {
+      appointmentId: payment.appointment_id,
+    });
+    await recordNotificationEvent(supabase, {
+      event_type: 'dispute_opened',
+      appointment_id: payment.appointment_id,
+      organization_id: payment.organization_id,
+      payload: {
+        ...ctx,
+        audience: 'admin',
+        amount_cents: dispute.amount,
+        evidence_due_by: evidenceDueBy ?? undefined,
+      },
+    });
+  }
 }
 
 /**
@@ -763,6 +782,44 @@ async function handlePayoutPaid(
     console.warn('payout.paid: no eligible payout rows updated for cleaner:', cleaner.id, 'payout:', payout.id);
   } else {
     console.log(`payout.paid: marked ${count} row(s) as bank_paid for cleaner ${cleaner.id}`);
+    await notifyCleanerPaid(supabase, cleaner.id, payout.id);
+  }
+}
+
+/**
+ * Emit a `cleaner_paid` in-app notification for each payout row this Stripe
+ * payout just settled to the cleaner's bank. Best-effort; runs after the rows
+ * are marked bank_paid (every settled row carries this payout's stripe_payout_id).
+ */
+async function notifyCleanerPaid(
+  supabase: SupabaseClient,
+  cleanerId: string,
+  payoutId: string,
+): Promise<void> {
+  const { data: rows } = await supabase
+    .from('payouts')
+    .select('appointment_id, amount, organization_id')
+    .eq('cleaner_id', cleanerId)
+    .eq('stripe_payout_id', payoutId)
+    .eq('status', 'bank_paid');
+  for (const r of (rows ?? []) as Array<{
+    appointment_id: string | null;
+    amount: number | string | null;
+    organization_id: string | null;
+  }>) {
+    if (!r.appointment_id || !r.organization_id) continue;
+    const ctx = await loadNotificationContext(supabase, { appointmentId: r.appointment_id });
+    await recordNotificationEvent(supabase, {
+      event_type: 'cleaner_paid',
+      appointment_id: r.appointment_id,
+      organization_id: r.organization_id,
+      recipient_user_id: cleanerId,
+      payload: {
+        ...ctx,
+        audience: 'cleaner',
+        amount_cents: Math.round(Number(r.amount ?? 0) * 100),
+      },
+    });
   }
 }
 

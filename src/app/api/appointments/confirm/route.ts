@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { formatTimeTo12h } from '@/lib/formatTime';
+import { formatTimeTo12h, formatDateShort } from '@/lib/formatTime';
 import { declineReasonLabel, type DeclineReason } from '@/types';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
 import {
@@ -9,6 +9,7 @@ import {
   usesRequestState,
 } from '@/lib/appointments/flowType';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { authorizeAppointmentAuto } from '@/lib/payments/authorizeDispatch';
 
@@ -49,12 +50,6 @@ function resolveAction(input: ConfirmAppointmentInput): ConfirmAction | null {
   if (input.confirmed === true) return 'accept';
   if (input.confirmed === false) return 'counter_propose';
   return null;
-}
-
-function formatDateShort(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const twoDigitYear = year % 100;
-  return `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${twoDigitYear.toString().padStart(2, '0')}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -244,19 +239,37 @@ export async function POST(request: NextRequest) {
       });
 
       // Notify both the homeowner (their appointment is confirmed) and admins.
-      await recordNotificationEvent(supabaseAdmin, {
-        event_type: 'cleaner_accepted',
-        appointment_id: appointmentId,
-        organization_id: organizationId,
-        recipient_user_id: appointment.homeowner_id as string,
-        payload: { scheduled_date: acceptedDate, scheduled_time: acceptedTime },
+      // The responding cleaner is the one accepting; enrich with their name +
+      // property so each audience gets a descriptive line.
+      const acceptCtx = await loadNotificationContext(supabaseAdmin, {
+        appointmentId,
+        cleanerId,
       });
+      if (appointment.homeowner_id) {
+        await recordNotificationEvent(supabaseAdmin, {
+          event_type: 'cleaner_accepted',
+          appointment_id: appointmentId,
+          organization_id: organizationId,
+          recipient_user_id: appointment.homeowner_id as string,
+          payload: {
+            ...acceptCtx,
+            audience: 'homeowner',
+            scheduled_date: acceptedDate,
+            scheduled_time: acceptedTime,
+          },
+        });
+      }
       await recordNotificationEvent(supabaseAdmin, {
         event_type: 'cleaner_accepted',
         appointment_id: appointmentId,
         organization_id: organizationId,
         // null recipient → fans out to all admins
-        payload: { scheduled_date: acceptedDate, scheduled_time: acceptedTime },
+        payload: {
+          ...acceptCtx,
+          audience: 'admin',
+          scheduled_date: acceptedDate,
+          scheduled_time: acceptedTime,
+        },
       });
 
       return NextResponse.json({ success: true, message: 'Appointment confirmed successfully' });
@@ -366,16 +379,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Suggested times/windows only apply to counter-proposals; declines never write them.
+    // Capture the first inserted suggested-time row so the admin can one-click
+    // accept it straight from the notification bell.
+    let primarySuggestedTime:
+      | { id: string; suggested_date: string; suggested_time: string }
+      | null = null;
     if (action === 'counter_propose' && feedback?.suggestedTimes && feedback.suggestedTimes.length > 0) {
       const suggestedTimeRows = feedback.suggestedTimes.map((st) => ({
         feedback_id: (feedbackData as { id: string }).id,
         suggested_date: st.date,
         suggested_time: st.time,
       }));
-      const { error: timesError } = await supabaseAdmin
+      const { data: insertedTimes, error: timesError } = await supabaseAdmin
         .from('cleaner_suggested_times')
-        .insert(suggestedTimeRows);
+        .insert(suggestedTimeRows)
+        .select('id, suggested_date, suggested_time');
       if (timesError) console.error('Error inserting suggested times:', timesError);
+      const rows = (insertedTimes ?? []) as Array<{
+        id: string;
+        suggested_date: string;
+        suggested_time: string;
+      }>;
+      if (rows.length > 0) primarySuggestedTime = rows[0];
     }
 
     if (action === 'counter_propose' && feedback?.suggestedWindows && feedback.suggestedWindows.length > 0) {
@@ -462,28 +487,51 @@ export async function POST(request: NextRequest) {
       routingOutcome = outcome.kind;
 
       // Decline event always fires; if the chain exhausts we also emit a
-      // chain_exhausted urgent signal.
+      // chain_exhausted urgent signal. Enrich with the decliner's name and the
+      // reassignment target (when the chain advanced to another cleaner).
+      const nextCleanerId = outcome.kind === 'assigned' ? outcome.cleanerId : undefined;
+      const declineCtx = await loadNotificationContext(supabaseAdmin, {
+        appointmentId,
+        cleanerId,
+        nextCleanerId,
+      });
       await recordNotificationEvent(supabaseAdmin, {
         event_type: 'cleaner_declined',
         appointment_id: appointmentId,
         organization_id: organizationId,
-        payload: { decline_reason: reasonText, routing_outcome: outcome.kind },
+        payload: {
+          ...declineCtx,
+          audience: 'admin',
+          decline_reason: reasonText,
+          routing_outcome: outcome.kind,
+        },
       });
       if (outcome.kind === 'escalated') {
         await recordNotificationEvent(supabaseAdmin, {
           event_type: 'chain_exhausted',
           appointment_id: appointmentId,
           organization_id: organizationId,
+          payload: { ...declineCtx, audience: 'admin' },
         });
       }
     } else if (action === 'counter_propose') {
+      const counterCtx = await loadNotificationContext(supabaseAdmin, {
+        appointmentId,
+        cleanerId,
+      });
       await recordNotificationEvent(supabaseAdmin, {
         event_type: 'cleaner_counter_proposed',
         appointment_id: appointmentId,
         organization_id: organizationId,
         payload: {
+          ...counterCtx,
+          audience: 'admin',
           suggested_times_count: feedback?.suggestedTimes?.length ?? 0,
           suggested_windows_count: feedback?.suggestedWindows?.length ?? 0,
+          // Enables the bell's one-click "Accept {date} {time}" button.
+          suggested_time_id: primarySuggestedTime?.id,
+          suggested_date: primarySuggestedTime?.suggested_date,
+          suggested_time: primarySuggestedTime?.suggested_time,
         },
       });
     }

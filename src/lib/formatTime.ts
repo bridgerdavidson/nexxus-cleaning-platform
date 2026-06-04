@@ -16,6 +16,21 @@ export function formatTimeTo12h(timeStr: string): string {
 }
 
 /**
+ * Format a date (YYYY-MM-DD) to a short "MM/DD/YY" string. Parses the parts
+ * manually so it never shifts across a timezone boundary the way `new Date(str)`
+ * can. Returns an empty string for malformed input.
+ */
+export function formatDateShort(dateStr: string): string {
+  if (!dateStr || typeof dateStr !== "string") return "";
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return "";
+  const twoDigitYear = year % 100;
+  return `${month.toString().padStart(2, "0")}/${day
+    .toString()
+    .padStart(2, "0")}/${twoDigitYear.toString().padStart(2, "0")}`;
+}
+
+/**
  * Format date (YYYY-MM-DD) and time (HH:mm or HH:mm:ss) to "Mon DD, YYYY at h:mm AM/PM".
  */
 export function formatDateTimeTo12h(date: string, time: string): string {
