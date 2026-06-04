@@ -402,7 +402,9 @@ export default function ActionRequiredSection({
   }, [assignTarget, forceAssignTarget]);
 
   // Notification "Assign cleaner" deep-link: open the assignment modal for the
-  // targeted appointment once it's present in the queue, then clear the intent.
+  // targeted appointment once it's present in the queue. Clear the intent ONLY
+  // after a target is found/opened, so a click that lands before the queue has
+  // loaded is still honored when the data arrives (rather than dropped).
   useEffect(() => {
     if (!assignAppointmentId) return;
     for (const g of orderedGroups) {
@@ -410,10 +412,10 @@ export default function ActionRequiredSection({
       if (target) {
         if (g.reason === "awaiting_assignment") setAssignTarget(target);
         else setForceAssignTarget(target);
+        onAssignHandled?.();
         break;
       }
     }
-    onAssignHandled?.();
   }, [assignAppointmentId, orderedGroups, onAssignHandled]);
 
   if (loading) {
