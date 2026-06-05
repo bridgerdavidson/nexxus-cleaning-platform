@@ -31,6 +31,9 @@ export async function dispatchStripeEvent(
     case 'payment_intent.payment_failed':
       await handlePaymentIntentFailed(supabase, event.data.object as Stripe.PaymentIntent);
       break;
+    case 'payment_intent.processing':
+      await handlePaymentIntentProcessing(supabase, event.data.object as Stripe.PaymentIntent);
+      break;
     case 'payment_intent.canceled':
       await handlePaymentIntentCanceled(supabase, event.data.object as Stripe.PaymentIntent);
       break;
@@ -285,6 +288,28 @@ async function handlePaymentIntentFailed(
   }
 
   console.log('Payment marked as failed for appointment:', appointmentId);
+}
+
+/**
+ * Handle payment_intent.processing — a bank (ACH) debit was submitted and is clearing (~4
+ * business days until payment_intent.succeeded). Mirror it onto the revenue row so the cleaner's
+ * "Awaiting customer payment" view and the reconcile sweep treat it as in-flight, not stuck or
+ * failed. Cards never enter `processing`. Guarded to `pending`/`processing` so it can never
+ * regress a row that already settled (paid) or failed.
+ */
+async function handlePaymentIntentProcessing(
+  supabase: SupabaseClient,
+  paymentIntent: Stripe.PaymentIntent,
+) {
+  const appointmentId = paymentIntent.metadata?.appointment_id;
+  if (!appointmentId) return;
+  await supabase
+    .from('payments')
+    .update({ status: 'processing', payment_intent_status: paymentIntent.status })
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .eq('payment_type', 'revenue')
+    .in('status', ['pending', 'processing']);
+  console.log('Payment marked as processing (ACH clearing) for appointment:', appointmentId);
 }
 
 /**
