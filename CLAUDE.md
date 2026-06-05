@@ -155,7 +155,7 @@ A large number of routes under `src/app/api/` and corresponding pages (e.g. `cle
 - `api/appointments/confirm`, `api/recurring-appointments`
 - `api/payments/record`, `api/payouts/approve`, `api/invoices/create`
 - `api/stripe/{create-setup-intent,confirm-setup-intent,create-payment-intent,get-payment-method,webhook}`
-- `api/stripe/connect/{account-status,balance-summary,create-account,login-link,onboarding-link,reconcile-payouts}`
+- `api/stripe/connect/{account-status,create-account,login-link,onboarding-link,reconcile-payouts}`
 - `api/jobs/[appointmentId]/photos`, `api/properties/[propertyId]/upload-photo`, `api/user/upload-avatar`
 
 ### Stripe (`src/lib/stripe.ts` + `src/lib/stripe/flags.ts`)
