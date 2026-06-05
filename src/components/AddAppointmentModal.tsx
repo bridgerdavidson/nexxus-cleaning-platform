@@ -1244,6 +1244,16 @@ export default function AddAppointmentModal({
           const code = authResult?.code;
           if (code === "authorized" || code === "requires_action") {
             placed = true;
+          } else if (code === "deferred_ach") {
+            // Bank (ACH) intentionally places NO hold — it's charged when the job is completed. This
+            // is a clean success, not a failure: close with a calm note instead of a scary error.
+            onAppointmentCreated();
+            showToast("Appointment created", {
+              variant: "success",
+              description: "The bank account will be charged when the job is completed.",
+            });
+            handleClose();
+            return;
           } else if (code && authResult?.message) {
             // A real, actionable decline (declined / no_org_card / cleaner_not_payable / not_authorizable).
             definitiveError = authResult.message;
