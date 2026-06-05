@@ -67,23 +67,77 @@ export async function createTenantConnectAccount(
 }
 
 /**
- * Create an Account Session for embedded onboarding (and post-onboarding account
- * management) of a tenant's connected account. Returns the client secret the
- * frontend passes to `loadConnectAndInitialize`.
+ * Who the Account Session is for:
+ *  - `owner`  — the org owner: full setup (onboarding + account management +
+ *               notification banner + balances + payouts + payments).
+ *  - `viewer` — a non-owner admin / manager-with-can_manage_payments: read-only
+ *               financial visibility (balances + payouts + payments) with every
+ *               management feature disabled and NO setup surfaces. Only the owner
+ *               connects the business and edits the bank account.
+ */
+export type TenantAccountSessionScope = 'owner' | 'viewer';
+
+/**
+ * Create an Account Session for a tenant's connected account, scoped by role.
+ * Returns the client secret the frontend passes to `loadConnectAndInitialize`.
+ *
+ * Viewers see the org's balance / payouts / payments without their own Stripe
+ * login: the AccountSession authorizes those read components, which don't require
+ * the account holder to authenticate. (`disable_stripe_user_authentication` is
+ * deliberately NOT set — Stripe only allows it for Custom accounts, and these
+ * tenants are Express, so passing it 500s.) Onboarding / account-management /
+ * external-account collection are owner-only.
  */
 export async function createTenantAccountSession(
   accountId: string,
+  scope: TenantAccountSessionScope = 'owner',
 ): Promise<Stripe.AccountSession> {
   const stripe = getStripe();
+
+  if (scope === 'owner') {
+    return stripe.accountSessions.create({
+      account: accountId,
+      components: {
+        account_onboarding: { enabled: true },
+        account_management: { enabled: true },
+        notification_banner: { enabled: true },
+        balances: { enabled: true },
+        payouts: { enabled: true },
+        payments: { enabled: true },
+      },
+    });
+  }
 
   return stripe.accountSessions.create({
     account: accountId,
     components: {
-      account_onboarding: { enabled: true },
-      account_management: { enabled: true },
-      balances: { enabled: true },
-      payouts: { enabled: true },
-      notification_banner: { enabled: true },
+      balances: {
+        enabled: true,
+        features: {
+          edit_payout_schedule: false,
+          instant_payouts: false,
+          standard_payouts: false,
+          external_account_collection: false,
+        },
+      },
+      payouts: {
+        enabled: true,
+        features: {
+          edit_payout_schedule: false,
+          instant_payouts: false,
+          standard_payouts: false,
+          external_account_collection: false,
+        },
+      },
+      payments: {
+        enabled: true,
+        features: {
+          refund_management: false,
+          dispute_management: false,
+          capture_payments: false,
+          destination_on_behalf_of_charge_management: false,
+        },
+      },
     },
   });
 }

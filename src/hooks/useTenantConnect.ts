@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadConnectAndInitialize } from '@stripe/connect-js';
 import type { StripeConnectInstance } from '@stripe/connect-js';
 import { useAuth } from './useAuth';
+import { useManagerPermissions } from './useManagerPermissions';
 import { supabase } from '../lib/supabase';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 
@@ -43,8 +44,15 @@ export interface TenantConnectDrift {
 }
 
 export interface TenantConnectState {
-  /** True when the tenant Connect UI should render (flag on, admin, publishable key present). */
+  /** True when the tenant Connect UI should render (flag on, permitted role, publishable key present). */
   enabled: boolean;
+  /**
+   * True only for the org OWNER — the single role allowed to run Stripe setup
+   * (onboarding, account management, bank-account connection). Non-owner admins
+   * and managers-with-can_manage_payments get `enabled` (read-only financials)
+   * but not `canSetup`.
+   */
+  canSetup: boolean;
   /** The initialized Stripe Connect instance for embedded components, or null until ready. */
   connectInstance: StripeConnectInstance | null;
   initError: string | null;
@@ -68,12 +76,18 @@ export interface TenantConnectState {
  */
 export function useTenantConnect(): TenantConnectState {
   const { currentOrganizationId, currentOrgRole } = useAuth();
-  // Gate by OrgRole (owner|admin) to match the backend (requireOrgAuth allows owner+admin).
-  // `user.role` is the UserRole and has no `owner`, so an owner whose UserRole isn't `admin`
-  // would otherwise be locked out of onboarding their own org.
+  const { permissions } = useManagerPermissions();
+  // Only the OWNER may run setup. Financial *visibility* is broader: owner, any
+  // admin, and managers with can_manage_payments. The backend mirrors this
+  // (start route: owner → setup session; admin/manager-with-perm → viewer session).
+  const canSetup = currentOrgRole === 'owner';
+  const canViewFinancials =
+    currentOrgRole === 'owner' ||
+    currentOrgRole === 'admin' ||
+    (currentOrgRole === 'manager' && !!permissions?.can_manage_payments);
   const enabled =
     !!currentOrganizationId &&
-    (currentOrgRole === 'owner' || currentOrgRole === 'admin') &&
+    canViewFinancials &&
     tenantConnectUiEnabled() &&
     !!PUBLISHABLE_KEY;
 
@@ -241,5 +255,5 @@ export function useTenantConnect(): TenantConnectState {
     }
   }, [enabled, currentOrganizationId]);
 
-  return { enabled, connectInstance, initError, loading, status, statusLoading, drift, refreshStatus };
+  return { enabled, canSetup, connectInstance, initError, loading, status, statusLoading, drift, refreshStatus };
 }

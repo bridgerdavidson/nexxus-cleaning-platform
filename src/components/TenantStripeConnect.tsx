@@ -73,6 +73,7 @@ export function shouldShowConnectSkeleton(args: {
 export default function TenantStripeConnect() {
   const {
     enabled,
+    canSetup,
     connectInstance,
     initError,
     loading,
@@ -138,6 +139,34 @@ export default function TenantStripeConnect() {
     return <StripeFramedCard loading />;
   }
 
+  // Viewer (non-owner admin / manager-with-can_manage_payments): read-only
+  // financials. No onboarding, account management, or notification banner — those
+  // are setup surfaces the owner owns. The viewer Account Session only enables
+  // balances/payouts/payments, so we mount just the payouts table (it carries the
+  // balance + payout history). Before the owner connects the business there is no
+  // session to show, so render a "being set up" state instead of the iframe.
+  if (!canSetup) {
+    if (!isActive) {
+      return (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
+          <CreditCard className="mb-3 h-8 w-8 text-gray-300" />
+          <p className="max-w-sm text-sm text-gray-500">
+            Your organization owner is still setting up payments. Your balance and
+            payouts will show up here once the business is connected.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <StripeFramedCard>
+        <ConnectComponentsProvider connectInstance={connectInstance!}>
+          <ConnectPayouts />
+        </ConnectComponentsProvider>
+      </StripeFramedCard>
+    );
+  }
+
+  // Owner: full setup experience.
   return (
     <>
       {isPending && (status?.requirementsDue?.length ?? 0) > 0 && (

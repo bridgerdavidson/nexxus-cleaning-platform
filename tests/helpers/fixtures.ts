@@ -184,6 +184,71 @@ export async function addOwnerToOrg(organizationId: string): Promise<OwnerMember
   };
 }
 
+export interface ManagerMemberHandle extends TestUserHandle {
+  cleanup(): Promise<void>;
+}
+
+const MANAGER_PERMISSION_KEYS = [
+  'can_view_customers',
+  'can_edit_customers',
+  'can_view_bookings',
+  'can_edit_bookings',
+  'can_approve_decline_bookings',
+  'can_manage_cleaners',
+  'can_view_properties',
+  'can_edit_properties',
+  'can_view_analytics',
+  'can_view_payments',
+  'can_manage_payments',
+  'can_view_messages',
+  'can_view_services',
+  'can_manage_services',
+  'can_handle_requests',
+] as const;
+
+/**
+ * Adds an OrgRole 'manager' member (UserRole 'manager') to an existing org plus a
+ * `manager_permissions` row. All flags default false; pass the ones you want true.
+ * Returns a handle whose cleanup deletes the auth user (the org-delete cascade in
+ * withTestOrg removes the membership + permissions rows).
+ */
+export async function addManagerToOrg(
+  organizationId: string,
+  permissions: Partial<Record<(typeof MANAGER_PERMISSION_KEYS)[number], boolean>> = {},
+): Promise<ManagerMemberHandle> {
+  const db = createTestSupabaseClient();
+  const uniq = randomUUID().slice(0, 8);
+  const email = `manager-${uniq}@test.local`;
+  const manager = await createAuthUser(email, 'manager', 'Manager');
+
+  const { error: profileErr } = await db.from('user_profiles').upsert(
+    { id: manager.id, email, first_name: 'Mara', last_name: 'Manager', role: 'manager' },
+    { onConflict: 'id' },
+  );
+  if (profileErr) throw new Error(`seed manager profile failed: ${profileErr.message}`);
+
+  const { error: memErr } = await db
+    .from('organization_members')
+    .insert({ user_id: manager.id, organization_id: organizationId, role: 'manager' });
+  if (memErr) throw new Error(`seed manager member failed: ${memErr.message}`);
+
+  const flags = Object.fromEntries(MANAGER_PERMISSION_KEYS.map((k) => [k, false]));
+  const { error: permErr } = await db
+    .from('manager_permissions')
+    .insert({ manager_id: manager.id, organization_id: organizationId, ...flags, ...permissions });
+  if (permErr) throw new Error(`seed manager_permissions failed: ${permErr.message}`);
+
+  return {
+    userId: manager.id,
+    email,
+    password: PASSWORD,
+    accessToken: manager.accessToken,
+    async cleanup() {
+      await db.auth.admin.deleteUser(manager.id);
+    },
+  };
+}
+
 export interface PlatformAdminFixture {
   userId: string;
   email: string;
