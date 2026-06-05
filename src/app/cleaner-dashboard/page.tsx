@@ -38,6 +38,7 @@ import {
   useCleanerProjectedEarnings,
   useCleanerStripeSummary,
   useCleanerEarningsHistory,
+  useCleanerAwaitingPayments,
   updateAppointmentStatus,
 } from "../../hooks/useCleanerData";
 import { useConversations } from "../../hooks/useConversations";
@@ -289,6 +290,8 @@ function CleanerDashboardInner() {
     loading: historyLoading,
     error: historyError,
   } = useCleanerEarningsHistory(historyRange.start, historyRange.end);
+
+  const { awaitingPayments } = useCleanerAwaitingPayments();
 
   const activeHistoryPresetLabel = useMemo(() => {
     const match = EARNINGS_RANGE_PRESETS.find((p) => {
@@ -1785,6 +1788,50 @@ function CleanerDashboardInner() {
               )}
             </div>
           </div>
+
+          {/* Awaiting customer payment — bank (ACH) debits still clearing the customer's
+              account (Hop 1). The cleaner is paid only once these settle (~4 business days). */}
+          {awaitingPayments.length > 0 && (
+            <div className="card space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-gray-700">Awaiting customer payment</h3>
+                  <p className="text-xs text-gray-400">
+                    Bank payments clearing from the customer&apos;s account. You&apos;re paid once they
+                    settle (about 4 business days).
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {awaitingPayments.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {row.appointment?.serviceName ?? "Cleaning"}
+                        {row.appointment?.homeownerName ? ` · ${row.appointment.homeownerName}` : ""}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {row.appointment?.scheduledDate
+                          ? new Date(row.appointment.scheduledDate).toLocaleDateString()
+                          : "Completed"}
+                        {" · "}
+                        <span className="font-medium text-amber-600">Clearing</span>
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                      ${row.cleanerCut.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Payout History */}
           <div className="card space-y-4">

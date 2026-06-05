@@ -647,6 +647,7 @@ export function useCleanerStripeSummary() {
       keys: [
         keys.cleanerEarnings.summary(userId),
         ['cleaner-earnings', 'history', userId],
+        ['cleaner-earnings', 'awaiting', userId],
         keys.stats.cleaner(userId),
         keys.payouts.byCleaner(userId),
       ],
@@ -727,6 +728,91 @@ export function useCleanerEarningsHistory(startDate: string, endDate: string) {
 
   return {
     payoutHistory: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+  };
+}
+
+export interface AwaitingPaymentRow {
+  id: string;
+  /** The cleaner's expected cut once the customer's bank debit clears. */
+  cleanerCut: number;
+  createdAt: string;
+  appointment: {
+    id: string;
+    scheduledDate: string | null;
+    homeownerName: string;
+    serviceName: string | null;
+  } | null;
+}
+
+/**
+ * Bank (ACH) payments for THIS cleaner's appointments still clearing the customer's bank
+ * (payment_status='processing', ~4 business days) — "Hop 1", distinct from a payout already on its
+ * way to the cleaner's bank ("In Stripe"). The cleaner is paid only once these settle. RLS
+ * (migration 075 payments_select) scopes payments to the cleaner's own appointments.
+ */
+export function useCleanerAwaitingPayments() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+
+  const query = useOrgQuery({
+    queryKey: ['cleaner-earnings', 'awaiting', userId],
+    queryFn: async ({ userId }) => {
+      const { data: profile } = await supabase
+        .from('cleaner_profiles')
+        .select('payout_percent')
+        .eq('id', userId)
+        .maybeSingle();
+      const payoutPercent = Number((profile as { payout_percent: number | string } | null)?.payout_percent ?? 0);
+
+      const { data, error } = await supabase
+        .from('payments')
+        .select(`
+          id, amount, processing_fee_cents, created_at,
+          appointment:appointments!inner(
+            id, scheduled_date, cleaner_id,
+            homeowner:user_profiles!homeowner_id(first_name, last_name),
+            service_type:service_types(name)
+          )
+        `)
+        .eq('status', 'processing')
+        .eq('payment_type', 'revenue')
+        .eq('appointment.cleaner_id', userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      return (data || []).map((p: Record<string, unknown>) => {
+        const apptRaw = p.appointment as Record<string, unknown> | Record<string, unknown>[] | null;
+        const appt = (Array.isArray(apptRaw) ? apptRaw[0] : apptRaw) as Record<string, unknown> | null;
+        const hoRaw = appt?.homeowner as { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
+        const ho = Array.isArray(hoRaw) ? hoRaw[0] : hoRaw;
+        const svcRaw = appt?.service_type as { name?: string } | { name?: string }[] | null;
+        const svc = Array.isArray(svcRaw) ? svcRaw[0] : svcRaw;
+        // Cleaner cut is % of the SERVICE PRICE (charge minus the passed-through fee), floored.
+        const chargeCents = Math.round(Number(p.amount) * 100);
+        const feeCents = Number(p.processing_fee_cents ?? 0);
+        const baseCents = Math.max(0, chargeCents - feeCents);
+        const cleanerCutCents = Math.floor((baseCents * payoutPercent) / 100);
+        return {
+          id: p.id as string,
+          cleanerCut: cleanerCutCents / 100,
+          createdAt: p.created_at as string,
+          appointment: appt
+            ? {
+                id: appt.id as string,
+                scheduledDate: (appt.scheduled_date as string) ?? null,
+                homeownerName: ho ? `${ho.first_name ?? ''} ${ho.last_name ?? ''}`.trim() || 'Customer' : 'Customer',
+                serviceName: svc?.name ?? null,
+              }
+            : null,
+        } as AwaitingPaymentRow;
+      });
+    },
+  });
+
+  return {
+    awaitingPayments: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
   };
