@@ -26,8 +26,6 @@ import {
   Briefcase,
   User,
   AlertCircle,
-  TrendingUp,
-  Wallet,
   Landmark,
   ArrowDownToLine,
 } from "lucide-react";
@@ -35,8 +33,6 @@ import {
   useCleanerAppointments,
   useCleanerStats,
   useCleanerPayouts,
-  useCleanerProjectedEarnings,
-  useCleanerStripeSummary,
   useCleanerEarningsHistory,
   useCleanerAwaitingPayments,
   updateAppointmentStatus,
@@ -68,6 +64,8 @@ import PendingConfirmationsSection from "../../components/PendingConfirmationsSe
 import ActiveNowSection from "../../components/ActiveNowSection";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import StripeConnectionCard from "../../components/StripeConnectionCard";
+import PayoutsSection from "../../components/PayoutsSection";
+import { useStripeConnect } from "../../hooks/useStripeConnect";
 import {
   CLEANER_DASHBOARD_TAB_IDS,
   usePersistedDashboardTab,
@@ -147,58 +145,6 @@ const EARNINGS_RANGE_PRESETS: EarningsRangePreset[] = [
   },
 ];
 
-/** Future-only windows for Projected Earnings (today through end of range). */
-const PROJECTED_EARNINGS_PRESETS: EarningsRangePreset[] = [
-  {
-    label: "This Week",
-    get: () => {
-      const now = new Date();
-      const today = format(now, "yyyy-MM-dd");
-      const weekEnd = format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd");
-      return { start: today, end: weekEnd };
-    },
-  },
-  {
-    label: "Next 7 Days",
-    get: () => {
-      const now = new Date();
-      const end = new Date(now);
-      end.setDate(now.getDate() + 6);
-      return { start: format(now, "yyyy-MM-dd"), end: format(end, "yyyy-MM-dd") };
-    },
-  },
-  {
-    label: "Next 30 Days",
-    get: () => {
-      const now = new Date();
-      const end = new Date(now);
-      end.setDate(now.getDate() + 29);
-      return { start: format(now, "yyyy-MM-dd"), end: format(end, "yyyy-MM-dd") };
-    },
-  },
-  {
-    label: "This Month",
-    get: () => {
-      const now = new Date();
-      const today = format(now, "yyyy-MM-dd");
-      const monthEnd = format(
-        new Date(now.getFullYear(), now.getMonth() + 1, 0),
-        "yyyy-MM-dd"
-      );
-      return { start: today, end: monthEnd };
-    },
-  },
-  {
-    label: "Next Month",
-    get: () => {
-      const now = new Date();
-      const first = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const last = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-      return { start: format(first, "yyyy-MM-dd"), end: format(last, "yyyy-MM-dd") };
-    },
-  },
-];
-
 function CleanerDashboardInner() {
   const { user, loading, signOut, currentOrganizationId, accessToken, orgStatus, reloadOrganization } = useAuth();
   const [activeTab, setActiveTab] = usePersistedDashboardTab(
@@ -254,13 +200,6 @@ function CleanerDashboardInner() {
     loading: payoutsLoading,
   } = useCleanerPayouts();
 
-  // Projected earnings period — dropdown-driven, defaults to "This Week"
-  const [projectedPreset, setProjectedPreset] = useState("This Week");
-  const projectedRange = useMemo(() => {
-    const match = PROJECTED_EARNINGS_PRESETS.find((p) => p.label === projectedPreset);
-    return match ? match.get() : PROJECTED_EARNINGS_PRESETS[0].get();
-  }, [projectedPreset]);
-
   // Payout history date range — defaults to current week (Mon–Sun)
   const [historyRange, setHistoryRange] = useState(() => {
     const now = new Date();
@@ -272,26 +211,15 @@ function CleanerDashboardInner() {
 
   // Independent hooks — each section loads/refreshes on its own
   const {
-    projectedEarnings,
-    loading: projectedLoading,
-    error: projectedError,
-  } = useCleanerProjectedEarnings(projectedRange.start, projectedRange.end);
-
-  const {
-    inStripe,
-    latestBankPayoutAmount,
-    latestBankPayoutDate,
-    loading: stripeLoading,
-    error: stripeError,
-  } = useCleanerStripeSummary();
-
-  const {
     payoutHistory,
     loading: historyLoading,
     error: historyError,
   } = useCleanerEarningsHistory(historyRange.start, historyRange.end);
 
   const { awaitingPayments } = useCleanerAwaitingPayments();
+
+  // Connect status gates the embedded Stripe payouts table in the Earnings tab.
+  const { connectStatus } = useStripeConnect();
 
   const activeHistoryPresetLabel = useMemo(() => {
     const match = EARNINGS_RANGE_PRESETS.find((p) => {
@@ -1689,105 +1617,23 @@ function CleanerDashboardInner() {
     <div className="space-y-6">
       <h2 className="text-4xl font-bold text-gray-900">Earnings & Payouts</h2>
 
-      {(projectedError || stripeError || historyError) ? (
+      {historyError ? (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             Error loading earnings
           </h3>
-          <p className="text-gray-600">{projectedError || stripeError || historyError}</p>
+          <p className="text-gray-600">{historyError}</p>
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Projected Earnings */}
-            <div className="card">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-gray-500">Projected Earnings</h4>
-                </div>
-                <div className="relative flex-shrink-0">
-                  <select
-                    value={projectedPreset}
-                    onChange={(e) => setProjectedPreset(e.target.value)}
-                    className="appearance-none bg-white border border-gray-300 rounded-full px-3 py-1.5 pr-8 text-xs font-medium text-gray-700 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
-                  >
-                    {PROJECTED_EARNINGS_PRESETS.map((preset) => (
-                      <option key={preset.label} value={preset.label}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                </div>
-              </div>
-              {projectedLoading ? (
-                <Loader2 className="w-7 h-7 animate-spin text-gray-400" />
-              ) : (
-                <p className="text-3xl font-bold text-green-600">
-                  ${projectedEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              )}
-            </div>
-
-            {/* In Stripe */}
-            <div className="card">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Wallet className="w-4 h-4 text-blue-600" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-500">In Stripe</h4>
-                  <p className="text-xs text-gray-400">Current balance awaiting transfer</p>
-                </div>
-              </div>
-              {stripeLoading ? (
-                <Loader2 className="w-7 h-7 animate-spin text-gray-400" />
-              ) : (
-                <>
-                  <p className="text-3xl font-bold text-blue-600">
-                    ${inStripe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  {inStripe > 0 && (
-                    <p className="text-xs text-gray-400 mt-1">See transfer date in your Stripe dashboard</p>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Last Bank Payout */}
-            <div className="card">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Landmark className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-500">Last Bank Payout</h4>
-                  <p className="text-xs text-gray-400">Most recent deposit</p>
-                </div>
-              </div>
-              {stripeLoading ? (
-                <Loader2 className="w-7 h-7 animate-spin text-gray-400" />
-              ) : latestBankPayoutAmount !== null ? (
-                <div>
-                  <p className="text-3xl font-bold text-emerald-600">
-                    ${latestBankPayoutAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  {latestBankPayoutDate && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(latestBankPayoutDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400 mt-1">No payouts yet</p>
-              )}
-            </div>
-          </div>
+          {/* Embedded Stripe payouts table — the source of truth for the cleaner's
+              balance, next payout, and what's already landed in their bank. Gated on
+              an active Connect account; the connection card below handles setup when
+              they haven't onboarded yet. */}
+          {connectStatus?.onboarding_complete && (
+            <PayoutsSection variant="cleaner" connected />
+          )}
 
           {/* Awaiting customer payment — bank (ACH) debits still clearing the customer's
               account (Hop 1). The cleaner is paid only once these settle (~4 business days). */}

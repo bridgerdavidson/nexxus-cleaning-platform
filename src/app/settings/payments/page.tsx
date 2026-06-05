@@ -11,18 +11,9 @@ import SettingsPageHeader from '@/components/settings/SettingsPageHeader';
 import StripeStatusHero, {
   OpenStripeDashboardButton,
 } from '@/components/settings/StripeStatusHero';
-import StripeBalanceRow from '@/components/settings/StripeBalanceRow';
-import TenantStripeConnect, {
-  tenantStatusKind,
-} from '@/components/TenantStripeConnect';
+import { tenantStatusKind } from '@/components/TenantStripeConnect';
+import PayoutsSection from '@/components/PayoutsSection';
 import OrgPaymentMethodSection from '@/components/OrgPaymentMethodSection';
-
-type TenantBalance = {
-  connected: boolean;
-  availableBalance: number;
-  pendingBalance: number;
-  latestPayout: { amount: number; date: number } | null;
-};
 
 export default function PaymentsSettingsPage() {
   const router = useRouter();
@@ -48,39 +39,6 @@ export default function PaymentsSettingsPage() {
       router.replace('/settings');
     }
   }, [authLoading, user, currentOrgRole, permissions, router]);
-
-  // Balance fetch (tenant) — only when connected.
-  const [balance, setBalance] = useState<TenantBalance | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  useEffect(() => {
-    if (!currentOrganizationId || !status?.chargesEnabled) return;
-    let cancelled = false;
-    (async () => {
-      setBalanceLoading(true);
-      try {
-        const token = await getAccessToken();
-        if (!token) return;
-        const res = await fetch('/api/stripe/tenant/balance-summary', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ organizationId: currentOrganizationId }),
-        });
-        const data = (await res.json().catch(() => null)) as TenantBalance | null;
-        if (cancelled || !data) return;
-        setBalance(data);
-      } catch {
-        // swallow — the embedded ConnectPayouts table below is still the source of truth
-      } finally {
-        if (!cancelled) setBalanceLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentOrganizationId, status?.chargesEnabled]);
 
   const [dashboardLoading, setDashboardLoading] = useState(false);
   async function openStripeDashboard() {
@@ -135,47 +93,11 @@ export default function PaymentsSettingsPage() {
         }
       />
 
-      {status?.chargesEnabled && (
-        <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-bold text-gray-900">Balance &amp; upcoming payout</h2>
-            <p className="text-sm text-gray-500">Live from Stripe — updated continuously.</p>
-          </div>
-          <StripeBalanceRow
-            available={balance?.availableBalance ?? null}
-            inTransit={balance?.pendingBalance ?? null}
-            nextPayout={balance?.latestPayout?.amount ?? null}
-            nextPayoutMeta={
-              balance?.latestPayout
-                ? `Expected ${formatPayoutDate(balance.latestPayout.date)}`
-                : balance?.connected
-                  ? 'No payout scheduled yet'
-                  : '—'
-            }
-            loading={balanceLoading && !balance}
-          />
-        </section>
-      )}
-
       {canManagePayments && currentOrganizationId && (
         <OrgPaymentMethodSection organizationId={currentOrganizationId} />
       )}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">
-              {status?.chargesEnabled ? 'Recent payouts' : 'Connect your business'}
-            </h2>
-            <p className="text-sm text-gray-500">
-              {status?.chargesEnabled
-                ? "From Stripe — the source of truth for what's landed in your bank."
-                : 'Tell Stripe a bit about your company so homeowner payments can land in your bank.'}
-            </p>
-          </div>
-        </div>
-        <TenantStripeConnect />
-      </section>
+      <PayoutsSection variant="tenant" connected={!!status?.chargesEnabled} />
     </>
   );
 }
@@ -209,9 +131,4 @@ function buildHeroCopy(
     description:
       'Connect your business to start accepting homeowner payments. Your company is the merchant of record — payouts land in your bank account.',
   };
-}
-
-function formatPayoutDate(unixSeconds: number): string {
-  const d = new Date(unixSeconds * 1000);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }

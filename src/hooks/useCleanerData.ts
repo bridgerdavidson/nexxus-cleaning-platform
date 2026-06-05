@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback } from 'react';
-import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
@@ -114,26 +113,6 @@ export interface EarningsPayoutRow {
       name: string;
     } | null;
   } | null;
-}
-
-export interface StripeSummaryData {
-  inStripe: number;
-  latestBankPayoutAmount: number | null;
-  latestBankPayoutDate: string | null;
-}
-
-export interface EarningsSummary {
-  projectedEarnings: number;
-  inStripe: number;
-  latestBankPayoutAmount: number | null;
-  latestBankPayoutDate: string | null;
-}
-
-export interface CleanerEarningsData {
-  summary: EarningsSummary;
-  payoutHistory: EarningsPayoutRow[];
-  loading: boolean;
-  error: string | null;
 }
 
 export interface CleanerPhoto {
@@ -519,155 +498,6 @@ export function useCleanerPayouts() {
 }
 
 /**
- * Projected earnings for a date range: sum of cleaner share for appointments
- * that are confirmed, in progress, or completed in the window (pending and
- * cancelled excluded). Only queries appointments — no Stripe calls, no reconcile.
- */
-export function useCleanerProjectedEarnings(startDate: string, endDate: string) {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: keys.cleanerEarnings.projected(userId, startDate, endDate),
-    queryFn: async ({ orgId, userId }) => {
-      const { data: cleanerProfile, error: profileError } = await supabase
-        .from('cleaner_profiles')
-        .select('id, payout_percent')
-        .eq('id', userId)
-        .eq('organization_id', orgId)
-        .single();
-      if (profileError) throw profileError;
-      if (!cleanerProfile) throw new Error('Cleaner profile not found');
-
-      const payoutPercent = Number(cleanerProfile.payout_percent) || 0;
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const effectiveStart = startDate < todayStr ? todayStr : startDate;
-      if (effectiveStart > endDate) return 0;
-
-      const { data: periodAppointments } = await supabase
-        .from('appointments')
-        .select('id, total_price')
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .in('status', ['confirmed', 'in_progress', 'completed'])
-        .gte('scheduled_date', effectiveStart)
-        .lte('scheduled_date', endDate);
-
-      const grossTotal = (periodAppointments || []).reduce(
-        (sum, a) => sum + Number(a.total_price), 0,
-      );
-      return Math.round(grossTotal * (payoutPercent / 100) * 100) / 100;
-    },
-  });
-
-  return {
-    projectedEarnings: query.data ?? 0,
-    loading: query.isLoading,
-    error: query.error?.message ?? null,
-  };
-}
-
-/**
- * Live Stripe summary (In Stripe balance + latest bank payout).
- * Fetched once on mount — period-independent so it never re-fetches when
- * the user changes projected-earnings or history date ranges.
- * Also kicks off reconcile in parallel to keep DB history accurate.
- */
-export function useCleanerStripeSummary() {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: keys.cleanerEarnings.summary(userId),
-    queryFn: async ({ orgId, userId, accessToken }) => {
-      const reconcilePromise = fetch('/api/stripe/connect/reconcile-payouts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-        body: JSON.stringify({ cleaner_id: userId }),
-      }).catch((err: unknown) => console.warn('Earnings reconcile failed (non-fatal):', err));
-
-      const stripeSummaryPromise = fetch('/api/stripe/connect/balance-summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-        body: JSON.stringify({ cleaner_id: userId }),
-      })
-        .then(r => (r.ok ? r.json() : null))
-        .catch(() => null);
-
-      const [, stripeSummary] = await Promise.all([reconcilePromise, stripeSummaryPromise]);
-
-      let inStripe = 0;
-      let latestBankPayoutAmount: number | null = null;
-      let latestBankPayoutDate: string | null = null;
-
-      if (stripeSummary?.success) {
-        inStripe = Number(stripeSummary.availableBalance) + Number(stripeSummary.pendingBalance);
-        if (stripeSummary.latestPayout) {
-          latestBankPayoutAmount = Number(stripeSummary.latestPayout.amount);
-          latestBankPayoutDate = stripeSummary.latestPayout.date;
-        }
-      } else {
-        const { data: inStripeData } = await supabase
-          .from('payouts').select('amount')
-          .eq('cleaner_id', userId).eq('organization_id', orgId).eq('status', 'paid');
-        inStripe = (inStripeData || []).reduce((sum, r) => sum + Number(r.amount), 0);
-
-        const { data: latestBankData } = await supabase
-          .from('payouts').select('amount, bank_paid_at')
-          .eq('cleaner_id', userId).eq('organization_id', orgId).eq('status', 'bank_paid')
-          .order('bank_paid_at', { ascending: false }).limit(1);
-        const latestBank = latestBankData?.[0] ?? null;
-        if (latestBank) {
-          latestBankPayoutAmount = Math.round(Number(latestBank.amount) * 100) / 100;
-          latestBankPayoutDate = latestBank.bank_paid_at ?? null;
-        }
-      }
-
-      return {
-        inStripe: Math.round(inStripe * 100) / 100,
-        latestBankPayoutAmount:
-          latestBankPayoutAmount != null
-            ? Math.round(latestBankPayoutAmount * 100) / 100
-            : null,
-        latestBankPayoutDate,
-      } as StripeSummaryData;
-    },
-  });
-
-  // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven
-  // by approvals + Stripe webhooks on the payouts table. Refresh the cleaner's
-  // earnings summary + history + stats tiles so the dashboard updates live.
-  useSupabaseRealtimeSync({
-    channelName: `payouts:cleaner:${userId}`,
-    table: 'payouts',
-    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
-    enabled: !!userId,
-    onEvent: () => ({
-      type: 'invalidate',
-      keys: [
-        keys.cleanerEarnings.summary(userId),
-        ['cleaner-earnings', 'history', userId],
-        ['cleaner-earnings', 'awaiting', userId],
-        keys.stats.cleaner(userId),
-        keys.payouts.byCleaner(userId),
-      ],
-    }),
-  });
-
-  const data = query.data ?? {
-    inStripe: 0,
-    latestBankPayoutAmount: null,
-    latestBankPayoutDate: null,
-  };
-
-  return {
-    ...data,
-    loading: query.isLoading,
-    error: query.error?.message ?? null,
-  };
-}
-
-/**
  * Payout history filtered by paid_at date range.
  * Changing history period only re-fetches history rows — no Stripe calls.
  */
@@ -724,6 +554,28 @@ export function useCleanerEarningsHistory(startDate: string, endDate: string) {
         } as EarningsPayoutRow;
       });
     },
+  });
+
+  // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven by
+  // approvals + Stripe webhooks on the payouts table. Refresh the cleaner's earnings
+  // history + awaiting list + stats tiles + payouts list so the dashboard updates live.
+  // (Previously lived in the now-removed useCleanerStripeSummary; the embedded Stripe
+  // payouts table is independent, so this is the one subscription that keeps our own
+  // payout-derived sections fresh.)
+  useSupabaseRealtimeSync({
+    channelName: `payouts:cleaner:${userId}`,
+    table: 'payouts',
+    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [
+        ['cleaner-earnings', 'history', userId],
+        ['cleaner-earnings', 'awaiting', userId],
+        keys.stats.cleaner(userId),
+        keys.payouts.byCleaner(userId),
+      ],
+    }),
   });
 
   return {
@@ -821,35 +673,6 @@ export function useCleanerAwaitingPayments() {
     awaitingPayments: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
-  };
-}
-
-/**
- * Legacy combined hook — kept for backward compatibility but now delegates
- * to the three independent hooks internally.
- */
-export function useCleanerEarnings(
-  summaryStart: string,
-  summaryEnd: string,
-  historyStart: string,
-  historyEnd: string,
-) {
-  const { projectedEarnings, loading: projLoading, error: projError } = useCleanerProjectedEarnings(summaryStart, summaryEnd);
-  const { inStripe, latestBankPayoutAmount, latestBankPayoutDate, loading: stripeLoading, error: stripeError } = useCleanerStripeSummary();
-  const { payoutHistory, loading: histLoading, error: histError } = useCleanerEarningsHistory(historyStart, historyEnd);
-
-  const summary: EarningsSummary = {
-    projectedEarnings,
-    inStripe,
-    latestBankPayoutAmount,
-    latestBankPayoutDate,
-  };
-
-  return {
-    summary,
-    payoutHistory,
-    loading: projLoading || stripeLoading || histLoading,
-    error: projError || stripeError || histError,
   };
 }
 
