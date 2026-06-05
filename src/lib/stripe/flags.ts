@@ -79,3 +79,38 @@ export function stripeSelfPayUiEnabled(): boolean {
   return process.env.NEXT_PUBLIC_STRIPE_SELF_PAY_ENABLED === "true";
 }
 
+/**
+ * Payer-funded processing fees + bank (ACH) payments (default OFF).
+ *
+ * STRIPE_FEE_PASSTHROUGH_ENABLED — charge the payer the service price grossed up
+ *   for Stripe's processing fee (surfaced as a line in the booking total) instead
+ *   of the platform absorbing it; settlement then splits on the service price so
+ *   the platform never goes negative.
+ * STRIPE_ACH_ENABLED — offer us_bank_account (ACH) as a payment method (0.8% capped
+ *   $5, charged after completion with delayed settlement). Depends on the new charge
+ *   flow and fee passthrough.
+ *
+ * Each has a NEXT_PUBLIC_* mirror so the client can hide the new UI (the fee line,
+ * the bank option) while the server flag is still off.
+ */
+
+/** Server: charge the payer the grossed-up processing fee; split settlement on the base. */
+export function stripeFeePassthroughEnabled(): boolean {
+  return process.env.STRIPE_FEE_PASSTHROUGH_ENABLED === "true";
+}
+
+/** Client: show the processing-fee line in the booking total. */
+export function stripeFeePassthroughUiEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STRIPE_FEE_PASSTHROUGH_ENABLED === "true";
+}
+
+/** Server: accept us_bank_account (ACH) payments. */
+export function stripeAchEnabled(): boolean {
+  return process.env.STRIPE_ACH_ENABLED === "true";
+}
+
+/** Client: offer the bank-account option in the payment-method picker. */
+export function stripeAchUiEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_STRIPE_ACH_ENABLED === "true";
+}
+
