@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { stripeEnabled } from './stripe/flags';
+import { stripeEnabled, stripeAchEnabled } from './stripe/flags';
 
 // Lazy initialization - only create Stripe instance when needed and enabled
 let stripeInstance: Stripe | null = null;
@@ -105,14 +105,23 @@ export async function createSetupIntent(
 ): Promise<Stripe.SetupIntent> {
   const stripe = getStripe();
 
-  const setupIntent = await stripe.setupIntents.create({
+  // Offer ACH (us_bank_account) alongside card when enabled, with Financial Connections so the
+  // bank account is verified instantly and usable for off-session debits. The Payment Element
+  // renders the bank option automatically from these allowed types.
+  const ach = stripeAchEnabled();
+  const params: Stripe.SetupIntentCreateParams = {
     customer: customerId,
-    payment_method_types: ['card'],
+    payment_method_types: ach ? ['card', 'us_bank_account'] : ['card'],
     usage: 'off_session', // Allow charging the customer when they're not present
-    metadata: {
-      source: 'nexxus-cleaning-platform',
-    },
-  });
+    metadata: { source: 'nexxus-cleaning-platform' },
+  };
+  if (ach) {
+    params.payment_method_options = {
+      us_bank_account: { financial_connections: { permissions: ['payment_method', 'balances'] } },
+    };
+  }
+
+  const setupIntent = await stripe.setupIntents.create(params);
 
   return setupIntent;
 }
