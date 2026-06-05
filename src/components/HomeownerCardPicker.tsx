@@ -9,9 +9,10 @@ import React, {
 } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { Loader2, AlertCircle, Plus, CreditCard } from "lucide-react";
+import { Loader2, AlertCircle, Plus, CreditCard, Landmark } from "lucide-react";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import type { PaymentMethodKind } from "@/lib/payments/processingFee";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
@@ -26,11 +27,15 @@ const NEW_CARD = "__new__";
 
 interface SavedCard {
   id: string;
-  brand: string;
+  type: "card" | "us_bank_account";
   last4: string;
-  expMonth: number;
-  expYear: number;
   isDefault: boolean;
+  // card
+  brand?: string;
+  expMonth?: number;
+  expYear?: number;
+  // us_bank_account
+  bankName?: string;
 }
 
 type ResolveResult = { paymentMethodId: string } | { error: string };
@@ -49,8 +54,10 @@ interface Props {
   organizationId?: string;
   /** Saved card id to pre-select (e.g. the card already chosen for an appointment). */
   initialSelectedId?: string | null;
-  /** Reports whether a saved card is selected (drives the Submit button's disabled state). */
+  /** Reports whether a saved method is selected (drives the Submit button's disabled state). */
   onReadyChange?: (ready: boolean) => void;
+  /** Reports the selected method's type (card vs bank) so the total can show the right fee. */
+  onSelectedMethodChange?: (method: PaymentMethodKind) => void;
 }
 
 /**
@@ -62,7 +69,7 @@ interface Props {
  * new-charge-flow UI flag or publishable key is absent.
  */
 const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function HomeownerCardPicker(
-  { homeownerId, accessToken, organizationId, initialSelectedId, onReadyChange },
+  { homeownerId, accessToken, organizationId, initialSelectedId, onReadyChange, onSelectedMethodChange },
   ref,
 ) {
   const [cards, setCards] = useState<SavedCard[]>([]);
@@ -135,10 +142,18 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     }
   }, [selected, siSecret, siLoading, siError, fetchSetupIntent]);
 
-  // Report readiness up to the parent: a card is chosen only when a SAVED card is selected.
+  // Report readiness up to the parent: a method is chosen only when a SAVED method is selected.
   useEffect(() => {
     onReadyChange?.(!!selected && selected !== NEW_CARD);
   }, [selected, onReadyChange]);
+
+  // Report the selected method's type so the parent's total shows the right fee. A not-yet-saved
+  // new method defaults to 'card' (the costlier fee — never under-quote the total).
+  useEffect(() => {
+    if (!onSelectedMethodChange) return;
+    const sel = cards.find((c) => c.id === selected);
+    onSelectedMethodChange(sel?.type === "us_bank_account" ? "us_bank_account" : "card");
+  }, [selected, cards, onSelectedMethodChange]);
 
   // After a new card is saved: refetch the saved list and select the newly-saved card, so it
   // moves into the saved section. Reset the SetupIntent so a future "use a new card" is fresh.
@@ -191,7 +206,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saved cards</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saved payment methods</p>
         {loadingCards ? (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading your cards…
@@ -202,29 +217,43 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
           </p>
         ) : (
           cards.map((c) =>
-            radio(
-              c.id,
-              <span className="flex items-center gap-2 capitalize">
-                <CreditCard className="h-4 w-4 text-gray-500" />
-                {c.brand} •••• {c.last4}
-                {c.isDefault && (
-                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
-                    Default
-                  </span>
-                )}
-              </span>,
-              `Expires ${String(c.expMonth).padStart(2, "0")}/${c.expYear}`,
-            ),
+            c.type === "us_bank_account"
+              ? radio(
+                  c.id,
+                  <span className="flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-gray-500" />
+                    {c.bankName ?? "Bank account"} •••• {c.last4}
+                    {c.isDefault && (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                        Default
+                      </span>
+                    )}
+                  </span>,
+                  "Bank account · lower fee",
+                )
+              : radio(
+                  c.id,
+                  <span className="flex items-center gap-2 capitalize">
+                    <CreditCard className="h-4 w-4 text-gray-500" />
+                    {c.brand} •••• {c.last4}
+                    {c.isDefault && (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                        Default
+                      </span>
+                    )}
+                  </span>,
+                  `Expires ${String(c.expMonth).padStart(2, "0")}/${c.expYear}`,
+                ),
           )
         )}
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pay with a new card</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pay with a new card or bank</p>
         {radio(
           NEW_CARD,
           <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-gray-500" /> Use a new card
+            <Plus className="h-4 w-4 text-gray-500" /> Use a new card or bank account
           </span>,
         )}
         {selected === NEW_CARD && (
@@ -257,8 +286,8 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
       </div>
 
       <p className="text-xs text-gray-500">
-        You won’t be charged until your cleaning is completed. A new card is saved securely for next
-        time.
+        You won’t be charged until your cleaning is completed. Your card or bank account is saved
+        securely for next time.
       </p>
     </div>
   );
@@ -339,7 +368,7 @@ function NewCardInner({ onSaved }: { onSaved: (paymentMethodId: string) => void 
         className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-        {saving ? "Saving…" : "Save card"}
+        {saving ? "Saving…" : "Save payment method"}
       </button>
     </div>
   );

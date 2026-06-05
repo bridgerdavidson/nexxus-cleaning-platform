@@ -14,6 +14,7 @@ import HomeownerCardPicker, {
   type CardPickerHandle,
 } from "./HomeownerCardPicker";
 import BookingTotalSummary from "./BookingTotalSummary";
+import type { PaymentMethodKind } from "@/lib/payments/processingFee";
 
 interface Property {
   id: string;
@@ -74,6 +75,9 @@ export default function RequestAppointmentModal({
   const paymentRequired = homeownerCardPickerAvailable() && !!homeownerId;
   const cardPickerRef = useRef<CardPickerHandle>(null);
   const [cardReady, setCardReady] = useState(false);
+  // Which method the picker has selected, so the total quotes the matching processing fee. Defaults
+  // to 'card' (the costlier fee) so the quoted total is never lower than what we actually charge.
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodKind>("card");
 
   // Default property to most-recently-booked
   const fetchProperties = useCallback(async () => {
@@ -332,6 +336,7 @@ export default function RequestAppointmentModal({
                   homeownerId={homeownerId}
                   accessToken={accessToken}
                   onReadyChange={setCardReady}
+                  onSelectedMethodChange={setSelectedMethod}
                 />
               </div>
             )}
@@ -339,7 +344,7 @@ export default function RequestAppointmentModal({
             {selectedService && (
               <BookingTotalSummary
                 servicePrice={selectedService.base_price}
-                method="card"
+                method={paymentRequired ? selectedMethod : "card"}
                 timingNote="You're charged when the job is completed."
               />
             )}

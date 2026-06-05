@@ -38,6 +38,7 @@ import PaymentMethodForm from "./PaymentMethodForm";
 import StatusBadge from "./StatusBadge";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
+import BookingTotalSummary from "./BookingTotalSummary";
 import { OrgCardFormPanel } from "./OrgCardForm";
 import OrgCardPicker from "./OrgCardPicker";
 import DiscardChangesDialog from "./DiscardChangesDialog";
@@ -1000,6 +1001,14 @@ export default function AddAppointmentModal({
     customPrice,
     getSystemCalculatedPrice,
   ]);
+
+  // The price the customer will be charged for (override or base + checklist adder), in dollars.
+  // Drives the homeowner-pay total summary on the payment step.
+  const effectiveServicePrice = useMemo(() => {
+    const p =
+      priceOverrideEnabled && customPrice ? parseFloat(customPrice) : getSystemCalculatedPrice();
+    return Number.isFinite(p) ? p : 0;
+  }, [priceOverrideEnabled, customPrice, getSystemCalculatedPrice]);
 
   // Which step is the payment step, given the pre-selection mode? (1-indexed)
   // Uses the effective flags so book-from-property (full 3-step) reports step 3.
@@ -2859,6 +2868,13 @@ export default function AddAppointmentModal({
                         organizationId={currentOrganizationId ?? null}
                         value={paymentSelection}
                         onChange={setPaymentSelection}
+                      />
+                      {/* Itemized total the customer will be charged. The admin card chooser only
+                          surfaces cards today, so quote the card fee (>= bank); never under-quotes. */}
+                      <BookingTotalSummary
+                        servicePrice={effectiveServicePrice}
+                        method="card"
+                        timingNote="Charged to the customer when the job is completed."
                       />
                     </>
                   ) : (
