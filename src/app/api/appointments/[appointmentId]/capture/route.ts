@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
+import { stripeEnabled, stripeNewChargeFlowEnabled, stripeAchEnabled } from '@/lib/stripe/flags';
 import { capturePaymentIntent } from '@/lib/stripe/charges/capture';
+import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
+import { chargeAchAppointment } from '@/lib/payments/chargeAchAppointment';
 import { recordPaymentEvent } from '@/lib/payments/events';
 
 /**
@@ -37,10 +39,12 @@ export async function POST(
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id, cleaner_id')
+      .select('id, organization_id, cleaner_id, payment_method_id')
       .eq('id', appointmentId)
       .maybeSingle();
-    const appointment = appt as { id: string; organization_id: string; cleaner_id: string | null } | null;
+    const appointment = appt as
+      | { id: string; organization_id: string; cleaner_id: string | null; payment_method_id: string | null }
+      | null;
     if (!appointment || appointment.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
@@ -61,6 +65,25 @@ export async function POST(
       : null;
 
     if (!pay?.stripe_payment_intent_id) {
+      // No card hold to capture. A bank-account (ACH) appointment has no hold — the debit is
+      // created+confirmed now (charge-at-completion) and lands in `processing` for ~4 business days.
+      if (stripeAchEnabled() && appointment.payment_method_id) {
+        const pmType = await getPaymentMethodType(appointment.payment_method_id);
+        if (pmType === 'us_bank_account') {
+          const outcome = await chargeAchAppointment(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+          if (outcome.ok) {
+            return NextResponse.json({
+              success: true,
+              payment_intent_id: outcome.paymentIntentId,
+              status: 'processing',
+            });
+          }
+          return NextResponse.json(
+            { error: outcome.message ?? 'ACH charge failed', code: outcome.code },
+            { status: outcome.code === 'failed' || outcome.code === 'error' ? 502 : 409 },
+          );
+        }
+      }
       return NextResponse.json({ error: 'No authorization to capture' }, { status: 409 });
     }
 

@@ -79,6 +79,20 @@ export async function listSavedCards(customerId: string): Promise<SavedPaymentMe
 }
 
 /**
+ * The Stripe PaymentMethod type ('card' | 'us_bank_account' | ...), or null if it can't be read.
+ * Used to route an appointment's completion to the card-capture vs ACH-charge path.
+ */
+export async function getPaymentMethodType(paymentMethodId: string): Promise<string | null> {
+  const stripe = getStripe();
+  try {
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    return pm.type ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether a PaymentMethod is attached to a given Customer. Used to gate setting a card on an
  * appointment — staff/homeowner can only select a card that already belongs to the appointment's
  * homeowner Customer (never an arbitrary id). Returns false if the PM doesn't exist or isn't theirs.
