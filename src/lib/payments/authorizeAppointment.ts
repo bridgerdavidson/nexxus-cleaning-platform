@@ -190,7 +190,7 @@ export async function authorizeAppointment(
         event_type: 'authorization_failed',
         appointment_id: appt.id,
         organization_id: appt.organization_id,
-        payload: { ...ctx, audience: 'admin', amount_cents: grossCents },
+        payload: { ...ctx, audience: 'admin', amount_cents: chargeCents },
       });
     }
 
