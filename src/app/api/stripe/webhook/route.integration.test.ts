@@ -365,6 +365,54 @@ describe('POST /api/stripe/webhook', () => {
     expect(payouts ?? []).toHaveLength(0);
   });
 
+  it('fee passthrough: settles on the SERVICE PRICE, not the captured amount that includes the fee', async () => {
+    const admin = createTestSupabaseClient();
+    const tenantAccount = `acct_tenant_${org.organizationId.slice(0, 12)}`;
+    await admin
+      .from('organizations')
+      .update({ stripe_connect_account_id: tenantAccount })
+      .eq('id', org.organizationId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+      totalPrice: 100,
+    });
+    // The payer was charged $103.30 ($100 service + $3.30 card fee). The recorded fee means
+    // settlement distributes only the $100 base — Stripe consumed the fee.
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 103.3,
+      processing_fee_cents: 330,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+    });
+
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 103.3, tenantAccount));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls).toHaveLength(2);
+    const cleanerCall = calls.find((c) => c.destinationAccountId === 'acct_test_fake');
+    const tenantCall = calls.find((c) => c.destinationAccountId === tenantAccount);
+    // 60% of the $100 SERVICE PRICE = $60.00 — NOT 60% of the $103.30 charge ($61.98).
+    expect(cleanerCall?.amountCents).toBe(6000);
+    // Remainder of the base: $100 − $60 − $0 platform fee = $40.00.
+    expect(tenantCall?.amountCents).toBe(4000);
+    // Transfers out total $100, which is what the platform nets after Stripe's fee — never negative.
+    expect((cleanerCall?.amountCents ?? 0) + (tenantCall?.amountCents ?? 0)).toBe(10000);
+  });
+
   // ── Phase 4b: idempotency ledger + dispute / refund confirmation ──────────────
   it('records the event in webhook_events and skips a duplicate delivery', async () => {
     const appt = await createTestAppointment({

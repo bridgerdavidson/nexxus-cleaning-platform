@@ -14,6 +14,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDestinationAuthorization } from '@/lib/stripe/charges/authorize';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
+import { computeChargeBreakdown } from './processingFee';
+import { stripeFeePassthroughEnabled, stripeAchEnabled } from '@/lib/stripe/flags';
+import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
@@ -25,6 +28,7 @@ export type AuthorizeCode =
   | 'tenant_not_ready'
   | 'not_authorizable'
   | 'declined'
+  | 'deferred_ach'
   | 'error';
 
 export interface AuthorizeOutcome {
@@ -75,6 +79,14 @@ export async function authorizeAppointment(
     return { ok: false, code: 'no_card', message: 'No payment method selected for this appointment' };
   }
 
+  // Bank (ACH) methods have NO manual-capture hold — they're charged at completion, not authorized
+  // here. Detect a us_bank_account PM and defer (no card-style hold, no 'failed' status) so a
+  // selected bank never hits the unsupported manual-capture path; the ACH charge-at-completion
+  // lifecycle performs the actual debit. Gated by STRIPE_ACH_ENABLED (bank methods only offered then).
+  if (stripeAchEnabled() && (await getPaymentMethodType(appt.payment_method_id)) === 'us_bank_account') {
+    return { ok: true, code: 'deferred_ach', message: 'Bank payment is charged when the job is completed (no hold).' };
+  }
+
   // Tenant must be a ready merchant of record.
   const { data: orgData } = await supabase
     .from('organizations')
@@ -103,16 +115,23 @@ export async function authorizeAppointment(
     return { ok: false, code: 'no_card', message: 'Homeowner has no saved payment profile' };
   }
 
-  const grossCents = Math.round(Number(appt.total_price) * 100);
+  const baseCents = Math.round(Number(appt.total_price) * 100);
+  // The payer covers the processing fee: charge the service price grossed up so the platform nets
+  // the base. The card path uses the card schedule (ACH is charged later, at completion). Flag-gated.
+  const passthrough = stripeFeePassthroughEnabled();
+  const { chargeCents, feeCents } = passthrough
+    ? computeChargeBreakdown('card', baseCents)
+    : { chargeCents: baseCents, feeCents: 0 };
   const platformFeeBps = org.platform_fee_bps ?? 0;
-  const { platformFeeCents } = computePaymentSplit({ grossCents, payoutPercent: 0, platformFeeBps });
+  // Platform fee is a % of the SERVICE PRICE (base), never the passed-through processing fee.
+  const { platformFeeCents } = computePaymentSplit({ grossCents: baseCents, payoutPercent: 0, platformFeeBps });
 
   await supabase.from('appointments').update({ authorization_status: 'authorizing' }).eq('id', appt.id);
 
   let pi;
   try {
     pi = await createDestinationAuthorization({
-      grossCents,
+      grossCents: chargeCents,
       customerId,
       paymentMethodId: appt.payment_method_id,
       tenantAccountId: org.stripe_connect_account_id,
@@ -132,7 +151,8 @@ export async function authorizeAppointment(
     const failedRow: Record<string, unknown> = {
       organization_id: appt.organization_id,
       appointment_id: appt.id,
-      amount: grossCents / 100,
+      amount: chargeCents / 100,
+      processing_fee_cents: passthrough ? feeCents : null,
       status: 'failed',
       payment_type: 'revenue',
       payment_method: 'card',
@@ -165,7 +185,7 @@ export async function authorizeAppointment(
       prevStatus: appt.authorization_status,
       newStatus: 'failed',
       actor,
-      amount: grossCents,
+      amount: chargeCents,
       payload: {
         error: err instanceof Error ? err.message : String(err),
         payment_intent_id: failedPi?.id ?? null,
@@ -180,7 +200,7 @@ export async function authorizeAppointment(
         event_type: 'authorization_failed',
         appointment_id: appt.id,
         organization_id: appt.organization_id,
-        payload: { ...ctx, audience: 'admin', amount_cents: grossCents },
+        payload: { ...ctx, audience: 'admin', amount_cents: chargeCents },
       });
     }
 
@@ -203,7 +223,8 @@ export async function authorizeAppointment(
   const paymentRow = {
     organization_id: appt.organization_id,
     appointment_id: appt.id,
-    amount: grossCents / 100,
+    amount: chargeCents / 100,
+    processing_fee_cents: passthrough ? feeCents : null,
     status: 'pending' as const,
     payment_type: 'revenue' as const,
     payment_method: 'card' as const,
@@ -240,7 +261,7 @@ export async function authorizeAppointment(
     prevStatus: appt.authorization_status,
     newStatus: newAuthStatus,
     actor,
-    amount: grossCents,
+    amount: chargeCents,
     payload: { payment_intent_id: pi.id, pi_status: piStatus },
   });
 

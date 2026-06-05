@@ -13,6 +13,7 @@ import HomeownerCardPicker, {
   homeownerCardPickerAvailable,
   type CardPickerHandle,
 } from "./HomeownerCardPicker";
+import BookingTotalSummary from "./BookingTotalSummary";
 
 interface Property {
   id: string;
@@ -333,6 +334,14 @@ export default function RequestAppointmentModal({
                   onReadyChange={setCardReady}
                 />
               </div>
+            )}
+
+            {selectedService && (
+              <BookingTotalSummary
+                servicePrice={selectedService.base_price}
+                method="card"
+                timingNote="You're charged when the job is completed."
+              />
             )}
           </div>
         </div>

@@ -24,13 +24,15 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
   listSavedCards: vi.fn(async () => [
     { id: 'pm_company_card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true },
   ]),
+  getPaymentMethodType: vi.fn(async () => 'card'),
 }));
 
 import { POST } from './route';
 import { createDestinationAuthorization } from '@/lib/stripe/charges/authorize';
 import { createSelfPayAuthorization } from '@/lib/stripe/charges/authorizeSelfPay';
-import { listSavedCards } from '@/lib/stripe/customers/homeowner';
+import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { computeSelfPayAmounts } from '@/lib/payments/selfPayMath';
+import { computeChargeBreakdown } from '@/lib/payments/processingFee';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -268,6 +270,38 @@ describe('POST /api/appointments/:appointmentId/authorize', () => {
     expect(status).not.toBe(403);
     expect(vi.mocked(createDestinationAuthorization)).toHaveBeenCalledTimes(1);
   });
+
+  it('defers (no card hold) when the appointment PM is a bank account (ACH)', async () => {
+    const prevAch = process.env.STRIPE_ACH_ENABLED;
+    process.env.STRIPE_ACH_ENABLED = 'true';
+    vi.mocked(getPaymentMethodType).mockResolvedValueOnce('us_bank_account');
+    try {
+      await makeTenantReady();
+      const appt = await makeAppt({ withCard: true });
+      const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(200);
+      expect(body.code).toBe('deferred_ach');
+      // No card-style manual-capture hold is attempted on the bank PM (the bug Codex flagged).
+      expect(vi.mocked(createDestinationAuthorization)).not.toHaveBeenCalled();
+      const db = createTestSupabaseClient();
+      // No pending payment row — the debit happens at completion, not here.
+      const { data: payRows } = await db.from('payments').select('id').eq('appointment_id', appt.id);
+      expect(payRows ?? []).toHaveLength(0);
+      // The appointment is not flipped to a failed authorization.
+      const { data: a } = await db
+        .from('appointments')
+        .select('authorization_status')
+        .eq('id', appt.id)
+        .single();
+      expect((a as { authorization_status: string | null }).authorization_status).not.toBe('failed');
+    } finally {
+      process.env.STRIPE_ACH_ENABLED = prevAch;
+    }
+  });
 });
 
 describe('POST /api/appointments/:appointmentId/authorize — self-pay', () => {
@@ -489,4 +523,103 @@ describe('POST /api/appointments/:appointmentId/authorize — self-pay', () => {
     expect(vi.mocked(createSelfPayAuthorization)).toHaveBeenCalledTimes(1);
   });
 
+});
+
+describe('POST /api/appointments/:appointmentId/authorize — fee passthrough', () => {
+  let org: TestOrgFixture;
+  let originalNewFlow: string | undefined;
+  let originalPassthrough: string | undefined;
+
+  beforeEach(async () => {
+    originalNewFlow = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    originalPassthrough = process.env.STRIPE_FEE_PASSTHROUGH_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    org = await withTestOrg();
+    vi.mocked(createDestinationAuthorization).mockClear();
+    vi.mocked(createDestinationAuthorization).mockResolvedValue({
+      id: 'pi_test_auth',
+      status: 'requires_capture',
+    } as never);
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalNewFlow;
+    process.env.STRIPE_FEE_PASSTHROUGH_ENABLED = originalPassthrough;
+    await org.cleanup();
+  });
+
+  async function readyApptWithCard() {
+    const db = createTestSupabaseClient();
+    const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;
+    await db
+      .from('organizations')
+      .update({ stripe_connect_account_id: acctId, stripe_connect_charges_enabled: true })
+      .eq('id', org.organizationId);
+    await db
+      .from('user_profiles')
+      .update({ stripe_customer_id: 'cus_test_homeowner' })
+      .eq('id', org.homeowner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'confirmed',
+    });
+    await db.from('appointments').update({ payment_method_id: 'pm_test_card' }).eq('id', appt.id);
+    return appt;
+  }
+
+  it('passthrough ON: charges the service price + card fee and snapshots processing_fee_cents', async () => {
+    process.env.STRIPE_FEE_PASSTHROUGH_ENABLED = 'true';
+    const appt = await readyApptWithCard();
+    // $100 service -> card gross-up ceil((10000+30)/0.971) = 10330, fee 330.
+    const { chargeCents, feeCents } = computeChargeBreakdown('card', 10000);
+    expect(chargeCents).toBe(10330);
+    expect(feeCents).toBe(330);
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+
+    // The homeowner is charged the grossed-up amount (service price + fee).
+    expect(vi.mocked(createDestinationAuthorization)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createDestinationAuthorization).mock.calls[0][0].grossCents).toBe(chargeCents);
+
+    const db = createTestSupabaseClient();
+    const { data: payRows } = await db
+      .from('payments')
+      .select('amount, processing_fee_cents')
+      .eq('appointment_id', appt.id);
+    const pay = payRows![0] as { amount: number; processing_fee_cents: number };
+    expect(Number(pay.amount)).toBe(chargeCents / 100);
+    expect(Number(pay.processing_fee_cents)).toBe(feeCents);
+  });
+
+  it('passthrough OFF: charges the bare service price, processing_fee_cents stays null', async () => {
+    process.env.STRIPE_FEE_PASSTHROUGH_ENABLED = 'false';
+    const appt = await readyApptWithCard();
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+
+    expect(vi.mocked(createDestinationAuthorization).mock.calls[0][0].grossCents).toBe(10000);
+
+    const db = createTestSupabaseClient();
+    const { data: payRows } = await db
+      .from('payments')
+      .select('amount, processing_fee_cents')
+      .eq('appointment_id', appt.id);
+    const pay = payRows![0] as { amount: number; processing_fee_cents: number | null };
+    expect(Number(pay.amount)).toBe(100);
+    expect(pay.processing_fee_cents).toBeNull();
+  });
 });

@@ -62,7 +62,7 @@ export async function settleCleanerPayout(
   // cleaner payout could never self-heal. Skip the tenant leg once it's already recorded.
   const { data: payRow } = await supabase
     .from('payments')
-    .select('amount, transfer_amount')
+    .select('amount, transfer_amount, processing_fee_cents')
     .eq('appointment_id', appointmentId)
     .eq('payment_type', 'revenue')
     .order('created_at', { ascending: false })
@@ -71,13 +71,22 @@ export async function settleCleanerPayout(
   const tenantAlreadyTransferred =
     (payRow as { transfer_amount: number | null } | null)?.transfer_amount != null;
 
-  // Split is of the amount actually captured (handles partial capture + cancellation fees).
-  let grossCents = capturedCents ?? 0;
-  if (!grossCents) {
+  // Amount actually captured (handles partial capture + cancellation fees). Includes any
+  // processing fee the payer funded on top of the service price.
+  let capturedTotalCents = capturedCents ?? 0;
+  if (!capturedTotalCents) {
     const amt = (payRow as { amount: number | string } | null)?.amount;
-    grossCents = amt != null ? Math.round(Number(amt) * 100) : Math.round(Number(appt.total_price) * 100);
+    capturedTotalCents = amt != null ? Math.round(Number(amt) * 100) : Math.round(Number(appt.total_price) * 100);
   }
-  if (grossCents <= 0) return { settled: false, reason: 'nothing_captured' };
+  if (capturedTotalCents <= 0) return { settled: false, reason: 'nothing_captured' };
+
+  // Distribute only the SERVICE PRICE (captured minus the passed-through fee) — the fee was
+  // consumed by Stripe, so splitting on it would overdraw the platform balance. Legacy/no-
+  // passthrough rows (null fee) distribute the full captured amount, unchanged.
+  const processingFeeCents = Number(
+    (payRow as { processing_fee_cents: number | null } | null)?.processing_fee_cents ?? 0,
+  );
+  const splitBaseCents = Math.max(0, capturedTotalCents - processingFeeCents);
 
   // Cleaner payability — never pay the cleaner for a cancelled job (the captured fee compensates
   // the tenant, not the cleaner).
@@ -105,7 +114,7 @@ export async function settleCleanerPayout(
   const payoutPercent = cleanerPayable ? Number(cleaner!.payout_percent) : 0;
 
   const { cleanerCents, tenantRemainderCents } = computePaymentSplit({
-    grossCents,
+    grossCents: splitBaseCents,
     payoutPercent,
     platformFeeBps: org.platform_fee_bps ?? 0,
   });

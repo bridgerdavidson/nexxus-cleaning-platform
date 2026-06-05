@@ -20,10 +20,11 @@
  * transparency panel.
  */
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
+import { FEE_SCHEDULES, grossUpForFee } from './processingFee';
 
-/** Stripe US standard card pricing: 2.9% + 30¢. */
-export const STRIPE_PERCENT_FEE = 0.029;
-export const STRIPE_FIXED_FEE_CENTS = 30;
+/** Stripe US standard card pricing: 2.9% + 30¢ (single source: processingFee). */
+export const STRIPE_PERCENT_FEE = FEE_SCHEDULES.card.percent;
+export const STRIPE_FIXED_FEE_CENTS = FEE_SCHEDULES.card.fixedCents;
 
 export interface SelfPayAmountsParams {
   /** The notional job price in cents — the basis for the cleaner's percentage. */
@@ -49,11 +50,8 @@ export interface SelfPayAmounts {
  * net never falls short of the target (the cleaner is always made whole).
  */
 export function grossUpForStripeFee(netCents: number): number {
-  if (!Number.isInteger(netCents) || netCents < 0) {
-    throw new Error('grossUpForStripeFee: netCents must be a non-negative integer');
-  }
-  if (netCents === 0) return 0;
-  return Math.ceil((netCents + STRIPE_FIXED_FEE_CENTS) / (1 - STRIPE_PERCENT_FEE));
+  // Card gross-up; delegates to the method-aware module so there is one implementation.
+  return grossUpForFee('card', netCents);
 }
 
 export function computeSelfPayAmounts({ jobGrossCents, payoutPercent }: SelfPayAmountsParams): SelfPayAmounts {
