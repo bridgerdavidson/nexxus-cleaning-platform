@@ -102,6 +102,8 @@ function AdminDashboardInner() {
     openAppointment,
     closeAppointment,
   } = useAppointmentPanel();
+  // Notification "Assign cleaner" deep-link target, consumed by ActionRequiredSection.
+  const [assignIntentId, setAssignIntentId] = useState<string | null>(null);
   // Lazy-load invites: stays mounted at dashboard level once first opened, so
   // tab switches don't re-fetch and the Realtime channel survives navigation.
   const [hasOpenedInvitesEver, setHasOpenedInvitesEver] = useState(
@@ -555,6 +557,8 @@ function AdminDashboardInner() {
             declines, and SLA timeouts. One source of truth across the
             overview, the Bookings tab, and the nav-dot count. */}
         <ActionRequiredSection
+          assignAppointmentId={assignIntentId}
+          onAssignHandled={() => setAssignIntentId(null)}
           onReassign={(item) => {
             const apt = appointments.find((a) => a.id === item.id);
             if (apt) setRescheduleModalAppointment(apt as AppointmentCardData);
@@ -842,6 +846,10 @@ function AdminDashboardInner() {
             showMessagesIcon
             hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
+            onOpenAppointment={(id, intent) => {
+              if (intent === "assign") setAssignIntentId(id);
+              else openAppointment(id);
+            }}
           />
         </div>
 

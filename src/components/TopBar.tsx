@@ -12,19 +12,8 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
-import NotificationBell from "./NotificationBell";
-
-// Which tab each role's appointments live under, so clicking a notification
-// tied to an appointment jumps to the right place.
-const NOTIFICATION_APPOINTMENT_TAB: Record<
-  "homeowner" | "cleaner" | "manager" | "admin",
-  string
-> = {
-  admin: "bookings",
-  manager: "bookings",
-  cleaner: "jobs",
-  homeowner: "home",
-};
+import NotificationBell, { type NotificationOpenIntent } from "./NotificationBell";
+import { notificationTab, type NotificationRole } from "../lib/notifications/navigation";
 
 interface Tab {
   id: string;
@@ -55,6 +44,11 @@ interface TopBarProps {
    * Messages / Settings icons. Hidden on mobile (mobile uses an in-page CTA).
    */
   primaryAction?: React.ReactNode;
+  /**
+   * Opens an appointment's detail drawer (notification deep-link). `intent`
+   * 'assign' asks the destination to pre-open cleaner assignment.
+   */
+  onOpenAppointment?: (appointmentId: string, intent?: NotificationOpenIntent) => void;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -70,6 +64,7 @@ const TopBar: React.FC<TopBarProps> = ({
   hasUnreadMessages = false,
   hasSidebar = true,
   primaryAction,
+  onOpenAppointment,
 }) => {
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -154,7 +149,10 @@ const TopBar: React.FC<TopBarProps> = ({
               not the tenant's. */}
           {!impersonatingOrgId && (
             <NotificationBell
-              onOpenAppointment={() => onTabChange(NOTIFICATION_APPOINTMENT_TAB[role])}
+              onOpenNotification={(n, intent) => {
+                onTabChange(notificationTab(n.event_type, role as NotificationRole));
+                if (n.appointment_id) onOpenAppointment?.(n.appointment_id, intent);
+              }}
             />
           )}
           {/* Messages is a per-user inbox (filters conversations by user.id), so it

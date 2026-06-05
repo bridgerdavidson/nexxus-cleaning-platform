@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { formatTimeTo12h } from "../lib/formatTime";
+import { useAuth } from "../hooks/useAuth";
 import ConfirmAvailabilityModal, { type ConfirmModalMode } from "./ConfirmAvailabilityModal";
 import { deriveFreeSlots, type ScheduleConflictBlock } from "../lib/cleanerFreeSlots";
 import {
@@ -33,6 +34,8 @@ interface PendingAppointment {
   /** Wave 2 SLA: deadline by which the cleaner must respond. */
   response_deadline?: string | null;
   cleaner_confirmation_status?: "awaiting" | "approved" | "rejected" | null;
+  /** Org self-pay appointments have no homeowner; the org is the client. */
+  is_self_pay?: boolean;
   homeowner?: {
     first_name: string | null;
     last_name: string | null;
@@ -65,11 +68,15 @@ interface PendingConfirmationsSectionProps {
   onConfirmed: () => void;
 }
 
-function getHomeownerName(apt: PendingAppointment) {
+function getHomeownerName(apt: PendingAppointment, orgName?: string | null) {
   if (apt.homeowner) {
     const { first_name, last_name } = apt.homeowner;
-    return `${first_name || ""} ${last_name || ""}`.trim() || "Unknown";
+    const name = `${first_name || ""} ${last_name || ""}`.trim();
+    if (name) return name;
   }
+  // Self-pay appointments have no homeowner; show the organization as the client
+  // so the card reads like a normal booking (matches AppointmentCard / SidePanel).
+  if (apt.is_self_pay) return orgName || "Company";
   return "Unknown";
 }
 
@@ -351,6 +358,7 @@ function PendingConfirmationCard({
   onAccept,
   onDeclineClick,
 }: PendingConfirmationCardProps) {
+  const { currentOrganization } = useAuth();
   const slots = useMemo(() => getOfferedSlots(apt), [apt]);
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(
     slots.length === 1 ? slots[0].slot_index : null,
@@ -377,7 +385,7 @@ function PendingConfirmationCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">
-            {getHomeownerName(apt)}
+            {getHomeownerName(apt, currentOrganization?.name)}
           </p>
           <p className="text-sm text-gray-500 truncate">{getServiceName(apt)}</p>
           <p className="text-sm text-gray-500 truncate">{getPropertyAddress(apt)}</p>

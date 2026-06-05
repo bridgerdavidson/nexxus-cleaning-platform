@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeResponseDeadlineISO } from '../computeResponseDeadline';
+import { formatUserName } from '../formatName';
 import {
   rankCleanersByMultiSlotCoverage,
   type CleanerLike,
@@ -12,7 +13,7 @@ const MAX_ATTEMPTS = 3;
 
 export type AdvanceOutcome =
   | { kind: 'noop'; reason: string }
-  | { kind: 'assigned'; cleanerId: string; attemptIndex: number }
+  | { kind: 'assigned'; cleanerId: string; cleanerName?: string; attemptIndex: number }
   | { kind: 'escalated'; reason: 'chain_exhausted' | 'no_cleaners_available' };
 
 interface AdvanceRoutingArgs {
@@ -183,6 +184,10 @@ export async function advanceAppointmentRouting({
   }
 
   const picked = ranked[0].cleaner;
+  const pickedName = formatUserName(
+    picked.user_profile?.first_name,
+    picked.user_profile?.last_name,
+  );
   const primary = slots[0];
   const deadline = computeResponseDeadlineISO(primary.date, primary.time);
 
@@ -208,7 +213,12 @@ export async function advanceAppointmentRouting({
     })
     .eq('id', appointmentId);
 
-  return { kind: 'assigned', cleanerId: picked.id, attemptIndex: nextAttempt };
+  return {
+    kind: 'assigned',
+    cleanerId: picked.id,
+    cleanerName: pickedName || undefined,
+    attemptIndex: nextAttempt,
+  };
 }
 
 async function escalate(

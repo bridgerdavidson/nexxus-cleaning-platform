@@ -56,7 +56,8 @@ import MessagesPage from "../../components/MessagesPage";
 import AppointmentCard, {
   AppointmentCardData,
 } from "../../components/AppointmentCard";
-import AppointmentSidePanel from "../../components/AppointmentSidePanel";
+import AppointmentPanelHost from "../../components/AppointmentPanelHost";
+import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
 import CalendarView from "../../components/CalendarView";
 import DayDetailSidebar from "../../components/DayDetailSidebar";
 import StatusBadge from "../../components/StatusBadge";
@@ -217,9 +218,14 @@ function CleanerDashboardInner() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [upcomingDaysFilter, setUpcomingDaysFilter] = useState<number>(30);
   const [jobsTab, setJobsTab] = useState<"upcoming" | "past" | "all">("upcoming");
-  const [selectedAppointment, setSelectedAppointment] =
-    useState<AppointmentCardData | null>(null);
-  const [showSidePanel, setShowSidePanel] = useState(false);
+  // URL-backed appointment drawer (?appointment=<id>), unified with the other
+  // dashboards so notification deep-links + refresh-restore work for cleaners too.
+  const {
+    appointmentId: openAppointmentId,
+    isOpen: isAppointmentPanelOpen,
+    openAppointment,
+    closeAppointment,
+  } = useAppointmentPanel();
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>(
@@ -704,10 +710,9 @@ function CleanerDashboardInner() {
   // Calendar handlers
   const handleCalendarAppointmentClick = useCallback(
     (appointment: AppointmentCardData) => {
-      setSelectedAppointment(appointment);
-      setShowSidePanel(true);
+      openAppointment(appointment.id);
     },
-    []
+    [openAppointment]
   );
 
   const handleDayClick = useCallback(
@@ -726,10 +731,9 @@ function CleanerDashboardInner() {
   const handleDayDetailAppointmentClick = useCallback(
     (appointment: AppointmentCardData) => {
       setShowDayDetailSidebar(false);
-      setSelectedAppointment(appointment);
-      setShowSidePanel(true);
+      openAppointment(appointment.id);
     },
-    []
+    [openAppointment]
   );
 
   // Redirect to login if not authenticated
@@ -903,12 +907,8 @@ function CleanerDashboardInner() {
       return;
     }
 
-    setSelectedAppointment(convertToCardData(appointment));
     setActiveTab("jobs");
-    // Use setTimeout to ensure tab switch happens before opening panel
-    setTimeout(() => {
-      setShowSidePanel(true);
-    }, 0);
+    openAppointment(appointment.id);
   };
 
   const renderSchedule = () => (
@@ -1226,8 +1226,7 @@ function CleanerDashboardInner() {
       return;
     }
 
-    setSelectedAppointment(convertToCardData(appointment));
-    setShowSidePanel(true);
+    openAppointment(appointment.id);
   };
 
   const renderJobs = () => {
@@ -1628,16 +1627,6 @@ function CleanerDashboardInner() {
         role="cleaner"
       />
 
-      {/* Side Panel */}
-      <AppointmentSidePanel
-        isOpen={showSidePanel}
-        onClose={() => setShowSidePanel(false)}
-        appointment={selectedAppointment}
-        role="cleaner"
-        canEdit={false}
-        onStartJob={handleStartJob}
-        onCompleteJob={handleCompleteJob}
-      />
           </>
         )}
       </div>
@@ -1971,6 +1960,7 @@ function CleanerDashboardInner() {
             showMessagesIcon
             hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
+            onOpenAppointment={(id) => openAppointment(id)}
           />
         </div>
 
@@ -2000,6 +1990,20 @@ function CleanerDashboardInner() {
         tabs={allTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+      />
+
+      {/* Appointment drawer, mounted page-level so notification deep-links open
+          it over any tab (URL-backed, with by-id fallback). */}
+      <AppointmentPanelHost
+        appointments={appointments as unknown as AppointmentCardData[]}
+        appointmentId={openAppointmentId}
+        isOpen={isAppointmentPanelOpen}
+        onClose={closeAppointment}
+        role="cleaner"
+        canEdit={false}
+        onStartJob={handleStartJob}
+        onCompleteJob={handleCompleteJob}
+        onRefreshAppointments={refetchAppointments}
       />
     </div>
   );

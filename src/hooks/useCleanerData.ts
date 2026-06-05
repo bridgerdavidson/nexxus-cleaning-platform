@@ -839,11 +839,43 @@ export function useCleanerPhotos() {
 }
 
 // Helper function to update appointment status
+/**
+ * Fire a job-lifecycle notification (job_started / job_completed) to the
+ * homeowner + admins via the service-role route. Best-effort and fire-and-forget:
+ * notification_events has no client INSERT policy, so the client cannot write it
+ * directly, and a failure here must never affect the job status update.
+ */
+async function emitJobLifecycleNotification(
+  appointmentId: string,
+  event: 'started' | 'completed',
+): Promise<void> {
+  try {
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('organization_id')
+      .eq('id', appointmentId)
+      .single();
+    const organizationId = (appt as { organization_id?: string } | null)?.organization_id;
+    if (!organizationId) return;
+    const token = await getAccessToken();
+    await fetch(`/api/appointments/${appointmentId}/lifecycle`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ organizationId, event }),
+    });
+  } catch (err) {
+    console.error('Failed to emit job lifecycle notification (non-blocking):', err);
+  }
+}
+
 export async function updateAppointmentStatus(appointmentId: string, status: string) {
   try {
     // Prepare update object
     const updateData: { status: string; job_progress?: string } = { status };
-    
+
     // If transitioning to in_progress, set job_progress to before_photos
     if (status === 'in_progress') {
       updateData.job_progress = 'before_photos';
@@ -857,6 +889,14 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       .eq('id', appointmentId);
 
     if (error) throw error;
+
+    // Notify homeowner + admins that the job started/finished (best-effort).
+    if (status === 'in_progress' || status === 'completed') {
+      void emitJobLifecycleNotification(
+        appointmentId,
+        status === 'in_progress' ? 'started' : 'completed',
+      );
+    }
 
     // If status changed to 'completed', trigger automatic payment
     if (status === 'completed') {

@@ -17,7 +17,31 @@ export type NotificationEventType =
   | 'cleaner_declined'              // recipient: admins
   | 'cleaner_counter_proposed'      // recipient: admins (one-click accept available)
   | 'chain_exhausted'               // recipient: admins (urgent, force-assign required)
-  | 'cleaner_response_overdue';     // recipient: admins (SLA elapsed)
+  | 'cleaner_response_overdue'      // recipient: admins (SLA elapsed)
+  | 'cleaner_paid'                  // recipient: cleaner (payout settled / bank_paid)
+  | 'job_started'                   // recipient: homeowner + admins
+  | 'job_completed'                 // recipient: homeowner + admins
+  | 'dispute_opened'                // recipient: admins (chargeback created)
+  | 'authorization_failed';         // recipient: admins (card hold declined)
+
+/** Which audience a row is worded for (the row itself doesn't store the role). */
+export type NotificationAudience = 'admin' | 'cleaner' | 'homeowner';
+
+/**
+ * Denormalized display context written into a notification's `payload` at emit
+ * time so the in-app label (and a future SMS/email dispatcher) can render names
+ * without any join. Every field is optional: the label builder falls back to
+ * generic copy when one is missing, so historical rows stay readable.
+ */
+export interface NotificationContext {
+  audience?: NotificationAudience;
+  customer_name?: string;       // homeowner, or the org name for self-pay
+  cleaner_name?: string;        // the primary cleaner the message is about
+  next_cleaner_name?: string;   // reassignment target on a decline
+  property_label?: string;
+  scheduled_date?: string;      // YYYY-MM-DD
+  scheduled_time?: string;      // HH:mm
+}
 
 export interface NotificationEventPayload {
   event_type: NotificationEventType;
