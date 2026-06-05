@@ -7,14 +7,20 @@ vi.mock('@/lib/stripe/charges/capture', () => ({
 vi.mock('@/lib/stripe/charges/chargeAch', () => ({
   createAchCharge: vi.fn(async () => ({ id: 'pi_ach_test', status: 'processing' })),
 }));
+vi.mock('@/lib/stripe/charges/chargeSelfPayAch', () => ({
+  createSelfPayAchCharge: vi.fn(async () => ({ id: 'pi_selfpay_ach', status: 'processing' })),
+}));
 vi.mock('@/lib/stripe/customers/homeowner', () => ({
   getPaymentMethodType: vi.fn(async () => 'us_bank_account'),
+  // chargeSelfPayAchAppointment resolves the org's default company method through this.
+  listSavedCards: vi.fn(async () => []),
 }));
 
 import { POST } from './route';
 import { capturePaymentIntent } from '@/lib/stripe/charges/capture';
 import { createAchCharge } from '@/lib/stripe/charges/chargeAch';
-import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
+import { createSelfPayAchCharge } from '@/lib/stripe/charges/chargeSelfPayAch';
+import { getPaymentMethodType, listSavedCards } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -304,5 +310,162 @@ describe('POST /api/appointments/:appointmentId/capture — ACH charge-at-comple
     });
     expect(status).toBe(409);
     expect(vi.mocked(createAchCharge)).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/appointments/:appointmentId/capture — ORG self-pay ACH (charge-at-completion)', () => {
+  let org: TestOrgFixture;
+  let origNewFlow: string | undefined;
+  let origAch: string | undefined;
+  let origSelfPay: string | undefined;
+
+  beforeEach(async () => {
+    origNewFlow = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    origAch = process.env.STRIPE_ACH_ENABLED;
+    origSelfPay = process.env.STRIPE_SELF_PAY_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    process.env.STRIPE_ACH_ENABLED = 'true';
+    process.env.STRIPE_SELF_PAY_ENABLED = 'true';
+    // Cleaner is payout-capable so self-pay can compute the cut (charge depends on payout%).
+    org = await withTestOrg({
+      stripeConnectAccountId: 'acct_selfpay_cleaner',
+      stripeConnectOnboardingComplete: true,
+      payoutPercent: 60,
+    });
+    vi.mocked(createSelfPayAchCharge).mockResolvedValue({ id: 'pi_selfpay_ach', status: 'processing' } as never);
+    // Org's default company method is a verified bank account.
+    vi.mocked(listSavedCards).mockResolvedValue([
+      { id: 'pm_org_bank', type: 'us_bank_account', isDefault: true, last4: '6789', bankName: 'Test Bank' },
+    ] as never);
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = origNewFlow;
+    process.env.STRIPE_ACH_ENABLED = origAch;
+    process.env.STRIPE_SELF_PAY_ENABLED = origSelfPay;
+    await org.cleanup();
+  });
+
+  /** A self-pay appointment (org-owned property) with a company self-pay Customer and NO hold. */
+  async function makeSelfPayAppt() {
+    const db = createTestSupabaseClient();
+    // organizations.stripe_self_pay_customer_id is UNIQUE — derive a per-org value so tests don't
+    // collide on the shared local DB (a duplicate-key error would silently leave the id null).
+    await db
+      .from('organizations')
+      .update({ stripe_self_pay_customer_id: `cus_selfpay_${org.organizationId}` })
+      .eq('id', org.organizationId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'in_progress',
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+    return appt;
+  }
+
+  it('debits the company bank (no hold) and writes a PROCESSING self-pay/ach row', async () => {
+    const appt = await makeSelfPayAppt();
+    const { status, body } = await callRoute<{ success: boolean; status: string; payment_intent_id: string }>(
+      handlerFor(appt.id),
+      { method: 'POST', headers: bearerHeader(org.admin.accessToken), body: { organization_id: org.organizationId } },
+    );
+    expect(status).toBe(200);
+    expect(body.status).toBe('processing');
+    expect(body.payment_intent_id).toBe('pi_selfpay_ach');
+
+    // 60% of $100 = $60 cut; ACH gross-up ceil(6000/0.992)=6049, fee 49.
+    expect(vi.mocked(createSelfPayAchCharge)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createSelfPayAchCharge).mock.calls[0][0].chargeCents).toBe(6049);
+
+    const db = createTestSupabaseClient();
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status, payment_method, is_self_pay, stripe_payment_intent_id, processing_fee_cents, amount')
+      .eq('appointment_id', appt.id);
+    expect(payRows).toHaveLength(1);
+    const pay = payRows![0] as {
+      status: string;
+      payment_method: string;
+      is_self_pay: boolean;
+      stripe_payment_intent_id: string;
+      processing_fee_cents: number;
+      amount: number;
+    };
+    expect(pay.status).toBe('processing');
+    expect(pay.payment_method).toBe('ach');
+    expect(pay.is_self_pay).toBe(true);
+    expect(pay.stripe_payment_intent_id).toBe('pi_selfpay_ach');
+    expect(Number(pay.processing_fee_cents)).toBe(49);
+    expect(Number(pay.amount)).toBe(60.49);
+
+    const { data: ev } = await db.from('payment_events').select('event_type').eq('appointment_id', appt.id);
+    expect((ev ?? []).some((e) => (e as { event_type: string }).event_type === 'ach_charge_initiated')).toBe(true);
+  });
+
+  it('does NOT pay the cleaner at charge time (payout waits for the debit to settle)', async () => {
+    const appt = await makeSelfPayAppt();
+    await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    const db = createTestSupabaseClient();
+    const { data: payouts } = await db.from('payouts').select('id').eq('appointment_id', appt.id);
+    expect(payouts ?? []).toHaveLength(0);
+  });
+
+  it('is idempotent: a repeat completion stays processing and never debits twice', async () => {
+    const appt = await makeSelfPayAppt();
+    const opts = {
+      method: 'POST' as const,
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    };
+    const first = await callRoute<{ status: string }>(handlerFor(appt.id), opts);
+    expect(first.body.status).toBe('processing');
+    const second = await callRoute<{ status: string }>(handlerFor(appt.id), opts);
+    expect(second.status).toBe(200);
+    expect(second.body.status).toBe('processing');
+    // The processing-row guard short-circuits the second call before any charge.
+    expect(vi.mocked(createSelfPayAchCharge)).toHaveBeenCalledTimes(1);
+
+    const db = createTestSupabaseClient();
+    const { data: payRows } = await db.from('payments').select('id').eq('appointment_id', appt.id);
+    expect(payRows).toHaveLength(1);
+  });
+
+  it('409 (no debit) when the company default method is a card, not a bank', async () => {
+    vi.mocked(listSavedCards).mockResolvedValue([
+      { id: 'pm_org_card', type: 'card', isDefault: true, last4: '4242', brand: 'visa', expMonth: 12, expYear: 2030 },
+    ] as never);
+    const appt = await makeSelfPayAppt();
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(409);
+    expect(vi.mocked(createSelfPayAchCharge)).not.toHaveBeenCalled();
+  });
+
+  it('409 (no debit) when the assigned cleaner is not payout-capable', async () => {
+    const db = createTestSupabaseClient();
+    await db
+      .from('cleaner_profiles')
+      .update({ stripe_connect_onboarding_complete: false })
+      .eq('id', org.cleaner.userId);
+    const appt = await makeSelfPayAppt();
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(409);
+    expect(vi.mocked(createSelfPayAchCharge)).not.toHaveBeenCalled();
   });
 });

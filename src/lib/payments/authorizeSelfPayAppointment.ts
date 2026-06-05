@@ -15,6 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSelfPayAuthorization } from '@/lib/stripe/charges/authorizeSelfPay';
 import { computeSelfPayAmounts } from './selfPayMath';
 import { listSavedCards } from '@/lib/stripe/customers/homeowner';
+import { stripeAchEnabled } from '@/lib/stripe/flags';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
@@ -26,6 +27,7 @@ export type SelfPayAuthorizeCode =
   | 'cleaner_not_payable'
   | 'not_authorizable'
   | 'declined'
+  | 'deferred_ach'
   | 'error';
 
 export interface SelfPayAuthorizeOutcome {
@@ -117,12 +119,21 @@ export async function authorizeSelfPayAppointment(
     };
   }
 
-  // Resolve the company card: the default PaymentMethod, else the first saved card.
+  // Resolve the company payment method: the default PaymentMethod, else the first saved.
   const cards = await listSavedCards(customerId);
   if (cards.length === 0) {
     return { ok: false, code: 'no_org_card', message: 'No saved company card to charge' };
   }
-  const paymentMethodId = (cards.find((c) => c.isDefault) ?? cards[0]).id;
+  const defaultMethod = cards.find((c) => c.isDefault) ?? cards[0];
+
+  // Bank (ACH) can't be held: skip the authorization at booking and charge at completion instead
+  // (chargeSelfPayAchAppointment). Mirrors the homeowner `deferred_ach` skip. Return BEFORE the
+  // `authorizing` write + hold so a bank self-pay leaves authorization_status untouched.
+  if (stripeAchEnabled() && defaultMethod.type === 'us_bank_account') {
+    return { ok: true, code: 'deferred_ach', message: 'Bank payment is charged when the job is completed' };
+  }
+
+  const paymentMethodId = defaultMethod.id;
 
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);
   const { chargeCents, cleanerCutCents } = computeSelfPayAmounts({

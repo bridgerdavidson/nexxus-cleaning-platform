@@ -21,7 +21,6 @@ import {
   AlertTriangle,
   Building2,
 } from "lucide-react";
-import Link from "next/link";
 import type { RecurrenceType } from "../types";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
@@ -39,8 +38,8 @@ import StatusBadge from "./StatusBadge";
 import SlotPicker, { type SlotInput } from "./appointments/SlotPicker";
 import AppointmentPaymentSection, { DEFER_CARD } from "./AppointmentPaymentSection";
 import BookingTotalSummary from "./BookingTotalSummary";
-import { OrgCardFormPanel } from "./OrgCardForm";
-import OrgCardPicker from "./OrgCardPicker";
+import OrgPaymentMethodPicker from "./OrgPaymentMethodPicker";
+import type { PaymentMethodKind } from "@/lib/payments/processingFee";
 import DiscardChangesDialog from "./DiscardChangesDialog";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import { useFormDraft } from "../hooks/useFormDraft";
@@ -97,16 +96,6 @@ interface Cleaner {
     last_name: string;
     avatar_url: string | null;
   } | null;
-}
-
-/** A masked saved card as returned by the org saved-payment-methods route. */
-interface OrgSavedCard {
-  id: string;
-  brand: string;
-  last4: string;
-  expMonth: number;
-  expYear: number;
-  isDefault: boolean;
 }
 
 interface AddAppointmentModalProps {
@@ -325,15 +314,11 @@ export default function AddAppointmentModal({
   const [paymentMethodSaved, setPaymentMethodSaved] = useState(false);
   const [skipPaymentMethod, setSkipPaymentMethod] = useState(false);
 
-  // Self-pay company-card state: the org's saved card(s), loaded lazily when the
-  // self-pay payment step is reached.
-  const [orgCards, setOrgCards] = useState<OrgSavedCard[]>([]);
-  const [orgCardsLoading, setOrgCardsLoading] = useState(false);
-  const [orgCardsLoaded, setOrgCardsLoaded] = useState(false);
-  // Inline "add a company card" flow shown on the self-pay payment step when no card is on file.
-  const [addingOrgCard, setAddingOrgCard] = useState(false);
-  // Inline "change company card" panel (switch default / add / remove) on the self-pay payment step.
-  const [managingCard, setManagingCard] = useState(false);
+  // Self-pay company payment-method state, reported up by OrgPaymentMethodPicker (which owns the
+  // fetch): whether a method is on file (submit gate) and the charged (default) method's type
+  // (drives the total's fee — bank is cheaper than card).
+  const [selfPayHasMethod, setSelfPayHasMethod] = useState(false);
+  const [selfPayMethod, setSelfPayMethod] = useState<PaymentMethodKind>("card");
 
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -742,30 +727,6 @@ export default function AddAppointmentModal({
     }
   };
 
-  // Self-pay: load the org's saved company card(s) for the payment step. Lazy — only
-  // called when the self-pay payment step is reached.
-  const fetchOrgCards = async () => {
-    if (!currentOrganizationId) return;
-
-    try {
-      setOrgCardsLoading(true);
-      const token = await getAccessToken();
-      const res = await fetch(
-        `/api/stripe/org/saved-payment-methods?organization_id=${currentOrganizationId}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to load company card");
-      setOrgCards((data.cards ?? []) as OrgSavedCard[]);
-    } catch (err) {
-      console.error("Error fetching org company card:", err);
-      setOrgCards([]);
-    } finally {
-      setOrgCardsLoading(false);
-      setOrgCardsLoaded(true);
-    }
-  };
-
   const fetchServiceTypes = async () => {
     if (!currentOrganizationId) return;
 
@@ -973,14 +934,8 @@ export default function AddAppointmentModal({
     [selfPay],
   );
 
-  // The org's default company card (or the first on file). Drives the company-card summary
-  // and the "no card → submit disabled" gate.
-  const orgDefaultCard = useMemo(
-    () => orgCards.find((c) => c.isDefault) ?? orgCards[0] ?? null,
-    [orgCards],
-  );
-
-  // "You'll be charged ≈ $X" transparency math, only when a payable cleaner is chosen.
+  // Itemized self-pay charge math, only when a payable cleaner is chosen. Method-aware: the charge
+  // is the cleaner's cut grossed up for the CHARGED method's fee (bank is cheaper than card).
   const selfPayAmounts = useMemo(() => {
     if (!selfPay || !selectedCleaner || !selectedCleanerPayable) return null;
     const finalPrice =
@@ -992,6 +947,7 @@ export default function AddAppointmentModal({
     return computeSelfPayAmounts({
       jobGrossCents,
       payoutPercent: Number(selectedCleaner.payout_percent ?? 0),
+      method: selfPayMethod,
     });
   }, [
     selfPay,
@@ -1000,6 +956,7 @@ export default function AddAppointmentModal({
     priceOverrideEnabled,
     customPrice,
     getSystemCalculatedPrice,
+    selfPayMethod,
   ]);
 
   // The price the customer will be charged for (override or base + checklist adder), in dollars.
@@ -1009,20 +966,6 @@ export default function AddAppointmentModal({
       priceOverrideEnabled && customPrice ? parseFloat(customPrice) : getSystemCalculatedPrice();
     return Number.isFinite(p) ? p : 0;
   }, [priceOverrideEnabled, customPrice, getSystemCalculatedPrice]);
-
-  // Which step is the payment step, given the pre-selection mode? (1-indexed)
-  // Uses the effective flags so book-from-property (full 3-step) reports step 3.
-  const paymentStep = preHomeownerId && prePropertyId ? 2 : 3;
-
-  // Lazy-load the org company card when the self-pay payment step is reached.
-  // orgCardsLoaded gates a single fetch per modal session; toggling bill-to back and
-  // forth does NOT re-fetch. Cards are cleared and the flag reset in handleClose.
-  useEffect(() => {
-    if (selfPay && currentStep === paymentStep && currentOrganizationId && !orgCardsLoaded) {
-      fetchOrgCards();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selfPay, currentStep, paymentStep, currentOrganizationId, orgCardsLoaded]);
 
   const handleCreateAppointment = async () => {
     // In self-pay mode on an org-owned property there is no homeowner; every other
@@ -1054,9 +997,9 @@ export default function AddAppointmentModal({
         );
         return;
       }
-      if (!orgDefaultCard) {
+      if (!selfPayHasMethod) {
         setError(
-          "No company card on file. Add one in Settings, Payments before booking a company-paid cleaning.",
+          "No company payment method on file. Add a card or bank account before booking a company-paid cleaning.",
         );
         return;
       }
@@ -1368,10 +1311,8 @@ export default function AddAppointmentModal({
     setCurrentStep(1);
     setMobileSubStep("homeowner");
     setBillTo("homeowner");
-    setOrgCards([]);
-    setOrgCardsLoaded(false);
-    setAddingOrgCard(false);
-    setManagingCard(false);
+    setSelfPayHasMethod(false);
+    setSelfPayMethod("card");
     // Effective flags: book-from-property fully resets (it re-prefills on each open).
     if (!preHomeownerId) {
       setSelectedHomeowner(null);
@@ -1488,7 +1429,7 @@ export default function AddAppointmentModal({
   // a send-link, or defer), so the final step is never blocked. Legacy keeps the saved/skip gate.
   // Self-pay requires a company card on file before submit.
   const isStep4Valid = selfPay
-    ? !!orgDefaultCard
+    ? selfPayHasMethod
     : stripeNewChargeFlowUiEnabled()
       ? true
       : paymentMethodSaved || skipPaymentMethod;
@@ -2547,17 +2488,6 @@ export default function AddAppointmentModal({
                   )}
                 </div>
 
-                {/* Self-pay money transparency: what the company card is charged vs. what the
-                    cleaner nets. Only once a payout-ready cleaner and a positive price exist. */}
-                {selfPay && selfPayAmounts && (
-                  <div className="rounded-lg bg-primary-50 p-3 text-sm text-gray-800">
-                    Your company card will be charged ≈ $
-                    {(selfPayAmounts.chargeCents / 100).toFixed(2)}. Your cleaner
-                    receives $
-                    {(selfPayAmounts.cleanerCutCents / 100).toFixed(2)} (their{" "}
-                    {Number(selectedCleaner?.payout_percent ?? 0)}%).
-                  </div>
-                )}
 
                 {/* Recurrence Section — hidden in self-pay mode (no self-pay recurring path). */}
                 {!selfPay && (
@@ -2768,91 +2698,37 @@ export default function AddAppointmentModal({
                   </div>
 
                   {selfPay ? (
-                    /* Self-pay: the org's saved company card (no homeowner card picker). */
+                    /* Self-pay: the org's saved company payment methods (card or bank). */
                     <div className="space-y-4">
                       <p className="text-gray-600">
-                        This cleaning is paid by your company. The card below is
-                        authorized when the appointment is created and charged
-                        when the job is completed.
+                        This cleaning is paid by your company. Choose which saved card or bank
+                        account is charged, or add a new one. A card is authorized when the
+                        appointment is created and charged when the job is completed; a bank account
+                        is charged after the job is completed.
                       </p>
-                      {orgCardsLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
-                        </div>
-                      ) : orgDefaultCard ? (
-                        managingCard ? (
-                          <OrgCardPicker
-                            organizationId={currentOrganizationId ?? ""}
-                            cards={orgCards}
-                            loading={orgCardsLoading}
-                            onChanged={async () => {
-                              setOrgCardsLoaded(false);
-                              await fetchOrgCards();
-                            }}
-                            onClose={() => setManagingCard(false)}
-                          />
-                        ) : (
-                          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <CreditCard className="h-5 w-5 text-gray-500 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 capitalize">
-                                  {orgDefaultCard.brand} •••• {orgDefaultCard.last4}
-                                  {orgDefaultCard.isDefault && (
-                                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
-                                      Default
-                                    </span>
-                                  )}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Company card · Expires{" "}
-                                  {String(orgDefaultCard.expMonth).padStart(2, "0")}
-                                  /{orgDefaultCard.expYear}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setManagingCard(true)}
-                                className="flex-shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                              >
-                                Change
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      ) : addingOrgCard ? (
-                        <OrgCardFormPanel
-                          organizationId={currentOrganizationId ?? ""}
-                          onCancel={() => setAddingOrgCard(false)}
-                          onSaved={async () => {
-                            setAddingOrgCard(false);
-                            setOrgCardsLoaded(false);
-                            await fetchOrgCards();
+                      <OrgPaymentMethodPicker
+                        organizationId={currentOrganizationId ?? ""}
+                        onChargedMethodChange={({ hasMethod, method }) => {
+                          setSelfPayHasMethod(hasMethod);
+                          setSelfPayMethod(method);
+                        }}
+                      />
+                      {selfPayAmounts && (
+                        <BookingTotalSummary
+                          method={selfPayMethod}
+                          breakdown={{
+                            baseCents: selfPayAmounts.cleanerCutCents,
+                            feeCents: selfPayAmounts.estimatedFeeCents,
+                            chargeCents: selfPayAmounts.chargeCents,
+                            baseLabel: "Cleaner payout",
+                            totalLabel: "Your company is charged",
                           }}
+                          timingNote={
+                            selfPayMethod === "us_bank_account"
+                              ? "Charged to your company bank account after the job is completed (clears in a few business days)."
+                              : "Charged to your company card when the job is completed."
+                          }
                         />
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
-                          <Building2 className="mx-auto h-8 w-8 text-gray-300" />
-                          <p className="mx-auto mt-3 max-w-sm text-sm text-gray-500">
-                            No company card on file
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setAddingOrgCard(true)}
-                            className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
-                          >
-                            Add a company card
-                          </button>
-                          <p className="mt-3 text-xs text-gray-400">
-                            or{" "}
-                            <Link
-                              href="/settings/payments"
-                              className="font-medium text-gray-500 underline hover:text-gray-700"
-                            >
-                              manage cards in settings
-                            </Link>
-                          </p>
-                        </div>
                       )}
                     </div>
                   ) : !selectedHomeowner ? null : stripeNewChargeFlowUiEnabled() ? (

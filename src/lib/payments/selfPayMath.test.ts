@@ -65,6 +65,36 @@ describe('computeSelfPayAmounts', () => {
   });
 });
 
+describe('computeSelfPayAmounts — method-aware fee (card vs bank)', () => {
+  it('bank keeps the SAME cleaner cut as card but charges the cheaper ACH gross-up', () => {
+    const card = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, method: 'card' });
+    const bank = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, method: 'us_bank_account' });
+    // The cleaner's cut is the % of gross — identical regardless of how the org pays.
+    expect(bank.cleanerCutCents).toBe(card.cleanerCutCents);
+    expect(bank.cleanerCutCents).toBe(8000);
+    // ACH gross-up of an $80 cut: ceil(8000 / (1 - 0.008)) = ceil(8064.51) = 8065; 0.8% of 8065 = 65¢ ≤ $5 cap.
+    expect(bank.chargeCents).toBe(8065);
+    expect(bank.estimatedFeeCents).toBe(65);
+    // Bank is strictly cheaper than card for the org.
+    expect(bank.chargeCents).toBeLessThan(card.chargeCents);
+  });
+
+  it('bank fee is capped at $5 on a large cut', () => {
+    const bank = computeSelfPayAmounts({ jobGrossCents: 250000, payoutPercent: 100, method: 'us_bank_account' });
+    expect(bank.cleanerCutCents).toBe(250000);
+    // Past the cap the fee is flat $5 (no fixed fee for ACH): charge = base + cap.
+    expect(bank.chargeCents).toBe(250500);
+    expect(bank.estimatedFeeCents).toBe(500);
+  });
+
+  it('defaults to card when method is omitted', () => {
+    const omitted = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80 });
+    const card = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, method: 'card' });
+    expect(omitted.chargeCents).toBe(card.chargeCents);
+    expect(omitted.estimatedFeeCents).toBe(card.estimatedFeeCents);
+  });
+});
+
 describe('grossUpForStripeFee', () => {
   it('returns 0 for a 0 net', () => {
     expect(grossUpForStripeFee(0)).toBe(0);

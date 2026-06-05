@@ -769,7 +769,7 @@ export function useCleanerAwaitingPayments() {
       const { data, error } = await supabase
         .from('payments')
         .select(`
-          id, amount, processing_fee_cents, created_at,
+          id, amount, processing_fee_cents, is_self_pay, created_at,
           appointment:appointments!inner(
             id, scheduled_date, cleaner_id,
             homeowner:user_profiles!homeowner_id(first_name, last_name),
@@ -789,11 +789,13 @@ export function useCleanerAwaitingPayments() {
         const ho = Array.isArray(hoRaw) ? hoRaw[0] : hoRaw;
         const svcRaw = appt?.service_type as { name?: string } | { name?: string }[] | null;
         const svc = Array.isArray(svcRaw) ? svcRaw[0] : svcRaw;
-        // Cleaner cut is % of the SERVICE PRICE (charge minus the passed-through fee), floored.
+        const isSelfPay = Boolean(p.is_self_pay);
         const chargeCents = Math.round(Number(p.amount) * 100);
         const feeCents = Number(p.processing_fee_cents ?? 0);
         const baseCents = Math.max(0, chargeCents - feeCents);
-        const cleanerCutCents = Math.floor((baseCents * payoutPercent) / 100);
+        // Self-pay: the charge IS the cleaner's cut grossed up for the fee, so charge − fee is the
+        // EXACT cut (don't re-apply payout%). Homeowner: base is the service price, cut is payout%.
+        const cleanerCutCents = isSelfPay ? baseCents : Math.floor((baseCents * payoutPercent) / 100);
         return {
           id: p.id as string,
           cleanerCut: cleanerCutCents / 100,
@@ -802,7 +804,11 @@ export function useCleanerAwaitingPayments() {
             ? {
                 id: appt.id as string,
                 scheduledDate: (appt.scheduled_date as string) ?? null,
-                homeownerName: ho ? `${ho.first_name ?? ''} ${ho.last_name ?? ''}`.trim() || 'Customer' : 'Customer',
+                homeownerName: isSelfPay
+                  ? 'Company-paid'
+                  : ho
+                    ? `${ho.first_name ?? ''} ${ho.last_name ?? ''}`.trim() || 'Customer'
+                    : 'Customer',
                 serviceName: svc?.name ?? null,
               }
             : null,

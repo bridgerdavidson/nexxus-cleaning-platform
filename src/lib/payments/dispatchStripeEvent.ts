@@ -288,6 +288,21 @@ async function handlePaymentIntentFailed(
   }
 
   console.log('Payment marked as failed for appointment:', appointmentId);
+
+  // Org self-pay bank (ACH) debits are confirmed at completion with no hold, so a bounce surfaces
+  // only here. Mirror the card authorize-failed path and alert admins in-app (self-pay has no
+  // homeowner, so the notification context resolves to the org/property). Card self-pay fails at
+  // the hold (authorizeSelfPayAppointment already notifies), so this is reached by the ACH path.
+  if (paymentIntent.metadata?.self_pay === 'true') {
+    const organizationId = paymentIntent.metadata?.organization_id ?? null;
+    const ctx = await loadNotificationContext(supabase, { appointmentId });
+    await recordNotificationEvent(supabase, {
+      event_type: 'authorization_failed',
+      appointment_id: appointmentId,
+      organization_id: organizationId,
+      payload: { ...ctx, audience: 'admin', amount_cents: paymentIntent.amount ?? 0 },
+    });
+  }
 }
 
 /**

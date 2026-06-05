@@ -252,6 +252,79 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
     await admin.from('webhook_events').delete().eq('id', `evt_selfpay_unpayable_${appt.id}`);
   });
 
+  it('a self-pay BANK debit failure marks the row failed and notifies admins (no homeowner)', async () => {
+    // Bank self-pay defers the hold and debits at completion → a bounce surfaces only at
+    // payment_intent.payment_failed. Seed the processing/ach row the charge step wrote.
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 60.49,
+      status: 'processing',
+      payment_method: 'ach',
+      payment_type: 'revenue',
+      is_self_pay: true,
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+      payment_intent_status: 'processing',
+    });
+
+    const eventId = `evt_selfpay_failed_${appt.id}`;
+    const payload = JSON.stringify({
+      id: eventId,
+      object: 'event',
+      type: 'payment_intent.payment_failed',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `pi_test_${appt.id}`,
+          object: 'payment_intent',
+          amount: 6049,
+          currency: 'usd',
+          status: 'requires_payment_method',
+          last_payment_error: { message: 'The customer\'s bank account has insufficient funds.' },
+          metadata: { appointment_id: appt.id, organization_id: org.organizationId, self_pay: 'true' },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    });
+
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: payRows } = await admin
+      .from('payments')
+      .select('status')
+      .eq('appointment_id', appt.id);
+    expect((payRows![0] as { status: string }).status).toBe('failed');
+
+    // Admins were alerted in-app (one row per org admin/owner) — there is no homeowner to notify.
+    const { data: notes } = await admin
+      .from('notification_events')
+      .select('id, recipient_user_id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'authorization_failed');
+    expect((notes ?? []).length).toBeGreaterThanOrEqual(1);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   it('confirms the call surface of createPlatformTransfer (vi.mocked) for a self-pay settlement', async () => {
     const appt = await seedSelfPay(100);
     const payload = JSON.stringify(
