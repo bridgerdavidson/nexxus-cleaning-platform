@@ -15,7 +15,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDestinationAuthorization } from '@/lib/stripe/charges/authorize';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { computeChargeBreakdown } from './processingFee';
-import { stripeFeePassthroughEnabled } from '@/lib/stripe/flags';
+import { stripeFeePassthroughEnabled, stripeAchEnabled } from '@/lib/stripe/flags';
+import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
@@ -27,6 +28,7 @@ export type AuthorizeCode =
   | 'tenant_not_ready'
   | 'not_authorizable'
   | 'declined'
+  | 'deferred_ach'
   | 'error';
 
 export interface AuthorizeOutcome {
@@ -75,6 +77,14 @@ export async function authorizeAppointment(
   }
   if (!appt.payment_method_id) {
     return { ok: false, code: 'no_card', message: 'No payment method selected for this appointment' };
+  }
+
+  // Bank (ACH) methods have NO manual-capture hold — they're charged at completion, not authorized
+  // here. Detect a us_bank_account PM and defer (no card-style hold, no 'failed' status) so a
+  // selected bank never hits the unsupported manual-capture path; the ACH charge-at-completion
+  // lifecycle performs the actual debit. Gated by STRIPE_ACH_ENABLED (bank methods only offered then).
+  if (stripeAchEnabled() && (await getPaymentMethodType(appt.payment_method_id)) === 'us_bank_account') {
+    return { ok: true, code: 'deferred_ach', message: 'Bank payment is charged when the job is completed (no hold).' };
   }
 
   // Tenant must be a ready merchant of record.
