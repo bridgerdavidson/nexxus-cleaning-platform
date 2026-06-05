@@ -5,21 +5,31 @@
  */
 import type Stripe from 'stripe';
 import { getStripe, getOrCreateStripeCustomer } from '@/lib/stripe';
+import { stripeAchEnabled } from '@/lib/stripe/flags';
 
-export interface SavedCard {
+export interface SavedPaymentMethod {
   id: string;
-  brand: string;
+  /** Discriminator: card vs bank account (ACH / us_bank_account). */
+  type: 'card' | 'us_bank_account';
+  /** Last 4 of the card number or bank account number. */
   last4: string;
-  expMonth: number;
-  expYear: number;
   isDefault: boolean;
+  // card only
+  brand?: string;
+  expMonth?: number;
+  expYear?: number;
+  // us_bank_account only
+  bankName?: string;
 }
+
+/** @deprecated Use SavedPaymentMethod. Kept so existing `SavedCard` imports keep compiling. */
+export type SavedCard = SavedPaymentMethod;
 
 /**
  * List a homeowner's saved cards as masked metadata (never the PAN). Used by the
  * admin saved-card picker and the homeowner dashboard.
  */
-export async function listSavedCards(customerId: string): Promise<SavedCard[]> {
+export async function listSavedCards(customerId: string): Promise<SavedPaymentMethod[]> {
   const stripe = getStripe();
 
   let defaultPm: string | null = null;
@@ -33,17 +43,39 @@ export async function listSavedCards(customerId: string): Promise<SavedCard[]> {
     return [];
   }
 
-  const pms = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 20 });
-  return pms.data
+  const cards = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 20 });
+  const out: SavedPaymentMethod[] = cards.data
     .filter((pm) => pm.card)
     .map((pm) => ({
       id: pm.id,
+      type: 'card' as const,
       brand: pm.card!.brand,
       last4: pm.card!.last4,
       expMonth: pm.card!.exp_month,
       expYear: pm.card!.exp_year,
       isDefault: pm.id === defaultPm,
     }));
+
+  // Bank accounts (ACH) are listed only when enabled, so the card-only path is unchanged when off.
+  if (stripeAchEnabled()) {
+    const banks = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: 'us_bank_account',
+      limit: 20,
+    });
+    for (const pm of banks.data) {
+      if (!pm.us_bank_account) continue;
+      out.push({
+        id: pm.id,
+        type: 'us_bank_account',
+        bankName: pm.us_bank_account.bank_name ?? 'Bank account',
+        last4: pm.us_bank_account.last4 ?? '',
+        isDefault: pm.id === defaultPm,
+      });
+    }
+  }
+
+  return out;
 }
 
 /**
