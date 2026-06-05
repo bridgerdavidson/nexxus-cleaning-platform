@@ -24,12 +24,13 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
   listSavedCards: vi.fn(async () => [
     { id: 'pm_company_card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true },
   ]),
+  getPaymentMethodType: vi.fn(async () => 'card'),
 }));
 
 import { POST } from './route';
 import { createDestinationAuthorization } from '@/lib/stripe/charges/authorize';
 import { createSelfPayAuthorization } from '@/lib/stripe/charges/authorizeSelfPay';
-import { listSavedCards } from '@/lib/stripe/customers/homeowner';
+import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { computeSelfPayAmounts } from '@/lib/payments/selfPayMath';
 import { computeChargeBreakdown } from '@/lib/payments/processingFee';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
@@ -268,6 +269,38 @@ describe('POST /api/appointments/:appointmentId/authorize', () => {
     // The payments-permission gate ONLY applies to self-pay — regular managers must still pass.
     expect(status).not.toBe(403);
     expect(vi.mocked(createDestinationAuthorization)).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers (no card hold) when the appointment PM is a bank account (ACH)', async () => {
+    const prevAch = process.env.STRIPE_ACH_ENABLED;
+    process.env.STRIPE_ACH_ENABLED = 'true';
+    vi.mocked(getPaymentMethodType).mockResolvedValueOnce('us_bank_account');
+    try {
+      await makeTenantReady();
+      const appt = await makeAppt({ withCard: true });
+      const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(200);
+      expect(body.code).toBe('deferred_ach');
+      // No card-style manual-capture hold is attempted on the bank PM (the bug Codex flagged).
+      expect(vi.mocked(createDestinationAuthorization)).not.toHaveBeenCalled();
+      const db = createTestSupabaseClient();
+      // No pending payment row — the debit happens at completion, not here.
+      const { data: payRows } = await db.from('payments').select('id').eq('appointment_id', appt.id);
+      expect(payRows ?? []).toHaveLength(0);
+      // The appointment is not flipped to a failed authorization.
+      const { data: a } = await db
+        .from('appointments')
+        .select('authorization_status')
+        .eq('id', appt.id)
+        .single();
+      expect((a as { authorization_status: string | null }).authorization_status).not.toBe('failed');
+    } finally {
+      process.env.STRIPE_ACH_ENABLED = prevAch;
+    }
   });
 });
 

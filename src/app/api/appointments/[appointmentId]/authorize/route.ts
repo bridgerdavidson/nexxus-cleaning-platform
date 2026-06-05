@@ -21,6 +21,7 @@ export const maxDuration = 60;
  */
 const HTTP_BY_CODE: Record<AnyAuthorizeCode, number> = {
   authorized: 200,
+  deferred_ach: 200,
   requires_action: 402,
   declined: 402,
   no_card: 409,
