@@ -8,7 +8,7 @@ import React, {
   useRef,
   Suspense,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import { useToast } from "../../contexts/ToastContext";
@@ -23,12 +23,11 @@ import {
   Loader2,
   Home,
   UserCheck,
-  TrendingUp,
   Building,
-  LayoutGrid,
   BarChart3,
   Briefcase,
   Mail,
+  Plus,
 } from "lucide-react";
 import {
   useManagerAppointments,
@@ -60,6 +59,8 @@ import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
+import NewBookingButton from "../../components/NewBookingButton";
+import ScrollAwareFab from "../../components/ScrollAwareFab";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { useReopenableModalUrl } from "../../hooks/useReopenableModalUrl";
@@ -82,8 +83,6 @@ import TodayScheduleSection from "../../components/TodayScheduleSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
 import {
   ADMIN_MANAGER_DASHBOARD_TAB_IDS,
-  ADMIN_MANAGER_DEFAULT_GROUP,
-  ADMIN_MANAGER_TAB_TO_GROUP,
   usePersistedDashboardTab,
 } from "../../hooks/usePersistedDashboardTab";
 import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
@@ -111,10 +110,6 @@ function ManagerDashboardInner() {
   useEffect(() => {
     if (activeTab === "invites") setHasOpenedInvitesEver(true);
   }, [activeTab]);
-  const activeGroup = useMemo(
-    () => ADMIN_MANAGER_TAB_TO_GROUP[activeTab] ?? ADMIN_MANAGER_DEFAULT_GROUP,
-    [activeTab],
-  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
@@ -142,6 +137,8 @@ function ManagerDashboardInner() {
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
     useState<AppointmentCardData | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
 
   // Real data hooks - must be called at top level
@@ -318,206 +315,99 @@ function ManagerDashboardInner() {
     );
   }, [appointmentsLoading, overdueCount, showToast]);
 
-  // Build navigation groups based on permissions - using useMemo to ensure consistent hook order
-  const navigationGroups = useMemo(() => {
-    // Debug: Log permissions to help diagnose
-    if (permissions) {
-      console.log("Manager Permissions:", {
-        can_view_bookings: permissions.can_view_bookings,
-        can_view_messages: permissions.can_view_messages,
-        can_view_customers: permissions.can_view_customers,
-        can_view_properties: permissions.can_view_properties,
-        can_manage_cleaners: permissions.can_manage_cleaners,
-        can_view_payments: permissions.can_view_payments,
-        can_view_analytics: permissions.can_view_analytics,
-      });
-    }
-
-    // If permissions are still loading, return minimal groups
-    if (permissionsLoading || !permissions) {
-      return {
-        operations: {
-          id: "operations" as const,
-          label: "Operations",
-          icon: LayoutGrid,
-          tabs: [{ id: "home", label: "Overview", icon: Home }],
-        },
-      };
-    }
-
-    const opsTabs = [{ id: "home", label: "Overview", icon: Home }];
-
-    // Add bookings if permitted - check explicitly for true
-    if (permissions.can_view_bookings === true) {
-      opsTabs.push({
-        id: "bookings",
-        label: "Bookings",
-        icon: Calendar,
-        ...(needsResponseCount > 0 ? { hasNotification: true } : {}),
-      });
-    }
-
-    // Add messages if permitted
-    if (permissions.can_view_messages === true) {
-      opsTabs.push({
-        id: "messages",
-        label: "Messages",
-        icon: MessageCircle,
-        hasNotification: hasUnreadMessages,
-      });
-    }
-
-    // Add customers to opsTabs for mobile navigation
-    if (permissions.can_view_customers === true) {
-      opsTabs.push({ id: "customers", label: "Customers", icon: Users });
-    }
-
-    // Add services if permitted
-    if (permissions.can_view_services === true) {
-      opsTabs.push({ id: "services", label: "Services", icon: Briefcase });
-    }
-
-    const accountsTabs = [];
-    // Add customers if permitted (in accounts group for desktop sidebar)
-    if (permissions.can_view_customers === true) {
-      accountsTabs.push({ id: "customers", label: "Customers", icon: Users });
-    }
-    // Add properties if permitted
-    if (permissions.can_view_properties === true) {
-      accountsTabs.push({
-        id: "properties",
-        label: "Properties",
-        icon: Building,
-      });
-    }
-
-    const businessTabs = [];
-    // Add payments if permitted
-    if (permissions.can_view_payments === true) {
-      businessTabs.push({ id: "payments", label: "Finance", icon: DollarSign });
-    }
-    // Add analytics if permitted
-    if (permissions.can_view_analytics === true) {
-      businessTabs.push({
-        id: "analytics",
-        label: "Analytics",
-        icon: BarChart3,
-      });
-    }
-
-    const groups: any = {
-      operations: {
-        id: "operations" as const,
-        label: "Operations",
-        icon: LayoutGrid,
-        tabs: opsTabs,
-      },
-    };
-
-    // Only add accounts group if it has tabs
-    if (accountsTabs.length > 0) {
-      groups.accounts = {
-        id: "accounts" as const,
-        label: "Accounts",
-        icon: Users,
-        tabs: accountsTabs,
-      };
-    }
-
-    // Only add team group if permitted
-    if (permissions.can_manage_cleaners === true) {
-      groups.team = {
-        id: "team" as const,
-        label: "Team",
-        icon: UserCheck,
-        tabs: [
-          { id: "team", label: "Team Members", icon: Users },
-          { id: "cleaners", label: "Cleaner Management", icon: UserCheck },
-          { id: "invites", label: "Invites", icon: Mail },
-        ],
-      };
-    }
-
-    // Only add business group if it has tabs
-    if (businessTabs.length > 0) {
-      groups.business = {
-        id: "business" as const,
-        label: "Business",
-        icon: TrendingUp,
-        tabs: businessTabs,
-      };
-    }
-
-    return groups;
-  }, [permissions, permissionsLoading, hasUnreadMessages, needsResponseCount]);
-
-  // Get groups array for sidebar
-  const groups = useMemo(
-    () => Object.values(navigationGroups),
-    [navigationGroups],
+  // Flat left-nav tabs, filtered by manager permissions (must be before early
+  // return). Messages lives on the TopBar icon + mobile drawer, not the sidebar.
+  const sidebarTabs = useMemo(
+    () => [
+      { id: "home", label: "Overview", icon: Home },
+      ...(permissions?.can_view_bookings
+        ? [
+            {
+              id: "bookings",
+              label: "Bookings",
+              icon: Calendar,
+              hasNotification: needsResponseCount > 0,
+            },
+          ]
+        : []),
+      ...(permissions?.can_view_customers
+        ? [{ id: "customers", label: "Customers", icon: Users }]
+        : []),
+      ...(permissions?.can_view_properties
+        ? [{ id: "properties", label: "Properties", icon: Building }]
+        : []),
+      ...(permissions?.can_view_services
+        ? [{ id: "services", label: "Services", icon: Briefcase }]
+        : []),
+      ...(permissions?.can_manage_cleaners
+        ? [
+            { id: "team", label: "Team Members", icon: Users },
+            { id: "cleaners", label: "Cleaner Management", icon: UserCheck },
+            { id: "invites", label: "Invites", icon: Mail },
+          ]
+        : []),
+      ...(permissions?.can_view_payments
+        ? [{ id: "payments", label: "Finance", icon: DollarSign }]
+        : []),
+      ...(permissions?.can_view_analytics
+        ? [{ id: "analytics", label: "Analytics", icon: BarChart3 }]
+        : []),
+    ],
+    [permissions, needsResponseCount],
   );
 
-  // Get tabs for current group
-  const currentGroupTabs = useMemo(
+  // Mobile bottom nav — the most-used accessible tabs (capped at 4).
+  const mobileNavTabs = useMemo(
     () =>
-      navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs ||
-      [],
-    [navigationGroups, activeGroup],
+      [
+        { id: "home", label: "Overview", icon: Home },
+        ...(permissions?.can_view_bookings
+          ? [
+              {
+                id: "bookings",
+                label: "Bookings",
+                icon: Calendar,
+                hasNotification: needsResponseCount > 0,
+              },
+            ]
+          : []),
+        ...(permissions?.can_view_messages
+          ? [
+              {
+                id: "messages",
+                label: "Messages",
+                icon: MessageCircle,
+                hasNotification: hasUnreadMessages,
+              },
+            ]
+          : []),
+        ...(permissions?.can_view_customers
+          ? [{ id: "customers", label: "Customers", icon: Users }]
+          : []),
+      ].slice(0, 4),
+    [permissions, needsResponseCount, hasUnreadMessages],
   );
 
-  // Filter out "customers" and "messages" from top nav — messages use TopBar icon (cleaner pattern)
-  const topNavTabs = useMemo(
-    () =>
-      activeGroup === "operations"
-        ? currentGroupTabs.filter(
-            (tab) => tab.id !== "customers" && tab.id !== "messages",
-          )
-        : currentGroupTabs,
-    [currentGroupTabs, activeGroup],
-  );
-
-  // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
+  // Mobile drawer — every accessible tab, with Messages inserted after Bookings.
   const allTabs = useMemo(() => {
-    const tabs = Array.from(
-      new Map(
-        groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab]),
-      ).values(),
-    );
-    return tabs;
-  }, [groups]);
-
-  // Handle group change - switch to first tab of new group (group derives from tab via ADMIN_MANAGER_TAB_TO_GROUP)
-  const handleGroupChange = useCallback(
-    (groupId: string) => {
-      const newGroup =
-        navigationGroups[groupId as keyof typeof navigationGroups];
-      if (newGroup && newGroup.tabs.length > 0) {
-        const firstTab =
-          groupId === "team"
-            ? (newGroup.tabs.find((tab) => tab.id === "team")?.id ??
-              newGroup.tabs[0].id)
-            : newGroup.tabs[0].id;
-        // Check if tab is accessible
-        if (isTabAccessible(firstTab)) {
-          setActiveTab(firstTab);
-        } else {
-          // Find first accessible tab
-          const accessibleTab = newGroup.tabs.find((tab) =>
-            isTabAccessible(tab.id),
-          );
-          if (accessibleTab) {
-            setActiveTab(accessibleTab.id);
-          } else {
-            setActiveTab("home");
-          }
-        }
-      }
-      // Reset filters when switching groups
-      setShowPendingFilter(false);
-      setShowAllFilter(false);
-    },
-    [navigationGroups, isTabAccessible, setActiveTab],
-  );
+    const msg = permissions?.can_view_messages
+      ? [
+          {
+            id: "messages",
+            label: "Messages",
+            icon: MessageCircle,
+            hasNotification: hasUnreadMessages,
+          },
+        ]
+      : [];
+    const idx = sidebarTabs.findIndex((t) => t.id === "bookings");
+    if (idx < 0) return [sidebarTabs[0], ...msg, ...sidebarTabs.slice(1)];
+    return [
+      ...sidebarTabs.slice(0, idx + 1),
+      ...msg,
+      ...sidebarTabs.slice(idx + 1),
+    ];
+  }, [sidebarTabs, permissions, hasUnreadMessages]);
 
   // Handle tab change - reset filters if not navigating from specific sections
   const handleTabChange = useCallback(
@@ -588,6 +478,16 @@ function ManagerDashboardInner() {
 
   const handleLogout = async () => {
     await signOut();
+  };
+
+  // Open the create-appointment flow from the top nav / FAB. Sets the Bookings
+  // tab and the modal marker in a single navigation so the two URL writes don't
+  // clobber each other; BookingsPage reads ?modal=add-appointment to open it.
+  const handleNewBooking = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "bookings");
+    params.set("modal", "add-appointment");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   // Get upcoming appointments: future appointments that are confirmed
@@ -817,6 +717,7 @@ function ManagerDashboardInner() {
         role="manager"
         canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
         initialStatusFilter={initialFilter}
+        showCreateButton={false}
       />
     );
   };
@@ -1032,11 +933,10 @@ function ManagerDashboardInner() {
 
   return (
     <div className="min-h-screen bg-white md:bg-gray-100">
-      {/* Persistent Desktop Sidebar - Shows Groups */}
+      {/* Persistent Desktop Sidebar - flat tab list (permission-filtered) */}
       <DesktopSidebar
-        groups={groups}
-        activeGroup={activeGroup}
-        onGroupChange={handleGroupChange}
+        tabs={sidebarTabs}
+        onTabChange={handleTabChange}
         onLogout={handleLogout}
         user={user}
         activeTab={activeTab}
@@ -1044,12 +944,13 @@ function ManagerDashboardInner() {
 
       {/* Main Content Wrapper with Sidebar Offset */}
       <div className="md:ml-[260px] pt-4 md:pt-16">
-        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
+        {/* Top Bar - tabs live in the sidebar now; the right cluster carries the
+            New booking action (when permitted) + Messages/Settings icons. */}
         <div className="hidden md:block">
           <TopBar
             role="manager"
             user={user}
-            tabs={topNavTabs}
+            tabs={[]}
             activeTab={activeTab}
             onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
@@ -1057,6 +958,11 @@ function ManagerDashboardInner() {
             showMessagesIcon={permissions?.can_view_messages === true}
             hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
+            primaryAction={
+              permissions?.can_edit_bookings ? (
+                <NewBookingButton onClick={handleNewBooking} />
+              ) : undefined
+            }
             onOpenAppointment={(id, intent) => {
               if (intent === "assign") setAssignIntentId(id);
               else openAppointment(id);
@@ -1069,17 +975,30 @@ function ManagerDashboardInner() {
             activeTab === "messages"
               ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
               : "p-4 sm:p-6 lg:p-8"
-          } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8`}
+          } pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
           {renderContent()}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation - Show first 4 tabs */}
+      {/* Mobile FAB — create a booking from any tab (when permitted). */}
+      {permissions?.can_edit_bookings && (
+        <div
+          className="md:hidden fixed right-4 z-30"
+          style={{ bottom: "calc(6.25rem + env(safe-area-inset-bottom))" }}
+        >
+          <ScrollAwareFab
+            label="New booking"
+            icon={Plus}
+            onClick={handleNewBooking}
+            expandedWidth={172}
+          />
+        </div>
+      )}
+
+      {/* Mobile Bottom Navigation - most-used accessible tabs */}
       <MobileNavigation
-        tabs={navigationGroups.operations.tabs.filter(
-          (tab) => tab.id !== "services",
-        )}
+        tabs={mobileNavTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}

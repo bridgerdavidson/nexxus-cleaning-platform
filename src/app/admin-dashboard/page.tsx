@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuth } from "../../hooks/useAuth";
 import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
@@ -13,15 +13,14 @@ import {
   MessageCircle,
   DollarSign,
   BarChart3,
-  TrendingUp,
   UserCheck,
   Home,
   Loader2,
   Star,
   Building,
-  LayoutGrid,
   Briefcase,
   Mail,
+  Plus,
 } from "lucide-react";
 import {
   useAdminAppointments,
@@ -50,6 +49,8 @@ import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
 import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
+import NewBookingButton from "../../components/NewBookingButton";
+import ScrollAwareFab from "../../components/ScrollAwareFab";
 import AddCleanerModal from "../../components/AddCleanerModal";
 import DeleteConfirmModal from "../../components/DeleteConfirmModal";
 import { useReopenableModalUrl } from "../../hooks/useReopenableModalUrl";
@@ -83,8 +84,6 @@ import TodayScheduleSection from "../../components/TodayScheduleSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
 import {
   ADMIN_MANAGER_DASHBOARD_TAB_IDS,
-  ADMIN_MANAGER_DEFAULT_GROUP,
-  ADMIN_MANAGER_TAB_TO_GROUP,
   usePersistedDashboardTab,
 } from "../../hooks/usePersistedDashboardTab";
 import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
@@ -112,10 +111,6 @@ function AdminDashboardInner() {
   useEffect(() => {
     if (activeTab === "invites") setHasOpenedInvitesEver(true);
   }, [activeTab]);
-  const activeGroup = useMemo(
-    () => ADMIN_MANAGER_TAB_TO_GROUP[activeTab] ?? ADMIN_MANAGER_DEFAULT_GROUP,
-    [activeTab],
-  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPendingFilter, setShowPendingFilter] = useState(false);
   const [showAllFilter, setShowAllFilter] = useState(false);
@@ -143,6 +138,8 @@ function AdminDashboardInner() {
   const [rescheduleModalAppointment, setRescheduleModalAppointment] =
     useState<AppointmentCardData | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
 
   // Real data hooks - must be called at top level
@@ -287,86 +284,74 @@ function AdminDashboardInner() {
     );
   }, [appointmentsLoading, overdueCount, showToast]);
 
-  // Hierarchical navigation structure (must be before early return)
-  const navigationGroups = useMemo(
-    () => ({
-      operations: {
-        id: "operations" as const,
-        label: "Operations",
-        icon: LayoutGrid,
-        // Messages is a per-user inbox (filtered by participant user_id), so it
-        // would show the platform admin's own messages — not the tenant's —
-        // while impersonating. Hide rather than render an empty/misleading tab.
-        tabs: [
-          { id: "home", label: "Overview", icon: Home },
-          {
-            id: "bookings",
-            label: "Bookings",
-            icon: Calendar,
-            hasNotification: needsResponseCount > 0,
-          },
-          ...(impersonatingOrgId
-            ? []
-            : [
-                {
-                  id: "messages",
-                  label: "Messages",
-                  icon: MessageCircle,
-                  hasNotification: hasUnreadMessages,
-                },
-              ]),
-          { id: "customers", label: "Customers", icon: Users },
-          { id: "services", label: "Services", icon: Briefcase },
-        ],
+  // Flat left-nav tabs (must be before early return). Messages is intentionally
+  // omitted here — it lives on the TopBar Messages icon (the cleaner/homeowner
+  // pattern) and in the mobile drawer below.
+  const sidebarTabs = useMemo(
+    () => [
+      { id: "home", label: "Overview", icon: Home },
+      {
+        id: "bookings",
+        label: "Bookings",
+        icon: Calendar,
+        hasNotification: needsResponseCount > 0,
       },
-      accounts: {
-        id: "accounts" as const,
-        label: "Accounts",
-        icon: Users,
-        tabs: [
-          { id: "customers", label: "Customers", icon: Users },
-          { id: "properties", label: "Properties", icon: Building },
-        ],
-      },
-      team: {
-        id: "team" as const,
-        label: "Team",
-        icon: UserCheck,
-        tabs: [
-          { id: "team", label: "Team Members", icon: Users },
-          { id: "cleaners", label: "Cleaner Management", icon: UserCheck },
-          { id: "invites", label: "Invites", icon: Mail },
-        ],
-      },
-      business: {
-        id: "business" as const,
-        label: "Business",
-        icon: TrendingUp,
-        tabs: [
-          { id: "payments", label: "Finance", icon: DollarSign },
-          { id: "analytics", label: "Analytics", icon: BarChart3 },
-        ],
-      },
-    }),
-    [hasUnreadMessages, needsResponseCount, impersonatingOrgId],
+      { id: "customers", label: "Customers", icon: Users },
+      { id: "properties", label: "Properties", icon: Building },
+      { id: "services", label: "Services", icon: Briefcase },
+      { id: "team", label: "Team Members", icon: Users },
+      { id: "cleaners", label: "Cleaner Management", icon: UserCheck },
+      { id: "invites", label: "Invites", icon: Mail },
+      { id: "payments", label: "Finance", icon: DollarSign },
+      { id: "analytics", label: "Analytics", icon: BarChart3 },
+    ],
+    [needsResponseCount],
   );
 
-  // Get tabs for current group (must be before early return)
-  const currentGroupTabs = useMemo(
-    () =>
-      navigationGroups[activeGroup as keyof typeof navigationGroups]?.tabs ?? [],
-    [navigationGroups, activeGroup],
+  // Mobile bottom nav — the most-used tabs. Messages is a per-user inbox, so it
+  // is hidden while a platform admin is impersonating an org.
+  const mobileNavTabs = useMemo(
+    () => [
+      { id: "home", label: "Overview", icon: Home },
+      {
+        id: "bookings",
+        label: "Bookings",
+        icon: Calendar,
+        hasNotification: needsResponseCount > 0,
+      },
+      ...(impersonatingOrgId
+        ? []
+        : [
+            {
+              id: "messages",
+              label: "Messages",
+              icon: MessageCircle,
+              hasNotification: hasUnreadMessages,
+            },
+          ]),
+      { id: "customers", label: "Customers", icon: Users },
+    ],
+    [needsResponseCount, impersonatingOrgId, hasUnreadMessages],
   );
 
-  // Filter out "customers" and "messages" from top nav — customers live under Accounts; messages use TopBar icon (cleaner pattern)
-  const topNavTabs = useMemo(
-    () =>
-      activeGroup === "operations"
-        ? currentGroupTabs.filter(
-            (tab) => tab.id !== "customers" && tab.id !== "messages",
-          )
-        : currentGroupTabs,
-    [activeGroup, currentGroupTabs],
+  // Mobile drawer — every tab, with Messages inserted after Bookings.
+  const allTabs = useMemo(
+    () => [
+      sidebarTabs[0],
+      sidebarTabs[1],
+      ...(impersonatingOrgId
+        ? []
+        : [
+            {
+              id: "messages",
+              label: "Messages",
+              icon: MessageCircle,
+              hasNotification: hasUnreadMessages,
+            },
+          ]),
+      ...sidebarTabs.slice(2),
+    ],
+    [sidebarTabs, impersonatingOrgId, hasUnreadMessages],
   );
 
   // Show loading while checking auth or while the org context is still resolving
@@ -393,28 +378,14 @@ function AdminDashboardInner() {
     await signOut();
   };
 
-  // Get groups array for sidebar
-  const groups = Object.values(navigationGroups);
-
-  // Get all tabs for mobile (deduplicate by id to avoid duplicates when tab appears in multiple groups)
-  const allTabs = Array.from(
-    new Map(groups.flatMap((g) => g.tabs).map((tab) => [tab.id, tab])).values(),
-  );
-
-  // Handle group change - switch to first tab of new group (group derives from tab via ADMIN_MANAGER_TAB_TO_GROUP)
-  const handleGroupChange = (groupId: string) => {
-    const newGroup = navigationGroups[groupId as keyof typeof navigationGroups];
-    if (newGroup && newGroup.tabs.length > 0) {
-      const nextTab =
-        groupId === "team"
-          ? (newGroup.tabs.find((tab) => tab.id === "team")?.id ??
-            newGroup.tabs[0].id)
-          : newGroup.tabs[0].id;
-      setActiveTab(nextTab);
-      // Reset filters when switching groups
-      setShowPendingFilter(false);
-      setShowAllFilter(false);
-    }
+  // Open the create-appointment flow from the top nav / FAB. Sets the Bookings
+  // tab and the modal marker in a single navigation so the two URL writes don't
+  // clobber each other; BookingsPage reads ?modal=add-appointment to open it.
+  const handleNewBooking = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", "bookings");
+    params.set("modal", "add-appointment");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   // Handle tab change - reset filters if not navigating from specific sections
@@ -657,6 +628,7 @@ function AdminDashboardInner() {
         onRescheduleRejected={(apt) => setRescheduleModalAppointment(apt)}
         role="admin"
         initialStatusFilter={initialFilter}
+        showCreateButton={false}
       />
     );
   };
@@ -821,11 +793,10 @@ function AdminDashboardInner() {
 
   return (
     <div className="min-h-screen bg-white md:bg-gray-100">
-      {/* Persistent Desktop Sidebar - Shows Groups */}
+      {/* Persistent Desktop Sidebar - flat tab list */}
       <DesktopSidebar
-        groups={groups}
-        activeGroup={activeGroup}
-        onGroupChange={handleGroupChange}
+        tabs={sidebarTabs}
+        onTabChange={handleTabChange}
         onLogout={handleLogout}
         user={user}
         activeTab={activeTab}
@@ -833,12 +804,13 @@ function AdminDashboardInner() {
 
       {/* Main Content Wrapper with Sidebar Offset */}
       <div className="md:ml-[260px] pt-4 md:pt-16">
-        {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
+        {/* Top Bar - tabs live in the sidebar now; the right cluster carries the
+            New booking action + Messages/Settings icons. Hidden on mobile. */}
         <div className="hidden md:block">
           <TopBar
             role="admin"
             user={user}
-            tabs={topNavTabs}
+            tabs={[]}
             activeTab={activeTab}
             onTabChange={handleTabChange}
             onMobileMenuClick={() => setIsSidebarOpen(true)}
@@ -846,6 +818,7 @@ function AdminDashboardInner() {
             showMessagesIcon
             hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
+            primaryAction={<NewBookingButton onClick={handleNewBooking} />}
             onOpenAppointment={(id, intent) => {
               if (intent === "assign") setAssignIntentId(id);
               else openAppointment(id);
@@ -858,17 +831,28 @@ function AdminDashboardInner() {
             activeTab === "messages"
               ? "p-0 md:p-4 lg:p-6"
               : "p-4 sm:p-6 lg:p-8"
-          } pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8`}
+          } pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8`}
         >
           {renderContent()}
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation - Show first 4 tabs */}
+      {/* Mobile FAB — create a booking from any tab. Sits above the bottom nav. */}
+      <div
+        className="md:hidden fixed right-4 z-30"
+        style={{ bottom: "calc(6.25rem + env(safe-area-inset-bottom))" }}
+      >
+        <ScrollAwareFab
+          label="New booking"
+          icon={Plus}
+          onClick={handleNewBooking}
+          expandedWidth={172}
+        />
+      </div>
+
+      {/* Mobile Bottom Navigation - most-used tabs */}
       <MobileNavigation
-        tabs={navigationGroups.operations.tabs.filter(
-          (tab) => tab.id !== "services",
-        )}
+        tabs={mobileNavTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onMenuClick={() => setIsSidebarOpen(true)}

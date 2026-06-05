@@ -50,6 +50,12 @@ interface BookingsPageProps {
   canEdit?: boolean;
   initialStatusFilter?: string;
   canApproveDecline?: boolean;
+  /**
+   * Show the in-header "New" button. Admin/manager dashboards set this false
+   * because the create action now lives in the top nav bar (and a mobile FAB).
+   * Defaults true so other callers keep the inline button.
+   */
+  showCreateButton?: boolean;
 }
 
 export default function BookingsPage({
@@ -65,6 +71,7 @@ export default function BookingsPage({
   canEdit = true,
   initialStatusFilter,
   canApproveDecline = false,
+  showCreateButton = true,
 }: BookingsPageProps) {
   const [viewType, setViewType] = useState<ViewType>("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -634,8 +641,9 @@ export default function BookingsPage({
               <CalendarDays className="w-5 h-5" />
             </button>
           </div>
-          {/* Add New Appointment Button */}
-          {canEdit && (
+          {/* Add New Appointment Button. Admin/manager move this into the top
+              nav bar (showCreateButton=false); homeowner/other callers keep it. */}
+          {canEdit && showCreateButton && (
             <button
               onClick={handleOpenAddAppointmentModal}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors whitespace-nowrap shadow-md"

@@ -38,28 +38,6 @@ export const CLEANER_DASHBOARD_TAB_IDS = [
 ] as const;
 
 /**
- * Maps an admin/manager tab id to its left-nav group. Used to derive the active
- * sidebar group from the URL-persisted tab so the two cannot disagree (which
- * would otherwise cause a flicker, since `setActiveTab` updates the URL
- * asynchronously while local React state updates synchronously).
- */
-export const ADMIN_MANAGER_TAB_TO_GROUP: Readonly<Record<string, string>> = {
-  home: "operations",
-  bookings: "operations",
-  messages: "operations",
-  services: "operations",
-  customers: "accounts",
-  properties: "accounts",
-  team: "team",
-  cleaners: "team",
-  invites: "team",
-  payments: "business",
-  analytics: "business",
-};
-
-export const ADMIN_MANAGER_DEFAULT_GROUP = "operations";
-
-/**
  * Keeps the active dashboard tab in the URL (`?tab=...`) so refresh restores the same view.
  * Omits the query param when the tab equals `defaultTab`.
  */
