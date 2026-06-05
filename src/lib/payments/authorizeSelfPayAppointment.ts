@@ -16,6 +16,8 @@ import { createSelfPayAuthorization } from '@/lib/stripe/charges/authorizeSelfPa
 import { computeSelfPayAmounts } from './selfPayMath';
 import { listSavedCards } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from './events';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 export type SelfPayAuthorizeCode =
   | 'authorized'
@@ -163,6 +165,19 @@ export async function authorizeSelfPayAppointment(
         cleaner_cut_cents: cleanerCutCents,
       },
     });
+
+    // Alert admins in-app, only on the transition INTO failed (self-pay customer
+    // resolves to the org name, since there is no homeowner).
+    if (appt.authorization_status !== 'failed') {
+      const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id });
+      await recordNotificationEvent(supabase, {
+        event_type: 'authorization_failed',
+        appointment_id: appt.id,
+        organization_id: appt.organization_id,
+        payload: { ...ctx, audience: 'admin', amount_cents: chargeCents },
+      });
+    }
+
     return { ok: false, code: 'declined', message: err instanceof Error ? err.message : 'Authorization declined' };
   }
 

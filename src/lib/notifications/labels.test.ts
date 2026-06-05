@@ -11,29 +11,99 @@ const EVENT_TYPES: NotificationEventType[] = [
   'cleaner_counter_proposed',
   'chain_exhausted',
   'cleaner_response_overdue',
+  'cleaner_paid',
+  'job_started',
+  'job_completed',
+  'dispute_opened',
+  'authorization_failed',
 ];
 
 const VALID_TONES: NotificationTone[] = ['success', 'error', 'warning', 'info'];
 
+// A payload that exercises every field the builder might read.
+const FULL_PAYLOAD = {
+  audience: 'admin',
+  customer_name: 'Jane Doe',
+  cleaner_name: 'Wanda Jones',
+  next_cleaner_name: 'Bob Smith',
+  property_label: '123 Oak St',
+  scheduled_date: '2026-06-06',
+  scheduled_time: '14:30',
+  suggested_date: '2026-06-07',
+  suggested_time: '09:00',
+  suggested_times_count: 2,
+  amount_cents: 4200,
+  evidence_due_by: '2026-06-20T00:00:00.000Z',
+};
+
 describe('describeNotification', () => {
-  it('maps every known event type to a non-empty label, valid tone, and an icon', () => {
+  it('maps every known event type to a non-empty title, valid tone, and icon (no payload)', () => {
     for (const t of EVENT_TYPES) {
       const d = describeNotification(t);
-      expect(d.label.length).toBeGreaterThan(0);
+      expect(d.title.length).toBeGreaterThan(0);
       expect(VALID_TONES).toContain(d.tone);
       expect(d.icon).toBeTruthy();
     }
   });
 
-  it('uses no em dashes in labels (user-facing copy rule)', () => {
+  it('uses no em dashes in title or detail (generic and enriched)', () => {
     for (const t of EVENT_TYPES) {
-      expect(describeNotification(t).label).not.toContain('—');
+      const generic = describeNotification(t);
+      const enriched = describeNotification(t, FULL_PAYLOAD);
+      for (const d of [generic, enriched]) {
+        expect(d.title).not.toContain('—');
+        expect(d.detail ?? '').not.toContain('—');
+      }
     }
+  });
+
+  it('falls back to generic copy when the payload has no names', () => {
+    expect(describeNotification('cleaner_accepted').title).toBe('Cleaner accepted the job');
+    expect(describeNotification('cleaner_declined').title).toBe('Cleaner declined the job');
+    expect(describeNotification('homeowner_request_submitted').title).toBe('New booking request');
+    expect(describeNotification('authorization_failed').title).toBe('Card hold failed');
+    expect(describeNotification('cleaner_paid').title).toBe('You were paid');
+  });
+
+  it('interpolates names into enriched titles', () => {
+    expect(describeNotification('homeowner_request_submitted', FULL_PAYLOAD).title).toBe(
+      'New booking request from Jane Doe',
+    );
+    expect(describeNotification('cleaner_counter_proposed', FULL_PAYLOAD).title).toBe(
+      'Wanda Jones proposed a new time',
+    );
+    expect(describeNotification('authorization_failed', FULL_PAYLOAD).title).toBe(
+      'Card hold failed for Jane Doe',
+    );
+    expect(describeNotification('cleaner_paid', FULL_PAYLOAD).title).toBe('You were paid $42.00');
+  });
+
+  it('words cleaner_accepted differently for the homeowner vs admin audience', () => {
+    const admin = describeNotification('cleaner_accepted', { ...FULL_PAYLOAD, audience: 'admin' });
+    const homeowner = describeNotification('cleaner_accepted', {
+      ...FULL_PAYLOAD,
+      audience: 'homeowner',
+    });
+    expect(admin.title).toBe('Wanda Jones accepted a job');
+    expect(homeowner.title).toBe('Wanda Jones is confirmed for your cleaning');
+  });
+
+  it('shows reassignment (amber) vs escalation (red) for a decline', () => {
+    const reassigned = describeNotification('cleaner_declined', {
+      cleaner_name: 'Wanda Jones',
+      next_cleaner_name: 'Bob Smith',
+    });
+    expect(reassigned.detail).toBe('Reassigned to Bob Smith');
+    expect(reassigned.tone).toBe('warning');
+
+    const escalated = describeNotification('cleaner_declined', { cleaner_name: 'Wanda Jones' });
+    expect(escalated.detail).toBe('Needs a new cleaner');
+    expect(escalated.tone).toBe('error');
   });
 
   it('falls back safely for an unknown / future event type', () => {
     const d = describeNotification('something_new_2099');
-    expect(d.label).toBe('Update');
+    expect(d.title).toBe('Update');
     expect(d.tone).toBe('info');
     expect(d.icon).toBeTruthy();
   });

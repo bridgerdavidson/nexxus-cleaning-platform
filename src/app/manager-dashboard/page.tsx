@@ -101,6 +101,8 @@ function ManagerDashboardInner() {
     openAppointment,
     closeAppointment,
   } = useAppointmentPanel();
+  // Notification "Assign cleaner" deep-link target, consumed by ActionRequiredSection.
+  const [assignIntentId, setAssignIntentId] = useState<string | null>(null);
   // Lazy-load invites: stays mounted at dashboard level once first opened, so
   // tab switches don't re-fetch and the Realtime channel survives navigation.
   const [hasOpenedInvitesEver, setHasOpenedInvitesEver] = useState(
@@ -741,6 +743,8 @@ function ManagerDashboardInner() {
 
       <div className="space-y-6">
         <ActionRequiredSection
+          assignAppointmentId={assignIntentId}
+          onAssignHandled={() => setAssignIntentId(null)}
           onReassign={(item) => {
             const apt = appointments.find((a) => a.id === item.id);
             if (apt) setRescheduleModalAppointment(apt as AppointmentCardData);
@@ -1053,6 +1057,10 @@ function ManagerDashboardInner() {
             showMessagesIcon={permissions?.can_view_messages === true}
             hasUnreadMessages={hasUnreadMessages}
             showSettingsIcon
+            onOpenAppointment={(id, intent) => {
+              if (intent === "assign") setAssignIntentId(id);
+              else openAppointment(id);
+            }}
           />
         </div>
 

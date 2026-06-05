@@ -17,6 +17,8 @@ import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { computeChargeBreakdown } from './processingFee';
 import { stripeFeePassthroughEnabled } from '@/lib/stripe/flags';
 import { recordPaymentEvent } from './events';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 export type AuthorizeCode =
   | 'authorized'
@@ -179,6 +181,19 @@ export async function authorizeAppointment(
         payment_intent_id: failedPi?.id ?? null,
       },
     });
+
+    // Alert admins in-app, but only on the transition INTO failed so the JIT
+    // authorizer cron's later retries don't re-notify for the same appointment.
+    if (appt.authorization_status !== 'failed') {
+      const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id });
+      await recordNotificationEvent(supabase, {
+        event_type: 'authorization_failed',
+        appointment_id: appt.id,
+        organization_id: appt.organization_id,
+        payload: { ...ctx, audience: 'admin', amount_cents: grossCents },
+      });
+    }
+
     return { ok: false, code: 'declined', message: err instanceof Error ? err.message : 'Authorization declined' };
   }
 
