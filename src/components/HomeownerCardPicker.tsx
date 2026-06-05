@@ -7,14 +7,13 @@ import React, {
   useImperativeHandle,
   useState,
 } from "react";
-import { loadStripe } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { Loader2, AlertCircle, Plus, CreditCard } from "lucide-react";
+import { Loader2, Plus, CreditCard, Landmark } from "lucide-react";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
-import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import { stripeNewChargeFlowUiEnabled, stripeAchUiEnabled } from "../lib/stripe/flags";
+import type { PaymentMethodKind } from "@/lib/payments/processingFee";
+import AddPaymentMethodPanel from "./AddPaymentMethodPanel";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
-const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
 
 /** Whether the picker can render at all (publishable key + flag). Mirrored by the parent so it
  *  only requires payment when the picker is actually usable. */
@@ -26,11 +25,15 @@ const NEW_CARD = "__new__";
 
 interface SavedCard {
   id: string;
-  brand: string;
+  type: "card" | "us_bank_account";
   last4: string;
-  expMonth: number;
-  expYear: number;
   isDefault: boolean;
+  // card
+  brand?: string;
+  expMonth?: number;
+  expYear?: number;
+  // us_bank_account
+  bankName?: string;
 }
 
 type ResolveResult = { paymentMethodId: string } | { error: string };
@@ -49,30 +52,27 @@ interface Props {
   organizationId?: string;
   /** Saved card id to pre-select (e.g. the card already chosen for an appointment). */
   initialSelectedId?: string | null;
-  /** Reports whether a saved card is selected (drives the Submit button's disabled state). */
+  /** Reports whether a saved method is selected (drives the Submit button's disabled state). */
   onReadyChange?: (ready: boolean) => void;
+  /** Reports the selected method's type (card vs bank) so the total can show the right fee. */
+  onSelectedMethodChange?: (method: PaymentMethodKind) => void;
 }
 
 /**
  * Homeowner card picker for the self-request flow. Saved cards are rendered as our own radio
- * list (selectable with zero Stripe round-trip). "Use a new card" reveals the Stripe Payment
- * Element plus an explicit "Save card" button: saving confirms the SetupIntent (off_session),
- * refetches the saved list, and auto-selects the newly-saved card so it moves into the saved
- * section. Submit is only enabled once a saved card is selected. Renders nothing when the
- * new-charge-flow UI flag or publishable key is absent.
+ * list (selectable with zero Stripe round-trip). "Use a new card or bank account" reveals the
+ * shared AddPaymentMethodPanel (Stripe Payment Element + Save): saving confirms the SetupIntent
+ * (off_session), refetches the saved list, and auto-selects the newly-saved method so it moves
+ * into the saved section. Submit is only enabled once a saved method is selected. Renders nothing
+ * when the new-charge-flow UI flag or publishable key is absent.
  */
 const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function HomeownerCardPicker(
-  { homeownerId, accessToken, organizationId, initialSelectedId, onReadyChange },
+  { homeownerId, accessToken, organizationId, initialSelectedId, onReadyChange, onSelectedMethodChange },
   ref,
 ) {
   const [cards, setCards] = useState<SavedCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
-
-  // SetupIntent for the new-card path — lazily created the first time "Use a new card" is chosen.
-  const [siSecret, setSiSecret] = useState<string | null>(null);
-  const [siLoading, setSiLoading] = useState(false);
-  const [siError, setSiError] = useState<string | null>(null);
 
   const loadCards = useCallback(async (): Promise<SavedCard[]> => {
     setLoadingCards(true);
@@ -107,46 +107,38 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     void loadCards();
   }, [loadCards]);
 
-  const fetchSetupIntent = useCallback(async () => {
-    setSiLoading(true);
-    setSiError(null);
-    try {
-      const res = await fetch("/api/stripe/create-setup-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ homeowner_id: homeownerId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.client_secret) throw new Error(data.error || "Could not start card setup");
-      setSiSecret(data.client_secret as string);
-    } catch (e) {
-      setSiError(e instanceof Error ? e.message : "Could not start card setup");
-    } finally {
-      setSiLoading(false);
-    }
+  // Create a SetupIntent for the homeowner's customer. The Payment Element renders card (+ bank
+  // when ACH is enabled) from the SetupIntent's allowed payment-method types.
+  const createSetupIntent = useCallback(async (): Promise<string> => {
+    const res = await fetch("/api/stripe/create-setup-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ homeowner_id: homeownerId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.client_secret) throw new Error(data.error || "Could not start card setup");
+    return data.client_secret as string;
   }, [homeownerId]);
 
-  // Lazily create a SetupIntent the first time the new-card option is selected. Idempotent
-  // guards (not a cancel flag) prevent re-fetching: once we have a secret, are mid-flight, or
-  // hit an error, we don't fire again. "Try again" clears siError to re-trigger this.
-  useEffect(() => {
-    if (selected === NEW_CARD && !siSecret && !siLoading && !siError) {
-      void fetchSetupIntent();
-    }
-  }, [selected, siSecret, siLoading, siError, fetchSetupIntent]);
-
-  // Report readiness up to the parent: a card is chosen only when a SAVED card is selected.
+  // Report readiness up to the parent: a method is chosen only when a SAVED method is selected.
   useEffect(() => {
     onReadyChange?.(!!selected && selected !== NEW_CARD);
   }, [selected, onReadyChange]);
 
-  // After a new card is saved: refetch the saved list and select the newly-saved card, so it
-  // moves into the saved section. Reset the SetupIntent so a future "use a new card" is fresh.
+  // Report the selected method's type so the parent's total shows the right fee. A not-yet-saved
+  // new method defaults to 'card' (the costlier fee — never under-quote the total).
+  useEffect(() => {
+    if (!onSelectedMethodChange) return;
+    const sel = cards.find((c) => c.id === selected);
+    onSelectedMethodChange(sel?.type === "us_bank_account" ? "us_bank_account" : "card");
+  }, [selected, cards, onSelectedMethodChange]);
+
+  // After a new method is saved: refetch the saved list and select it, so it moves into the saved
+  // section (the AddPaymentMethodPanel unmounts on success, resetting itself for next time).
   const handleNewCardSaved = useCallback(
     async (pmId: string) => {
       await loadCards();
       setSelected(pmId);
-      setSiSecret(null);
     },
     [loadCards],
   );
@@ -162,7 +154,9 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
     [selected],
   );
 
-  if (!homeownerCardPickerAvailable() || !stripePromise || !homeownerId) return null;
+  if (!homeownerCardPickerAvailable() || !homeownerId) return null;
+
+  const hasSavedBank = cards.some((c) => c.type === "us_bank_account");
 
   const radio = (value: string, label: React.ReactNode, sublabel?: string) => {
     const checked = selected === value;
@@ -191,158 +185,77 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saved cards</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saved payment methods</p>
         {loadingCards ? (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading your cards…
           </div>
         ) : cards.length === 0 ? (
           <p className="rounded-lg border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-500">
-            No saved cards yet.
+            No saved payment methods yet.
           </p>
         ) : (
           cards.map((c) =>
-            radio(
-              c.id,
-              <span className="flex items-center gap-2 capitalize">
-                <CreditCard className="h-4 w-4 text-gray-500" />
-                {c.brand} •••• {c.last4}
-                {c.isDefault && (
-                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
-                    Default
-                  </span>
-                )}
-              </span>,
-              `Expires ${String(c.expMonth).padStart(2, "0")}/${c.expYear}`,
-            ),
+            c.type === "us_bank_account"
+              ? radio(
+                  c.id,
+                  <span className="flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-gray-500" />
+                    {c.bankName ?? "Bank account"} •••• {c.last4}
+                    {c.isDefault && (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                        Default
+                      </span>
+                    )}
+                  </span>,
+                  "Bank account · lower fee",
+                )
+              : radio(
+                  c.id,
+                  <span className="flex items-center gap-2 capitalize">
+                    <CreditCard className="h-4 w-4 text-gray-500" />
+                    {c.brand} •••• {c.last4}
+                    {c.isDefault && (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                        Default
+                      </span>
+                    )}
+                  </span>,
+                  `Expires ${String(c.expMonth).padStart(2, "0")}/${c.expYear}`,
+                ),
           )
         )}
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pay with a new card</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pay with a new card or bank</p>
+        {/* Nudge toward bank (lower fee) before any bank is attached — that incentive otherwise
+            only shows as a sublabel on an already-saved bank. */}
+        {stripeAchUiEnabled() && !hasSavedBank && (
+          <p className="flex items-start gap-1.5 text-xs text-gray-500">
+            <Landmark className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary-600" />
+            Paying by bank account costs less than a card. Add one below to save on fees.
+          </p>
+        )}
         {radio(
           NEW_CARD,
           <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-gray-500" /> Use a new card
+            <Plus className="h-4 w-4 text-gray-500" /> Use a new card or bank account
           </span>,
         )}
         {selected === NEW_CARD && (
           <div className="mt-2">
-            {siLoading ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading secure card form…
-              </div>
-            ) : siError ? (
-              <div className="space-y-2">
-                <p className="flex items-center gap-2 text-sm text-red-600">
-                  <AlertCircle className="h-4 w-4 shrink-0" /> {siError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSiError(null);
-                    setSiSecret(null);
-                  }}
-                  className="text-xs font-semibold text-primary-700 hover:underline"
-                >
-                  Try again
-                </button>
-              </div>
-            ) : siSecret ? (
-              <NewCardSection clientSecret={siSecret} onSaved={handleNewCardSaved} />
-            ) : null}
+            <AddPaymentMethodPanel createSetupIntent={createSetupIntent} onSaved={handleNewCardSaved} />
           </div>
         )}
       </div>
 
       <p className="text-xs text-gray-500">
-        You won’t be charged until your cleaning is completed. A new card is saved securely for next
-        time.
+        You won’t be charged until your cleaning is completed. Your card or bank account is saved
+        securely for next time.
       </p>
     </div>
   );
 });
-
-const NewCardSection = ({
-  clientSecret,
-  onSaved,
-}: {
-  clientSecret: string;
-  onSaved: (paymentMethodId: string) => void | Promise<void>;
-}) => {
-  if (!stripePromise) return null;
-  return (
-    <Elements
-      stripe={stripePromise}
-      options={{ clientSecret, appearance: { variables: { colorPrimary: "#F7C41E" } } }}
-    >
-      <NewCardInner onSaved={onSaved} />
-    </Elements>
-  );
-};
-
-function NewCardInner({ onSaved }: { onSaved: (paymentMethodId: string) => void | Promise<void> }) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const save = async () => {
-    if (!stripe || !elements) return;
-    setSaving(true);
-    setError(null);
-
-    const { error: submitErr } = await elements.submit();
-    if (submitErr) {
-      setError(submitErr.message ?? "Please check your card details.");
-      setSaving(false);
-      return;
-    }
-
-    const { error: confirmErr, setupIntent } = await stripe.confirmSetup({
-      elements,
-      redirect: "if_required",
-    });
-    if (confirmErr) {
-      setError(confirmErr.message ?? "We couldn’t save your card. Please try again.");
-      setSaving(false);
-      return;
-    }
-
-    const pm =
-      typeof setupIntent?.payment_method === "string"
-        ? setupIntent.payment_method
-        : setupIntent?.payment_method?.id;
-    if (!pm) {
-      setError("Could not read the saved card.");
-      setSaving(false);
-      return;
-    }
-    // Hand the saved card up; the parent refetches + selects it. Keep `saving` true so the
-    // button stays disabled through the collapse (this component unmounts on success).
-    await onSaved(pm);
-  };
-
-  return (
-    <div className="space-y-3">
-      <PaymentElement options={{ wallets: { link: "never" } }} />
-      {error && (
-        <p className="flex items-center gap-2 text-sm text-red-600">
-          <AlertCircle className="h-4 w-4 shrink-0" /> {error}
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={save}
-        disabled={!stripe || saving}
-        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
-      >
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-        {saving ? "Saving…" : "Save card"}
-      </button>
-    </div>
-  );
-}
 
 export default HomeownerCardPicker;

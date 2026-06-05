@@ -169,6 +169,11 @@ export interface UnsettledCaptureResult {
  *     anyone, so the cleaner payout retry job alone can't recover it).
  * settleCleanerPayout is fully idempotent (idempotency keys on both transfers), so replaying is
  * always safe; a charge id isn't needed — it falls back to an available-balance transfer.
+ *
+ * EXCLUDES org self-pay rows: they settle via `settleSelfPay` (single platform→cleaner transfer,
+ * no tenant remainder) and never set `transfer_amount`, so they would otherwise match this sweep
+ * forever and be force-run through the wrong (tenant-split) path. Their backstop is the idempotent
+ * settleSelfPay on payment_intent.succeeded.
  */
 export async function settleUnsettledCaptures(
   supabase: SupabaseClient,
@@ -185,6 +190,7 @@ export async function settleUnsettledCaptures(
     .is('transfer_amount', null)
     .not('appointment_id', 'is', null)
     .not('captured_at', 'is', null)
+    .or('is_self_pay.is.null,is_self_pay.eq.false')
     .lte('captured_at', cutoff)
     .limit(batch);
 

@@ -20,7 +20,7 @@
  * transparency panel.
  */
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
-import { FEE_SCHEDULES, grossUpForFee } from './processingFee';
+import { FEE_SCHEDULES, grossUpForFee, type PaymentMethodKind } from './processingFee';
 
 /** Stripe US standard card pricing: 2.9% + 30¢ (single source: processingFee). */
 export const STRIPE_PERCENT_FEE = FEE_SCHEDULES.card.percent;
@@ -31,6 +31,12 @@ export interface SelfPayAmountsParams {
   jobGrossCents: number;
   /** Cleaner's percentage of the job gross, 0..100. */
   payoutPercent: number;
+  /**
+   * How the org pays. Only the gross-up (fee) depends on it — the cleaner's cut is identical
+   * either way. Bank (us_bank_account) is far cheaper (0.8% capped $5 vs card 2.9% + 30¢).
+   * Defaults to card (the costlier fee — never under-quote the charge).
+   */
+  method?: PaymentMethodKind;
 }
 
 export interface SelfPayAmounts {
@@ -54,11 +60,16 @@ export function grossUpForStripeFee(netCents: number): number {
   return grossUpForFee('card', netCents);
 }
 
-export function computeSelfPayAmounts({ jobGrossCents, payoutPercent }: SelfPayAmountsParams): SelfPayAmounts {
+export function computeSelfPayAmounts({
+  jobGrossCents,
+  payoutPercent,
+  method = 'card',
+}: SelfPayAmountsParams): SelfPayAmounts {
   // Reuse the locked cleaner-cut math (% of gross, floored). platformFeeBps:0 is
   // irrelevant here — we only read cleanerCents — but keeps a single source of truth.
   const { cleanerCents } = computePaymentSplit({ grossCents: jobGrossCents, payoutPercent, platformFeeBps: 0 });
-  const chargeCents = grossUpForStripeFee(cleanerCents);
+  // Gross up the cut for the chosen method's real Stripe fee so the platform nets ≥ the cut.
+  const chargeCents = grossUpForFee(method, cleanerCents);
   return {
     jobGrossCents,
     payoutPercent,

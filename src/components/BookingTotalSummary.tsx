@@ -3,11 +3,27 @@
 import { computeChargeBreakdown, type PaymentMethodKind } from "@/lib/payments/processingFee";
 import { stripeFeePassthroughUiEnabled } from "@/lib/stripe/flags";
 
+/** A precomputed, itemized charge (used by self-pay, where the charge is the cleaner payout grossed
+ *  up for the fee, NOT the service price). All values in integer cents. */
+export interface TotalBreakdown {
+  baseCents: number;
+  feeCents: number;
+  chargeCents: number;
+  /** Line label for the base amount (e.g. "Cleaner payout"). Defaults to "Service". */
+  baseLabel?: string;
+  /** Line label for the total (e.g. "Your company card"). Defaults to "Total". */
+  totalLabel?: string;
+}
+
 interface BookingTotalSummaryProps {
-  /** Service price in dollars (e.g. an appointment's total_price or a service base_price). */
-  servicePrice: number;
-  /** Selected payment method; drives the method-aware processing fee. Defaults to card. */
+  /** Service price in dollars (homeowner mode). Ignored when `breakdown` is provided. */
+  servicePrice?: number;
+  /** Selected payment method; drives the method-aware processing fee + the fee-line tag. Defaults to card. */
   method?: PaymentMethodKind;
+  /** Explicit precomputed breakdown (self-pay mode). When set, it is shown verbatim and the fee
+   *  line always appears (the charge genuinely includes the gross-up), independent of the
+   *  fee-passthrough flag. */
+  breakdown?: TotalBreakdown;
   /** Short charge-timing note, e.g. "Charged when the job is completed". */
   timingNote?: string;
   className?: string;
@@ -18,27 +34,48 @@ function formatUsd(cents: number): string {
 }
 
 /**
- * Compact, itemized cost summary for the booking flows so the payer sees exactly
- * what they'll be charged before they commit. Reuses the app's `bg-primary-50`
- * info-box pattern. The processing-fee line only appears when the fee-passthrough
- * flag is on; until then it simply shows the service total (still a confidence win
- * over the current "no total before submit"). Method-aware: card vs bank changes
- * the fee and the total.
+ * Compact, itemized cost summary for the booking flows so the payer sees exactly what they'll be
+ * charged before they commit. Reuses the app's `bg-primary-50` info-box pattern. Two modes:
+ *
+ *  - Homeowner mode (`servicePrice` + `method`): the charge is the service price grossed up for the
+ *    method's fee. The processing-fee line only appears when the fee-passthrough flag is on.
+ *  - Self-pay mode (`breakdown`): the org pays the cleaner's cut grossed up for the fee, so the
+ *    caller supplies the precomputed base/fee/charge (base = cleaner payout) and the fee line always
+ *    shows. Method-aware: card vs bank changes the fee + total.
  */
 export default function BookingTotalSummary({
   servicePrice,
   method = "card",
+  breakdown,
   timingNote,
   className = "",
 }: BookingTotalSummaryProps) {
-  const baseCents = Math.round((Number(servicePrice) || 0) * 100);
-  if (baseCents <= 0) return null;
+  let baseCents: number;
+  let feeCents: number;
+  let chargeCents: number;
+  let showFee: boolean;
+  let baseLabel = "Service";
+  let totalLabel = "Total";
 
-  const feeEnabled = stripeFeePassthroughUiEnabled();
-  const { feeCents, chargeCents } = feeEnabled
-    ? computeChargeBreakdown(method, baseCents)
-    : { feeCents: 0, chargeCents: baseCents };
-  const showFee = feeEnabled && feeCents > 0;
+  if (breakdown) {
+    baseCents = breakdown.baseCents;
+    feeCents = breakdown.feeCents;
+    chargeCents = breakdown.chargeCents;
+    showFee = feeCents > 0;
+    if (breakdown.baseLabel) baseLabel = breakdown.baseLabel;
+    if (breakdown.totalLabel) totalLabel = breakdown.totalLabel;
+  } else {
+    baseCents = Math.round((Number(servicePrice) || 0) * 100);
+    const feeEnabled = stripeFeePassthroughUiEnabled();
+    const computed = feeEnabled
+      ? computeChargeBreakdown(method, baseCents)
+      : { feeCents: 0, chargeCents: baseCents };
+    feeCents = computed.feeCents;
+    chargeCents = computed.chargeCents;
+    showFee = feeEnabled && feeCents > 0;
+  }
+
+  if (chargeCents <= 0) return null;
 
   return (
     <div
@@ -50,7 +87,7 @@ export default function BookingTotalSummary({
         {showFee && (
           <>
             <div className="flex items-center justify-between">
-              <dt className="text-gray-600">Service</dt>
+              <dt className="text-gray-600">{baseLabel}</dt>
               <dd className="tabular-nums">{formatUsd(baseCents)}</dd>
             </div>
             <div className="flex items-center justify-between">
@@ -69,7 +106,7 @@ export default function BookingTotalSummary({
             showFee ? "mt-2 border-t border-primary-200 pt-2" : ""
           }`}
         >
-          <dt>Total</dt>
+          <dt>{totalLabel}</dt>
           <dd className="tabular-nums">{formatUsd(chargeCents)}</dd>
         </div>
       </dl>

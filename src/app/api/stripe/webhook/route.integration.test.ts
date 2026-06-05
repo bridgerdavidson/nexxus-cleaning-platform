@@ -413,6 +413,92 @@ describe('POST /api/stripe/webhook', () => {
     expect((cleanerCall?.amountCents ?? 0) + (tenantCall?.amountCents ?? 0)).toBe(10000);
   });
 
+  // ── ACH: payment_intent.processing (bank debit clearing) ──────────────────────
+  function buildProcessingEvent(appointmentId: string) {
+    return {
+      id: `evt_pi_processing_${appointmentId}`,
+      object: 'event',
+      type: 'payment_intent.processing',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `pi_test_${appointmentId}`,
+          object: 'payment_intent',
+          status: 'processing',
+          metadata: { appointment_id: appointmentId },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+  }
+
+  it('payment_intent.processing marks the revenue row as processing (ACH clearing)', async () => {
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100.81,
+      status: 'pending',
+      payment_method: 'ach',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+    });
+
+    const payload = JSON.stringify(buildProcessingEvent(appt.id));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data } = await admin.from('payments').select('status').eq('appointment_id', appt.id);
+    expect((data![0] as { status: string }).status).toBe('processing');
+  });
+
+  it('payment_intent.processing never regresses a row that already settled (paid)', async () => {
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'ach',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_test_${appt.id}`,
+    });
+
+    const payload = JSON.stringify(buildProcessingEvent(appt.id));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data } = await admin.from('payments').select('status').eq('appointment_id', appt.id);
+    expect((data![0] as { status: string }).status).toBe('paid');
+  });
+
   // ── Phase 4b: idempotency ledger + dispute / refund confirmation ──────────────
   it('records the event in webhook_events and skips a duplicate delivery', async () => {
     const appt = await createTestAppointment({

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
+import { stripeEnabled, stripeNewChargeFlowEnabled, stripeAchEnabled, stripeSelfPayEnabled } from '@/lib/stripe/flags';
 import { capturePaymentIntent } from '@/lib/stripe/charges/capture';
+import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
+import { chargeAchAppointment } from '@/lib/payments/chargeAchAppointment';
+import { chargeSelfPayAchAppointment } from '@/lib/payments/chargeSelfPayAchAppointment';
 import { recordPaymentEvent } from '@/lib/payments/events';
+
+// The self-pay/ACH branches below add a listSavedCards + PaymentIntent create on the request hot
+// path; give the function headroom over the platform default so a slow Stripe call can't 504.
+export const maxDuration = 60;
 
 /**
  * POST /api/appointments/:appointmentId/capture
@@ -37,10 +44,18 @@ export async function POST(
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id, cleaner_id')
+      .select('id, organization_id, cleaner_id, payment_method_id, is_self_pay')
       .eq('id', appointmentId)
       .maybeSingle();
-    const appointment = appt as { id: string; organization_id: string; cleaner_id: string | null } | null;
+    const appointment = appt as
+      | {
+          id: string;
+          organization_id: string;
+          cleaner_id: string | null;
+          payment_method_id: string | null;
+          is_self_pay: boolean;
+        }
+      | null;
     if (!appointment || appointment.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
@@ -61,6 +76,48 @@ export async function POST(
       : null;
 
     if (!pay?.stripe_payment_intent_id) {
+      // No hold to capture. A bank-account (ACH) appointment has no hold — the debit is
+      // created+confirmed now (charge-at-completion) and lands in `processing` for ~4 business days.
+
+      // Org self-pay with no hold = its default company method is a bank (deferred at booking).
+      // chargeSelfPayAchAppointment self-gates: it only debits when the default PM is a bank
+      // (returns no_org_bank otherwise), so a card path that lost its hold falls through to 409.
+      if (stripeAchEnabled() && stripeSelfPayEnabled() && appointment.is_self_pay) {
+        const outcome = await chargeSelfPayAchAppointment(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+        if (outcome.ok) {
+          return NextResponse.json({
+            success: true,
+            payment_intent_id: outcome.paymentIntentId,
+            status: 'processing',
+          });
+        }
+        // no_org_bank/no_org_card here means there's simply nothing to debit via ACH → 409 (same as
+        // "no authorization to capture"); a genuine Stripe failure is 502.
+        if (outcome.code !== 'no_org_bank' && outcome.code !== 'no_org_card') {
+          return NextResponse.json(
+            { error: outcome.message ?? 'ACH charge failed', code: outcome.code },
+            { status: outcome.code === 'failed' || outcome.code === 'error' ? 502 : 409 },
+          );
+        }
+      }
+
+      if (stripeAchEnabled() && appointment.payment_method_id) {
+        const pmType = await getPaymentMethodType(appointment.payment_method_id);
+        if (pmType === 'us_bank_account') {
+          const outcome = await chargeAchAppointment(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+          if (outcome.ok) {
+            return NextResponse.json({
+              success: true,
+              payment_intent_id: outcome.paymentIntentId,
+              status: 'processing',
+            });
+          }
+          return NextResponse.json(
+            { error: outcome.message ?? 'ACH charge failed', code: outcome.code },
+            { status: outcome.code === 'failed' || outcome.code === 'error' ? 502 : 409 },
+          );
+        }
+      }
       return NextResponse.json({ error: 'No authorization to capture' }, { status: 409 });
     }
 
@@ -73,6 +130,18 @@ export async function POST(
         payment_intent_id: pay.stripe_payment_intent_id,
         status: 'succeeded',
         alreadyCaptured: true,
+      });
+    }
+
+    // A bank (ACH) debit is created+confirmed at completion and sits in `processing` for ~4 business
+    // days; it has no hold to capture. A repeat completion must not try to capture it — that would
+    // throw ("not capturable") and wrongly flip the clearing row to failed. It's already charging.
+    if (pay.status === 'processing') {
+      return NextResponse.json({
+        success: true,
+        payment_intent_id: pay.stripe_payment_intent_id,
+        status: 'processing',
+        alreadyCharging: true,
       });
     }
 
