@@ -85,8 +85,7 @@ const ServicesPage = dynamic(() => import("../../components/ServicesPage"), { ss
 import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
-import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
-import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
+import StatTile from "../../components/StatTile";
 import TodayScheduleSection from "../../components/TodayScheduleSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
 import {
@@ -327,16 +326,14 @@ function ManagerDashboardInner() {
   // return). Messages lives on the TopBar icon + mobile drawer, not the sidebar.
   const sidebarTabs = useMemo(
     () => [
-      { id: "home", label: "Overview", icon: Home },
+      {
+        id: "home",
+        label: "Overview",
+        icon: Home,
+        notificationCount: needsResponseCount,
+      },
       ...(permissions?.can_view_bookings
-        ? [
-            {
-              id: "bookings",
-              label: "Bookings",
-              icon: Calendar,
-              hasNotification: needsResponseCount > 0,
-            },
-          ]
+        ? [{ id: "bookings", label: "Bookings", icon: Calendar }]
         : []),
       ...(permissions?.can_view_customers
         ? [{ id: "customers", label: "Customers", icon: Users }]
@@ -368,16 +365,14 @@ function ManagerDashboardInner() {
   const mobileNavTabs = useMemo(
     () =>
       [
-        { id: "home", label: "Overview", icon: Home },
+        {
+          id: "home",
+          label: "Overview",
+          icon: Home,
+          notificationCount: needsResponseCount,
+        },
         ...(permissions?.can_view_bookings
-          ? [
-              {
-                id: "bookings",
-                label: "Bookings",
-                icon: Calendar,
-                hasNotification: needsResponseCount > 0,
-              },
-            ]
+          ? [{ id: "bookings", label: "Bookings", icon: Calendar }]
           : []),
         ...(permissions?.can_view_messages
           ? [
@@ -503,24 +498,26 @@ function ManagerDashboardInner() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const allUpcomingAppointments = appointments
-    .filter((a) => {
-      // Parse appointment date
-      const [year, month, day] = a.scheduled_date.split("-").map(Number);
-      const appointmentDate = new Date(year, month - 1, day);
-      appointmentDate.setHours(0, 0, 0, 0);
+  // KPI tile count: every appointment scheduled today that is not cancelled.
+  const todaysJobsCount = appointments.filter((a) => {
+    const [year, month, day] = a.scheduled_date.split("-").map(Number);
+    const appointmentDate = new Date(year, month - 1, day);
+    appointmentDate.setHours(0, 0, 0, 0);
+    return (
+      appointmentDate.getTime() === today.getTime() && a.status !== "cancelled"
+    );
+  }).length;
 
-      // Strictly future appointments (after today) that are confirmed.
-      // Today's appointments live in the Today's Schedule section.
-      return appointmentDate > today && a.status === "confirmed";
-    })
-    .sort((a, b) => {
-      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-  const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
+  // Unassigned KPI (revenue-tile fallback for managers without payment access):
+  // upcoming/today jobs with no cleaner attached yet.
+  const unassignedCount = appointments.filter((a) => {
+    if (a.cleaner_profile) return false;
+    if (a.status === "cancelled" || a.status === "completed") return false;
+    const [year, month, day] = a.scheduled_date.split("-").map(Number);
+    const appointmentDate = new Date(year, month - 1, day);
+    appointmentDate.setHours(0, 0, 0, 0);
+    return appointmentDate >= today;
+  }).length;
 
   const todaysAppointments = appointments
     .filter((a) => {
@@ -557,13 +554,6 @@ function ManagerDashboardInner() {
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
     });
-
-  const handleMessageCleaner = (appointment: (typeof appointments)[0]) => {
-    const cleanerUserId = appointment.cleaner_profile?.user_profile?.id;
-    if (!cleanerUserId) return;
-    setInitialMessageRecipientId(cleanerUserId);
-    setActiveTab("messages");
-  };
 
   const handleCancelAppointment = async (appointmentId: string) => {
     const result = await cancelAppointment(appointmentId);
@@ -650,6 +640,61 @@ function ManagerDashboardInner() {
       </div>
 
       <div className="space-y-6">
+        {/* At-a-glance KPI tiles. Manager parity with the admin overview; the
+            revenue tile is gated on can_view_payments and falls back to an
+            Unassigned count so the row always shows four. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatTile
+            icon={<Calendar className="w-5 h-5" />}
+            tone="primary"
+            label="Today's jobs"
+            value={todaysJobsCount}
+            loading={appointmentsLoading}
+            onClick={() => setActiveTab("bookings")}
+          />
+          <StatTile
+            icon={<Loader2 className="w-5 h-5" />}
+            tone="blue"
+            label="In progress"
+            value={activeJobsManager.length}
+            live={activeJobsManager.length > 0}
+            loading={appointmentsLoading}
+            onClick={() => setActiveTab("bookings")}
+          />
+          <StatTile
+            icon={<UserCheck className="w-5 h-5" />}
+            tone="amber"
+            label="Awaiting approval"
+            value={awaitingCleanerApprovalAppointments.length}
+            loading={appointmentsLoading}
+            onClick={() => {
+              setShowPendingFilter(true);
+              setActiveTab("bookings");
+            }}
+          />
+          {permissions?.can_view_payments ? (
+            <StatTile
+              icon={<DollarSign className="w-5 h-5" />}
+              tone="green"
+              label="Revenue this month"
+              value={`$${paymentStats.thisMonthRevenue.toLocaleString()}`}
+              loading={paymentStatsLoading}
+              onClick={() => setActiveTab("payments")}
+            />
+          ) : (
+            <StatTile
+              icon={<Users className="w-5 h-5" />}
+              tone="gray"
+              label="Unassigned"
+              value={unassignedCount}
+              loading={appointmentsLoading}
+              onClick={() => setActiveTab("bookings")}
+            />
+          )}
+        </div>
+
+        {/* Unified action queue: one persistent source of truth, mirrored as a
+            banner on the Bookings tab and the nav-badge count. */}
         <ActionRequiredSection
           assignAppointmentId={assignIntentId}
           onAssignHandled={() => setAssignIntentId(null)}
@@ -667,35 +712,11 @@ function ManagerDashboardInner() {
           />
         )}
 
-        <div className="space-y-6">
-          <TodayScheduleSection
-            appointments={todaysAppointments as unknown as AppointmentCardData[]}
-            loading={appointmentsLoading}
-            onViewAll={() => setActiveTab("bookings")}
-            onAppointmentClick={(apt) => openAppointment(apt.id)}
-          />
-          <UpcomingAppointmentsSection
-            appointments={upcomingAppointments as unknown as AppointmentCardData[]}
-            totalCount={allUpcomingAppointments.length}
-            loading={appointmentsLoading}
-            onViewAll={() => {
-              setShowAllFilter(true);
-              setActiveTab("bookings");
-            }}
-            onAppointmentClick={(apt) => openAppointment(apt.id)}
-          />
-        </div>
-
-        <AwaitingApprovalSection
-          appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}
+        {/* Compact Today glance; full lists live in Bookings. */}
+        <TodayScheduleSection
+          appointments={todaysAppointments as unknown as AppointmentCardData[]}
           loading={appointmentsLoading}
-          onMessageCleaner={(apt) =>
-            handleMessageCleaner(apt as unknown as (typeof appointments)[0])
-          }
-          onViewAll={() => {
-            setShowPendingFilter(true);
-            setActiveTab("bookings");
-          }}
+          onViewAll={() => setActiveTab("bookings")}
           onAppointmentClick={(apt) => openAppointment(apt.id)}
         />
       </div>
@@ -721,7 +742,8 @@ function ManagerDashboardInner() {
         onRefreshAppointments={refetchAppointments}
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
         onOpenAppointment={openAppointment}
-        onRescheduleRejected={(apt) => setRescheduleModalAppointment(apt)}
+        actionCount={needsResponseCount}
+        onGoToActionCenter={() => setActiveTab("home")}
         role="manager"
         canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
         initialStatusFilter={initialFilter}
