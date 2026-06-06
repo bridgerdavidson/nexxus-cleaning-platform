@@ -58,6 +58,7 @@ import {
 } from "../../lib/dashboardHero";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
+import MobileTopBar from "../../components/MobileTopBar";
 import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import NewBookingButton from "../../components/NewBookingButton";
@@ -973,7 +974,7 @@ function ManagerDashboardInner() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px] pt-4 md:pt-16">
+      <div className="md:ml-[260px] pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-16">
         {/* Top Bar - tabs live in the sidebar now; the right cluster carries the
             New booking action (when permitted) + Messages/Settings icons. */}
         <div className="hidden md:block">
@@ -1025,6 +1026,16 @@ function ManagerDashboardInner() {
           />
         </div>
       )}
+
+      {/* Mobile Top Bar - brand + notifications (bell opens a bottom sheet) */}
+      <MobileTopBar
+        role="manager"
+        onTabChange={handleTabChange}
+        onOpenAppointment={(id, intent) => {
+          if (intent === "assign") setAssignIntentId(id);
+          else openAppointment(id);
+        }}
+      />
 
       {/* Mobile Bottom Navigation - most-used accessible tabs */}
       <MobileNavigation

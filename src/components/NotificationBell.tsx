@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, ChevronDown, Check, UserPlus } from 'lucide-react';
 import { useNotifications, type NotificationItem } from '../hooks/useNotifications';
 import { describeNotification, type NotificationTone } from '../lib/notifications/labels';
@@ -75,6 +76,9 @@ export type NotificationOpenIntent = 'assign' | undefined;
 interface NotificationBellProps {
   /** Called when a notification tied to an appointment is opened. */
   onOpenNotification?: (notification: NotificationItem, intent?: NotificationOpenIntent) => void;
+  /** 'dropdown' (desktop top bar) renders a right-anchored panel; 'sheet'
+   *  (mobile) opens a full-width bottom sheet. */
+  variant?: "dropdown" | "sheet";
 }
 
 function ToneIcon({ tone, icon: Icon }: { tone: NotificationTone; icon: typeof Bell }) {
@@ -94,7 +98,7 @@ function ToneIcon({ tone, icon: Icon }: { tone: NotificationTone; icon: typeof B
  * time, jump to cleaner assignment). Outside-click / Escape close. Mounted in
  * TopBar so all four dashboards inherit it.
  */
-export default function NotificationBell({ onOpenNotification }: NotificationBellProps) {
+export default function NotificationBell({ onOpenNotification, variant = "dropdown" }: NotificationBellProps) {
   const {
     notifications,
     unreadCount,
@@ -173,17 +177,36 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
             aria-hidden
             className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-500 text-gray-900 text-[10px] font-bold leading-none flex items-center justify-center border-2 border-white tabular-nums"
           >
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="Notifications"
-          className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden animate-fade-in"
-        >
+      {open &&
+        (() => {
+          const panel = (
+            <>
+              {variant === "sheet" && (
+                <div
+                  className="fixed inset-0 z-40 bg-black/40 animate-fade-in"
+                  onClick={() => setOpen(false)}
+                  aria-hidden
+                />
+              )}
+          <div
+            role="menu"
+            aria-label="Notifications"
+            className={
+              variant === "sheet"
+                ? "fixed inset-x-0 bottom-0 z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl animate-sheet-up pb-[env(safe-area-inset-bottom)]"
+                : "absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden animate-fade-in"
+            }
+          >
+            {variant === "sheet" && (
+              <div className="flex shrink-0 justify-center pt-2 pb-1">
+                <span className="h-1 w-10 rounded-full bg-gray-300" />
+              </div>
+            )}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
             {unreadCount > 0 && (
@@ -337,8 +360,13 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
               </ul>
             )}
           </div>
-        </div>
-      )}
+            </div>
+            </>
+          );
+          return variant === "sheet" && typeof document !== "undefined"
+            ? createPortal(panel, document.body)
+            : panel;
+        })()}
     </div>
   );
 }

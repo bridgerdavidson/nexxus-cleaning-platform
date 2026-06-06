@@ -26,6 +26,7 @@ import { useServices } from "../../hooks/useServices";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
+import MobileTopBar from "../../components/MobileTopBar";
 import MobileSidebar from "../../components/MobileSidebar";
 import MessagesPage from "../../components/MessagesPage";
 import RequestAppointmentButton from "../../components/RequestAppointmentButton";
@@ -370,7 +371,7 @@ function HomeownerDashboardInner() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px] pt-4 md:pt-16">
+      <div className="md:ml-[260px] pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-16">
         {/* Top Bar — Messages + Settings icons; profile click navigates to settings */}
         <div className="hidden md:block">
           <TopBar
@@ -414,6 +415,13 @@ function HomeownerDashboardInner() {
       >
         <ScrollAwareRequestFab onCreated={handleRequestCreated} />
       </div>
+
+      {/* Mobile Top Bar - brand + notifications (bell opens a bottom sheet) */}
+      <MobileTopBar
+        role="homeowner"
+        onTabChange={handleTabChange}
+        onOpenAppointment={(id) => openAppointment(id)}
+      />
 
       <MobileNavigation
         tabs={mobileNavTabs}

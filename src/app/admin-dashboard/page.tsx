@@ -47,6 +47,7 @@ import {
 import { useConversations } from "../../hooks/useConversations";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
+import MobileTopBar from "../../components/MobileTopBar";
 import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import NewBookingButton from "../../components/NewBookingButton";
@@ -808,8 +809,9 @@ function AdminDashboardInner() {
         activeTab={activeTab}
       />
 
-      {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px] pt-4 md:pt-16">
+      {/* Main Content Wrapper with Sidebar Offset. Mobile top padding clears
+          the fixed MobileTopBar (h-14 + safe-area); desktop clears the TopBar. */}
+      <div className="md:ml-[260px] pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-16">
         {/* Top Bar - tabs live in the sidebar now; the right cluster carries the
             New booking action + Messages/Settings icons. Hidden on mobile. */}
         <div className="hidden md:block">
@@ -855,6 +857,17 @@ function AdminDashboardInner() {
           expandedWidth={172}
         />
       </div>
+
+      {/* Mobile Top Bar - brand + notifications (bell opens a bottom sheet) */}
+      <MobileTopBar
+        role="admin"
+        onTabChange={handleTabChange}
+        onOpenAppointment={(id, intent) => {
+          if (intent === "assign") setAssignIntentId(id);
+          else openAppointment(id);
+        }}
+        showNotifications={!impersonatingOrgId}
+      />
 
       {/* Mobile Bottom Navigation - most-used tabs */}
       <MobileNavigation
