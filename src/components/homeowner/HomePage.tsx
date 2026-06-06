@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { motion } from "motion/react";
 import {
   AlertCircle,
   Calendar,
@@ -422,8 +421,20 @@ export default function HomePage({
                 role="radiogroup"
                 aria-label="Time range"
                 onClick={(e) => e.stopPropagation()}
-                className="hidden md:flex items-center w-[180px] rounded-full bg-gray-100 p-0.5"
+                className="relative hidden md:flex items-center w-[180px] rounded-full bg-gray-100 p-0.5"
               >
+                {/* Single sliding pill positioned relative to the track. It only
+                    animates on X, so selection changes glide horizontally while
+                    vertical reflow (e.g. data loading in and shifting the section)
+                    moves it along instantly instead of gliding vertically. */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute top-0.5 bottom-0.5 left-0.5 rounded-full bg-primary-600 shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  style={{
+                    width: "calc((100% - 0.25rem) / 3)",
+                    transform: `translateX(${([7, 30, -1] as UpcomingDays[]).indexOf(upcomingDays) * 100}%)`,
+                  }}
+                />
                 {([7, 30, -1] as UpcomingDays[]).map((d) => {
                   const active = d === upcomingDays;
                   return (
@@ -437,15 +448,8 @@ export default function HomePage({
                         setUpcomingDays(d);
                         setUpcomingShowAll(false);
                       }}
-                      className="relative isolate flex-1 min-w-0 h-8 rounded-full text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
+                      className="relative z-10 flex-1 min-w-0 h-8 rounded-full text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
                     >
-                      {active && (
-                        <motion.span
-                          layoutId="upcoming-pill-desktop"
-                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                          className="absolute inset-0 -z-10 rounded-full bg-primary-600 shadow-sm"
-                        />
-                      )}
                       <span
                         className={`transition-colors duration-200 ${
                           active ? "text-white" : "text-gray-600 hover:text-gray-900"
@@ -476,8 +480,20 @@ export default function HomePage({
               <div
                 role="radiogroup"
                 aria-label="Time range"
-                className="md:hidden flex items-center w-full rounded-full bg-gray-100 p-0.5 mb-3"
+                className="relative md:hidden flex items-center w-full rounded-full bg-gray-100 p-0.5 mb-3"
               >
+                {/* Single sliding pill positioned relative to the track. It only
+                    animates on X, so selection changes glide horizontally while
+                    vertical reflow (e.g. data loading in and shifting the section)
+                    moves it along instantly instead of gliding vertically. */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute top-0.5 bottom-0.5 left-0.5 rounded-full bg-primary-600 shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  style={{
+                    width: "calc((100% - 0.25rem) / 3)",
+                    transform: `translateX(${([7, 30, -1] as UpcomingDays[]).indexOf(upcomingDays) * 100}%)`,
+                  }}
+                />
                 {([7, 30, -1] as UpcomingDays[]).map((d) => {
                   const active = d === upcomingDays;
                   return (
@@ -491,15 +507,8 @@ export default function HomePage({
                         setUpcomingShowAll(false);
                       }}
                       style={{ touchAction: "manipulation" }}
-                      className="relative isolate flex-1 min-w-0 h-9 rounded-full text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
+                      className="relative z-10 flex-1 min-w-0 h-9 rounded-full text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
                     >
-                      {active && (
-                        <motion.span
-                          layoutId="upcoming-pill-mobile"
-                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                          className="absolute inset-0 -z-10 rounded-full bg-primary-600 shadow-sm"
-                        />
-                      )}
                       <span
                         className={`transition-colors duration-200 ${
                           active ? "text-white" : "text-gray-600 hover:text-gray-900"
