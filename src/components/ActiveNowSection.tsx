@@ -53,6 +53,7 @@ export default function ActiveNowSection({
             <CompactAppointmentRow
               key={appointment.id}
               appointment={appointment}
+              showDate={false}
               onClick={
                 onAppointmentClick
                   ? () => onAppointmentClick(appointment)
