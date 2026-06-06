@@ -71,6 +71,7 @@ export default function TodayScheduleSection({
             <CompactAppointmentRow
               key={appointment.id}
               appointment={appointment}
+              showDate={false}
               onClick={
                 onAppointmentClick
                   ? () => onAppointmentClick(appointment)
