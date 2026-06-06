@@ -15,6 +15,8 @@ interface NavigationTab {
   label: string;
   icon: LucideIcon;
   hasNotification?: boolean;
+  /** When > 0, render a numeric count badge instead of the plain dot. */
+  notificationCount?: number;
 }
 
 interface SidebarUser {
@@ -91,9 +93,21 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                           isActive ? "text-primary-600" : "text-gray-400"
                         }`}
                       />
-                      {tab.hasNotification && (
+                      {typeof tab.notificationCount === "number" && tab.notificationCount > 0 ? (
+                        <>
+                          <span
+                            aria-hidden
+                            className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-600 text-white text-[10px] font-bold leading-none flex items-center justify-center border-2 border-white tabular-nums"
+                          >
+                            {tab.notificationCount > 99 ? "99+" : tab.notificationCount}
+                          </span>
+                          <span className="sr-only">
+                            {tab.notificationCount} need your attention
+                          </span>
+                        </>
+                      ) : tab.hasNotification ? (
                         <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full border-2 border-white" />
-                      )}
+                      ) : null}
                     </div>
                     <span
                       className={`font-medium text-sm truncate ${
