@@ -75,11 +75,10 @@ const AnalyticsPage = dynamic(() => import("../../components/AnalyticsPage"), { 
 const ServicesPage = dynamic(() => import("../../components/ServicesPage"), { ssr: false, loading: tabFallback });
 import RescheduleAppointmentModal from "../../components/RescheduleAppointmentModal";
 import { AppointmentCardData } from "../../components/AppointmentCard";
-import AwaitingApprovalSection from "../../components/AwaitingApprovalSection";
+import StatTile from "../../components/StatTile";
 import ActionRequiredSection from "../../components/admin-dashboard/ActionRequiredSection";
 import OwnerSetupChecklist from "../../components/admin-dashboard/OwnerSetupChecklist";
 import { useAdminActionItems } from "../../hooks/useAdminActionItems";
-import UpcomingAppointmentsSection from "../../components/UpcomingAppointmentsSection";
 import TodayScheduleSection from "../../components/TodayScheduleSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
 import {
@@ -289,13 +288,13 @@ function AdminDashboardInner() {
   // pattern) and in the mobile drawer below.
   const sidebarTabs = useMemo(
     () => [
-      { id: "home", label: "Overview", icon: Home },
       {
-        id: "bookings",
-        label: "Bookings",
-        icon: Calendar,
-        hasNotification: needsResponseCount > 0,
+        id: "home",
+        label: "Overview",
+        icon: Home,
+        notificationCount: needsResponseCount,
       },
+      { id: "bookings", label: "Bookings", icon: Calendar },
       { id: "customers", label: "Customers", icon: Users },
       { id: "properties", label: "Properties", icon: Building },
       { id: "services", label: "Services", icon: Briefcase },
@@ -312,13 +311,13 @@ function AdminDashboardInner() {
   // is hidden while a platform admin is impersonating an org.
   const mobileNavTabs = useMemo(
     () => [
-      { id: "home", label: "Overview", icon: Home },
       {
-        id: "bookings",
-        label: "Bookings",
-        icon: Calendar,
-        hasNotification: needsResponseCount > 0,
+        id: "home",
+        label: "Overview",
+        icon: Home,
+        notificationCount: needsResponseCount,
       },
+      { id: "bookings", label: "Bookings", icon: Calendar },
       ...(impersonatingOrgId
         ? []
         : [
@@ -403,24 +402,17 @@ function AdminDashboardInner() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const allUpcomingAppointments = appointments
-    .filter((a) => {
-      // Parse appointment date
-      const [year, month, day] = a.scheduled_date.split("-").map(Number);
-      const appointmentDate = new Date(year, month - 1, day);
-      appointmentDate.setHours(0, 0, 0, 0);
-
-      // Strictly future appointments (after today) that are confirmed.
-      // Today's appointments live in the Today's Schedule section.
-      return appointmentDate > today && a.status === "confirmed";
-    })
-    .sort((a, b) => {
-      const dateA = new Date(`${a.scheduled_date}T${a.scheduled_time}`);
-      const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
-      return dateA.getTime() - dateB.getTime();
-    });
-
-  const upcomingAppointments = allUpcomingAppointments.slice(0, 5);
+  // KPI tile count: every appointment scheduled today that is not cancelled
+  // (includes in-progress and completed, unlike todaysAppointments which is the
+  // upcoming-today list shown in the Today glance).
+  const todaysJobsCount = appointments.filter((a) => {
+    const [year, month, day] = a.scheduled_date.split("-").map(Number);
+    const appointmentDate = new Date(year, month - 1, day);
+    appointmentDate.setHours(0, 0, 0, 0);
+    return (
+      appointmentDate.getTime() === today.getTime() && a.status !== "cancelled"
+    );
+  }).length;
 
   const todaysAppointments = appointments
     .filter((a) => {
@@ -458,13 +450,6 @@ function AdminDashboardInner() {
       const dateB = new Date(`${b.scheduled_date}T${b.scheduled_time}`);
       return dateA.getTime() - dateB.getTime();
     });
-
-  const handleMessageCleaner = (appointment: (typeof appointments)[0]) => {
-    const cleanerUserId = appointment.cleaner_profile?.user_profile?.id;
-    if (!cleanerUserId) return;
-    setInitialMessageRecipientId(cleanerUserId);
-    setActiveTab("messages");
-  };
 
   const renderOverview = () => (
     <>
@@ -523,10 +508,53 @@ function AdminDashboardInner() {
 
       <div className="space-y-6">
         <OwnerSetupChecklist onNavigate={setActiveTab} />
+
+        {/* At-a-glance KPI tiles. Each is tappable and deep-links into the
+            matching filtered view. Overview shows aggregates + the Action
+            Center + a compact Today glance; the full lists live in Bookings. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatTile
+            icon={<Calendar className="w-5 h-5" />}
+            tone="primary"
+            label="Today's jobs"
+            value={todaysJobsCount}
+            loading={appointmentsLoading}
+            onClick={() => setActiveTab("bookings")}
+          />
+          <StatTile
+            icon={<Loader2 className="w-5 h-5" />}
+            tone="blue"
+            label="In progress"
+            value={activeJobsAdmin.length}
+            live={activeJobsAdmin.length > 0}
+            loading={appointmentsLoading}
+            onClick={() => setActiveTab("bookings")}
+          />
+          <StatTile
+            icon={<UserCheck className="w-5 h-5" />}
+            tone="amber"
+            label="Awaiting approval"
+            value={awaitingCleanerApprovalAppointments.length}
+            loading={appointmentsLoading}
+            onClick={() => {
+              setShowPendingFilter(true);
+              setActiveTab("bookings");
+            }}
+          />
+          <StatTile
+            icon={<DollarSign className="w-5 h-5" />}
+            tone="green"
+            label="Revenue this month"
+            value={`$${paymentStats.thisMonthRevenue.toLocaleString()}`}
+            loading={paymentStatsLoading}
+            onClick={() => setActiveTab("payments")}
+          />
+        </div>
+
         {/* Unified action queue: everything that needs the admin's response
-            lives here — unassigned requests, escalations, counter-proposals,
-            declines, and SLA timeouts. One source of truth across the
-            overview, the Bookings tab, and the nav-dot count. */}
+            lives here (unassigned requests, escalations, counter-proposals,
+            declines, SLA timeouts). One persistent source of truth, mirrored
+            as a banner on the Bookings tab and the nav-badge count. */}
         <ActionRequiredSection
           assignAppointmentId={assignIntentId}
           onAssignHandled={() => setAssignIntentId(null)}
@@ -544,35 +572,12 @@ function AdminDashboardInner() {
           />
         )}
 
-        <div className="space-y-6">
-          <TodayScheduleSection
-            appointments={todaysAppointments as unknown as AppointmentCardData[]}
-            loading={appointmentsLoading}
-            onViewAll={() => setActiveTab("bookings")}
-            onAppointmentClick={(apt) => openAppointment(apt.id)}
-          />
-          <UpcomingAppointmentsSection
-            appointments={upcomingAppointments as unknown as AppointmentCardData[]}
-            totalCount={allUpcomingAppointments.length}
-            loading={appointmentsLoading}
-            onViewAll={() => {
-              setShowAllFilter(true);
-              setActiveTab("bookings");
-            }}
-            onAppointmentClick={(apt) => openAppointment(apt.id)}
-          />
-        </div>
-
-        <AwaitingApprovalSection
-          appointments={awaitingCleanerApprovalAppointments as unknown as AppointmentCardData[]}
+        {/* Compact Today glance. The full Upcoming / Past lists live in Bookings
+            (Overview never renders the enumerated list sections). */}
+        <TodayScheduleSection
+          appointments={todaysAppointments as unknown as AppointmentCardData[]}
           loading={appointmentsLoading}
-          onMessageCleaner={(apt) =>
-            handleMessageCleaner(apt as unknown as (typeof appointments)[0])
-          }
-          onViewAll={() => {
-            setShowPendingFilter(true);
-            setActiveTab("bookings");
-          }}
+          onViewAll={() => setActiveTab("bookings")}
           onAppointmentClick={(apt) => openAppointment(apt.id)}
         />
       </div>
@@ -625,7 +630,8 @@ function AdminDashboardInner() {
         onRefreshAppointments={refetchAppointments}
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
         onOpenAppointment={openAppointment}
-        onRescheduleRejected={(apt) => setRescheduleModalAppointment(apt)}
+        actionCount={needsResponseCount}
+        onGoToActionCenter={() => setActiveTab("home")}
         role="admin"
         initialStatusFilter={initialFilter}
         showCreateButton={false}
