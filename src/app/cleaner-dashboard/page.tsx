@@ -47,6 +47,7 @@ import {
 } from "../../lib/dashboardHero";
 import TopBar from "../../components/TopBar";
 import MobileNavigation from "../../components/MobileNavigation";
+import MobileTopBar from "../../components/MobileTopBar";
 import MobileSidebar from "../../components/MobileSidebar";
 import DesktopSidebar from "../../components/DesktopSidebar";
 import MessagesPage from "../../components/MessagesPage";
@@ -1839,7 +1840,7 @@ function CleanerDashboardInner() {
       />
 
       {/* Main Content Wrapper with Sidebar Offset */}
-      <div className="md:ml-[260px] pt-4 md:pt-16">
+      <div className="md:ml-[260px] pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-16">
         {/* Top Bar - Shows Tabs Within Selected Group - Hide on mobile for all tabs */}
         <div className="hidden md:block">
           <TopBar
@@ -1869,6 +1870,13 @@ function CleanerDashboardInner() {
           {renderContent()}
         </main>
       </div>
+
+      {/* Mobile Top Bar - brand + notifications (bell opens a bottom sheet) */}
+      <MobileTopBar
+        role="cleaner"
+        onTabChange={setActiveTab}
+        onOpenAppointment={(id) => openAppointment(id)}
+      />
 
       <MobileNavigation
         tabs={mobileNavTabs}
