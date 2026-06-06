@@ -40,18 +40,36 @@ export default function ScrollAwareFab({
   useEffect(() => {
     if (shouldReduceMotion) return;
     let ticking = false;
+    // Accumulated upward distance since the last downward move. Expanding only
+    // after a deliberate amount adds a small buffer so a brief wobble doesn't
+    // pop the button open.
+    let upAccum = 0;
+    // Require ~a finger's worth of sustained scroll-up before re-expanding.
+    const EXPAND_THRESHOLD = 36;
     const onScroll = () => {
       if (ticking) return;
       ticking = true;
       requestAnimationFrame(() => {
-        const y = window.scrollY;
+        // Clamp out iOS rubber-band overscroll: at the bottom, scrollY rises past
+        // the max during the bounce and then falls back as it settles, and that
+        // fall would otherwise read as an intentional scroll-up and re-expand the
+        // button. Treating the overscroll zone as the page edge makes that delta 0.
+        const maxScroll = Math.max(
+          0,
+          document.documentElement.scrollHeight - window.innerHeight,
+        );
+        const y = Math.min(Math.max(window.scrollY, 0), maxScroll);
         const delta = y - lastYRef.current;
         if (y <= 0) {
+          upAccum = 0;
           setCollapsed(false);
-        } else if (delta > 6 && y > 80) {
-          setCollapsed(true);
-        } else if (delta < -6) {
-          setCollapsed(false);
+        } else if (delta > 0) {
+          // Any real downward movement cancels a pending expand; collapse past 80px.
+          upAccum = 0;
+          if (delta > 6 && y > 80) setCollapsed(true);
+        } else if (delta < 0) {
+          upAccum += -delta;
+          if (upAccum > EXPAND_THRESHOLD) setCollapsed(false);
         }
         lastYRef.current = y;
         ticking = false;
