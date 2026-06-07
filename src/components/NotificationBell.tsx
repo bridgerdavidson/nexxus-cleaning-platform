@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, CheckCheck, ChevronDown, Check, UserPlus } from 'lucide-react';
 import { useNotifications, type NotificationItem } from '../hooks/useNotifications';
 import { describeNotification, type NotificationTone } from '../lib/notifications/labels';
@@ -75,6 +76,13 @@ export type NotificationOpenIntent = 'assign' | undefined;
 interface NotificationBellProps {
   /** Called when a notification tied to an appointment is opened. */
   onOpenNotification?: (notification: NotificationItem, intent?: NotificationOpenIntent) => void;
+  /** 'dropdown' (desktop top bar) renders a right-anchored panel; 'sheet'
+   *  (mobile) opens a full-width bottom sheet. */
+  variant?: "dropdown" | "sheet";
+  /** Notifies the parent when the panel opens/closes. The mobile top bar uses
+   *  this to hide its white bar while the sheet is up, so the iOS safe-area tint
+   *  matches the backdrop instead of staying white. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 function ToneIcon({ tone, icon: Icon }: { tone: NotificationTone; icon: typeof Bell }) {
@@ -94,7 +102,7 @@ function ToneIcon({ tone, icon: Icon }: { tone: NotificationTone; icon: typeof B
  * time, jump to cleaner assignment). Outside-click / Escape close. Mounted in
  * TopBar so all four dashboards inherit it.
  */
-export default function NotificationBell({ onOpenNotification }: NotificationBellProps) {
+export default function NotificationBell({ onOpenNotification, variant = "dropdown", onOpenChange }: NotificationBellProps) {
   const {
     notifications,
     unreadCount,
@@ -110,6 +118,89 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
+  // Swipe-down-to-close for the mobile sheet (drag the grab handle).
+  const [dragY, setDragY] = useState(0);
+  const [closing, setClosing] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const dragYRef = useRef(0);
+  const dragStartY = useRef<number | null>(null);
+
+  // Tell the mobile top bar when the sheet is open so it can hide its white bar
+  // (keeps the iOS safe-area tint matching the backdrop instead of white). Held
+  // in a ref so an inline parent callback doesn't re-run the effect every render.
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    onOpenChangeRef.current?.(open);
+    if (!open) {
+      setDragY(0);
+      setClosing(false);
+      setEntered(false);
+    }
+  }, [open]);
+
+  // Slide the sheet up on open: it mounts off-screen (entered=false), then we
+  // flip to settled on the next frame so the transform transition animates in.
+  useEffect(() => {
+    if (!(open && variant === "sheet")) return;
+    // Flip to settled on the next frame so the transform transition animates in.
+    // A short timeout backs up rAF in case it is throttled (e.g. low-power) so
+    // the sheet can never get stuck off-screen.
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setEntered(true));
+    });
+    const t = window.setTimeout(() => setEntered(true), 80);
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+      window.clearTimeout(t);
+    };
+  }, [open, variant]);
+
+  // Close the sheet with a slide-down animation instead of an instant unmount:
+  // drive the panel off-screen via the existing transform transition, then
+  // unmount once it has settled. The dropdown variant closes immediately.
+  const closeSheet = () => {
+    if (variant !== "sheet") {
+      setOpen(false);
+      return;
+    }
+    if (closing) return;
+    dragStartY.current = null;
+    setClosing(true);
+    window.setTimeout(() => setOpen(false), 360);
+  };
+
+  const handleSheetTouchStart = (e: ReactTouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+  };
+  const handleSheetTouchMove = (e: ReactTouchEvent) => {
+    if (dragStartY.current === null) return;
+    const dy = e.touches[0].clientY - dragStartY.current;
+    const v = dy > 0 ? dy : 0;
+    dragYRef.current = v;
+    setDragY(v);
+  };
+  const handleSheetTouchEnd = () => {
+    const shouldClose = dragYRef.current > 90;
+    dragStartY.current = null;
+    dragYRef.current = 0;
+    if (shouldClose) closeSheet();
+    else setDragY(0);
+  };
+
+  // Spread onto the sheet's grab handle AND header so the whole top strip is
+  // grabbable (the pill alone is too small a hit target).
+  const dragProps =
+    variant === "sheet"
+      ? {
+          onTouchStart: handleSheetTouchStart,
+          onTouchMove: handleSheetTouchMove,
+          onTouchEnd: handleSheetTouchEnd,
+        }
+      : {};
+
   const groups = useMemo(() => groupByAppointment(notifications), [notifications]);
 
   useEffect(() => {
@@ -120,18 +211,22 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('mousedown', onPointerDown);
+    // The sheet is portaled to document.body (outside ref.current), so a
+    // document-level outside-click would fire for taps INSIDE the sheet and
+    // close it on mousedown before the item's click lands. The sheet uses its
+    // own backdrop for outside-click; only the dropdown needs this listener.
+    if (variant === 'dropdown') document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, variant]);
 
   const openNotification = (n: NotificationItem, unreadIds: string[], intent?: NotificationOpenIntent) => {
     if (unreadIds.length > 0) markManyRead(unreadIds);
     if (n.appointment_id && onOpenNotification) onOpenNotification(n, intent);
-    setOpen(false);
+    closeSheet();
   };
 
   const toggleExpanded = (key: string) => {
@@ -154,7 +249,7 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
     });
     setAcceptingId(null);
     if (!n.in_app_dispatched_at) markOneRead(n.id);
-    setOpen(false);
+    closeSheet();
   };
 
   return (
@@ -173,18 +268,62 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
             aria-hidden
             className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-500 text-gray-900 text-[10px] font-bold leading-none flex items-center justify-center border-2 border-white tabular-nums"
           >
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          aria-label="Notifications"
-          className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden animate-fade-in"
-        >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      {open &&
+        (() => {
+          const panel = (
+            <>
+              {variant === "sheet" && (
+                <div
+                  className="fixed inset-0 z-40 bg-black/40 transition-opacity duration-300"
+                  style={{ opacity: entered && !closing ? 1 : 0 }}
+                  onClick={closeSheet}
+                  aria-hidden
+                />
+              )}
+          <div
+            role="menu"
+            aria-label="Notifications"
+            className={
+              variant === "sheet"
+                ? "fixed inset-x-0 bottom-0 z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl pb-[env(safe-area-inset-bottom)] will-change-transform"
+                : "absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden animate-fade-in"
+            }
+            style={
+              variant === "sheet"
+                ? {
+                    transform:
+                      closing || !entered
+                        ? "translateY(100%)"
+                        : dragY > 0
+                          ? `translateY(${dragY}px)`
+                          : "translateY(0)",
+                    transition:
+                      dragStartY.current !== null
+                        ? "none"
+                        : "transform 360ms cubic-bezier(0.32, 0.72, 0, 1)",
+                  }
+                : undefined
+            }
+          >
+            {variant === "sheet" && (
+              <div
+                className="flex shrink-0 justify-center pt-3 pb-2 touch-none cursor-grab active:cursor-grabbing"
+                {...dragProps}
+              >
+                <span className="h-1 w-10 rounded-full bg-gray-300" />
+              </div>
+            )}
+          <div
+            className={`flex items-center justify-between px-4 py-3 border-b border-gray-100${
+              variant === "sheet" ? " touch-none cursor-grab active:cursor-grabbing" : ""
+            }`}
+            {...dragProps}
+          >
             <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
             {unreadCount > 0 && (
               <button
@@ -337,8 +476,13 @@ export default function NotificationBell({ onOpenNotification }: NotificationBel
               </ul>
             )}
           </div>
-        </div>
-      )}
+            </div>
+            </>
+          );
+          return variant === "sheet" && typeof document !== "undefined"
+            ? createPortal(panel, document.body)
+            : panel;
+        })()}
     </div>
   );
 }

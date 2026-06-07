@@ -35,12 +35,12 @@ const getHomeownerName = (a: AppointmentCardData): string | null => {
   return null;
 };
 
-const formatShortDate = (scheduledDate: string): string => {
+const formatPillDate = (scheduledDate: string): string => {
   const [year, month, day] = scheduledDate.split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  const d = new Date(year, month - 1, day);
+  const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+  const monthDay = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${weekday} ${monthDay}`;
 };
 
 export interface CompactAppointmentRowProps {
@@ -50,7 +50,9 @@ export interface CompactAppointmentRowProps {
   rightSlot?: React.ReactNode;
   /** Hide the default payment chip (e.g. for cleaner role). */
   hidePaymentChip?: boolean;
-  /** Append the date after the homeowner name. Defaults to true. */
+  /** Show the appointment date stacked above the time inside the pill (for
+   *  quick-glance "when" on mixed-date lists). Defaults to true; pass false in
+   *  day-grouped lists (e.g. Today) where the per-row date is redundant. */
   showDate?: boolean;
   /** Optional helper line rendered below the homeowner/date sub-text inside the middle column. */
   subline?: React.ReactNode;
@@ -70,6 +72,7 @@ export default function CompactAppointmentRow({
   titleOverride,
 }: CompactAppointmentRowProps) {
   const cleanerName = getCleanerName(appointment);
+  const homeownerName = getHomeownerName(appointment);
   const paymentChip = getPaymentChip(appointment.payment_status);
 
   const hover = onClick
@@ -80,8 +83,13 @@ export default function CompactAppointmentRow({
 
   const inner = (
     <>
-      <div className="flex flex-col items-center justify-center min-w-[68px] px-2 py-1.5 rounded-lg bg-primary-50 text-primary-700">
-        <span className="text-sm font-bold tracking-tight whitespace-nowrap">
+      <div className="flex flex-col items-center justify-center min-w-[76px] px-2 py-1.5 rounded-lg bg-primary-50 text-primary-700">
+        {showDate && (
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-primary-600/80 leading-none mb-0.5 whitespace-nowrap">
+            {formatPillDate(appointment.scheduled_date)}
+          </span>
+        )}
+        <span className="text-sm font-bold tracking-tight whitespace-nowrap leading-none">
           {formatTimeTo12h(appointment.scheduled_time)}
         </span>
       </div>
@@ -91,14 +99,11 @@ export default function CompactAppointmentRow({
             <span className="text-gray-400 italic">Unassigned</span>
           )}
         </p>
-        <p className="text-xs sm:text-sm text-gray-600 truncate">
-          {(() => {
-            const homeowner = getHomeownerName(appointment);
-            const date = showDate ? formatShortDate(appointment.scheduled_date) : null;
-            if (homeowner && date) return `${homeowner} · ${date}`;
-            return homeowner ?? date ?? null;
-          })()}
-        </p>
+        {homeownerName && (
+          <p className="text-xs sm:text-sm text-gray-600 truncate">
+            {homeownerName}
+          </p>
+        )}
         {subline && <div className="mt-0.5">{subline}</div>}
       </div>
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">

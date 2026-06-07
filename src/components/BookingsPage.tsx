@@ -7,6 +7,8 @@ import React, {
 } from "react";
 import {
   Search,
+  Bell,
+  ChevronRight,
   Loader2,
   Calendar,
   CheckSquare,
@@ -26,7 +28,6 @@ import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
-import ActionRequiredSection from "./admin-dashboard/ActionRequiredSection";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
@@ -44,8 +45,10 @@ interface BookingsPageProps {
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
   /** Open the shared appointment-details panel (URL-driven, mounted at the dashboard page level). */
   onOpenAppointment: (appointmentId: string) => void;
-  /** Triggered when a rejected appointment needs the dedicated reschedule modal. */
-  onRescheduleRejected?: (appointment: AppointmentCardData) => void;
+  /** Count of admin/manager action items, used to render a slim "needs
+   *  attention" banner that links back to the Action Center on the Overview. */
+  actionCount?: number;
+  onGoToActionCenter?: () => void;
   role: "admin" | "manager" | "homeowner";
   canEdit?: boolean;
   initialStatusFilter?: string;
@@ -66,7 +69,8 @@ export default function BookingsPage({
   onRefreshAppointments,
   onAppointmentUpdated,
   onOpenAppointment,
-  onRescheduleRejected,
+  actionCount,
+  onGoToActionCenter,
   role,
   canEdit = true,
   initialStatusFilter,
@@ -789,17 +793,34 @@ export default function BookingsPage({
             </div>
           ) : (
             <div className="space-y-8">
-              {/* Unified action queue — same as the admin overview. The
-                  section drives its own data via useAdminActionItems. */}
-              {(role === "admin" || role === "manager") && (
-                <ActionRequiredSection
-                  defaultExpanded={false}
-                  onReassign={(item) => {
-                    const apt = localAppointments.find((a) => a.id === item.id);
-                    if (apt) onRescheduleRejected?.(apt as AppointmentCardData);
-                  }}
-                />
-              )}
+              {/* The Action Center lives on the Overview now (single home). On
+                  the Bookings tab we show a slim banner that points to it. */}
+              {(role === "admin" || role === "manager") &&
+                (actionCount ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={onGoToActionCenter}
+                    className="w-full flex items-center justify-between gap-3 rounded-2xl border border-primary-200 bg-primary-50 px-4 py-3 text-left hover:bg-primary-100 transition-colors"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary-100 text-primary-700 shrink-0">
+                        <Bell className="w-5 h-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-gray-900">
+                          {actionCount} {actionCount === 1 ? "item needs" : "items need"} your attention
+                        </span>
+                        <span className="block text-xs text-gray-600">
+                          Handle them in the Action Center on the Overview.
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1 text-sm font-semibold text-primary-700 shrink-0">
+                      <span className="hidden sm:inline">Go to Overview</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </span>
+                  </button>
+                )}
 
               {/* Active Cleanings Section - always expanded on Bookings */}
               {filteredActiveAppointments.length > 0 && (

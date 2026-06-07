@@ -85,12 +85,15 @@ export function actionReasonLabel(reason: ActionReason): string {
 
 /**
  * Priority order for grouping items in the queue. Lower index = higher
- * priority (rendered first).
+ * priority (rendered first). Severity-first: a job with no cleaner and the
+ * clock running (all_cleaners_declined, cleaner_overdue) outranks a cleaner
+ * suggesting another time or a fresh request awaiting assignment, matching the
+ * dispatch-board mental model.
  */
 export const ACTION_REASON_PRIORITY: ActionReason[] = [
-  'counter_proposed',
   'all_cleaners_declined',
   'cleaner_overdue',
+  'counter_proposed',
   'cleaner_declined',
   'awaiting_assignment',
 ];

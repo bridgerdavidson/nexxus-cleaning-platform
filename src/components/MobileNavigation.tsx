@@ -8,6 +8,8 @@ interface Tab {
   label: string;
   icon: LucideIcon;
   hasNotification?: boolean;
+  /** When > 0, render a numeric count badge instead of the plain dot. */
+  notificationCount?: number;
 }
 
 interface MobileNavigationProps {
@@ -117,9 +119,21 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
                   }`}
                   strokeWidth={1.75}
                 />
-                {tab.hasNotification && (
+                {typeof tab.notificationCount === "number" && tab.notificationCount > 0 ? (
+                  <>
+                    <span
+                      aria-hidden
+                      className="absolute -top-2 -right-2.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-600 text-white text-[10px] font-bold leading-none flex items-center justify-center border-2 border-white tabular-nums"
+                    >
+                      {tab.notificationCount > 99 ? "99+" : tab.notificationCount}
+                    </span>
+                    <span className="sr-only">
+                      {tab.notificationCount} need your attention
+                    </span>
+                  </>
+                ) : tab.hasNotification ? (
                   <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary-600 rounded-full border-2 border-white" />
-                )}
+                ) : null}
               </div>
               <span
                 className={`text-[12px] font-medium tracking-wide transition-colors duration-200 ${

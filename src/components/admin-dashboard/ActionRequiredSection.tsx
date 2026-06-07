@@ -7,6 +7,7 @@ import {
   Bell,
   Calendar,
   Check,
+  CheckCircle,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -428,7 +429,37 @@ export default function ActionRequiredSection({
     );
   }
 
-  if (items.length === 0) return null;
+  // Persistent all-clear state: the Action Center stays mounted as a stable
+  // anchor on the Overview instead of vanishing, so a new item appears as a
+  // change within a known region rather than a card materializing out of
+  // nowhere (and the admin learns to glance here).
+  if (items.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden w-full">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-primary-50 text-primary-600 shrink-0">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 text-left">
+              <h3 className="text-lg font-bold text-gray-900 truncate">Action Center</h3>
+              <p className="text-xs font-medium text-gray-500">You are all caught up</p>
+            </div>
+          </div>
+          <div
+            className="sm:hidden flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 shrink-0"
+            aria-label="No action items"
+          >
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          </div>
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold shrink-0">
+            <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+            <span>All clear</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleAcceptCounter = async (appointmentId: string, suggestedTimeId: string) => {
     setAcceptingId(suggestedTimeId);
