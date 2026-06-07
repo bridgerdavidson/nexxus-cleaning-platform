@@ -120,6 +120,7 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
 
   // Swipe-down-to-close for the mobile sheet (drag the grab handle).
   const [dragY, setDragY] = useState(0);
+  const [closing, setClosing] = useState(false);
   const dragYRef = useRef(0);
   const dragStartY = useRef<number | null>(null);
 
@@ -130,8 +131,25 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
   onOpenChangeRef.current = onOpenChange;
   useEffect(() => {
     onOpenChangeRef.current?.(open);
-    if (!open) setDragY(0);
+    if (!open) {
+      setDragY(0);
+      setClosing(false);
+    }
   }, [open]);
+
+  // Close the sheet with a slide-down animation instead of an instant unmount:
+  // drive the panel off-screen via the existing transform transition, then
+  // unmount once it has settled. The dropdown variant closes immediately.
+  const closeSheet = () => {
+    if (variant !== "sheet") {
+      setOpen(false);
+      return;
+    }
+    if (closing) return;
+    setClosing(true);
+    setDragY(typeof window !== "undefined" ? window.innerHeight : 800);
+    window.setTimeout(() => setOpen(false), 240);
+  };
 
   const handleSheetTouchStart = (e: ReactTouchEvent) => {
     dragStartY.current = e.touches[0].clientY;
@@ -144,10 +162,11 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
     setDragY(v);
   };
   const handleSheetTouchEnd = () => {
-    if (dragYRef.current > 90) setOpen(false);
-    else setDragY(0);
+    const shouldClose = dragYRef.current > 90;
     dragStartY.current = null;
     dragYRef.current = 0;
+    if (shouldClose) closeSheet();
+    else setDragY(0);
   };
 
   const groups = useMemo(() => groupByAppointment(notifications), [notifications]);
@@ -175,7 +194,7 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
   const openNotification = (n: NotificationItem, unreadIds: string[], intent?: NotificationOpenIntent) => {
     if (unreadIds.length > 0) markManyRead(unreadIds);
     if (n.appointment_id && onOpenNotification) onOpenNotification(n, intent);
-    setOpen(false);
+    closeSheet();
   };
 
   const toggleExpanded = (key: string) => {
@@ -198,7 +217,7 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
     });
     setAcceptingId(null);
     if (!n.in_app_dispatched_at) markOneRead(n.id);
-    setOpen(false);
+    closeSheet();
   };
 
   return (
@@ -228,8 +247,9 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
             <>
               {variant === "sheet" && (
                 <div
-                  className="fixed inset-0 z-40 bg-black/40 animate-fade-in"
-                  onClick={() => setOpen(false)}
+                  className="fixed inset-0 z-40 bg-black/40 animate-fade-in transition-opacity duration-200"
+                  style={{ opacity: closing ? 0 : undefined }}
+                  onClick={closeSheet}
                   aria-hidden
                 />
               )}
@@ -246,7 +266,9 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
                 ? {
                     transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
                     transition:
-                      dragStartY.current !== null ? "none" : "transform 0.2s ease-out",
+                      dragStartY.current !== null
+                        ? "none"
+                        : "transform 240ms cubic-bezier(0.32, 0.72, 0, 1)",
                   }
                 : undefined
             }
