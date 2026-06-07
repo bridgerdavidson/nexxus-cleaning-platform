@@ -121,6 +121,7 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
   // Swipe-down-to-close for the mobile sheet (drag the grab handle).
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
+  const [entered, setEntered] = useState(false);
   const dragYRef = useRef(0);
   const dragStartY = useRef<number | null>(null);
 
@@ -134,8 +135,28 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
     if (!open) {
       setDragY(0);
       setClosing(false);
+      setEntered(false);
     }
   }, [open]);
+
+  // Slide the sheet up on open: it mounts off-screen (entered=false), then we
+  // flip to settled on the next frame so the transform transition animates in.
+  useEffect(() => {
+    if (!(open && variant === "sheet")) return;
+    // Flip to settled on the next frame so the transform transition animates in.
+    // A short timeout backs up rAF in case it is throttled (e.g. low-power) so
+    // the sheet can never get stuck off-screen.
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setEntered(true));
+    });
+    const t = window.setTimeout(() => setEntered(true), 80);
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+      window.clearTimeout(t);
+    };
+  }, [open, variant]);
 
   // Close the sheet with a slide-down animation instead of an instant unmount:
   // drive the panel off-screen via the existing transform transition, then
@@ -146,9 +167,9 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
       return;
     }
     if (closing) return;
+    dragStartY.current = null;
     setClosing(true);
-    setDragY(typeof window !== "undefined" ? window.innerHeight : 800);
-    window.setTimeout(() => setOpen(false), 240);
+    window.setTimeout(() => setOpen(false), 360);
   };
 
   const handleSheetTouchStart = (e: ReactTouchEvent) => {
@@ -168,6 +189,17 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
     if (shouldClose) closeSheet();
     else setDragY(0);
   };
+
+  // Spread onto the sheet's grab handle AND header so the whole top strip is
+  // grabbable (the pill alone is too small a hit target).
+  const dragProps =
+    variant === "sheet"
+      ? {
+          onTouchStart: handleSheetTouchStart,
+          onTouchMove: handleSheetTouchMove,
+          onTouchEnd: handleSheetTouchEnd,
+        }
+      : {};
 
   const groups = useMemo(() => groupByAppointment(notifications), [notifications]);
 
@@ -247,8 +279,8 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
             <>
               {variant === "sheet" && (
                 <div
-                  className="fixed inset-0 z-40 bg-black/40 animate-fade-in transition-opacity duration-200"
-                  style={{ opacity: closing ? 0 : undefined }}
+                  className="fixed inset-0 z-40 bg-black/40 transition-opacity duration-300"
+                  style={{ opacity: entered && !closing ? 1 : 0 }}
                   onClick={closeSheet}
                   aria-hidden
                 />
@@ -258,17 +290,22 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
             aria-label="Notifications"
             className={
               variant === "sheet"
-                ? "fixed inset-x-0 bottom-0 z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl animate-sheet-up pb-[env(safe-area-inset-bottom)]"
+                ? "fixed inset-x-0 bottom-0 z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl pb-[env(safe-area-inset-bottom)] will-change-transform"
                 : "absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden animate-fade-in"
             }
             style={
               variant === "sheet"
                 ? {
-                    transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+                    transform:
+                      closing || !entered
+                        ? "translateY(100%)"
+                        : dragY > 0
+                          ? `translateY(${dragY}px)`
+                          : "translateY(0)",
                     transition:
                       dragStartY.current !== null
                         ? "none"
-                        : "transform 240ms cubic-bezier(0.32, 0.72, 0, 1)",
+                        : "transform 360ms cubic-bezier(0.32, 0.72, 0, 1)",
                   }
                 : undefined
             }
@@ -276,14 +313,17 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
             {variant === "sheet" && (
               <div
                 className="flex shrink-0 justify-center pt-3 pb-2 touch-none cursor-grab active:cursor-grabbing"
-                onTouchStart={handleSheetTouchStart}
-                onTouchMove={handleSheetTouchMove}
-                onTouchEnd={handleSheetTouchEnd}
+                {...dragProps}
               >
                 <span className="h-1 w-10 rounded-full bg-gray-300" />
               </div>
             )}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div
+            className={`flex items-center justify-between px-4 py-3 border-b border-gray-100${
+              variant === "sheet" ? " touch-none cursor-grab active:cursor-grabbing" : ""
+            }`}
+            {...dragProps}
+          >
             <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
             {unreadCount > 0 && (
               <button
