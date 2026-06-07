@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireOrgAuth, type OrgRole } from '@/lib/auth/requireOrgAuth';
 import { getStripe } from '@/lib/stripe';
 import { stripeEnabled, stripeTenantConnectEnabled } from '@/lib/stripe/flags';
 import {
@@ -43,14 +43,44 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { organization_id } = body as { organization_id?: string };
 
-    // Owner + admin: both manage org settings. Owner-only is operationally fragile
-    // (owner unavailable ⇒ nobody can onboard payments). Creating the merchant-of-record
-    // account is still gated to trusted org staff (not managers/cleaners/homeowners).
+    // Only the org OWNER runs Stripe setup (creating the merchant-of-record
+    // account + onboarding + bank-account connection). Non-owner admins and
+    // managers-with-can_manage_payments get a read-only "viewer" session so they
+    // can see the org's balance / payouts / payments without touching setup or
+    // needing their own Stripe login.
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin'],
+      allowedRoles: ['owner', 'admin', 'manager'],
     });
     if (!auth.ok) return auth.response;
 
+    const scope = await resolveSessionScope(auth, organization_id as string);
+    if (!scope) {
+      return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
+    }
+
+    // Viewers never create or onboard — they only read an already-connected
+    // account. If the owner hasn't connected the business yet there's nothing to
+    // show; tell the client so it can render a "being set up" state instead.
+    if (scope === 'viewer') {
+      const { data: org } = await supabaseAdmin
+        .from('organizations')
+        .select('stripe_connect_account_id')
+        .eq('id', organization_id as string)
+        .maybeSingle();
+      const stored = (org?.stripe_connect_account_id as string | null) ?? null;
+      if (!stored || !isStripeAccountId(stored)) {
+        return NextResponse.json({ success: true, not_connected: true });
+      }
+      const session = await createTenantAccountSession(stored, 'viewer');
+      return NextResponse.json({
+        success: true,
+        account_id: stored,
+        client_secret: session.client_secret,
+      });
+    }
+
+    // Owner path: ensure the account exists (create on first call), then a full
+    // setup-capable session.
     const subject: ConnectSlotSubject = { kind: 'org', id: organization_id as string };
 
     // 1) Atomically claim the slot. Returns either an existing acct_*, a
@@ -90,7 +120,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unexpected Connect slot state' }, { status: 500 });
     }
 
-    const session = await createTenantAccountSession(accountId);
+    const session = await createTenantAccountSession(accountId, 'owner');
 
     return NextResponse.json({
       success: true,
@@ -107,6 +137,33 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+/**
+ * Maps the authenticated caller to an Account Session scope, or null if they may
+ * not view tenant financials at all.
+ *  - owner   → 'owner'  (full setup)
+ *  - admin   → 'viewer' (read-only; non-owner admins never run setup)
+ *  - manager → 'viewer' only if manager_permissions.can_manage_payments is set
+ */
+async function resolveSessionScope(
+  auth: { role: OrgRole; userId: string },
+  organizationId: string,
+): Promise<'owner' | 'viewer' | null> {
+  if (auth.role === 'owner') return 'owner';
+  if (auth.role === 'admin') return 'viewer';
+  if (auth.role === 'manager') {
+    const { data: perm } = await supabaseAdmin
+      .from('manager_permissions')
+      .select('can_manage_payments')
+      .eq('manager_id', auth.userId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+    return (perm as { can_manage_payments?: boolean } | null)?.can_manage_payments
+      ? 'viewer'
+      : null;
+  }
+  return null;
 }
 
 /**

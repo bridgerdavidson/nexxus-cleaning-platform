@@ -139,10 +139,7 @@ const TopBar: React.FC<TopBarProps> = ({
         {/* Settings gear + User Profile - Right */}
         <div className="flex items-center ml-auto gap-1">
           {primaryAction && (
-            <div className="hidden md:flex items-center gap-3 mr-2">
-              {primaryAction}
-              <span aria-hidden className="h-6 w-px bg-gray-200" />
-            </div>
+            <div className="hidden md:flex items-center mr-1">{primaryAction}</div>
           )}
           {/* In-app notifications. Hidden during platform-admin "View as" for the
               same reason as Messages below: the bell renders the admin's own feed,

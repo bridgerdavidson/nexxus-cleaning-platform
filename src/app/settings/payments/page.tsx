@@ -62,8 +62,11 @@ export default function PaymentsSettingsPage() {
     }
   }
 
+  // Only the owner runs Stripe setup (onboarding + the Express dashboard). Admins
+  // and managers-with-can_manage_payments see the financials read-only.
+  const isOwner = currentOrgRole === 'owner';
   const kind = tenantStatusKind(status, connectLoading || statusLoading);
-  const heroCopy = useMemo(() => buildHeroCopy(status, kind), [status, kind]);
+  const heroCopy = useMemo(() => buildHeroCopy(status, kind, isOwner), [status, kind, isOwner]);
 
   // Owner/admin always manage payments; managers need the explicit can_manage_payments flag.
   const canManagePayments =
@@ -84,7 +87,7 @@ export default function PaymentsSettingsPage() {
         title={heroCopy.title}
         description={heroCopy.description}
         action={
-          status?.chargesEnabled ? (
+          status?.chargesEnabled && isOwner ? (
             <OpenStripeDashboardButton
               onClick={openStripeDashboard}
               loading={dashboardLoading}
@@ -105,6 +108,7 @@ export default function PaymentsSettingsPage() {
 function buildHeroCopy(
   status: ReturnType<typeof useTenantConnect>['status'],
   kind: 'active' | 'pending' | 'inactive' | 'loading',
+  isOwner: boolean,
 ): { title: string; description: string } {
   if (kind === 'active') {
     const acct = status?.hasAccount ? 'Stripe account connected' : '';
@@ -116,8 +120,9 @@ function buildHeroCopy(
   if (kind === 'pending') {
     return {
       title: 'Verifying your account',
-      description:
-        'Stripe is reviewing your details. If anything else is needed, finish it below — you can come back any time.',
+      description: isOwner
+        ? 'Stripe is reviewing your details. If anything else is needed, finish it below — you can come back any time.'
+        : 'Stripe is reviewing your organization’s details. Your owner finishes any remaining steps; balances and payouts appear here once it’s done.',
     };
   }
   if (kind === 'loading') {
@@ -126,9 +131,17 @@ function buildHeroCopy(
       description: '',
     };
   }
-  return {
-    title: 'Set up payments',
-    description:
-      'Connect your business to start accepting homeowner payments. Your company is the merchant of record — payouts land in your bank account.',
-  };
+  // Inactive: only the owner sees a setup call-to-action. Non-owners get a
+  // read-only "your owner is setting this up" message instead of dead CTAs.
+  return isOwner
+    ? {
+        title: 'Set up payments',
+        description:
+          'Connect your business to start accepting homeowner payments. Your company is the merchant of record, so payouts land in your bank account.',
+      }
+    : {
+        title: 'Payments aren’t set up yet',
+        description:
+          'Your organization owner needs to connect the business before payments and balances show up here.',
+      };
 }

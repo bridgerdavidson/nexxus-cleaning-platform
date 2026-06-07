@@ -24,8 +24,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Owner-only: the Express dashboard is a setup/management surface (edit the
+    // bank account, business details). Non-owners view financials via the
+    // read-only embedded components instead.
     const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+      allowedRoles: ['owner'],
     });
     if (!auth.ok) return auth.response;
 
