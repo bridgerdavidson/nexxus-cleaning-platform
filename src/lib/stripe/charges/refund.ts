@@ -16,6 +16,8 @@ export interface CreateRefundParams {
   amountCents?: number;
   reason?: 'duplicate' | 'fraudulent' | 'requested_by_customer';
   metadata?: Record<string, string>;
+  /** Idempotency key so a double-submit can't create a second refund up to the same cap. */
+  idempotencyKey?: string;
 }
 
 export async function createRefund(params: CreateRefundParams): Promise<Stripe.Refund> {
@@ -24,5 +26,5 @@ export async function createRefund(params: CreateRefundParams): Promise<Stripe.R
   if (typeof params.amountCents === 'number') p.amount = params.amountCents;
   if (params.reason) p.reason = params.reason;
   if (params.metadata) p.metadata = params.metadata;
-  return stripe.refunds.create(p);
+  return stripe.refunds.create(p, params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined);
 }

@@ -67,10 +67,25 @@ describe('stripe/transfers (separate charges and transfers)', () => {
     expect('source_transaction' in params).toBe(false);
   });
 
-  it('reversePlatformTransfer reverses on the PLATFORM (no stripeAccount third arg)', async () => {
+  it('reversePlatformTransfer reverses on the PLATFORM (no stripeAccount); passes an idempotency key when given', async () => {
+    // No key → a clean 2-arg call (no 3rd arg that could be read as a stripeAccount).
     await reversePlatformTransfer('tr_1', 1500);
     expect(transfersCreateReversal).toHaveBeenCalledWith('tr_1', { amount: 1500 });
     expect(transfersCreateReversal.mock.calls[0]).toHaveLength(2);
+
+    // With a key → 3rd arg is the idempotency key ONLY, never a stripeAccount (that would make it
+    // a forbidden connected→connected reversal).
+    transfersCreateReversal.mockClear();
+    await reversePlatformTransfer('tr_2', 2000, 'clawback-x-tr_2-dispute_lost');
+    const [id, params, options] = transfersCreateReversal.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(id).toBe('tr_2');
+    expect(params).toEqual({ amount: 2000 });
+    expect(options).toEqual({ idempotencyKey: 'clawback-x-tr_2-dispute_lost' });
+    expect(options.stripeAccount).toBeUndefined();
   });
 
   it('listTransfersByGroup queries Stripe by transfer_group', async () => {

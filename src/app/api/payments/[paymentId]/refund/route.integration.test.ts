@@ -131,8 +131,8 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createRefund).mock.calls[0][0]).toMatchObject({ amountCents: undefined });
     // Cleaner ($60) and tenant remainder ($40) both clawed back to the platform.
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 6000);
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 6000, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000, expect.any(String));
 
     const db = createTestSupabaseClient();
     const { data: pay } = await db.from('payments').select('status').eq('id', paymentId).single();
@@ -219,8 +219,8 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(body.amount_cents).toBe(4000);
 
     // $40 refund = 40% of gross → cleaner 6000*0.4=2400, tenant 4000*0.4=1600 clawed back.
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 2400);
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1600);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 2400, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1600, expect.any(String));
 
     const db = createTestSupabaseClient();
     const { data: pay } = await db.from('payments').select('status').eq('id', paymentId).single();

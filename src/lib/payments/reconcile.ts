@@ -16,6 +16,7 @@ import type Stripe from 'stripe';
 import { dispatchStripeEvent } from './dispatchStripeEvent';
 import { markWebhookProcessed, markWebhookFailed } from './webhookIdempotency';
 import { settleCleanerPayout } from './settleCleanerPayout';
+import { clawbackCleanerPayout } from './clawback';
 import { recordPaymentEvent } from './events';
 import { checkSplitInvariant, type SplitInvariantResult } from './moneyMath';
 import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconcile';
@@ -334,4 +335,60 @@ export async function checkMoneyMathInvariants(
   }
 
   return { checked: list.length, violations };
+}
+
+// ── 5) Stranded-clawback retry ──────────────────────────────────────────────────
+export interface StrandedClawbackResult {
+  checked: number;
+  recovered: number;
+}
+
+/**
+ * Retry clawbacks that failed — a `cleaner_clawback_failed` ledger event with no successful
+ * reversal yet. A reversal can fail transiently (e.g. the cleaner's connected account was briefly
+ * restricted); without a retry the platform stays out the clawed-back cut. Idempotent:
+ * clawbackCleanerPayout skips a payout already 'reversed', so a recovered row is a cheap no-op on
+ * the next sweep.
+ */
+export async function retryStrandedClawbacks(
+  supabase: SupabaseClient,
+  opts: { batch?: number; staleMinutes?: number } = {},
+): Promise<StrandedClawbackResult> {
+  const batch = opts.batch ?? DEFAULT_BATCH;
+  const cutoff = staleCutoffIso(opts.staleMinutes ?? DEFAULT_STALE_MINUTES);
+
+  const { data: rows } = await supabase
+    .from('payment_events')
+    .select('appointment_id, organization_id, payment_id')
+    .eq('event_type', 'cleaner_clawback_failed')
+    .not('appointment_id', 'is', null)
+    .lte('created_at', cutoff)
+    .order('created_at', { ascending: false })
+    .limit(batch);
+
+  const list = (rows ?? []) as Array<{
+    appointment_id: string;
+    organization_id: string | null;
+    payment_id: string | null;
+  }>;
+
+  // Dedup by appointment (multiple failed attempts may be logged for one job).
+  const seen = new Set<string>();
+  let checked = 0;
+  let recovered = 0;
+  for (const row of list) {
+    if (seen.has(row.appointment_id)) continue;
+    seen.add(row.appointment_id);
+    checked++;
+    const result = await clawbackCleanerPayout(supabase, {
+      appointmentId: row.appointment_id,
+      actor: 'reconciler',
+      reason: 'reconcile_retry',
+      paymentId: row.payment_id,
+      organizationId: row.organization_id,
+    });
+    if (result.reversed) recovered++;
+  }
+
+  return { checked, recovered };
 }

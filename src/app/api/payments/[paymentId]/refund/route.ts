@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { createRefund } from '@/lib/stripe/charges/refund';
-import { listTransfersByGroup, reversePlatformTransfer, transferGroupFor } from '@/lib/stripe/transfers';
+import { reverseJobTransfersForRefund } from '@/lib/payments/clawback';
 import { recordPaymentEvent } from '@/lib/payments/events';
 
 /**
@@ -87,69 +87,10 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid refund amount' }, { status: 400 });
     }
 
-    // 1) Reverse the platform's outbound transfers for this job (tenant remainder AND cleaner
-    //    payout), proportionally to the refund, so the platform has the funds back to refund the
-    //    homeowner. Best-effort per transfer — a failed reversal is logged and never blocks the refund.
-    const transferGroup = transferGroupFor(payment.appointment_id);
-    let jobTransfers: Awaited<ReturnType<typeof listTransfersByGroup>> = [];
-    try {
-      jobTransfers = await listTransfersByGroup(transferGroup);
-    } catch (err) {
-      await recordPaymentEvent(supabaseAdmin, {
-        paymentId: payment.id,
-        appointmentId: payment.appointment_id,
-        organizationId: organization_id,
-        eventType: 'transfer_list_failed',
-        actor: `user:${auth.userId}`,
-        payload: { error: err instanceof Error ? err.message : String(err) },
-      });
-    }
-
-    // The cleaner payout row (if any) so we can mirror its reversed status.
-    const { data: payoutRows } = await supabaseAdmin
-      .from('payouts')
-      .select('id, amount, stripe_transfer_id, status')
-      .eq('appointment_id', payment.appointment_id)
-      .not('stripe_transfer_id', 'is', null)
-      .limit(1);
-    const payout = payoutRows && payoutRows.length > 0
-      ? (payoutRows[0] as { id: string; amount: number; stripe_transfer_id: string; status: string })
-      : null;
-
-    for (const t of jobTransfers) {
-      const remainingCents = t.amount - (t.amount_reversed ?? 0);
-      if (remainingCents <= 0) continue;
-      const reversalCents = Math.min(remainingCents, Math.round((t.amount * refundCents) / grossCents));
-      if (reversalCents <= 0) continue;
-      try {
-        await reversePlatformTransfer(t.id, reversalCents);
-        if (payout && t.id === payout.stripe_transfer_id) {
-          // Compare CUMULATIVE reversal (prior + this one) to the payout, so a series of partial
-          // refunds that together fully reverse the transfer flips the payout to 'reversed'.
-          const fullyReversed =
-            (t.amount_reversed ?? 0) + reversalCents >= Math.round(Number(payout.amount) * 100);
-          await supabaseAdmin
-            .from('payouts')
-            .update({
-              status: fullyReversed ? 'reversed' : payout.status,
-              reversed_at: new Date().toISOString(),
-            })
-            .eq('id', payout.id);
-        }
-      } catch (err) {
-        await recordPaymentEvent(supabaseAdmin, {
-          paymentId: payment.id,
-          appointmentId: payment.appointment_id,
-          organizationId: organization_id,
-          eventType: 'transfer_reversal_failed',
-          actor: `user:${auth.userId}`,
-          amount: reversalCents,
-          payload: { transfer_id: t.id, error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-    }
-
-    // 2) Refund the homeowner on the platform PaymentIntent (funds reclaimed above).
+    // 1) Refund the homeowner on the platform PaymentIntent FIRST. If this throws, nothing has
+    //    moved yet, so a 502 leaves a clean state (no transfers reversed without a refund — the
+    //    bug this reorder fixes). An idempotency key keyed on the amount means a double-submit
+    //    can't create a second refund.
     let refund;
     try {
       refund = await createRefund({
@@ -157,6 +98,9 @@ export async function POST(
         amountCents: isPartial ? refundCents : undefined,
         reason,
         metadata: { appointment_id: payment.appointment_id, initiator_user_id: auth.userId },
+        idempotencyKey: isPartial
+          ? `refund-${payment.appointment_id}-${refundCents}`
+          : `refund-${payment.appointment_id}-full`,
       });
     } catch (err) {
       return NextResponse.json(
@@ -176,9 +120,9 @@ export async function POST(
       status: 'pending',
     });
     if (refundInsertError) {
-      // The Stripe refund already SUCCEEDED (money is back to the homeowner), so we must not
-      // return a 5xx — a retry would refund again. Instead, flag the ledger gap loudly via the
-      // forensic event so it can be reconciled; the response carries ledger_recorded=false.
+      // The Stripe refund already SUCCEEDED (money is back to the homeowner), so we must not return
+      // a 5xx — a retry would refund again (modulo the idempotency key). Flag the ledger gap loudly
+      // via the forensic event so it can be reconciled; the response carries ledger_recorded=false.
       console.error(
         `refund: Stripe refund ${refund.id} succeeded but the refunds-row insert failed:`,
         refundInsertError.message,
@@ -198,6 +142,21 @@ export async function POST(
     if (nowFullyRefunded) {
       await supabaseAdmin.from('payments').update({ status: 'refunded' }).eq('id', payment.id);
     }
+
+    // 2) Reclaim the platform's outbound transfers (tenant remainder AND cleaner payout) to match
+    //    the CUMULATIVE refunded amount, and mirror the cleaner payout to 'reversed'. Runs AFTER
+    //    the refund so a Stripe failure above can't leave the cleaner clawed back but the homeowner
+    //    un-refunded. Idempotent (cumulative amount_reversed math) + best-effort: a failed cleaner
+    //    reversal records `cleaner_clawback_failed` for the reconcile sweep and never blocks the
+    //    (already-issued) refund.
+    await reverseJobTransfersForRefund(supabaseAdmin, {
+      appointmentId: payment.appointment_id,
+      totalRefundedCents: alreadyRefunded + refundCents,
+      grossCents,
+      actor: `user:${auth.userId}`,
+      paymentId: payment.id,
+      organizationId: organization_id,
+    });
 
     await recordPaymentEvent(supabaseAdmin, {
       paymentId: payment.id,

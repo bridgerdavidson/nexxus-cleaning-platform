@@ -65,7 +65,13 @@ export async function listTransfersByGroup(transferGroup: string): Promise<Strip
 export async function reversePlatformTransfer(
   transferId: string,
   amountCents: number,
+  /** Optional idempotency key so a webhook/cron retry of the same reversal can't double-claw-back. */
+  idempotencyKey?: string,
 ): Promise<Stripe.TransferReversal> {
   const stripe = getStripe();
-  return stripe.transfers.createReversal(transferId, { amount: amountCents });
+  // 2-arg call when no key, so we never pass a 3rd arg that could be mistaken for a stripeAccount
+  // (a stripeAccount here would make it a forbidden connected→connected reversal).
+  return idempotencyKey
+    ? stripe.transfers.createReversal(transferId, { amount: amountCents }, { idempotencyKey })
+    : stripe.transfers.createReversal(transferId, { amount: amountCents });
 }

@@ -14,7 +14,7 @@ import type Stripe from 'stripe';
 import { createConnectTransfer } from '@/lib/stripe';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { settleSelfPay } from '@/lib/payments/settleSelfPay';
-import { reversePlatformTransfer } from '@/lib/stripe/transfers';
+import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
@@ -42,6 +42,9 @@ export async function dispatchStripeEvent(
       break;
     case 'charge.refunded':
       await handleChargeRefunded(supabase, event.data.object as Stripe.Charge, event.id);
+      break;
+    case 'charge.failed':
+      await handleChargeFailed(supabase, event.data.object as Stripe.Charge);
       break;
     case 'charge.dispute.created':
       await handleChargeDisputeCreated(supabase, event.data.object as Stripe.Dispute, event.id);
@@ -272,6 +275,51 @@ async function handlePaymentIntentFailed(
     return;
   }
 
+  // A LATE failure matters: a us_bank_account (ACH) debit can SUCCEED, settle, and pay the cleaner,
+  // then RETURN days later as payment_intent.payment_failed. Don't clobber a paid/refunded row back
+  // to 'failed' (that hides that money moved + was settled); instead record the return, claw back
+  // the cleaner payout, and alert admins.
+  const existing = await findPaymentByIntent(supabase, paymentIntent.id);
+  const organizationId = paymentIntent.metadata?.organization_id ?? existing?.organization_id ?? null;
+
+  if (existing && (existing.status === 'paid' || existing.status === 'refunded')) {
+    await supabase
+      .from('payments')
+      .update({ payment_intent_status: paymentIntent.status })
+      .eq('id', existing.id);
+    await recordPaymentEvent(supabase, {
+      paymentId: existing.id,
+      appointmentId,
+      organizationId,
+      eventType: 'late_payment_failure',
+      prevStatus: existing.status,
+      actor: 'webhook',
+      amount: paymentIntent.amount ?? 0,
+      payload: {
+        payment_intent_id: paymentIntent.id,
+        error: paymentIntent.last_payment_error?.message ?? null,
+      },
+    });
+    // Auto-reverse the cleaner payout (mirrors the dispute-lost clawback). Idempotent + never throws.
+    await clawbackCleanerPayout(supabase, {
+      appointmentId,
+      actor: 'webhook',
+      reason: 'ach_return',
+      paymentId: existing.id,
+      organizationId,
+    });
+    const ctx = await loadNotificationContext(supabase, { appointmentId });
+    await recordNotificationEvent(supabase, {
+      event_type: 'authorization_failed',
+      appointment_id: appointmentId,
+      organization_id: organizationId,
+      payload: { ...ctx, audience: 'admin', amount_cents: paymentIntent.amount ?? 0 },
+    });
+    return;
+  }
+
+  // Pre-settlement failure (a declined hold, or an ACH debit that failed before it cleared): mark
+  // the revenue row failed so the admin pill reads "Failed".
   const { error: updateError } = await supabase
     .from('payments')
     .update({ status: 'failed' })
@@ -289,12 +337,10 @@ async function handlePaymentIntentFailed(
 
   console.log('Payment marked as failed for appointment:', appointmentId);
 
-  // Org self-pay bank (ACH) debits are confirmed at completion with no hold, so a bounce surfaces
-  // only here. Mirror the card authorize-failed path and alert admins in-app (self-pay has no
-  // homeowner, so the notification context resolves to the org/property). Card self-pay fails at
-  // the hold (authorizeSelfPayAppointment already notifies), so this is reached by the ACH path.
+  // Org self-pay bank (ACH) debits are confirmed at completion with no hold, so a pre-settlement
+  // bounce surfaces only here. Card self-pay fails at the hold (authorizeSelfPayAppointment already
+  // notifies); homeowner card failures notify at authorize, so this is reached by the ACH path.
   if (paymentIntent.metadata?.self_pay === 'true') {
-    const organizationId = paymentIntent.metadata?.organization_id ?? null;
     const ctx = await loadNotificationContext(supabase, { appointmentId });
     await recordNotificationEvent(supabase, {
       event_type: 'authorization_failed',
@@ -503,6 +549,22 @@ async function handleChargeRefunded(
     await supabase.from('payments').update({ status: 'refunded' }).eq('id', payment.id);
   }
 
+  // Claw back the cleaner (and tenant) transfers proportionally for an OUT-OF-BAND refund (e.g.
+  // issued directly in the Stripe Dashboard). The in-app refund route already unwinds them and
+  // marks the payout reversed; this is idempotent (cumulative amount_reversed math), so it's a
+  // no-op there and only does real work for a refund the app didn't originate.
+  if (payment) {
+    await reverseJobTransfersForRefund(supabase, {
+      appointmentId: payment.appointment_id,
+      totalRefundedCents: charge.amount_refunded,
+      grossCents: charge.amount,
+      actor: 'webhook',
+      stripeEventId,
+      paymentId: payment.id,
+      organizationId: payment.organization_id,
+    });
+  }
+
   await recordPaymentEvent(supabase, {
     paymentId: payment?.id ?? null,
     appointmentId: payment?.appointment_id ?? null,
@@ -513,6 +575,24 @@ async function handleChargeRefunded(
     actor: 'webhook',
     amount: charge.amount_refunded,
     payload: { charge_id: charge.id, fully_refunded: fullyRefunded },
+  });
+}
+
+/**
+ * Handle charge.failed — belt-and-suspenders for an ACH (us_bank_account) debit that returns after
+ * the PaymentIntent already succeeded and settled. payment_intent.payment_failed covers the common
+ * case; this is the charge-level signal. Claw back the cleaner payout if one was paid (idempotent).
+ */
+async function handleChargeFailed(supabase: SupabaseClient, charge: Stripe.Charge) {
+  const piId = idFromExpandable(charge.payment_intent);
+  const payment = await findPaymentByIntent(supabase, piId);
+  if (!payment) return;
+  await clawbackCleanerPayout(supabase, {
+    appointmentId: payment.appointment_id,
+    actor: 'webhook',
+    reason: 'ach_return',
+    paymentId: payment.id,
+    organizationId: payment.organization_id,
   });
 }
 
@@ -616,56 +696,18 @@ async function handleChargeDisputeClosed(
     return;
   }
 
-  // Dispute LOST — claw back the cleaner's transfer if one was paid.
+  // Dispute LOST — claw back the cleaner's transfer if one was paid (the tenant absorbs the
+  // remainder + the dispute fee, decision #12). The helper is idempotent, records its own
+  // dispute_lost_clawback / cleaner_clawback_failed ledger event, and never throws.
   if (payment) {
-    const { data: payoutRows } = await supabase
-      .from('payouts')
-      .select('id, amount, stripe_transfer_id, source_balance_account_id, status')
-      .eq('appointment_id', payment.appointment_id)
-      .not('stripe_transfer_id', 'is', null)
-      .limit(1);
-    const payout = payoutRows && payoutRows.length > 0
-      ? (payoutRows[0] as {
-          id: string;
-          amount: number;
-          stripe_transfer_id: string;
-          source_balance_account_id: string | null;
-          status: string;
-        })
-      : null;
-
-    if (payout?.stripe_transfer_id && payout.status !== 'reversed') {
-      const cleanerCents = Math.round(Number(payout.amount) * 100);
-      try {
-        await reversePlatformTransfer(payout.stripe_transfer_id, cleanerCents);
-        await supabase
-          .from('payouts')
-          .update({ status: 'reversed', reversed_at: new Date().toISOString() })
-          .eq('id', payout.id);
-        await recordPaymentEvent(supabase, {
-          paymentId: payment.id,
-          appointmentId: payment.appointment_id,
-          organizationId: payment.organization_id,
-          stripeEventId,
-          eventType: 'dispute_lost_clawback',
-          actor: 'webhook',
-          amount: cleanerCents,
-          payload: { dispute_id: dispute.id, transfer_id: payout.stripe_transfer_id },
-        });
-      } catch (err) {
-        // Queue for the failed-transfer retry sweep; never throw back into the webhook.
-        await recordPaymentEvent(supabase, {
-          paymentId: payment.id,
-          appointmentId: payment.appointment_id,
-          organizationId: payment.organization_id,
-          stripeEventId,
-          eventType: 'cleaner_clawback_failed',
-          actor: 'webhook',
-          amount: cleanerCents,
-          payload: { dispute_id: dispute.id, error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-    }
+    await clawbackCleanerPayout(supabase, {
+      appointmentId: payment.appointment_id,
+      actor: 'webhook',
+      reason: 'dispute_lost',
+      stripeEventId,
+      paymentId: payment.id,
+      organizationId: payment.organization_id,
+    });
   }
 
   await recordPaymentEvent(supabase, {
