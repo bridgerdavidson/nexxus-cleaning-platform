@@ -37,6 +37,11 @@ import {
   cancelAppointment,
   deleteAppointment,
 } from "../../hooks/useAdminData";
+import {
+  deleteAppointments,
+  cancelAppointments,
+  describeBulkAppointmentResult,
+} from "../../lib/bulkAppointments";
 import { useServices } from "../../hooks/useServices";
 import { useInvites } from "../../hooks/useInvites";
 import {
@@ -604,6 +609,20 @@ function AdminDashboardInner() {
     }
   };
 
+  const handleBulkDeleteAppointments = async (ids: string[]) => {
+    const result = await deleteAppointments(ids);
+    await refetchAppointments();
+    const { message, variant } = describeBulkAppointmentResult("delete", result);
+    showToast(message, { variant });
+  };
+
+  const handleBulkCancelAppointments = async (ids: string[]) => {
+    const result = await cancelAppointments(ids);
+    await refetchAppointments();
+    const { message, variant } = describeBulkAppointmentResult("cancel", result);
+    showToast(message, { variant });
+  };
+
   const handleMarkComplete = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "completed");
     if (result.success) {
@@ -628,6 +647,8 @@ function AdminDashboardInner() {
         loading={appointmentsLoading}
         onCancelAppointment={handleCancelAppointment}
         onDeleteAppointment={handleDeleteAppointment}
+        onBulkDeleteAppointments={handleBulkDeleteAppointments}
+        onBulkCancelAppointments={handleBulkCancelAppointments}
         onRefreshAppointments={refetchAppointments}
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
         onOpenAppointment={openAppointment}

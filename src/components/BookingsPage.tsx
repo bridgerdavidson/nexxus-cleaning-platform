@@ -40,6 +40,14 @@ interface BookingsPageProps {
   loading: boolean;
   onCancelAppointment: (appointmentId: string) => Promise<void>;
   onDeleteAppointment: (appointmentId: string) => Promise<void>;
+  /**
+   * Bulk variants used by multi-select. When provided, the whole selection is
+   * sent as ONE chunked, sequential operation instead of a per-row request
+   * storm. Falls back to a sequential loop over the single-item handlers when
+   * omitted (still never a concurrent fan-out).
+   */
+  onBulkDeleteAppointments?: (appointmentIds: string[]) => Promise<void>;
+  onBulkCancelAppointments?: (appointmentIds: string[]) => Promise<void>;
   onRefreshAppointments?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onAppointmentUpdated?: (appointmentId: string, updatedData: any) => void;
@@ -66,6 +74,8 @@ export default function BookingsPage({
   loading,
   onCancelAppointment,
   onDeleteAppointment,
+  onBulkDeleteAppointments,
+  onBulkCancelAppointments,
   onRefreshAppointments,
   onAppointmentUpdated,
   onOpenAppointment,
@@ -483,9 +493,22 @@ export default function BookingsPage({
     setIsBulkActionLoading(true);
     try {
       if (bulkAction === "cancel") {
-        await Promise.all(idsToProcess.map((id) => onCancelAppointment(id)));
+        if (onBulkCancelAppointments) {
+          await onBulkCancelAppointments(idsToProcess);
+        } else {
+          // Defensive fallback: sequential, never a concurrent fan-out.
+          for (const id of idsToProcess) {
+            await onCancelAppointment(id);
+          }
+        }
       } else {
-        await Promise.all(idsToProcess.map((id) => onDeleteAppointment(id)));
+        if (onBulkDeleteAppointments) {
+          await onBulkDeleteAppointments(idsToProcess);
+        } else {
+          for (const id of idsToProcess) {
+            await onDeleteAppointment(id);
+          }
+        }
       }
       setSelectedIds(new Set());
       setIsSelectMode(false);
