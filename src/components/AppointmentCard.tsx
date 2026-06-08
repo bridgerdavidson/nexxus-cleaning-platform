@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
+import { Calendar, MapPin, User, Briefcase, CheckSquare, Square, Repeat, Sparkles, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
 import CompactAppointmentRow from "./CompactAppointmentRow";
 import { formatTimeTo12h } from "../lib/formatTime";
+import { paymentStatusPill } from "../lib/paymentStatusPill";
 import {
   DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
   DASHBOARD_HERO_SECONDARY_BUTTON_STYLE,
@@ -33,7 +34,7 @@ export interface AppointmentCardData {
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
   price_override_enabled?: boolean;
   price_override_total?: number | null;
-  payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  payment_status?: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded' | null;
   authorization_status?:
     | 'none'
     | 'scheduled'
@@ -128,7 +129,6 @@ export default function AppointmentCard({
   isSelected = false,
   onToggleSelect,
   role,
-  canApproveDecline = false,
   onStartJob,
 }: AppointmentCardProps) {
   const [isStarting, setIsStarting] = useState(false);
@@ -184,49 +184,12 @@ export default function AppointmentCard({
       : appointment.service_type.name;
   };
 
-  const getPaymentStatusTabConfig = () => {
-    const status = appointment.payment_status;
-    switch (status) {
-      case "paid":
-        return {
-          label: "Paid",
-          bgColor: "bg-green-100",
-          textColor: "text-green-700",
-        };
-      case "failed":
-        return {
-          label: "Failed",
-          bgColor: "bg-red-100",
-          textColor: "text-red-700",
-        };
-      case "pending":
-        return {
-          label: "Unpaid",
-          bgColor: "bg-gray-100",
-          textColor: "text-gray-700",
-        };
-      case "refunded":
-        return {
-          label: "Refunded",
-          bgColor: "bg-blue-100",
-          textColor: "text-blue-700",
-        };
-      case "unpaid":
-      default:
-        return {
-          label: "Unpaid",
-          bgColor: "bg-gray-100",
-          textColor: "text-gray-700",
-        };
-    }
-  };
-
   const { date, time } = formatDateTime(
     appointment.scheduled_date,
     appointment.scheduled_time
   );
 
-  const handleCardClick = (e: React.MouseEvent) => {
+  const handleCardClick = () => {
     if (isSelectMode && onToggleSelect) {
       onToggleSelect();
     } else if (!isSelectMode) {
@@ -261,7 +224,10 @@ export default function AppointmentCard({
     appointment.status === "confirmed";
 
 
-  const paymentStatusConfig = getPaymentStatusTabConfig();
+  const paymentPill = paymentStatusPill(
+    appointment.payment_status,
+    appointment.authorization_status,
+  );
 
   // Unified compact row on mobile for admin/manager/homeowner. The cluttered
   // legacy mobile layout (date pill + status stack + indented address + footer
@@ -414,9 +380,9 @@ export default function AppointmentCard({
             )}
             {role !== "cleaner" && (
               <span
-                className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor}`}
+                className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${paymentPill.className}`}
               >
-                {paymentStatusConfig.label}
+                {paymentPill.label}
               </span>
             )}
           </div>

@@ -41,9 +41,13 @@ function formatDate(d: string): string {
 
 /**
  * "Needs attention" panel for the Payments page (new charge flow only). Surfaces card
- * authorizations that failed or need the homeowner to act, plus payouts that failed or
- * reversed, so an admin/manager can resolve them without digging through Stripe. Failed
+ * authorizations that failed or need the homeowner to act, plus cleaner payouts that
+ * failed, so an admin/manager can resolve them without digging through Stripe. Failed
  * auths get a one-click re-authorize and a re-send-card-link action.
+ *
+ * A `reversed` payout is intentionally NOT shown: it is a completed clawback (dispute lost,
+ * refund, or ACH return) and is not retried, so it needs no attention. Only `failed` payouts
+ * (the cleaner was never paid) belong here.
  *
  * Self-contained: queries the org's appointments/payouts directly (RLS-scoped) so the
  * parent page's props stay unchanged. Captured-but-unsettled and onboarding-blocked cases
@@ -80,7 +84,9 @@ export default function PaymentsNeedingAttentionSection({
         .from("payouts")
         .select("id, amount, status, appointment_id")
         .eq("organization_id", currentOrganizationId)
-        .in("status", ["failed", "reversed"])
+        // Only failed payouts need attention. A `reversed` payout is a completed, intentional
+        // clawback (dispute/refund/ACH return) and is never retried, so it is excluded here.
+        .eq("status", "failed")
         .order("created_at", { ascending: false }),
     ]);
 
@@ -232,10 +238,10 @@ export default function PaymentsNeedingAttentionSection({
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
               <div>
                 <p className="text-sm font-medium text-gray-900">
-                  Cleaner payout {p.status === "reversed" ? "reversed" : "failed"} · ${p.amount?.toFixed(0)}
+                  Cleaner payout failed · ${p.amount?.toFixed(0)}
                 </p>
                 <p className="text-xs text-gray-500">
-                  Will retry on the next reconciliation sweep; check the cleaner&apos;s payout setup.
+                  Will retry automatically on the next reconciliation sweep; check the cleaner&apos;s payout setup.
                 </p>
               </div>
             </div>
