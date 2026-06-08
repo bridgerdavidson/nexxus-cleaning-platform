@@ -21,6 +21,7 @@ vi.mock('@/lib/stripe/charges/refund', () => ({
 }));
 
 import { POST } from './route';
+import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { createPlatformTransfer, reversePlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
@@ -701,6 +702,91 @@ describe('POST /api/stripe/webhook', () => {
     expect(payouts).toHaveLength(1);
     expect((payouts![0] as { status: string }).status).toBe('pending');
     expect(Number((payouts![0] as { amount: number }).amount)).toBe(60);
+  });
+
+  it('retry of a HELD slice pays the carved snapshot, not a recomputed split, if the percent was edited', async () => {
+    const admin = createTestSupabaseClient();
+    const tenantAcct = `acct_tenant_${org.organizationId.slice(0, 12)}`;
+    await admin.from('organizations').update({ stripe_connect_account_id: tenantAcct }).eq('id', org.organizationId);
+    // Cleaner NOT onboarded at first settlement -> the $60 (60%) slice is held at that snapshot.
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_onboarding_complete: false })
+      .eq('id', org.cleaner.userId);
+
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_snap_${appt.id}`,
+    });
+
+    const event = {
+      id: `evt_snap_${appt.id}`,
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `pi_snap_${appt.id}`,
+          object: 'payment_intent',
+          status: 'succeeded',
+          amount_received: 10000,
+          latest_charge: `ch_snap_${appt.id}`,
+          on_behalf_of: tenantAcct,
+          metadata: { appointment_id: appt.id },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+
+    const { data: held } = await admin.from('payouts').select('status, amount').eq('appointment_id', appt.id);
+    expect((held![0] as { status: string }).status).toBe('pending');
+    expect(Number((held![0] as { amount: number }).amount)).toBe(60);
+
+    // Admin edits the cleaner's percent DOWN to 20% while they were still onboarding, then the
+    // cleaner finishes onboarding. The reconcile retry must pay the carved $60 snapshot, NOT 20%
+    // ($20) — the tenant was already paid the $40 remainder against the original 60% split.
+    vi.mocked(createPlatformTransfer).mockClear();
+    await admin
+      .from('cleaner_profiles')
+      .update({ payout_percent: 20, stripe_connect_onboarding_complete: true })
+      .eq('id', org.cleaner.userId);
+
+    const result = await settleCleanerPayout(admin, appt.id, null);
+    expect(result.settled).toBe(true);
+
+    // Exactly one transfer (cleaner leg; tenant already paid) for the SNAPSHOT $60, not the $20 recompute.
+    expect(vi.mocked(createPlatformTransfer)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createPlatformTransfer).mock.calls[0][0]).toMatchObject({
+      destinationAccountId: 'acct_test_fake',
+      amountCents: 6000,
+    });
+
+    const { data: paid } = await admin.from('payouts').select('status, amount').eq('appointment_id', appt.id);
+    expect(paid).toHaveLength(1);
+    expect((paid![0] as { status: string }).status).toBe('paid');
+    expect(Number((paid![0] as { amount: number }).amount)).toBe(60);
   });
 
   function buildDisputeEvent(opts: {
