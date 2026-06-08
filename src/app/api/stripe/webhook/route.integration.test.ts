@@ -629,6 +629,80 @@ describe('POST /api/stripe/webhook', () => {
     await admin.from('webhook_events').delete().eq('id', `evt_wh_${appt.id}`);
   });
 
+  it('new-flow settlement with an un-onboarded cleaner pays the tenant and HOLDS the cleaner slice', async () => {
+    const admin = createTestSupabaseClient();
+    const tenantAcct = `acct_tenant_${org.organizationId.slice(0, 12)}`;
+    // Tenant (org) is Connect-ready; the assigned cleaner is NOT onboarded yet.
+    await admin.from('organizations').update({ stripe_connect_account_id: tenantAcct }).eq('id', org.organizationId);
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_onboarding_complete: false })
+      .eq('id', org.cleaner.userId);
+
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_held_${appt.id}`,
+    });
+
+    const event = {
+      id: `evt_held_${appt.id}`,
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `pi_held_${appt.id}`,
+          object: 'payment_intent',
+          status: 'succeeded',
+          amount_received: 10000,
+          latest_charge: `ch_held_${appt.id}`,
+          on_behalf_of: tenantAcct, // new multi-tenant flow -> settleCleanerPayout
+          metadata: { appointment_id: appt.id },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // Tenant got ONLY their remainder ($40 = $100 gross - 60% cleaner cut); the $60 cleaner slice is
+    // HELD, not transferred and not folded into the tenant payout.
+    expect(vi.mocked(createPlatformTransfer)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createPlatformTransfer).mock.calls[0][0]).toMatchObject({
+      destinationAccountId: tenantAcct,
+      amountCents: 4000,
+    });
+
+    const { data: payouts } = await admin
+      .from('payouts')
+      .select('status, amount')
+      .eq('appointment_id', appt.id);
+    expect(payouts).toHaveLength(1);
+    expect((payouts![0] as { status: string }).status).toBe('pending');
+    expect(Number((payouts![0] as { amount: number }).amount)).toBe(60);
+  });
+
   function buildDisputeEvent(opts: {
     type: 'charge.dispute.created' | 'charge.dispute.closed';
     appointmentId: string;
@@ -698,6 +772,39 @@ describe('POST /api/stripe/webhook', () => {
     expect(d.organization_id).toBe(org.organizationId);
     expect(Number(d.amount)).toBe(10000);
     expect(d.status).toBe('needs_response');
+  });
+
+  it('charge.dispute.created with no matching payment records an unmatched_dispute (not silently dropped)', async () => {
+    const admin = createTestSupabaseClient();
+    // A dispute whose PaymentIntent maps to no payment row (buildDisputeEvent uses pi_test_<id>).
+    const orphanId = `orphan_${Date.now()}`;
+    const payload = JSON.stringify(
+      buildDisputeEvent({ type: 'charge.dispute.created', appointmentId: orphanId, status: 'needs_response', amountCents: 5000 }),
+    );
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // Recorded as a forensic event (auditable) instead of vanishing into a log line.
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('payload')
+      .eq('event_type', 'unmatched_dispute');
+    const found = (events ?? []).some(
+      (e) => (e as { payload: { dispute_id?: string } }).payload?.dispute_id === `dp_${orphanId}`,
+    );
+    expect(found).toBe(true);
+
+    // No disputes row was created (we couldn't map it to an org/payment).
+    const { data: disputes } = await admin
+      .from('disputes')
+      .select('id')
+      .eq('stripe_dispute_id', `dp_${orphanId}`);
+    expect((disputes ?? []).length).toBe(0);
   });
 
   it('charge.dispute.closed (lost) claws back the cleaner transfer', async () => {
