@@ -23,6 +23,9 @@ import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconci
 
 const DEFAULT_BATCH = 100;
 const DEFAULT_STALE_MINUTES = 15;
+// ACH debits legitimately sit 'processing' for several business days, so a 'processing' row is only
+// "stuck" (a lost terminal webhook) well after settlement would have happened. ~6 days.
+const DEFAULT_ACH_STALE_MINUTES = 6 * 24 * 60;
 
 function staleCutoffIso(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
@@ -80,31 +83,43 @@ export interface StuckPaymentResult {
 
 export async function reconcileStuckPayments(
   supabase: SupabaseClient,
-  opts: { batch?: number; staleMinutes?: number } = {},
+  opts: { batch?: number; staleMinutes?: number; processingStaleMinutes?: number } = {},
 ): Promise<StuckPaymentResult> {
   const batch = opts.batch ?? DEFAULT_BATCH;
-  const cutoff = staleCutoffIso(opts.staleMinutes ?? DEFAULT_STALE_MINUTES);
+  const pendingCutoff = staleCutoffIso(opts.staleMinutes ?? DEFAULT_STALE_MINUTES);
+  // ACH ('processing') gets a MUCH longer cutoff than card ('pending'): sweeping every in-flight
+  // ACH at the 15-min window would burn the batch retrieving rows that can't be repaired yet
+  // (pi.status still 'processing') and starve genuinely-terminal drift behind them.
+  const achCutoff = staleCutoffIso(opts.processingStaleMinutes ?? DEFAULT_ACH_STALE_MINUTES);
 
-  // Payments we still believe are in-flight ('pending' card, or 'processing' ACH) that carry a PI
-  // and have sat past the SLA — prime candidates for a webhook we never received. ACH debits live
-  // at 'processing' for days, so a lost terminal webhook would otherwise strand them forever (the
-  // cleaner never gets paid, the homeowner charge never confirms). Authorized-but-uncaptured card
-  // holds (payment_intent_status='requires_capture') are intentionally NOT swept: valid in-flight
-  // states owned by the JIT authorizer / capture flow.
-  const { data: rows } = await supabase
+  const cols =
+    'id, appointment_id, organization_id, status, stripe_payment_intent_id, payment_intent_status';
+
+  // 'pending' card/legacy rows past the short SLA — prime candidates for a webhook we never got.
+  // Authorized-but-uncaptured holds (payment_intent_status='requires_capture') are intentionally
+  // NOT swept: valid in-flight states owned by the JIT authorizer / auth-expiry watchdog. Keep
+  // null (PI status never recorded) and any non-hold status.
+  const { data: pendingRows } = await supabase
     .from('payments')
-    .select('id, appointment_id, organization_id, status, stripe_payment_intent_id, payment_intent_status')
-    .in('status', ['pending', 'processing'])
+    .select(cols)
+    .eq('status', 'pending')
     .not('stripe_payment_intent_id', 'is', null)
-    // Exclude live authorization holds (requires_capture): they legitimately stay pending for
-    // days and are owned by the JIT authorizer / auth-expiry watchdog, not this sweep. Without
-    // this filter the batch fills with normal holds, wasting Stripe calls and starving real
-    // drift. Keep null (PI status never recorded) and any non-hold status.
     .or('payment_intent_status.is.null,payment_intent_status.neq.requires_capture')
-    .lte('created_at', cutoff)
+    .lte('created_at', pendingCutoff)
     .limit(batch);
 
-  const list = (rows ?? []) as Array<{
+  // 'processing' ACH rows only once they're well past settlement (a lost terminal webhook would
+  // otherwise strand them forever — the cleaner never gets paid, the charge never confirms). Own
+  // batch so a backlog of live ACH can never starve the pending sweep above.
+  const { data: processingRows } = await supabase
+    .from('payments')
+    .select(cols)
+    .eq('status', 'processing')
+    .not('stripe_payment_intent_id', 'is', null)
+    .lte('created_at', achCutoff)
+    .limit(batch);
+
+  const list = [...(pendingRows ?? []), ...(processingRows ?? [])] as Array<{
     id: string;
     appointment_id: string | null;
     organization_id: string | null;

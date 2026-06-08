@@ -220,7 +220,9 @@ describe('POST /api/cron/reconcile-payments', () => {
       payment_type: 'revenue',
       stripe_payment_intent_id: piId,
       payment_intent_status: 'processing',
-      created_at: HOUR_AGO(),
+      // Older than the ~6-day ACH stale window so the sweep treats it as genuinely stuck (a normal
+      // in-flight ACH younger than that is intentionally left alone).
+      created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     });
 
     vi.mocked(retrievePaymentIntent).mockResolvedValue({
