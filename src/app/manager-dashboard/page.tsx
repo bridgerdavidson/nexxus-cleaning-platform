@@ -39,6 +39,11 @@ import {
   updateAppointmentStatus,
 } from "../../hooks/useManagerData";
 import {
+  deleteAppointments,
+  cancelAppointments,
+  describeBulkAppointmentResult,
+} from "../../lib/bulkAppointments";
+import {
   useAdminCustomers,
   useAdminTeamMembers,
   useAdminProperties,
@@ -574,6 +579,20 @@ function ManagerDashboardInner() {
     }
   };
 
+  const handleBulkDeleteAppointments = async (ids: string[]) => {
+    const result = await deleteAppointments(ids);
+    await refetchAppointments();
+    const { message, variant } = describeBulkAppointmentResult("delete", result);
+    showToast(message, { variant });
+  };
+
+  const handleBulkCancelAppointments = async (ids: string[]) => {
+    const result = await cancelAppointments(ids);
+    await refetchAppointments();
+    const { message, variant } = describeBulkAppointmentResult("cancel", result);
+    showToast(message, { variant });
+  };
+
   const handleMarkComplete = async (appointmentId: string) => {
     const result = await updateAppointmentStatus(appointmentId, "completed");
     if (result.success) {
@@ -740,6 +759,8 @@ function ManagerDashboardInner() {
         loading={appointmentsLoading}
         onCancelAppointment={handleCancelAppointment}
         onDeleteAppointment={handleDeleteAppointment}
+        onBulkDeleteAppointments={handleBulkDeleteAppointments}
+        onBulkCancelAppointments={handleBulkCancelAppointments}
         onRefreshAppointments={refetchAppointments}
         onAppointmentUpdated={(id, data) => updateAppointmentInState(id, data)}
         onOpenAppointment={openAppointment}
