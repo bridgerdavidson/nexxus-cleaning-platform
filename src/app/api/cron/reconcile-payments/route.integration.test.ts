@@ -201,6 +201,58 @@ describe('POST /api/cron/reconcile-payments', () => {
     expect((events ?? []).length).toBeGreaterThanOrEqual(1);
   });
 
+  it('stuck-payment: heals a stuck ACH `processing` payment whose succeeded webhook was lost', async () => {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const piId = `pi_ach_stuck_${appt.id}`;
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'processing', // ACH debit clearing; the terminal webhook never arrived
+      payment_method: 'ach',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: piId,
+      payment_intent_status: 'processing',
+      // Older than the ~6-day ACH stale window so the sweep treats it as genuinely stuck (a normal
+      // in-flight ACH younger than that is intentionally left alone).
+      created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    vi.mocked(retrievePaymentIntent).mockResolvedValue({
+      id: piId,
+      object: 'payment_intent',
+      status: 'succeeded',
+      amount_received: 10000,
+      latest_charge: `ch_ach_stuck_${appt.id}`,
+      on_behalf_of: 'acct_tenant_x',
+      metadata: { appointment_id: appt.id },
+    } as unknown as Stripe.PaymentIntent);
+
+    const { status, body } = await callRoute<{ stuckPayments: { repaired: number } }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+    expect(body.stuckPayments.repaired).toBeGreaterThanOrEqual(1);
+
+    // Previously this row (status='processing') was never swept, so a lost ACH succeeded webhook
+    // left it stuck forever. Now it's replayed and marked paid.
+    const { data: pay } = await db
+      .from('payments')
+      .select('status')
+      .eq('stripe_payment_intent_id', piId)
+      .single();
+    expect((pay as { status: string }).status).toBe('paid');
+  });
+
   it('stuck-payment: leaves a live authorization hold (requires_capture) untouched', async () => {
     const db = createTestSupabaseClient();
     const appt = await createTestAppointment({
