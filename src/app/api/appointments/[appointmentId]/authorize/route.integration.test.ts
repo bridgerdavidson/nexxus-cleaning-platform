@@ -243,6 +243,56 @@ describe('POST /api/appointments/:appointmentId/authorize', () => {
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'authorize_failed')).toBe(true);
   });
 
+  it('on requires_action (3-D Secure): 402 requires_action, and surfaces a counter + admin/homeowner notifications', async () => {
+    await makeTenantReady();
+    const appt = await makeAppt({ withCard: true });
+
+    // The off_session confirm comes back needing customer authentication: NO live hold is placed.
+    vi.mocked(createDestinationAuthorization).mockResolvedValueOnce({
+      id: 'pi_requires_action',
+      status: 'requires_action',
+    } as never);
+
+    const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    expect(status).toBe(402);
+    expect(body.success).toBe(false);
+    expect(body.code).toBe('requires_action');
+
+    const db = createTestSupabaseClient();
+    const { data: apptRow } = await db
+      .from('appointments')
+      .select('authorization_status')
+      .eq('id', appt.id)
+      .single();
+    expect((apptRow as { authorization_status: string }).authorization_status).toBe('requires_action');
+
+    // Forensic counter so 3-D Secure frequency is measurable.
+    const { data: events } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect(
+      (events ?? []).some((e) => (e as { event_type: string }).event_type === 'authentication_required'),
+    ).toBe(true);
+
+    // Notifications: at least one admin row (fanned out) + a homeowner row, so it's never a silent
+    // "placed hold" — it shows up under "Payments needing attention" and pings the homeowner.
+    const { data: notifs } = await db
+      .from('notification_events')
+      .select('recipient_user_id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'authentication_required');
+    expect((notifs ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(
+      (notifs ?? []).some((n) => (n as { recipient_user_id: string }).recipient_user_id === org.homeowner.userId),
+    ).toBe(true);
+  });
+
   it('non-self-pay appointment: manager WITHOUT can_manage_payments still passes auth (legacy unaffected)', async () => {
     await makeTenantReady();
     const db = createTestSupabaseClient();

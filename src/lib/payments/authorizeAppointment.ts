@@ -269,6 +269,41 @@ export async function authorizeAppointment(
     return { ok: true, code: 'authorized', paymentIntentId: pi.id };
   }
   if (newAuthStatus === 'requires_action') {
+    // The card issuer wants the cardholder to authenticate (3-D Secure), but the hold is placed
+    // OFF-SESSION (admin booking / cleaner-accept / cron), so the homeowner isn't present to
+    // complete it and NO hold is live. Surface it (forensic counter + notify admin and homeowner)
+    // so it appears under "Payments needing attention"; recovery is the homeowner re-saving an
+    // authenticated card via a card link. Guard on the transition INTO requires_action so cron
+    // retries don't re-notify for the same appointment.
+    if (appt.authorization_status !== 'requires_action') {
+      await recordPaymentEvent(supabase, {
+        paymentId,
+        appointmentId: appt.id,
+        organizationId: appt.organization_id,
+        eventType: 'authentication_required',
+        prevStatus: appt.authorization_status,
+        newStatus: 'requires_action',
+        actor,
+        amount: chargeCents,
+        payload: { payment_intent_id: pi.id },
+      });
+      const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id });
+      await recordNotificationEvent(supabase, {
+        event_type: 'authentication_required',
+        appointment_id: appt.id,
+        organization_id: appt.organization_id,
+        payload: { ...ctx, audience: 'admin', amount_cents: chargeCents },
+      });
+      if (appt.homeowner_id) {
+        await recordNotificationEvent(supabase, {
+          event_type: 'authentication_required',
+          appointment_id: appt.id,
+          organization_id: appt.organization_id,
+          recipient_user_id: appt.homeowner_id,
+          payload: { ...ctx, audience: 'homeowner', amount_cents: chargeCents },
+        });
+      }
+    }
     return { ok: false, code: 'requires_action', paymentIntentId: pi.id, message: 'Customer authentication required' };
   }
   return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${piStatus}`, paymentIntentId: pi.id };

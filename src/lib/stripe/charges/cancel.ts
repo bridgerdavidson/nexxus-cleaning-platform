@@ -10,5 +10,7 @@ export async function cancelAuthorization(
   paymentIntentId: string,
 ): Promise<Stripe.PaymentIntent> {
   const stripe = getStripe();
-  return stripe.paymentIntents.cancel(paymentIntentId);
+  // Deterministic idempotency key: a retry of the same cancel (double-click, or a webhook-driven
+  // re-attempt) returns the original result instead of erroring on an already-canceled PI.
+  return stripe.paymentIntents.cancel(paymentIntentId, {}, { idempotencyKey: `cancel-${paymentIntentId}` });
 }

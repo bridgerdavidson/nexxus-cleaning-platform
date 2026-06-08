@@ -35,6 +35,7 @@ describe('notificationTab', () => {
       expect(notificationTab('job_completed', role)).toBe('bookings');
       expect(notificationTab('dispute_opened', role)).toBe('payments');
       expect(notificationTab('authorization_failed', role)).toBe('payments');
+      expect(notificationTab('authentication_required', role)).toBe('payments');
     }
   });
 });

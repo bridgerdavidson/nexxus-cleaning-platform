@@ -213,6 +213,24 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: CreditCard,
       };
 
+    case 'authentication_required': {
+      const forHomeowner = str(payload, 'audience') === 'homeowner';
+      if (forHomeowner) {
+        return {
+          title: 'Confirm your card to secure your booking',
+          detail: joinDetail(property, when),
+          tone: 'warning',
+          icon: ShieldAlert,
+        };
+      }
+      return {
+        title: customer ? `Card needs verification for ${customer}` : 'Card needs identity verification',
+        detail: joinDetail(property, amount),
+        tone: 'warning',
+        icon: ShieldAlert,
+      };
+    }
+
     default:
       return FALLBACK;
   }
@@ -234,6 +252,7 @@ const KNOWN_TYPES = new Set<string>([
   'job_completed',
   'dispute_opened',
   'authorization_failed',
+  'authentication_required',
 ]);
 
 /**

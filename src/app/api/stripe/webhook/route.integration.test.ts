@@ -98,6 +98,79 @@ describe('POST /api/stripe/webhook', () => {
     }
   });
 
+  it('setup_intent.succeeded (card link) re-queues the homeowner\'s stuck appointments onto the new card', async () => {
+    const admin = createTestSupabaseClient();
+    // A homeowner appointment stuck needing 3-D Secure (off-session hold returned requires_action).
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+      totalPrice: 100,
+    });
+    await admin
+      .from('appointments')
+      .update({ authorization_status: 'requires_action', payment_method_id: 'pm_old_needs_auth' })
+      .eq('id', appt.id);
+
+    const token = `tok_test_${appt.id}`;
+    await admin.from('homeowner_payment_links').insert({
+      homeowner_id: org.homeowner.userId,
+      organization_id: org.organizationId,
+      token,
+      status: 'pending',
+      created_by: org.admin.userId,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    const event = {
+      id: `evt_si_${appt.id}`,
+      object: 'event',
+      type: 'setup_intent.succeeded',
+      data: {
+        object: {
+          id: 'seti_test_recovery',
+          object: 'setup_intent',
+          status: 'succeeded',
+          payment_method: 'pm_new_authed_card',
+          metadata: { token },
+        },
+      },
+    };
+    const payload = JSON.stringify(event);
+    const sig = signWebhookPayload(payload);
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'content-type': 'application/json', 'stripe-signature': sig },
+      body: payload,
+    });
+    expect(status).toBe(200);
+
+    // The card link is marked completed AND the stuck appointment is re-queued onto the new,
+    // now-authenticated card so the JIT cron retries the hold (no more 3-D Secure dead-end).
+    const { data: linkRow } = await admin
+      .from('homeowner_payment_links')
+      .select('status')
+      .eq('token', token)
+      .single();
+    expect((linkRow as { status: string }).status).toBe('completed');
+
+    const { data: apptRow } = await admin
+      .from('appointments')
+      .select('authorization_status, payment_method_id, authorize_at')
+      .eq('id', appt.id)
+      .single();
+    const a = apptRow as {
+      authorization_status: string;
+      payment_method_id: string;
+      authorize_at: string | null;
+    };
+    expect(a.authorization_status).toBe('scheduled');
+    expect(a.payment_method_id).toBe('pm_new_authed_card');
+    expect(a.authorize_at).not.toBeNull();
+  });
+
   it('replaying payment_intent.succeeded creates exactly ONE transfer (idempotency)', async () => {
     const appt = await createTestAppointment({
       organizationId: org.organizationId,

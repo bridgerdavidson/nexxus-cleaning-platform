@@ -22,6 +22,7 @@ export function notificationTab(eventType: string, role: NotificationRole): stri
       return 'bookings';
     case 'dispute_opened':
     case 'authorization_failed':
+    case 'authentication_required':
       return 'payments';
     default:
       // homeowner_request_submitted, cleaner_declined, chain_exhausted,

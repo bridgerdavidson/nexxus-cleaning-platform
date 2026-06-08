@@ -22,7 +22,8 @@ export type NotificationEventType =
   | 'job_started'                   // recipient: homeowner + admins
   | 'job_completed'                 // recipient: homeowner + admins
   | 'dispute_opened'                // recipient: admins (chargeback created)
-  | 'authorization_failed';         // recipient: admins (card hold declined)
+  | 'authorization_failed'          // recipient: admins (card hold declined)
+  | 'authentication_required';      // recipient: admins + homeowner (3-D Secure needed on the hold)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */
 export type NotificationAudience = 'admin' | 'cleaner' | 'homeowner';
