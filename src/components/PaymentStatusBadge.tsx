@@ -49,6 +49,14 @@ export default function PaymentStatusBadge({
           borderColor: "border-gray-200",
           icon: CreditCard,
         };
+      case "processing":
+        return {
+          label: "Clearing",
+          bgColor: "bg-blue-100",
+          textColor: "text-blue-700",
+          borderColor: "border-blue-200",
+          icon: Clock,
+        };
       case "unpaid":
       default:
         return {
@@ -88,7 +96,6 @@ interface AppointmentPaymentStatusProps {
 }
 
 export function AppointmentPaymentStatus({
-  appointmentId,
   paymentStatus,
   size = "sm",
 }: AppointmentPaymentStatusProps) {
