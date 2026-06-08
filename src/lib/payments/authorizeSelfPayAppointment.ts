@@ -225,6 +225,28 @@ export async function authorizeSelfPayAppointment(
 
   if (newAuthStatus === 'authorized') return { ok: true, code: 'authorized', paymentIntentId: pi.id };
   if (newAuthStatus === 'requires_action') {
+    // 3-D Secure needed on the company card, but the hold is off-session (no one present to
+    // authenticate), so it's NOT live. Surface it for admins (self-pay has no homeowner; the
+    // customer resolves to the org name). Guard on the transition so retries don't re-notify.
+    if (appt.authorization_status !== 'requires_action') {
+      await recordPaymentEvent(supabase, {
+        appointmentId: appt.id,
+        organizationId: appt.organization_id,
+        eventType: 'authentication_required',
+        prevStatus: appt.authorization_status,
+        newStatus: 'requires_action',
+        actor,
+        amount: chargeCents,
+        payload: { payment_intent_id: pi.id, self_pay: true },
+      });
+      const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id });
+      await recordNotificationEvent(supabase, {
+        event_type: 'authentication_required',
+        appointment_id: appt.id,
+        organization_id: appt.organization_id,
+        payload: { ...ctx, audience: 'admin', amount_cents: chargeCents },
+      });
+    }
     return { ok: false, code: 'requires_action', paymentIntentId: pi.id, message: 'Customer authentication required' };
   }
   return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${piStatus}`, paymentIntentId: pi.id };

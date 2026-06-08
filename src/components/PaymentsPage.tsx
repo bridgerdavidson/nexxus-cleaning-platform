@@ -8,14 +8,10 @@ import {
   TrendingUp,
   Clock,
   Plus,
-  CheckCircle,
   ChevronDown,
   FileText,
-  Calendar,
-  User,
 } from "lucide-react";
 import RecordPaymentModal from "./RecordPaymentModal";
-import ApprovePayoutModal from "./ApprovePayoutModal";
 import RefundModal from "./RefundModal";
 import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
 import StatusBadge from "./StatusBadge";
@@ -112,16 +108,12 @@ export default function PaymentsPage({
   invoicesLoading,
   statsLoading,
   onRefreshPayments,
-  onRefreshPayouts,
-  onRefreshInvoices,
 }: PaymentsPageProps) {
   const [activeTab, setActiveTab] = useState<TabType>("transactions");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
-  const [showApprovePayoutModal, setShowApprovePayoutModal] = useState(false);
-  const [selectedPayout, setSelectedPayout] = useState<AdminPayout | null>(null);
   const [refundPayment, setRefundPayment] = useState<AdminPayment | null>(null);
   const { currentOrganizationId, currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
@@ -214,11 +206,6 @@ export default function PaymentsPage({
       day: "numeric",
       year: "numeric",
     });
-  };
-
-  const handleApprovePayout = (payout: AdminPayout) => {
-    setSelectedPayout(payout);
-    setShowApprovePayoutModal(true);
   };
 
   return (
@@ -528,9 +515,6 @@ export default function PaymentsPage({
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
                         Status
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -558,17 +542,6 @@ export default function PaymentsPage({
                           >
                             {payout.status}
                           </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {payout.status === "pending" && (
-                            <button
-                              onClick={() => handleApprovePayout(payout)}
-                              className="text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                              Approve
-                            </button>
-                          )}
                         </td>
                       </tr>
                     ))}
@@ -669,20 +642,6 @@ export default function PaymentsPage({
           onRefreshPayments();
           setShowRecordPaymentModal(false);
         }}
-      />
-
-      <ApprovePayoutModal
-        isOpen={showApprovePayoutModal}
-        onClose={() => {
-          setShowApprovePayoutModal(false);
-          setSelectedPayout(null);
-        }}
-        onPayoutApproved={() => {
-          onRefreshPayouts();
-          setShowApprovePayoutModal(false);
-          setSelectedPayout(null);
-        }}
-        payout={selectedPayout}
       />
 
       {refundPayment && currentOrganizationId && (
