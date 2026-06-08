@@ -1242,8 +1242,20 @@ export default function AddAppointmentModal({
             clearTimeout(timeoutId);
           }
           const code = authResult?.code;
-          if (code === "authorized" || code === "requires_action") {
+          if (code === "authorized") {
             placed = true;
+          } else if (code === "requires_action") {
+            // The card needs the customer to verify their identity (3-D Secure). The hold is NOT
+            // placed and can't be completed here (off-session, the customer isn't present). Close
+            // honestly and let "Payments needing attention" drive recovery (Send card link).
+            onAppointmentCreated();
+            showToast("Appointment created", {
+              variant: "info",
+              description:
+                "This card needs the customer to verify their identity. We've flagged it under Payments needing attention.",
+            });
+            handleClose();
+            return;
           } else if (code === "deferred_ach") {
             // Bank (ACH) intentionally places NO hold — it's charged when the job is completed. This
             // is a clean success, not a failure: close with a calm note instead of a scary error.

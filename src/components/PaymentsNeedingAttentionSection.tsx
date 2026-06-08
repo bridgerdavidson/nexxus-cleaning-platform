@@ -182,7 +182,9 @@ export default function PaymentsNeedingAttentionSection({
                   </p>
                   <p className="text-xs text-gray-500">
                     {formatDate(a.scheduled_date)} ·{" "}
-                    {failed ? "Card authorization failed" : "Waiting on homeowner to confirm a card"}
+                    {failed
+                      ? "Card authorization failed"
+                      : "Customer needs to verify their identity (3D Secure)"}
                   </p>
                 </div>
               </div>

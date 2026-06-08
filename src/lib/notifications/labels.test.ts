@@ -16,6 +16,7 @@ const EVENT_TYPES: NotificationEventType[] = [
   'job_completed',
   'dispute_opened',
   'authorization_failed',
+  'authentication_required',
 ];
 
 const VALID_TONES: NotificationTone[] = ['success', 'error', 'warning', 'info'];
@@ -86,6 +87,24 @@ describe('describeNotification', () => {
     });
     expect(admin.title).toBe('Wanda Jones accepted a job');
     expect(homeowner.title).toBe('Wanda Jones is confirmed for your cleaning');
+  });
+
+  it('words authentication_required for admin vs homeowner audience', () => {
+    const admin = describeNotification('authentication_required', {
+      ...FULL_PAYLOAD,
+      audience: 'admin',
+    });
+    const homeowner = describeNotification('authentication_required', {
+      ...FULL_PAYLOAD,
+      audience: 'homeowner',
+    });
+    expect(admin.title).toBe('Card needs verification for Jane Doe');
+    expect(homeowner.title).toBe('Confirm your card to secure your booking');
+    expect(admin.tone).toBe('warning');
+    // No payload -> admin wording with no customer name.
+    expect(describeNotification('authentication_required').title).toBe(
+      'Card needs identity verification',
+    );
   });
 
   it('shows reassignment (amber) vs escalation (red) for a decline', () => {
