@@ -273,7 +273,10 @@ export default function PaymentsPage({
       </div>
 
       {/* Payments needing attention (failed auths / failed payouts) — new charge flow only */}
-      <PaymentsNeedingAttentionSection onResolved={onRefreshPayments} />
+      <PaymentsNeedingAttentionSection
+        onResolved={onRefreshPayments}
+        canManagePayments={canManagePayments}
+      />
 
       {/* Tabs and Actions */}
       <div className="card">

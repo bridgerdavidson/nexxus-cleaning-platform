@@ -59,8 +59,15 @@ function formatDate(d: string): string {
  */
 export default function PaymentsNeedingAttentionSection({
   onResolved,
+  canManagePayments,
 }: {
   onResolved?: () => void;
+  /**
+   * Whether the viewer may take payment actions (owner/admin, or a manager with
+   * can_manage_payments). The retry/dismiss routes 403 for anyone else, so their
+   * buttons are hidden from a view-only manager rather than rendered to fail on click.
+   */
+  canManagePayments: boolean;
 }) {
   const { currentOrganizationId } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -308,31 +315,35 @@ export default function PaymentsNeedingAttentionSection({
                   Cleaner payout failed · ${p.amount?.toFixed(0)}
                 </p>
                 <p className="text-xs text-gray-500">
-                  Retry now, or dismiss if it&apos;s stale. Otherwise it retries automatically on the next sweep.
+                  {canManagePayments
+                    ? "Retry now, or dismiss if it's stale. Otherwise it retries automatically on the next sweep."
+                    : "Retries automatically on the next reconciliation sweep."}
                 </p>
               </div>
             </div>
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <button
-                onClick={() => retryPayout(p.id)}
-                disabled={busyId === p.id}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
-              >
-                {busyId === p.id ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                )}
-                Retry now
-              </button>
-              <button
-                onClick={() => dismissPayout(p.id)}
-                disabled={busyId === p.id}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-              >
-                <X className="h-3.5 w-3.5" /> Dismiss
-              </button>
-            </div>
+            {canManagePayments && (
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <button
+                  onClick={() => retryPayout(p.id)}
+                  disabled={busyId === p.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+                >
+                  {busyId === p.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Retry now
+                </button>
+                <button
+                  onClick={() => dismissPayout(p.id)}
+                  disabled={busyId === p.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  <X className="h-3.5 w-3.5" /> Dismiss
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
