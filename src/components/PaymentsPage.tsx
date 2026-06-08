@@ -30,7 +30,7 @@ interface PaymentStats {
 interface AdminPayment {
   id: string;
   amount: number;
-  status: "pending" | "paid" | "failed" | "refunded";
+  status: "pending" | "processing" | "paid" | "failed" | "refunded";
   payment_type?: string;
   payment_method?: string;
   reference?: string;
@@ -194,6 +194,8 @@ export default function PaymentsPage({
         return "text-blue-700 bg-blue-100";
       case "refunded":
         return "text-purple-700 bg-purple-100";
+      case "processing":
+        return "text-blue-700 bg-blue-100";
       default:
         return "text-gray-700 bg-gray-100";
     }

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Calendar, MapPin, User, Briefcase, DollarSign, CheckSquare, Square, Repeat, X, Sparkles, AlertCircle, Clock, RefreshCw, Play } from "lucide-react";
+import { Calendar, MapPin, User, Briefcase, CheckSquare, Square, Repeat, Sparkles, Clock, RefreshCw, Play } from "lucide-react";
 import StatusBadge from "./StatusBadge";
+import AuthHoldBadge from "./AuthHoldBadge";
 import CompactAppointmentRow from "./CompactAppointmentRow";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
@@ -33,7 +34,7 @@ export interface AppointmentCardData {
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
   price_override_enabled?: boolean;
   price_override_total?: number | null;
-  payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  payment_status?: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded' | null;
   authorization_status?:
     | 'none'
     | 'scheduled'
@@ -128,7 +129,6 @@ export default function AppointmentCard({
   isSelected = false,
   onToggleSelect,
   role,
-  canApproveDecline = false,
   onStartJob,
 }: AppointmentCardProps) {
   const [isStarting, setIsStarting] = useState(false);
@@ -211,7 +211,13 @@ export default function AppointmentCard({
           bgColor: "bg-blue-100",
           textColor: "text-blue-700",
         };
-      case "unpaid":
+      case "processing":
+        // ACH debit clearing (~4 business days). Not "Unpaid" — money is in flight.
+        return {
+          label: "Clearing",
+          bgColor: "bg-amber-100",
+          textColor: "text-amber-700",
+        };
       default:
         return {
           label: "Unpaid",
@@ -226,7 +232,7 @@ export default function AppointmentCard({
     appointment.scheduled_time
   );
 
-  const handleCardClick = (e: React.MouseEvent) => {
+  const handleCardClick = () => {
     if (isSelectMode && onToggleSelect) {
       onToggleSelect();
     } else if (!isSelectMode) {
@@ -413,11 +419,16 @@ export default function AppointmentCard({
               </div>
             )}
             {role !== "cleaner" && (
-              <span
-                className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor}`}
-              >
-                {paymentStatusConfig.label}
-              </span>
+              <>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${paymentStatusConfig.bgColor} ${paymentStatusConfig.textColor}`}
+                >
+                  {paymentStatusConfig.label}
+                </span>
+                {/* Card-hold (authorization) state for the new charge flow; renders nothing for
+                    none/scheduled/canceled so the card stays uncluttered. */}
+                <AuthHoldBadge status={appointment.authorization_status} />
+              </>
             )}
           </div>
           {showStartJobButton && (
