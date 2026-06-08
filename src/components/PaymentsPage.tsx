@@ -30,7 +30,7 @@ interface PaymentStats {
 interface AdminPayment {
   id: string;
   amount: number;
-  status: "pending" | "paid" | "failed" | "refunded";
+  status: "pending" | "processing" | "paid" | "failed" | "refunded";
   payment_type?: string;
   payment_method?: string;
   reference?: string;
@@ -194,6 +194,9 @@ export default function PaymentsPage({
         return "text-blue-700 bg-blue-100";
       case "refunded":
         return "text-purple-700 bg-purple-100";
+      case "processing":
+        // ACH debit clearing; matches the "Clearing" chip on the cards.
+        return "text-amber-700 bg-amber-100";
       default:
         return "text-gray-700 bg-gray-100";
     }
@@ -446,7 +449,7 @@ export default function PaymentsPage({
                                 payment.status
                               )}`}
                             >
-                              {payment.status}
+                              {payment.status === "processing" ? "Clearing" : payment.status}
                             </span>
                             {payment.is_self_pay && (
                               <StatusBadge status="self_pay" size="sm" />

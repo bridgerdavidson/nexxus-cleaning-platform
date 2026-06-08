@@ -9,7 +9,7 @@ export type OrgRole = 'owner' | 'admin' | 'manager' | 'cleaner' | 'homeowner';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 // ServiceType is now a string to allow custom service types (no longer an enum)
 // Common values: 'regular', 'deep', 'move_out', 'custom' but users can add their own
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'refunded';
 export type PaymentType = 'revenue' | 'expense' | 'refund';
 export type PaymentMethod = 'card' | 'ach' | 'manual';
 export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed' | 'reversed' | 'bank_paid';

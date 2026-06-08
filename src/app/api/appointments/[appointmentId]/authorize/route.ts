@@ -82,6 +82,10 @@ export async function POST(
         code: outcome.code,
         ...(outcome.paymentIntentId ? { payment_intent_id: outcome.paymentIntentId } : {}),
         ...(outcome.message ? { message: outcome.message } : {}),
+        // On failure also expose the reason as `error` (it's the Stripe decline message, e.g.
+        // "Your card has insufficient funds."). Clients like the "Needs attention" re-authorize
+        // button key off `error`, so without this they show only a generic "Re-authorization failed".
+        ...(!outcome.ok && outcome.message ? { error: outcome.message } : {}),
       },
       { status: HTTP_BY_CODE[outcome.code] ?? 400 },
     );

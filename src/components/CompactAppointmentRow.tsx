@@ -4,23 +4,7 @@ import React from "react";
 import { formatTimeTo12h } from "../lib/formatTime";
 import StatusBadge from "./StatusBadge";
 import { AppointmentCardData } from "./AppointmentCard";
-
-type PaymentStatus = AppointmentCardData["payment_status"];
-type PaymentChip = { label: string; className: string };
-
-const getPaymentChip = (status: PaymentStatus): PaymentChip => {
-  switch (status) {
-    case "paid":
-      return { label: "Paid", className: "bg-green-100 text-green-700" };
-    case "failed":
-      return { label: "Failed", className: "bg-red-100 text-red-700" };
-    case "refunded":
-      return { label: "Refunded", className: "bg-blue-100 text-blue-700" };
-    case "pending":
-    default:
-      return { label: "Unpaid", className: "bg-gray-100 text-gray-700" };
-  }
-};
+import { paymentStatusPill } from "../lib/paymentStatusPill";
 
 const getCleanerName = (a: AppointmentCardData): string | null => {
   const profile = a.cleaner_profile?.user_profile;
@@ -73,7 +57,10 @@ export default function CompactAppointmentRow({
 }: CompactAppointmentRowProps) {
   const cleanerName = getCleanerName(appointment);
   const homeownerName = getHomeownerName(appointment);
-  const paymentChip = getPaymentChip(appointment.payment_status);
+  const paymentChip = paymentStatusPill(
+    appointment.payment_status,
+    appointment.authorization_status,
+  );
 
   const hover = onClick
     ? "transition-colors hover:border-primary-300 hover:bg-primary-50/30"
