@@ -3,7 +3,7 @@
  * independent of any single webhook delivery. Four independent, batch-capped jobs:
  *
  *   1. retryDeadLetterWebhooks   — re-dispatch webhook_events stuck in received/failed
- *   2. reconcileStuckPayments    — replay the true Stripe PI status for pending payments past SLA
+ *   2. reconcileStuckPayments    — replay the true Stripe PI status for pending/processing payments past SLA
  *   3. retryFailedPayouts        — re-run cleaner settlement for payouts left 'failed'
  *   4. checkMoneyMathInvariants  — flag any paid cleaner payout that doesn't match the locked split
  *
@@ -85,14 +85,16 @@ export async function reconcileStuckPayments(
   const batch = opts.batch ?? DEFAULT_BATCH;
   const cutoff = staleCutoffIso(opts.staleMinutes ?? DEFAULT_STALE_MINUTES);
 
-  // Payments we still believe are in-flight ('pending') that carry a PI and have sat past the
-  // SLA — prime candidates for a webhook we never received. Authorized-but-uncaptured holds
-  // (payment_intent_status='requires_capture') are intentionally NOT swept: they are valid
-  // in-flight states owned by the JIT authorizer / capture flow.
+  // Payments we still believe are in-flight ('pending' card, or 'processing' ACH) that carry a PI
+  // and have sat past the SLA — prime candidates for a webhook we never received. ACH debits live
+  // at 'processing' for days, so a lost terminal webhook would otherwise strand them forever (the
+  // cleaner never gets paid, the homeowner charge never confirms). Authorized-but-uncaptured card
+  // holds (payment_intent_status='requires_capture') are intentionally NOT swept: valid in-flight
+  // states owned by the JIT authorizer / capture flow.
   const { data: rows } = await supabase
     .from('payments')
     .select('id, appointment_id, organization_id, status, stripe_payment_intent_id, payment_intent_status')
-    .eq('status', 'pending')
+    .in('status', ['pending', 'processing'])
     .not('stripe_payment_intent_id', 'is', null)
     // Exclude live authorization holds (requires_capture): they legitimately stay pending for
     // days and are owned by the JIT authorizer / auth-expiry watchdog, not this sweep. Without
@@ -127,7 +129,9 @@ export async function reconcileStuckPayments(
         ? 'payment_intent.succeeded'
         : pi.status === 'canceled'
           ? 'payment_intent.canceled'
-          : null;
+          : pi.status === 'requires_payment_method' && pi.last_payment_error
+            ? 'payment_intent.payment_failed'
+            : null;
     if (!replayType) continue;
 
     await recordPaymentEvent(supabase, {

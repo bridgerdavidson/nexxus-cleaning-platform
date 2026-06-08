@@ -82,6 +82,21 @@ export async function dispatchStripeEvent(
     case 'refund.updated':
       await handleRefundStatusChange(supabase, event.data.object as Stripe.Refund, event.id);
       break;
+    case 'setup_intent.setup_failed':
+      await handleSetupIntentSetupFailed(supabase, event.data.object as Stripe.SetupIntent);
+      break;
+    case 'payout.canceled':
+      // A canceled payout never reached the cleaner's bank — revert it exactly like a failure
+      // (only payout.failed did this before, so a Stripe-canceled payout left a row falsely bank_paid).
+      await handlePayoutFailed(supabase, event.data.object as Stripe.Payout, event.account ?? null);
+      break;
+    case 'radar.early_fraud_warning.created':
+      await handleEarlyFraudWarning(supabase, event.data.object as Stripe.Radar.EarlyFraudWarning, event.id);
+      break;
+    case 'review.opened':
+    case 'review.closed':
+      await handleReview(supabase, event.data.object as Stripe.Review, event.id, event.type);
+      break;
     default:
       console.log(`Unhandled event type: ${event.type}`);
   }
@@ -522,6 +537,35 @@ async function handleSetupIntentSucceeded(
 }
 
 /**
+ * Handle setup_intent.setup_failed — a homeowner's card-link save attempt failed. The SetupIntent
+ * can still be retried on the same hosted link, so we deliberately do NOT expire the link (that
+ * would kill a usable link). Record a forensic event so the failure isn't silently dropped.
+ */
+async function handleSetupIntentSetupFailed(supabase: SupabaseClient, setupIntent: Stripe.SetupIntent) {
+  const token = setupIntent.metadata?.token;
+  let orgId: string | null = null;
+  if (token) {
+    const { data: link } = await supabase
+      .from('homeowner_payment_links')
+      .select('organization_id')
+      .eq('token', token)
+      .maybeSingle();
+    orgId = (link as { organization_id: string } | null)?.organization_id ?? null;
+  }
+  await recordPaymentEvent(supabase, {
+    organizationId: orgId,
+    eventType: 'setup_intent_failed',
+    actor: 'webhook',
+    payload: {
+      setup_intent_id: setupIntent.id,
+      token: token ?? null,
+      error: setupIntent.last_setup_error?.message ?? null,
+    },
+  });
+  console.log('setup_intent.setup_failed recorded (card link stays pending, retryable):', setupIntent.id);
+}
+
+/**
  * Handle charge.refunded — confirms a refund settled at Stripe. Mark our pending `refunds`
  * rows succeeded (match by stripe_refund_id), and if the charge is now fully refunded,
  * ensure the payment reads 'refunded'. The refund route already did the optimistic writes;
@@ -611,7 +655,17 @@ async function handleChargeDisputeCreated(
   const payment = await findPaymentByIntent(supabase, piId);
 
   if (!payment) {
-    console.warn('charge.dispute.created: no matching payment for dispute', dispute.id, '— skipping insert (manual review)');
+    // No matching payment (a dispute on a charge we can't map, or a rare race where the dispute
+    // arrives before our payment row exists). Don't silently drop it: record a forensic event so
+    // it's auditable / surfaceable for manual review instead of vanishing into a log line.
+    console.warn('charge.dispute.created: no matching payment for dispute', dispute.id, '(recorded as unmatched_dispute)');
+    await recordPaymentEvent(supabase, {
+      stripeEventId,
+      eventType: 'unmatched_dispute',
+      actor: 'webhook',
+      amount: dispute.amount,
+      payload: { dispute_id: dispute.id, charge_id: chargeId, payment_intent: piId, reason: dispute.reason ?? null },
+    });
     return;
   }
 
@@ -720,6 +774,50 @@ async function handleChargeDisputeClosed(
     actor: 'webhook',
     amount: dispute.amount,
     payload: { dispute_id: dispute.id },
+  });
+}
+
+/**
+ * Handle radar.early_fraud_warning.created — Stripe's network flagged a likely-fraudulent card
+ * charge BEFORE a formal dispute, the window to proactively refund and dodge the chargeback + fee.
+ * Record it to the forensic ledger so it's auditable (surfacing it in the UI is a follow-up).
+ */
+async function handleEarlyFraudWarning(
+  supabase: SupabaseClient,
+  efw: Stripe.Radar.EarlyFraudWarning,
+  stripeEventId: string,
+) {
+  const payment = await findPaymentByIntent(supabase, idFromExpandable(efw.payment_intent));
+  await recordPaymentEvent(supabase, {
+    paymentId: payment?.id ?? null,
+    appointmentId: payment?.appointment_id ?? null,
+    organizationId: payment?.organization_id ?? null,
+    stripeEventId,
+    eventType: 'early_fraud_warning',
+    actor: 'webhook',
+    payload: { efw_id: efw.id, charge_id: idFromExpandable(efw.charge), fraud_type: efw.fraud_type },
+  });
+}
+
+/**
+ * Handle review.opened / review.closed — Stripe Radar placed a charge under manual review (or
+ * closed one). Record it so a held/under-review charge is visible in the forensic ledger.
+ */
+async function handleReview(
+  supabase: SupabaseClient,
+  review: Stripe.Review,
+  stripeEventId: string,
+  eventType: string,
+) {
+  const payment = await findPaymentByIntent(supabase, idFromExpandable(review.payment_intent));
+  await recordPaymentEvent(supabase, {
+    paymentId: payment?.id ?? null,
+    appointmentId: payment?.appointment_id ?? null,
+    organizationId: payment?.organization_id ?? null,
+    stripeEventId,
+    eventType: eventType === 'review.closed' ? 'radar_review_closed' : 'radar_review_opened',
+    actor: 'webhook',
+    payload: { review_id: review.id, reason: review.reason ?? null, closed_reason: review.closed_reason ?? null },
   });
 }
 

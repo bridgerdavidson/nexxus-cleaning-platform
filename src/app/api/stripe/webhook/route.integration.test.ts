@@ -627,6 +627,39 @@ describe('POST /api/stripe/webhook', () => {
     expect(d.status).toBe('needs_response');
   });
 
+  it('charge.dispute.created with no matching payment records an unmatched_dispute (not silently dropped)', async () => {
+    const admin = createTestSupabaseClient();
+    // A dispute whose PaymentIntent maps to no payment row (buildDisputeEvent uses pi_test_<id>).
+    const orphanId = `orphan_${Date.now()}`;
+    const payload = JSON.stringify(
+      buildDisputeEvent({ type: 'charge.dispute.created', appointmentId: orphanId, status: 'needs_response', amountCents: 5000 }),
+    );
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // Recorded as a forensic event (auditable) instead of vanishing into a log line.
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('payload')
+      .eq('event_type', 'unmatched_dispute');
+    const found = (events ?? []).some(
+      (e) => (e as { payload: { dispute_id?: string } }).payload?.dispute_id === `dp_${orphanId}`,
+    );
+    expect(found).toBe(true);
+
+    // No disputes row was created (we couldn't map it to an org/payment).
+    const { data: disputes } = await admin
+      .from('disputes')
+      .select('id')
+      .eq('stripe_dispute_id', `dp_${orphanId}`);
+    expect((disputes ?? []).length).toBe(0);
+  });
+
   it('charge.dispute.closed (lost) claws back the cleaner transfer', async () => {
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
