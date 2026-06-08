@@ -131,8 +131,8 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createRefund).mock.calls[0][0]).toMatchObject({ amountCents: undefined });
     // Cleaner ($60) and tenant remainder ($40) both clawed back to the platform.
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 6000);
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 6000, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000, expect.any(String));
 
     const db = createTestSupabaseClient();
     const { data: pay } = await db.from('payments').select('status').eq('id', paymentId).single();
@@ -219,11 +219,70 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(body.amount_cents).toBe(4000);
 
     // $40 refund = 40% of gross → cleaner 6000*0.4=2400, tenant 4000*0.4=1600 clawed back.
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 2400);
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1600);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 2400, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1600, expect.any(String));
 
     const db = createTestSupabaseClient();
     const { data: pay } = await db.from('payments').select('status').eq('id', paymentId).single();
     expect((pay as { status: string }).status).toBe('paid');
+  });
+
+  it('two equal-sized partial refunds use DISTINCT idempotency keys (no reuse of the first refund)', async () => {
+    const { paymentId } = await seedPaidPayment();
+    const refundTwenty = () =>
+      callRoute(handlerFor(paymentId), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, amount: 20 },
+      });
+    const r1 = await refundTwenty();
+    const r2 = await refundTwenty();
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+
+    expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(2);
+    const key1 = vi.mocked(createRefund).mock.calls[0][0].idempotencyKey;
+    const key2 = vi.mocked(createRefund).mock.calls[1][0].idempotencyKey;
+    // Keyed on the cumulative target ($20 then $40), so the 2nd is a genuine second refund, not a
+    // reuse of the first that would over-claw-back transfers.
+    expect(key1).toBeTruthy();
+    expect(key1).not.toBe(key2);
+  });
+
+  it('a failed cleaner reversal during refund records refund_clawback_failed (not cleaner_clawback_failed) and still 200s', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+    // The cleaner-leg reversal throws; the refund already succeeded, so the route must still 200 and
+    // record a REFUND-scoped failure — not cleaner_clawback_failed, which the full-clawback sweep
+    // would over-reverse. (Refund reversals self-heal via the charge.refunded webhook re-run.)
+    vi.mocked(reversePlatformTransfer).mockImplementation(async (transferId: string) => {
+      if (transferId === 'tr_x') throw new Error('reversal boom');
+      return { id: 'trr_ok' } as never;
+    });
+    try {
+      const { status } = await callRoute(handlerFor(paymentId), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(200);
+
+      const db = createTestSupabaseClient();
+      const { data: failed } = await db
+        .from('payment_events')
+        .select('event_type')
+        .eq('appointment_id', appt.id)
+        .eq('event_type', 'refund_clawback_failed');
+      expect((failed ?? []).length).toBe(1);
+      const { data: wrongType } = await db
+        .from('payment_events')
+        .select('event_type')
+        .eq('appointment_id', appt.id)
+        .eq('event_type', 'cleaner_clawback_failed');
+      expect((wrongType ?? []).length).toBe(0);
+    } finally {
+      // Restore the default success mock for any later test.
+      vi.mocked(reversePlatformTransfer).mockReset();
+      vi.mocked(reversePlatformTransfer).mockResolvedValue({ id: 'trr_test_123' } as never);
+    }
   });
 });

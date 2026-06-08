@@ -21,7 +21,7 @@ vi.mock('@/lib/stripe/charges/refund', () => ({
 }));
 
 import { POST } from './route';
-import { createPlatformTransfer, reversePlatformTransfer } from '@/lib/stripe/transfers';
+import { createPlatformTransfer, reversePlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -740,7 +740,7 @@ describe('POST /api/stripe/webhook', () => {
     expect(res.status).toBe(200);
 
     // Full cleaner share reversed (platform-level reversal).
-    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_clawback', 6000);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_clawback', 6000, expect.any(String));
 
     const { data: payouts } = await admin
       .from('payouts')
@@ -822,6 +822,152 @@ describe('POST /api/stripe/webhook', () => {
       .eq('id', (pay as { id: string }).id)
       .single();
     expect((payment as { status: string }).status).toBe('refunded');
+  });
+
+  it('payment_intent.payment_failed on a PAID row (late ACH return) claws back the cleaner, keeps the row paid', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const admin = createTestSupabaseClient();
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'ach',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_ach_${appt.id}`,
+    });
+    await admin.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+      stripe_transfer_id: 'tr_ach_clawback',
+    });
+
+    const event = {
+      id: `evt_pif_${appt.id}`,
+      object: 'event',
+      type: 'payment_intent.payment_failed',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `pi_ach_${appt.id}`,
+          object: 'payment_intent',
+          status: 'requires_payment_method',
+          amount: 10000,
+          metadata: { appointment_id: appt.id, organization_id: org.organizationId },
+          last_payment_error: { message: 'debit_not_authorized' },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // Auto-clawback: the cleaner payout is reversed.
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_ach_clawback', 6000, expect.any(String));
+    const { data: payouts } = await admin.from('payouts').select('status').eq('appointment_id', appt.id);
+    expect((payouts![0] as { status: string }).status).toBe('reversed');
+
+    // The revenue row is NOT clobbered to 'failed' (money moved + settled); it stays 'paid' and a
+    // late_payment_failure event is recorded for forensics.
+    const { data: payment } = await admin
+      .from('payments')
+      .select('status')
+      .eq('stripe_payment_intent_id', `pi_ach_${appt.id}`)
+      .single();
+    expect((payment as { status: string }).status).toBe('paid');
+
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'late_payment_failure');
+    expect((events ?? []).length).toBe(1);
+  });
+
+  it('charge.refunded issued out-of-band claws back the cleaner + tenant transfers', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const admin = createTestSupabaseClient();
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_oob_${appt.id}`,
+    });
+    await admin.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+      stripe_transfer_id: 'tr_oob_cleaner',
+    });
+    // The job's outbound transfers (cleaner + tenant) that an out-of-band refund must unwind.
+    vi.mocked(listTransfersByGroup).mockResolvedValueOnce([
+      { id: 'tr_oob_cleaner', amount: 6000, amount_reversed: 0 },
+      { id: 'tr_oob_tenant', amount: 4000, amount_reversed: 0 },
+    ] as never);
+
+    const event = {
+      id: `evt_oob_${appt.id}`,
+      object: 'event',
+      type: 'charge.refunded',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `ch_oob_${appt.id}`,
+          object: 'charge',
+          amount: 10000,
+          amount_refunded: 10000,
+          payment_intent: `pi_oob_${appt.id}`,
+          refunds: { object: 'list', data: [] },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // Both legs reversed proportionally (full refund → full reversal); cleaner payout marked reversed.
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_oob_cleaner', 6000, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_oob_tenant', 4000, expect.any(String));
+    const { data: payouts } = await admin.from('payouts').select('status').eq('appointment_id', appt.id);
+    expect((payouts![0] as { status: string }).status).toBe('reversed');
   });
 
   it('payment_intent.canceled reschedules re-auth when the appointment still claims a dead hold', async () => {
