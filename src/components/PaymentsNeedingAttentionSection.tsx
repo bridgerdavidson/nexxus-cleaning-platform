@@ -8,6 +8,7 @@ import {
   Mail,
   CheckCircle,
   CreditCard,
+  X,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { supabase } from "../lib/supabase";
@@ -43,11 +44,13 @@ function formatDate(d: string): string {
  * "Needs attention" panel for the Payments page (new charge flow only). Surfaces card
  * authorizations that failed or need the homeowner to act, plus cleaner payouts that
  * failed, so an admin/manager can resolve them without digging through Stripe. Failed
- * auths get a one-click re-authorize and a re-send-card-link action.
+ * auths get a one-click re-authorize and a re-send-card-link action. Failed payouts get a
+ * one-click "Retry now" (force settlement immediately) and a "Dismiss" (hide a stale or
+ * already-handled row without deleting the payout or stopping the auto-retry sweep).
  *
  * A `reversed` payout is intentionally NOT shown: it is a completed clawback (dispute lost,
  * refund, or ACH return) and is not retried, so it needs no attention. Only `failed` payouts
- * (the cleaner was never paid) belong here.
+ * (the cleaner was never paid) that have not been dismissed belong here.
  *
  * Self-contained: queries the org's appointments/payouts directly (RLS-scoped) so the
  * parent page's props stay unchanged. Captured-but-unsettled and onboarding-blocked cases
@@ -56,8 +59,15 @@ function formatDate(d: string): string {
  */
 export default function PaymentsNeedingAttentionSection({
   onResolved,
+  canManagePayments,
 }: {
   onResolved?: () => void;
+  /**
+   * Whether the viewer may take payment actions (owner/admin, or a manager with
+   * can_manage_payments). The retry/dismiss routes 403 for anyone else, so their
+   * buttons are hidden from a view-only manager rather than rendered to fail on click.
+   */
+  canManagePayments: boolean;
 }) {
   const { currentOrganizationId } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -66,6 +76,7 @@ export default function PaymentsNeedingAttentionSection({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [linkSentFor, setLinkSentFor] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!currentOrganizationId) return;
@@ -87,6 +98,9 @@ export default function PaymentsNeedingAttentionSection({
         // Only failed payouts need attention. A `reversed` payout is a completed, intentional
         // clawback (dispute/refund/ACH return) and is never retried, so it is excluded here.
         .eq("status", "failed")
+        // Dismissed rows were acknowledged/handled by an admin; hide them (the auto-retry sweep
+        // still keeps trying, so the cleaner is never silently stranded).
+        .is("attention_dismissed_at", null)
         .order("created_at", { ascending: false }),
     ]);
 
@@ -152,6 +166,65 @@ export default function PaymentsNeedingAttentionSection({
     }
   };
 
+  const retryPayout = async (payoutId: string) => {
+    if (!currentOrganizationId) return;
+    setBusyId(payoutId);
+    setError(null);
+    setNotice(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/payouts/${payoutId}/retry`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ organization_id: currentOrganizationId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Retry failed");
+      // Settled but re-held: the cleaner still has not finished payout setup, so it is queued
+      // rather than paid. Say so instead of letting the row silently vanish.
+      if (data.reason === "cleaner_slice_held") {
+        setNotice(
+          "The cleaner still needs to finish their payout setup, so this payment is queued and will send automatically once they do.",
+        );
+      }
+      await load();
+      onResolved?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Retry failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const dismissPayout = async (payoutId: string) => {
+    if (!currentOrganizationId) return;
+    setBusyId(payoutId);
+    setError(null);
+    setNotice(null);
+    try {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/payouts/${payoutId}/dismiss`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ organization_id: currentOrganizationId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not dismiss");
+      await load();
+      onResolved?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not dismiss");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (!stripeNewChargeFlowUiEnabled()) return null;
   if (loading) return null;
   if (appts.length === 0 && payouts.length === 0) return null;
@@ -167,6 +240,7 @@ export default function PaymentsNeedingAttentionSection({
       </div>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      {notice && <p className="mb-3 text-sm text-amber-700">{notice}</p>}
 
       <div className="space-y-2">
         {appts.map((a) => {
@@ -232,19 +306,44 @@ export default function PaymentsNeedingAttentionSection({
         {payouts.map((p) => (
           <div
             key={p.id}
-            className="flex items-center justify-between rounded-xl border border-amber-100 bg-white p-3"
+            className="flex flex-col gap-3 rounded-xl border border-amber-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900">
                   Cleaner payout failed · ${p.amount?.toFixed(0)}
                 </p>
                 <p className="text-xs text-gray-500">
-                  Will retry automatically on the next reconciliation sweep; check the cleaner&apos;s payout setup.
+                  {canManagePayments
+                    ? "Retry now, or dismiss if it's stale. Otherwise it retries automatically on the next sweep."
+                    : "Retries automatically on the next reconciliation sweep."}
                 </p>
               </div>
             </div>
+            {canManagePayments && (
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <button
+                  onClick={() => retryPayout(p.id)}
+                  disabled={busyId === p.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+                >
+                  {busyId === p.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Retry now
+                </button>
+                <button
+                  onClick={() => dismissPayout(p.id)}
+                  disabled={busyId === p.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  <X className="h-3.5 w-3.5" /> Dismiss
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
