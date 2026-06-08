@@ -114,8 +114,11 @@ export async function settleCleanerPayout(
     !!cleaner &&
     cleaner.payout_model !== 'hourly_external' &&
     Number(cleaner.payout_percent) > 0;
-  const cleanerOnboarded =
-    cleanerHasShare && !!cleaner!.stripe_connect_account_id && cleaner!.stripe_connect_onboarding_complete;
+  // Connect-readiness of the cleaner's account, independent of their CURRENT share: a slice that
+  // was already carved out must be paid once they finish onboarding even if their percent was
+  // later edited (including down to 0) — the money was set aside at settlement time.
+  const cleanerAccountReady =
+    !!cleaner && !!cleaner.stripe_connect_account_id && cleaner.stripe_connect_onboarding_complete;
   const payoutPercent = cleanerHasShare ? Number(cleaner!.payout_percent) : 0;
 
   const { cleanerCents, tenantRemainderCents } = computePaymentSplit({
@@ -162,23 +165,49 @@ export async function settleCleanerPayout(
 
   // 2) Cleaner percentage → cleaner connected account (Scenario 1). Soft-fail → 'failed' payout
   //    row for the retry sweep; not-yet-onboarded → 'pending' (held) for the retry sweep.
-  if (cleanerHasShare && cleanerCents > 0) {
+  //
+  // On a RETRY, an existing payout row carries the slice CARVED OUT at first settlement (its
+  // `amount` + `payout_percent_snapshot`). The tenant was already paid the complementary remainder
+  // against that original percent, so we MUST pay the cleaner that snapshot, never a fresh recompute:
+  // if the cleaner's payout_percent was edited while they were still onboarding, recomputing would
+  // over/underpay the cleaner and strand funds (conservation breaks).
+  const { data: priorPayoutRow } = await supabase
+    .from('payouts')
+    .select('id, amount, payout_percent_snapshot, status')
+    .eq('appointment_id', appointmentId)
+    .limit(1)
+    .maybeSingle();
+  const priorPayout = priorPayoutRow as
+    | { id: string; amount: number | string; payout_percent_snapshot: number | string | null; status: string }
+    | null;
+  // A carved slice we still owe the cleaner: held ('pending') or a failed transfer. 'paid'/'reversed'
+  // are terminal and must never be re-paid.
+  const hasCarvedSlice =
+    !!priorPayout &&
+    (priorPayout.status === 'pending' || priorPayout.status === 'failed') &&
+    priorPayout.amount != null;
+
+  // Amount + percent snapshot to settle: the carved slice on a retry, else the freshly computed
+  // split on first settlement. A carved slice is paid even if the current share is now 0.
+  const cleanerSettleCents = hasCarvedSlice ? Math.round(Number(priorPayout!.amount) * 100) : cleanerCents;
+  const cleanerSettlePercent =
+    hasCarvedSlice && priorPayout!.payout_percent_snapshot != null
+      ? Number(priorPayout!.payout_percent_snapshot)
+      : payoutPercent;
+  const shouldSettleCleaner = (cleanerHasShare || hasCarvedSlice) && cleanerSettleCents > 0;
+
+  if (shouldSettleCleaner) {
     const payoutBase = {
       organization_id: appt.organization_id,
       cleaner_id: appt.cleaner_id,
       appointment_id: appointmentId,
-      amount: cleanerCents / 100,
-      payout_percent_snapshot: payoutPercent,
+      amount: cleanerSettleCents / 100,
+      payout_percent_snapshot: cleanerSettlePercent,
     };
 
     const upsertPayout = async (fields: Record<string, unknown>) => {
-      const { data: existing } = await supabase
-        .from('payouts')
-        .select('id')
-        .eq('appointment_id', appointmentId)
-        .limit(1);
-      if (existing && existing.length > 0) {
-        await supabase.from('payouts').update(fields).eq('id', (existing[0] as { id: string }).id);
+      if (priorPayout) {
+        await supabase.from('payouts').update(fields).eq('id', priorPayout.id);
       } else {
         await supabase.from('payouts').insert(fields);
       }
@@ -187,7 +216,7 @@ export async function settleCleanerPayout(
     // Cleaner isn't Connect-ready yet: HOLD their slice on the platform (the tenant already got
     // only their remainder, so the money stays put) as a 'pending' payout. The reconcile retry
     // settles it once the cleaner finishes onboarding (account.updated flips onboarding_complete).
-    if (!cleanerOnboarded) {
+    if (!cleanerAccountReady) {
       await upsertPayout({ ...payoutBase, status: 'pending' });
       await recordPaymentEvent(supabase, {
         appointmentId,
@@ -195,7 +224,7 @@ export async function settleCleanerPayout(
         eventType: 'cleaner_payout_held',
         newStatus: 'pending',
         actor: 'webhook',
-        amount: cleanerCents,
+        amount: cleanerSettleCents,
         payload: { reason: 'cleaner_not_onboarded' },
       });
       return { settled: true, reason: 'cleaner_slice_held' };
@@ -205,7 +234,7 @@ export async function settleCleanerPayout(
     try {
       transfer = await createPlatformTransfer({
         destinationAccountId: cleaner!.stripe_connect_account_id!,
-        amountCents: cleanerCents,
+        amountCents: cleanerSettleCents,
         sourceTransactionId: platformChargeId,
         transferGroup,
         idempotencyKey: `cleaner-payout-${appointmentId}`,
@@ -219,7 +248,7 @@ export async function settleCleanerPayout(
         eventType: 'cleaner_transfer_failed',
         newStatus: 'failed',
         actor: 'webhook',
-        amount: cleanerCents,
+        amount: cleanerSettleCents,
         payload: { error: err instanceof Error ? err.message : String(err) },
       });
       return { settled: false, reason: 'cleaner_transfer_failed' };
@@ -237,7 +266,7 @@ export async function settleCleanerPayout(
       eventType: 'cleaner_paid',
       newStatus: 'paid',
       actor: 'webhook',
-      amount: cleanerCents,
+      amount: cleanerSettleCents,
       payload: { transfer_id: transfer.id },
     });
   }
