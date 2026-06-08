@@ -105,13 +105,18 @@ export async function settleCleanerPayout(
       .maybeSingle();
     cleaner = cleanerRow as CleanerRow | null;
   }
-  const cleanerPayable =
+  // A cleaner whose payout share we must CARVE OUT, even if they can't be paid yet: assigned,
+  // not hourly-external, positive %. We split on their real % so the tenant gets only their TRUE
+  // remainder; then either pay the cleaner now (onboarded) or HOLD their slice for a later retry.
+  // This replaces the old behavior where an un-onboarded cleaner's share silently folded into the
+  // tenant payout (payoutPercent forced to 0).
+  const cleanerHasShare =
     !!cleaner &&
     cleaner.payout_model !== 'hourly_external' &&
-    !!cleaner.stripe_connect_account_id &&
-    cleaner.stripe_connect_onboarding_complete &&
     Number(cleaner.payout_percent) > 0;
-  const payoutPercent = cleanerPayable ? Number(cleaner!.payout_percent) : 0;
+  const cleanerOnboarded =
+    cleanerHasShare && !!cleaner!.stripe_connect_account_id && cleaner!.stripe_connect_onboarding_complete;
+  const payoutPercent = cleanerHasShare ? Number(cleaner!.payout_percent) : 0;
 
   const { cleanerCents, tenantRemainderCents } = computePaymentSplit({
     grossCents: splitBaseCents,
@@ -156,8 +161,8 @@ export async function settleCleanerPayout(
   }
 
   // 2) Cleaner percentage → cleaner connected account (Scenario 1). Soft-fail → 'failed' payout
-  //    row for the retry sweep.
-  if (cleanerPayable && cleanerCents > 0) {
+  //    row for the retry sweep; not-yet-onboarded → 'pending' (held) for the retry sweep.
+  if (cleanerHasShare && cleanerCents > 0) {
     const payoutBase = {
       organization_id: appt.organization_id,
       cleaner_id: appt.cleaner_id,
@@ -178,6 +183,23 @@ export async function settleCleanerPayout(
         await supabase.from('payouts').insert(fields);
       }
     };
+
+    // Cleaner isn't Connect-ready yet: HOLD their slice on the platform (the tenant already got
+    // only their remainder, so the money stays put) as a 'pending' payout. The reconcile retry
+    // settles it once the cleaner finishes onboarding (account.updated flips onboarding_complete).
+    if (!cleanerOnboarded) {
+      await upsertPayout({ ...payoutBase, status: 'pending' });
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'cleaner_payout_held',
+        newStatus: 'pending',
+        actor: 'webhook',
+        amount: cleanerCents,
+        payload: { reason: 'cleaner_not_onboarded' },
+      });
+      return { settled: true, reason: 'cleaner_slice_held' };
+    }
 
     let transfer;
     try {

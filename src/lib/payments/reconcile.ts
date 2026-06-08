@@ -4,7 +4,7 @@
  *
  *   1. retryDeadLetterWebhooks   — re-dispatch webhook_events stuck in received/failed
  *   2. reconcileStuckPayments    — replay the true Stripe PI status for pending/processing payments past SLA
- *   3. retryFailedPayouts        — re-run cleaner settlement for payouts left 'failed'
+ *   3. retryFailedPayouts        — re-run cleaner settlement for payouts left 'failed' or 'pending' (held)
  *   4. checkMoneyMathInvariants  — flag any paid cleaner payout that doesn't match the locked split
  *
  * Each job swallows per-item errors so one bad row never stalls the sweep. Everything routes
@@ -251,10 +251,13 @@ export async function retryFailedPayouts(
 ): Promise<FailedPayoutResult> {
   const batch = opts.batch ?? DEFAULT_BATCH;
 
+  // 'failed' = a transfer that errored; 'pending' = a cleaner slice HELD because the cleaner wasn't
+  // Connect-onboarded at settlement (settleCleanerPayout). Re-running settle is idempotent: it pays
+  // the cleaner once they've onboarded, or re-holds otherwise. No other flow writes a 'pending' payout.
   const { data: rows } = await supabase
     .from('payouts')
     .select('id, appointment_id')
-    .eq('status', 'failed')
+    .in('status', ['failed', 'pending'])
     .not('appointment_id', 'is', null)
     .limit(batch);
 
