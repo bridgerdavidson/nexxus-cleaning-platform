@@ -245,8 +245,11 @@ export async function reverseJobTransfersForRefund(
         appointmentId: p.appointmentId,
         organizationId: p.organizationId ?? null,
         stripeEventId: p.stripeEventId ?? null,
-        // Use the sweep-retried name for the cleaner leg so a failed cleaner reversal self-heals.
-        eventType: isCleanerTransfer ? 'cleaner_clawback_failed' : 'transfer_reversal_failed',
+        // A failed REFUND reversal self-heals via the charge.refunded webhook re-running this with
+        // cumulative amount_reversed math, so record a DISTINCT type the full-clawback sweep
+        // ignores: retryStrandedClawbacks reverses the FULL payout, which would over-claw-back what
+        // was only a partial refund. (clawbackCleanerPayout still uses cleaner_clawback_failed.)
+        eventType: isCleanerTransfer ? 'refund_clawback_failed' : 'transfer_reversal_failed',
         actor: p.actor,
         amount: reversalCents,
         payload: { transfer_id: t.id, error: err instanceof Error ? err.message : String(err) },

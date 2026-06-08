@@ -98,9 +98,12 @@ export async function POST(
         amountCents: isPartial ? refundCents : undefined,
         reason,
         metadata: { appointment_id: payment.appointment_id, initiator_user_id: auth.userId },
-        idempotencyKey: isPartial
-          ? `refund-${payment.appointment_id}-${refundCents}`
-          : `refund-${payment.appointment_id}-full`,
+        // Key on the CUMULATIVE refunded target (prior + this), NOT the per-refund amount: two
+        // legitimate equal-sized partial refunds reach different cumulative targets → distinct keys,
+        // while a true double-submit of the SAME refund reuses the key (Stripe dedupes → one refund).
+        // A per-amount key would let a 2nd equal partial reuse the 1st refund yet still advance the
+        // cumulative and over-claw-back the transfers.
+        idempotencyKey: `refund-${payment.appointment_id}-cum-${alreadyRefunded + refundCents}`,
       });
     } catch (err) {
       return NextResponse.json(
