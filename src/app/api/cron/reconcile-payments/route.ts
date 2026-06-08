@@ -6,6 +6,7 @@ import {
   reconcileStuckPayments,
   settleUnsettledCaptures,
   retryFailedPayouts,
+  retryHeldCleanerPayouts,
   retryStrandedClawbacks,
   checkMoneyMathInvariants,
 } from '@/lib/payments/reconcile';
@@ -22,7 +23,8 @@ export const runtime = 'nodejs';
  *   2) stuck-payment reconcile   — replay the true Stripe PI status for pending payments past SLA
  *   2b) unsettled-capture heal   — re-run settlement for captured charges whose funds never moved
  *   3) failed-payout retry       — re-run cleaner settlement for payouts left 'failed'
- *   3b) stranded-clawback retry  — re-attempt cleaner clawbacks that failed (cleaner_clawback_failed)
+ *   3b) held-cleaner-slice retry — pay HELD cleaner slices (snapshot) once the cleaner onboards
+ *   3c) stranded-clawback retry  — re-attempt cleaner clawbacks that failed (cleaner_clawback_failed)
  *   4) money-math invariant      — flag any paid cleaner payout that doesn't match the locked split
  *
  * Jobs run sequentially (so a dead-letter replay and a stuck-payment replay can't race on the
@@ -44,6 +46,7 @@ export async function POST(request: NextRequest) {
     const stuckPayments = await reconcileStuckPayments(supabaseAdmin);
     const unsettledCaptures = await settleUnsettledCaptures(supabaseAdmin);
     const failedPayouts = await retryFailedPayouts(supabaseAdmin);
+    const heldPayouts = await retryHeldCleanerPayouts(supabaseAdmin);
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
     const moneyMath = await checkMoneyMathInvariants(supabaseAdmin);
 
@@ -53,6 +56,7 @@ export async function POST(request: NextRequest) {
       stuckPayments,
       unsettledCaptures,
       failedPayouts,
+      heldPayouts,
       strandedClawbacks,
       moneyMath,
     });

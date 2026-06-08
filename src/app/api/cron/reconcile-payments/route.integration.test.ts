@@ -417,4 +417,44 @@ describe('POST /api/cron/reconcile-payments', () => {
       .eq('event_type', 'money_math_violation');
     expect((events ?? []).length).toBe(1);
   });
+
+  it('held-payout retry: pays a HELD cleaner slice at its SNAPSHOT amount once the cleaner is onboarded', async () => {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    // The cleaner is onboarded now (beforeEach). A slice was HELD earlier at $50 (snapshot), even
+    // though their CURRENT payout_percent (60) would recompute to $60 — the retry must pay the $50.
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 50,
+      status: 'pending',
+      payout_percent_snapshot: 50,
+    });
+
+    const { status, body } = await callRoute<{ heldPayouts: { settled: number } }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+    expect(body.heldPayouts.settled).toBeGreaterThanOrEqual(1);
+
+    // Paid the SNAPSHOT $50 (5000c), NOT a recompute of the current 60% ($60); the row flips to paid.
+    expect(vi.mocked(createPlatformTransfer)).toHaveBeenCalledWith(
+      expect.objectContaining({ amountCents: 5000, idempotencyKey: `cleaner-payout-${appt.id}` }),
+    );
+    const { data: payout } = await db
+      .from('payouts')
+      .select('status')
+      .eq('appointment_id', appt.id)
+      .single();
+    expect((payout as { status: string }).status).toBe('paid');
+  });
 });

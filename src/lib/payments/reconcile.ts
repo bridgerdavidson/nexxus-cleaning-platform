@@ -4,7 +4,8 @@
  *
  *   1. retryDeadLetterWebhooks   — re-dispatch webhook_events stuck in received/failed
  *   2. reconcileStuckPayments    — replay the true Stripe PI status for pending/processing payments past SLA
- *   3. retryFailedPayouts        — re-run cleaner settlement for payouts left 'failed' or 'pending' (held)
+ *   3. retryFailedPayouts        — re-run cleaner settlement for payouts left 'failed'
+ *   3b. retryHeldCleanerPayouts  — pay HELD cleaner slices (snapshot amount) once the cleaner onboards
  *   4. checkMoneyMathInvariants  — flag any paid cleaner payout that doesn't match the locked split
  *
  * Each job swallows per-item errors so one bad row never stalls the sweep. Everything routes
@@ -20,6 +21,7 @@ import { clawbackCleanerPayout } from './clawback';
 import { recordPaymentEvent } from './events';
 import { checkSplitInvariant, type SplitInvariantResult } from './moneyMath';
 import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconcile';
+import { createPlatformTransfer, transferGroupFor } from '@/lib/stripe/transfers';
 
 const DEFAULT_BATCH = 100;
 const DEFAULT_STALE_MINUTES = 15;
@@ -251,13 +253,14 @@ export async function retryFailedPayouts(
 ): Promise<FailedPayoutResult> {
   const batch = opts.batch ?? DEFAULT_BATCH;
 
-  // 'failed' = a transfer that errored; 'pending' = a cleaner slice HELD because the cleaner wasn't
-  // Connect-onboarded at settlement (settleCleanerPayout). Re-running settle is idempotent: it pays
-  // the cleaner once they've onboarded, or re-holds otherwise. No other flow writes a 'pending' payout.
+  // Only 'failed' transfers here. Re-running settle RECOMPUTES the split, which is correct for a
+  // failed transfer (same inputs). HELD ('pending') slices must NOT be recomputed (the cleaner's %
+  // may have changed since the hold) — they're retried at their snapshot amount by
+  // retryHeldCleanerPayouts below.
   const { data: rows } = await supabase
     .from('payouts')
     .select('id, appointment_id')
-    .in('status', ['failed', 'pending'])
+    .eq('status', 'failed')
     .not('appointment_id', 'is', null)
     .limit(batch);
 
@@ -271,6 +274,103 @@ export async function retryFailedPayouts(
   }
 
   return { retried: list.length, settled };
+}
+
+// ── 3b) Held-cleaner-slice retry ────────────────────────────────────────────────
+export interface HeldPayoutResult {
+  checked: number;
+  settled: number;
+}
+
+/**
+ * Pay out cleaner slices HELD at settlement because the cleaner wasn't Connect-onboarded yet
+ * (settleCleanerPayout wrote a 'pending' payout; the tenant already received their remainder). Once
+ * the cleaner is onboarded, transfer the SNAPSHOT amount recorded on the payout row — NOT a
+ * recompute from the cleaner's current payout profile, which could over/underpay if their % changed
+ * after the hold. Idempotent via the `cleaner-payout-${appt}` key + the row flipping to 'paid'.
+ */
+export async function retryHeldCleanerPayouts(
+  supabase: SupabaseClient,
+  opts: { batch?: number } = {},
+): Promise<HeldPayoutResult> {
+  const batch = opts.batch ?? DEFAULT_BATCH;
+
+  const { data: rows } = await supabase
+    .from('payouts')
+    .select('id, appointment_id, organization_id, cleaner_id, amount')
+    .eq('status', 'pending')
+    .not('appointment_id', 'is', null)
+    .not('cleaner_id', 'is', null)
+    .limit(batch);
+
+  const list = (rows ?? []) as Array<{
+    id: string;
+    appointment_id: string;
+    organization_id: string | null;
+    cleaner_id: string;
+    amount: number | string;
+  }>;
+  let settled = 0;
+
+  for (const row of list) {
+    const { data: cleanerRow } = await supabase
+      .from('cleaner_profiles')
+      .select('stripe_connect_account_id, stripe_connect_onboarding_complete, payout_model')
+      .eq('id', row.cleaner_id)
+      .maybeSingle();
+    const cleaner = cleanerRow as
+      | { stripe_connect_account_id: string | null; stripe_connect_onboarding_complete: boolean; payout_model: string | null }
+      | null;
+    // Pay only once the cleaner is Connect-ready. A cleaner who became hourly_external keeps the
+    // slice held (funds stay safe on the platform) for manual resolution — never auto-redirected.
+    if (
+      !cleaner?.stripe_connect_account_id ||
+      !cleaner.stripe_connect_onboarding_complete ||
+      cleaner.payout_model === 'hourly_external'
+    ) {
+      continue;
+    }
+
+    const cents = Math.round(Number(row.amount) * 100);
+    if (cents <= 0) continue;
+
+    try {
+      const transfer = await createPlatformTransfer({
+        destinationAccountId: cleaner.stripe_connect_account_id,
+        amountCents: cents,
+        sourceTransactionId: null,
+        transferGroup: transferGroupFor(row.appointment_id),
+        idempotencyKey: `cleaner-payout-${row.appointment_id}`,
+        appointmentId: row.appointment_id,
+      });
+      await supabase
+        .from('payouts')
+        .update({ status: 'paid', stripe_transfer_id: transfer.id, paid_at: new Date().toISOString() })
+        .eq('id', row.id);
+      await recordPaymentEvent(supabase, {
+        appointmentId: row.appointment_id,
+        organizationId: row.organization_id,
+        eventType: 'cleaner_paid',
+        newStatus: 'paid',
+        actor: 'reconciler',
+        amount: cents,
+        payload: { transfer_id: transfer.id, from: 'held_slice' },
+      });
+      settled++;
+    } catch (err) {
+      // Leave the row 'pending' so the next sweep retries the SAME snapshot amount.
+      await recordPaymentEvent(supabase, {
+        appointmentId: row.appointment_id,
+        organizationId: row.organization_id,
+        eventType: 'cleaner_transfer_failed',
+        actor: 'reconciler',
+        amount: cents,
+        payload: { error: err instanceof Error ? err.message : String(err), from: 'held_slice' },
+      });
+    }
+  }
+
+  return { checked: list.length, settled };
 }
 
 // ── 4) Money-math invariant check ─────────────────────────────────────────────────
