@@ -471,8 +471,48 @@ async function handleSetupIntentSucceeded(
     .eq('token', token)
     .eq('status', 'pending');
 
-  if (error) console.error('setup_intent.succeeded: failed to complete card link:', error);
-  else console.log('setup_intent.succeeded: card link completed (SI', setupIntent.id, ')');
+  if (error) {
+    console.error('setup_intent.succeeded: failed to complete card link:', error);
+    return;
+  }
+  console.log('setup_intent.succeeded: card link completed (SI', setupIntent.id, ')');
+
+  // Recovery: the card link is how an admin unsticks a homeowner whose hold needs authentication
+  // (3-D Secure off-session) or whose card was declined. Now that the homeowner has saved a card
+  // on-session (3-D Secure completed, so it's set up for off-session use), re-point their stuck
+  // appointments to it and re-queue them so the JIT authorizer (cron) retries the hold off-session
+  // (a set-up card no longer triggers 3-D Secure). Without this an appointment left in
+  // requires_action/failed would never be retried, and capture at completion would fail.
+  const pm =
+    typeof setupIntent.payment_method === 'string'
+      ? setupIntent.payment_method
+      : setupIntent.payment_method?.id ?? null;
+  const { data: linkRow } = await supabase
+    .from('homeowner_payment_links')
+    .select('homeowner_id, organization_id')
+    .eq('token', token)
+    .maybeSingle();
+  const link = linkRow as { homeowner_id: string; organization_id: string } | null;
+  if (!pm || !link?.homeowner_id || !link.organization_id) return;
+
+  const { data: requeued } = await supabase
+    .from('appointments')
+    .update({
+      payment_method_id: pm,
+      authorization_status: 'scheduled',
+      authorize_at: new Date().toISOString(),
+    })
+    .eq('organization_id', link.organization_id)
+    .eq('homeowner_id', link.homeowner_id)
+    .in('authorization_status', ['requires_action', 'failed'])
+    .not('status', 'in', '(cancelled,completed)')
+    .select('id');
+
+  if (requeued && requeued.length > 0) {
+    console.log(
+      `setup_intent.succeeded: re-queued ${requeued.length} stuck appointment(s) for re-authorization on the new card`,
+    );
+  }
 }
 
 /**
