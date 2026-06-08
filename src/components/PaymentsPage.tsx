@@ -448,7 +448,7 @@ export default function PaymentsPage({
                                 payment.status
                               )}`}
                             >
-                              {payment.status}
+                              {payment.status === "processing" ? "Clearing" : payment.status}
                             </span>
                             {payment.is_self_pay && (
                               <StatusBadge status="self_pay" size="sm" />

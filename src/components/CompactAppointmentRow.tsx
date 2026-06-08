@@ -16,6 +16,9 @@ const getPaymentChip = (status: PaymentStatus): PaymentChip => {
       return { label: "Failed", className: "bg-red-100 text-red-700" };
     case "refunded":
       return { label: "Refunded", className: "bg-blue-100 text-blue-700" };
+    case "processing":
+      // ACH debit clearing; not "Unpaid" (money is in flight).
+      return { label: "Clearing", className: "bg-amber-100 text-amber-700" };
     case "pending":
     default:
       return { label: "Unpaid", className: "bg-gray-100 text-gray-700" };
