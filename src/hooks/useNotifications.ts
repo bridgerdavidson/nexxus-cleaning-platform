@@ -26,6 +26,18 @@ const PAGE_SIZE = 30;
 // while the query is still loading (query.data is undefined).
 const EMPTY_ITEMS: NotificationItem[] = [];
 
+// Module-scoped (shared across every useNotifications instance) so a given notification row fires
+// exactly ONE toast. The bell mounts more than once per page (desktop TopBar + MobileTopBar), and
+// React StrictMode / realtime redelivery can deliver the same INSERT multiple times — without this,
+// a single failure showed up as a stack of identical toasts. Bounded so it can't grow unbounded.
+const toastedNotificationIds = new Set<string>();
+function markToastedOnce(id: string): boolean {
+  if (toastedNotificationIds.has(id)) return false;
+  if (toastedNotificationIds.size > 500) toastedNotificationIds.clear();
+  toastedNotificationIds.add(id);
+  return true;
+}
+
 /**
  * The user's in-app notification feed, backed by the notification_events outbox.
  *
@@ -70,7 +82,8 @@ export function useNotifications() {
     onEvent: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
       if (payload.eventType === 'INSERT') {
         const row = payload.new as Partial<NotificationItem> | undefined;
-        if (row?.event_type) {
+        // Toast once per row id, across all bell instances / redeliveries.
+        if (row?.id && row.event_type && markToastedOnce(row.id)) {
           const d = describeNotification(row.event_type, row.payload);
           showToast(d.title, {
             variant: toastVariantForTone(d.tone),
