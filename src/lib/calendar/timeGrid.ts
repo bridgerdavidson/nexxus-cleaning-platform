@@ -52,3 +52,11 @@ export function buildSlots(hours: BusinessHours, step: number = DEFAULT_SNAP_MIN
   for (let m = hours.startMin; m < hours.endMin; m += step) slots.push(m);
   return slots;
 }
+
+/** Minutes-from-midnight to a `HH:MM:SS` string (the DB `scheduled_time` format). */
+export function minutesToTimeString(min: number): string {
+  const clamped = clampMinutes(Math.round(min), 0, 24 * 60 - 1);
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}

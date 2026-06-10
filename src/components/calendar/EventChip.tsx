@@ -19,6 +19,10 @@ interface EventChipProps {
   /** Hide the cleaner line (e.g. on the dispatch board where the column already says who). */
   hideCleaner?: boolean;
   isDragging?: boolean;
+  /** Ref for the @dnd-kit draggable node. */
+  innerRef?: React.Ref<HTMLButtonElement>;
+  /** Spread @dnd-kit listeners/attributes; presence also flips the cursor to grab. */
+  dragHandleProps?: Record<string, unknown>;
 }
 
 export default function EventChip({
@@ -28,6 +32,8 @@ export default function EventChip({
   className = '',
   hideCleaner = false,
   isDragging = false,
+  innerRef,
+  dragHandleProps,
 }: EventChipProps) {
   const v = statusVisual(event.status, {
     cleanerConfirmationStatus: event.cleanerConfirmationStatus,
@@ -41,14 +47,16 @@ export default function EventChip({
   return (
     <button
       type="button"
+      ref={innerRef}
       onClick={onClick}
       style={style}
+      {...dragHandleProps}
       aria-label={`${v.label}. ${event.customerLabel}. ${time}. ${event.serviceLabel}${
         pill ? `. ${pill.label}` : ''
       }`}
       className={`absolute flex flex-col overflow-hidden rounded-md border border-black/[0.06] text-left shadow-sm transition-[box-shadow,transform] duration-150 hover:z-10 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1 ${v.chipClass} ${
-        isDragging ? 'opacity-40' : ''
-      } ${className}`}
+        dragHandleProps ? 'cursor-grab touch-none active:cursor-grabbing' : 'cursor-pointer'
+      } ${isDragging ? 'opacity-40' : ''} ${className}`}
     >
       <span className={`absolute inset-y-0 left-0 w-1 ${v.barClass}`} aria-hidden="true" />
       {pill && (

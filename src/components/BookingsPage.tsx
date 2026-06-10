@@ -30,6 +30,7 @@ import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import CalendarCockpit from "./calendar/CalendarCockpit";
+import { useToast } from "@/contexts/ToastContext";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
@@ -110,6 +111,7 @@ export default function BookingsPage({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { showToast } = useToast();
 
   // Calendar-specific state
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
@@ -588,6 +590,46 @@ export default function BookingsPage({
       }
     },
     [onAppointmentUpdated, onRefreshAppointments],
+  );
+
+  // Optimistic + instant reschedule for the calendar cockpit (drag-to-move). Patches the
+  // query cache immediately so the chip lands in its new slot, then persists and reconciles
+  // (or rolls back + toasts on failure).
+  const handleCockpitReschedule = useCallback(
+    async (appointmentId: string, newDate: string, newTime: string) => {
+      const original = appointments.find((a) => a.id === appointmentId);
+      const originalDate = original?.scheduled_date;
+      const originalTime = original?.scheduled_time;
+
+      onAppointmentUpdated?.(appointmentId, {
+        scheduled_date: newDate,
+        scheduled_time: newTime,
+      });
+
+      const result = await updateAppointment(appointmentId, {
+        scheduled_date: newDate,
+        scheduled_time: newTime,
+      });
+
+      if (result.success) {
+        if (result.data) onAppointmentUpdated?.(appointmentId, result.data);
+        showToast("Appointment moved", { variant: "success" });
+      } else {
+        if (originalDate && originalTime) {
+          onAppointmentUpdated?.(appointmentId, {
+            scheduled_date: originalDate,
+            scheduled_time: originalTime,
+          });
+        } else if (onRefreshAppointments) {
+          onRefreshAppointments();
+        }
+        showToast("Could not move appointment", {
+          variant: "error",
+          description: result.error,
+        });
+      }
+    },
+    [appointments, onAppointmentUpdated, onRefreshAppointments, showToast],
   );
 
   // Local reschedule handler for deferred DB sync
@@ -1105,6 +1147,7 @@ export default function BookingsPage({
           appointments={allFilteredAppointments}
           loading={loading}
           onAppointmentClick={handleCalendarAppointmentClick}
+          onReschedule={canEdit ? handleCockpitReschedule : undefined}
           canEdit={canEdit}
           role={role}
         />

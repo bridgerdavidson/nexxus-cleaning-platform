@@ -9,6 +9,7 @@ import {
   eventHeightPx,
   buildHourTicks,
   buildSlots,
+  minutesToTimeString,
 } from './timeGrid';
 
 describe('timeGrid geometry', () => {
@@ -52,5 +53,12 @@ describe('timeGrid geometry', () => {
 
   it('builds drop slots on a step lattice, end-exclusive', () => {
     expect(buildSlots({ startMin: 420, endMin: 480 }, 15)).toEqual([420, 435, 450, 465]);
+  });
+
+  it('formats minutes to a HH:MM:SS time string', () => {
+    expect(minutesToTimeString(540)).toBe('09:00:00');
+    expect(minutesToTimeString(615)).toBe('10:15:00');
+    expect(minutesToTimeString(0)).toBe('00:00:00');
+    expect(minutesToTimeString(24 * 60)).toBe('23:59:00'); // clamped within the day
   });
 });

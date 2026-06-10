@@ -1,14 +1,23 @@
 /**
  * A single vertical time column for one day (Week) or one cleaner (Day dispatch board).
  * Draws faint hour gridlines, then absolutely positions each event using the pure geometry +
- * overlap-lane helpers. The DnD droppable lattice is layered on in Phase 3; this component is
- * presentational.
+ * overlap-lane helpers. When `editable`, chips are draggable and, while a drag is active, a
+ * 15-minute droppable lattice is mounted behind them (mounted only during drag for perf).
  */
 'use client';
 import React from 'react';
 import { packEventsIntoLanes } from '@/lib/calendar/overlapLayout';
-import { buildHourTicks, minutesToY, eventHeightPx } from '@/lib/calendar/timeGrid';
+import {
+  buildHourTicks,
+  buildSlots,
+  minutesToY,
+  eventHeightPx,
+  PX_PER_MIN,
+  DEFAULT_SNAP_MIN,
+} from '@/lib/calendar/timeGrid';
 import EventChip from './EventChip';
+import DraggableEventChip from './DraggableEventChip';
+import DropSlot from './DropSlot';
 import type { CalendarEvent, BusinessHours } from '@/lib/calendar/types';
 
 const LANE_GAP_PX = 2;
@@ -19,18 +28,28 @@ export default function DayColumn({
   onEventClick,
   hideCleaner = false,
   className = '',
-  draggingId,
+  editable = false,
+  isDragActive = false,
+  slotPrefix,
 }: {
   events: CalendarEvent[];
   hours: BusinessHours;
   onEventClick?: (event: CalendarEvent) => void;
   hideCleaner?: boolean;
   className?: string;
-  draggingId?: string | null;
+  /** Chips become draggable. */
+  editable?: boolean;
+  /** A drag is in progress somewhere; mount the drop lattice. */
+  isDragActive?: boolean;
+  /** Prefix for drop-slot ids: `<date>` (week) or `<cleanerId>:<date>` (dispatch). */
+  slotPrefix?: string;
 }) {
   const laid = packEventsIntoLanes(events);
   const ticks = buildHourTicks(hours);
   const height = minutesToY(hours.endMin, hours.startMin);
+  const slots =
+    editable && isDragActive && slotPrefix ? buildSlots(hours, DEFAULT_SNAP_MIN) : [];
+  const slotHeight = DEFAULT_SNAP_MIN * PX_PER_MIN;
 
   return (
     <div className={`relative flex-1 ${className}`} style={{ height }}>
@@ -44,23 +63,41 @@ export default function DayColumn({
         />
       ))}
 
+      {/* Drop lattice (only while dragging) */}
+      {slots.map((min) => (
+        <DropSlot
+          key={min}
+          id={`slot:${slotPrefix}:${min}`}
+          top={minutesToY(min, hours.startMin)}
+          height={slotHeight}
+        />
+      ))}
+
       {/* Events */}
       {laid.map((ev) => {
         const widthPct = 100 / ev.laneCount;
         const leftPct = ev.lane * widthPct;
-        return (
+        const style: React.CSSProperties = {
+          top: minutesToY(ev.startMin, hours.startMin),
+          height: eventHeightPx(ev.durationMin),
+          left: `calc(${leftPct}% + ${LANE_GAP_PX}px)`,
+          width: `calc(${widthPct}% - ${LANE_GAP_PX * 2}px)`,
+        };
+        return editable ? (
+          <DraggableEventChip
+            key={ev.id}
+            event={ev}
+            hideCleaner={hideCleaner}
+            onClick={() => onEventClick?.(ev)}
+            style={style}
+          />
+        ) : (
           <EventChip
             key={ev.id}
             event={ev}
             hideCleaner={hideCleaner}
-            isDragging={draggingId === ev.id}
             onClick={() => onEventClick?.(ev)}
-            style={{
-              top: minutesToY(ev.startMin, hours.startMin),
-              height: eventHeightPx(ev.durationMin),
-              left: `calc(${leftPct}% + ${LANE_GAP_PX}px)`,
-              width: `calc(${widthPct}% - ${LANE_GAP_PX * 2}px)`,
-            }}
+            style={style}
           />
         );
       })}
