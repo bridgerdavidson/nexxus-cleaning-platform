@@ -141,6 +141,18 @@ export async function authorizeSelfPayAppointment(
     payoutPercent: Number(cleaner!.payout_percent),
   });
 
+  // A prior terminal decline (`failed`) or an unauthenticated `requires_action` means the old
+  // idempotency key is spent: Stripe has it cached against that result, and the admin has likely
+  // switched the company card. Bump reauth_count so this retry gets a fresh key
+  // (`selfpay-auth-<id>-<attempt>`) and actually re-charges the new card. Do NOT bump for an
+  // in-flight `authorizing` orphan — the cron must reuse the same key there so a hold that may have
+  // actually landed isn't placed twice.
+  let reauthAttempt = appt.reauth_count ?? 0;
+  if (appt.authorization_status === 'failed' || appt.authorization_status === 'requires_action') {
+    reauthAttempt = reauthAttempt + 1;
+    await supabase.from('appointments').update({ reauth_count: reauthAttempt }).eq('id', appt.id);
+  }
+
   await supabase.from('appointments').update({ authorization_status: 'authorizing' }).eq('id', appt.id);
 
   let pi;
@@ -151,7 +163,7 @@ export async function authorizeSelfPayAppointment(
       paymentMethodId,
       appointmentId: appt.id,
       organizationId: appt.organization_id,
-      reauthAttempt: appt.reauth_count ?? 0,
+      reauthAttempt,
     });
   } catch (err) {
     await supabase.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);

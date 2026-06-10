@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { CreditCard, Loader2, AlertCircle } from "lucide-react";
+import { CreditCard, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import HomeownerCardPicker, { type CardPickerHandle } from "./HomeownerCardPicker";
+import { placeAppointmentHold, type PlaceHoldResult } from "@/lib/payments/authorizeClient";
 
 interface SavedCard {
   id: string;
@@ -22,6 +23,8 @@ interface Props {
   /** Panel role. A homeowner manages their OWN cards (self-scoped); staff act on the homeowner's
    *  behalf (admin-scoped). Cleaners never see this (the section is hidden for them). */
   role: "admin" | "manager" | "cleaner" | "homeowner";
+  /** Called with the hold result after a card change so the parent can clear the failure banner. */
+  onHoldResult?: (result: PlaceHoldResult) => void;
 }
 
 /**
@@ -31,7 +34,7 @@ interface Props {
  * appointment's payment_method_id via /api/appointments/:id/payment-method. Renders the picker in
  * staff mode (admin/manager) or self mode (homeowner).
  */
-export default function AppointmentCardManager({ appointmentId, homeownerId, organizationId, role }: Props) {
+export default function AppointmentCardManager({ appointmentId, homeownerId, organizationId, role, onHoldResult }: Props) {
   const staffMode = role !== "homeowner";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cards, setCards] = useState<SavedCard[]>([]);
@@ -40,6 +43,7 @@ export default function AppointmentCardManager({ appointmentId, homeownerId, org
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
+  const [holdResult, setHoldResult] = useState<PlaceHoldResult | null>(null);
   const pickerRef = useRef<CardPickerHandle>(null);
 
   const load = useCallback(async () => {
@@ -93,6 +97,13 @@ export default function AppointmentCardManager({ appointmentId, homeownerId, org
       setSelectedId(result.paymentMethodId);
       setEditing(false);
       await load();
+      // Immediately (re)place the hold on the new card and surface the result, instead of only
+      // queuing the JIT cron. Staff-only: a homeowner managing their own card can't authorize.
+      if (staffMode) {
+        const hold = await placeAppointmentHold(appointmentId, organizationId);
+        setHoldResult(hold);
+        onHoldResult?.(hold);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update card");
     } finally {
@@ -177,6 +188,20 @@ export default function AppointmentCardManager({ appointmentId, homeownerId, org
       {error && (
         <p className="mt-2 flex items-center gap-2 text-sm text-amber-600">
           <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+        </p>
+      )}
+      {!error && holdResult && (
+        <p
+          className={`mt-2 flex items-center gap-2 text-sm ${
+            holdResult.ok ? "text-success-600" : "text-amber-600"
+          }`}
+        >
+          {holdResult.ok ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 shrink-0" />
+          )}
+          {holdResult.message}
         </p>
       )}
     </div>

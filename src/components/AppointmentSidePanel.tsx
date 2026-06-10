@@ -36,6 +36,7 @@ import {
 } from "../lib/dashboardHero";
 import PaymentMethodForm from "./PaymentMethodForm";
 import AppointmentCardManager from "./AppointmentCardManager";
+import AppointmentSelfPayCardManager from "./AppointmentSelfPayCardManager";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 import JobPhotoLightbox from "./JobPhotoLightbox";
 import { useDismissGuard } from "../hooks/useDismissGuard";
@@ -139,6 +140,11 @@ export default function AppointmentSidePanel({
     null,
   );
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  // Local mirror of the appointment's authorization_status so the failure banner can clear the
+  // instant a card change re-places the hold (props only refresh on the next list refetch).
+  const [authStatus, setAuthStatus] = useState<string | null>(
+    appointment?.authorization_status ?? null,
+  );
 
   // Lightbox state for job photos
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -291,6 +297,11 @@ export default function AppointmentSidePanel({
     // Reset payment form state when appointment changes
     setShowPaymentForm(false);
   }, [appointment?.homeowner_id, isOpen, fetchPaymentMethod]);
+
+  // Keep the local authorization mirror in sync as the appointment (or its status) changes.
+  useEffect(() => {
+    setAuthStatus(appointment?.authorization_status ?? null);
+  }, [appointment?.id, appointment?.authorization_status]);
 
   // Fetch cleaner feedback when appointment is rejected
   useEffect(() => {
@@ -650,6 +661,7 @@ export default function AppointmentSidePanel({
                 status={appointment.status}
                 size="lg"
                 cleanerConfirmationStatus={appointment.cleaner_confirmation_status}
+                pendingLabel="Awaiting cleaner"
               />
             </div>
             {canEdit && !isEditing && (
@@ -993,12 +1005,43 @@ export default function AppointmentSidePanel({
               <div className="flex-1">
                 <p className="text-sm text-gray-500 mb-2">Payment Method</p>
 
+                {stripeNewChargeFlowUiEnabled() &&
+                  (authStatus === "failed" || authStatus === "requires_action") && (
+                    <div
+                      className={`mb-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                        authStatus === "failed"
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <span>
+                        {authStatus === "failed"
+                          ? "The card hold failed. Choose a different card or add a new one to place the hold."
+                          : "This card needs the customer to verify their identity, so the hold isn't placed yet. Choose a different card to place the hold."}
+                      </span>
+                    </div>
+                  )}
+
                 {stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
                   <AppointmentCardManager
                     appointmentId={appointment.id}
                     homeownerId={appointment.homeowner_id}
                     organizationId={appointment.organization_id ?? ""}
                     role={role}
+                    onHoldResult={(r) => {
+                      if (r.ok) setAuthStatus("authorized");
+                    }}
+                  />
+                ) : stripeNewChargeFlowUiEnabled() &&
+                  appointment.is_self_pay &&
+                  appointment.organization_id ? (
+                  <AppointmentSelfPayCardManager
+                    appointmentId={appointment.id}
+                    organizationId={appointment.organization_id}
+                    onHoldResult={(r) => {
+                      if (r.ok) setAuthStatus("authorized");
+                    }}
                   />
                 ) : showPaymentForm && appointment.homeowner_id ? (
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
