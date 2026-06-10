@@ -608,6 +608,51 @@ describe('POST /api/appointments/:appointmentId/authorize — self-pay', () => {
     expect(vi.mocked(createSelfPayAuthorization)).toHaveBeenCalledTimes(1);
   });
 
+  it('switching a FAILED self-pay appointment to a bank clears the failed flag (deferred_ach)', async () => {
+    const prevAch = process.env.STRIPE_ACH_ENABLED;
+    process.env.STRIPE_ACH_ENABLED = 'true';
+    // The org's default company method is now a bank — no hold, charged at completion.
+    vi.mocked(listSavedCards).mockResolvedValueOnce([
+      { id: 'pm_company_bank', last4: '6789', isDefault: true, type: 'us_bank_account', bankName: 'Test Bank' },
+    ] as never);
+    try {
+      await giveOrgCard();
+      const appt = await makeSelfPayAppt();
+      const db = createTestSupabaseClient();
+      await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+      // A stale failed charge row from the prior card decline that should be reset to pending.
+      await db.from('payments').insert({
+        organization_id: org.organizationId,
+        appointment_id: appt.id,
+        amount: 62,
+        status: 'failed',
+        payment_type: 'revenue',
+        payment_method: 'card',
+        is_self_pay: true,
+        stripe_payment_intent_id: 'pi_dead',
+      });
+
+      const { status, body } = await callRoute<{ code: string }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(200);
+      expect(body.code).toBe('deferred_ach');
+      // No hold attempted on the bank.
+      expect(vi.mocked(createSelfPayAuthorization)).not.toHaveBeenCalled();
+
+      // The failed flag is cleared, so the row leaves "Payments needing attention".
+      const { data: a } = await db.from('appointments').select('authorization_status').eq('id', appt.id).single();
+      expect((a as { authorization_status: string | null }).authorization_status).toBeNull();
+      // The stale failed charge row is reset so the pill isn't stuck on "Failed".
+      const { data: pay } = await db.from('payments').select('status').eq('appointment_id', appt.id).single();
+      expect((pay as { status: string }).status).toBe('pending');
+    } finally {
+      process.env.STRIPE_ACH_ENABLED = prevAch;
+    }
+  });
+
 });
 
 describe('POST /api/appointments/:appointmentId/authorize — fee passthrough', () => {

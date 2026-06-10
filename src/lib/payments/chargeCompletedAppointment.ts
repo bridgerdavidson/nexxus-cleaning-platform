@@ -25,6 +25,7 @@ import { getPaymentMethodType, listSavedCards } from '@/lib/stripe/customers/hom
 import { chargeAchAppointment } from './chargeAchAppointment';
 import { chargeSelfPayAchAppointment } from './chargeSelfPayAchAppointment';
 import { recordPaymentEvent } from './events';
+import { clearFailedForBank } from './clearFailedForBank';
 
 export type ChargeNowCode =
   | 'charged'
@@ -156,7 +157,11 @@ async function chargeHomeownerNow(
 
   // A bank default is debited via the existing ACH charge-at-completion path (also immediate).
   if (stripeAchEnabled() && (await getPaymentMethodType(appt.payment_method_id)) === 'us_bank_account') {
-    return chargeAchAppointment(supabase, appt.id, actor);
+    const outcome = await chargeAchAppointment(supabase, appt.id, actor);
+    // The debit is in flight (processing), so the prior failed card auth is resolved — drop it out
+    // of "Payments needing attention".
+    if (outcome.ok) await clearFailedForBank(supabase, appt);
+    return outcome;
   }
 
   const { data: orgData } = await supabase
@@ -275,7 +280,9 @@ async function chargeSelfPayNow(
   if (methods.length === 0) return { ok: false, code: 'no_org_card', message: 'No saved company card to charge' };
   const method = methods.find((m) => m.isDefault) ?? methods[0];
   if (stripeAchEnabled() && stripeSelfPayEnabled() && method.type === 'us_bank_account') {
-    return chargeSelfPayAchAppointment(supabase, appt.id, actor);
+    const outcome = await chargeSelfPayAchAppointment(supabase, appt.id, actor);
+    if (outcome.ok) await clearFailedForBank(supabase, appt);
+    return outcome;
   }
 
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);

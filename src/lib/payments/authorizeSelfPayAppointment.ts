@@ -17,6 +17,7 @@ import { computeSelfPayAmounts } from './selfPayMath';
 import { listSavedCards } from '@/lib/stripe/customers/homeowner';
 import { stripeAchEnabled } from '@/lib/stripe/flags';
 import { recordPaymentEvent } from './events';
+import { clearFailedForBank } from './clearFailedForBank';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 
@@ -127,9 +128,12 @@ export async function authorizeSelfPayAppointment(
   const defaultMethod = cards.find((c) => c.isDefault) ?? cards[0];
 
   // Bank (ACH) can't be held: skip the authorization at booking and charge at completion instead
-  // (chargeSelfPayAchAppointment). Mirrors the homeowner `deferred_ach` skip. Return BEFORE the
-  // `authorizing` write + hold so a bank self-pay leaves authorization_status untouched.
+  // (chargeSelfPayAchAppointment). Mirrors the homeowner `deferred_ach` skip. No hold is placed.
   if (stripeAchEnabled() && defaultMethod.type === 'us_bank_account') {
+    // If we're switching to a bank to RECOVER a failed card, clear the failed flag so the
+    // appointment leaves "Payments needing attention" (a bank is charged at completion, so there's
+    // nothing to hold/fix) and reset the stale failed charge row so the pill isn't stuck on "Failed".
+    await clearFailedForBank(supabase, appt);
     return { ok: true, code: 'deferred_ach', message: 'Bank payment is charged when the job is completed' };
   }
 
