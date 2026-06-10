@@ -18,6 +18,7 @@ import { computeChargeBreakdown } from './processingFee';
 import { stripeFeePassthroughEnabled, stripeAchEnabled } from '@/lib/stripe/flags';
 import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from './events';
+import { clearFailedForBank } from './clearFailedForBank';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 
@@ -84,6 +85,9 @@ export async function authorizeAppointment(
   // selected bank never hits the unsupported manual-capture path; the ACH charge-at-completion
   // lifecycle performs the actual debit. Gated by STRIPE_ACH_ENABLED (bank methods only offered then).
   if (stripeAchEnabled() && (await getPaymentMethodType(appt.payment_method_id)) === 'us_bank_account') {
+    // Switching to a bank to recover a failed card: clear the failed flag (a bank is charged at
+    // completion, nothing to hold) so it leaves "Payments needing attention".
+    await clearFailedForBank(supabase, appt);
     return { ok: true, code: 'deferred_ach', message: 'Bank payment is charged when the job is completed (no hold).' };
   }
 

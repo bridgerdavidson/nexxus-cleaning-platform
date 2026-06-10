@@ -17,6 +17,7 @@ import { computeSelfPayAmounts } from './selfPayMath';
 import { listSavedCards } from '@/lib/stripe/customers/homeowner';
 import { stripeAchEnabled } from '@/lib/stripe/flags';
 import { recordPaymentEvent } from './events';
+import { clearFailedForBank } from './clearFailedForBank';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 
@@ -127,9 +128,12 @@ export async function authorizeSelfPayAppointment(
   const defaultMethod = cards.find((c) => c.isDefault) ?? cards[0];
 
   // Bank (ACH) can't be held: skip the authorization at booking and charge at completion instead
-  // (chargeSelfPayAchAppointment). Mirrors the homeowner `deferred_ach` skip. Return BEFORE the
-  // `authorizing` write + hold so a bank self-pay leaves authorization_status untouched.
+  // (chargeSelfPayAchAppointment). Mirrors the homeowner `deferred_ach` skip. No hold is placed.
   if (stripeAchEnabled() && defaultMethod.type === 'us_bank_account') {
+    // If we're switching to a bank to RECOVER a failed card, clear the failed flag so the
+    // appointment leaves "Payments needing attention" (a bank is charged at completion, so there's
+    // nothing to hold/fix) and reset the stale failed charge row so the pill isn't stuck on "Failed".
+    await clearFailedForBank(supabase, appt);
     return { ok: true, code: 'deferred_ach', message: 'Bank payment is charged when the job is completed' };
   }
 
@@ -141,6 +145,18 @@ export async function authorizeSelfPayAppointment(
     payoutPercent: Number(cleaner!.payout_percent),
   });
 
+  // A prior terminal decline (`failed`) or an unauthenticated `requires_action` means the old
+  // idempotency key is spent: Stripe has it cached against that result, and the admin has likely
+  // switched the company card. Bump reauth_count so this retry gets a fresh key
+  // (`selfpay-auth-<id>-<attempt>`) and actually re-charges the new card. Do NOT bump for an
+  // in-flight `authorizing` orphan — the cron must reuse the same key there so a hold that may have
+  // actually landed isn't placed twice.
+  let reauthAttempt = appt.reauth_count ?? 0;
+  if (appt.authorization_status === 'failed' || appt.authorization_status === 'requires_action') {
+    reauthAttempt = reauthAttempt + 1;
+    await supabase.from('appointments').update({ reauth_count: reauthAttempt }).eq('id', appt.id);
+  }
+
   await supabase.from('appointments').update({ authorization_status: 'authorizing' }).eq('id', appt.id);
 
   let pi;
@@ -151,7 +167,7 @@ export async function authorizeSelfPayAppointment(
       paymentMethodId,
       appointmentId: appt.id,
       organizationId: appt.organization_id,
-      reauthAttempt: appt.reauth_count ?? 0,
+      reauthAttempt,
     });
   } catch (err) {
     await supabase.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);

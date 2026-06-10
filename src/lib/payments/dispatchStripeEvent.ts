@@ -353,9 +353,12 @@ async function handlePaymentIntentFailed(
   console.log('Payment marked as failed for appointment:', appointmentId);
 
   // Org self-pay bank (ACH) debits are confirmed at completion with no hold, so a pre-settlement
-  // bounce surfaces only here. Card self-pay fails at the hold (authorizeSelfPayAppointment already
-  // notifies); homeowner card failures notify at authorize, so this is reached by the ACH path.
-  if (paymentIntent.metadata?.self_pay === 'true') {
+  // bounce surfaces only here. A self-pay CARD hold (capture_method 'manual') already notified
+  // inline in authorizeSelfPayAppointment's catch, so re-notifying here would double-toast the same
+  // failure — skip the manual-capture case. Automatic-capture self-pay PIs (the ACH debit and the
+  // charge-now card path, which don't notify inline) still alert admins here. Homeowner card
+  // failures carry no self_pay metadata, so they never reach this block.
+  if (paymentIntent.metadata?.self_pay === 'true' && paymentIntent.capture_method !== 'manual') {
     const ctx = await loadNotificationContext(supabase, { appointmentId });
     await recordNotificationEvent(supabase, {
       event_type: 'authorization_failed',

@@ -27,6 +27,12 @@ interface StatusBadgeProps {
    * "Counter-proposed" bucket instead of "Pending".
    */
   hasSuggestedTimes?: boolean;
+  /**
+   * Label for the "pending" bucket (and the hard-decline fallback). Defaults to "Pending".
+   * Surfaces that pass an awaiting-cleaner context (e.g. the appointment drawer) override it with
+   * "Awaiting cleaner" without changing the label everywhere else.
+   */
+  pendingLabel?: string;
 }
 
 export default function StatusBadge({
@@ -34,6 +40,7 @@ export default function StatusBadge({
   size = "md",
   cleanerConfirmationStatus,
   hasSuggestedTimes = false,
+  pendingLabel = "Pending",
 }: StatusBadgeProps) {
   const getStatusConfig = () => {
     // Wave 1: 5 user-visible buckets uniformly across roles:
@@ -53,7 +60,7 @@ export default function StatusBadge({
         bgColor: "bg-amber-50",
         textColor: "text-amber-700",
         icon: Clock,
-        label: "Pending",
+        label: pendingLabel,
       };
     }
 
@@ -63,7 +70,7 @@ export default function StatusBadge({
           bgColor: "bg-amber-50",
           textColor: "text-amber-700",
           icon: Clock,
-          label: "Pending",
+          label: pendingLabel,
         };
       case "confirmed":
         return {

@@ -36,7 +36,10 @@ import {
 } from "../lib/dashboardHero";
 import PaymentMethodForm from "./PaymentMethodForm";
 import AppointmentCardManager from "./AppointmentCardManager";
+import AppointmentSelfPayCardManager from "./AppointmentSelfPayCardManager";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import { useToast } from "../contexts/ToastContext";
+import type { PlaceHoldResult } from "@/lib/payments/authorizeClient";
 import JobPhotoLightbox from "./JobPhotoLightbox";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import DiscardChangesDialog from "./DiscardChangesDialog";
@@ -103,6 +106,20 @@ export default function AppointmentSidePanel({
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
   const { currentOrganization } = useAuth();
+  const { showToast } = useToast();
+
+  // After a successful card fix the hold is placed / payment charged / bank queued, so confirm it
+  // and close the panel (the "Payments needing attention" row clears via its own realtime reload).
+  // A failure keeps the panel open so the admin can try another card inline.
+  const handleCardFixed = useCallback(
+    (r: PlaceHoldResult) => {
+      if (!r.ok) return;
+      setAuthStatus("authorized");
+      showToast("Payment method updated", { variant: "success", description: r.message });
+      onClose();
+    },
+    [showToast, onClose],
+  );
 
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -139,6 +156,11 @@ export default function AppointmentSidePanel({
     null,
   );
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  // Local mirror of the appointment's authorization_status so the failure banner can clear the
+  // instant a card change re-places the hold (props only refresh on the next list refetch).
+  const [authStatus, setAuthStatus] = useState<string | null>(
+    appointment?.authorization_status ?? null,
+  );
 
   // Lightbox state for job photos
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -291,6 +313,11 @@ export default function AppointmentSidePanel({
     // Reset payment form state when appointment changes
     setShowPaymentForm(false);
   }, [appointment?.homeowner_id, isOpen, fetchPaymentMethod]);
+
+  // Keep the local authorization mirror in sync as the appointment (or its status) changes.
+  useEffect(() => {
+    setAuthStatus(appointment?.authorization_status ?? null);
+  }, [appointment?.id, appointment?.authorization_status]);
 
   // Fetch cleaner feedback when appointment is rejected
   useEffect(() => {
@@ -650,6 +677,7 @@ export default function AppointmentSidePanel({
                 status={appointment.status}
                 size="lg"
                 cleanerConfirmationStatus={appointment.cleaner_confirmation_status}
+                pendingLabel="Awaiting cleaner"
               />
             </div>
             {canEdit && !isEditing && (
@@ -993,12 +1021,48 @@ export default function AppointmentSidePanel({
               <div className="flex-1">
                 <p className="text-sm text-gray-500 mb-2">Payment Method</p>
 
-                {stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
+                {stripeNewChargeFlowUiEnabled() &&
+                  (authStatus === "failed" || authStatus === "requires_action") && (
+                    <div
+                      className={`mb-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                        authStatus === "failed"
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <span>
+                        {authStatus === "failed"
+                          ? appointment.status === "completed"
+                            ? "The payment didn't go through. Choose a different card or add a new one to charge it."
+                            : "The card hold failed. Choose a different card or add a new one to place the hold."
+                          : appointment.status === "completed"
+                            ? "This card needs the customer to verify their identity, so it couldn't be charged. Choose a different card to charge it."
+                            : "This card needs the customer to verify their identity, so the hold isn't placed yet. Choose a different card to place the hold."}
+                      </span>
+                    </div>
+                  )}
+
+                {/* Self-pay wins over homeowner_id: a company-paid job can still carry a homeowner
+                    (self-pay comping a real homeowner), but /authorize routes by is_self_pay to the
+                    ORG company card, so the drawer must edit that card, not the homeowner's. */}
+                {stripeNewChargeFlowUiEnabled() &&
+                appointment.is_self_pay &&
+                appointment.organization_id ? (
+                  <AppointmentSelfPayCardManager
+                    appointmentId={appointment.id}
+                    organizationId={appointment.organization_id}
+                    chargeNow={appointment.status === "completed"}
+                    onHoldResult={handleCardFixed}
+                  />
+                ) : stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
                   <AppointmentCardManager
                     appointmentId={appointment.id}
                     homeownerId={appointment.homeowner_id}
                     organizationId={appointment.organization_id ?? ""}
                     role={role}
+                    chargeNow={appointment.status === "completed"}
+                    onHoldResult={handleCardFixed}
                   />
                 ) : showPaymentForm && appointment.homeowner_id ? (
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">

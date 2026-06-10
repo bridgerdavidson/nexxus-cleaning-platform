@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
+import { useAppointmentPanel } from "../hooks/useAppointmentPanel";
+import { useSupabaseRealtimeSync } from "../lib/useSupabaseRealtimeSync";
 import { supabase } from "../lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
@@ -21,6 +23,7 @@ interface AttnAppt {
   total_price: number;
   authorization_status: string | null;
   homeowner_id: string | null;
+  is_self_pay: boolean;
   homeowner: { first_name: string; last_name: string } | null;
 }
 
@@ -69,7 +72,8 @@ export default function PaymentsNeedingAttentionSection({
    */
   canManagePayments: boolean;
 }) {
-  const { currentOrganizationId } = useAuth();
+  const { currentOrganizationId, currentOrganization } = useAuth();
+  const { openAppointment } = useAppointmentPanel();
   const [loading, setLoading] = useState(true);
   const [appts, setAppts] = useState<AttnAppt[]>([]);
   const [payouts, setPayouts] = useState<AttnPayout[]>([]);
@@ -85,7 +89,7 @@ export default function PaymentsNeedingAttentionSection({
       supabase
         .from("appointments")
         .select(
-          "id, scheduled_date, total_price, authorization_status, homeowner_id, homeowner:user_profiles!homeowner_id(first_name, last_name)",
+          "id, scheduled_date, total_price, authorization_status, homeowner_id, is_self_pay, homeowner:user_profiles!homeowner_id(first_name, last_name)",
         )
         .eq("organization_id", currentOrganizationId)
         .in("authorization_status", ["failed", "requires_action"])
@@ -117,30 +121,19 @@ export default function PaymentsNeedingAttentionSection({
     if (stripeNewChargeFlowUiEnabled()) void load();
   }, [load]);
 
-  const reauthorize = async (apptId: string) => {
-    if (!currentOrganizationId) return;
-    setBusyId(apptId);
-    setError(null);
-    try {
-      const token = await getAccessToken();
-      const res = await fetch(`/api/appointments/${apptId}/authorize`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ organization_id: currentOrganizationId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Re-authorization failed");
-      await load();
-      onResolved?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Re-authorization failed");
-    } finally {
-      setBusyId(null);
-    }
-  };
+  // Reload when an appointment's authorization changes (e.g. a card was fixed from the details
+  // drawer) so a resolved row drops off without a manual refresh. The section queries Supabase
+  // directly (not via TanStack), so reload imperatively rather than invalidating a query key.
+  useSupabaseRealtimeSync({
+    channelName: `payments-attention:${currentOrganizationId}`,
+    table: "appointments",
+    filter: `organization_id=eq.${currentOrganizationId}`,
+    events: ["UPDATE"],
+    enabled: stripeNewChargeFlowUiEnabled() && !!currentOrganizationId,
+    onEvent: () => {
+      void load();
+    },
+  });
 
   const sendCardLink = async (apptId: string, homeownerId: string | null) => {
     if (!currentOrganizationId || !homeownerId) return;
@@ -244,9 +237,13 @@ export default function PaymentsNeedingAttentionSection({
 
       <div className="space-y-2">
         {appts.map((a) => {
+          // Self-pay has no homeowner: the payer is the company, so show the org name (not the
+          // literal "Homeowner" default).
           const name = a.homeowner
             ? `${a.homeowner.first_name} ${a.homeowner.last_name}`
-            : "Homeowner";
+            : a.is_self_pay
+              ? currentOrganization?.name || "Your company"
+              : "Homeowner";
           const failed = a.authorization_status === "failed";
           const linkSent = linkSentFor[a.id];
           return (
@@ -269,35 +266,37 @@ export default function PaymentsNeedingAttentionSection({
                 </div>
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
-                {failed && (
+                {/* Fixing a failed/unauthenticated hold means putting a WORKING card on, so this
+                    opens the appointment drawer (company card for self-pay, saved card or new card
+                    for homeowner) where the hold is re-placed with a fresh key. A blind retry of the
+                    same declined card can't succeed, so there's no "Re-authorize" anymore. */}
+                <button
+                  onClick={() => openAppointment(a.id)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                >
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Fix card
+                </button>
+                {/* Send card link only makes sense for a homeowner-PAID job; self-pay uses the
+                    company's own card (even when it comps a real homeowner), so a homeowner link
+                    can't resolve the row. */}
+                {a.homeowner_id && !a.is_self_pay && (
                   <button
-                    onClick={() => reauthorize(a.id)}
-                    disabled={busyId === a.id}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+                    onClick={() => sendCardLink(a.id, a.homeowner_id)}
+                    disabled={busyId === a.id || linkSent}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                   >
-                    {busyId === a.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {linkSent ? (
+                      <>
+                        <CheckCircle className="h-3.5 w-3.5 text-success-600" /> Link sent
+                      </>
                     ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
+                      <>
+                        <Mail className="h-3.5 w-3.5" /> Send card link
+                      </>
                     )}
-                    Re-authorize
                   </button>
                 )}
-                <button
-                  onClick={() => sendCardLink(a.id, a.homeowner_id)}
-                  disabled={busyId === a.id || linkSent || !a.homeowner_id}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                >
-                  {linkSent ? (
-                    <>
-                      <CheckCircle className="h-3.5 w-3.5 text-success-600" /> Link sent
-                    </>
-                  ) : (
-                    <>
-                      <Mail className="h-3.5 w-3.5" /> Send card link
-                    </>
-                  )}
-                </button>
               </div>
             </div>
           );
