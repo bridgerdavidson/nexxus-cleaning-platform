@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useMemo,
-  useCallback,
-  useEffect,
-  useRef,
-} from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
   Search,
   Bell,
@@ -981,6 +975,7 @@ export default function BookingsPage({
           onAppointmentClick={handleCalendarAppointmentClick}
           onReschedule={canEdit ? handleCockpitReschedule : undefined}
           onReassign={canEdit ? handleCockpitReassign : undefined}
+          onSlotSelect={canEdit ? handleSlotSelect : undefined}
           canReassign={role === "admin" || canApproveDecline}
           cleaners={cleaners}
           canEdit={canEdit}

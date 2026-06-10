@@ -21,6 +21,7 @@ export default function WeekTimeGrid({
   onDayOpen,
   editable = false,
   isDragActive = false,
+  onSlotClick,
 }: {
   events: CalendarEvent[];
   currentDate: Date;
@@ -28,6 +29,7 @@ export default function WeekTimeGrid({
   onDayOpen: (date: Date) => void;
   editable?: boolean;
   isDragActive?: boolean;
+  onSlotClick?: (date: Date, minutes: number) => void;
 }) {
   const days = weekDays(currentDate);
   const today = new Date();
@@ -89,6 +91,7 @@ export default function WeekTimeGrid({
                 editable={editable}
                 isDragActive={isDragActive}
                 slotPrefix={key}
+                onSlotClick={onSlotClick ? (min) => onSlotClick(day, min) : undefined}
               />
             </div>
           );

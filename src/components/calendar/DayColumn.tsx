@@ -11,6 +11,9 @@ import {
   buildHourTicks,
   buildSlots,
   minutesToY,
+  yToMinutes,
+  snapMinutes,
+  clampMinutes,
   eventHeightPx,
   PX_PER_MIN,
   DEFAULT_SNAP_MIN,
@@ -34,6 +37,7 @@ export default function DayColumn({
   editable = false,
   isDragActive = false,
   slotPrefix,
+  onSlotClick,
 }: {
   events: CalendarEvent[];
   hours: BusinessHours;
@@ -46,6 +50,8 @@ export default function DayColumn({
   isDragActive?: boolean;
   /** Prefix for drop-slot ids: `<date>` (week) or `<cleanerId>:<date>` (dispatch). */
   slotPrefix?: string;
+  /** Click an empty area to create at that (15-min snapped) minute-of-day. */
+  onSlotClick?: (minutes: number) => void;
 }) {
   const laid = packEventsIntoLanes(events);
   const ticks = buildHourTicks(hours);
@@ -56,6 +62,23 @@ export default function DayColumn({
 
   return (
     <div className={`relative flex-1 ${className}`} style={{ height }}>
+      {/* Empty-area click-to-create layer (behind the chips; gridlines are pointer-events-none
+          and the drop lattice is only mounted while dragging, so empty clicks land here). */}
+      {onSlotClick && !isDragActive && (
+        <div
+          className="absolute inset-0 z-0 cursor-copy"
+          onClick={(e) => {
+            const minute = clampMinutes(
+              snapMinutes(yToMinutes(e.nativeEvent.offsetY, hours.startMin)),
+              hours.startMin,
+              hours.endMin - DEFAULT_SNAP_MIN,
+            );
+            onSlotClick(minute);
+          }}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Hour gridlines */}
       {ticks.map((min) => (
         <div

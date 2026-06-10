@@ -74,6 +74,7 @@ export default function CalendarCockpit({
   onAppointmentClick,
   onReschedule,
   onReassign,
+  onSlotSelect,
   cleaners = [],
   canEdit = true,
   canReassign = false,
@@ -247,6 +248,11 @@ export default function CalendarCockpit({
               onDayOpen={openDay}
               editable={editable}
               isDragActive={isDragActive}
+              onSlotClick={
+                editable && onSlotSelect
+                  ? (date, min) => onSlotSelect(date, minutesToTimeString(min))
+                  : undefined
+              }
             />
           ) : nav.view === 'day' ? (
             <DayDispatchBoard
