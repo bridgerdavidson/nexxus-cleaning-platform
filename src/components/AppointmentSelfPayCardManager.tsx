@@ -45,7 +45,7 @@ export default function AppointmentSelfPayCardManager({
       {placing && (
         <p className="flex items-center gap-2 text-sm text-gray-500">
           <Loader2 className="h-4 w-4 animate-spin" />{" "}
-          {chargeNow ? "Charging the card..." : "Placing the card hold..."}
+          {chargeNow ? "Processing payment..." : "Updating payment method..."}
         </p>
       )}
       {!placing && result && (

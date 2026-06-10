@@ -38,6 +38,8 @@ import PaymentMethodForm from "./PaymentMethodForm";
 import AppointmentCardManager from "./AppointmentCardManager";
 import AppointmentSelfPayCardManager from "./AppointmentSelfPayCardManager";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import { useToast } from "../contexts/ToastContext";
+import type { PlaceHoldResult } from "@/lib/payments/authorizeClient";
 import JobPhotoLightbox from "./JobPhotoLightbox";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import DiscardChangesDialog from "./DiscardChangesDialog";
@@ -104,6 +106,20 @@ export default function AppointmentSidePanel({
   // Lock body scroll when panel is open
   useBodyScrollLock(isOpen);
   const { currentOrganization } = useAuth();
+  const { showToast } = useToast();
+
+  // After a successful card fix the hold is placed / payment charged / bank queued, so confirm it
+  // and close the panel (the "Payments needing attention" row clears via its own realtime reload).
+  // A failure keeps the panel open so the admin can try another card inline.
+  const handleCardFixed = useCallback(
+    (r: PlaceHoldResult) => {
+      if (!r.ok) return;
+      setAuthStatus("authorized");
+      showToast("Payment method updated", { variant: "success", description: r.message });
+      onClose();
+    },
+    [showToast, onClose],
+  );
 
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -1037,9 +1053,7 @@ export default function AppointmentSidePanel({
                     appointmentId={appointment.id}
                     organizationId={appointment.organization_id}
                     chargeNow={appointment.status === "completed"}
-                    onHoldResult={(r) => {
-                      if (r.ok) setAuthStatus("authorized");
-                    }}
+                    onHoldResult={handleCardFixed}
                   />
                 ) : stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
                   <AppointmentCardManager
@@ -1048,9 +1062,7 @@ export default function AppointmentSidePanel({
                     organizationId={appointment.organization_id ?? ""}
                     role={role}
                     chargeNow={appointment.status === "completed"}
-                    onHoldResult={(r) => {
-                      if (r.ok) setAuthStatus("authorized");
-                    }}
+                    onHoldResult={handleCardFixed}
                   />
                 ) : showPaymentForm && appointment.homeowner_id ? (
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">

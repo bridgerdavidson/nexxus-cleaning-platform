@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useAppointmentPanel } from "../hooks/useAppointmentPanel";
+import { useSupabaseRealtimeSync } from "../lib/useSupabaseRealtimeSync";
 import { supabase } from "../lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
@@ -119,6 +120,20 @@ export default function PaymentsNeedingAttentionSection({
   useEffect(() => {
     if (stripeNewChargeFlowUiEnabled()) void load();
   }, [load]);
+
+  // Reload when an appointment's authorization changes (e.g. a card was fixed from the details
+  // drawer) so a resolved row drops off without a manual refresh. The section queries Supabase
+  // directly (not via TanStack), so reload imperatively rather than invalidating a query key.
+  useSupabaseRealtimeSync({
+    channelName: `payments-attention:${currentOrganizationId}`,
+    table: "appointments",
+    filter: `organization_id=eq.${currentOrganizationId}`,
+    events: ["UPDATE"],
+    enabled: stripeNewChargeFlowUiEnabled() && !!currentOrganizationId,
+    onEvent: () => {
+      void load();
+    },
+  });
 
   const sendCardLink = async (apptId: string, homeownerId: string | null) => {
     if (!currentOrganizationId || !homeownerId) return;

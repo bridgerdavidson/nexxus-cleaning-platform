@@ -52,8 +52,8 @@ export async function placeAppointmentPayment(
         ok: true,
         code,
         message: opts?.chargeNow
-          ? "The bank account is being charged; it clears in a few business days."
-          : "The bank account will be charged when the job is completed.",
+          ? "Bank account set. It's being charged now and clears in a few business days."
+          : "Bank account set. No hold is placed; it's charged when the job is completed.",
       };
     }
     if (code === "requires_action") {
