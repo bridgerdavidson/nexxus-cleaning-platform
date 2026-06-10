@@ -325,6 +325,82 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
 
+  it('a self-pay CARD hold failure (manual capture) does NOT re-notify from the webhook', async () => {
+    // The card-hold decline is already notified inline by authorizeSelfPayAppointment, so a
+    // payment_intent.payment_failed for the same manual-capture PI must NOT add a second
+    // notification (which showed up as duplicate toasts / "2 updates" in the bell).
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+      totalPrice: 100,
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+    await admin.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 62.11,
+      status: 'pending',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      is_self_pay: true,
+      stripe_payment_intent_id: `pi_hold_${appt.id}`,
+      payment_intent_status: 'requires_capture',
+    });
+
+    const eventId = `evt_selfpay_card_failed_${appt.id}`;
+    const payload = JSON.stringify({
+      id: eventId,
+      object: 'event',
+      type: 'payment_intent.payment_failed',
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: `pi_hold_${appt.id}`,
+          object: 'payment_intent',
+          amount: 6211,
+          currency: 'usd',
+          capture_method: 'manual',
+          status: 'requires_payment_method',
+          last_payment_error: { message: 'Your card was declined.' },
+          metadata: { appointment_id: appt.id, organization_id: org.organizationId, self_pay: 'true' },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    });
+
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // The row is still marked failed (that's unconditional)...
+    const { data: payRows } = await admin
+      .from('payments')
+      .select('status')
+      .eq('appointment_id', appt.id);
+    expect((payRows![0] as { status: string }).status).toBe('failed');
+
+    // ...but the webhook adds NO notification for the manual-capture hold (inline path owns it).
+    const { data: notes } = await admin
+      .from('notification_events')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'authorization_failed');
+    expect((notes ?? []).length).toBe(0);
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   it('confirms the call surface of createPlatformTransfer (vi.mocked) for a self-pay settlement', async () => {
     const appt = await seedSelfPay(100);
     const payload = JSON.stringify(
