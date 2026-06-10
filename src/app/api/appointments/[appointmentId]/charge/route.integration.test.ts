@@ -1,0 +1,262 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { NextRequest } from 'next/server';
+
+// Auto-capture charge primitives (their real impls call getStripe(), stubbed to throw by the global
+// integration setup). The orchestration + amount math + ledger run for real against the local DB.
+vi.mock('@/lib/stripe/charges/charge', () => ({
+  createDestinationCharge: vi.fn(async () => ({ id: 'pi_charge_now', status: 'succeeded' })),
+}));
+vi.mock('@/lib/stripe/charges/chargeSelfPay', () => ({
+  createSelfPayCharge: vi.fn(async () => ({ id: 'pi_selfpay_charge_now', status: 'succeeded' })),
+}));
+vi.mock('@/lib/stripe/customers/homeowner', () => ({
+  listSavedCards: vi.fn(async () => [
+    { id: 'pm_company_card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true, type: 'card' },
+  ]),
+  getPaymentMethodType: vi.fn(async () => 'card'),
+}));
+
+import { POST } from './route';
+import { createDestinationCharge } from '@/lib/stripe/charges/charge';
+import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
+import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
+import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
+import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
+
+const handlerFor = (appointmentId: string) => (req: NextRequest) =>
+  POST(req, { params: Promise.resolve({ appointmentId }) });
+
+describe('POST /api/appointments/:appointmentId/charge — homeowner card', () => {
+  let org: TestOrgFixture;
+  let originalFlag: string | undefined;
+
+  beforeEach(async () => {
+    originalFlag = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    org = await withTestOrg();
+    vi.mocked(createDestinationCharge).mockClear();
+    vi.mocked(getPaymentMethodType).mockClear();
+    vi.mocked(getPaymentMethodType).mockResolvedValue('card');
+    vi.mocked(createDestinationCharge).mockResolvedValue({ id: 'pi_charge_now', status: 'succeeded' } as never);
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalFlag;
+    await org.cleanup();
+  });
+
+  async function completedApptWithCard(failedAuth = true): Promise<string> {
+    const db = createTestSupabaseClient();
+    const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;
+    await db
+      .from('organizations')
+      .update({ stripe_connect_account_id: acctId, stripe_connect_charges_enabled: true })
+      .eq('id', org.organizationId);
+    await db.from('user_profiles').update({ stripe_customer_id: 'cus_test_homeowner' }).eq('id', org.homeowner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+    });
+    const update: Record<string, unknown> = { payment_method_id: 'pm_test_card' };
+    if (failedAuth) update.authorization_status = 'failed';
+    await db.from('appointments').update(update).eq('id', appt.id);
+    return appt.id;
+  }
+
+  it('charges a completed appointment now: 200, paid payment row, authorization_status=captured', async () => {
+    const apptId = await completedApptWithCard();
+
+    const { status, body } = await callRoute<{ success: boolean; code: string; payment_intent_id: string }>(
+      handlerFor(apptId),
+      { method: 'POST', headers: bearerHeader(org.admin.accessToken), body: { organization_id: org.organizationId } },
+    );
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.code).toBe('charged');
+    expect(body.payment_intent_id).toBe('pi_charge_now');
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string }).authorization_status).toBe('captured');
+
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status, stripe_payment_intent_id, on_behalf_of_account_id, paid_at')
+      .eq('appointment_id', apptId);
+    expect(payRows).toHaveLength(1);
+    const pay = payRows![0] as { status: string; stripe_payment_intent_id: string; on_behalf_of_account_id: string; paid_at: string };
+    expect(pay.status).toBe('paid');
+    expect(pay.stripe_payment_intent_id).toBe('pi_charge_now');
+    expect(pay.paid_at).not.toBeNull();
+
+    const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', apptId);
+    expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'charged')).toBe(true);
+  });
+
+  it('409 not_chargeable when the appointment is not completed', async () => {
+    const db = createTestSupabaseClient();
+    const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;
+    await db
+      .from('organizations')
+      .update({ stripe_connect_account_id: acctId, stripe_connect_charges_enabled: true })
+      .eq('id', org.organizationId);
+    await db.from('user_profiles').update({ stripe_customer_id: 'cus_test_homeowner' }).eq('id', org.homeowner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'confirmed',
+    });
+    await db.from('appointments').update({ payment_method_id: 'pm_test_card' }).eq('id', appt.id);
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(409);
+    expect(body.code).toBe('not_chargeable');
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent: a job already paid returns charged without charging again', async () => {
+    const apptId = await completedApptWithCard();
+    const db = createTestSupabaseClient();
+    // Pre-existing paid revenue row (a prior charge / webhook already settled it).
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: apptId,
+      amount: 100,
+      status: 'paid',
+      payment_type: 'revenue',
+      payment_method: 'card',
+      stripe_payment_intent_id: 'pi_already_paid',
+    });
+
+    const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    expect(body.code).toBe('charged');
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cleaner caller (403)', async () => {
+    const apptId = await completedApptWithCard();
+    const { status } = await callRoute(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/appointments/:appointmentId/charge — self-pay card', () => {
+  let org: TestOrgFixture;
+  let originalFlag: string | undefined;
+
+  beforeEach(async () => {
+    originalFlag = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    org = await withTestOrg({
+      stripeConnectAccountId: 'acct_selfpay_cleaner',
+      stripeConnectOnboardingComplete: true,
+      payoutPercent: 60,
+    });
+    vi.mocked(createSelfPayCharge).mockClear();
+    vi.mocked(listSavedCards).mockClear();
+    vi.mocked(listSavedCards).mockResolvedValue([
+      { id: 'pm_company_card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true, type: 'card' },
+    ] as never);
+    vi.mocked(createSelfPayCharge).mockResolvedValue({ id: 'pi_selfpay_charge_now', status: 'succeeded' } as never);
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalFlag;
+    await org.cleanup();
+  });
+
+  async function completedSelfPayAppt(): Promise<string> {
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ stripe_self_pay_customer_id: `cus_selfpay_${org.organizationId.slice(0, 12)}` })
+      .eq('id', org.organizationId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+    return appt.id;
+  }
+
+  it('charges a completed self-pay appointment now: 200, paid self-pay row', async () => {
+    const apptId = await completedSelfPayAppt();
+
+    const { status, body } = await callRoute<{ success: boolean; code: string; payment_intent_id: string }>(
+      handlerFor(apptId),
+      { method: 'POST', headers: bearerHeader(org.admin.accessToken), body: { organization_id: org.organizationId } },
+    );
+
+    expect(status).toBe(200);
+    expect(body.code).toBe('charged');
+    expect(body.payment_intent_id).toBe('pi_selfpay_charge_now');
+    expect(vi.mocked(createSelfPayCharge)).toHaveBeenCalledTimes(1);
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string }).authorization_status).toBe('captured');
+
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status, is_self_pay, stripe_payment_intent_id')
+      .eq('appointment_id', apptId);
+    expect(payRows).toHaveLength(1);
+    const pay = payRows![0] as { status: string; is_self_pay: boolean; stripe_payment_intent_id: string };
+    expect(pay.status).toBe('paid');
+    expect(pay.is_self_pay).toBe(true);
+    expect(pay.stripe_payment_intent_id).toBe('pi_selfpay_charge_now');
+  });
+
+  it('403 when a manager WITHOUT can_manage_payments charges a self-pay appointment', async () => {
+    const apptId = await completedSelfPayAppt();
+    const db = createTestSupabaseClient();
+    await db
+      .from('organization_members')
+      .update({ role: 'manager' })
+      .eq('user_id', org.homeowner.userId)
+      .eq('organization_id', org.organizationId);
+    await db.from('manager_permissions').insert({
+      manager_id: org.homeowner.userId,
+      organization_id: org.organizationId,
+      can_manage_payments: false,
+    });
+
+    const { status, body } = await callRoute<{ error: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(body.error).toBe('Requires the Manage Payments permission');
+    expect(vi.mocked(createSelfPayCharge)).not.toHaveBeenCalled();
+  });
+});
