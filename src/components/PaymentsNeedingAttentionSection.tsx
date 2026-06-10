@@ -262,9 +262,10 @@ export default function PaymentsNeedingAttentionSection({
                   <CreditCard className="h-3.5 w-3.5" />
                   Fix card
                 </button>
-                {/* Send card link only makes sense for a homeowner-paid job; self-pay uses the
-                    company's own card, so there's no one to send a link to. */}
-                {a.homeowner_id && (
+                {/* Send card link only makes sense for a homeowner-PAID job; self-pay uses the
+                    company's own card (even when it comps a real homeowner), so a homeowner link
+                    can't resolve the row. */}
+                {a.homeowner_id && !a.is_self_pay && (
                   <button
                     onClick={() => sendCardLink(a.id, a.homeowner_id)}
                     disabled={busyId === a.id || linkSent}

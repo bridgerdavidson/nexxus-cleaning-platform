@@ -1027,23 +1027,26 @@ export default function AppointmentSidePanel({
                     </div>
                   )}
 
-                {stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
-                  <AppointmentCardManager
+                {/* Self-pay wins over homeowner_id: a company-paid job can still carry a homeowner
+                    (self-pay comping a real homeowner), but /authorize routes by is_self_pay to the
+                    ORG company card, so the drawer must edit that card, not the homeowner's. */}
+                {stripeNewChargeFlowUiEnabled() &&
+                appointment.is_self_pay &&
+                appointment.organization_id ? (
+                  <AppointmentSelfPayCardManager
                     appointmentId={appointment.id}
-                    homeownerId={appointment.homeowner_id}
-                    organizationId={appointment.organization_id ?? ""}
-                    role={role}
+                    organizationId={appointment.organization_id}
                     chargeNow={appointment.status === "completed"}
                     onHoldResult={(r) => {
                       if (r.ok) setAuthStatus("authorized");
                     }}
                   />
-                ) : stripeNewChargeFlowUiEnabled() &&
-                  appointment.is_self_pay &&
-                  appointment.organization_id ? (
-                  <AppointmentSelfPayCardManager
+                ) : stripeNewChargeFlowUiEnabled() && appointment.homeowner_id ? (
+                  <AppointmentCardManager
                     appointmentId={appointment.id}
-                    organizationId={appointment.organization_id}
+                    homeownerId={appointment.homeowner_id}
+                    organizationId={appointment.organization_id ?? ""}
+                    role={role}
                     chargeNow={appointment.status === "completed"}
                     onHoldResult={(r) => {
                       if (r.ok) setAuthStatus("authorized");
