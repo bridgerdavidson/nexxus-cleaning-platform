@@ -46,11 +46,15 @@ export default function DayDispatchBoard({
   cleaners,
   currentDate,
   onEventClick,
+  editable = false,
+  isDragActive = false,
 }: {
   events: CalendarEvent[];
   cleaners: CalendarCleaner[];
   currentDate: Date;
   onEventClick: (event: CalendarEvent) => void;
+  editable?: boolean;
+  isDragActive?: boolean;
 }) {
   const dayKey = toDateKey(currentDate);
   const isToday = isSameDayLocal(currentDate, new Date());
@@ -110,7 +114,17 @@ export default function DayDispatchBoard({
             className="relative w-[184px] shrink-0 border-r border-gray-100 last:border-r-0"
           >
             {isToday && <NowIndicator hours={hours} />}
-            <DayColumn events={col.events} hours={hours} onEventClick={onEventClick} hideCleaner />
+            <DayColumn
+              events={col.events}
+              hours={hours}
+              onEventClick={onEventClick}
+              hideCleaner
+              editable={editable}
+              isDragActive={isDragActive}
+              // Cleaner columns get a 3-part slot id (cleaner + date + minute) so a cross-column
+              // drop reassigns. The Unassigned column has no drop lattice (you assign OUT of it).
+              slotPrefix={col.cleaner ? `${col.cleaner.id}:${dayKey}` : undefined}
+            />
           </div>
         ))}
       </div>

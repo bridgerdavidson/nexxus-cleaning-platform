@@ -22,6 +22,9 @@ import type { CalendarEvent, BusinessHours } from '@/lib/calendar/types';
 
 const LANE_GAP_PX = 2;
 
+// Finished/cancelled jobs are read-only: don't let them be dragged (reschedule or reassign).
+const TERMINAL_STATUSES = new Set(['completed', 'cancelled']);
+
 export default function DayColumn({
   events,
   hours,
@@ -90,6 +93,7 @@ export default function DayColumn({
             hideCleaner={hideCleaner}
             onClick={() => onEventClick?.(ev)}
             style={style}
+            disabled={TERMINAL_STATUSES.has(ev.status)}
           />
         ) : (
           <EventChip

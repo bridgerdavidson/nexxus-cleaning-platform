@@ -31,6 +31,7 @@ import AddAppointmentModal from "./AddAppointmentModal";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import CalendarCockpit from "./calendar/CalendarCockpit";
 import { useToast } from "@/contexts/ToastContext";
+import { useCalendarReassign } from "@/hooks/useCalendarReassign";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
@@ -112,6 +113,7 @@ export default function BookingsPage({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { showToast } = useToast();
+  const reassignApi = useCalendarReassign();
 
   // Calendar-specific state
   const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
@@ -632,6 +634,47 @@ export default function BookingsPage({
     [appointments, onAppointmentUpdated, onRefreshAppointments, showToast],
   );
 
+  // Cross-cleaner reassign from the dispatch board. Optimistically moves the chip to the new
+  // cleaner column (+ back to pending/awaiting), then calls the reassign endpoint and
+  // reconciles (or rolls back + toasts). Returns the result so the cockpit's confirm popover
+  // can react to a conflict.
+  const handleCockpitReassign = useCallback(
+    async (eventId: string, cleanerId: string, force: boolean) => {
+      const original = appointments.find((a) => a.id === eventId);
+
+      onAppointmentUpdated?.(eventId, {
+        cleaner_id: cleanerId,
+        status: "pending",
+        cleaner_confirmation_status: "awaiting",
+      });
+
+      const result = await reassignApi(eventId, cleanerId, force);
+
+      if (result.ok) {
+        showToast("Reassigned. Waiting for the cleaner to accept.", { variant: "success" });
+        if (onRefreshAppointments) onRefreshAppointments();
+      } else {
+        if (original) {
+          onAppointmentUpdated?.(eventId, {
+            cleaner_id: original.cleaner_id ?? null,
+            status: original.status,
+            cleaner_confirmation_status: original.cleaner_confirmation_status,
+          });
+        } else if (onRefreshAppointments) {
+          onRefreshAppointments();
+        }
+        showToast(
+          result.conflict
+            ? "That cleaner has a conflict at that time."
+            : result.error || "Could not reassign",
+          { variant: "error" },
+        );
+      }
+      return result;
+    },
+    [appointments, onAppointmentUpdated, onRefreshAppointments, reassignApi, showToast],
+  );
+
   // Local reschedule handler for deferred DB sync
   const handleLocalReschedule = useCallback(
     (
@@ -1148,6 +1191,8 @@ export default function BookingsPage({
           loading={loading}
           onAppointmentClick={handleCalendarAppointmentClick}
           onReschedule={canEdit ? handleCockpitReschedule : undefined}
+          onReassign={canEdit ? handleCockpitReassign : undefined}
+          canReassign={role === "admin" || canApproveDecline}
           canEdit={canEdit}
           role={role}
         />

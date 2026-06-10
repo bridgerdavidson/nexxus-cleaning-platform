@@ -26,9 +26,11 @@ import { useCalendarEvents } from '@/hooks/useCalendarEvents';
 import { useCalendarNavigation } from '@/hooks/useCalendarNavigation';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { minutesToTimeString } from '@/lib/calendar/timeGrid';
+import { findConflicts, type ScheduleAppointment } from '@/lib/appointmentConflicts';
 import CalendarToolbar from './CalendarToolbar';
 import CalendarLegend from './CalendarLegend';
 import CalendarDragLayer from './CalendarDragLayer';
+import ReassignConfirmPopover, { type PendingReassign } from './ReassignConfirmPopover';
 import MonthView from './MonthView';
 import WeekTimeGrid from './WeekTimeGrid';
 import DayDispatchBoard from './DayDispatchBoard';
@@ -40,6 +42,8 @@ export interface CalendarCockpitProps {
   onAppointmentClick: (appointment: AppointmentCardData) => void;
   /** Persist a same-cleaner reschedule (optimistic update + toast handled by the caller). */
   onReschedule?: (eventId: string, newDate: string, newTime: string) => void | Promise<void>;
+  /** Persist a cross-cleaner reassign from the dispatch board (caller handles optimistic + toast). */
+  onReassign?: (eventId: string, cleanerId: string, force: boolean) => Promise<unknown>;
   onSlotSelect?: (date: Date, time: string) => void;
   onSlotSelectWithCleaner?: (date: Date, time: string, cleanerId: string) => void;
   canEdit?: boolean;
@@ -69,8 +73,10 @@ export default function CalendarCockpit({
   loading = false,
   onAppointmentClick,
   onReschedule,
+  onReassign,
   cleaners = [],
   canEdit = true,
+  canReassign = false,
   role = 'admin',
   initialView,
   initialDate,
@@ -79,8 +85,17 @@ export default function CalendarCockpit({
   const nav = useCalendarNavigation(initialView ?? (isMobile ? 'agenda' : 'week'), initialDate);
   const events = useCalendarEvents(appointments, role);
   const [activeEvent, setActiveEvent] = useState<CalendarEvent | null>(null);
+  const [pendingReassign, setPendingReassign] = useState<PendingReassign | null>(null);
+  const [reassigning, setReassigning] = useState(false);
 
   const editable = canEdit && role !== 'cleaner' && !!onReschedule;
+
+  const cleanerNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of events) if (e.cleanerId && e.cleanerName) m.set(e.cleanerId, e.cleanerName);
+    for (const c of cleaners) m.set(c.id, c.name);
+    return m;
+  }, [events, cleaners]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -116,14 +131,58 @@ export default function CalendarCockpit({
   const handleDragEnd = (e: DragEndEvent) => {
     const ev = activeEvent;
     setActiveEvent(null);
-    if (!ev || !e.over || !onReschedule) return;
+    if (!ev || !e.over) return;
     const target = decodeDrop(String(e.over.id));
     if (!target) return;
-    // Cross-cleaner moves are a reassign (Phase 4), not a plain reschedule. Ignore here.
-    if (target.cleanerId && target.cleanerId !== (ev.cleanerId ?? '')) return;
+
+    const isCrossCleaner =
+      target.cleanerId !== undefined && target.cleanerId !== (ev.cleanerId ?? '');
+
+    // Cross-cleaner drop on the dispatch board: a reassign. Check conflicts client-side, then
+    // confirm before firing (it returns the job to Pending and pings the new cleaner).
+    if (isCrossCleaner) {
+      if (!onReassign || !canReassign) return;
+      const targetCleanerId = target.cleanerId as string;
+      const targetSchedule: ScheduleAppointment[] = events
+        .filter((x) => x.cleanerId === targetCleanerId)
+        .map((x) => ({
+          id: x.id,
+          status: x.status,
+          scheduled_date: x.date,
+          scheduled_time: minutesToTimeString(x.startMin),
+          duration_minutes: x.durationMin,
+        }));
+      const conflicts = findConflicts(
+        targetSchedule,
+        { date: ev.date, time: minutesToTimeString(ev.startMin), durationMinutes: ev.durationMin },
+        { excludeAppointmentId: ev.id },
+      );
+      setPendingReassign({
+        eventId: ev.id,
+        customerLabel: ev.customerLabel,
+        cleanerId: targetCleanerId,
+        cleanerName: cleanerNameById.get(targetCleanerId) ?? 'this cleaner',
+        hasConflict: conflicts.length > 0,
+      });
+      return;
+    }
+
+    // Same cleaner (or Week/Month): a time/date reschedule.
+    if (!onReschedule) return;
     const newMinutes = target.minutes ?? ev.startMin;
     if (target.date === ev.date && newMinutes === ev.startMin) return; // no-op
     void onReschedule(ev.id, target.date, minutesToTimeString(newMinutes));
+  };
+
+  const confirmReassign = async () => {
+    if (!pendingReassign || !onReassign) return;
+    setReassigning(true);
+    try {
+      await onReassign(pendingReassign.eventId, pendingReassign.cleanerId, pendingReassign.hasConflict);
+    } finally {
+      setReassigning(false);
+      setPendingReassign(null);
+    }
   };
 
   const showLegend = nav.view !== 'agenda';
@@ -178,6 +237,8 @@ export default function CalendarCockpit({
               cleaners={cleaners}
               currentDate={nav.currentDate}
               onEventClick={handleEventClick}
+              editable={editable}
+              isDragActive={isDragActive}
             />
           ) : (
             <AgendaList
@@ -192,6 +253,15 @@ export default function CalendarCockpit({
           {activeEvent ? <CalendarDragLayer event={activeEvent} /> : null}
         </DragOverlay>
       </DndContext>
+
+      {pendingReassign && (
+        <ReassignConfirmPopover
+          pending={pendingReassign}
+          busy={reassigning}
+          onConfirm={confirmReassign}
+          onCancel={() => setPendingReassign(null)}
+        />
+      )}
     </div>
   );
 }
