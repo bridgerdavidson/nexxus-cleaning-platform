@@ -14,7 +14,6 @@ import {
 import RecordPaymentModal from "./RecordPaymentModal";
 import RefundModal from "./RefundModal";
 import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
-import StatusBadge from "./StatusBadge";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
@@ -115,7 +114,7 @@ export default function PaymentsPage({
 
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [refundPayment, setRefundPayment] = useState<AdminPayment | null>(null);
-  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
   // Owners/admins always manage payments; managers need the explicit can_manage_payments flag.
   const canManagePayments =
@@ -440,24 +439,25 @@ export default function PaymentsPage({
                         <td className="px-4 py-3 text-sm text-gray-900">
                           {payment.appointment?.homeowner
                             ? `${payment.appointment.homeowner.first_name} ${payment.appointment.homeowner.last_name}`
-                            : "-"}
+                            : payment.is_self_pay
+                              ? currentOrganization?.name || "-"
+                              : "-"}
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
                           ${payment.amount.toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span
-                              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                                payment.status
-                              )}`}
-                            >
-                              {payment.status === "processing" ? "Clearing" : payment.status}
-                            </span>
-                            {payment.is_self_pay && (
-                              <StatusBadge status="self_pay" size="sm" />
-                            )}
-                          </div>
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                              payment.status
+                            )}`}
+                          >
+                            {payment.status === "processing"
+                              ? "Clearing"
+                              : payment.status === "pending"
+                                ? "Awaiting cleaner"
+                                : payment.status}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {payment.payment_method || "manual"}
