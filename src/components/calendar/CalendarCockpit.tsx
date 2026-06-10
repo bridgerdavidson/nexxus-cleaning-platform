@@ -7,7 +7,7 @@
  * phases.
  */
 'use client';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -89,6 +89,23 @@ export default function CalendarCockpit({
   const [reassigning, setReassigning] = useState(false);
 
   const editable = canEdit && role !== 'cleaner' && !!onReschedule;
+
+  // useIsMobile resolves to false on the first (SSR-safe) render, so useCalendarNavigation's
+  // initialView can't know the viewport. Switch to agenda once a phone is detected, unless the
+  // user has already chosen a view.
+  const viewPickedRef = useRef(false);
+  useEffect(() => {
+    if (isMobile && !viewPickedRef.current) nav.setView('agenda');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
+
+  const handleSetView = useCallback(
+    (v: ViewMode) => {
+      viewPickedRef.current = true;
+      nav.setView(v);
+    },
+    [nav],
+  );
 
   const cleanerNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -194,7 +211,7 @@ export default function CalendarCockpit({
         <CalendarToolbar
           view={nav.view}
           currentDate={nav.currentDate}
-          onView={nav.setView}
+          onView={handleSetView}
           onPrev={nav.goPrev}
           onNext={nav.goNext}
           onToday={nav.goToday}
