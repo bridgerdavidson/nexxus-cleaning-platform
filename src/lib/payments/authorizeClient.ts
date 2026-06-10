@@ -8,18 +8,23 @@ export interface PlaceHoldResult {
 }
 
 /**
- * Places (or re-places) the manual-capture card hold for an appointment after its card was changed,
- * and maps the `/authorize` route's coded result to one friendly line. The booking already exists,
- * so this is best-effort immediate feedback for the admin; the JIT authorize-due cron is still the
- * backstop if the request times out. Shared by the homeowner and self-pay drawer card managers.
+ * Places the payment for an appointment after its card was changed, and maps the coded result to one
+ * friendly line. Two modes:
+ *   - hold (default): an upcoming job gets a manual-capture authorization (`/authorize`).
+ *   - chargeNow: a COMPLETED job whose hold never landed is charged immediately (`/charge`).
+ * The booking already exists, so this is best-effort immediate feedback for the admin; the JIT cron
+ * (holds) and the reconciliation sweep (charges) are the backstops. Shared by the homeowner and
+ * self-pay drawer card managers.
  */
-export async function placeAppointmentHold(
+export async function placeAppointmentPayment(
   appointmentId: string,
   organizationId: string,
+  opts?: { chargeNow?: boolean },
 ): Promise<PlaceHoldResult> {
+  const endpoint = opts?.chargeNow ? "charge" : "authorize";
   try {
     const token = await getAccessToken();
-    const res = await fetch(`/api/appointments/${appointmentId}/authorize`, {
+    const res = await fetch(`/api/appointments/${appointmentId}/${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -36,11 +41,19 @@ export async function placeAppointmentHold(
     if (code === "authorized") {
       return { ok: true, code, message: "Card hold placed." };
     }
+    if (code === "charged") {
+      return { ok: true, code, message: "Payment charged." };
+    }
+    if (code === "processing") {
+      return { ok: true, code, message: "Payment is processing." };
+    }
     if (code === "deferred_ach") {
       return {
         ok: true,
         code,
-        message: "The bank account will be charged when the job is completed.",
+        message: opts?.chargeNow
+          ? "The bank account is being charged; it clears in a few business days."
+          : "The bank account will be charged when the job is completed.",
       };
     }
     if (code === "requires_action") {
@@ -48,14 +61,14 @@ export async function placeAppointmentHold(
         ok: false,
         code,
         message:
-          "This card needs the customer to verify their identity, so the hold isn't placed.",
+          "This card needs the customer to verify their identity, so it couldn't be charged. Try a different card.",
       };
     }
-    // declined / no_org_card / cleaner_not_payable / not_authorizable / error.
+    // declined / no_card / no_org_card / cleaner_not_payable / tenant_not_ready / not_chargeable / error.
     return {
       ok: false,
       code,
-      message: data.message || data.error || "The card hold didn't go through.",
+      message: data.message || data.error || "The payment didn't go through.",
     };
   } catch {
     return {
@@ -63,4 +76,12 @@ export async function placeAppointmentHold(
       message: "We couldn't reach the card processor. We'll keep trying automatically.",
     };
   }
+}
+
+/** Back-compat alias: place a hold (the upcoming-job path). */
+export function placeAppointmentHold(
+  appointmentId: string,
+  organizationId: string,
+): Promise<PlaceHoldResult> {
+  return placeAppointmentPayment(appointmentId, organizationId);
 }

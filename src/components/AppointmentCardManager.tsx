@@ -5,7 +5,7 @@ import { CreditCard, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import HomeownerCardPicker, { type CardPickerHandle } from "./HomeownerCardPicker";
-import { placeAppointmentHold, type PlaceHoldResult } from "@/lib/payments/authorizeClient";
+import { placeAppointmentPayment, type PlaceHoldResult } from "@/lib/payments/authorizeClient";
 
 interface SavedCard {
   id: string;
@@ -25,6 +25,8 @@ interface Props {
   role: "admin" | "manager" | "cleaner" | "homeowner";
   /** Called with the hold result after a card change so the parent can clear the failure banner. */
   onHoldResult?: (result: PlaceHoldResult) => void;
+  /** True for a COMPLETED job: changing the card charges it immediately instead of placing a hold. */
+  chargeNow?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ interface Props {
  * appointment's payment_method_id via /api/appointments/:id/payment-method. Renders the picker in
  * staff mode (admin/manager) or self mode (homeowner).
  */
-export default function AppointmentCardManager({ appointmentId, homeownerId, organizationId, role, onHoldResult }: Props) {
+export default function AppointmentCardManager({ appointmentId, homeownerId, organizationId, role, onHoldResult, chargeNow }: Props) {
   const staffMode = role !== "homeowner";
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [cards, setCards] = useState<SavedCard[]>([]);
@@ -100,7 +102,7 @@ export default function AppointmentCardManager({ appointmentId, homeownerId, org
       // Immediately (re)place the hold on the new card and surface the result, instead of only
       // queuing the JIT cron. Staff-only: a homeowner managing their own card can't authorize.
       if (staffMode) {
-        const hold = await placeAppointmentHold(appointmentId, organizationId);
+        const hold = await placeAppointmentPayment(appointmentId, organizationId, { chargeNow });
         setHoldResult(hold);
         onHoldResult?.(hold);
       }

@@ -1017,8 +1017,12 @@ export default function AppointmentSidePanel({
                       <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span>
                         {authStatus === "failed"
-                          ? "The card hold failed. Choose a different card or add a new one to place the hold."
-                          : "This card needs the customer to verify their identity, so the hold isn't placed yet. Choose a different card to place the hold."}
+                          ? appointment.status === "completed"
+                            ? "The payment didn't go through. Choose a different card or add a new one to charge it."
+                            : "The card hold failed. Choose a different card or add a new one to place the hold."
+                          : appointment.status === "completed"
+                            ? "This card needs the customer to verify their identity, so it couldn't be charged. Choose a different card to charge it."
+                            : "This card needs the customer to verify their identity, so the hold isn't placed yet. Choose a different card to place the hold."}
                       </span>
                     </div>
                   )}
@@ -1029,6 +1033,7 @@ export default function AppointmentSidePanel({
                     homeownerId={appointment.homeowner_id}
                     organizationId={appointment.organization_id ?? ""}
                     role={role}
+                    chargeNow={appointment.status === "completed"}
                     onHoldResult={(r) => {
                       if (r.ok) setAuthStatus("authorized");
                     }}
@@ -1039,6 +1044,7 @@ export default function AppointmentSidePanel({
                   <AppointmentSelfPayCardManager
                     appointmentId={appointment.id}
                     organizationId={appointment.organization_id}
+                    chargeNow={appointment.status === "completed"}
                     onHoldResult={(r) => {
                       if (r.ok) setAuthStatus("authorized");
                     }}
