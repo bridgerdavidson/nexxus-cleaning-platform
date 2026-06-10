@@ -41,6 +41,7 @@ import BookingTotalSummary from "./BookingTotalSummary";
 import OrgPaymentMethodPicker from "./OrgPaymentMethodPicker";
 import type { PaymentMethodKind } from "@/lib/payments/processingFee";
 import DiscardChangesDialog from "./DiscardChangesDialog";
+import ConfirmModal from "./ConfirmModal";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import { useFormDraft } from "../hooks/useFormDraft";
 import { createDraftStore } from "@/lib/formDraft";
@@ -114,6 +115,13 @@ interface AddAppointmentModalProps {
   preFilledDate?: string; // YYYY-MM-DD format
   preFilledTime?: string; // HH:mm format
   hidePriceOverride?: boolean; // Hide price override UI for homeowner role
+  /**
+   * Opens the appointment details side drawer for the given id. Wired to `openAppointment`
+   * from useAppointmentPanel at call sites that own it. Used by the "card hold failed"
+   * recovery dialog so the admin can drop straight into the drawer to fix the card. When
+   * absent, recovery falls back to a toast pointing them at the appointment.
+   */
+  onOpenAppointment?: (appointmentId: string) => void;
 }
 
 // --- Reload-restore draft -----------------------------------------------------------
@@ -183,6 +191,7 @@ export default function AddAppointmentModal({
   preFilledDate,
   preFilledTime,
   hidePriceOverride = false,
+  onOpenAppointment,
 }: AddAppointmentModalProps) {
   const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
@@ -323,6 +332,13 @@ export default function AddAppointmentModal({
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when the appointment was created but its card hold definitively failed. Swaps the wizard
+  // for a recovery dialog (Fix card / Not now) instead of stranding the admin on the step flow
+  // with an inline error (which let them re-submit and double-book).
+  const [holdFailed, setHoldFailed] = useState<{
+    appointmentId: string;
+    reason: string;
+  } | null>(null);
 
   const getSystemCalculatedPrice = useCallback(() => {
     if (!selectedServiceType || !selectedChecklist) return 0;
@@ -1277,12 +1293,13 @@ export default function AddAppointmentModal({
         }
 
         if (definitiveError) {
-          // Keep the modal open so the admin sees the real reason and can act.
+          // The appointment IS created; only the card hold failed. Drop the saved draft and swap
+          // the wizard for a recovery dialog so the admin can jump to the drawer and put a working
+          // card on, instead of being stranded on the step flow (where re-submitting double-booked).
           onAppointmentCreated();
-          setError(
-            `Appointment created, but the card hold didn't go through: ${definitiveError} You can place the hold from the appointment.`,
-          );
+          bookingDraftStore.clear();
           setIsCreating(false);
+          setHoldFailed({ appointmentId: insertData.id, reason: definitiveError });
           return;
         }
         if (!placed) {
@@ -1528,6 +1545,43 @@ export default function AddAppointmentModal({
 
   if (!isOpen) return null;
   if (typeof document === "undefined") return null;
+
+  // Card hold failed after the appointment was created: show a focused recovery dialog instead of
+  // the wizard. "Fix card" drops the admin into the appointment drawer to put a working card on;
+  // the booking already exists, so there's nothing left to submit here.
+  if (holdFailed) {
+    const fixCard = () => {
+      const id = holdFailed.appointmentId;
+      setHoldFailed(null);
+      handleClose();
+      if (onOpenAppointment) {
+        onOpenAppointment(id);
+      } else {
+        showToast("Appointment created", {
+          variant: "info",
+          description:
+            "The card hold didn't go through. Open the appointment to add a different card.",
+        });
+      }
+    };
+    const dismiss = () => {
+      setHoldFailed(null);
+      handleClose();
+    };
+    return (
+      <ConfirmModal
+        isOpen
+        onClose={dismiss}
+        onConfirm={fixCard}
+        title="Card hold didn't go through"
+        message={`The appointment was created, but the card hold didn't go through: ${holdFailed.reason} Add a different card to place the hold.`}
+        confirmText="Fix card"
+        cancelText="Not now"
+        tone="warning"
+        zIndexClassName="z-[400]"
+      />
+    );
+  }
 
   return createPortal(
     <>
