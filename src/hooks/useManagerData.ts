@@ -22,6 +22,8 @@ export interface ManagerAppointment {
   special_requests?: string | null;
   notes?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  /** cleaner_profiles.id of the assigned cleaner (= the user id). Null when unassigned. */
+  cleaner_id?: string | null;
   /** Wave 2 SLA: deadline for cleaner response. Null once cleaner responds. */
   response_deadline?: string | null;
   price_override_enabled?: boolean;

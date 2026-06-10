@@ -28,11 +28,10 @@ import { format } from "date-fns";
 import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
-import CalendarView, { PendingDragUpdate } from "./CalendarView";
 import CalendarCockpit from "./calendar/CalendarCockpit";
 import { useToast } from "@/contexts/ToastContext";
 import { useCalendarReassign } from "@/hooks/useCalendarReassign";
-import DayDetailSidebar from "./DayDetailSidebar";
+import type { CalendarCleaner } from "@/lib/calendar/types";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -65,6 +64,9 @@ interface BookingsPageProps {
   canEdit?: boolean;
   initialStatusFilter?: string;
   canApproveDecline?: boolean;
+  /** Cleaner roster for the calendar dispatch board (idle cleaners get an empty column so you
+   *  can assign to anyone). Optional; the board falls back to data-derived columns without it. */
+  cleaners?: CalendarCleaner[];
   /**
    * Show the in-header "New" button. Admin/manager dashboards set this false
    * because the create action now lives in the top nav bar (and a mobile FAB).
@@ -89,6 +91,7 @@ export default function BookingsPage({
   canEdit = true,
   initialStatusFilter,
   canApproveDecline = false,
+  cleaners = [],
   showCreateButton = true,
 }: BookingsPageProps) {
   const [viewType, setViewType] = useState<ViewType>("list");
@@ -115,12 +118,7 @@ export default function BookingsPage({
   const { showToast } = useToast();
   const reassignApi = useCalendarReassign();
 
-  // Calendar-specific state
-  const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>(
-    [],
-  );
+  // Calendar create-on-slot prefill (the cockpit owns day navigation now)
   const [preFilledDate, setPreFilledDate] = useState<string | undefined>();
   const [preFilledTime, setPreFilledTime] = useState<string | undefined>();
 
@@ -133,132 +131,9 @@ export default function BookingsPage({
   // Capture selected IDs when opening bulk modal so confirm uses the same set (avoids stale closure)
   const selectedIdsForBulkRef = useRef<Set<string>>(new Set());
 
-  // Pending drag updates for deferred DB sync
-  const [pendingDragUpdates, setPendingDragUpdates] = useState<
-    Map<string, PendingDragUpdate>
-  >(new Map());
-  const pendingDragUpdatesRef = useRef<Map<string, PendingDragUpdate>>(
-    new Map(),
-  );
-
-  // Debounce timer for flushing pending updates
-  const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Local appointments state for optimistic updates
-  const [localAppointments, setLocalAppointments] =
-    useState<AppointmentCardData[]>(appointments);
-
-  // Keep local appointments in sync with prop changes (but preserve local modifications)
-  useEffect(() => {
-    setLocalAppointments((prevLocal) => {
-      // Merge prop appointments with any local modifications from pending updates
-      const pendingIds = new Set(pendingDragUpdates.keys());
-
-      return appointments.map((apt) => {
-        // If this appointment has a pending update, keep the local version
-        if (pendingIds.has(apt.id)) {
-          const existingLocal = prevLocal.find((l) => l.id === apt.id);
-          if (existingLocal) return existingLocal;
-        }
-        return apt;
-      });
-    });
-  }, [appointments, pendingDragUpdates]);
-
-  // Keep ref in sync with state for use in cleanup
-  useEffect(() => {
-    pendingDragUpdatesRef.current = pendingDragUpdates;
-  }, [pendingDragUpdates]);
-
-  // Function to flush pending updates to the database
-  const flushPendingUpdates = useCallback(async () => {
-    const updates = pendingDragUpdatesRef.current;
-    if (updates.size === 0) return;
-
-    const updatePromises = Array.from(updates.values()).map(async (update) => {
-      try {
-        const result = await updateAppointment(update.appointmentId, {
-          scheduled_date: update.newDate,
-          scheduled_time: update.newTime,
-        });
-
-        if (result.success && result.data && onAppointmentUpdated) {
-          onAppointmentUpdated(update.appointmentId, result.data);
-        }
-
-        return { success: true, id: update.appointmentId };
-      } catch (error) {
-        console.error(
-          `Failed to update appointment ${update.appointmentId}:`,
-          error,
-        );
-        return { success: false, id: update.appointmentId, error };
-      }
-    });
-
-    await Promise.all(updatePromises);
-
-    // Clear pending updates
-    setPendingDragUpdates(new Map());
-  }, [onAppointmentUpdated]);
-
-  // Debounced flush function - automatically saves pending updates after user stops dragging
-  const debouncedFlushPendingUpdates = useCallback(() => {
-    // Clear existing timer
-    if (flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-    }
-
-    // Set new timer - flush after 750ms of inactivity
-    flushTimerRef.current = setTimeout(() => {
-      flushPendingUpdates();
-      flushTimerRef.current = null;
-    }, 750);
-  }, [flushPendingUpdates]);
-
-  // Tab visibility change listener - flush pending updates when user switches tabs
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        // User switched away - flush pending updates immediately
-        // Clear any pending debounce timer since we're flushing now
-        if (flushTimerRef.current) {
-          clearTimeout(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
-        flushPendingUpdates();
-      }
-    };
-
-    const handleBeforeUnload = () => {
-      // Page is about to close - try to flush pending updates synchronously
-      // Clear any pending debounce timer since we're flushing now
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      if (pendingDragUpdatesRef.current.size > 0) {
-        flushPendingUpdates();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      // Clear debounce timer on unmount
-      if (flushTimerRef.current) {
-        clearTimeout(flushTimerRef.current);
-        flushTimerRef.current = null;
-      }
-      // Flush on unmount as well
-      if (pendingDragUpdatesRef.current.size > 0) {
-        flushPendingUpdates();
-      }
-    };
-  }, [flushPendingUpdates]);
+  // The legacy deferred/debounced drag-sync subsystem (local mirror + pending-updates map +
+  // 750ms flush + visibilitychange/beforeunload handlers) was removed: the calendar cockpit
+  // now persists a reschedule optimistically and instantly via handleCockpitReschedule.
 
   // Get today's date string in YYYY-MM-DD format
   const getTodayString = () => {
@@ -303,7 +178,7 @@ export default function BookingsPage({
 
   // Get filtered active appointments (in_progress)
   const filteredActiveAppointments = useMemo(() => {
-    return localAppointments
+    return appointments
       .filter(
         (apt) =>
           apt.status === "in_progress" &&
@@ -316,12 +191,12 @@ export default function BookingsPage({
         return a.scheduled_time.localeCompare(b.scheduled_time);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, searchQuery, statusFilter]);
+  }, [appointments, searchQuery, statusFilter]);
 
   // Get filtered today's appointments (in progress only under Active Cleanings)
   const filteredTodaysAppointments = useMemo(() => {
     const today = getTodayString();
-    return localAppointments
+    return appointments
       .filter(
         (apt) =>
           apt.scheduled_date === today &&
@@ -331,7 +206,7 @@ export default function BookingsPage({
       )
       .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, searchQuery, statusFilter]);
+  }, [appointments, searchQuery, statusFilter]);
 
   // Get filtered upcoming appointments within time frame
   const filteredUpcomingAppointments = useMemo(() => {
@@ -345,7 +220,7 @@ export default function BookingsPage({
       endDate.setDate(endDate.getDate() + upcomingDaysFilter);
     }
 
-    return localAppointments
+    return appointments
       .filter((apt) => {
         // Must be after today
         if (apt.scheduled_date <= today) return false;
@@ -369,13 +244,13 @@ export default function BookingsPage({
         return a.scheduled_time.localeCompare(b.scheduled_time);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, searchQuery, statusFilter, upcomingDaysFilter]);
+  }, [appointments, searchQuery, statusFilter, upcomingDaysFilter]);
 
   // Get filtered past appointments
   const filteredPastAppointments = useMemo(() => {
     const today = getTodayString();
 
-    return localAppointments
+    return appointments
       .filter((apt) => {
         // Must be before today OR completed/cancelled
         if (apt.scheduled_date >= today) {
@@ -393,11 +268,11 @@ export default function BookingsPage({
         return b.scheduled_time.localeCompare(a.scheduled_time);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, searchQuery, statusFilter]);
+  }, [appointments, searchQuery, statusFilter]);
 
   // Get filtered all appointments
   const filteredAllAppointments = useMemo(() => {
-    return localAppointments
+    return appointments
       .filter((apt) => filterBySearch(apt) && filterByStatus(apt))
       .sort((a, b) => {
         // Chronological (oldest to newest)
@@ -406,7 +281,7 @@ export default function BookingsPage({
         return a.scheduled_time.localeCompare(b.scheduled_time);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localAppointments, searchQuery, statusFilter]);
+  }, [appointments, searchQuery, statusFilter]);
 
   // Combined appointments for selection and calendar view (used by calendar view)
   const allFilteredAppointments = useMemo(() => {
@@ -437,9 +312,9 @@ export default function BookingsPage({
 
   // Get unique statuses for filter dropdown
   const availableStatuses = useMemo(() => {
-    const statuses = new Set(localAppointments.map((apt) => apt.status));
+    const statuses = new Set(appointments.map((apt) => apt.status));
     return Array.from(statuses);
-  }, [localAppointments]);
+  }, [appointments]);
 
   // Time frame filter options
   const timeFrameOptions = [
@@ -535,15 +410,6 @@ export default function BookingsPage({
     [onOpenAppointment],
   );
 
-  const handleDayClick = useCallback(
-    (date: Date, appointments: AppointmentCardData[]) => {
-      setSelectedDate(date);
-      setDayAppointments(appointments);
-      setShowDayDetailSidebar(true);
-    },
-    [],
-  );
-
   const handleSlotSelect = useCallback(
     (date: Date, time: string) => {
       // Pre-fill date and time for quick add
@@ -570,28 +436,6 @@ export default function BookingsPage({
       router.push(`${pathname}?${params.toString()}`, { scroll: false });
     },
     [router, pathname, searchParams],
-  );
-
-  // Immediate DB reschedule (legacy fallback)
-  const handleReschedule = useCallback(
-    async (appointmentId: string, newDate: string, newTime: string) => {
-      const result = await updateAppointment(appointmentId, {
-        scheduled_date: newDate,
-        scheduled_time: newTime,
-      });
-
-      if (result.success) {
-        // Update the appointment in state
-        if (onAppointmentUpdated && result.data) {
-          onAppointmentUpdated(appointmentId, result.data);
-        } else if (onRefreshAppointments) {
-          onRefreshAppointments();
-        }
-      } else {
-        alert("Failed to reschedule appointment: " + result.error);
-      }
-    },
-    [onAppointmentUpdated, onRefreshAppointments],
   );
 
   // Optimistic + instant reschedule for the calendar cockpit (drag-to-move). Patches the
@@ -674,61 +518,6 @@ export default function BookingsPage({
     },
     [appointments, onAppointmentUpdated, onRefreshAppointments, reassignApi, showToast],
   );
-
-  // Local reschedule handler for deferred DB sync
-  const handleLocalReschedule = useCallback(
-    (
-      appointmentId: string,
-      newDate: string,
-      newTime: string,
-      originalDate: string,
-      originalTime: string,
-    ) => {
-      // Update local appointments state immediately (optimistic update)
-      setLocalAppointments((prev) =>
-        prev.map((apt) =>
-          apt.id === appointmentId
-            ? { ...apt, scheduled_date: newDate, scheduled_time: newTime }
-            : apt,
-        ),
-      );
-
-      // Add to pending updates for later DB sync
-      setPendingDragUpdates((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(appointmentId, {
-          appointmentId,
-          newDate,
-          newTime,
-          originalDate,
-          originalTime,
-        });
-        return newMap;
-      });
-
-      // Trigger debounced flush - will save to DB after 750ms of inactivity
-      debouncedFlushPendingUpdates();
-    },
-    [debouncedFlushPendingUpdates],
-  );
-
-  const handleDayDetailAppointmentClick = useCallback(
-    (appointment: AppointmentCardData) => {
-      setShowDayDetailSidebar(false);
-      onOpenAppointment(appointment.id);
-    },
-    [onOpenAppointment],
-  );
-
-  const handleDayDetailAddAppointment = useCallback(() => {
-    if (selectedDate) {
-      setPreFilledDate(format(selectedDate, "yyyy-MM-dd"));
-      setPreFilledTime(undefined); // Will use default time
-      setShowDayDetailSidebar(false);
-      setShowAddAppointmentModal(true);
-      openAddApptUrl();
-    }
-  }, [selectedDate, openAddApptUrl]);
 
   const handleOpenAddAppointmentModal = useCallback(() => {
     // Clear pre-filled values when opening normally
@@ -1193,21 +982,12 @@ export default function BookingsPage({
           onReschedule={canEdit ? handleCockpitReschedule : undefined}
           onReassign={canEdit ? handleCockpitReassign : undefined}
           canReassign={role === "admin" || canApproveDecline}
+          cleaners={cleaners}
           canEdit={canEdit}
           role={role}
         />
       )}
 
-      {/* Day Detail Sidebar (for calendar view) */}
-      <DayDetailSidebar
-        isOpen={showDayDetailSidebar}
-        onClose={() => setShowDayDetailSidebar(false)}
-        selectedDate={selectedDate}
-        appointments={dayAppointments}
-        onAppointmentClick={handleDayDetailAppointmentClick}
-        onAddAppointment={handleDayDetailAddAppointment}
-        canEdit={canEdit}
-      />
 
       {/* Bulk Action Confirmation Modal */}
       <BulkActionConfirmModal
