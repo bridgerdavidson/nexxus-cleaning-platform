@@ -29,6 +29,7 @@ import AppointmentCard, { AppointmentCardData } from "./AppointmentCard";
 import BulkActionConfirmModal from "./BulkActionConfirmModal";
 import AddAppointmentModal from "./AddAppointmentModal";
 import CalendarView, { PendingDragUpdate } from "./CalendarView";
+import CalendarCockpit from "./calendar/CalendarCockpit";
 import DayDetailSidebar from "./DayDetailSidebar";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
@@ -1098,16 +1099,12 @@ export default function BookingsPage({
         </>
       )}
 
-      {/* Calendar View Content */}
+      {/* Calendar View Content (new scheduling cockpit; drag/reassign wired in later phases) */}
       {viewType === "calendar" && (
-        <CalendarView
+        <CalendarCockpit
           appointments={allFilteredAppointments}
           loading={loading}
           onAppointmentClick={handleCalendarAppointmentClick}
-          onDayClick={handleDayClick}
-          onSlotSelect={handleSlotSelect}
-          onReschedule={handleReschedule}
-          onLocalReschedule={handleLocalReschedule}
           canEdit={canEdit}
           role={role}
         />
