@@ -116,8 +116,11 @@ export async function createSetupIntent(
     metadata: { source: 'nexxus-cleaning-platform' },
   };
   if (ach) {
+    // Only request `payment_method` (collect + instantly verify the bank account). We never read
+    // the Financial Connections `balances` product, and requesting it hard-rejects every SetupIntent
+    // on a live account not registered for it (which broke all card-adding when ACH was first enabled).
     params.payment_method_options = {
-      us_bank_account: { financial_connections: { permissions: ['payment_method', 'balances'] } },
+      us_bank_account: { financial_connections: { permissions: ['payment_method'] } },
     };
   }
 
