@@ -3,7 +3,6 @@
 import React, { Suspense, useState } from "react";
 import Link from "next/link";
 import { Loader, Loader2, Mail, AlertCircle } from "lucide-react";
-import { supabase } from "../../lib/supabase";
 import { AuthShell } from "../../components/auth/AuthShell";
 import { useToast } from "../../contexts/ToastContext";
 
@@ -28,14 +27,19 @@ function ForgotPasswordContent() {
     setStatus("submitting");
 
     // Always transition to "submitted" — never branch UI on the result so we
-    // don't leak whether the email exists. Rate-limit errors are also swallowed.
+    // don't leak whether the email exists. The reset is triggered server-side so a
+    // provider/SMTP send failure can page the platform owner; the user still sees
+    // the same generic screen. Network/other errors are swallowed for the same
+    // anti-enumeration reason.
     const redirectTo = `${window.location.origin}/reset-password`;
-    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo,
-    });
-
-    if (error) {
-      console.warn("resetPasswordForEmail error (suppressed):", error);
+    try {
+      await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed, redirectTo }),
+      });
+    } catch (err) {
+      console.warn("forgot-password request failed (suppressed):", err);
     }
 
     showToast("Check your email for a reset link", { variant: "email" });
