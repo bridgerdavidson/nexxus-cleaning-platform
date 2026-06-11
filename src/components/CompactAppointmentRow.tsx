@@ -57,10 +57,7 @@ export default function CompactAppointmentRow({
 }: CompactAppointmentRowProps) {
   const cleanerName = getCleanerName(appointment);
   const homeownerName = getHomeownerName(appointment);
-  const paymentChip = paymentStatusPill(
-    appointment.payment_status,
-    appointment.authorization_status,
-  );
+  const paymentChip = paymentStatusPill(appointment.payment_status);
 
   const hover = onClick
     ? "transition-colors hover:border-primary-300 hover:bg-primary-50/30"

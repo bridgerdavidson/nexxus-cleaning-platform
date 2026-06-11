@@ -28,7 +28,6 @@ import { useCalendarReassign } from "@/hooks/useCalendarReassign";
 import type { CalendarCleaner } from "@/lib/calendar/types";
 import { updateAppointment } from "../hooks/useAdminData";
 import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type ViewType = "list" | "calendar";
 
@@ -106,9 +105,6 @@ export default function BookingsPage({
     openModalUrl: openAddApptUrl,
     closeModalUrl: closeAddApptUrl,
   } = useReopenableModalUrl("add-appointment");
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { showToast } = useToast();
   const reassignApi = useCalendarReassign();
 
@@ -427,24 +423,6 @@ export default function BookingsPage({
       openAddApptUrl();
     },
     [openAddApptUrl],
-  );
-
-  // After a card-hold failure in the booking wizard, jump to the appointment drawer to fix the card.
-  // This is ONE navigation that drops the `?modal=add-appointment` marker and sets `?appointment=`
-  // in the same push — using the panel hook's openAppointment alone would keep the modal marker and
-  // reopen a blank wizard behind the drawer. Also clears the state-driven open.
-  const openAppointmentFromModal = useCallback(
-    (id: string) => {
-      setShowAddAppointmentModal(false);
-      setPreFilledDate(undefined);
-      setPreFilledTime(undefined);
-      setPreFilledCleanerId(undefined);
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("modal");
-      params.set("appointment", id);
-      router.push(`${pathname}?${params.toString()}`, { scroll: false });
-    },
-    [router, pathname, searchParams],
   );
 
   // Optimistic + instant reschedule for the calendar cockpit (drag-to-move). Patches the
@@ -1029,7 +1007,6 @@ export default function BookingsPage({
         preFilledDate={preFilledDate}
         preFilledTime={preFilledTime}
         preSelectedCleanerId={preFilledCleanerId}
-        onOpenAppointment={openAppointmentFromModal}
       />
     </div>
   );

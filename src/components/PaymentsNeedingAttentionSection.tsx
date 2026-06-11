@@ -260,16 +260,16 @@ export default function PaymentsNeedingAttentionSection({
                   <p className="text-xs text-gray-500">
                     {formatDate(a.scheduled_date)} ·{" "}
                     {failed
-                      ? "Card authorization failed"
+                      ? "Card charge failed"
                       : "Customer needs to verify their identity (3D Secure)"}
                   </p>
                 </div>
               </div>
               <div className="flex flex-shrink-0 items-center gap-2">
-                {/* Fixing a failed/unauthenticated hold means putting a WORKING card on, so this
+                {/* Fixing a failed/unauthenticated charge means putting a WORKING card on, so this
                     opens the appointment drawer (company card for self-pay, saved card or new card
-                    for homeowner) where the hold is re-placed with a fresh key. A blind retry of the
-                    same declined card can't succeed, so there's no "Re-authorize" anymore. */}
+                    for homeowner) where the card is charged with a fresh key. A blind retry of the
+                    same declined card can't succeed, so there's no "Re-charge" of the old one. */}
                 <button
                   onClick={() => openAppointment(a.id)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"

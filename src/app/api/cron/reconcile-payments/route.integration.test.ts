@@ -54,8 +54,9 @@ describe('POST /api/cron/reconcile-payments', () => {
       payoutPercent: 60,
     });
 
-    // Benign default: any unexpected PI looks still-in-flight and is skipped.
-    vi.mocked(retrievePaymentIntent).mockResolvedValue({ status: 'requires_capture' } as Stripe.PaymentIntent);
+    // Benign default: any unexpected PI looks still-in-flight (non-terminal), so the sweep retrieves
+    // it but doesn't repair it.
+    vi.mocked(retrievePaymentIntent).mockResolvedValue({ status: 'processing' } as Stripe.PaymentIntent);
   });
 
   afterEach(async () => {
@@ -105,7 +106,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       payment_method: 'card',
       payment_type: 'revenue',
       stripe_payment_intent_id: piId,
-      payment_intent_status: 'requires_capture',
+      payment_intent_status: 'processing',
     });
 
     const eventId = `evt_dl_${appt.id}`;
@@ -251,43 +252,6 @@ describe('POST /api/cron/reconcile-payments', () => {
       .eq('stripe_payment_intent_id', piId)
       .single();
     expect((pay as { status: string }).status).toBe('paid');
-  });
-
-  it('stuck-payment: leaves a live authorization hold (requires_capture) untouched', async () => {
-    const db = createTestSupabaseClient();
-    const appt = await createTestAppointment({
-      organizationId: org.organizationId,
-      cleanerId: org.cleaner.userId,
-      homeownerId: org.homeowner.userId,
-      status: 'confirmed',
-      totalPrice: 100,
-    });
-    const piId = `pi_hold_${appt.id}`;
-    await db.from('payments').insert({
-      organization_id: org.organizationId,
-      appointment_id: appt.id,
-      amount: 100,
-      status: 'pending',
-      payment_method: 'card',
-      payment_type: 'revenue',
-      stripe_payment_intent_id: piId,
-      payment_intent_status: 'requires_capture', // a valid hold, not drift
-      created_at: HOUR_AGO(),
-    });
-
-    const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
-    expect(status).toBe(200);
-    // The hold is filtered out of the sweep — OUR PI is never retrieved, and the row is left
-    // pending. (Asserted per-PI, not globally: other tests leave stale pending rows in the
-    // shared DB that the sweep legitimately checks.)
-    const retrievedIds = vi.mocked(retrievePaymentIntent).mock.calls.map((c) => c[0]);
-    expect(retrievedIds).not.toContain(piId);
-    const { data: pay } = await db
-      .from('payments')
-      .select('status')
-      .eq('stripe_payment_intent_id', piId)
-      .single();
-    expect((pay as { status: string }).status).toBe('pending');
   });
 
   it('unsettled-capture: settles a captured charge whose funds never moved off the platform', async () => {

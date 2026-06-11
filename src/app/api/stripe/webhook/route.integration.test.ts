@@ -99,9 +99,9 @@ describe('POST /api/stripe/webhook', () => {
     }
   });
 
-  it('setup_intent.succeeded (card link) re-queues the homeowner\'s stuck appointments onto the new card', async () => {
+  it('setup_intent.succeeded (card link) re-points the homeowner\'s stuck appointments onto the new card', async () => {
     const admin = createTestSupabaseClient();
-    // A homeowner appointment stuck needing 3-D Secure (off-session hold returned requires_action).
+    // A homeowner appointment stuck needing 3-D Secure (off-session charge returned requires_action).
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
       cleanerId: org.cleaner.userId,
@@ -148,8 +148,9 @@ describe('POST /api/stripe/webhook', () => {
     });
     expect(status).toBe(200);
 
-    // The card link is marked completed AND the stuck appointment is re-queued onto the new,
-    // now-authenticated card so the JIT cron retries the hold (no more 3-D Secure dead-end).
+    // The card link is marked completed AND the stuck appointment is re-pointed onto the new,
+    // now-authenticated card with its failed state cleared (it reads "Unpaid" and is charged when
+    // the job is completed).
     const { data: linkRow } = await admin
       .from('homeowner_payment_links')
       .select('status')
@@ -159,17 +160,15 @@ describe('POST /api/stripe/webhook', () => {
 
     const { data: apptRow } = await admin
       .from('appointments')
-      .select('authorization_status, payment_method_id, authorize_at')
+      .select('authorization_status, payment_method_id')
       .eq('id', appt.id)
       .single();
     const a = apptRow as {
-      authorization_status: string;
+      authorization_status: string | null;
       payment_method_id: string;
-      authorize_at: string | null;
     };
-    expect(a.authorization_status).toBe('scheduled');
+    expect(a.authorization_status).toBeNull();
     expect(a.payment_method_id).toBe('pm_new_authed_card');
-    expect(a.authorize_at).not.toBeNull();
   });
 
   it('replaying payment_intent.succeeded creates exactly ONE transfer (idempotency)', async () => {
@@ -1163,7 +1162,7 @@ describe('POST /api/stripe/webhook', () => {
     expect((payouts![0] as { status: string }).status).toBe('reversed');
   });
 
-  it('payment_intent.canceled reschedules re-auth when the appointment still claims a dead hold', async () => {
+  it('payment_intent.canceled mirrors the canceled status onto the payments row (no re-auth)', async () => {
     const admin = createTestSupabaseClient();
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
@@ -1185,7 +1184,7 @@ describe('POST /api/stripe/webhook', () => {
       payment_method: 'card',
       payment_type: 'revenue',
       stripe_payment_intent_id: piId,
-      payment_intent_status: 'requires_capture',
+      payment_intent_status: 'processing',
     });
 
     const eventId = `evt_pi_cancel_${appt.id}`;
@@ -1209,14 +1208,22 @@ describe('POST /api/stripe/webhook', () => {
     });
     expect(res.status).toBe(200);
 
+    // With no holds, a canceled PI just mirrors the status onto the payments row; the appointment's
+    // authorization_status + reauth_count are left untouched (there is no re-authorization).
     const { data: a } = await admin
       .from('appointments')
       .select('authorization_status, reauth_count')
       .eq('id', appt.id)
       .single();
-    // Dead hold + active appointment → reset to scheduled (JIT re-authorizes) with a bumped count.
-    expect((a as { authorization_status: string }).authorization_status).toBe('scheduled');
-    expect((a as { reauth_count: number }).reauth_count).toBe(1);
+    expect((a as { authorization_status: string }).authorization_status).toBe('authorized');
+    expect((a as { reauth_count: number }).reauth_count).toBe(0);
+
+    const { data: pay } = await admin
+      .from('payments')
+      .select('payment_intent_status')
+      .eq('stripe_payment_intent_id', piId)
+      .single();
+    expect((pay as { payment_intent_status: string }).payment_intent_status).toBe('canceled');
 
     await admin.from('webhook_events').delete().eq('id', eventId);
   });

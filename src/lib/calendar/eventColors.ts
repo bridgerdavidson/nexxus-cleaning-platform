@@ -5,14 +5,13 @@
  * them up (no `bg-${family}-100` interpolation).
  *
  * Also exposes `paymentProblemPill`: the payment chip is only shown on a calendar event when
- * it represents a money problem (Unpaid / Failed / Auth failed / Action needed), to keep
- * chips quiet for the healthy majority.
+ * it represents a money problem (a Failed charge), to keep chips quiet for the healthy majority.
+ * An upcoming "Unpaid" appointment is normal (it is charged at completion), so it is not flagged.
  */
 import {
   paymentStatusPill,
   type PaymentPill,
   type PillPaymentStatus,
-  type PillAuthorizationStatus,
 } from '../paymentStatusPill';
 
 export interface StatusVisual {
@@ -59,13 +58,10 @@ export function statusVisual(
 }
 
 /** Payment-attention labels worth surfacing on a calendar chip. */
-const PROBLEM_LABELS = new Set(['Unpaid', 'Failed', 'Auth failed', 'Action needed']);
+const PROBLEM_LABELS = new Set(['Failed']);
 
 /** Returns the payment pill ONLY when it is a money problem, else null (chip stays quiet). */
-export function paymentProblemPill(
-  paymentStatus: PillPaymentStatus,
-  authorizationStatus?: PillAuthorizationStatus,
-): PaymentPill | null {
-  const pill = paymentStatusPill(paymentStatus, authorizationStatus);
+export function paymentProblemPill(paymentStatus: PillPaymentStatus): PaymentPill | null {
+  const pill = paymentStatusPill(paymentStatus);
   return PROBLEM_LABELS.has(pill.label) ? pill : null;
 }

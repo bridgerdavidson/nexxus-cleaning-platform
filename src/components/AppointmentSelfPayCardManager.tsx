@@ -8,9 +8,11 @@ import { placeAppointmentPayment, type PlaceHoldResult } from "@/lib/payments/au
 interface Props {
   appointmentId: string;
   organizationId: string;
-  /** Called with the hold result after a card change so the parent can clear the failure banner. */
+  /** Called with the card-update/charge result after a card change so the parent can clear the
+   *  failure banner. */
   onHoldResult?: (result: PlaceHoldResult) => void;
-  /** True for a COMPLETED job: changing the card charges it immediately instead of placing a hold. */
+  /** True for a COMPLETED job: changing the card charges it immediately. An upcoming job just saves
+   *  the card (it is charged when the job is completed). */
   chargeNow?: boolean;
 }
 
@@ -18,8 +20,8 @@ interface Props {
  * Company-card manager for a SELF-PAY appointment's details drawer. Self-pay charges the org's
  * company card (there's no homeowner), so it reuses OrgPaymentMethodPicker (saved company cards +
  * add a new card/bank via the same shared Stripe panel used in booking step 3). Switching or adding
- * a card promotes it to the org default and immediately re-places the hold (or, for a completed job,
- * charges it now), surfacing the result inline instead of waiting on the cron.
+ * a card promotes it to the org default; for a COMPLETED job it then charges the card now, while an
+ * upcoming job just saves it (the company card is charged when the job is completed).
  */
 export default function AppointmentSelfPayCardManager({
   appointmentId,
@@ -33,10 +35,21 @@ export default function AppointmentSelfPayCardManager({
   const handleChanged = async () => {
     setPlacing(true);
     setResult(null);
-    const hold = await placeAppointmentPayment(appointmentId, organizationId, { chargeNow });
-    setResult(hold);
+    if (chargeNow) {
+      // Completed job: charge the company card now and surface the result.
+      const charged = await placeAppointmentPayment(appointmentId, organizationId);
+      setResult(charged);
+      onHoldResult?.(charged);
+    } else {
+      // Upcoming job: the company card is just saved (it is charged when the job is completed).
+      const saved: PlaceHoldResult = {
+        ok: true,
+        message: "Card updated. It will be charged when the job is completed.",
+      };
+      setResult(saved);
+      onHoldResult?.(saved);
+    }
     setPlacing(false);
-    onHoldResult?.(hold);
   };
 
   return (

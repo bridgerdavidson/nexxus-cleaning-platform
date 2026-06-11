@@ -95,16 +95,14 @@ export async function reconcileStuckPayments(
   const cols =
     'id, appointment_id, organization_id, status, stripe_payment_intent_id, payment_intent_status';
 
-  // 'pending' card/legacy rows past the short SLA — prime candidates for a webhook we never got.
-  // Authorized-but-uncaptured holds (payment_intent_status='requires_capture') are intentionally
-  // NOT swept: valid in-flight states owned by the JIT authorizer / auth-expiry watchdog. Keep
-  // null (PI status never recorded) and any non-hold status.
+  // 'pending' card/legacy rows past the short SLA are prime candidates for a webhook we never got.
+  // With no upfront holds there is no 'requires_capture' in-flight state to exempt, so every stuck
+  // pending row with a PaymentIntent is fair game for the reconcile retry.
   const { data: pendingRows } = await supabase
     .from('payments')
     .select(cols)
     .eq('status', 'pending')
     .not('stripe_payment_intent_id', 'is', null)
-    .or('payment_intent_status.is.null,payment_intent_status.neq.requires_capture')
     .lte('created_at', pendingCutoff)
     .limit(batch);
 

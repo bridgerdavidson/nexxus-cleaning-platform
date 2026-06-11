@@ -229,10 +229,7 @@ export default function AppointmentCard({
     appointment.status === "confirmed";
 
 
-  const paymentPill = paymentStatusPill(
-    appointment.payment_status,
-    appointment.authorization_status,
-  );
+  const paymentPill = paymentStatusPill(appointment.payment_status);
 
   // Unified compact row on mobile for admin/manager/homeowner. The cluttered
   // legacy mobile layout (date pill + status stack + indented address + footer

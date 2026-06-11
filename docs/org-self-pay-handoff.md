@@ -1,5 +1,10 @@
 # Organization Self-Pay — Implementation Handoff
 
+> **Update (charge-at-completion):** self-pay no longer HOLDS the company card before service. The
+> card is saved and CHARGED when the job is completed (and an off-session fee at cancel time);
+> `authorizeSelfPayAppointment` and the JIT-hold cron were removed. The settle path
+> (`settleSelfPay`, `metadata.self_pay`) is unchanged. See `docs/stripe-architecture.md`.
+
 Resume doc for the `feat/org-self-pay` feature. Pairs with:
 - **Full design/plan:** `~/.claude/plans/i-want-to-brainstorm-cozy-squirrel.md` (the brainstormed design, UI/UX specs per surface, build sequence, test plan, verification).
 - **Memory:** `project_org_self_pay`, `feedback_ui_native_verify`, `project_dev_testing_env`, `project_connected_transfer_constraint`, `project_stripe_restructure`.

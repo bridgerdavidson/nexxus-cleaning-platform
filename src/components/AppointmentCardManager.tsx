@@ -23,9 +23,11 @@ interface Props {
   /** Panel role. A homeowner manages their OWN cards (self-scoped); staff act on the homeowner's
    *  behalf (admin-scoped). Cleaners never see this (the section is hidden for them). */
   role: "admin" | "manager" | "cleaner" | "homeowner";
-  /** Called with the hold result after a card change so the parent can clear the failure banner. */
+  /** Called with the card-update/charge result after a card change so the parent can clear the
+   *  failure banner. */
   onHoldResult?: (result: PlaceHoldResult) => void;
-  /** True for a COMPLETED job: changing the card charges it immediately instead of placing a hold. */
+  /** True for a COMPLETED job: changing the card charges it immediately. An upcoming job just saves
+   *  the card (it is charged when the job is completed). */
   chargeNow?: boolean;
 }
 
@@ -99,12 +101,20 @@ export default function AppointmentCardManager({ appointmentId, homeownerId, org
       setSelectedId(result.paymentMethodId);
       setEditing(false);
       await load();
-      // Immediately (re)place the hold on the new card and surface the result, instead of only
-      // queuing the JIT cron. Staff-only: a homeowner managing their own card can't authorize.
-      if (staffMode) {
-        const hold = await placeAppointmentPayment(appointmentId, organizationId, { chargeNow });
-        setHoldResult(hold);
-        onHoldResult?.(hold);
+      // A completed job charges the new card now and surfaces the result; an upcoming job just saves
+      // the card (it is charged when the job is completed), so there is nothing to charge here.
+      // Staff-only either way: a homeowner managing their own card can't trigger a charge.
+      if (staffMode && chargeNow) {
+        const charged = await placeAppointmentPayment(appointmentId, organizationId);
+        setHoldResult(charged);
+        onHoldResult?.(charged);
+      } else if (staffMode) {
+        const saved: PlaceHoldResult = {
+          ok: true,
+          message: "Card updated. It will be charged when the job is completed.",
+        };
+        setHoldResult(saved);
+        onHoldResult?.(saved);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update card");
