@@ -84,7 +84,7 @@ export default function CalendarCockpit({
   initialDate,
 }: CalendarCockpitProps) {
   const isMobile = useIsMobile();
-  const nav = useCalendarNavigation(initialView ?? (isMobile ? 'agenda' : 'week'), initialDate);
+  const nav = useCalendarNavigation(initialView ?? (isMobile ? 'agenda' : 'day'), initialDate);
   const events = useCalendarEvents(appointments, role);
   const [activeEvent, setActiveEvent] = useState<CalendarEvent | null>(null);
   const [pendingReassign, setPendingReassign] = useState<PendingReassign | null>(null);
