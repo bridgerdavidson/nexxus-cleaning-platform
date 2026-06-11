@@ -32,6 +32,11 @@ export interface AppointmentCardData {
   notes?: string | null;
   series_id?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  /**
+   * cleaner_profiles.id of the assigned cleaner (equals the user id). Used by the calendar
+   * dispatch board to group events into cleaner columns. Null when unassigned.
+   */
+  cleaner_id?: string | null;
   price_override_enabled?: boolean;
   price_override_total?: number | null;
   payment_status?: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded' | null;

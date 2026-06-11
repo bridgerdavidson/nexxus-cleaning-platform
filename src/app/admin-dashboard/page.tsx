@@ -656,6 +656,13 @@ function AdminDashboardInner() {
         onGoToActionCenter={() => setActiveTab("home")}
         role="admin"
         initialStatusFilter={initialFilter}
+        cleaners={cleaners.map((c) => ({
+          id: c.id,
+          name:
+            `${c.user_profile?.first_name ?? ""} ${c.user_profile?.last_name ?? ""}`.trim() ||
+            "Cleaner",
+          avatarUrl: c.user_profile?.avatar_url ?? null,
+        }))}
         showCreateButton={false}
       />
     );

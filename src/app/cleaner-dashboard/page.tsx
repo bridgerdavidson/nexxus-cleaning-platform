@@ -56,8 +56,7 @@ import AppointmentCard, {
 } from "../../components/AppointmentCard";
 import AppointmentPanelHost from "../../components/AppointmentPanelHost";
 import { useAppointmentPanel } from "../../hooks/useAppointmentPanel";
-import CalendarView from "../../components/CalendarView";
-import DayDetailSidebar from "../../components/DayDetailSidebar";
+import CalendarCockpit from "../../components/calendar/CalendarCockpit";
 import StatusBadge from "../../components/StatusBadge";
 import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
@@ -174,12 +173,6 @@ function CleanerDashboardInner() {
     openAppointment,
     closeAppointment,
   } = useAppointmentPanel();
-  const [showDayDetailSidebar, setShowDayDetailSidebar] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [dayAppointments, setDayAppointments] = useState<AppointmentCardData[]>(
-    []
-  );
-
   // Real data hooks - must be called at top level
   // These hooks handle currentOrganizationId internally, but we need to ensure it's available
   const {
@@ -642,27 +635,6 @@ function CleanerDashboardInner() {
   // Calendar handlers
   const handleCalendarAppointmentClick = useCallback(
     (appointment: AppointmentCardData) => {
-      openAppointment(appointment.id);
-    },
-    [openAppointment]
-  );
-
-  const handleDayClick = useCallback(
-    (date: Date, appts: AppointmentCardData[]) => {
-      setSelectedDate(date);
-      setDayAppointments(appts);
-      setShowDayDetailSidebar(true);
-    },
-    []
-  );
-
-  const handleSlotSelect = useCallback((date: Date, time: string) => {
-    // Cleaners can't create appointments, so this is a no-op
-  }, []);
-
-  const handleDayDetailAppointmentClick = useCallback(
-    (appointment: AppointmentCardData) => {
-      setShowDayDetailSidebar(false);
       openAppointment(appointment.id);
     },
     [openAppointment]
@@ -1532,32 +1504,16 @@ function CleanerDashboardInner() {
         </>
       )}
 
-      {/* Calendar View Content */}
+      {/* Calendar View Content (read-only cockpit, scoped to this cleaner's own jobs) */}
       {viewType === "calendar" && (
-        <CalendarView
+        <CalendarCockpit
           appointments={allFilteredAppointments}
           loading={appointmentsLoading}
           onAppointmentClick={handleCalendarAppointmentClick}
-          onDayClick={handleDayClick}
-          onSlotSelect={handleSlotSelect}
-          onReschedule={async () => {}}
-          onLocalReschedule={() => {}}
           canEdit={false}
           role="cleaner"
         />
       )}
-
-      {/* Day Detail Sidebar (for calendar view) */}
-      <DayDetailSidebar
-        isOpen={showDayDetailSidebar}
-        onClose={() => setShowDayDetailSidebar(false)}
-        selectedDate={selectedDate}
-        appointments={dayAppointments}
-        onAppointmentClick={handleDayDetailAppointmentClick}
-        onAddAppointment={() => {}}
-        canEdit={false}
-        role="cleaner"
-      />
 
           </>
         )}

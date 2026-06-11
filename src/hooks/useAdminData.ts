@@ -23,6 +23,8 @@ export interface AdminAppointment {
   notes?: string | null;
   series_id?: string | null;
   cleaner_confirmation_status?: 'awaiting' | 'approved' | 'rejected';
+  /** cleaner_profiles.id of the assigned cleaner (= the user id). Null when unassigned. */
+  cleaner_id?: string | null;
   price_override_enabled?: boolean;
   price_override_total?: number | null;
   homeowner_id?: string;
