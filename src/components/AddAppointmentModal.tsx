@@ -114,6 +114,12 @@ interface AddAppointmentModalProps {
   startOnDetailsStep?: boolean;
   preFilledDate?: string; // YYYY-MM-DD format
   preFilledTime?: string; // HH:mm format
+  /**
+   * Pre-select a cleaner (additive). Used when creating from the Day dispatch board, where
+   * clicking an empty slot in a cleaner's column should open the wizard with that cleaner
+   * already chosen. Applied once after the cleaner list loads; a restored draft wins.
+   */
+  preSelectedCleanerId?: string;
   hidePriceOverride?: boolean; // Hide price override UI for homeowner role
   /**
    * Opens the appointment details side drawer for the given id. Wired to `openAppointment`
@@ -190,6 +196,7 @@ export default function AddAppointmentModal({
   startOnDetailsStep = false,
   preFilledDate,
   preFilledTime,
+  preSelectedCleanerId,
   hidePriceOverride = false,
   onOpenAppointment,
 }: AddAppointmentModalProps) {
@@ -606,6 +613,22 @@ export default function AddAppointmentModal({
     preFilledDate,
     preFilledTime,
   ]);
+
+  // Pre-select a cleaner (dispatch-board slot create). Wait for the cleaner list to load, then
+  // apply once per open. A restored draft cleaner wins, so we only set when nothing is selected.
+  const cleanerPreselectAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) cleanerPreselectAppliedRef.current = false;
+  }, [isOpen]);
+  useEffect(() => {
+    if (!isOpen || !preSelectedCleanerId || cleanerPreselectAppliedRef.current) return;
+    if (cleaners.length === 0) return; // wait for fetchCleaners
+    cleanerPreselectAppliedRef.current = true;
+    if (selectedCleaner) return; // a restored draft takes precedence
+    const match = cleaners.find((c) => c.id === preSelectedCleanerId);
+    if (match) setSelectedCleaner(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, preSelectedCleanerId, cleaners]);
 
   // Fetch properties when homeowner is selected (only when not pre-selected).
   // In self-pay mode we load ALL org properties (any property can be company-paid),

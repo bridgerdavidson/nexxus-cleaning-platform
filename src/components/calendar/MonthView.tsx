@@ -18,11 +18,14 @@ export default function MonthView({
   currentDate,
   onEventClick,
   onDayOpen,
+  onCreate,
 }: {
   events: CalendarEvent[];
   currentDate: Date;
   onEventClick: (event: CalendarEvent) => void;
   onDayOpen: (date: Date) => void;
+  /** Click an empty area of a day cell to create a booking on that date (no time). */
+  onCreate?: (date: Date) => void;
 }) {
   const days = monthMatrix(currentDate);
   const today = new Date();
@@ -59,14 +62,24 @@ export default function MonthView({
           return (
             <div
               key={key}
-              className={`flex min-h-[112px] flex-col border-b border-r border-gray-100 p-1 ${
+              className={`relative flex min-h-[112px] flex-col border-b border-r border-gray-100 p-1 ${
                 inMonth ? 'bg-white' : 'bg-gray-50/60'
               }`}
             >
+              {/* Empty-area click-to-create layer (behind the day number + pills, which sit at
+                  z-10). Empty space in the cell lands here and opens the new-booking modal. */}
+              {onCreate && (
+                <button
+                  type="button"
+                  onClick={() => onCreate(day)}
+                  className="absolute inset-0 z-0 cursor-copy focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+                  aria-label={`Add a booking on ${toDateKey(day)}`}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => onDayOpen(day)}
-                className="mb-1 flex items-center justify-end focus:outline-none"
+                className="relative z-10 mb-1 flex items-center justify-end focus:outline-none"
                 aria-label={`Open ${toDateKey(day)}`}
               >
                 <span
@@ -81,7 +94,7 @@ export default function MonthView({
                   {day.getDate()}
                 </span>
               </button>
-              <div className="flex flex-col gap-0.5">
+              <div className="relative z-10 flex flex-col gap-0.5">
                 {dayEvents.slice(0, MAX_PILLS).map((ev) => (
                   <MonthEventPill key={ev.id} event={ev} onClick={() => onEventClick(ev)} />
                 ))}

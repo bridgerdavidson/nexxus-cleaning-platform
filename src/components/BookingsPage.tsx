@@ -115,6 +115,7 @@ export default function BookingsPage({
   // Calendar create-on-slot prefill (the cockpit owns day navigation now)
   const [preFilledDate, setPreFilledDate] = useState<string | undefined>();
   const [preFilledTime, setPreFilledTime] = useState<string | undefined>();
+  const [preFilledCleanerId, setPreFilledCleanerId] = useState<string | undefined>();
 
   // Selection state
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -406,9 +407,22 @@ export default function BookingsPage({
 
   const handleSlotSelect = useCallback(
     (date: Date, time: string) => {
-      // Pre-fill date and time for quick add
+      // Pre-fill date and time for quick add (time may be "" from a Month-cell click).
       setPreFilledDate(format(date, "yyyy-MM-dd"));
-      setPreFilledTime(time);
+      setPreFilledTime(time || undefined);
+      setPreFilledCleanerId(undefined);
+      setShowAddAppointmentModal(true);
+      openAddApptUrl();
+    },
+    [openAddApptUrl],
+  );
+
+  // Dispatch-board empty-slot click: prefill date, time, AND the cleaner for that column.
+  const handleSlotSelectWithCleaner = useCallback(
+    (date: Date, time: string, cleanerId: string) => {
+      setPreFilledDate(format(date, "yyyy-MM-dd"));
+      setPreFilledTime(time || undefined);
+      setPreFilledCleanerId(cleanerId);
       setShowAddAppointmentModal(true);
       openAddApptUrl();
     },
@@ -424,6 +438,7 @@ export default function BookingsPage({
       setShowAddAppointmentModal(false);
       setPreFilledDate(undefined);
       setPreFilledTime(undefined);
+      setPreFilledCleanerId(undefined);
       const params = new URLSearchParams(searchParams.toString());
       params.delete("modal");
       params.set("appointment", id);
@@ -517,6 +532,7 @@ export default function BookingsPage({
     // Clear pre-filled values when opening normally
     setPreFilledDate(undefined);
     setPreFilledTime(undefined);
+    setPreFilledCleanerId(undefined);
     setShowAddAppointmentModal(true);
     openAddApptUrl();
   }, [openAddApptUrl]);
@@ -976,6 +992,7 @@ export default function BookingsPage({
           onReschedule={canEdit ? handleCockpitReschedule : undefined}
           onReassign={canEdit ? handleCockpitReassign : undefined}
           onSlotSelect={canEdit ? handleSlotSelect : undefined}
+          onSlotSelectWithCleaner={canEdit ? handleSlotSelectWithCleaner : undefined}
           canReassign={role === "admin" || canApproveDecline}
           cleaners={cleaners}
           canEdit={canEdit}
@@ -1001,6 +1018,7 @@ export default function BookingsPage({
           setShowAddAppointmentModal(false);
           setPreFilledDate(undefined);
           setPreFilledTime(undefined);
+          setPreFilledCleanerId(undefined);
           closeAddApptUrl();
         }}
         onAppointmentCreated={() => {
@@ -1010,6 +1028,7 @@ export default function BookingsPage({
         }}
         preFilledDate={preFilledDate}
         preFilledTime={preFilledTime}
+        preSelectedCleanerId={preFilledCleanerId}
         onOpenAppointment={openAppointmentFromModal}
       />
     </div>

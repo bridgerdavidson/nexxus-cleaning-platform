@@ -48,6 +48,7 @@ export default function DayDispatchBoard({
   onEventClick,
   editable = false,
   isDragActive = false,
+  onSlotClick,
 }: {
   events: CalendarEvent[];
   cleaners: CalendarCleaner[];
@@ -55,6 +56,8 @@ export default function DayDispatchBoard({
   onEventClick: (event: CalendarEvent) => void;
   editable?: boolean;
   isDragActive?: boolean;
+  /** Click an empty slot in a cleaner's column to create a booking at that minute, for them. */
+  onSlotClick?: (cleanerId: string, minutes: number) => void;
 }) {
   const dayKey = toDateKey(currentDate);
   const isToday = isSameDayLocal(currentDate, new Date());
@@ -124,6 +127,13 @@ export default function DayDispatchBoard({
               // Cleaner columns get a 3-part slot id (cleaner + date + minute) so a cross-column
               // drop reassigns. The Unassigned column has no drop lattice (you assign OUT of it).
               slotPrefix={col.cleaner ? `${col.cleaner.id}:${dayKey}` : undefined}
+              // Empty-slot click creates a booking prefilled with this cleaner + time. Only on
+              // real cleaner columns (you create INTO a cleaner, not the Unassigned bucket).
+              onSlotClick={
+                onSlotClick && col.cleaner
+                  ? (min) => onSlotClick(col.cleaner!.id, min)
+                  : undefined
+              }
             />
           </div>
         ))}

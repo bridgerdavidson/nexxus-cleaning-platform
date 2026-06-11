@@ -75,6 +75,7 @@ export default function CalendarCockpit({
   onReschedule,
   onReassign,
   onSlotSelect,
+  onSlotSelectWithCleaner,
   cleaners = [],
   canEdit = true,
   canReassign = false,
@@ -239,6 +240,9 @@ export default function CalendarCockpit({
               currentDate={nav.currentDate}
               onEventClick={handleEventClick}
               onDayOpen={openDay}
+              onCreate={
+                editable && onSlotSelect ? (date) => onSlotSelect(date, '') : undefined
+              }
             />
           ) : nav.view === 'week' ? (
             <WeekTimeGrid
@@ -262,6 +266,12 @@ export default function CalendarCockpit({
               onEventClick={handleEventClick}
               editable={editable}
               isDragActive={isDragActive}
+              onSlotClick={
+                editable && onSlotSelectWithCleaner
+                  ? (cleanerId, min) =>
+                      onSlotSelectWithCleaner(nav.currentDate, minutesToTimeString(min), cleanerId)
+                  : undefined
+              }
             />
           ) : (
             <AgendaList
