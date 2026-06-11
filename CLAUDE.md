@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Skills
+
+- **Grilling**: When the user says "grill me", asks to be grilled, or wants a plan/design stress-tested, ALWAYS use the project skill at `.claude/skills/grill-me` (invocable as `/grill-me`). NEVER use `context-mode:grill-me` for this. The two share a name, but only the project skill has the session-log step (it records every Q&A to a per-session file under `brainstorming/` so early answers survive long interviews). The context-mode copy lacks this and must not be used.
+
 ## Commands
 
 ```bash
@@ -167,16 +171,16 @@ A large number of routes under `src/app/api/` and corresponding pages (e.g. `cle
 
 #### Multi-tenant restructure (flag-gated — see `docs/stripe-architecture.md`)
 
-The payment architecture has been rebuilt so the **tenant cleaning company is the merchant of record** (destination charges with `on_behalf_of` + `transfer_data.destination` → tenant Express account), with the platform keeping the homeowner Customer. It ships behind two flags (default **off**), so the **legacy platform-as-merchant path still runs in production** until cutover:
+The payment architecture has been rebuilt so the **tenant cleaning company is the merchant of record** (`on_behalf_of` the tenant, **no** `transfer_data` — the charge settles to the **platform** balance and is split out via separate transfers), with the platform keeping the homeowner Customer. A card is **saved at booking and charged when the job is completed** (no upfront hold; the cancellation/no-show fee is an off-session charge at cancel time). It ships behind two flags (default **off**), so the **legacy platform-as-merchant path still runs in production** until cutover:
 
 - `STRIPE_TENANT_CONNECT_ENABLED` — tenant Connect onboarding + tenant-routed charges.
-- `STRIPE_NEW_CHARGE_FLOW_ENABLED` — save-card / JIT-authorize / capture / cancel / refund routes.
+- `STRIPE_NEW_CHARGE_FLOW_ENABLED` — save-card-at-booking / charge-at-completion / cancel / refund routes (card holds removed; a card is saved at booking and charged when the job is completed, see `docs/stripe-architecture.md`).
 
 Key conventions when touching this code:
 - New Stripe SDK calls live in focused submodules under `src/lib/stripe/**` (`charges/`, `connect/`, `customers/`, `billing.ts`, `transfers.ts`, `reconcile.ts`) so integration tests can `vi.mock` them; orchestration that mixes Stripe + DB lives in `src/lib/payments/**`.
 - The webhook is a thin route → `claimWebhookEvent` (insert-first idempotency on `webhook_events`; only a `23505` conflict on a `processed` row is a duplicate) → `dispatchStripeEvent` (one idempotent handler per event type).
 - `payment_events` is the append-only forensic ledger; the reconciliation sweep (`/api/cron/reconcile-payments`, migration 067) is the correctness backstop, so DB state never depends on a single webhook delivery.
-- Tenant→cleaner transfers use idempotency key `cleaner-payout-${appointmentId}` and are created on the tenant account (`stripeAccount: tenant`). Cleaner % is of **gross** (decision #11).
+- The tenant remainder and cleaner % are paid as **separate platform→connected transfers** from the platform balance after the charge succeeds (idempotency keys `tenant-payout-${appointmentId}` / `cleaner-payout-${appointmentId}`); a connected→connected transfer is forbidden, which is why the charge is platform-held. Cleaner % is of **gross** (decision #11).
 - Cutover (flip prod flags, add the prod webhook events below, remove the legacy charge path) is a deliberate ops step — see the cutover section of `docs/stripe-architecture.md`.
 
 ### Domain types (`src/types/index.ts`)
