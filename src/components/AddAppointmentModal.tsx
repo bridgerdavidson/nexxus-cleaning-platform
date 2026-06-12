@@ -2758,6 +2758,7 @@ export default function AddAppointmentModal({
                   ) : (
                     <PaymentMethodForm
                       homeownerId={selectedHomeowner.id}
+                      organizationId={currentOrganizationId}
                       onSuccess={() => {
                         setPaymentMethodSaved(true);
                       }}

@@ -1,40 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getOrCreateStripeCustomer, createSetupIntent } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
+import { requireSelfOrOrgStaff } from '@/lib/auth/requireSelfOrOrgStaff';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
+/**
+ * POST /api/stripe/create-setup-intent
+ *
+ * Begin saving a card for a homeowner's platform Customer. Caller must be the
+ * homeowner themselves, or org staff (owner/admin/manager, with organization_id
+ * in the body) acting on a homeowner of their org.
+ */
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
     return NextResponse.json({ error: 'Stripe disabled' }, { status: 404 });
   }
   try {
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    // Get request body
     const body = await request.json();
-    const { homeowner_id } = body;
+    const { homeowner_id, organization_id } = body as {
+      homeowner_id?: string;
+      organization_id?: string;
+    };
 
-    // Validate required fields
-    if (!homeowner_id) {
-      return NextResponse.json(
-        { error: 'Missing required field: homeowner_id' },
-        { status: 400 }
-      );
-    }
+    const auth = await requireSelfOrOrgStaff(request, supabaseAdmin, homeowner_id, organization_id);
+    if (!auth.ok) return auth.response;
 
     // Fetch homeowner profile
     const { data: homeowner, error: homeownerError } = await supabaseAdmin
       .from('user_profiles')
       .select('id, email, first_name, last_name, stripe_customer_id')
-      .eq('id', homeowner_id)
+      .eq('id', homeowner_id!)
       .single();
 
     if (homeownerError || !homeowner) {
@@ -58,7 +53,7 @@ export async function POST(request: NextRequest) {
       const { error: updateError } = await supabaseAdmin
         .from('user_profiles')
         .update({ stripe_customer_id: stripeCustomer.id })
-        .eq('id', homeowner_id);
+        .eq('id', homeowner_id!);
 
       if (updateError) {
         console.error('Error updating stripe_customer_id:', updateError);
@@ -78,12 +73,11 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating SetupIntent:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to create SetupIntent', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+      {
+        error: 'Failed to create SetupIntent',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );
   }
 }
-
