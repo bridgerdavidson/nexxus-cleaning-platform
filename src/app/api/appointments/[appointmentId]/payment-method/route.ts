@@ -85,14 +85,14 @@ export async function POST(
     }
 
     // Changing the card on a FAILED appointment clears the failure: it reads "Unpaid" again and is
-    // queued for a fresh authorization on the new card. Bump reauth_count so the next authorize
-    // uses a new idempotency key (the declined PI is cached under the old key) and detach the dead
-    // PI from the revenue row so the pill (derived from payments.status) flips back to pending.
+    // charged on the new card (at completion, or now via the drawer's charge-now for a finished
+    // job). Bump reauth_count so the next charge uses a new idempotency key (the declined PI is
+    // cached under the old key) and detach the dead PI from the revenue row so the pill (derived
+    // from payments.status) flips back to pending.
     const wasFailed = appt.authorization_status === 'failed';
     const apptUpdate: Record<string, unknown> = { payment_method_id };
     if (wasFailed) {
-      apptUpdate.authorization_status = 'scheduled';
-      apptUpdate.authorize_at = new Date().toISOString();
+      apptUpdate.authorization_status = null;
       apptUpdate.reauth_count = (appt.reauth_count ?? 0) + 1;
     }
     await supabaseAdmin.from('appointments').update(apptUpdate).eq('id', appointmentId);

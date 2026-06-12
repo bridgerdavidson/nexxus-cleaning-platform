@@ -11,9 +11,10 @@ export const maxDuration = 60;
 /**
  * POST /api/appointments/:appointmentId/charge
  *
- * Immediately charges a COMPLETED appointment whose card authorization failed (no hold to capture).
- * The admin puts a working card on first; this charges it now. Org staff only (self-pay requires the
- * Manage Payments permission for managers). Settlement to the cleaner runs on the
+ * Charges a COMPLETED appointment's saved card. This is the primary collection path: the card is
+ * saved (not held) at booking, and the charge is created + auto-captured here once the job is marked
+ * completed. The assigned cleaner (who completes the job) or org staff may trigger it; self-pay
+ * requires the Manage Payments permission for managers. Settlement to the cleaner runs on the
  * payment_intent.succeeded webhook, with the reconciliation sweep as the backstop.
  *
  * Body: { organization_id }
@@ -47,18 +48,23 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const { organization_id } = body as { organization_id?: string };
 
+    // Org staff may charge any appointment in their org; a cleaner may charge ONLY the appointment
+    // they're assigned to (they complete the job -> charge-on-completion).
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+      allowedRoles: ['owner', 'admin', 'manager', 'cleaner'],
     });
     if (!auth.ok) return auth.response;
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('organization_id, is_self_pay')
+      .select('organization_id, is_self_pay, cleaner_id')
       .eq('id', appointmentId)
       .maybeSingle();
     if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
+    }
+    if (auth.role === 'cleaner' && (appt as { cleaner_id: string | null }).cleaner_id !== auth.userId) {
+      return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
     }
 
     // Self-pay charges the org's company card — require Manage Payments for managers (owner/admin

@@ -7,6 +7,8 @@ import { useAuth } from './useAuth';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
+import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
+import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
 
 // Manager interfaces (same as admin but focused on operations management)
 export interface ManagerAppointment {
@@ -489,6 +491,13 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
           .select('organization_id')
           .eq('id', appointmentId)
           .single();
+
+        // New charge flow: charge the saved card now that the job is complete. Non-fatal; a payment
+        // problem surfaces in "Payments needing attention" for follow-up.
+        if (stripeNewChargeFlowUiEnabled()) {
+          const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
+          return { success: true, ...result };
+        }
 
         const response = await fetch('/api/stripe/create-payment-intent', {
           method: 'POST',

@@ -98,7 +98,7 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
       orgOwnedProperty: true,
       selfPay: true,
     });
-    // The authorize step would have written this pending revenue row; the webhook updates it.
+    // A pending revenue row (as the charge path would have written it); the webhook updates it.
     await admin.from('payments').insert({
       organization_id: org.organizationId,
       appointment_id: appt.id,
@@ -108,7 +108,7 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
       payment_type: 'revenue',
       is_self_pay: true,
       stripe_payment_intent_id: `pi_test_${appt.id}`,
-      payment_intent_status: 'requires_capture',
+      payment_intent_status: 'processing',
     });
     return appt;
   }
@@ -325,16 +325,15 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
 
-  it('a self-pay CARD hold failure (manual capture) does NOT re-notify from the webhook', async () => {
-    // The card-hold decline is already notified inline by authorizeSelfPayAppointment, so a
-    // payment_intent.payment_failed for the same manual-capture PI must NOT add a second
-    // notification (which showed up as duplicate toasts / "2 updates" in the bell).
+  it('a self-pay charge failure notifies the org admins exactly once (from the webhook)', async () => {
+    // The charge path records the decline in the ledger but does NOT notify inline, so the webhook
+    // is the sole notifier: exactly one admin alert, no duplicate toasts / "2 updates" in the bell.
     const admin = createTestSupabaseClient();
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
       cleanerId: org.cleaner.userId,
       homeownerId: org.homeowner.userId,
-      status: 'confirmed',
+      status: 'completed',
       totalPrice: 100,
       orgOwnedProperty: true,
       selfPay: true,
@@ -347,11 +346,11 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
       payment_method: 'card',
       payment_type: 'revenue',
       is_self_pay: true,
-      stripe_payment_intent_id: `pi_hold_${appt.id}`,
-      payment_intent_status: 'requires_capture',
+      stripe_payment_intent_id: `pi_charge_${appt.id}`,
+      payment_intent_status: 'processing',
     });
 
-    const eventId = `evt_selfpay_card_failed_${appt.id}`;
+    const eventId = `evt_selfpay_charge_failed_${appt.id}`;
     const payload = JSON.stringify({
       id: eventId,
       object: 'event',
@@ -360,11 +359,10 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
       created: Math.floor(Date.now() / 1000),
       data: {
         object: {
-          id: `pi_hold_${appt.id}`,
+          id: `pi_charge_${appt.id}`,
           object: 'payment_intent',
           amount: 6211,
           currency: 'usd',
-          capture_method: 'manual',
           status: 'requires_payment_method',
           last_payment_error: { message: 'Your card was declined.' },
           metadata: { appointment_id: appt.id, organization_id: org.organizationId, self_pay: 'true' },
@@ -383,20 +381,20 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
     });
     expect(res.status).toBe(200);
 
-    // The row is still marked failed (that's unconditional)...
+    // The revenue row is marked failed...
     const { data: payRows } = await admin
       .from('payments')
       .select('status')
       .eq('appointment_id', appt.id);
     expect((payRows![0] as { status: string }).status).toBe('failed');
 
-    // ...but the webhook adds NO notification for the manual-capture hold (inline path owns it).
+    // ...and the webhook adds exactly one admin notification (no inline duplicate).
     const { data: notes } = await admin
       .from('notification_events')
       .select('id')
       .eq('appointment_id', appt.id)
       .eq('event_type', 'authorization_failed');
-    expect((notes ?? []).length).toBe(0);
+    expect((notes ?? []).length).toBe(1);
 
     await admin.from('webhook_events').delete().eq('id', eventId);
   });

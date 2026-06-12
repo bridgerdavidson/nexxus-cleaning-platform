@@ -39,7 +39,7 @@ export default function EventChip({
     cleanerConfirmationStatus: event.cleanerConfirmationStatus,
     hasSuggestedTimes: event.hasSuggestedTimes,
   });
-  const pill = paymentProblemPill(event.paymentStatus, event.authorizationStatus);
+  const pill = paymentProblemPill(event.paymentStatus);
   const dotClass = pill ? (/fail/i.test(pill.label) ? 'bg-red-500' : 'bg-amber-500') : '';
   const time = format(event.start, 'h:mm a');
   const isShort = event.durationMin <= 30;

@@ -10,11 +10,9 @@ import {
 } from '@/lib/appointments/flowType';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
-import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { authorizeAppointmentAuto } from '@/lib/payments/authorizeDispatch';
 
-// Confirming can place the authorization hold (auth + Supabase reads + Stripe PI create + writes),
-// which can run past the default function cap under production latency. Headroom prevents a 504.
+// Confirming does several Supabase reads + notification writes, which can run past the default
+// function cap under production latency. Headroom prevents a 504.
 export const maxDuration = 60;
 
 type ConfirmAction = 'accept' | 'counter_propose' | 'decline';
@@ -174,32 +172,6 @@ export async function POST(request: NextRequest) {
           { success: false, error: 'Failed to confirm appointment' },
           { status: 500 }
         );
-      }
-
-      // Authorize-on-accept (decision #9): once the appointment is confirmed and the
-      // homeowner saved a card at request time, place the manual-capture hold now. Best-effort
-      // — a failure here (declined/tenant-not-ready) must NOT block the confirmation; the JIT
-      // authorizer cron + the "payments needing attention" surface are the backstops.
-      if (
-        baseUpdate.status === 'confirmed' &&
-        (appointment.payment_method_id || appointment.is_self_pay) &&
-        stripeEnabled() &&
-        stripeNewChargeFlowEnabled()
-      ) {
-        try {
-          const outcome = await authorizeAppointmentAuto(
-            supabaseAdmin,
-            appointmentId,
-            'confirm:authorize-on-accept',
-          );
-          if (!outcome.ok) {
-            console.warn(
-              `Authorize-on-accept for ${appointmentId} returned ${outcome.code}: ${outcome.message ?? ''}`,
-            );
-          }
-        } catch (authErr) {
-          console.error('Authorize-on-accept failed (non-blocking):', authErr);
-        }
       }
 
       // Mark the latest pending routing_log row (if any) as accepted. This

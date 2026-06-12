@@ -152,14 +152,14 @@ export default function OrgPaymentSettings() {
           <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div>
             Card-on-file isn&apos;t enabled yet for your account, so these fees won&apos;t actually
-            capture until that ships. You can still configure the policy now — it&apos;ll apply
+            be charged until that ships. You can still configure the policy now; it&apos;ll apply
             automatically once card-on-file goes live.
           </div>
         </div>
       )}
       <PolicyGroup
         title="Late cancellation"
-        description="When a homeowner cancels less than the window below before the start, we capture this fee from their card hold."
+        description="When a homeowner cancels less than the window below before the start, we charge this fee to their card on file."
         showWindow
         windowLabel="Cancellation window (hours)"
         windowValue={policy.cancellation_window_hours}

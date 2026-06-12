@@ -151,8 +151,24 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
   });
 
-  it('rejects a cleaner caller (403)', async () => {
+  it('the assigned cleaner can charge their own completed job (200, charged)', async () => {
     const apptId = await completedApptWithCard();
+    const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    expect(body.code).toBe('charged');
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a cleaner who is not assigned to the appointment (403)', async () => {
+    const apptId = await completedApptWithCard();
+    const db = createTestSupabaseClient();
+    // Reassign away from org.cleaner so the caller no longer owns it.
+    await db.from('appointments').update({ cleaner_id: null }).eq('id', apptId);
+
     const { status } = await callRoute(handlerFor(apptId), {
       method: 'POST',
       headers: bearerHeader(org.cleaner.accessToken),

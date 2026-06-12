@@ -2,19 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
-import { capturePaymentIntent } from '@/lib/stripe/charges/capture';
-import { cancelAuthorization } from '@/lib/stripe/charges/cancel';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { computeCancellationFee } from '@/lib/payments/cancellationFee';
+import { chargeCancellationFee } from '@/lib/payments/chargeCancellationFee';
+
+// The homeowner-fault fee path adds a Stripe PaymentIntent create on the request hot path; give it
+// headroom over the platform default so a slow Stripe call can't 504.
+export const maxDuration = 60;
 
 /**
  * POST /api/appointments/:appointmentId/cancel
  *
  * Cancel an appointment, applying the org's cancellation/no-show policy (decision #10):
- *   • Cleaner-caused cancel, or an on-time homeowner cancel → release the hold, charge $0.
- *   • Homeowner late-cancel (inside `cancellation_window_hours`) or no-show → capture a
- *     configurable flat or percent fee FROM the existing authorization (partial capture
- *     releases the remainder). The cleaner is never paid for a cancelled job.
+ *   • Cleaner-caused cancel, or an on-time homeowner cancel -> charge $0.
+ *   • Homeowner late-cancel (inside `cancellation_window_hours`) or no-show -> charge a configurable
+ *     flat or percent fee to the saved card on file. With no upfront hold, the fee is collected by
+ *     charging the card off-session at cancel time (idempotency key cancelfee-{id}); the cleaner is
+ *     never paid for a cancelled job, so the fee settles to the tenant. Best-effort: a missing card,
+ *     a bank-only payer, or a decline never blocks the cancellation.
+ *   • Self-pay has no homeowner to charge, so it always cancels for $0.
  *
  * Org staff only. Body: { organization_id, party?: 'homeowner'|'cleaner'|'org',
  *                         no_show?: boolean, reason?: string }
@@ -49,7 +55,9 @@ export async function POST(
 
     const { data: apptRow } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id, status, total_price, scheduled_date, scheduled_time, is_self_pay')
+      .select(
+        'id, organization_id, status, total_price, scheduled_date, scheduled_time, is_self_pay, homeowner_id, payment_method_id',
+      )
       .eq('id', appointmentId)
       .maybeSingle();
     const appt = apptRow as
@@ -61,11 +69,14 @@ export async function POST(
           scheduled_date: string | null;
           scheduled_time: string | null;
           is_self_pay: boolean;
+          homeowner_id: string | null;
+          payment_method_id: string | null;
         }
       | null;
     if (!appt || appt.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
+
     // Org cancellation policy.
     const { data: orgRow } = await supabaseAdmin
       .from('organizations')
@@ -77,8 +88,8 @@ export async function POST(
       | null;
 
     const grossCents = Math.round(Number(appt.total_price) * 100);
-    // Self-pay has no homeowner to charge a cancellation fee to (the org would be charging
-    // itself), so a self-pay cancel always releases the hold for $0 — skip the policy entirely.
+    // Self-pay has no homeowner to charge a cancellation fee to (the org would be charging itself),
+    // so a self-pay cancel always charges $0 — skip the policy entirely.
     let feeCents = 0;
     let insideWindow = false;
     if (!appt.is_self_pay) {
@@ -96,123 +107,54 @@ export async function POST(
       insideWindow = fee.insideWindow;
     }
 
-    // Latest authorization for this appointment, if any.
-    const { data: payRows } = await supabaseAdmin
-      .from('payments')
-      .select('id, stripe_payment_intent_id, status, payment_intent_status')
-      .eq('appointment_id', appointmentId)
-      .eq('payment_type', 'revenue')
-      .not('stripe_payment_intent_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    const pay = payRows && payRows.length > 0
-      ? (payRows[0] as { id: string; stripe_payment_intent_id: string; status: string; payment_intent_status: string | null })
-      : null;
-
-    const hasLiveHold = !!pay?.stripe_payment_intent_id && pay.payment_intent_status === 'requires_capture';
-
-    // Idempotent + retry-safe: if it's already cancelled AND no hold remains live, a prior
-    // attempt fully settled — nothing left to do. But if a previous attempt marked the
-    // appointment cancelled and then the Stripe capture/release 502'd, the hold is still live
-    // (hasLiveHold === true) and we deliberately fall through to RETRY the capture/release
-    // below rather than returning early and leaving the hold stranded.
-    if (appt.status === 'cancelled' && !hasLiveHold) {
-      return NextResponse.json({ success: true, already_cancelled: true, fee_captured_cents: 0 });
-    }
-
-    // Mark cancelled BEFORE any capture so the fee capture's payment_intent.succeeded webhook
-    // sees a cancelled appointment and skips cleaner settlement (see settleCleanerPayout guard).
-    // Re-running this on a retry is harmless.
-    const nowIso = new Date().toISOString();
-    if (appt.status !== 'cancelled') {
+    // Mark cancelled BEFORE charging any fee so the fee charge's payment_intent.succeeded sees a
+    // cancelled appointment and settles to the tenant only (settleCleanerPayout skips the cleaner).
+    // Re-running on a retry is harmless; the fee charge below is independently idempotent.
+    const alreadyCancelled = appt.status === 'cancelled';
+    if (!alreadyCancelled) {
+      const nowIso = new Date().toISOString();
       await supabaseAdmin
         .from('appointments')
         .update({ status: 'cancelled', cancelled_at: nowIso, cancellation_reason: reason ?? null })
         .eq('id', appointmentId);
     }
 
-    // No live hold → nothing to capture or release. Record intent + return.
-    if (!hasLiveHold) {
-      await recordPaymentEvent(supabaseAdmin, {
-        paymentId: pay?.id ?? null,
-        appointmentId,
-        organizationId: organization_id,
-        eventType: feeCents > 0 ? 'cancellation_fee_uncollectable' : 'appointment_cancelled',
-        actor: `user:${auth.userId}`,
-        amount: feeCents > 0 ? feeCents : null,
-        payload: { party, no_show, inside_window: insideWindow, has_hold: false },
-      });
+    // No fee (on-time, cleaner-caused, or self-pay): nothing to charge.
+    if (feeCents <= 0) {
+      if (!alreadyCancelled) {
+        await recordPaymentEvent(supabaseAdmin, {
+          appointmentId,
+          organizationId: organization_id,
+          eventType: 'appointment_cancelled',
+          actor: `user:${auth.userId}`,
+          payload: { party, no_show, inside_window: insideWindow },
+        });
+      }
       return NextResponse.json({ success: true, cancelled: true, fee_captured_cents: 0 });
     }
 
-    // Capture the fee (partial) or release the whole hold.
-    if (feeCents > 0) {
-      const captureCents = Math.min(feeCents, grossCents);
-      let pi;
-      try {
-        pi = await capturePaymentIntent(pay!.stripe_payment_intent_id, captureCents);
-      } catch (err) {
-        return NextResponse.json(
-          { error: 'Cancellation fee capture failed', details: err instanceof Error ? err.message : 'Unknown error' },
-          { status: 502 },
-        );
-      }
-      await supabaseAdmin
-        .from('appointments')
-        .update({ authorization_status: 'captured', cancellation_fee_captured: captureCents })
-        .eq('id', appointmentId);
-      await supabaseAdmin
-        .from('payments')
-        .update({
-          status: 'paid',
-          amount: captureCents / 100,
-          captured_at: nowIso,
-          paid_at: nowIso,
-          payment_intent_status: pi.status,
-        })
-        .eq('id', pay!.id);
-      await recordPaymentEvent(supabaseAdmin, {
-        paymentId: pay!.id,
-        appointmentId,
-        organizationId: organization_id,
-        eventType: 'cancellation_fee_captured',
-        prevStatus: pay!.status,
-        newStatus: 'paid',
-        actor: `user:${auth.userId}`,
-        amount: captureCents,
-        payload: { party, no_show, inside_window: insideWindow, payment_intent_id: pi.id },
-      });
-      return NextResponse.json({ success: true, cancelled: true, fee_captured_cents: captureCents });
-    }
+    // Homeowner-fault fee: charge the saved card off-session. The helper is idempotent (Stripe key +
+    // a paid-row guard), so a retry after a crash collects the fee without double-charging.
+    const outcome = await chargeCancellationFee(
+      supabaseAdmin,
+      {
+        id: appt.id,
+        organization_id: appt.organization_id,
+        homeowner_id: appt.homeowner_id,
+        payment_method_id: appt.payment_method_id,
+      },
+      feeCents,
+      `user:${auth.userId}`,
+      { party, noShow: no_show, insideWindow },
+    );
 
-    // No fee → release the hold.
-    try {
-      await cancelAuthorization(pay!.stripe_payment_intent_id);
-    } catch (err) {
-      return NextResponse.json(
-        { error: 'Authorization release failed', details: err instanceof Error ? err.message : 'Unknown error' },
-        { status: 502 },
-      );
-    }
-    await supabaseAdmin
-      .from('appointments')
-      .update({ authorization_status: 'canceled' })
-      .eq('id', appointmentId);
-    await supabaseAdmin
-      .from('payments')
-      .update({ payment_intent_status: 'canceled' })
-      .eq('id', pay!.id);
-    await recordPaymentEvent(supabaseAdmin, {
-      paymentId: pay!.id,
-      appointmentId,
-      organizationId: organization_id,
-      eventType: 'authorization_canceled',
-      prevStatus: pay!.status,
-      newStatus: 'canceled',
-      actor: `user:${auth.userId}`,
-      payload: { party, no_show, inside_window: insideWindow },
+    return NextResponse.json({
+      success: true,
+      cancelled: true,
+      fee_captured_cents: outcome.feeCapturedCents,
+      fee_outcome: outcome.code,
+      ...(outcome.message ? { fee_message: outcome.message } : {}),
     });
-    return NextResponse.json({ success: true, cancelled: true, fee_captured_cents: 0 });
   } catch (error) {
     console.error('Error cancelling appointment:', error);
     return NextResponse.json(

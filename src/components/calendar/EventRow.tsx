@@ -22,8 +22,8 @@ export default function EventRow({
   showDate?: boolean;
 }) {
   const end = addMinutes(event.start, event.durationMin);
-  const pill = paymentProblemPill(event.paymentStatus, event.authorizationStatus);
-  const paymentChip = pill ?? paymentStatusPill(event.paymentStatus, event.authorizationStatus);
+  const pill = paymentProblemPill(event.paymentStatus);
+  const paymentChip = pill ?? paymentStatusPill(event.paymentStatus);
 
   return (
     <button

@@ -352,13 +352,11 @@ async function handlePaymentIntentFailed(
 
   console.log('Payment marked as failed for appointment:', appointmentId);
 
-  // Org self-pay bank (ACH) debits are confirmed at completion with no hold, so a pre-settlement
-  // bounce surfaces only here. A self-pay CARD hold (capture_method 'manual') already notified
-  // inline in authorizeSelfPayAppointment's catch, so re-notifying here would double-toast the same
-  // failure — skip the manual-capture case. Automatic-capture self-pay PIs (the ACH debit and the
-  // charge-now card path, which don't notify inline) still alert admins here. Homeowner card
-  // failures carry no self_pay metadata, so they never reach this block.
-  if (paymentIntent.metadata?.self_pay === 'true' && paymentIntent.capture_method !== 'manual') {
+  // A self-pay payment failure (a card charge decline or a bank/ACH debit that bounced before
+  // settling) surfaces only here: the charge path records the decline in the ledger but does not
+  // notify inline, so alert the org admins. Homeowner card failures carry no self_pay metadata, so
+  // they never reach this block (they surface in "Payments needing attention" instead).
+  if (paymentIntent.metadata?.self_pay === 'true') {
     const ctx = await loadNotificationContext(supabase, { appointmentId });
     await recordNotificationEvent(supabase, {
       event_type: 'authorization_failed',
@@ -392,9 +390,9 @@ async function handlePaymentIntentProcessing(
 }
 
 /**
- * Handle payment_intent.canceled — a held authorization was released (appointment
- * cancelled, or auth superseded by a re-auth). Mirror the canceled status; we keep the
- * payments row (status stays 'pending') for the audit trail rather than deleting it.
+ * Handle payment_intent.canceled. With no upfront holds this is now rare (a PaymentIntent canceled
+ * out-of-band); mirror the canceled status onto the payments row for the audit trail rather than
+ * deleting it.
  */
 async function handlePaymentIntentCanceled(
   supabase: SupabaseClient,
@@ -407,60 +405,6 @@ async function handlePaymentIntentCanceled(
 
   if (error) console.error('payment_intent.canceled: failed to update payment record:', error);
   else console.log('payment_intent.canceled: marked payment canceled for PI', paymentIntent.id);
-
-  // If the appointment still believes it holds this (now-dead) authorization and no replacement
-  // hold remains, reset it so the JIT authorizer re-authorizes it. Without this, a hold canceled
-  // out-of-band (e.g. Stripe auto-canceling an expired 7-day hold, or a cancel from outside our
-  // routes) leaves the appointment stuck 'authorized' with no live PI — and authorizeAppointment
-  // treats 'authorized' as already-done, so it can never be re-charged without manual repair.
-  const appointmentId =
-    paymentIntent.metadata?.appointment_id ??
-    (await findPaymentByIntent(supabase, paymentIntent.id))?.appointment_id ??
-    null;
-  if (!appointmentId) return;
-
-  const { data: apptRow } = await supabase
-    .from('appointments')
-    .select('status, authorization_status, reauth_count')
-    .eq('id', appointmentId)
-    .maybeSingle();
-  const appt = apptRow as
-    | { status: string; authorization_status: string | null; reauth_count: number | null }
-    | null;
-  // Don't resurrect a deliberately-cancelled/completed appointment, and only act if it still
-  // claims a live hold.
-  if (!appt || appt.status === 'cancelled' || appt.status === 'completed') return;
-  if (appt.authorization_status !== 'authorized') return;
-
-  // A newer requires_capture hold means THIS canceled PI was merely superseded by a re-auth —
-  // leave the appointment authorized against the new hold.
-  const { data: liveHold } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('appointment_id', appointmentId)
-    .eq('payment_intent_status', 'requires_capture')
-    .limit(1);
-  if (liveHold && liveHold.length > 0) return;
-
-  // Bump reauth_count so the replacement authorization gets a fresh idempotency key (the auth key
-  // is auth-${appointmentId}-${reauth_count}); reusing it would just return the canceled PI.
-  await supabase
-    .from('appointments')
-    .update({
-      authorization_status: 'scheduled',
-      authorize_at: new Date().toISOString(),
-      reauth_count: (appt.reauth_count ?? 0) + 1,
-    })
-    .eq('id', appointmentId);
-  await recordPaymentEvent(supabase, {
-    appointmentId,
-    eventType: 'authorization_lost_rescheduled',
-    prevStatus: 'authorized',
-    newStatus: 'scheduled',
-    actor: 'webhook',
-    payload: { payment_intent_id: paymentIntent.id },
-  });
-  console.log('payment_intent.canceled: rescheduled re-authorization for appointment', appointmentId);
 }
 
 /**
@@ -541,12 +485,11 @@ async function handleSetupIntentSucceeded(
   }
   console.log('setup_intent.succeeded: card link completed (SI', setupIntent.id, ')');
 
-  // Recovery: the card link is how an admin unsticks a homeowner whose hold needs authentication
-  // (3-D Secure off-session) or whose card was declined. Now that the homeowner has saved a card
-  // on-session (3-D Secure completed, so it's set up for off-session use), re-point their stuck
-  // appointments to it and re-queue them so the JIT authorizer (cron) retries the hold off-session
-  // (a set-up card no longer triggers 3-D Secure). Without this an appointment left in
-  // requires_action/failed would never be retried, and capture at completion would fail.
+  // Recovery: the card link is how an admin unsticks a homeowner whose card needed authentication
+  // (3-D Secure) or was declined. Now that the homeowner has saved a card on-session (3-D Secure
+  // completed, so it's set up for off-session use), re-point their stuck upcoming appointments to it
+  // and clear the failed state so each reads "Unpaid" again; the new card is charged when the job is
+  // completed. (A completed-but-unpaid job is recovered from "Payments needing attention" instead.)
   const pm =
     typeof setupIntent.payment_method === 'string'
       ? setupIntent.payment_method
@@ -563,8 +506,7 @@ async function handleSetupIntentSucceeded(
     .from('appointments')
     .update({
       payment_method_id: pm,
-      authorization_status: 'scheduled',
-      authorize_at: new Date().toISOString(),
+      authorization_status: null,
     })
     .eq('organization_id', link.organization_id)
     .eq('homeowner_id', link.homeowner_id)
@@ -574,7 +516,7 @@ async function handleSetupIntentSucceeded(
 
   if (requeued && requeued.length > 0) {
     console.log(
-      `setup_intent.succeeded: re-queued ${requeued.length} stuck appointment(s) for re-authorization on the new card`,
+      `setup_intent.succeeded: re-pointed ${requeued.length} stuck appointment(s) to the new card`,
     );
   }
 }

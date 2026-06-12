@@ -1,5 +1,11 @@
 # Payments edge-case sweep: behavior map, weak spots, and manual test plan
 
+> **OBSOLETE for the card flow (charge-at-completion update).** Written when cards were HELD at
+> booking (JIT-authorize) and captured on completion. That hold flow was removed: a card is now SAVED
+> at booking and CHARGED when the job is completed (no authorize / capture / `requires_capture`). The
+> hold/authorize/capture/cancel-authorization scenarios below (A6-A10, A22-A24, etc.) no longer apply.
+> See `docs/stripe-architecture.md` for the current model.
+
 Audience: you, running a manual sweep against the **preview / `dev`** deployment in Stripe **test mode**.
 Scope: both flows (homeowner-pays destination-charge, org self-pay) across both rails (card, ACH/`us_bank_account`), every success / failure / async outcome.
 

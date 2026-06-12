@@ -35,17 +35,7 @@ interface CreateRecurringAppointmentInput {
   maxOccurrences?: number | null;
   specialRequests?: string | null;
   status?: string; // Optional status - defaults to 'pending' if not provided
-  paymentMethodId?: string | null; // Saved card for the series; the JIT cron holds per occurrence.
-}
-
-// Lead time before each occurrence to place the just-in-time card hold (decision #13: ~24-48h
-// pre-service). Stored as authorize_at so the authorize-due cron picks each occurrence up.
-const AUTHORIZE_LEAD_MS = 48 * 60 * 60 * 1000;
-function computeAuthorizeAtISO(scheduledDate: string, scheduledTime: string, now: Date): string {
-  const scheduled = new Date(`${scheduledDate}T${scheduledTime}`);
-  if (isNaN(scheduled.getTime())) return now.toISOString();
-  const at = new Date(scheduled.getTime() - AUTHORIZE_LEAD_MS);
-  return (at.getTime() < now.getTime() ? now : at).toISOString();
+  paymentMethodId?: string | null; // Saved card for the series; charged when each job is completed.
 }
 
 export async function POST(request: NextRequest) {
@@ -191,12 +181,8 @@ export async function POST(request: NextRequest) {
       status: appointmentStatus,
       series_id: series.id,
       cleaner_confirmation_status: 'awaiting',
-      // Carry the chosen card onto every occurrence and schedule its hold (the JIT cron authorizes
-      // ~48h before each service); holds aren't placed up-front because they'd expire.
+      // Carry the chosen card onto every occurrence; it is charged when each job is completed.
       payment_method_id: paymentMethodId ?? null,
-      authorize_at: paymentMethodId
-        ? computeAuthorizeAtISO(occ.scheduled_date, occ.scheduled_time, now)
-        : null,
       response_deadline: computeResponseDeadlineISO(
         occ.scheduled_date,
         occ.scheduled_time,

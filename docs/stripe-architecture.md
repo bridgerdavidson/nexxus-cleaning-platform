@@ -36,9 +36,9 @@ PLATFORM (Nexxus Stripe account)
 ├── PaymentIntent (separate charges & transfers; created by platform, settles to the PLATFORM)
 │   ├── on_behalf_of = tenant connected account        (merchant of record; statement descriptor)
 │   ├── transfer_group = appt_<appointmentId>          (ties the charge to its transfers)
-│   ├── (no transfer_data — captured funds stay on the platform until settlement)
-│   └── capture_method = 'manual'                       (authorize at JIT, capture on completion)
-├── Transfer × N (platform → connected, created on capture) — tenant remainder + cleaner %,
+│   ├── (no transfer_data — charged funds stay on the platform until settlement)
+│   └── (no capture_method — auto-captures; the charge is created when the job is completed)
+├── Transfer × N (platform → connected, created after the charge succeeds) — tenant remainder + cleaner %,
 │   each source_transaction = the charge, same transfer_group; platform keeps the fee (0 today)
 └── Webhook endpoint (single, STRIPE_WEBHOOK_SECRET) — platform + Connect events
 
@@ -53,8 +53,8 @@ CONNECTED ACCOUNTS (type=express, under the platform)
 ## Money flows
 
 **Scenario 1 — percentage contractor ($100 job, cleaner 80%, fee 0):**
-homeowner card → PaymentIntent (`on_behalf_of` tenant, no transfer_data) → on capture, **platform**
-balance +$100 → platform creates two Transfers from its balance (idempotency
+homeowner card → on completion, an auto-capturing PaymentIntent (`on_behalf_of` tenant, no
+transfer_data) → **platform** balance +$100 → platform creates two Transfers from its balance (idempotency
 `tenant-payout-${appointmentId}` and `cleaner-payout-${appointmentId}`, each `source_transaction`
 = the charge): cleaner +$80, tenant +$20. Platform keeps the fee ($0 today).
 
@@ -71,23 +71,33 @@ Cleaner % is of **gross**; the platform fee comes out of the tenant remainder. I
 
 ## Payment lifecycle
 
-1. **Card saved** — admin sends a hosted card link, or the homeowner uses the
-   CustomerSession Payment Element (`mode: 'setup'`, no hold). `appointments.payment_method_id`
-   is set.
-2. **Authorize (just-in-time, decision #13)** — `POST /api/appointments/:id/authorize` creates
-   the manual-capture PaymentIntent (`on_behalf_of` tenant, no transfer_data). A pg_cron job (`/api/cron/authorize-due`,
-   migration 066) places holds ~24–48h pre-service; an auth-expiry watchdog re-authorizes holds
-   nearing the ~7-day expiry.
-3. **Capture on completion** — `POST /api/appointments/:id/capture`. The
+A card is **saved, not held** at booking, and **charged when the job is completed** (there is no
+upfront authorization). This avoids tying up the customer's funds before the work is done; the
+trade-off (a card can decline after the service is delivered) is handled by the "Payments needing
+attention" queue and the reconcile sweep.
+
+1. **Card saved (off-session)** — admin sends a hosted card link, or the homeowner/admin uses the
+   CustomerSession Payment Element (`mode: 'setup'`, `usage: 'off_session'`, no hold). Any 3-D
+   Secure is completed on-session at save time so the later off-session charge inherits the mandate.
+   `appointments.payment_method_id` is set; booking does nothing else to the card.
+2. **Charge on completion** — when the job is marked completed, `POST /api/appointments/:id/charge`
+   creates an **auto-capturing** PaymentIntent on the saved card (`on_behalf_of` tenant, no
+   transfer_data). The assigned cleaner (who completes the job) or org staff may trigger it. The
    `payment_intent.succeeded` webhook marks the payment paid and `settleCleanerPayout` fans the
-   **captured** amount out from the platform balance: the tenant remainder to the tenant account
-   and (percentage_contractor only) the cleaner's % to the cleaner account.
+   charged amount out from the platform balance: the tenant remainder to the tenant account and
+   (percentage_contractor only) the cleaner's % to the cleaner account. A bank (ACH) payer is
+   debited the same way and sits in `processing` (~4 business days) until it settles.
+3. **Charge failure** — a decline or off-session 3-D Secure writes a `failed` revenue row and
+   surfaces the appointment in "Payments needing attention" (Fix card / Send card link). Putting a
+   working card on charges it under a fresh idempotency key (`reauth_count` bump); the reconcile
+   sweep is the backstop.
 4. **Cancellation / no-show (decision #10)** — `POST /api/appointments/:id/cancel`. Cleaner /
-   on-time cancel → release the hold. Homeowner late-cancel (inside the per-org window) or
-   no-show → partial-capture a configurable flat/percent fee. The appointment is marked
-   cancelled **before** the fee capture so the resulting `payment_intent.succeeded` webhook
-   skips cleaner settlement; the route is retry-safe (a failed capture leaves the hold live and
-   a retry resumes it).
+   on-time cancel → charge $0. Homeowner late-cancel (inside the per-org window) or no-show →
+   charge a configurable flat/percent fee to the saved card **off-session** at cancel time
+   (idempotency key `cancelfee-{id}`, distinct from the completion charge). The appointment is
+   marked cancelled **before** the fee charge so the resulting `payment_intent.succeeded` skips
+   cleaner settlement (the fee goes to the tenant). Best-effort: no card on file, a bank-only
+   payer, or a decline never blocks the cancellation; self-pay always charges $0.
 5. **Refund (decision #7)** — `POST /api/payments/:id/refund`. Reverses every transfer in the
    job's `transfer_group` (tenant remainder + cleaner %) proportionally — clawing the funds back to
    the platform — then refunds the homeowner on the platform PaymentIntent. Only
@@ -118,11 +128,12 @@ Cleaner % is of **gross**; the platform fee comes out of the tenant remainder. I
 |---|---|
 | `STRIPE_ENABLED` | All server Stripe access (`getStripe()` throws when off). |
 | `STRIPE_TENANT_CONNECT_ENABLED` | Tenant Connect onboarding + tenant-routed charges. |
-| `STRIPE_NEW_CHARGE_FLOW_ENABLED` | New save-card / authorize / capture / cancel / refund routes. |
+| `STRIPE_NEW_CHARGE_FLOW_ENABLED` | New save-card-at-booking / charge-at-completion / cancel / refund routes. |
 
-Phases 0–5 are **built, tested, and merged behind these flags** (additive migrations
-065 + 066 + 067). With the flags off, the **legacy** platform-as-merchant charge path still
-runs, so nothing changes in production until the cutover.
+The new flow is **built, tested, and merged behind these flags** (migrations 065 + 067, with the
+JIT-authorizer cron 066 retired by 086 and the now-dead hold columns retired by 087). With the flags
+off, the **legacy** platform-as-merchant charge path still runs, so nothing changes in production
+until the cutover.
 
 ## Cutover (still pending)
 
@@ -140,7 +151,7 @@ decision with prerequisites:
 
 ## Key files
 
-- Charges: `src/lib/stripe/charges/{splits,authorize,capture,cancel,refund}.ts`
+- Charges: `src/lib/stripe/charges/{splits,charge,chargeSelfPay,chargeAch,chargeSelfPayAch,refund}.ts`
 - Connect: `src/lib/stripe/connect/tenant.ts`; transfers: `src/lib/stripe/transfers.ts`
 - Customers/billing: `src/lib/stripe/customers/homeowner.ts`, `src/lib/stripe/billing.ts`,
   `src/lib/payments/orgBilling.ts`
@@ -148,5 +159,8 @@ decision with prerequisites:
   + `src/lib/payments/webhookIdempotency.ts`
 - Reconciliation: `src/lib/payments/reconcile.ts`, `src/lib/stripe/reconcile.ts`,
   `src/lib/payments/moneyMath.ts`
-- Settlement: `src/lib/payments/settleCleanerPayout.ts`, `src/lib/payments/cancellationFee.ts`
-- Schema: `supabase/migrations/065_stripe_restructure.sql` (+ 066 JIT cron, 067 reconcile cron)
+- Charge orchestration: `src/lib/payments/chargeCompletedAppointment.ts`,
+  `src/lib/payments/chargeCancellationFee.ts`, `src/lib/payments/cancellationFee.ts`
+- Settlement: `src/lib/payments/settleCleanerPayout.ts`, `src/lib/payments/settleSelfPay.ts`
+- Schema: `supabase/migrations/065_stripe_restructure.sql` (+ 067 reconcile cron; 086 drops the
+  retired JIT cron, 087 retires the hold columns)

@@ -41,11 +41,9 @@ import BookingTotalSummary from "./BookingTotalSummary";
 import OrgPaymentMethodPicker from "./OrgPaymentMethodPicker";
 import type { PaymentMethodKind } from "@/lib/payments/processingFee";
 import DiscardChangesDialog from "./DiscardChangesDialog";
-import ConfirmModal from "./ConfirmModal";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import { useFormDraft } from "../hooks/useFormDraft";
 import { createDraftStore } from "@/lib/formDraft";
-import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { stripeNewChargeFlowUiEnabled, stripeSelfPayUiEnabled } from "@/lib/stripe/flags";
 
 interface Homeowner {
@@ -121,13 +119,6 @@ interface AddAppointmentModalProps {
    */
   preSelectedCleanerId?: string;
   hidePriceOverride?: boolean; // Hide price override UI for homeowner role
-  /**
-   * Opens the appointment details side drawer for the given id. Wired to `openAppointment`
-   * from useAppointmentPanel at call sites that own it. Used by the "card hold failed"
-   * recovery dialog so the admin can drop straight into the drawer to fix the card. When
-   * absent, recovery falls back to a toast pointing them at the appointment.
-   */
-  onOpenAppointment?: (appointmentId: string) => void;
 }
 
 // --- Reload-restore draft -----------------------------------------------------------
@@ -198,7 +189,6 @@ export default function AddAppointmentModal({
   preFilledTime,
   preSelectedCleanerId,
   hidePriceOverride = false,
-  onOpenAppointment,
 }: AddAppointmentModalProps) {
   const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
@@ -339,13 +329,6 @@ export default function AddAppointmentModal({
   // Creation state
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Set when the appointment was created but its card hold definitively failed. Swaps the wizard
-  // for a recovery dialog (Fix card / Not now) instead of stranding the admin on the step flow
-  // with an inline error (which let them re-submit and double-book).
-  const [holdFailed, setHoldFailed] = useState<{
-    appointmentId: string;
-    reason: string;
-  } | null>(null);
 
   const getSystemCalculatedPrice = useCallback(() => {
     if (!selectedServiceType || !selectedChecklist) return 0;
@@ -1195,10 +1178,6 @@ export default function AddAppointmentModal({
           // so leave the homeowner card unset in self-pay mode.
           payment_method_id: selfPay ? null : paymentMethodId,
           is_self_pay: selfPay,
-          // Self-pay holds the company card immediately below, but that call is best-effort. Set
-          // authorize_at so the JIT cron (authorize-due) is a real backstop if the immediate hold
-          // fails or times out — without it, a self-pay one-off would never be retried.
-          authorize_at: selfPay ? new Date().toISOString() : null,
           status: initialStatus,
           cleaner_confirmation_status: "awaiting",
           response_deadline: responseDeadline,
@@ -1249,93 +1228,13 @@ export default function AddAppointmentModal({
 
       console.log("Appointment created successfully:", insertData);
 
-      // Place the authorization hold now for immediate feedback (the JIT cron is the backstop
-      // for deferred/cron-scheduled holds). Fires when a homeowner card was chosen OR this is a
-      // self-pay job (which holds the org's company card, routed server-side via
-      // authorizeAppointmentAuto → authorizeSelfPayAppointment). The appointment already exists,
-      // so an auth failure is surfaced but doesn't undo creation.
-      if ((paymentMethodId || selfPay) && insertData?.id) {
-        // Best-effort immediate hold. The appointment already exists and the JIT cron is the
-        // backstop, so distinguish a DEFINITIVE failure (a real decline we can surface) from an
-        // INDETERMINATE one (a slow / timed-out request that returns no usable body) and never
-        // show a scary error for the latter.
-        let definitiveError: string | null = null;
-        let placed = false;
-        try {
-          const token = await getAccessToken();
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 25000);
-          let authResult: { code?: string; message?: string } | null = null;
-          try {
-            const authRes = await fetch(`/api/appointments/${insertData.id}/authorize`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({ organization_id: currentOrganizationId }),
-              signal: controller.signal,
-            });
-            authResult = await authRes.json().catch(() => null);
-          } finally {
-            clearTimeout(timeoutId);
-          }
-          const code = authResult?.code;
-          if (code === "authorized") {
-            placed = true;
-          } else if (code === "requires_action") {
-            // The card needs the customer to verify their identity (3-D Secure). The hold is NOT
-            // placed and can't be completed here (off-session, the customer isn't present). Close
-            // honestly and let "Payments needing attention" drive recovery (Send card link).
-            onAppointmentCreated();
-            showToast("Appointment created", {
-              variant: "info",
-              description:
-                "This card needs the customer to verify their identity. We've flagged it under Payments needing attention.",
-            });
-            handleClose();
-            return;
-          } else if (code === "deferred_ach") {
-            // Bank (ACH) intentionally places NO hold — it's charged when the job is completed. This
-            // is a clean success, not a failure: close with a calm note instead of a scary error.
-            onAppointmentCreated();
-            showToast("Appointment created", {
-              variant: "success",
-              description: "The bank account will be charged when the job is completed.",
-            });
-            handleClose();
-            return;
-          } else if (code && authResult?.message) {
-            // A real, actionable decline (declined / no_org_card / cleaner_not_payable / not_authorizable).
-            definitiveError = authResult.message;
-          }
-          // Otherwise (empty / unparseable body, e.g. a timeout-shaped 504) leave both false so we
-          // fall into the calm "pending" path below.
-        } catch {
-          // Abort (our timeout) or a network error: indeterminate, treat as pending.
-        }
-
-        if (definitiveError) {
-          // The appointment IS created; only the card hold failed. Drop the saved draft and swap
-          // the wizard for a recovery dialog so the admin can jump to the drawer and put a working
-          // card on, instead of being stranded on the step flow (where re-submitting double-booked).
-          onAppointmentCreated();
-          bookingDraftStore.clear();
-          setIsCreating(false);
-          setHoldFailed({ appointmentId: insertData.id, reason: definitiveError });
-          return;
-        }
-        if (!placed) {
-          // The hold is still being placed and the JIT cron will finish it; close cleanly with a
-          // calm note instead of a red error implying the booking broke.
-          onAppointmentCreated();
-          showToast("Appointment created", {
-            variant: "success",
-            description: "We're placing the card hold; it will be confirmed automatically.",
-          });
-          handleClose();
-          return;
-        }
+      // The card is SAVED (not held) at booking; the saved card or company card is charged when the
+      // job is completed, so there is no authorization step here.
+      if (paymentMethodId || selfPay) {
+        showToast("Appointment created", {
+          variant: "success",
+          description: "The payment method will be charged when the job is completed.",
+        });
       }
 
       // Success! Close modal and refresh
@@ -1568,43 +1467,6 @@ export default function AddAppointmentModal({
 
   if (!isOpen) return null;
   if (typeof document === "undefined") return null;
-
-  // Card hold failed after the appointment was created: show a focused recovery dialog instead of
-  // the wizard. "Fix card" drops the admin into the appointment drawer to put a working card on;
-  // the booking already exists, so there's nothing left to submit here.
-  if (holdFailed) {
-    const fixCard = () => {
-      const id = holdFailed.appointmentId;
-      setHoldFailed(null);
-      handleClose();
-      if (onOpenAppointment) {
-        onOpenAppointment(id);
-      } else {
-        showToast("Appointment created", {
-          variant: "info",
-          description:
-            "The card hold didn't go through. Open the appointment to add a different card.",
-        });
-      }
-    };
-    const dismiss = () => {
-      setHoldFailed(null);
-      handleClose();
-    };
-    return (
-      <ConfirmModal
-        isOpen
-        onClose={dismiss}
-        onConfirm={fixCard}
-        title="Card hold didn't go through"
-        message={`The appointment was created, but the card hold didn't go through: ${holdFailed.reason} Add a different card to place the hold.`}
-        confirmText="Fix card"
-        cancelText="Not now"
-        tone="warning"
-        zIndexClassName="z-[400]"
-      />
-    );
-  }
 
   return createPortal(
     <>

@@ -9,6 +9,7 @@ import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
+import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
 
 export interface CleanerAppointment {
   id: string;
@@ -823,24 +824,13 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
           .eq('id', appointmentId)
           .single();
 
-        // New charge flow: capture the held authorization (the assigned cleaner is permitted).
-        // A 409 ("no authorization to capture") for a deferred/uncarded appointment is
-        // non-fatal — the job still completes; payment is collected separately.
+        // New charge flow: a card is saved (not held) at booking, so charge the saved card now that
+        // the job is complete (the assigned cleaner is permitted). Non-fatal: a payment problem (no
+        // card, declined, tenant not ready) still completes the job and surfaces in "Payments needing
+        // attention" for follow-up.
         if (stripeNewChargeFlowUiEnabled()) {
-          const token = await getAccessToken();
-          const captureRes = await fetch(`/api/appointments/${appointmentId}/capture`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ organization_id: appointment?.organization_id }),
-          });
-          const captureResult = await captureRes.json().catch(() => ({}));
-          if (!captureRes.ok) {
-            return { success: true, paymentStatus: 'failed', paymentError: captureResult.error || 'Capture failed' };
-          }
-          return { success: true, paymentStatus: 'paid', paymentIntentId: captureResult.payment_intent_id };
+          const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
+          return { success: true, ...result };
         }
 
         const response = await fetch('/api/stripe/create-payment-intent', {
