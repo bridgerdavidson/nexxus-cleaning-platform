@@ -50,6 +50,7 @@ export async function createAchCharge(p: AchChargeParams): Promise<Stripe.Paymen
     metadata: {
       appointment_id: p.appointmentId,
       organization_id: p.organizationId,
+      charge_kind: 'completion',
       source: 'nexxus-cleaning-platform',
     },
   };

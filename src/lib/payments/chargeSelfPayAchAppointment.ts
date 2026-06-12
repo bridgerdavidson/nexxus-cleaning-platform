@@ -19,6 +19,9 @@ import { createSelfPayAchCharge } from '@/lib/stripe/charges/chargeSelfPayAch';
 import { listSavedCards } from '@/lib/stripe/customers/homeowner';
 import { computeSelfPayAmounts } from './selfPayMath';
 import { recordPaymentEvent } from './events';
+import { upsertAchPaymentRow } from './chargeAchAppointment';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 export type SelfPayAchChargeCode =
   | 'processing'
@@ -105,6 +108,7 @@ export async function chargeSelfPayAchAppointment(
   const customerId =
     (orgRes.data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
   if (!customerId) {
+    await recordSelfPayNoMethod(supabase, appt, actor, 'no_self_pay_customer');
     return { ok: false, code: 'no_org_card', message: 'Organization has no company payment method on file' };
   }
 
@@ -128,10 +132,12 @@ export async function chargeSelfPayAchAppointment(
   // the card path holds at booking and captures here, so this charge-at-completion path is bank-only.
   const methods = await listSavedCards(customerId);
   if (methods.length === 0) {
+    await recordSelfPayNoMethod(supabase, appt, actor, 'no_saved_method');
     return { ok: false, code: 'no_org_card', message: 'No saved company payment method to charge' };
   }
   const pm = methods.find((m) => m.isDefault) ?? methods[0];
   if (pm.type !== 'us_bank_account') {
+    await recordSelfPayNoMethod(supabase, appt, actor, 'default_not_bank');
     return { ok: false, code: 'no_org_bank', message: 'Company default payment method is not a bank account' };
   }
 
@@ -165,25 +171,13 @@ export async function chargeSelfPayAchAppointment(
     status: 'processing' as const,
     payment_type: 'revenue' as const,
     payment_method: 'ach' as const,
+    charge_kind: 'completion' as const,
     is_self_pay: true,
     stripe_payment_intent_id: pi.id,
     payment_intent_status: pi.status,
   };
 
-  const { data: anyRow } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('appointment_id', appt.id)
-    .eq('payment_type', 'revenue')
-    .limit(1);
-  let paymentId: string | null = null;
-  if (anyRow && anyRow.length > 0) {
-    paymentId = (anyRow[0] as { id: string }).id;
-    await supabase.from('payments').update(paymentRow).eq('id', paymentId);
-  } else {
-    const { data: inserted } = await supabase.from('payments').insert(paymentRow).select('id').single();
-    paymentId = (inserted as { id: string } | null)?.id ?? null;
-  }
+  const paymentId = await upsertAchPaymentRow(supabase, appt.id, appt.organization_id, paymentRow);
 
   await recordPaymentEvent(supabase, {
     paymentId,
@@ -197,4 +191,28 @@ export async function chargeSelfPayAchAppointment(
   });
 
   return { ok: true, code: 'processing', paymentIntentId: pi.id };
+}
+
+/** Ledger + admin notification for a self-pay completion with no usable company method. */
+async function recordSelfPayNoMethod(
+  supabase: SupabaseClient,
+  appt: ApptRow,
+  actor: string,
+  reason: string,
+): Promise<void> {
+  await recordPaymentEvent(supabase, {
+    appointmentId: appt.id,
+    organizationId: appt.organization_id,
+    eventType: 'self_pay_no_card',
+    actor,
+    payload: { reason, rail: 'ach' },
+  });
+  const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
+  await recordNotificationEvent(supabase, {
+    event_type: 'self_pay_no_card',
+    appointment_id: appt.id,
+    organization_id: appt.organization_id,
+    dedupe_key: `self_pay_no_card:${appt.id}`,
+    payload: { ...ctx, audience: 'admin', reason },
+  });
 }

@@ -129,26 +129,14 @@ export async function chargeAchAppointment(
     status: 'processing' as const,
     payment_type: 'revenue' as const,
     payment_method: 'ach' as const,
+    charge_kind: 'completion' as const,
     stripe_payment_intent_id: pi.id,
     on_behalf_of_account_id: org.stripe_connect_account_id,
     transfer_destination_account_id: org.stripe_connect_account_id,
     payment_intent_status: pi.status,
   };
 
-  const { data: anyRow } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('appointment_id', appt.id)
-    .eq('payment_type', 'revenue')
-    .limit(1);
-  let paymentId: string | null = null;
-  if (anyRow && anyRow.length > 0) {
-    paymentId = (anyRow[0] as { id: string }).id;
-    await supabase.from('payments').update(paymentRow).eq('id', paymentId);
-  } else {
-    const { data: inserted } = await supabase.from('payments').insert(paymentRow).select('id').single();
-    paymentId = (inserted as { id: string } | null)?.id ?? null;
-  }
+  const paymentId = await upsertAchPaymentRow(supabase, appt.id, appt.organization_id, paymentRow);
 
   await recordPaymentEvent(supabase, {
     paymentId,
@@ -162,4 +150,64 @@ export async function chargeAchAppointment(
   });
 
   return { ok: true, code: 'processing', paymentIntentId: pi.id };
+}
+
+/**
+ * Update-or-insert the revenue row for an ACH debit. The partial unique index (migration 088)
+ * backstops the check-then-insert race: on 23505 the concurrent writer won — adopt its row when
+ * it carries the SAME PaymentIntent (the idempotency key collapsed the race), or flag a real
+ * duplicate charge loudly instead of overwriting either record.
+ */
+export async function upsertAchPaymentRow(
+  supabase: SupabaseClient,
+  appointmentId: string,
+  organizationId: string,
+  paymentRow: Record<string, unknown>,
+): Promise<string | null> {
+  const { data: anyRow } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('appointment_id', appointmentId)
+    .eq('payment_type', 'revenue')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (anyRow && anyRow.length > 0) {
+    const id = (anyRow[0] as { id: string }).id;
+    await supabase.from('payments').update(paymentRow).eq('id', id);
+    return id;
+  }
+  const { data: inserted, error: insertError } = await supabase
+    .from('payments')
+    .insert(paymentRow)
+    .select('id')
+    .single();
+  if (insertError && insertError.code === '23505') {
+    const { data: winner } = await supabase
+      .from('payments')
+      .select('id, stripe_payment_intent_id')
+      .eq('appointment_id', appointmentId)
+      .eq('payment_type', 'revenue')
+      .not('stripe_payment_intent_id', 'is', null)
+      .limit(1)
+      .maybeSingle();
+    const w = winner as { id: string; stripe_payment_intent_id: string | null } | null;
+    if (!w) return null;
+    if (w.stripe_payment_intent_id === (paymentRow.stripe_payment_intent_id ?? null)) {
+      await supabase.from('payments').update(paymentRow).eq('id', w.id);
+      return w.id;
+    }
+    await recordPaymentEvent(supabase, {
+      paymentId: w.id,
+      appointmentId,
+      organizationId,
+      eventType: 'duplicate_charge_detected',
+      actor: 'system',
+      payload: {
+        kept_payment_intent_id: w.stripe_payment_intent_id,
+        duplicate_payment_intent_id: paymentRow.stripe_payment_intent_id ?? null,
+      },
+    });
+    return w.id;
+  }
+  return (inserted as { id: string } | null)?.id ?? null;
 }

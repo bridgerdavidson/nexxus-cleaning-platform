@@ -23,7 +23,11 @@ export type NotificationEventType =
   | 'job_completed'                 // recipient: homeowner + admins
   | 'dispute_opened'                // recipient: admins (chargeback created)
   | 'authorization_failed'          // recipient: admins (card hold declined)
-  | 'authentication_required';      // recipient: admins + homeowner (3-D Secure needed on the hold)
+  | 'authentication_required'       // recipient: admins + homeowner (3-D Secure needed on the hold)
+  | 'charge_failed'                 // recipient: admins (completion charge declined / needs 3DS)
+  | 'cancellation_fee_failed'       // recipient: admins (cancel fee uncollectable or declined)
+  | 'self_pay_no_card'              // recipient: admins (self-pay completion, no company card)
+  | 'cancelled_job_refunded';       // recipient: admins (in-flight debit auto-refunded after cancel)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */
 export type NotificationAudience = 'admin' | 'cleaner' | 'homeowner';
@@ -58,4 +62,10 @@ export interface NotificationEventPayload {
   payload?: Record<string, unknown>;
   /** ISO timestamp for scheduled/deferred events (e.g. deadline reminders). */
   send_after?: string;
+  /**
+   * Idempotency key for webhook/sweep-driven events. When set, a re-emit with the
+   * same key for the same recipient is silently dropped (unique index, migration
+   * 088) so a reprocessed Stripe event or a reconcile retry can't double-notify.
+   */
+  dedupe_key?: string;
 }

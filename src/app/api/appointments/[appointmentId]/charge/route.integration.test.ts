@@ -14,6 +14,8 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
     { id: 'pm_company_card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true, type: 'card' },
   ]),
   getPaymentMethodType: vi.fn(async () => 'card'),
+  // The saved card is treated as still attached, so the default-card substitution never kicks in.
+  paymentMethodBelongsToCustomer: vi.fn(async () => true),
 }));
 
 import { POST } from './route';

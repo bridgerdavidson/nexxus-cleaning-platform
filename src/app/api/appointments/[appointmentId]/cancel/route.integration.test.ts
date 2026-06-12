@@ -315,4 +315,123 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
     const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
     expect((a as { status: string }).status).toBe('cancelled');
   });
+
+  // ── Charge-at-completion guards (audit findings C3 / H6 / H7) ─────────────────
+
+  async function insertRevenueRow(
+    appointmentId: string,
+    fields: { status: string; chargeKind: string; paymentMethod?: string },
+  ) {
+    const db = createTestSupabaseClient();
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appointmentId,
+      amount: 100,
+      status: fields.status,
+      payment_method: fields.paymentMethod ?? 'card',
+      payment_type: 'revenue',
+      charge_kind: fields.chargeKind,
+      stripe_payment_intent_id: `pi_guard_${appointmentId}`,
+    });
+  }
+
+  it('a PAID completion charge blocks the cancel (409: refund instead)', async () => {
+    const appt = await seedAppointment();
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ status: 'completed' }).eq('id', appt.id);
+    await insertRevenueRow(appt.id, { status: 'paid', chargeKind: 'completion' });
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner' },
+    });
+    expect(status).toBe(409);
+
+    const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
+    expect((a as { status: string }).status).toBe('completed');
+  });
+
+  it('an in-flight bank debit: cancel proceeds with NO fee and flags the refund-on-settle', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment();
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ status: 'completed' }).eq('id', appt.id);
+    await insertRevenueRow(appt.id, { status: 'processing', chargeKind: 'completion', paymentMethod: 'ach' });
+
+    const { status, body } = await callRoute<{
+      fee_captured_cents: number;
+      inflight_debit?: boolean;
+    }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(status).toBe(200);
+    expect(body.fee_captured_cents).toBe(0);
+    expect(body.inflight_debit).toBe(true);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+    const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
+    expect((a as { status: string }).status).toBe('cancelled');
+
+    const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', appt.id);
+    expect(
+      (events ?? []).some((e) => (e as { event_type: string }).event_type === 'cancelled_with_inflight_debit'),
+    ).toBe(true);
+  });
+
+  it('cancelling a COMPLETED (uncharged) job is an administrative undo: no fee', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment();
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ status: 'completed' }).eq('id', appt.id);
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(status).toBe(200);
+    expect(body.fee_captured_cents).toBe(0);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('a fee retry after a decline uses a fresh idempotency attempt (H6)', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment();
+    vi.mocked(createDestinationCharge).mockRejectedValueOnce(new Error('Your card was declined.'));
+
+    const first = await callRoute<{ fee_outcome: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.fee_outcome).toBe('failed');
+
+    const second = await callRoute<{ fee_outcome: string; fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.fee_outcome).toBe('charged');
+    expect(second.body.fee_captured_cents).toBe(5000);
+
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(2);
+    const firstArg = vi.mocked(createDestinationCharge).mock.calls[0][0] as { reauthAttempt?: number };
+    const secondArg = vi.mocked(createDestinationCharge).mock.calls[1][0] as { reauthAttempt?: number };
+    expect(firstArg.reauthAttempt ?? 0).toBe(0);
+    expect(secondArg.reauthAttempt).toBe(1);
+
+    // The lost fee surfaced to admins (and is deduped per attempt).
+    const db = createTestSupabaseClient();
+    const { data: notifs } = await db
+      .from('notification_events')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'cancellation_fee_failed');
+    expect((notifs ?? []).length).toBeGreaterThan(0);
+  });
 });

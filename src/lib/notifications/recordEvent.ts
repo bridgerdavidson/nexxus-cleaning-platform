@@ -11,9 +11,11 @@ import type { NotificationEventPayload } from './eventTypes';
  * helper fans out to every admin/owner of `organization_id` (one row per
  * admin) so the future dispatcher doesn't need to join.
  *
- * Idempotency: this helper does NOT dedupe. Callers must avoid emitting the
- * same event twice for the same state transition (e.g. don't call from a
- * retry path).
+ * Idempotency: by default this helper does NOT dedupe — callers must avoid
+ * emitting the same event twice for the same state transition. Webhook/sweep
+ * call sites (which CAN legitimately re-run) should pass `dedupe_key`: a
+ * re-emit with the same key for the same recipient is silently dropped
+ * (unique index on (recipient_user_id, dedupe_key), migration 088).
  */
 export async function recordNotificationEvent(
   supabaseAdmin: SupabaseClient,
@@ -33,9 +35,14 @@ export async function recordNotificationEvent(
       event_type: event.event_type,
       payload: event.payload ?? {},
       send_after: event.send_after ?? new Date().toISOString(),
+      ...(event.dedupe_key ? { dedupe_key: event.dedupe_key } : {}),
     }));
 
-    const { error } = await supabaseAdmin.from('notification_events').insert(rows);
+    const { error } = event.dedupe_key
+      ? await supabaseAdmin
+          .from('notification_events')
+          .upsert(rows, { onConflict: 'recipient_user_id,dedupe_key', ignoreDuplicates: true })
+      : await supabaseAdmin.from('notification_events').insert(rows);
     if (error) {
       console.error('Failed to record notification event:', event.event_type, error);
     }

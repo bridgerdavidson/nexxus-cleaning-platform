@@ -56,7 +56,7 @@ export async function POST(
     const { data: apptRow } = await supabaseAdmin
       .from('appointments')
       .select(
-        'id, organization_id, status, total_price, scheduled_date, scheduled_time, is_self_pay, homeowner_id, payment_method_id',
+        'id, organization_id, status, total_price, scheduled_date, scheduled_time, is_self_pay, homeowner_id, payment_method_id, reauth_count',
       )
       .eq('id', appointmentId)
       .maybeSingle();
@@ -71,11 +71,39 @@ export async function POST(
           is_self_pay: boolean;
           homeowner_id: string | null;
           payment_method_id: string | null;
+          reauth_count: number | null;
         }
       | null;
     if (!appt || appt.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
     }
+
+    // The Stripe-backed revenue row decides whether this job's money is already moving:
+    //   - 'paid' completion charge -> the job is PAID; cancelling can't unwind a settled charge,
+    //     so the caller must refund instead (409). A paid cancellation FEE row just means a prior
+    //     cancel already collected its fee (the idempotent retry path below handles it).
+    //   - 'processing' (an in-flight ACH debit) -> the cancel PROCEEDS; the debit can't be stopped
+    //     mid-flight, so when it settles the webhook (or the reconcile sweep) auto-refunds it
+    //     (charge_kind='completion' + a cancelled appointment).
+    const { data: payRows } = await supabaseAdmin
+      .from('payments')
+      .select('status, charge_kind')
+      .eq('appointment_id', appointmentId)
+      .eq('payment_type', 'revenue')
+      .not('stripe_payment_intent_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const payRow =
+      payRows && payRows.length > 0
+        ? (payRows[0] as { status: string; charge_kind: string | null })
+        : null;
+    if (payRow?.status === 'paid' && payRow.charge_kind !== 'cancellation_fee') {
+      return NextResponse.json(
+        { error: 'This appointment is already paid. Refund the payment instead of cancelling.' },
+        { status: 409 },
+      );
+    }
+    const inflightDebit = payRow?.status === 'processing';
 
     // Org cancellation policy.
     const { data: orgRow } = await supabaseAdmin
@@ -89,10 +117,13 @@ export async function POST(
 
     const grossCents = Math.round(Number(appt.total_price) * 100);
     // Self-pay has no homeowner to charge a cancellation fee to (the org would be charging itself),
-    // so a self-pay cancel always charges $0 — skip the policy entirely.
+    // so a self-pay cancel always charges $0 — skip the policy entirely. A COMPLETED job charges no
+    // fee either: cancelling it is the administrative undo of a mistaken completion, and the
+    // completion charge / auto-refund flow owns that money (a fee on top would double-charge). An
+    // in-flight bank debit also charges no fee (the whole debit is refunded when it settles).
     let feeCents = 0;
     let insideWindow = false;
-    if (!appt.is_self_pay) {
+    if (!appt.is_self_pay && appt.status !== 'completed' && !inflightDebit) {
       const fee = computeCancellationFee({
         party,
         noShow: no_show,
@@ -109,17 +140,31 @@ export async function POST(
 
     // Mark cancelled BEFORE charging any fee so the fee charge's payment_intent.succeeded sees a
     // cancelled appointment and settles to the tenant only (settleCleanerPayout skips the cleaner).
-    // Re-running on a retry is harmless; the fee charge below is independently idempotent.
+    // Conditional claim: only a non-cancelled row is flipped, so a concurrent double-cancel can't
+    // re-run side effects. Re-running on a retry is harmless; the fee charge below is
+    // independently idempotent.
     const alreadyCancelled = appt.status === 'cancelled';
     if (!alreadyCancelled) {
       const nowIso = new Date().toISOString();
       await supabaseAdmin
         .from('appointments')
         .update({ status: 'cancelled', cancelled_at: nowIso, cancellation_reason: reason ?? null })
-        .eq('id', appointmentId);
+        .eq('id', appointmentId)
+        .neq('status', 'cancelled');
     }
 
-    // No fee (on-time, cleaner-caused, or self-pay): nothing to charge.
+    if (inflightDebit && !alreadyCancelled) {
+      await recordPaymentEvent(supabaseAdmin, {
+        appointmentId,
+        organizationId: organization_id,
+        eventType: 'cancelled_with_inflight_debit',
+        actor: `user:${auth.userId}`,
+        payload: { party, no_show },
+      });
+    }
+
+    // No fee (on-time, cleaner-caused, self-pay, completed undo, or in-flight debit): nothing to
+    // charge.
     if (feeCents <= 0) {
       if (!alreadyCancelled) {
         await recordPaymentEvent(supabaseAdmin, {
@@ -130,7 +175,14 @@ export async function POST(
           payload: { party, no_show, inside_window: insideWindow },
         });
       }
-      return NextResponse.json({ success: true, cancelled: true, fee_captured_cents: 0 });
+      return NextResponse.json({
+        success: true,
+        cancelled: true,
+        fee_captured_cents: 0,
+        ...(inflightDebit
+          ? { inflight_debit: true, inflight_message: 'The bank payment in progress will be refunded when it settles.' }
+          : {}),
+      });
     }
 
     // Homeowner-fault fee: charge the saved card off-session. The helper is idempotent (Stripe key +
@@ -142,6 +194,7 @@ export async function POST(
         organization_id: appt.organization_id,
         homeowner_id: appt.homeowner_id,
         payment_method_id: appt.payment_method_id,
+        reauth_count: appt.reauth_count,
       },
       feeCents,
       `user:${auth.userId}`,

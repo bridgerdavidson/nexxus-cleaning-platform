@@ -4,6 +4,7 @@ import { stripeEnabled } from '@/lib/stripe/flags';
 import {
   retryDeadLetterWebhooks,
   reconcileStuckPayments,
+  chargeUncollectedCompletions,
   settleUnsettledCaptures,
   retryFailedPayouts,
   retryStrandedClawbacks,
@@ -20,6 +21,7 @@ export const runtime = 'nodejs';
  * DB correctness independent of any single delivery:
  *   1) dead-letter retry        — re-dispatch webhook_events stuck in received/failed
  *   2) stuck-payment reconcile   — replay the true Stripe PI status for pending payments past SLA
+ *   2a) uncollected completions  — charge completed jobs whose completion charge never ran
  *   2b) unsettled-capture heal   — re-run settlement for captured charges whose funds never moved
  *   3) failed-payout retry       — re-run cleaner settlement for payouts left 'failed'
  *   3b) stranded-clawback retry  — re-attempt cleaner clawbacks that failed (cleaner_clawback_failed)
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
   try {
     const deadLetter = await retryDeadLetterWebhooks(supabaseAdmin);
     const stuckPayments = await reconcileStuckPayments(supabaseAdmin);
+    const uncollectedCompletions = await chargeUncollectedCompletions(supabaseAdmin);
     const unsettledCaptures = await settleUnsettledCaptures(supabaseAdmin);
     const failedPayouts = await retryFailedPayouts(supabaseAdmin);
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
@@ -51,6 +54,7 @@ export async function POST(request: NextRequest) {
       success: true,
       deadLetter,
       stuckPayments,
+      uncollectedCompletions,
       unsettledCaptures,
       failedPayouts,
       strandedClawbacks,
