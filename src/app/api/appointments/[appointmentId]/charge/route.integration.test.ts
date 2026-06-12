@@ -24,6 +24,7 @@ import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { fakeOffSessionCharge, MAGIC_PM } from '../../../../../../tests/helpers/stripe';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
@@ -100,6 +101,62 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
 
     const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', apptId);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'charged')).toBe(true);
+  });
+
+  it('402 declined for the magic decline method: failed row persisted with the failed PI attached', async () => {
+    const apptId = await completedApptWithCard(false);
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ payment_method_id: MAGIC_PM.decline }).eq('id', apptId);
+    vi.mocked(createDestinationCharge).mockImplementation(fakeOffSessionCharge as never);
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(402);
+    expect(body.code).toBe('declined');
+
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string }).authorization_status).toBe('failed');
+
+    // The failed attempt is persisted WITH the declined PaymentIntent (the fake attaches it the
+    // way the real SDK error does), so the retry path can bump to a fresh idempotency key.
+    const { data: pay } = await db
+      .from('payments')
+      .select('status, stripe_payment_intent_id')
+      .eq('appointment_id', apptId)
+      .single();
+    expect((pay as { status: string }).status).toBe('failed');
+    expect((pay as { stripe_payment_intent_id: string }).stripe_payment_intent_id).toBe(`pi_declined_${apptId}`);
+
+    const { data: notifs } = await db
+      .from('notification_events')
+      .select('id')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_failed');
+    expect((notifs ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('402 requires_action for the magic 3-D Secure method: surfaced, nothing captured', async () => {
+    const apptId = await completedApptWithCard(false);
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ payment_method_id: MAGIC_PM.threeDS }).eq('id', apptId);
+    vi.mocked(createDestinationCharge).mockImplementation(fakeOffSessionCharge as never);
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(402);
+    expect(body.code).toBe('requires_action');
+
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string }).authorization_status).toBe('requires_action');
+
+    const { data: pay } = await db.from('payments').select('status').eq('appointment_id', apptId).single();
+    expect((pay as { status: string }).status).toBe('failed');
   });
 
   it('409 bank_disabled when the saved method is a bank account and ACH is off (never the card path)', async () => {

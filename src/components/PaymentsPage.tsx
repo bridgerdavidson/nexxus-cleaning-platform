@@ -10,12 +10,14 @@ import {
   Plus,
   ChevronDown,
   FileText,
+  ShieldAlert,
 } from "lucide-react";
 import RecordPaymentModal from "./RecordPaymentModal";
 import RefundModal from "./RefundModal";
 import PaymentsNeedingAttentionSection from "./PaymentsNeedingAttentionSection";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
+import { useDisputes, isDisputeOpen, type Dispute } from "../hooks/useDisputes";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
 
 type TabType = "transactions" | "payouts" | "invoices";
@@ -116,6 +118,7 @@ export default function PaymentsPage({
   const [refundPayment, setRefundPayment] = useState<AdminPayment | null>(null);
   const { currentOrganizationId, currentOrgRole, currentOrganization } = useAuth();
   const { permissions } = useManagerPermissions();
+  const { disputes, openByPaymentId } = useDisputes();
   // Owners/admins always manage payments; managers need the explicit can_manage_payments flag.
   const canManagePayments =
     currentOrgRole === "owner" ||
@@ -210,6 +213,34 @@ export default function PaymentsPage({
     });
   };
 
+  // Disputes (audit M7). Map them back to payment rows for the client name, and humanize the
+  // Stripe status/reason codes for display.
+  const paymentsById = useMemo(() => {
+    const map: Record<string, AdminPayment> = {};
+    for (const p of payments) map[p.id] = p;
+    return map;
+  }, [payments]);
+
+  const disputeClientName = (d: Dispute) => {
+    const payment = d.payment_id ? paymentsById[d.payment_id] : undefined;
+    if (payment?.appointment?.homeowner) {
+      return `${payment.appointment.homeowner.first_name} ${payment.appointment.homeowner.last_name}`;
+    }
+    return payment?.is_self_pay ? currentOrganization?.name || "-" : "-";
+  };
+
+  const disputeStatusChip = (status: string) => {
+    const label = status.replace(/_/g, " ");
+    if (isDisputeOpen(status)) {
+      return status.includes("needs_response")
+        ? { label, className: "text-red-700 bg-red-100" }
+        : { label, className: "text-amber-700 bg-amber-100" };
+    }
+    if (status === "won") return { label, className: "text-green-700 bg-green-100" };
+    if (status === "lost") return { label, className: "text-red-700 bg-red-100" };
+    return { label, className: "text-gray-700 bg-gray-100" };
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-4xl font-bold text-gray-900">Finance</h2>
@@ -276,6 +307,85 @@ export default function PaymentsPage({
         onResolved={onRefreshPayments}
         canManagePayments={canManagePayments}
       />
+
+      {/* Disputes (chargebacks). Rendered only when the org has any; open ones first. */}
+      {disputes.length > 0 && (
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <ShieldAlert className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Disputes</h3>
+              <p className="text-sm text-gray-600">
+                Charges your customers disputed with their bank. Respond in Stripe before the due
+                date or the dispute is lost automatically.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                    Opened
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                    Client
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
+                    Amount
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                    Reason
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                    Respond by
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {[...disputes]
+                  .sort((a, b) => Number(isDisputeOpen(b.status)) - Number(isDisputeOpen(a.status)))
+                  .map((dispute) => {
+                    const chip = disputeStatusChip(dispute.status);
+                    return (
+                      <tr key={dispute.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {formatDate(dispute.created_at)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {disputeClientName(dispute)}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                          ${(dispute.amount / 100).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {dispute.reason ? dispute.reason.replace(/_/g, " ") : "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${chip.className}`}
+                          >
+                            {chip.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {isDisputeOpen(dispute.status) && dispute.evidence_due_by
+                            ? formatDate(dispute.evidence_due_by)
+                            : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Tabs and Actions */}
       <div className="card">
@@ -447,17 +557,25 @@ export default function PaymentsPage({
                           ${payment.amount.toFixed(2)}
                         </td>
                         <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                              payment.status
-                            )}`}
-                          >
-                            {payment.status === "processing"
-                              ? "Clearing"
-                              : payment.status === "pending"
-                                ? "Awaiting cleaner"
-                                : payment.status}
-                          </span>
+                          {openByPaymentId[payment.id] ? (
+                            // An open dispute overrides the money status: the funds were pulled
+                            // back by the bank, so "Paid" would be a lie until it resolves.
+                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full text-red-700 bg-red-100">
+                              Disputed
+                            </span>
+                          ) : (
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                                payment.status
+                              )}`}
+                            >
+                              {payment.status === "processing"
+                                ? "Clearing"
+                                : payment.status === "pending"
+                                  ? "Awaiting cleaner"
+                                  : payment.status}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {payment.payment_method || "manual"}
@@ -467,7 +585,9 @@ export default function PaymentsPage({
                         </td>
                         {refundsEnabled && (
                           <td className="px-4 py-3 text-right">
-                            {payment.status === "paid" && payment.payment_method === "card" ? (
+                            {payment.status === "paid" &&
+                            payment.payment_method === "card" &&
+                            !openByPaymentId[payment.id] ? (
                               <button
                                 onClick={() => setRefundPayment(payment)}
                                 className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"

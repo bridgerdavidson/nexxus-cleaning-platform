@@ -27,6 +27,9 @@ export const keys = {
   invoices: {
     byOrg: (orgId: string) => ['invoices', 'org', orgId] as const,
   },
+  disputes: {
+    byOrg: (orgId: string) => ['disputes', 'org', orgId] as const,
+  },
   services: {
     all: ['services'] as const,
     byOrg: (orgId: string) => ['services', 'org', orgId] as const,
