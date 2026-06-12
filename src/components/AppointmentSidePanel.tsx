@@ -1068,6 +1068,7 @@ export default function AppointmentSidePanel({
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <PaymentMethodForm
                       homeownerId={appointment.homeowner_id}
+                      organizationId={appointment.organization_id}
                       onSuccess={() => {
                         setShowPaymentForm(false);
                         if (appointment.homeowner_id) {

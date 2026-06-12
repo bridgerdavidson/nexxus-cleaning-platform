@@ -9,6 +9,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { CreditCard, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { getAccessToken } from "@/lib/auth/clientAccessToken";
 
 // Helper function to check if Stripe UI is enabled
 function stripeUiEnabled(): boolean {
@@ -17,6 +18,9 @@ function stripeUiEnabled(): boolean {
 
 interface PaymentMethodFormProps {
   homeownerId: string;
+  /** Required when org staff save a card on a homeowner's behalf (the API authorizes
+   *  the caller as staff of this org); a homeowner saving their own card can omit it. */
+  organizationId?: string | null;
   onSuccess: (customerId: string, paymentMethodId: string) => void;
   onError: (error: string) => void;
   onCancel?: () => void;
@@ -25,6 +29,7 @@ interface PaymentMethodFormProps {
 // Inner form component that uses Stripe hooks
 function PaymentForm({
   homeownerId,
+  organizationId,
   onSuccess,
   onError,
   onCancel,
@@ -48,12 +53,17 @@ function PaymentForm({
         setLoading(true);
         setError(null);
 
+        const token = await getAccessToken();
         const response = await fetch("/api/stripe/create-setup-intent", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ homeowner_id: homeownerId }),
+          body: JSON.stringify({
+            homeowner_id: homeownerId,
+            ...(organizationId ? { organization_id: organizationId } : {}),
+          }),
         });
 
         let data;
@@ -90,7 +100,7 @@ function PaymentForm({
     if (homeownerId) {
       createSetupIntent();
     }
-  }, [homeownerId, onError]);
+  }, [homeownerId, organizationId, onError]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -129,14 +139,17 @@ function PaymentForm({
       }
 
       // Confirm with our backend
+      const token = await getAccessToken();
       const confirmResponse = await fetch("/api/stripe/confirm-setup-intent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           setup_intent_id: setupIntentId,
           homeowner_id: homeownerId,
+          ...(organizationId ? { organization_id: organizationId } : {}),
         }),
       });
 

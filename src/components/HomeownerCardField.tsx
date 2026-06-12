@@ -63,7 +63,10 @@ export default function HomeownerCardField({
         // SetupIntent (what gets confirmed to save the card, off_session).
         const siRes = await fetch("/api/stripe/create-setup-intent", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
           body: JSON.stringify({ homeowner_id: homeownerId }),
         });
         const siData = await siRes.json().catch(() => ({}));

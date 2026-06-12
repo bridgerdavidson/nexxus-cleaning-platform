@@ -110,15 +110,22 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
   // Create a SetupIntent for the homeowner's customer. The Payment Element renders card (+ bank
   // when ACH is enabled) from the SetupIntent's allowed payment-method types.
   const createSetupIntent = useCallback(async (): Promise<string> => {
+    const token = accessToken ?? (await getAccessToken());
     const res = await fetch("/api/stripe/create-setup-intent", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ homeowner_id: homeownerId }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        homeowner_id: homeownerId,
+        ...(organizationId ? { organization_id: organizationId } : {}),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.client_secret) throw new Error(data.error || "Could not start card setup");
     return data.client_secret as string;
-  }, [homeownerId]);
+  }, [homeownerId, accessToken, organizationId]);
 
   // Report readiness up to the parent: a method is chosen only when a SAVED method is selected.
   useEffect(() => {
