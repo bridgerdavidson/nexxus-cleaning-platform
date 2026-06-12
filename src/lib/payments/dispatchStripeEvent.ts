@@ -386,6 +386,7 @@ async function handlePaymentIntentFailed(
       event_type: 'authorization_failed',
       appointment_id: appointmentId,
       organization_id: organizationId,
+      dedupe_key: `authorization_failed:${appointmentId}:${paymentIntent.id}`,
       payload: { ...ctx, audience: 'admin', amount_cents: paymentIntent.amount ?? 0 },
     });
     return;
@@ -420,6 +421,7 @@ async function handlePaymentIntentFailed(
       event_type: 'authorization_failed',
       appointment_id: appointmentId,
       organization_id: organizationId,
+      dedupe_key: `authorization_failed:${appointmentId}:${paymentIntent.id}`,
       payload: { ...ctx, audience: 'admin', amount_cents: paymentIntent.amount ?? 0 },
     });
   }
@@ -819,6 +821,7 @@ async function handleChargeDisputeCreated(
       event_type: 'dispute_opened',
       appointment_id: payment.appointment_id,
       organization_id: payment.organization_id,
+      dedupe_key: `dispute_opened:${dispute.id}`,
       payload: {
         ...ctx,
         audience: 'admin',
@@ -1202,6 +1205,7 @@ async function notifyCleanerPaid(
       appointment_id: r.appointment_id,
       organization_id: r.organization_id,
       recipient_user_id: cleanerId,
+      dedupe_key: `cleaner_paid:${r.appointment_id}:${payoutId}`,
       payload: {
         ...ctx,
         audience: 'cleaner',
