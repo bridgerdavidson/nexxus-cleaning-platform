@@ -42,6 +42,7 @@ export type ChargeNowCode =
   | 'no_card'
   | 'no_org_card'
   | 'no_org_bank'
+  | 'bank_disabled'
   | 'tenant_not_ready'
   | 'cleaner_not_payable'
   | 'not_chargeable'
@@ -237,7 +238,16 @@ async function chargeHomeownerNow(
   }
 
   // A bank method is debited via the existing ACH charge-at-completion path (also immediate).
-  if (stripeAchEnabled() && (await getPaymentMethodType(paymentMethodId)) === 'us_bank_account') {
+  // With ACH disabled, a saved bank method must NOT fall through to the card path (Stripe throws
+  // a generic confirm error on a us_bank_account method there) — surface a clear outcome instead.
+  if ((await getPaymentMethodType(paymentMethodId)) === 'us_bank_account') {
+    if (!stripeAchEnabled()) {
+      return {
+        ok: false,
+        code: 'bank_disabled',
+        message: 'This customer pays by bank transfer, which is currently disabled.',
+      };
+    }
     const outcome = await chargeAchAppointment(supabase, appt.id, actor);
     // The debit is in flight (processing), so the prior failed card auth is resolved — drop it out
     // of "Payments needing attention".
@@ -359,7 +369,15 @@ async function chargeSelfPayNow(
     return { ok: false, code: 'no_org_card', message: 'No saved company card to charge' };
   }
   const method = methods.find((m) => m.isDefault) ?? methods[0];
-  if (stripeAchEnabled() && stripeSelfPayEnabled() && method.type === 'us_bank_account') {
+  if (method.type === 'us_bank_account') {
+    // Same guard as the homeowner path: a bank method with ACH off must not hit the card path.
+    if (!(stripeAchEnabled() && stripeSelfPayEnabled())) {
+      return {
+        ok: false,
+        code: 'bank_disabled',
+        message: 'The company payment method is a bank account, and bank payments are currently disabled.',
+      };
+    }
     const outcome = await chargeSelfPayAchAppointment(supabase, appt.id, actor);
     if (outcome.ok) await clearFailedForBank(supabase, appt);
     return outcome;

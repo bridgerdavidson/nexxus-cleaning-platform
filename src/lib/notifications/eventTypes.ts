@@ -29,7 +29,8 @@ export type NotificationEventType =
   | 'self_pay_no_card'              // recipient: admins (self-pay completion, no company card)
   | 'cancelled_job_refunded'        // recipient: admins (in-flight debit auto-refunded after cancel)
   | 'refund_failed'                 // recipient: admins (a refund failed/canceled at Stripe; payer not refunded)
-  | 'clawback_blocked';             // recipient: admins (payout already bank_paid; recovery needs an ops decision)
+  | 'clawback_blocked'              // recipient: admins (payout already bank_paid; recovery needs an ops decision)
+  | 'cleaner_settled_zero_percent'; // recipient: admins (job settled with an assigned cleaner at 0% payout)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */
 export type NotificationAudience = 'admin' | 'cleaner' | 'homeowner';

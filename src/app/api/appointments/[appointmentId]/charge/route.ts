@@ -27,6 +27,7 @@ const HTTP_BY_CODE: Record<ChargeNowCode, number> = {
   no_card: 409,
   no_org_card: 409,
   no_org_bank: 409,
+  bank_disabled: 409,
   tenant_not_ready: 409,
   cleaner_not_payable: 409,
   not_chargeable: 409,

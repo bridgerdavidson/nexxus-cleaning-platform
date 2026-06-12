@@ -42,6 +42,7 @@ describe('notificationTab', () => {
       expect(notificationTab('cancelled_job_refunded', role)).toBe('payments');
       expect(notificationTab('refund_failed', role)).toBe('payments');
       expect(notificationTab('clawback_blocked', role)).toBe('payments');
+      expect(notificationTab('cleaner_settled_zero_percent', role)).toBe('payments');
     }
   });
 });

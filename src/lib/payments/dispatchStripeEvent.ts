@@ -12,6 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 import { createConnectTransfer } from '@/lib/stripe';
+import { createPlatformTransfer, transferGroupFor } from '@/lib/stripe/transfers';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { settleSelfPay } from '@/lib/payments/settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
@@ -53,6 +54,9 @@ export async function dispatchStripeEvent(
       break;
     case 'charge.dispute.closed':
       await handleChargeDisputeClosed(supabase, event.data.object as Stripe.Dispute, event.id);
+      break;
+    case 'charge.dispute.funds_reinstated':
+      await handleDisputeFundsReinstated(supabase, event.data.object as Stripe.Dispute, event.id);
       break;
     case 'application_fee.refunded':
       await handleApplicationFeeRefunded(supabase, event.data.object as Stripe.ApplicationFee);
@@ -885,6 +889,99 @@ async function handleChargeDisputeClosed(
 }
 
 /**
+ * Handle charge.dispute.funds_reinstated — a dispute that had debited the funds (and on whose
+ * loss we clawed back the cleaner's cut) was later won/reversed and Stripe returned the money.
+ * Re-pay the cleaner the exact clawed-back amount (M6): without this, a cleaner clawed back on a
+ * dispute the tenant ultimately won permanently eats the loss. Guarded to OUR dispute clawback:
+ * the payout must be 'reversed' AND a dispute_lost_clawback ledger event must exist (a
+ * refund-driven reversal is not undone by a reinstatement). Idempotent via the payout status and
+ * the `cleaner-reinstate-{appointment}-{dispute}` transfer key.
+ */
+async function handleDisputeFundsReinstated(
+  supabase: SupabaseClient,
+  dispute: Stripe.Dispute,
+  stripeEventId: string,
+) {
+  const piId = idFromExpandable(dispute.payment_intent);
+  const payment = await findPaymentByIntent(supabase, piId);
+  if (!payment?.appointment_id) return;
+
+  const { data: payoutRow } = await supabase
+    .from('payouts')
+    .select('id, cleaner_id, amount, status')
+    .eq('appointment_id', payment.appointment_id)
+    .maybeSingle();
+  const payout = payoutRow as
+    | { id: string; cleaner_id: string | null; amount: number | string; status: string }
+    | null;
+  if (!payout || payout.status !== 'reversed' || !payout.cleaner_id) return;
+
+  const { data: clawEvent } = await supabase
+    .from('payment_events')
+    .select('id')
+    .eq('appointment_id', payment.appointment_id)
+    .eq('event_type', 'dispute_lost_clawback')
+    .limit(1)
+    .maybeSingle();
+  if (!clawEvent) return;
+
+  const { data: cleanerRow } = await supabase
+    .from('cleaner_profiles')
+    .select('stripe_connect_account_id')
+    .eq('id', payout.cleaner_id)
+    .maybeSingle();
+  const cleanerAccountId =
+    (cleanerRow as { stripe_connect_account_id: string | null } | null)?.stripe_connect_account_id ?? null;
+  if (!cleanerAccountId) return;
+
+  const amountCents = Math.round(Number(payout.amount) * 100);
+  if (amountCents <= 0) return;
+
+  try {
+    const transfer = await createPlatformTransfer({
+      destinationAccountId: cleanerAccountId,
+      amountCents,
+      sourceTransactionId: null,
+      transferGroup: transferGroupFor(payment.appointment_id),
+      idempotencyKey: `cleaner-reinstate-${payment.appointment_id}-${dispute.id}`,
+      appointmentId: payment.appointment_id,
+    });
+    await supabase
+      .from('payouts')
+      .update({
+        status: 'paid',
+        stripe_transfer_id: transfer.id,
+        paid_at: new Date().toISOString(),
+        reversed_at: null,
+      })
+      .eq('id', payout.id);
+    await recordPaymentEvent(supabase, {
+      paymentId: payment.id,
+      appointmentId: payment.appointment_id,
+      organizationId: payment.organization_id,
+      stripeEventId,
+      eventType: 'dispute_funds_reinstated',
+      prevStatus: 'reversed',
+      newStatus: 'paid',
+      actor: 'webhook',
+      amount: amountCents,
+      payload: { dispute_id: dispute.id, transfer_id: transfer.id },
+    });
+  } catch (err) {
+    await recordPaymentEvent(supabase, {
+      paymentId: payment.id,
+      appointmentId: payment.appointment_id,
+      organizationId: payment.organization_id,
+      stripeEventId,
+      eventType: 'cleaner_reinstate_failed',
+      actor: 'webhook',
+      amount: amountCents,
+      payload: { dispute_id: dispute.id, error: err instanceof Error ? err.message : String(err) },
+    });
+  }
+}
+
+/**
  * Handle radar.early_fraud_warning.created — Stripe's network flagged a likely-fraudulent card
  * charge BEFORE a formal dispute, the window to proactively refund and dodge the chargeback + fee.
  * Record it to the forensic ledger so it's auditable (surfacing it in the UI is a follow-up).
@@ -968,30 +1065,34 @@ async function handleTransferReversed(supabase: SupabaseClient, transfer: Stripe
 
 /**
  * Fallback when a payout.paid event can't be tied to specific transfer ids: mark only the
- * SINGLE oldest still-unattributed payout for the cleaner, never the whole set. Stamping every
- * `stripe_payout_id IS NULL` row with this payout's id would claim unrelated payouts and cause
- * wrong reversions on a later payout.failed. Under-marking is self-healing — the precise
+ * single OLDEST still-unattributed payout WHOSE AMOUNT MATCHES the Stripe payout, never the
+ * whole set and never a non-matching row. A bank payout that bundles several jobs (or nets
+ * fees) matches nothing and is deliberately left unattributed (M3) — stamping the wrong row
+ * causes wrong reversions on a later payout.failed. Under-marking is self-healing: the precise
  * transfer-id path or the reconcile sweep settles the rest.
  */
 async function markOldestUnattributedPayout(
   supabase: SupabaseClient,
   cleanerId: string,
+  payoutAmountCents: number,
   bankPaidUpdate: { status: 'bank_paid'; stripe_payout_id: string; bank_paid_at: string },
 ): Promise<number> {
-  const { data: candidate } = await supabase
+  const { data: candidates } = await supabase
     .from('payouts')
-    .select('id')
+    .select('id, amount')
     .eq('cleaner_id', cleanerId)
     .eq('status', 'paid')
     .is('stripe_payout_id', null)
     .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!candidate) return 0;
+    .limit(20);
+  const match = ((candidates ?? []) as Array<{ id: string; amount: number | string }>).find(
+    (c) => Math.round(Number(c.amount) * 100) === payoutAmountCents,
+  );
+  if (!match) return 0;
   const { data: updated, error } = await supabase
     .from('payouts')
     .update(bankPaidUpdate)
-    .eq('id', (candidate as { id: string }).id)
+    .eq('id', match.id)
     .select('id');
   if (error) {
     console.error('payout.paid: DB error during narrowed fallback update:', error);
@@ -1059,10 +1160,10 @@ async function handlePayoutPaid(
     else count = (updatedRows ?? []).length;
 
     if (count === 0) {
-      count = await markOldestUnattributedPayout(supabase, cleaner.id, bankPaidUpdate);
+      count = await markOldestUnattributedPayout(supabase, cleaner.id, payout.amount, bankPaidUpdate);
     }
   } else {
-    count = await markOldestUnattributedPayout(supabase, cleaner.id, bankPaidUpdate);
+    count = await markOldestUnattributedPayout(supabase, cleaner.id, payout.amount, bankPaidUpdate);
   }
 
   if (count === 0) {

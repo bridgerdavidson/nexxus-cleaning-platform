@@ -359,6 +359,16 @@ describe('POST /api/cron/reconcile-payments', () => {
       status: 'completed',
       totalPrice: 100,
     });
+    // The check derives gross from the recorded PAYMENT (M1), so seed the $100 charge it splits.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 100,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_mm_${appt.id}`,
+    });
     // Snapshot says 60% of $100 → expected $60, but $90 was recorded. Drift = $30.
     await db.from('payouts').insert({
       organization_id: org.organizationId,
@@ -383,5 +393,99 @@ describe('POST /api/cron/reconcile-payments', () => {
       .eq('appointment_id', appt.id)
       .eq('event_type', 'money_math_violation');
     expect((events ?? []).length).toBe(1);
+  });
+
+  it('money-math: a payer-funded processing fee does not flag a correct payout (M1)', async () => {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    // Fee passthrough: the charge was $103.30 with a $3.30 fee — the split base is still $100,
+    // so the $60 payout is CORRECT. The old total_price-derived check was fine here, but a
+    // charge-amount-derived check must subtract the fee or it would expect 60% of $103.30.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 103.3,
+      processing_fee_cents: 330,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_mmfee_${appt.id}`,
+    });
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+      payout_percent_snapshot: 60,
+    });
+
+    const { status } = await callRoute<{ moneyMath: { violations: number } }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'money_math_violation');
+    expect((events ?? []).length).toBe(0);
+  });
+
+  it('money-math: validates a self-pay payout against the exact cut, not a percent of captured', async () => {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+    // Self-pay: the charge is grossed UP above the job price to cover Stripe's fee. The cleaner
+    // is owed the exact cut of job price x percent ($60), never 60% of the captured amount.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 62.11,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      is_self_pay: true,
+      stripe_payment_intent_id: `pi_mmsp_${appt.id}`,
+    });
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+      payout_percent_snapshot: 60,
+      is_self_pay: true,
+    });
+
+    const { status } = await callRoute<{ moneyMath: { violations: number } }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'money_math_violation');
+    expect((events ?? []).length).toBe(0);
   });
 });

@@ -299,6 +299,14 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: AlertTriangle,
       };
 
+    case 'cleaner_settled_zero_percent':
+      return {
+        title: cleaner ? `${cleaner} was paid nothing for a job` : 'A cleaner was paid nothing for a job',
+        detail: joinDetail('Their payout percent is set to 0', property),
+        tone: 'warning',
+        icon: Banknote,
+      };
+
     default:
       return FALLBACK;
   }
@@ -327,6 +335,7 @@ const KNOWN_TYPES = new Set<string>([
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
+  'cleaner_settled_zero_percent',
 ]);
 
 /**

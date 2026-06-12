@@ -55,7 +55,7 @@ describe('retryFailedPayouts (selection hardening)', () => {
     await org.cleanup();
   });
 
-  async function seedFailedPayout(fields: Record<string, unknown> = {}) {
+  async function seedFailedPayout(fields: Record<string, unknown> = {}, selfPay = false) {
     const db = createTestSupabaseClient();
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
@@ -63,6 +63,7 @@ describe('retryFailedPayouts (selection hardening)', () => {
       homeownerId: org.homeowner.userId,
       status: 'completed',
       totalPrice: 100,
+      ...(selfPay ? { selfPay: true, orgOwnedProperty: true } : {}),
     });
     const { error } = await db.from('payouts').insert({
       organization_id: org.organizationId,
@@ -71,6 +72,7 @@ describe('retryFailedPayouts (selection hardening)', () => {
       amount: 60,
       status: 'failed',
       payout_percent_snapshot: 60,
+      ...(selfPay ? { is_self_pay: true } : {}),
       ...fields,
     });
     if (error) throw new Error(`payout seed failed: ${error.message}`);
@@ -109,5 +111,28 @@ describe('retryFailedPayouts (selection hardening)', () => {
     expect((repairEvents ?? []).length).toBe(1);
     // The snapshot-less row stays for manual review.
     expect(await statusOf(snapshotlessId)).toBe('failed');
+  });
+
+  it('routes a failed SELF-PAY payout through settleSelfPay, not the tenant-split path (M8)', async () => {
+    const db = createTestSupabaseClient();
+    const selfPayId = await seedFailedPayout({}, true);
+
+    await retryFailedPayouts(db);
+
+    // The self-pay key, never the tenant-split `cleaner-payout-` key (settleCleanerPayout
+    // refuses self-pay appointments outright).
+    const keys = vi
+      .mocked(createPlatformTransfer)
+      .mock.calls.map((c) => (c[0] as { idempotencyKey: string }).idempotencyKey);
+    expect(keys).toContain(`selfpay-cleaner-${selfPayId}`);
+    expect(keys).not.toContain(`cleaner-payout-${selfPayId}`);
+
+    const { data: payout } = await db
+      .from('payouts')
+      .select('status, is_self_pay')
+      .eq('appointment_id', selfPayId)
+      .single();
+    expect((payout as { status: string }).status).toBe('paid');
+    expect((payout as { is_self_pay: boolean }).is_self_pay).toBe(true);
   });
 });

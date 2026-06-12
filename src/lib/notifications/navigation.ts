@@ -29,6 +29,7 @@ export function notificationTab(eventType: string, role: NotificationRole): stri
     case 'cancelled_job_refunded':
     case 'refund_failed':
     case 'clawback_blocked':
+    case 'cleaner_settled_zero_percent':
       return 'payments';
     default:
       // homeowner_request_submitted, cleaner_declined, chain_exhausted,

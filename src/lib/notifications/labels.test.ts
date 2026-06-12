@@ -23,6 +23,7 @@ const EVENT_TYPES: NotificationEventType[] = [
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
+  'cleaner_settled_zero_percent',
 ];
 
 const VALID_TONES: NotificationTone[] = ['success', 'error', 'warning', 'info'];
@@ -180,6 +181,15 @@ describe('describeNotification', () => {
     expect(blocked.title).toBe('Payout recovery needs review for Wanda Jones');
     expect(blocked.tone).toBe('warning');
     expect(describeNotification('clawback_blocked').title).toBe('Payout recovery needs review');
+  });
+
+  it('describes cleaner_settled_zero_percent', () => {
+    const zero = describeNotification('cleaner_settled_zero_percent', FULL_PAYLOAD);
+    expect(zero.title).toBe('Wanda Jones was paid nothing for a job');
+    expect(zero.tone).toBe('warning');
+    expect(describeNotification('cleaner_settled_zero_percent').title).toBe(
+      'A cleaner was paid nothing for a job',
+    );
   });
 });
 

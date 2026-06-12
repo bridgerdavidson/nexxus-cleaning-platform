@@ -102,6 +102,30 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'charged')).toBe(true);
   });
 
+  it('409 bank_disabled when the saved method is a bank account and ACH is off (never the card path)', async () => {
+    const originalAch = process.env.STRIPE_ACH_ENABLED;
+    process.env.STRIPE_ACH_ENABLED = 'false';
+    try {
+      const apptId = await completedApptWithCard(false);
+      vi.mocked(getPaymentMethodType).mockResolvedValue('us_bank_account');
+
+      const { status, body } = await callRoute<{ code: string; error: string }>(handlerFor(apptId), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+
+      expect(status).toBe(409);
+      expect(body.code).toBe('bank_disabled');
+      expect(body.error).toMatch(/bank transfer/i);
+      // The bank method must never reach the card charge primitive (Stripe throws a generic
+      // confirm error there, which is exactly the confusing failure this guard removes).
+      expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+    } finally {
+      process.env.STRIPE_ACH_ENABLED = originalAch;
+    }
+  });
+
   it('409 not_chargeable when the appointment is not completed', async () => {
     const db = createTestSupabaseClient();
     const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;

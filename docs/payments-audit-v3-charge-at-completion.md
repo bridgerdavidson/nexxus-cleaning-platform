@@ -35,15 +35,15 @@ commit on this branch. **PHASE B/C/D** = specified follow-up PRs below, not yet 
 
 ### MEDIUM (Phases C-D)
 
-- **M1** reconcile money-math uses `total_price` as gross: false `money_math_violation` for fee-passthrough/self-pay (`reconcile.ts` vs `settleCleanerPayout.ts:86-89`). **PHASE C**
-- **M2** cleaner settled at `payout_percent=0` then onboarded later can never be paid; silent (split was conservation-correct; fix = visibility event). **PHASE C**
-- **M3** `payout.paid` oldest-unattributed fallback can mark the wrong appointment `bank_paid` (`dispatchStripeEvent.ts` `markOldestUnattributedPayout`). **PHASE C**
+- **M1** reconcile money-math uses `total_price` as gross: false `money_math_violation` for fee-passthrough/self-pay (`reconcile.ts` vs `settleCleanerPayout.ts:86-89`). **FIXED-C** (gross from the payments row minus `processing_fee_cents`; self-pay validated against `computeSelfPayAmounts`; rows with refunds or no Stripe-backed payment are skipped)
+- **M2** cleaner settled at `payout_percent=0` then onboarded later can never be paid; silent (split was conservation-correct; fix = visibility event). **FIXED-C** (`cleaner_settled_zero_percent` ledger event + deduped admin notification, once per appointment)
+- **M3** `payout.paid` oldest-unattributed fallback can mark the wrong appointment `bank_paid` (`dispatchStripeEvent.ts` `markOldestUnattributedPayout`). **FIXED-C** (amount-aware: only the oldest row whose amount MATCHES the Stripe payout is attributed; non-matching payouts stay unattributed for the precise path/reconcile)
 - **M4** webhook-driven notifications duplicate on event reprocess. Column + unique index shipped in 088 and ALL new Phase A events use it; wiring the pre-existing call sites (`cleaner_paid`, `dispute_opened`, ...) is **PHASE D**.
-- **M5** 100%-to-cleaner job never sets `transfer_amount`, so `settleUnsettledCaptures` re-matches it every sweep (`cleaner_paid` notification spam; no double-pay). **PHASE C**
-- **M6** `charge.dispute.funds_reinstated` is a no-op: a cleaner clawed back on a lost dispute that is later won/reinstated is never re-paid. **PHASE C**
+- **M5** 100%-to-cleaner job never sets `transfer_amount`, so `settleUnsettledCaptures` re-matches it every sweep (`cleaner_paid` notification spam; no double-pay). **FIXED-C** (settle stamps an explicit `transfer_amount: 0` when the tenant remainder is 0)
+- **M6** `charge.dispute.funds_reinstated` is a no-op: a cleaner clawed back on a lost dispute that is later won/reinstated is never re-paid. **FIXED-C** (handler re-transfers the clawed-back amount, key `cleaner-reinstate-{appt}-{dispute}`, payout back to `paid`; guarded to payouts reversed by OUR `dispute_lost_clawback`)
 - **M7** disputes UI absent: `disputes` is written + bell-notified but nothing reads it; a disputed charge still renders "Paid" (v2's G10). **PHASE D**
-- **M8** a `is_self_pay IS NULL` revenue row passes `settleUnsettledCaptures`' `.or()` filter and could be run through the tenant-split path. **PHASE C**
-- **M9** saved bank PM + `STRIPE_ACH_ENABLED` off at completion falls through to the card path and throws a generic error instead of a clear `bank_disabled` outcome. **PHASE C**
+- **M8** a `is_self_pay IS NULL` revenue row passes `settleUnsettledCaptures`' `.or()` filter and could be run through the tenant-split path. **FIXED-C** (`settleCleanerPayout` refuses self-pay appointments outright; `retryFailedPayouts` + the manual retry route route self-pay payouts to `settleSelfPay`)
+- **M9** saved bank PM + `STRIPE_ACH_ENABLED` off at completion falls through to the card path and throws a generic error instead of a clear `bank_disabled` outcome. **FIXED-C** (`bank_disabled` 409 in both the homeowner and self-pay paths)
 - **M10** test gaps: the Stripe fake didn't model off-session `requires_action`/declines; no coverage for the cancellation fee, ACH cancel-during-processing, or concurrency. Phase A added per-file mocks + tests for its scope; broadening the shared fake is **PHASE D**.
 - Carried over from v2, still deferred by design: G12 (microdeposit/manual bank entry dead-ends), G16/G17 (retryable declines made terminal; no structured decline code), G14-ops (prod webhook missing Connect events), NEW-19 (mandate text relies on Stripe's Payment Element default), NEW-28 (USD hard-coded).
 
@@ -58,7 +58,7 @@ commit on this branch. **PHASE B/C/D** = specified follow-up PRs below, not yet 
 ## Phase B-D implementation notes (for the follow-up PRs)
 
 - **Phase B — `fix/clawback-settlement-hardening`** (H1-H4): SHIPPED — see the FIXED-B statuses above. New ledger events: `clawback_blocked_bank_paid`, `settlement_skipped_refunded`, `cleaner_payout_repaired`; new notifications: `refund_failed`, `clawback_blocked`.
-- **Phase C — money-correctness mediums** (M1, M2, M3, M5, M6, M8, M9): gross from the payments row (`amount*100 - processing_fee_cents`), self-pay rows validated against `computeSelfPayAmounts`; `cleaner_settled_zero_percent` visibility event; amount-aware payout attribution; stamp `transfer_amount: 0` when the tenant remainder is 0; `funds_reinstated` handler re-transfers the cleaner cut (key `cleaner-reinstate-{id}-{dispute.id}`); self-pay early-return in `settleCleanerPayout`; `bank_disabled` 409.
+- **Phase C — money-correctness mediums** (M1, M2, M3, M5, M6, M8, M9): SHIPPED — see the FIXED-C statuses above. New ledger events: `cleaner_settled_zero_percent`, `dispute_funds_reinstated`, `cleaner_reinstate_failed`; new notification: `cleaner_settled_zero_percent`; new charge outcome: `bank_disabled`.
 - **Phase D — observability/UX** (M4 remainder, M7, M10 remainder): `dedupe_key` on the pre-existing webhook notification call sites (keyed on Stripe event id); disputes UI (`useDisputes` hook, "Disputed" badge override, disputes block in PaymentsPage; reuse StatusBadge/section-card, verify with Playwright MCP); extend `tests/helpers/stripe.ts` with magic PM ids (`pm_decline`, `pm_3ds`, `pm_bank`).
 
 ## Cutover note

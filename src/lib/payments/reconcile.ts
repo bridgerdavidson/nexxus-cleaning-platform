@@ -19,11 +19,13 @@ import type Stripe from 'stripe';
 import { dispatchStripeEvent } from './dispatchStripeEvent';
 import { markWebhookProcessed, markWebhookFailed } from './webhookIdempotency';
 import { settleCleanerPayout } from './settleCleanerPayout';
+import { settleSelfPay } from './settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
 import { clawbackCleanerPayout } from './clawback';
 import { recordPaymentEvent } from './events';
 import { checkSplitInvariant, type SplitInvariantResult } from './moneyMath';
+import { computeSelfPayAmounts } from './selfPayMath';
 import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconcile';
 import { stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 
@@ -367,18 +369,22 @@ export async function retryFailedPayouts(
   // percent, which conservation forbids.
   const { data: rows } = await supabase
     .from('payouts')
-    .select('id, appointment_id')
+    .select('id, appointment_id, is_self_pay')
     .in('status', ['failed', 'pending'])
     .not('payout_percent_snapshot', 'is', null)
     .not('appointment_id', 'is', null)
     .limit(batch);
 
-  const list = (rows ?? []) as Array<{ id: string; appointment_id: string }>;
+  const list = (rows ?? []) as Array<{ id: string; appointment_id: string; is_self_pay: boolean | null }>;
   let settled = 0;
 
   for (const row of list) {
     // No platform charge id on retry — settle falls back to an available-balance transfer.
-    const result = await settleCleanerPayout(supabase, row.appointment_id, null);
+    // Self-pay payouts retry through settleSelfPay: settleCleanerPayout refuses them outright
+    // (M8 — running one through the tenant-split path would pay the wrong amounts).
+    const result = row.is_self_pay
+      ? await settleSelfPay(supabase, row.appointment_id, null)
+      : await settleCleanerPayout(supabase, row.appointment_id, null);
     if (result.settled) settled++;
   }
 
@@ -399,7 +405,7 @@ export async function checkMoneyMathInvariants(
 
   const { data: rows } = await supabase
     .from('payouts')
-    .select('id, appointment_id, organization_id, amount, payout_percent_snapshot')
+    .select('id, appointment_id, organization_id, amount, payout_percent_snapshot, is_self_pay')
     .eq('status', 'paid')
     .not('payout_percent_snapshot', 'is', null)
     .limit(batch);
@@ -410,19 +416,83 @@ export async function checkMoneyMathInvariants(
     organization_id: string | null;
     amount: number | string;
     payout_percent_snapshot: number | string;
+    is_self_pay: boolean | null;
   }>;
   let violations = 0;
+  const TOLERANCE_CENTS = 1;
 
   for (const row of list) {
     if (!row.appointment_id) continue;
 
-    const { data: apptRow } = await supabase
-      .from('appointments')
-      .select('total_price')
-      .eq('id', row.appointment_id)
+    const recordedCleanerCents = Math.round(Number(row.amount) * 100);
+
+    // The split base is what was CHARGED minus the payer-funded processing fee, read from the
+    // payments row — NOT appointments.total_price. Fee passthrough inflates the charge above the
+    // price, so deriving from total_price flagged correct payouts as violations (M1). A job with
+    // no Stripe-backed payment (manual/cash record) has nothing to validate against.
+    const { data: payData } = await supabase
+      .from('payments')
+      .select('id, amount, processing_fee_cents')
+      .eq('appointment_id', row.appointment_id)
+      .eq('payment_type', 'revenue')
+      .not('stripe_payment_intent_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
-    const totalPrice = (apptRow as { total_price: number | string } | null)?.total_price;
-    if (totalPrice == null) continue;
+    const payRow = payData as
+      | { id: string; amount: number | string; processing_fee_cents: number | null }
+      | null;
+    if (!payRow) continue;
+
+    // Refunds make recorded-vs-derived incomparable: a pre-settlement refund shrank the split
+    // base, a post-settlement one pulled money back via reversals. Skip those rows — the refund
+    // paths carry their own ledger trail.
+    const { data: refundRows } = await supabase
+      .from('refunds')
+      .select('id')
+      .eq('payment_id', payRow.id)
+      .in('status', ['pending', 'succeeded'])
+      .limit(1);
+    if (refundRows && refundRows.length > 0) continue;
+
+    // Self-pay payouts are NOT a percent-of-captured split: the charge was grossed up to cover
+    // Stripe's fee and the cleaner is owed the exact cut of job price x percent (M1).
+    if (row.is_self_pay) {
+      const { data: apptRow } = await supabase
+        .from('appointments')
+        .select('total_price')
+        .eq('id', row.appointment_id)
+        .maybeSingle();
+      const totalPrice = (apptRow as { total_price: number | string } | null)?.total_price;
+      if (totalPrice == null) continue;
+      let expected: number | null = null;
+      try {
+        expected = computeSelfPayAmounts({
+          jobGrossCents: Math.round(Number(totalPrice) * 100),
+          payoutPercent: Number(row.payout_percent_snapshot),
+        }).cleanerCutCents;
+      } catch {
+        expected = null; // invalid recorded inputs are themselves a violation
+      }
+      if (expected == null || Math.abs(recordedCleanerCents - expected) > TOLERANCE_CENTS) {
+        violations++;
+        await recordPaymentEvent(supabase, {
+          appointmentId: row.appointment_id,
+          organizationId: row.organization_id,
+          eventType: 'money_math_violation',
+          actor: 'reconciler',
+          amount: recordedCleanerCents,
+          payload: {
+            payout_id: row.id,
+            self_pay: true,
+            recorded_cleaner_cents: recordedCleanerCents,
+            expected_cleaner_cents: expected,
+            drift_cents: expected == null ? null : recordedCleanerCents - expected,
+          },
+        });
+      }
+      continue;
+    }
 
     let bps = 0;
     if (row.organization_id) {
@@ -434,8 +504,9 @@ export async function checkMoneyMathInvariants(
       bps = Number((orgRow as { platform_fee_bps: number } | null)?.platform_fee_bps ?? 0);
     }
 
-    const grossCents = Math.round(Number(totalPrice) * 100);
-    const recordedCleanerCents = Math.round(Number(row.amount) * 100);
+    const grossCents =
+      Math.round(Number(payRow.amount) * 100) - Number(payRow.processing_fee_cents ?? 0);
+    if (grossCents <= 0) continue;
 
     let result: SplitInvariantResult | null = null;
     try {

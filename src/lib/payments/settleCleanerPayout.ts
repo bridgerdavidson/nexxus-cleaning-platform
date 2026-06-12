@@ -21,6 +21,8 @@ import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { transferGroupFor, createPlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
 import { chargeAmountRefundedCents } from './refundGuards';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 export interface SettleResult {
   settled: boolean;
@@ -38,13 +40,24 @@ export async function settleCleanerPayout(
 ): Promise<SettleResult> {
   const { data: apptRow } = await supabase
     .from('appointments')
-    .select('cleaner_id, organization_id, total_price, status')
+    .select('cleaner_id, organization_id, total_price, status, is_self_pay')
     .eq('id', appointmentId)
     .maybeSingle();
   const appt = apptRow as
-    | { cleaner_id: string | null; organization_id: string; total_price: number | string; status: string }
+    | {
+        cleaner_id: string | null;
+        organization_id: string;
+        total_price: number | string;
+        status: string;
+        is_self_pay: boolean | null;
+      }
     | null;
   if (!appt) return { settled: false, reason: 'no_appointment' };
+
+  // Self-pay jobs settle via settleSelfPay (one transfer, the EXACT cut from job price x percent;
+  // no tenant remainder). Running one through this tenant-split path would pay the wrong amounts,
+  // so refuse outright — callers route on the reason (M8).
+  if (appt.is_self_pay) return { settled: false, reason: 'self_pay' };
 
   // The tenant MUST be a ready connected account: the funds are on the platform and have to be
   // transferred out, or no one gets paid.
@@ -197,6 +210,15 @@ export async function settleCleanerPayout(
       });
       return { settled: false, reason: 'tenant_transfer_failed' };
     }
+  } else if (tenantRemainderCents === 0 && !tenantAlreadyTransferred) {
+    // 100%-to-cleaner split: there is no tenant leg, but transfer_amount NULL reads as "never
+    // settled" to settleUnsettledCaptures, which would re-run this job every sweep (and re-notify
+    // cleaner_paid each time). Stamp an explicit 0 so the sweep stops matching it (M5).
+    await supabase
+      .from('payments')
+      .update({ transfer_amount: 0 })
+      .eq('appointment_id', appointmentId)
+      .eq('payment_type', 'revenue');
   }
 
   // 2) Cleaner percentage → cleaner connected account (Scenario 1). Soft-fail → 'failed' payout
@@ -351,6 +373,38 @@ export async function settleCleanerPayout(
       amount: cleanerSettleCents,
       payload: { transfer_id: transfer.id },
     });
+  }
+
+  // Visibility (M2): an assigned, non-hourly cleaner at payout_percent 0 settles with NOTHING
+  // carved out. That's conservation-correct (the tenant received the full remainder), so there is
+  // no retroactive payout if the 0% was a misconfiguration — the money is already with the tenant.
+  // Surface it for the admin instead of failing silently. Once per appointment.
+  if (cleaner && cleaner.payout_model !== 'hourly_external' && !cleanerHasShare && !hasCarvedSlice) {
+    const { data: priorZero } = await supabase
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', appointmentId)
+      .eq('event_type', 'cleaner_settled_zero_percent')
+      .limit(1)
+      .maybeSingle();
+    if (!priorZero) {
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'cleaner_settled_zero_percent',
+        actor: 'webhook',
+        amount: 0,
+        payload: { payout_percent: Number(cleaner.payout_percent) },
+      });
+      const ctx = await loadNotificationContext(supabase, { appointmentId, cleanerId: appt.cleaner_id });
+      await recordNotificationEvent(supabase, {
+        event_type: 'cleaner_settled_zero_percent',
+        appointment_id: appointmentId,
+        organization_id: appt.organization_id,
+        dedupe_key: `cleaner_settled_zero_percent:${appointmentId}`,
+        payload: { ...ctx, audience: 'admin' },
+      });
+    }
   }
 
   return { settled: true };

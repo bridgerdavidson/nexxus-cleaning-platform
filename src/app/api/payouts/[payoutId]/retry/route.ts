@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
+import { settleSelfPay } from '@/lib/payments/settleSelfPay';
 import { recordPaymentEvent } from '@/lib/payments/events';
 
 // Re-settling does Supabase reads + a Stripe transfer (sometimes two). Give it the same
@@ -21,6 +22,8 @@ const REASON_MESSAGE: Record<string, string> = {
   nothing_captured: "This payout can't be retried: no captured payment was found for the appointment.",
   no_appointment: "This payout isn't linked to an appointment, so it can't be retried.",
   fully_refunded: 'The payment for this job was refunded, so there is nothing left to pay out.',
+  cleaner_not_payable:
+    "The cleaner can't receive payouts yet. Make sure their Stripe payout setup is complete, then retry.",
 };
 
 /**
@@ -54,11 +57,17 @@ export async function POST(
     // Load the payout and verify it belongs to the caller's org (don't leak existence).
     const { data: payoutRow } = await supabaseAdmin
       .from('payouts')
-      .select('id, organization_id, appointment_id, status')
+      .select('id, organization_id, appointment_id, status, is_self_pay')
       .eq('id', payoutId)
       .maybeSingle();
     const payout = payoutRow as
-      | { id: string; organization_id: string; appointment_id: string | null; status: string }
+      | {
+          id: string;
+          organization_id: string;
+          appointment_id: string | null;
+          status: string;
+          is_self_pay: boolean | null;
+        }
       | null;
     if (!payout || payout.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Payout not found' }, { status: 404 });
@@ -94,8 +103,11 @@ export async function POST(
     });
 
     // No platform charge id on a manual retry: settle falls back to an available-balance transfer
-    // and pays the carved snapshot recorded on the existing payout row.
-    const result = await settleCleanerPayout(supabaseAdmin, payout.appointment_id, null);
+    // and pays the carved snapshot recorded on the existing payout row. Self-pay payouts settle
+    // via settleSelfPay (settleCleanerPayout refuses them — the tenant-split math is wrong there).
+    const result = payout.is_self_pay
+      ? await settleSelfPay(supabaseAdmin, payout.appointment_id, null)
+      : await settleCleanerPayout(supabaseAdmin, payout.appointment_id, null);
 
     if (!result.settled) {
       const message = (result.reason && REASON_MESSAGE[result.reason]) || 'Retry failed. Please try again.';
