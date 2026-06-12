@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
- * retryFailedPayouts selection hardening (audit H4): the sweep must never re-transfer a payout
- * row that already carries a stripe_transfer_id (money moved, possibly under a legacy
- * `payout-{id}` idempotency key the current key wouldn't collapse onto), and must skip
- * snapshot-less rows (re-settling those would recompute from the CURRENT percent). Tested
- * directly, like chargeUncollected, because the route's behavior is covered elsewhere.
- * Assertions are scoped to THIS org's rows: the sweep is global and may touch parallel tests'.
+ * retryFailedPayouts hardening (audit H4): a payout row that already carries a
+ * stripe_transfer_id (money moved, possibly under a legacy `payout-{id}` idempotency key the
+ * current key wouldn't collapse onto) must be REPAIRED by the sweep (marked paid via settle's
+ * repair path), never re-transferred; snapshot-less rows are skipped entirely (re-settling
+ * those would recompute from the CURRENT percent). Tested directly, like chargeUncollected,
+ * because the route's behavior is covered elsewhere. Assertions are scoped to THIS org's rows:
+ * the sweep is global and may touch parallel tests'.
  */
 vi.mock('@/lib/stripe/transfers', () => ({
   transferGroupFor: (id: string) => `appt_${id}`,
@@ -76,7 +77,7 @@ describe('retryFailedPayouts (selection hardening)', () => {
     return appt.id;
   }
 
-  it('re-settles a clean failed row, but never one that already moved money or lacks a snapshot', async () => {
+  it('re-settles a clean failed row, repairs a money-moved row, and skips a snapshot-less row', async () => {
     const db = createTestSupabaseClient();
     const cleanId = await seedFailedPayout();
     const movedId = await seedFailedPayout({ stripe_transfer_id: 'tr_legacy_moved' });
@@ -84,7 +85,7 @@ describe('retryFailedPayouts (selection hardening)', () => {
 
     await retryFailedPayouts(db);
 
-    // Only the clean row produced a cleaner transfer.
+    // Only the clean row produced a cleaner transfer; the money-moved row must never re-transfer.
     const keys = vi
       .mocked(createPlatformTransfer)
       .mock.calls.map((c) => c[0] as { idempotencyKey: string })
@@ -98,9 +99,15 @@ describe('retryFailedPayouts (selection hardening)', () => {
       return (data as { status: string }).status;
     };
     expect(await statusOf(cleanId)).toBe('paid');
-    // Untouched by the sweep: settle's repair path (driven by webhook/reconcile settlement) owns
-    // the moved row; the snapshot-less row stays for manual review.
-    expect(await statusOf(movedId)).toBe('failed');
+    // The money-moved row is REPAIRED in place (settle's H4 branch: paid, no new transfer).
+    expect(await statusOf(movedId)).toBe('paid');
+    const { data: repairEvents } = await db
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', movedId)
+      .eq('event_type', 'cleaner_payout_repaired');
+    expect((repairEvents ?? []).length).toBe(1);
+    // The snapshot-less row stays for manual review.
     expect(await statusOf(snapshotlessId)).toBe('failed');
   });
 });
