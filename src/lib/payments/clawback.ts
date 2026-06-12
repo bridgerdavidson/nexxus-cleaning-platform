@@ -19,8 +19,15 @@
  * a webhook handler always returns 200 and the refund route never strands the homeowner.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { listTransfersByGroup, reversePlatformTransfer, transferGroupFor } from '@/lib/stripe/transfers';
+import {
+  listTransfersByGroup,
+  reversePlatformTransfer,
+  retrievePlatformTransfer,
+  transferGroupFor,
+} from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 export type ClawbackReason =
   | 'dispute_lost'
@@ -63,6 +70,8 @@ export interface ClawbackResult {
   reversedCents: number;
   /** The Stripe reversal threw; a `cleaner_clawback_failed` event was recorded for the sweep. */
   failed: boolean;
+  /** Funds already reached the cleaner's bank (`bank_paid`): surfaced for ops, never auto-reversed. */
+  blocked: boolean;
 }
 
 async function loadCleanerPayout(
@@ -93,6 +102,7 @@ export async function clawbackCleanerPayout(
     noPayout: false,
     reversedCents: 0,
     failed: false,
+    blocked: false,
   };
 
   const payout = await loadCleanerPayout(supabase, p.appointmentId);
@@ -101,8 +111,77 @@ export async function clawbackCleanerPayout(
   // clawed it back. Skip without calling Stripe — covers retries beyond the idempotency-key window.
   if (payout.status === 'reversed') return { ...base, alreadyReversed: true };
 
-  const cents = p.reversalCents ?? Math.round(Number(payout.amount) * 100);
-  if (cents <= 0) return base;
+  // Once the funds have LEFT Stripe for the cleaner's bank, reversing the transfer would drive
+  // the connected balance negative with no predictable recovery path. Surface it for an ops
+  // decision (net against future jobs, invoice the cleaner) instead of auto-reversing. One
+  // ledger event + one deduped notification per appointment; every later retry is a cheap no-op.
+  if (payout.status === 'bank_paid') {
+    const blockedCents = Math.round(Number(payout.amount) * 100);
+    const { data: priorBlock } = await supabase
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', p.appointmentId)
+      .eq('event_type', 'clawback_blocked_bank_paid')
+      .limit(1)
+      .maybeSingle();
+    if (!priorBlock) {
+      await recordPaymentEvent(supabase, {
+        paymentId: p.paymentId ?? null,
+        appointmentId: p.appointmentId,
+        organizationId: p.organizationId ?? null,
+        stripeEventId: p.stripeEventId ?? null,
+        eventType: 'clawback_blocked_bank_paid',
+        actor: p.actor,
+        amount: blockedCents,
+        payload: { transfer_id: payout.stripe_transfer_id, reason: p.reason },
+      });
+      if (p.organizationId) {
+        const ctx = await loadNotificationContext(supabase, { appointmentId: p.appointmentId });
+        await recordNotificationEvent(supabase, {
+          event_type: 'clawback_blocked',
+          appointment_id: p.appointmentId,
+          organization_id: p.organizationId,
+          dedupe_key: `clawback_blocked:${p.appointmentId}`,
+          payload: { ...ctx, audience: 'admin', amount_cents: blockedCents, reason: p.reason },
+        });
+      }
+    }
+    return { ...base, blocked: true };
+  }
+
+  const requestedCents = p.reversalCents ?? Math.round(Number(payout.amount) * 100);
+  if (requestedCents <= 0) return base;
+
+  // Cap the ask at what Stripe still allows on this transfer: a prior partial reversal (e.g. a
+  // partial refund's proportional unwind) lowers the ceiling, and over-asking throws on every
+  // retry — turning the failed-clawback sweep into a permanent loop. If nothing is left, the
+  // transfer is already fully reversed at Stripe; mirror that and stop.
+  let cents = requestedCents;
+  try {
+    const transfer = await retrievePlatformTransfer(payout.stripe_transfer_id);
+    const remaining = Math.max(0, transfer.amount - (transfer.amount_reversed ?? 0));
+    if (remaining <= 0) {
+      await supabase
+        .from('payouts')
+        .update({ status: 'reversed', reversed_at: new Date().toISOString() })
+        .eq('id', payout.id);
+      await recordPaymentEvent(supabase, {
+        paymentId: p.paymentId ?? null,
+        appointmentId: p.appointmentId,
+        organizationId: p.organizationId ?? null,
+        stripeEventId: p.stripeEventId ?? null,
+        eventType: SUCCESS_EVENT_BY_REASON[p.reason],
+        actor: p.actor,
+        amount: 0,
+        payload: { transfer_id: payout.stripe_transfer_id, reason: p.reason, already_fully_reversed: true },
+      });
+      return { ...base, alreadyReversed: true };
+    }
+    cents = Math.min(requestedCents, remaining);
+  } catch {
+    // Transfer unreadable: try the reversal with the requested amount; a real over-ask fails
+    // below into cleaner_clawback_failed and the sweep retries once Stripe is reachable.
+  }
 
   try {
     await reversePlatformTransfer(

@@ -20,6 +20,7 @@ const REASON_MESSAGE: Record<string, string> = {
   tenant_not_ready: "The company's payout account isn't connected to Stripe yet.",
   nothing_captured: "This payout can't be retried: no captured payment was found for the appointment.",
   no_appointment: "This payout isn't linked to an appointment, so it can't be retried.",
+  fully_refunded: 'The payment for this job was refunded, so there is nothing left to pay out.',
 };
 
 /**

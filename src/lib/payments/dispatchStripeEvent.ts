@@ -109,11 +109,17 @@ async function findPaymentByIntent(supabase: SupabaseClient, paymentIntentId: st
   if (!paymentIntentId) return null;
   const { data } = await supabase
     .from('payments')
-    .select('id, organization_id, appointment_id, status')
+    .select('id, organization_id, appointment_id, status, amount')
     .eq('stripe_payment_intent_id', paymentIntentId)
     .maybeSingle();
   return data as
-    | { id: string; organization_id: string; appointment_id: string; status: string }
+    | {
+        id: string;
+        organization_id: string;
+        appointment_id: string;
+        status: string;
+        amount: number | string;
+      }
     | null;
 }
 
@@ -131,6 +137,30 @@ async function handlePaymentIntentSucceeded(
   const appointmentId = paymentIntent.metadata?.appointment_id;
   if (!appointmentId) {
     console.log('No appointment_id in PaymentIntent metadata, skipping');
+    return;
+  }
+
+  // Out-of-order guard (audit H2): charge.refunded can arrive BEFORE payment_intent.succeeded
+  // (an out-of-band Dashboard refund, or plain webhook reordering). That delivery already marked
+  // the row 'refunded'; clobbering it back to 'paid' would re-arm settlement and pay the tenant
+  // and cleaner out of money the payer already got back. Mirror the PI status and stop.
+  const existingPayment = await findPaymentByIntent(supabase, paymentIntent.id);
+  if (existingPayment?.status === 'refunded') {
+    await supabase
+      .from('payments')
+      .update({ payment_intent_status: paymentIntent.status })
+      .eq('id', existingPayment.id);
+    await recordPaymentEvent(supabase, {
+      paymentId: existingPayment.id,
+      appointmentId,
+      organizationId: existingPayment.organization_id,
+      eventType: 'settlement_skipped_refunded',
+      prevStatus: 'refunded',
+      actor: 'webhook',
+      amount: paymentIntent.amount_received ?? paymentIntent.amount ?? 0,
+      payload: { payment_intent_id: paymentIntent.id, source: 'payment_intent.succeeded' },
+    });
+    console.log('payment_intent.succeeded after a refund: left row refunded, skipped settlement');
     return;
   }
 
@@ -465,6 +495,48 @@ async function handleRefundStatusChange(
     supabase,
     idFromExpandable(refund.payment_intent as string | { id: string } | null),
   );
+
+  // A failed/canceled refund returned NOTHING to the payer (audit H3): if the payment had been
+  // marked 'refunded' on the strength of this refund, recompute coverage from the refunds that
+  // still count (pending + succeeded — the same math as the refund route's cap) and revert the
+  // payment to 'paid' when it is no longer fully covered. Then alert the admins: the customer
+  // they believe was refunded still hasn't received the money.
+  let revertedToPaid = false;
+  if ((mapped === 'failed' || mapped === 'canceled') && payment) {
+    if (payment.status === 'refunded') {
+      const { data: liveRefunds } = await supabase
+        .from('refunds')
+        .select('amount')
+        .eq('payment_id', payment.id)
+        .in('status', ['pending', 'succeeded']);
+      const coveredCents = (liveRefunds ?? []).reduce(
+        (sum, r) => sum + Number((r as { amount: number }).amount),
+        0,
+      );
+      const grossCents = Math.round(Number(payment.amount) * 100);
+      if (coveredCents < grossCents) {
+        await supabase
+          .from('payments')
+          .update({ status: 'paid' })
+          .eq('id', payment.id)
+          .eq('status', 'refunded');
+        revertedToPaid = true;
+      }
+    }
+    if (payment.appointment_id) {
+      const ctx = await loadNotificationContext(supabase, {
+        appointmentId: payment.appointment_id,
+      });
+      await recordNotificationEvent(supabase, {
+        event_type: 'refund_failed',
+        appointment_id: payment.appointment_id,
+        organization_id: payment.organization_id,
+        dedupe_key: `refund_failed:${refund.id}`,
+        payload: { ...ctx, audience: 'admin', amount_cents: refund.amount, refund_id: refund.id },
+      });
+    }
+  }
+
   await recordPaymentEvent(supabase, {
     paymentId: payment?.id ?? null,
     appointmentId: payment?.appointment_id ?? null,
@@ -474,7 +546,7 @@ async function handleRefundStatusChange(
     newStatus: mapped,
     actor: 'webhook',
     amount: refund.amount,
-    payload: { refund_id: refund.id, stripe_status: refund.status },
+    payload: { refund_id: refund.id, stripe_status: refund.status, reverted_to_paid: revertedToPaid },
   });
 }
 

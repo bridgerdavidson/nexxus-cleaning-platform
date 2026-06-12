@@ -59,6 +59,14 @@ export async function listTransfersByGroup(transferGroup: string): Promise<Strip
 }
 
 /**
+ * Read a single transfer (amount + amount_reversed) so a clawback can cap its reversal at what
+ * Stripe still allows — asking for more than the un-reversed remainder throws on every retry.
+ */
+export async function retrievePlatformTransfer(transferId: string): Promise<Stripe.Transfer> {
+  return getStripe().transfers.retrieve(transferId);
+}
+
+/**
  * Reverse (part of) a transfer. Created on the PLATFORM (no `stripeAccount`), matching how the
  * transfer was created — claws the funds back to the platform balance.
  */

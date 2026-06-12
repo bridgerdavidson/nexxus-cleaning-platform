@@ -19,3 +19,8 @@ export async function retrievePaymentIntent(
 ): Promise<Stripe.PaymentIntent> {
   return getStripe().paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
 }
+
+/** Retrieve a charge (amount_refunded) so settlement can shrink to what wasn't already refunded. */
+export async function retrieveCharge(chargeId: string): Promise<Stripe.Charge> {
+  return getStripe().charges.retrieve(chargeId);
+}

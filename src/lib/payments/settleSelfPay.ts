@@ -18,6 +18,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeSelfPayAmounts } from './selfPayMath';
 import { transferGroupFor, createPlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
+import { chargeAmountRefundedCents } from './refundGuards';
 
 export interface SettleResult {
   settled: boolean;
@@ -56,12 +57,56 @@ export async function settleSelfPay(
     .limit(1)
     .maybeSingle();
   const already = existingPayout as { id: string; status: string; stripe_transfer_id: string | null } | null;
-  if (already?.status === 'paid' && already.stripe_transfer_id) {
+  // 'paid'/'bank_paid' = settled; 'reversed' = clawed back, never re-paid.
+  if (already?.stripe_transfer_id && ['paid', 'bank_paid', 'reversed'].includes(already.status)) {
     return { settled: true };
   }
 
   // A cancelled job never pays the cleaner (the hold is released, not captured — but guard anyway).
   if (appt.status === 'cancelled') return { settled: false, reason: 'cancelled' };
+
+  // Money already refunded to the org must never fund the cleaner cut (audit H2): an out-of-band
+  // refund (or charge.refunded racing payment_intent.succeeded) can land before settlement, when
+  // there are no transfers to reverse. Read the charge's cumulative amount_refunded; if Stripe is
+  // unreadable, the DB's terminal 'refunded' still blocks a known-refunded row.
+  const { data: payRow } = await supabase
+    .from('payments')
+    .select('amount, status, stripe_payment_intent_id')
+    .eq('appointment_id', appointmentId)
+    .eq('payment_type', 'revenue')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const paymentRow = payRow as
+    | { amount: number | string; status: string; stripe_payment_intent_id: string | null }
+    | null;
+  const capturedCents = paymentRow
+    ? Math.round(Number(paymentRow.amount) * 100)
+    : Math.round(Number(appt.total_price) * 100);
+  let refundedCents = await chargeAmountRefundedCents({
+    platformChargeId,
+    paymentIntentId: paymentRow?.stripe_payment_intent_id ?? null,
+  });
+  if (refundedCents == null) {
+    refundedCents = paymentRow?.status === 'refunded' ? capturedCents : 0;
+  }
+  if (capturedCents > 0 && refundedCents >= capturedCents) {
+    // Fully refunded: nothing to pay. Retire any retryable payout row so sweeps stop re-selecting it.
+    await supabase
+      .from('payouts')
+      .update({ status: 'reversed', reversed_at: new Date().toISOString() })
+      .eq('appointment_id', appointmentId)
+      .in('status', ['pending', 'failed']);
+    await recordPaymentEvent(supabase, {
+      appointmentId,
+      organizationId: appt.organization_id,
+      eventType: 'settlement_skipped_refunded',
+      actor: 'webhook',
+      amount: refundedCents,
+      payload: { captured_cents: capturedCents, self_pay: true },
+    });
+    return { settled: false, reason: 'fully_refunded' };
+  }
 
   // Cleaner must be payout-capable. The booking + authorize gates already enforce this; if the
   // cleaner became unpayable between hold and capture, soft-fail so it can be retried/resolved
@@ -103,7 +148,10 @@ export async function settleSelfPay(
 
   const payoutPercent = Number(cleaner!.payout_percent);
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);
-  const { cleanerCutCents } = computeSelfPayAmounts({ jobGrossCents, payoutPercent });
+  const { cleanerCutCents: fullCutCents } = computeSelfPayAmounts({ jobGrossCents, payoutPercent });
+  // A PARTIAL pre-settlement refund shrinks the pool the cut can draw from; the cut is normally
+  // well under the grossed-up captured amount, so this cap only binds when money went back.
+  const cleanerCutCents = Math.min(fullCutCents, Math.max(0, capturedCents - refundedCents));
   if (cleanerCutCents <= 0) return { settled: false, reason: 'nothing_to_pay' };
 
   const transferGroup = transferGroupFor(appointmentId);
