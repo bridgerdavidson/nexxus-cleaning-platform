@@ -120,7 +120,13 @@ export async function settleSelfPay(
     if (already) {
       await supabase.from('payouts').update(fields).eq('id', already.id);
     } else {
-      await supabase.from('payouts').insert(fields);
+      const { error: insertError } = await supabase.from('payouts').insert(fields);
+      if (insertError && insertError.code === '23505') {
+        // A concurrent settlement inserted the row first (unique index, migration 088); its
+        // writer owns the state, and the transfer idempotency key already collapsed the money
+        // side, so losing this race is benign.
+        console.log('self-pay payout insert lost a benign race for appointment', appointmentId);
+      }
     }
   };
 

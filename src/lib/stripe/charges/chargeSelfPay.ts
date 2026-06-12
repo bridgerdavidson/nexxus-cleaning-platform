@@ -46,6 +46,7 @@ export async function createSelfPayCharge(p: SelfPayChargeParams): Promise<Strip
       appointment_id: p.appointmentId,
       organization_id: p.organizationId,
       self_pay: 'true',
+      charge_kind: 'completion',
       source: 'nexxus-cleaning-platform',
     },
   };

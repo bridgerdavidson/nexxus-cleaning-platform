@@ -1,18 +1,18 @@
 /**
- * "Charge now" orchestration for a COMPLETED appointment whose card authorization failed (and was
- * therefore never held / captured). The normal flow authorizes a manual-capture hold pre-service
- * and captures it on completion; if that hold never landed, there is nothing to capture, so once the
- * admin puts a working card on we charge it IMMEDIATELY here.
+ * Charge orchestration for a COMPLETED appointment — the primary money-collection path under
+ * charge-at-completion (a card/bank is SAVED at booking and charged HERE once the job is done),
+ * and equally the "charge now" recovery entry once a failed charge gets a working card.
  *
- * Mirrors the authorize orchestrations (`authorizeAppointment` / `authorizeSelfPayAppointment`) but
- * uses the auto-capture charge primitives (`createDestinationCharge` / `createSelfPayCharge`):
- *   - a `succeeded` PaymentIntent is a paid revenue row (not a pending hold);
- *   - the cleaner/tenant split still settles on `payment_intent.succeeded` (homeowner via
+ * Uses the auto-capture charge primitives (`createDestinationCharge` / `createSelfPayCharge`):
+ *   - a `succeeded` PaymentIntent is a paid revenue row;
+ *   - the cleaner/tenant split settles on `payment_intent.succeeded` (homeowner via
  *     `on_behalf_of` → settleCleanerPayout; self-pay via `metadata.self_pay` → settleSelfPay), with
  *     the reconciliation sweep as the backstop, so settlement is webhook-driven, not inline.
  *
- * A bank (us_bank_account) default falls through to the existing ACH charge-at-completion
- * orchestrations (which already do an immediate debit). This is card-recovery for a finished job.
+ * A bank (us_bank_account) payment method falls through to the ACH charge-at-completion
+ * orchestrations (which do an immediate debit that clears asynchronously). A saved card that was
+ * detached/deleted between booking and completion is substituted with the customer's default card
+ * (persisted + ledgered) rather than failing on a dead id.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDestinationCharge } from '@/lib/stripe/charges/charge';
@@ -21,10 +21,17 @@ import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { computeChargeBreakdown } from './processingFee';
 import { computeSelfPayAmounts } from './selfPayMath';
 import { stripeFeePassthroughEnabled, stripeAchEnabled, stripeSelfPayEnabled } from '@/lib/stripe/flags';
-import { getPaymentMethodType, listSavedCards } from '@/lib/stripe/customers/homeowner';
+import {
+  getPaymentMethodType,
+  listSavedCards,
+  paymentMethodBelongsToCustomer,
+} from '@/lib/stripe/customers/homeowner';
+import { getDefaultPaymentMethod } from '@/lib/stripe';
 import { chargeAchAppointment } from './chargeAchAppointment';
 import { chargeSelfPayAchAppointment } from './chargeSelfPayAchAppointment';
 import { recordPaymentEvent } from './events';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 import { clearFailedForBank } from './clearFailedForBank';
 
 export type ChargeNowCode =
@@ -125,7 +132,13 @@ async function nextReauthAttempt(supabase: SupabaseClient, appt: AppointmentRow)
   return attempt;
 }
 
-/** Upsert the single revenue payment row for an appointment. */
+/**
+ * Upsert the single revenue payment row for an appointment. The partial unique index
+ * (migration 088) backstops the check-then-insert race: on a 23505 the concurrent writer won,
+ * so re-select its row — if it carries a DIFFERENT PaymentIntent, two real charges exist
+ * (e.g. a completion charge racing a cancellation fee) and that's flagged loudly instead of
+ * silently overwriting either record.
+ */
 async function upsertRevenueRow(
   supabase: SupabaseClient,
   appointmentId: string,
@@ -136,13 +149,47 @@ async function upsertRevenueRow(
     .select('id')
     .eq('appointment_id', appointmentId)
     .eq('payment_type', 'revenue')
+    .order('created_at', { ascending: false })
     .limit(1);
   if (existing && existing.length > 0) {
     const id = (existing[0] as { id: string }).id;
     await supabase.from('payments').update(row).eq('id', id);
     return id;
   }
-  const { data: inserted } = await supabase.from('payments').insert(row).select('id').single();
+  const { data: inserted, error: insertError } = await supabase
+    .from('payments')
+    .insert(row)
+    .select('id')
+    .single();
+  if (insertError && insertError.code === '23505') {
+    const { data: winner } = await supabase
+      .from('payments')
+      .select('id, stripe_payment_intent_id')
+      .eq('appointment_id', appointmentId)
+      .eq('payment_type', 'revenue')
+      .not('stripe_payment_intent_id', 'is', null)
+      .limit(1)
+      .maybeSingle();
+    const w = winner as { id: string; stripe_payment_intent_id: string | null } | null;
+    if (!w) return null;
+    if (w.stripe_payment_intent_id === (row.stripe_payment_intent_id ?? null)) {
+      // Same PaymentIntent (idempotency key collapsed the race) — the winner's row IS this charge.
+      await supabase.from('payments').update(row).eq('id', w.id);
+      return w.id;
+    }
+    await recordPaymentEvent(supabase, {
+      paymentId: w.id,
+      appointmentId,
+      organizationId: (row.organization_id as string) ?? null,
+      eventType: 'duplicate_charge_detected',
+      actor: 'system',
+      payload: {
+        kept_payment_intent_id: w.stripe_payment_intent_id,
+        duplicate_payment_intent_id: row.stripe_payment_intent_id ?? null,
+      },
+    });
+    return w.id;
+  }
   return (inserted as { id: string } | null)?.id ?? null;
 }
 
@@ -155,8 +202,42 @@ async function chargeHomeownerNow(
 ): Promise<ChargeNowOutcome> {
   if (!appt.payment_method_id) return { ok: false, code: 'no_card', message: 'No payment method on the appointment' };
 
-  // A bank default is debited via the existing ACH charge-at-completion path (also immediate).
-  if (stripeAchEnabled() && (await getPaymentMethodType(appt.payment_method_id)) === 'us_bank_account') {
+  const { data: hoData } = await supabase
+    .from('user_profiles')
+    .select('stripe_customer_id')
+    .eq('id', appt.homeowner_id)
+    .maybeSingle();
+  const customerId = (hoData as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null;
+  if (!customerId) return { ok: false, code: 'no_card', message: 'Homeowner has no saved payment profile' };
+
+  // The saved payment method can be detached/deleted between booking and completion (the customer
+  // rotated cards). Charging the dead id would surface as a confusing generic decline, so
+  // substitute the customer's default method, persist it on the appointment (the ACH path and any
+  // retry re-read it from there), and ledger the substitution.
+  let paymentMethodId = appt.payment_method_id;
+  if (!(await paymentMethodBelongsToCustomer(customerId, paymentMethodId))) {
+    let fallback: string | null = null;
+    try {
+      fallback = await getDefaultPaymentMethod(customerId);
+    } catch {
+      fallback = null;
+    }
+    if (!fallback) {
+      return { ok: false, code: 'no_card', message: 'The saved payment method is no longer available' };
+    }
+    paymentMethodId = fallback;
+    await supabase.from('appointments').update({ payment_method_id: fallback }).eq('id', appt.id);
+    await recordPaymentEvent(supabase, {
+      appointmentId: appt.id,
+      organizationId: appt.organization_id,
+      eventType: 'payment_method_substituted',
+      actor,
+      payload: { detached_payment_method_id: appt.payment_method_id, substituted_payment_method_id: fallback },
+    });
+  }
+
+  // A bank method is debited via the existing ACH charge-at-completion path (also immediate).
+  if (stripeAchEnabled() && (await getPaymentMethodType(paymentMethodId)) === 'us_bank_account') {
     const outcome = await chargeAchAppointment(supabase, appt.id, actor);
     // The debit is in flight (processing), so the prior failed card auth is resolved — drop it out
     // of "Payments needing attention".
@@ -176,14 +257,6 @@ async function chargeHomeownerNow(
     return { ok: false, code: 'tenant_not_ready', message: 'Organization Stripe account is not ready to accept charges' };
   }
 
-  const { data: hoData } = await supabase
-    .from('user_profiles')
-    .select('stripe_customer_id')
-    .eq('id', appt.homeowner_id)
-    .maybeSingle();
-  const customerId = (hoData as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null;
-  if (!customerId) return { ok: false, code: 'no_card', message: 'Homeowner has no saved payment profile' };
-
   const baseCents = Math.round(Number(appt.total_price) * 100);
   const passthrough = stripeFeePassthroughEnabled();
   const { chargeCents, feeCents } = passthrough
@@ -199,7 +272,7 @@ async function chargeHomeownerNow(
     pi = await createDestinationCharge({
       grossCents: chargeCents,
       customerId,
-      paymentMethodId: appt.payment_method_id,
+      paymentMethodId,
       tenantAccountId: org.stripe_connect_account_id,
       appointmentId: appt.id,
       organizationId: appt.organization_id,
@@ -221,6 +294,7 @@ async function chargeHomeownerNow(
     processing_fee_cents: passthrough ? feeCents : null,
     payment_type: 'revenue' as const,
     payment_method: 'card' as const,
+    charge_kind: 'completion' as const,
     stripe_payment_intent_id: pi.id,
     on_behalf_of_account_id: org.stripe_connect_account_id,
     transfer_destination_account_id: org.stripe_connect_account_id,
@@ -257,7 +331,10 @@ async function chargeSelfPayNow(
 
   const customerId =
     (orgRes.data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
-  if (!customerId) return { ok: false, code: 'no_org_card', message: 'Organization has no company card on file' };
+  if (!customerId) {
+    await recordSelfPayNoCard(supabase, appt, actor, 'no_self_pay_customer');
+    return { ok: false, code: 'no_org_card', message: 'Organization has no company card on file' };
+  }
 
   const cleaner = cleanerRes.data as CleanerRow | null;
   const cleanerPayable =
@@ -277,7 +354,10 @@ async function chargeSelfPayNow(
   // Resolve the company method: default, else first. A bank default is debited via the existing
   // self-pay ACH charge-at-completion path (also immediate).
   const methods = await listSavedCards(customerId);
-  if (methods.length === 0) return { ok: false, code: 'no_org_card', message: 'No saved company card to charge' };
+  if (methods.length === 0) {
+    await recordSelfPayNoCard(supabase, appt, actor, 'no_saved_method');
+    return { ok: false, code: 'no_org_card', message: 'No saved company card to charge' };
+  }
   const method = methods.find((m) => m.isDefault) ?? methods[0];
   if (stripeAchEnabled() && stripeSelfPayEnabled() && method.type === 'us_bank_account') {
     const outcome = await chargeSelfPayAchAppointment(supabase, appt.id, actor);
@@ -319,6 +399,7 @@ async function chargeSelfPayNow(
     processing_fee_cents: estimatedFeeCents,
     payment_type: 'revenue' as const,
     payment_method: 'card' as const,
+    charge_kind: 'completion' as const,
     is_self_pay: true,
     stripe_payment_intent_id: pi.id,
     payment_intent_status: pi.status,
@@ -383,9 +464,15 @@ async function finishCharge(
 
   if (pi.status === 'requires_action') {
     // 3-D Secure on an off-session charge: nothing was captured and the customer isn't present to
-    // authenticate. Surface it so the row stays in "needs attention"; recovery is a different card.
+    // authenticate. Surface it so the row stays in "needs attention"; recovery is the card link
+    // (setup_intent.succeeded re-points + re-charges completed jobs) or a different card.
     await supabase.from('appointments').update({ authorization_status: 'requires_action' }).eq('id', appt.id);
     await upsertRevenueRow(supabase, appt.id, { ...baseRow, status: 'failed' });
+    await notifyChargeFailed(supabase, appt, {
+      amountCents: chargeCents,
+      reason: 'authentication_required',
+      dedupeSuffix: pi.id,
+    });
     return { ok: false, code: 'requires_action', paymentIntentId: pi.id, message: 'Customer authentication required' };
   }
 
@@ -412,6 +499,7 @@ async function recordChargeDecline(
     status: 'failed',
     payment_type: 'revenue',
     payment_method: 'card',
+    charge_kind: 'completion',
     ...(opts.isSelfPay ? { is_self_pay: true } : {}),
   };
   if (failedPi?.id) {
@@ -434,5 +522,59 @@ async function recordChargeDecline(
       self_pay: opts.isSelfPay,
     },
   });
+  await notifyChargeFailed(supabase, appt, {
+    amountCents: opts.amountCents,
+    reason: 'declined',
+    error: opts.err instanceof Error ? opts.err.message : String(opts.err),
+    selfPay: opts.isSelfPay,
+    dedupeSuffix: failedPi?.id ?? 'na',
+  });
   return { ok: false, code: 'declined', message: opts.err instanceof Error ? opts.err.message : 'Charge declined' };
+}
+
+/** Admin notification for a failed completion charge (decline or off-session 3-D Secure). */
+async function notifyChargeFailed(
+  supabase: SupabaseClient,
+  appt: AppointmentRow,
+  opts: { amountCents: number; reason: 'declined' | 'authentication_required'; error?: string; selfPay?: boolean; dedupeSuffix: string },
+): Promise<void> {
+  const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
+  await recordNotificationEvent(supabase, {
+    event_type: 'charge_failed',
+    appointment_id: appt.id,
+    organization_id: appt.organization_id,
+    dedupe_key: `charge_failed:${appt.id}:${opts.dedupeSuffix}`,
+    payload: {
+      ...ctx,
+      audience: 'admin',
+      amount_cents: opts.amountCents,
+      reason: opts.reason,
+      ...(opts.error ? { error: opts.error } : {}),
+      ...(opts.selfPay ? { self_pay: true } : {}),
+    },
+  });
+}
+
+/** Ledger + admin notification for a self-pay completion with nothing to charge. */
+async function recordSelfPayNoCard(
+  supabase: SupabaseClient,
+  appt: AppointmentRow,
+  actor: string,
+  reason: string,
+): Promise<void> {
+  await recordPaymentEvent(supabase, {
+    appointmentId: appt.id,
+    organizationId: appt.organization_id,
+    eventType: 'self_pay_no_card',
+    actor,
+    payload: { reason },
+  });
+  const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
+  await recordNotificationEvent(supabase, {
+    event_type: 'self_pay_no_card',
+    appointment_id: appt.id,
+    organization_id: appt.organization_id,
+    dedupe_key: `self_pay_no_card:${appt.id}`,
+    payload: { ...ctx, audience: 'admin', reason },
+  });
 }

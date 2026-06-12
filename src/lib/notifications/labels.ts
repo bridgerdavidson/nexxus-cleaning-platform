@@ -231,6 +231,58 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
       };
     }
 
+    case 'charge_failed': {
+      const needsAuth = str(payload, 'reason') === 'authentication_required';
+      if (needsAuth) {
+        return {
+          title: customer ? `Card needs verification for ${customer}` : 'Card needs identity verification',
+          detail: joinDetail('Completed job not yet paid', property, amount),
+          tone: 'warning',
+          icon: ShieldAlert,
+        };
+      }
+      return {
+        title: customer ? `Payment failed for ${customer}` : 'Payment failed for a completed job',
+        detail: joinDetail(property, amount),
+        tone: 'error',
+        icon: CreditCard,
+      };
+    }
+
+    case 'cancellation_fee_failed': {
+      const reason = str(payload, 'reason');
+      const why =
+        reason === 'no_card'
+          ? 'No saved card'
+          : reason === 'ach_payer'
+            ? 'Customer pays by bank'
+            : reason === 'no_customer' || reason === 'tenant_not_ready'
+              ? 'Not chargeable'
+              : 'Card declined';
+      return {
+        title: customer ? `Cancellation fee not collected from ${customer}` : 'Cancellation fee not collected',
+        detail: joinDetail(why, amount),
+        tone: 'warning',
+        icon: CreditCard,
+      };
+    }
+
+    case 'self_pay_no_card':
+      return {
+        title: 'Company payment method needed',
+        detail: joinDetail('A completed self-pay job has nothing to charge', property),
+        tone: 'error',
+        icon: CreditCard,
+      };
+
+    case 'cancelled_job_refunded':
+      return {
+        title: customer ? `Refund issued to ${customer}` : 'Refund issued for a cancelled job',
+        detail: joinDetail('Bank payment settled after the cancellation', amount),
+        tone: 'info',
+        icon: Banknote,
+      };
+
     default:
       return FALLBACK;
   }
@@ -253,6 +305,10 @@ const KNOWN_TYPES = new Set<string>([
   'dispute_opened',
   'authorization_failed',
   'authentication_required',
+  'charge_failed',
+  'cancellation_fee_failed',
+  'self_pay_no_card',
+  'cancelled_job_refunded',
 ]);
 
 /**

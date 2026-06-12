@@ -55,6 +55,9 @@ export async function createDestinationCharge(p: ChargeParams): Promise<Stripe.P
     metadata: {
       appointment_id: p.appointmentId,
       organization_id: p.organizationId,
+      // Lets the webhook tell a job debit (refund it if the job was cancelled mid-flight)
+      // from the cancellation fee (which legitimately settles on a cancelled job).
+      charge_kind: p.keyPrefix === 'cancelfee' ? 'cancellation_fee' : 'completion',
       source: 'nexxus-cleaning-platform',
     },
   };

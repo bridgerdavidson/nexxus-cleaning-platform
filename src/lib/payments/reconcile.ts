@@ -1,11 +1,14 @@
 /**
  * Reconciliation sweep (Phase 4d) — the reliability backstop that makes DB correctness
- * independent of any single webhook delivery. Four independent, batch-capped jobs:
+ * independent of any single webhook delivery. Independent, batch-capped jobs:
  *
- *   1. retryDeadLetterWebhooks   — re-dispatch webhook_events stuck in received/failed
- *   2. reconcileStuckPayments    — replay the true Stripe PI status for pending/processing payments past SLA
- *   3. retryFailedPayouts        — re-run cleaner settlement for payouts left 'failed' or 'pending' (held)
- *   4. checkMoneyMathInvariants  — flag any paid cleaner payout that doesn't match the locked split
+ *   1.  retryDeadLetterWebhooks      — re-dispatch webhook_events stuck in received/failed
+ *   2.  reconcileStuckPayments       — replay the true Stripe PI status for pending/processing payments past SLA
+ *   2a. chargeUncollectedCompletions — charge completed jobs whose completion charge never ran
+ *   2b. settleUnsettledCaptures      — settle captured charges whose funds never moved (refunds
+ *                                      cancelled-job completion charges instead of settling them)
+ *   3.  retryFailedPayouts           — re-run cleaner settlement for payouts left 'failed' or 'pending' (held)
+ *   4.  checkMoneyMathInvariants     — flag any paid cleaner payout that doesn't match the locked split
  *
  * Each job swallows per-item errors so one bad row never stalls the sweep. Everything routes
  * back through the existing idempotent handlers (dispatchStripeEvent, settleCleanerPayout) so
@@ -16,10 +19,13 @@ import type Stripe from 'stripe';
 import { dispatchStripeEvent } from './dispatchStripeEvent';
 import { markWebhookProcessed, markWebhookFailed } from './webhookIdempotency';
 import { settleCleanerPayout } from './settleCleanerPayout';
+import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
+import { refundCancelledInflightCharge } from './refundCancelledCharge';
 import { clawbackCleanerPayout } from './clawback';
 import { recordPaymentEvent } from './events';
 import { checkSplitInvariant, type SplitInvariantResult } from './moneyMath';
 import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconcile';
+import { stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 
 const DEFAULT_BATCH = 100;
 const DEFAULT_STALE_MINUTES = 15;
@@ -172,6 +178,85 @@ export async function reconcileStuckPayments(
   return { checked: list.length, repaired };
 }
 
+// ── 2a) Completed-but-never-charged sweep ───────────────────────────────────────
+export interface UncollectedCompletionResult {
+  checked: number;
+  charged: number;
+}
+
+/**
+ * Charge completed appointments whose completion charge NEVER ran: the job finished while the
+ * Stripe flags were off, the charge request 502'd before a payment row was written, or the
+ * client that triggers the charge died. Under charge-at-completion nothing else would ever
+ * collect this money.
+ *
+ * The loop-breaker is `authorization_status IS NULL`: a declined/3DS attempt stamps
+ * 'failed'/'requires_action' (taking the row out of this sweep, so a dead card is never hammered
+ * every cycle), and a new saved card clears it back to NULL (setup_intent.succeeded), which
+ * re-arms exactly one fresh attempt. A crashed attempt left authorization_status NULL but its
+ * idempotency key `charge-{id}-{attempt}` unspent-or-cached, so the retry collapses onto the
+ * same PaymentIntent rather than double-charging.
+ */
+export async function chargeUncollectedCompletions(
+  supabase: SupabaseClient,
+  opts: { batch?: number; staleMinutes?: number; organizationId?: string } = {},
+): Promise<UncollectedCompletionResult> {
+  if (!stripeNewChargeFlowEnabled()) return { checked: 0, charged: 0 };
+
+  const batch = opts.batch ?? DEFAULT_BATCH;
+  // Give the normal completion-route charge a window before assuming it never ran.
+  const cutoff = staleCutoffIso(opts.staleMinutes ?? 30);
+
+  // Self-pay completions charge the ORG's saved company method (resolved live from the org's
+  // self-pay Customer), not appointments.payment_method_id — so they pass without one.
+  let query = supabase
+    .from('appointments')
+    .select('id')
+    .eq('status', 'completed')
+    .is('authorization_status', null)
+    .or('payment_method_id.not.is.null,is_self_pay.eq.true')
+    .lte('updated_at', cutoff)
+    .limit(batch);
+  if (opts.organizationId) query = query.eq('organization_id', opts.organizationId);
+  const { data: apptRows } = await query;
+  const candidates = ((apptRows ?? []) as Array<{ id: string }>).map((r) => r.id);
+  if (candidates.length === 0) return { checked: 0, charged: 0 };
+
+  // Exclude anything already collected or in flight (paid / processing revenue row) — including
+  // manual cash records, which legitimately mark a job as paid without a Stripe charge.
+  const { data: payRows } = await supabase
+    .from('payments')
+    .select('appointment_id, status')
+    .in('appointment_id', candidates)
+    .eq('payment_type', 'revenue')
+    .in('status', ['paid', 'processing']);
+  const settled = new Set(
+    ((payRows ?? []) as Array<{ appointment_id: string }>).map((r) => r.appointment_id),
+  );
+
+  let charged = 0;
+  for (const id of candidates) {
+    if (settled.has(id)) continue;
+    try {
+      const outcome = await chargeCompletedAppointmentAuto(supabase, id, 'reconciler');
+      if (outcome.ok) {
+        charged++;
+        await recordPaymentEvent(supabase, {
+          appointmentId: id,
+          organizationId: null,
+          eventType: 'drift_repaired',
+          actor: 'reconciler',
+          payload: { source: 'charge-uncollected-completion', outcome: outcome.code },
+        });
+      }
+    } catch (err) {
+      console.error('chargeUncollectedCompletions failed for', id, err);
+    }
+  }
+
+  return { checked: candidates.length - settled.size, charged };
+}
+
 // ── 2b) Captured-but-unsettled self-heal ────────────────────────────────────────
 export interface UnsettledCaptureResult {
   checked: number;
@@ -202,7 +287,7 @@ export async function settleUnsettledCaptures(
 
   const { data: rows } = await supabase
     .from('payments')
-    .select('id, appointment_id, organization_id')
+    .select('id, appointment_id, organization_id, charge_kind, stripe_payment_intent_id')
     .eq('status', 'paid')
     .eq('payment_type', 'revenue')
     .is('transfer_amount', null)
@@ -216,10 +301,33 @@ export async function settleUnsettledCaptures(
     id: string;
     appointment_id: string;
     organization_id: string | null;
+    charge_kind: string | null;
+    stripe_payment_intent_id: string | null;
   }>;
   let settled = 0;
 
   for (const p of list) {
+    // A COMPLETION charge on a since-cancelled appointment must be refunded, never settled (the
+    // payer owes nothing for a cancelled job). This is the backstop for a lost
+    // payment_intent.succeeded whose live delivery would have issued the refund. A cancellation
+    // FEE row (charge_kind='cancellation_fee') legitimately settles to the tenant below, as do
+    // legacy rows with no charge_kind (pre-088 behavior preserved).
+    if (p.charge_kind === 'completion' && p.stripe_payment_intent_id) {
+      const { data: apptRow } = await supabase
+        .from('appointments')
+        .select('status')
+        .eq('id', p.appointment_id)
+        .maybeSingle();
+      if ((apptRow as { status: string } | null)?.status === 'cancelled') {
+        await refundCancelledInflightCharge(supabase, {
+          appointmentId: p.appointment_id,
+          paymentIntentId: p.stripe_payment_intent_id,
+          actor: 'reconciler',
+        });
+        continue;
+      }
+    }
+
     const result = await settleCleanerPayout(supabase, p.appointment_id, null);
     if (result.settled) {
       await recordPaymentEvent(supabase, {

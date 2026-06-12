@@ -36,6 +36,10 @@ describe('notificationTab', () => {
       expect(notificationTab('dispute_opened', role)).toBe('payments');
       expect(notificationTab('authorization_failed', role)).toBe('payments');
       expect(notificationTab('authentication_required', role)).toBe('payments');
+      expect(notificationTab('charge_failed', role)).toBe('payments');
+      expect(notificationTab('cancellation_fee_failed', role)).toBe('payments');
+      expect(notificationTab('self_pay_no_card', role)).toBe('payments');
+      expect(notificationTab('cancelled_job_refunded', role)).toBe('payments');
     }
   });
 });

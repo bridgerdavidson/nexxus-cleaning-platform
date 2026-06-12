@@ -23,6 +23,10 @@ export function notificationTab(eventType: string, role: NotificationRole): stri
     case 'dispute_opened':
     case 'authorization_failed':
     case 'authentication_required':
+    case 'charge_failed':
+    case 'cancellation_fee_failed':
+    case 'self_pay_no_card':
+    case 'cancelled_job_refunded':
       return 'payments';
     default:
       // homeowner_request_submitted, cleaner_declined, chain_exhausted,

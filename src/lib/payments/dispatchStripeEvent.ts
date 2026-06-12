@@ -14,6 +14,8 @@ import type Stripe from 'stripe';
 import { createConnectTransfer } from '@/lib/stripe';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { settleSelfPay } from '@/lib/payments/settleSelfPay';
+import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
+import { refundCancelledInflightCharge } from './refundCancelledCharge';
 import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
@@ -158,6 +160,28 @@ async function handlePaymentIntentSucceeded(
   }
 
   console.log('Payment record updated for appointment:', appointmentId);
+
+  // A job debit that settled AFTER the appointment was cancelled (e.g. an in-flight ACH debit, or
+  // a completion charge that raced a cancel) must be refunded, not settled: the payer owes nothing
+  // for a cancelled job. The CANCELLATION FEE charge legitimately succeeds on a cancelled
+  // appointment (it settles to the tenant below), so only `charge_kind === 'completion'` routes
+  // here; legacy charges (no charge_kind metadata) keep their existing behavior.
+  if (paymentIntent.metadata?.charge_kind === 'completion') {
+    const { data: statusRow } = await supabase
+      .from('appointments')
+      .select('status')
+      .eq('id', appointmentId)
+      .maybeSingle();
+    if ((statusRow as { status: string } | null)?.status === 'cancelled') {
+      const result = await refundCancelledInflightCharge(supabase, {
+        appointmentId,
+        paymentIntentId: paymentIntent.id,
+        actor: 'webhook',
+      });
+      console.log('Cancelled-job debit refunded instead of settled:', result);
+      return;
+    }
+  }
 
   // Org self-pay (no on_behalf_of): the org paid for its OWN cleaning. Settle the single cleaner
   // transfer from the platform balance — no tenant remainder, no platform fee, cleaner gets the
@@ -487,9 +511,12 @@ async function handleSetupIntentSucceeded(
 
   // Recovery: the card link is how an admin unsticks a homeowner whose card needed authentication
   // (3-D Secure) or was declined. Now that the homeowner has saved a card on-session (3-D Secure
-  // completed, so it's set up for off-session use), re-point their stuck upcoming appointments to it
-  // and clear the failed state so each reads "Unpaid" again; the new card is charged when the job is
-  // completed. (A completed-but-unpaid job is recovered from "Payments needing attention" instead.)
+  // completed, so it's set up for off-session use), re-point their stuck appointments to it and
+  // clear the failed state. Under charge-at-completion the failure usually happened AT completion,
+  // so COMPLETED jobs are included (they're exactly the ones stuck unpaid) and charged immediately
+  // below; only cancelled jobs are excluded. Each re-point also bumps reauth_count: the spent
+  // idempotency key `charge-{id}-{attempt}` is cached against the old decline, so without a fresh
+  // attempt number the retry would replay the cached failure.
   const pm =
     typeof setupIntent.payment_method === 'string'
       ? setupIntent.payment_method
@@ -502,22 +529,45 @@ async function handleSetupIntentSucceeded(
   const link = linkRow as { homeowner_id: string; organization_id: string } | null;
   if (!pm || !link?.homeowner_id || !link.organization_id) return;
 
-  const { data: requeued } = await supabase
+  const { data: stuckRows } = await supabase
     .from('appointments')
-    .update({
-      payment_method_id: pm,
-      authorization_status: null,
-    })
+    .select('id, status, reauth_count')
     .eq('organization_id', link.organization_id)
     .eq('homeowner_id', link.homeowner_id)
     .in('authorization_status', ['requires_action', 'failed'])
-    .not('status', 'in', '(cancelled,completed)')
-    .select('id');
+    .neq('status', 'cancelled');
+  const stuck = (stuckRows ?? []) as Array<{ id: string; status: string; reauth_count: number | null }>;
+  if (stuck.length === 0) return;
 
-  if (requeued && requeued.length > 0) {
-    console.log(
-      `setup_intent.succeeded: re-pointed ${requeued.length} stuck appointment(s) to the new card`,
-    );
+  for (const row of stuck) {
+    await supabase
+      .from('appointments')
+      .update({
+        payment_method_id: pm,
+        authorization_status: null,
+        reauth_count: (row.reauth_count ?? 0) + 1,
+      })
+      .eq('id', row.id);
+  }
+  console.log(
+    `setup_intent.succeeded: re-pointed ${stuck.length} stuck appointment(s) to the new card`,
+  );
+
+  // A completed job is owed money NOW — charge the new card immediately (idempotent via the
+  // paid/processing guard). Failures fall to the chargeUncollectedCompletions sweep / the
+  // failed-state pill, never out of this handler.
+  for (const row of stuck) {
+    if (row.status !== 'completed') continue;
+    try {
+      const outcome = await chargeCompletedAppointmentAuto(
+        supabase,
+        row.id,
+        'webhook:setup_intent.succeeded',
+      );
+      console.log(`setup_intent.succeeded: charged completed appointment ${row.id}:`, outcome.code);
+    } catch (err) {
+      console.error(`setup_intent.succeeded: charge for ${row.id} threw:`, err);
+    }
   }
 }
 

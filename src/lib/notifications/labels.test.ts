@@ -17,6 +17,10 @@ const EVENT_TYPES: NotificationEventType[] = [
   'dispute_opened',
   'authorization_failed',
   'authentication_required',
+  'charge_failed',
+  'cancellation_fee_failed',
+  'self_pay_no_card',
+  'cancelled_job_refunded',
 ];
 
 const VALID_TONES: NotificationTone[] = ['success', 'error', 'warning', 'info'];
@@ -125,6 +129,43 @@ describe('describeNotification', () => {
     expect(d.title).toBe('Update');
     expect(d.tone).toBe('info');
     expect(d.icon).toBeTruthy();
+  });
+
+  it('words charge_failed by reason (decline vs 3-D Secure)', () => {
+    const declined = describeNotification('charge_failed', { ...FULL_PAYLOAD, reason: 'declined' });
+    expect(declined.title).toBe('Payment failed for Jane Doe');
+    expect(declined.tone).toBe('error');
+
+    const needsAuth = describeNotification('charge_failed', {
+      ...FULL_PAYLOAD,
+      reason: 'authentication_required',
+    });
+    expect(needsAuth.title).toBe('Card needs verification for Jane Doe');
+    expect(needsAuth.tone).toBe('warning');
+
+    expect(describeNotification('charge_failed').title).toBe('Payment failed for a completed job');
+  });
+
+  it('words cancellation_fee_failed by reason', () => {
+    const noCard = describeNotification('cancellation_fee_failed', { ...FULL_PAYLOAD, reason: 'no_card' });
+    expect(noCard.title).toBe('Cancellation fee not collected from Jane Doe');
+    expect(noCard.detail).toContain('No saved card');
+
+    const achPayer = describeNotification('cancellation_fee_failed', { reason: 'ach_payer' });
+    expect(achPayer.detail).toContain('Customer pays by bank');
+
+    const declined = describeNotification('cancellation_fee_failed', { reason: 'declined' });
+    expect(declined.detail).toContain('Card declined');
+  });
+
+  it('describes self_pay_no_card and cancelled_job_refunded', () => {
+    expect(describeNotification('self_pay_no_card').title).toBe('Company payment method needed');
+    expect(describeNotification('self_pay_no_card').tone).toBe('error');
+
+    const refunded = describeNotification('cancelled_job_refunded', FULL_PAYLOAD);
+    expect(refunded.title).toBe('Refund issued to Jane Doe');
+    expect(refunded.tone).toBe('info');
+    expect(describeNotification('cancelled_job_refunded').title).toBe('Refund issued for a cancelled job');
   });
 });
 
