@@ -1,23 +1,35 @@
 /**
- * Immediate self-pay charge (the "charge now" leg) for a COMPLETED org self-pay appointment whose
- * company-card authorization failed and was never held.
+ * Immediate self-pay charge for a COMPLETED org self-pay appointment.
  *
- * Sibling of `authorizeSelfPay.ts` with one deliberate difference: there is NO
- * `capture_method: 'manual'`, so the PaymentIntent captures automatically (charge now) instead of
- * placing a hold. Everything else matches: the customer is the ORG's platform self-pay Customer (its
- * company card), there is NO `on_behalf_of` and NO `transfer_data` (the org pays for its own
- * cleaning), funds land on the PLATFORM balance, and `settleSelfPay` pays the cleaner the exact cut
- * after the charge succeeds (routed via `metadata.self_pay='true'` on payment_intent.succeeded).
+ * A company card is SAVED (not held) at booking, and this creates + auto-captures the charge on the
+ * org's company card once the job is completed (also reused for charge-now recovery).
  *
- * The idempotency key carries the re-auth attempt and a distinct `selfpay-charge-` prefix so it
- * never collides with the authorize leg's `selfpay-auth-` key.
+ * There is NO `capture_method: 'manual'` (captures immediately) and NO `on_behalf_of`/`transfer_data`
+ * (the org pays for its own cleaning): the customer is the ORG's platform self-pay Customer, funds
+ * land on the PLATFORM balance, and `settleSelfPay` pays the cleaner the exact cut after the charge
+ * succeeds (routed via `metadata.self_pay='true'` on payment_intent.succeeded).
+ *
+ * The idempotency key is `selfpay-charge-{appointmentId}-{reauthAttempt}`, so a fresh attempt after a
+ * prior decline isn't collapsed into the original.
  */
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
 import { transferGroupFor } from '@/lib/stripe/transfers';
-import type { SelfPayAuthorizeParams } from './authorizeSelfPay';
 
-export async function createSelfPayCharge(p: SelfPayAuthorizeParams): Promise<Stripe.PaymentIntent> {
+export interface SelfPayChargeParams {
+  /** Grossed-up charge in cents (cleaner cut + Stripe fee); see computeSelfPayAmounts. */
+  chargeCents: number;
+  /** Organization's platform Stripe Customer id (the self-pay company card lives here). */
+  customerId: string;
+  /** Saved company PaymentMethod to charge. */
+  paymentMethodId: string;
+  appointmentId: string;
+  organizationId: string;
+  /** 0 for the first attempt; incremented on retry after a prior decline so the key is fresh. */
+  reauthAttempt?: number;
+}
+
+export async function createSelfPayCharge(p: SelfPayChargeParams): Promise<Stripe.PaymentIntent> {
   const stripe = getStripe();
 
   const params: Stripe.PaymentIntentCreateParams = {

@@ -42,7 +42,6 @@ export function toCalendarEvent(apt: AppointmentCardData, role?: string): Calend
     cleanerId: apt.cleaner_id ?? null,
     cleanerName,
     paymentStatus: apt.payment_status ?? null,
-    authorizationStatus: apt.authorization_status ?? null,
     seriesId: apt.series_id ?? null,
     totalPrice: apt.total_price,
   };

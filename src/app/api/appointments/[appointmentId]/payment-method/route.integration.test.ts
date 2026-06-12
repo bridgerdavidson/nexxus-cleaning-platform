@@ -120,7 +120,7 @@ describe('POST /api/appointments/:appointmentId/payment-method', () => {
     expect((data as { payment_method_id: string }).payment_method_id).toBe('pm_test_card');
   });
 
-  it('changing the card on a FAILED appointment resets it to pending/scheduled', async () => {
+  it('changing the card on a FAILED appointment resets it to pending (Unpaid)', async () => {
     const appt = await makeAppt();
     const db = createTestSupabaseClient();
     // Simulate the prior declined authorization: failed appt + failed revenue payment row.
@@ -151,8 +151,8 @@ describe('POST /api/appointments/:appointmentId/payment-method', () => {
       .select('authorization_status, reauth_count, payment_method_id')
       .eq('id', appt.id)
       .single();
-    const a = apptRow as { authorization_status: string; reauth_count: number; payment_method_id: string };
-    expect(a.authorization_status).toBe('scheduled');
+    const a = apptRow as { authorization_status: string | null; reauth_count: number; payment_method_id: string };
+    expect(a.authorization_status).toBeNull();
     expect(a.reauth_count).toBe(1);
     expect(a.payment_method_id).toBe('pm_new_card');
 

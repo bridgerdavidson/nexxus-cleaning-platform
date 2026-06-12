@@ -34,17 +34,16 @@ describe('statusVisual', () => {
 });
 
 describe('paymentProblemPill', () => {
-  it('returns a pill for money problems', () => {
-    expect(paymentProblemPill(null, 'failed')?.label).toBe('Auth failed');
-    expect(paymentProblemPill('failed', 'none')?.label).toBe('Failed');
-    expect(paymentProblemPill(null, 'none')?.label).toBe('Unpaid');
-    expect(paymentProblemPill(null, 'requires_action')?.label).toBe('Action needed');
+  it('returns a pill only for a failed charge', () => {
+    expect(paymentProblemPill('failed')?.label).toBe('Failed');
   });
 
-  it('stays quiet for healthy/in-flight states', () => {
-    expect(paymentProblemPill('paid', 'captured')).toBeNull();
-    expect(paymentProblemPill(null, 'authorized')).toBeNull(); // Card held is fine
-    expect(paymentProblemPill('processing', 'none')).toBeNull(); // Clearing
-    expect(paymentProblemPill('refunded', 'none')).toBeNull();
+  it('stays quiet for healthy / in-flight / not-yet-charged states', () => {
+    expect(paymentProblemPill('paid')).toBeNull();
+    expect(paymentProblemPill('processing')).toBeNull(); // Clearing (ACH in flight)
+    expect(paymentProblemPill('refunded')).toBeNull();
+    // "Unpaid" is normal for an upcoming job (it is charged at completion), so it is not flagged.
+    expect(paymentProblemPill('pending')).toBeNull();
+    expect(paymentProblemPill(null)).toBeNull();
   });
 });

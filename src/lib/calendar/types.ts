@@ -4,7 +4,7 @@
  * unit-testable in isolation. The mapping from `AppointmentCardData` to `CalendarEvent`
  * lives in `useCalendarEvents` (a hook), not here.
  */
-import type { PillPaymentStatus, PillAuthorizationStatus } from '../paymentStatusPill';
+import type { PillPaymentStatus } from '../paymentStatusPill';
 
 export type ViewMode = 'month' | 'week' | 'day' | 'agenda';
 
@@ -48,7 +48,6 @@ export interface CalendarEvent {
   cleanerId: string | null;
   cleanerName: string | null;
   paymentStatus?: PillPaymentStatus;
-  authorizationStatus?: PillAuthorizationStatus;
   seriesId?: string | null;
   totalPrice?: number;
 }
