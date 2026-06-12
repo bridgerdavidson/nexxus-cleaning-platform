@@ -207,12 +207,14 @@ export async function chargeUncollectedCompletions(
   // Give the normal completion-route charge a window before assuming it never ran.
   const cutoff = staleCutoffIso(opts.staleMinutes ?? 30);
 
+  // Self-pay completions charge the ORG's saved company method (resolved live from the org's
+  // self-pay Customer), not appointments.payment_method_id — so they pass without one.
   let query = supabase
     .from('appointments')
     .select('id')
     .eq('status', 'completed')
     .is('authorization_status', null)
-    .not('payment_method_id', 'is', null)
+    .or('payment_method_id.not.is.null,is_self_pay.eq.true')
     .lte('updated_at', cutoff)
     .limit(batch);
   if (opts.organizationId) query = query.eq('organization_id', opts.organizationId);

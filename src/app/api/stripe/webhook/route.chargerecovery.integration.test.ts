@@ -195,34 +195,58 @@ describe('POST /api/stripe/webhook (charge recovery + cancelled-job refunds)', (
     );
     expect(status).toBe(200);
 
-    // Refunded, never settled: no transfers to tenant or cleaner.
+    // Refund issued, never settled: no transfers to tenant or cleaner. The first attempt uses
+    // attempt counter 0 (a failed refund bumps it for a fresh key).
     expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(1);
     const refundArg = vi.mocked(createRefund).mock.calls[0][0] as { idempotencyKey?: string };
-    expect(refundArg.idempotencyKey).toBe(`cancelrefund-${appt.id}`);
+    expect(refundArg.idempotencyKey).toBe(`cancelrefund-${appt.id}-0`);
     expect(vi.mocked(createPlatformTransfer)).not.toHaveBeenCalled();
 
+    // The payment stays 'paid' until charge.refunded CONFIRMS the refund; the pending refunds
+    // row is what gates re-entry meanwhile.
     const { data: payRow } = await db
       .from('payments')
       .select('status')
       .eq('appointment_id', appt.id)
       .single();
-    expect((payRow as { status: string }).status).toBe('refunded');
+    expect((payRow as { status: string }).status).toBe('paid');
 
-    const { data: refundRows } = await db.from('refunds').select('amount, initiator_user_id').eq('appointment_id', appt.id);
+    const { data: refundRows } = await db
+      .from('refunds')
+      .select('amount, initiator_user_id, status, reason')
+      .eq('appointment_id', appt.id);
     expect(refundRows).toHaveLength(1);
-    expect(Number((refundRows![0] as { amount: number }).amount)).toBe(10000);
-    expect((refundRows![0] as { initiator_user_id: string | null }).initiator_user_id).toBeNull();
+    const r = refundRows![0] as { amount: number; initiator_user_id: string | null; status: string; reason: string };
+    expect(Number(r.amount)).toBe(10000);
+    expect(r.initiator_user_id).toBeNull();
+    expect(r.status).toBe('pending');
+    expect(r.reason).toBe('cancelled_inflight_debit');
 
     const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'cancelled_inflight_refunded')).toBe(true);
 
-    // Admin notification, deduped on replay.
+    // Admin notification recorded.
     const { data: notifs } = await db
       .from('notification_events')
       .select('id')
       .eq('appointment_id', appt.id)
       .eq('event_type', 'cancelled_job_refunded');
     expect((notifs ?? []).length).toBeGreaterThan(0);
+
+    // A replayed delivery (new event id, same PI) short-circuits on the pending refund: no
+    // second refund, no transfers.
+    const replay = await postEvent(
+      buildPaymentIntentSucceededEvent({
+        appointmentId: appt.id,
+        amountDollars: 100,
+        eventId: `evt_replay_${appt.id}`,
+        onBehalfOf: 'acct_tenant_recov',
+        extraMetadata: { charge_kind: 'completion' },
+      }),
+    );
+    expect(replay.status).toBe(200);
+    expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createPlatformTransfer)).not.toHaveBeenCalled();
   });
 
   it('the CANCELLATION FEE charge on a cancelled job still settles to the tenant (no refund)', async () => {

@@ -13,6 +13,13 @@ vi.mock('@/lib/stripe/charges/charge', () => ({
   })),
 }));
 
+vi.mock('@/lib/stripe/charges/chargeSelfPay', () => ({
+  createSelfPayCharge: vi.fn(async (p: { appointmentId: string }) => ({
+    id: `pi_sweep_selfpay_${p.appointmentId}`,
+    status: 'succeeded',
+  })),
+}));
+
 vi.mock('@/lib/stripe/customers/homeowner', () => ({
   getPaymentMethodType: vi.fn(async () => 'card'),
   paymentMethodBelongsToCustomer: vi.fn(async () => true),
@@ -21,6 +28,8 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
 
 import { chargeUncollectedCompletions } from '@/lib/payments/reconcile';
 import { createDestinationCharge } from '@/lib/stripe/charges/charge';
+import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
+import { listSavedCards } from '@/lib/stripe/customers/homeowner';
 import {
   withTestOrg,
   createTestAppointment,
@@ -137,5 +146,41 @@ describe('chargeUncollectedCompletions (reconcile sweep)', () => {
     const result = await chargeUncollectedCompletions(db, { staleMinutes: 0, organizationId: org.organizationId });
     expect(result).toEqual({ checked: 0, charged: 0 });
     expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('includes self-pay completions (no appointment payment_method_id) in the sweep', async () => {
+    const db = createTestSupabaseClient();
+    process.env.STRIPE_SELF_PAY_ENABLED = 'true';
+    await db
+      .from('organizations')
+      .update({ stripe_self_pay_customer_id: `cus_selfpay_${org.organizationId.slice(0, 12)}` })
+      .eq('id', org.organizationId);
+    vi.mocked(listSavedCards).mockResolvedValue([
+      { id: 'pm_company_card', type: 'card', brand: 'visa', last4: '4242', expMonth: 12, expYear: 2030, isDefault: true },
+    ] as never);
+
+    // Self-pay: the org's saved company method is resolved live, so appointments.payment_method_id
+    // stays NULL — the sweep must still pick the job up.
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+
+    const result = await chargeUncollectedCompletions(db, { staleMinutes: 0, organizationId: org.organizationId });
+    expect(result.charged).toBe(1);
+    expect(vi.mocked(createSelfPayCharge)).toHaveBeenCalledTimes(1);
+
+    const { data: payRow } = await db
+      .from('payments')
+      .select('status, is_self_pay')
+      .eq('appointment_id', appt.id)
+      .single();
+    expect((payRow as { status: string }).status).toBe('paid');
+    expect((payRow as { is_self_pay: boolean }).is_self_pay).toBe(true);
   });
 });
