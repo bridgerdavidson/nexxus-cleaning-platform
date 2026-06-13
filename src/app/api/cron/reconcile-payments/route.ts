@@ -36,8 +36,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Stripe is not enabled' }, { status: 404 });
   }
 
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (!expected || request.headers.get('Authorization') !== expected) {
+  // Fail closed and stay robust to refactors: a missing secret is a 500 (misconfig),
+  // and the comparison is direct rather than through a nullable sentinel that a later
+  // edit could accidentally turn fail-open.
+  if (!process.env.CRON_SECRET) {
+    console.error('CRON_SECRET is not configured');
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+  if (request.headers.get('Authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

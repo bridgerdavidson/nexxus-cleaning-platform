@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DELETE } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import { withTestOrg, addOwnerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 describe('DELETE /api/admin/delete-team-member', () => {
@@ -69,6 +69,32 @@ describe('DELETE /api/admin/delete-team-member', () => {
       .eq('user_id', org.cleaner.userId)
       .maybeSingle();
     expect(data).toBeNull();
+  });
+
+  it('refuses to delete the organization owner (an admin cannot remove the owner)', async () => {
+    const owner = await addOwnerToOrg(org.organizationId);
+    try {
+      const { status, body } = await callRoute<{ success: boolean; error: string }>(DELETE, {
+        method: 'DELETE',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { userId: owner.userId, organizationId: org.organizationId },
+      });
+      expect(status).toBe(403);
+      expect(body.success).toBe(false);
+      expect(body.error).toMatch(/owner/i);
+
+      // Owner membership untouched, auth user still present.
+      const admin = createTestSupabaseClient();
+      const { data } = await admin
+        .from('organization_members')
+        .select('user_id')
+        .eq('user_id', owner.userId)
+        .eq('organization_id', org.organizationId)
+        .maybeSingle();
+      expect(data).toBeTruthy();
+    } finally {
+      await owner.cleanup();
+    }
   });
 
   it('refuses to delete a cleaner with active appointments', async () => {

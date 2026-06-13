@@ -3,24 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function POST(request: NextRequest) {
   try {
-    // 🔍 DEBUG: Check environment variables
-    console.log('🔍 === ENVIRONMENT DEBUG ===');
-    console.log('🔍 SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-    console.log('🔍 HAS_SERVICE_KEY:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
-    console.log('🔍 SERVICE_KEY_START:', process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20));
-    console.log('🔍 === END DEBUG ===');
-    
     const body = await request.json();
     const { email, password, firstName, lastName, role } = body;
-
-    // Log what we received
-    console.log('📥 Signup request received:', { 
-      email, 
-      firstName, 
-      lastName, 
-      role,
-      roleType: typeof role 
-    });
 
     // Validate inputs
     if (!email || !password || !firstName || !lastName) {
@@ -30,15 +14,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate role - be explicit about what we're doing
-    const validRoles = ['homeowner', 'cleaner', 'admin', 'manager'];
-    const userRole = role && validRoles.includes(role) ? role : 'homeowner';
-    
-    console.log('✅ Role validation:', { 
-      receivedRole: role,
-      finalRole: userRole,
-      isValid: validRoles.includes(role)
-    });
+    // SECURITY: public self-service signup may only create homeowner accounts.
+    // Staff roles (cleaner/manager/admin/owner) are provisioned exclusively through
+    // the authenticated invite flow (admin/send-invite -> accept-invite). Previously
+    // this route honored a client-supplied `role`, letting any visitor self-assign
+    // admin/manager of a live organization.
+    if (role && role !== 'homeowner') {
+      return NextResponse.json(
+        {
+          error:
+            'Staff accounts are created by invitation only. Please ask an organization admin to invite you.',
+        },
+        { status: 403 }
+      );
+    }
+    const userRole = 'homeowner';
 
     // Use admin client to create user with app_metadata (secure)
     const createUserPayload = {
@@ -171,64 +161,6 @@ export async function POST(request: NextRequest) {
       // Don't fail the signup, but log the error
     } else {
       console.log('✅ Organization membership created successfully');
-    }
-
-    // If user is a cleaner, create their cleaner profile
-    if (userRole === 'cleaner') {
-      console.log('🧹 Creating cleaner profile...');
-      
-      const { error: cleanerProfileError } = await supabaseAdmin
-        .from('cleaner_profiles')
-        .insert({
-          id: authData.user.id,
-          organization_id: defaultOrgId,
-          // All other fields have defaults:
-          // rating: 0.00, total_jobs: 0, is_available: true, etc.
-        });
-
-      if (cleanerProfileError) {
-        console.error('⚠️ Cleaner profile creation error:', cleanerProfileError);
-        // Don't fail the signup, but log the error
-      } else {
-        console.log('✅ Cleaner profile created successfully');
-      }
-    }
-
-    // If user is a manager, grant full default manager permissions
-    if (userRole === 'manager') {
-      console.log('🔐 Creating manager permissions (all enabled)...');
-
-      const { error: managerPermissionsError } = await supabaseAdmin
-        .from('manager_permissions')
-        .upsert(
-          {
-            manager_id: authData.user.id,
-            organization_id: defaultOrgId,
-            can_view_customers: true,
-            can_edit_customers: true,
-            can_view_bookings: true,
-            can_edit_bookings: true,
-            can_approve_decline_bookings: true,
-            can_manage_cleaners: true,
-            can_view_properties: true,
-            can_edit_properties: true,
-            can_view_analytics: true,
-            can_view_payments: true,
-            can_manage_payments: true,
-            can_view_messages: true,
-            can_view_services: true,
-            can_manage_services: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'manager_id,organization_id' }
-        );
-
-      if (managerPermissionsError) {
-        console.error('⚠️ Manager permissions creation error:', managerPermissionsError);
-        // Don't fail signup, but log the error
-      } else {
-        console.log('✅ Manager permissions created successfully');
-      }
     }
 
     return NextResponse.json({

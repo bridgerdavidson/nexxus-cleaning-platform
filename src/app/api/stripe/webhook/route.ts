@@ -62,6 +62,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
+  // Reject events whose mode doesn't match this deployment's Stripe keys. A test-mode
+  // signing secret leaking into a production endpoint (or a live secret into a preview)
+  // would otherwise let a signed test event drive real settlement. Tie the expected mode
+  // to the secret key (sk_live_/rk_live_ vs test) rather than NODE_ENV — Vercel preview
+  // deploys run with NODE_ENV=production but test-mode Stripe keys.
+  const expectLive = process.env.STRIPE_SECRET_KEY?.includes('_live_') ?? false;
+  if (event.livemode !== expectLive) {
+    console.error(
+      `Webhook livemode mismatch: event.livemode=${event.livemode}, expected ${expectLive} — ignoring ${event.type} ${event.id}`,
+    );
+    return NextResponse.json({ error: 'Livemode mismatch' }, { status: 400 });
+  }
+
   // Idempotency: claim the event before acting. A previously-processed event short-circuits;
   // a never-finished one is allowed to reprocess (handlers are idempotent). A transient failure
   // to record the claim throws — return 500 so Stripe retries rather than processing unclaimed.

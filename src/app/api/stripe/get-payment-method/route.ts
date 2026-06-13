@@ -1,26 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getPaymentMethodDetails } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { requireSelfOrOrgStaff } from '@/lib/auth/requireSelfOrOrgStaff';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
     return NextResponse.json({ error: 'Stripe disabled' }, { status: 404 });
   }
   try {
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
     // Get request body
     const body = await request.json();
-    const { homeowner_id } = body;
+    const { homeowner_id, organization_id } = body;
 
     // Validate required fields
     if (!homeowner_id) {
@@ -29,6 +20,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Auth: the homeowner themselves, or org staff acting on a homeowner in their
+    // org. Closes the unauthenticated card-detail (brand/last4) disclosure.
+    const auth = await requireSelfOrOrgStaff(
+      request,
+      supabaseAdmin,
+      homeowner_id,
+      organization_id,
+    );
+    if (!auth.ok) return auth.response;
 
     // Fetch homeowner's stripe_customer_id
     const { data: homeowner, error: homeownerError } = await supabaseAdmin
