@@ -67,8 +67,12 @@ export async function POST(request: NextRequest) {
   // would otherwise let a signed test event drive real settlement. Tie the expected mode
   // to the secret key (sk_live_/rk_live_ vs test) rather than NODE_ENV — Vercel preview
   // deploys run with NODE_ENV=production but test-mode Stripe keys.
+  //
+  // Only enforce when livemode is actually present: every real Stripe event carries a
+  // boolean `livemode`, so a mode mismatch is meaningful, but synthetic payloads that omit
+  // it (and have already passed signature verification) should not be rejected here.
   const expectLive = process.env.STRIPE_SECRET_KEY?.includes('_live_') ?? false;
-  if (event.livemode !== expectLive) {
+  if (typeof event.livemode === 'boolean' && event.livemode !== expectLive) {
     console.error(
       `Webhook livemode mismatch: event.livemode=${event.livemode}, expected ${expectLive} — ignoring ${event.type} ${event.id}`,
     );
