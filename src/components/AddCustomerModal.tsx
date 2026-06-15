@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { X, Users, Phone } from "lucide-react";
+import { X, Users, Phone, Loader2, Send } from "lucide-react";
+import { inviteTeamMember } from "../hooks/useAdminData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../contexts/ToastContext";
 import { useFormDraft } from "../hooks/useFormDraft";
 import { createDraftStore } from "@/lib/formDraft";
 import DiscardChangesDialog from "./DiscardChangesDialog";
@@ -45,7 +47,8 @@ export default function AddCustomerModal({
   onClose,
   onCustomerCreated,
 }: AddCustomerModalProps) {
-  const { currentOrganizationId } = useAuth();
+  const { currentOrganizationId, accessToken } = useAuth();
+  const { showToast } = useToast();
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
@@ -58,6 +61,8 @@ export default function AddCustomerModal({
   const [emailTouched, setEmailTouched] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   // --- Reload-restore wiring --------------------------------------------------------
   // Plain create flow with no preselection, so persistence is always eligible (still gated on
@@ -146,14 +151,6 @@ export default function AddCustomerModal({
     validatePhone(phone);
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newPhone = e.target.value;
-    setPhone(newPhone);
-    if (phoneTouched) {
-      validatePhone(newPhone);
-    }
-  };
-
   const formatPhoneNumber = (value: string): string => {
     // Remove all non-digit characters
     const digits = value.replace(/\D/g, '');
@@ -178,10 +175,11 @@ export default function AddCustomerModal({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEmailTouched(true);
     setPhoneTouched(true);
+    setSubmitError("");
 
     const isEmailValid = validateEmail(email);
     const isPhoneValid = validatePhone(phone);
@@ -190,22 +188,53 @@ export default function AddCustomerModal({
       return;
     }
 
-    // Placeholder for future AWS SES integration
-    // For now, this button does nothing except log the data
-    console.log("Send sign up link clicked", { firstName, lastName, email, phone });
-    
-    // If customer creation callback is provided, call it
-    if (onCustomerCreated) {
-      onCustomerCreated();
+    if (!currentOrganizationId) {
+      setSubmitError("Organization ID is missing");
+      return;
     }
-    
-    handleClose();
+
+    setIsSubmitting(true);
+
+    try {
+      // Reuse the team-member invite flow with the homeowner role. Only the email
+      // is sent; the invitee supplies their name and phone when they accept.
+      const result = await inviteTeamMember({
+        email: email.trim(),
+        role: "homeowner",
+        organizationId: currentOrganizationId,
+        accessToken,
+      });
+
+      if (result.success) {
+        showToast("Invite sent", {
+          description: `Invitation email sent to ${email.trim()}`,
+          variant: "email",
+        });
+
+        if (onCustomerCreated) {
+          onCustomerCreated();
+        }
+        handleClose();
+      } else {
+        setSubmitError(result.error || "Failed to send invite");
+      }
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "An unexpected error occurred",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isEmailValid = emailRegex.test(email) && email.trim() !== "";
   const isPhoneValid = !phone.trim() || phoneRegex.test(phone);
   const isFormValid =
-    firstName.trim() !== "" && lastName.trim() !== "" && isEmailValid && isPhoneValid;
+    firstName.trim() !== "" &&
+    lastName.trim() !== "" &&
+    isEmailValid &&
+    isPhoneValid &&
+    !isSubmitting;
 
   // Reset form when modal closes
   const handleClose = () => {
@@ -220,6 +249,7 @@ export default function AddCustomerModal({
     setEmailTouched(false);
     setPhoneError("");
     setPhoneTouched(false);
+    setSubmitError("");
     onClose();
   };
 
@@ -228,7 +258,7 @@ export default function AddCustomerModal({
     lastName.trim() !== "" ||
     email.trim() !== "" ||
     phone.trim() !== "";
-  const guard = useDismissGuard({ isOpen, isDirty, onConfirmClose: handleClose });
+  const guard = useDismissGuard({ isOpen, isDirty, isSubmitting, onConfirmClose: handleClose });
 
   if (!isOpen) return null;
 
@@ -367,13 +397,30 @@ export default function AddCustomerModal({
               )}
             </div>
 
+            {/* Error Message */}
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-600">{submitError}</p>
+              </div>
+            )}
+
             {/* Send Button */}
             <button
               type="submit"
               disabled={!isFormValid}
               className="btn-primary w-full flex justify-center items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>Send sign up link</span>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Send sign up link</span>
+                </>
+              )}
             </button>
           </form>
 

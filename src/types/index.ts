@@ -42,7 +42,7 @@ export interface Invite {
   id: string;
   organization_id: string;
   email: string;
-  role: 'cleaner' | 'manager' | 'admin';
+  role: 'cleaner' | 'manager' | 'admin' | 'homeowner';
   status: InviteStatus;
   sent_at: string | null;
   accepted_at: string | null;

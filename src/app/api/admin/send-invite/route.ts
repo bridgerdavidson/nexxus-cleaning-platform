@@ -46,14 +46,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Allow org owners and admins, or managers with can_manage_cleaners.
+    // Allow org owners and admins, or managers with can_manage_cleaners or
+    // can_edit_customers (the role ceiling below maps each permission to the role
+    // it unlocks: cleaners and homeowners respectively).
     // (An org owner's organization_members.role is 'owner', not 'admin' — the
     // accept-invite mapping keeps OrgRole 'owner' while setting UserRole 'admin'.)
     let isAuthorized = membership.role === 'owner' || membership.role === 'admin';
+    // Loaded once for managers and reused by the role ceiling below.
+    let managerPerms: { can_manage_cleaners: boolean | null; can_edit_customers: boolean | null } | null = null;
     if (!isAuthorized && membership.role === 'manager') {
-      const { data: managerPerms, error: permsError } = await supabaseAdmin
+      const { data, error: permsError } = await supabaseAdmin
         .from('manager_permissions')
-        .select('can_manage_cleaners')
+        .select('can_manage_cleaners, can_edit_customers')
         .eq('manager_id', verified.userId)
         .eq('organization_id', organizationId)
         .maybeSingle();
@@ -65,7 +69,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      isAuthorized = managerPerms?.can_manage_cleaners === true;
+      managerPerms = data;
+      // A manager may invite cleaners (can_manage_cleaners) or homeowners
+      // (can_edit_customers). Here we only gate that they hold at least one; the
+      // role ceiling below enforces which role each permission actually unlocks.
+      isAuthorized =
+        managerPerms?.can_manage_cleaners === true ||
+        managerPerms?.can_edit_customers === true;
     }
 
     if (!isAuthorized) {
@@ -86,23 +96,28 @@ export async function POST(request: NextRequest) {
     // Normalize email — aligns with invites_email_lowercase DB constraint
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!['cleaner', 'manager', 'admin'].includes(role)) {
+    if (!['cleaner', 'manager', 'admin', 'homeowner'].includes(role)) {
       return NextResponse.json(
-        { success: false, error: 'Invalid role. Must be "cleaner", "manager", or "admin"' },
+        { success: false, error: 'Invalid role. Must be "cleaner", "manager", "admin", or "homeowner"' },
         { status: 400 }
       );
     }
 
     // ── Role ceiling ─────────────────────────────────────────────────────────
-    // A manager is authorized here only via can_manage_cleaners, so they may
-    // invite cleaners only — never a manager or admin, which would let them mint
-    // a peer/superior who could then revoke them. Owners and admins may invite up
-    // to admin; nobody can invite an owner (not in the allowlist above).
-    if (membership.role === 'manager' && role !== 'cleaner') {
-      return NextResponse.json(
-        { success: false, error: 'Managers can only invite cleaners.' },
-        { status: 403 }
-      );
+    // A manager may invite a cleaner (requires can_manage_cleaners) or a homeowner
+    // (requires can_edit_customers) — never a manager, admin, or owner, which would
+    // let them mint a peer/superior who could then revoke them. Owners and admins
+    // may invite up to admin; nobody can invite an owner (not in the allowlist above).
+    if (membership.role === 'manager') {
+      const allowed =
+        (role === 'cleaner' && managerPerms?.can_manage_cleaners === true) ||
+        (role === 'homeowner' && managerPerms?.can_edit_customers === true);
+      if (!allowed) {
+        return NextResponse.json(
+          { success: false, error: 'Managers can only invite cleaners or homeowners.' },
+          { status: 403 }
+        );
+      }
     }
 
     // ── Guard 1: block if an accepted invite already exists for this org ──────

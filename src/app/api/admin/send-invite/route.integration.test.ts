@@ -202,3 +202,89 @@ describe('POST /api/admin/send-invite (role ceiling)', () => {
     expect(body.success).toBe(true);
   });
 });
+
+/**
+ * Homeowner invites reuse the team-invite flow with role 'homeowner' (the
+ * "Send sign up link" button on the Add Customer modal). Owners/admins may send
+ * them; a manager needs can_edit_customers — NOT can_manage_cleaners — which
+ * mirrors when the "New customer" button is shown to managers.
+ */
+describe('POST /api/admin/send-invite (homeowner role)', () => {
+  let org: TestOrgFixture | null = null;
+  let owner: OwnerMemberHandle | null = null;
+  let manager: ManagerMemberHandle | null = null;
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await Promise.all([owner?.cleanup(), manager?.cleanup()]);
+    await org?.cleanup();
+    org = null;
+    owner = null;
+    manager = null;
+  });
+
+  it('lets an org owner send a homeowner invite (200)', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+
+    vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+
+    const email = `homeowner-${randomUUID().slice(0, 8)}@test.local`;
+    const { status, body } = await callRoute<{ success: boolean; invite: { status: string } }>(
+      POST,
+      {
+        method: 'POST',
+        headers: bearerHeader(owner.accessToken),
+        body: { email, role: 'homeowner', organizationId: org.organizationId },
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.invite.status).toBe('pending');
+  });
+
+  it('lets a manager with can_edit_customers send a homeowner invite (200)', async () => {
+    org = await withTestOrg();
+    manager = await addManagerToOrg(org.organizationId, { can_edit_customers: true });
+
+    vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+
+    const email = `homeowner-${randomUUID().slice(0, 8)}@test.local`;
+    const { status, body } = await callRoute<{ success: boolean }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(manager.accessToken),
+      body: { email, role: 'homeowner', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+  });
+
+  it('rejects a manager without can_edit_customers from inviting a homeowner (403)', async () => {
+    org = await withTestOrg();
+    // Has can_manage_cleaners (so they're authorized to send *some* invite) but
+    // NOT can_edit_customers, so the homeowner role must be refused by the ceiling.
+    manager = await addManagerToOrg(org.organizationId, { can_manage_cleaners: true });
+
+    const inviteSpy = vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail');
+
+    const { status, body } = await callRoute<{ success: boolean; error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(manager.accessToken),
+      body: {
+        email: `homeowner-${randomUUID().slice(0, 8)}@test.local`,
+        role: 'homeowner',
+        organizationId: org.organizationId,
+      },
+    });
+
+    expect(status).toBe(403);
+    expect(body.error).toMatch(/managers can only invite cleaners or homeowners/i);
+    expect(inviteSpy).not.toHaveBeenCalled();
+  });
+});
