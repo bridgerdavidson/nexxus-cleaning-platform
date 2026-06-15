@@ -6,10 +6,12 @@ import {
   ChevronRight,
   CreditCard,
   Loader,
+  LogOut,
   Plus,
   RefreshCw,
   Users,
 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { usePlatformOrganizations } from '@/hooks/usePlatformOrganizations';
 import type { PlatformOrgSummary } from '@/types/platform';
 import { PaymentsBadge, SubscriptionBadge } from './statusBadges';
@@ -49,6 +51,7 @@ function StatCard({
 }
 
 export function PlatformOverviewPage() {
+  const { signOut } = useAuth();
   const { data: organizations, isLoading, isError, error, refetch, isFetching } =
     usePlatformOrganizations();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
@@ -99,6 +102,14 @@ export function PlatformOverviewPage() {
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             Provision tenant
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut()}
+            className="inline-flex items-center gap-2 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm font-medium text-secondary-700 transition-colors duration-200 hover:bg-secondary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            Sign out
           </button>
         </div>
       </header>
