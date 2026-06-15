@@ -1978,7 +1978,7 @@ export async function deleteTeamMember(userId: string, organizationId: string) {
 // Helper function to invite a team member
 export async function inviteTeamMember(data: {
   email: string;
-  role: 'cleaner' | 'manager' | 'admin';
+  role: 'cleaner' | 'manager' | 'admin' | 'homeowner';
   organizationId: string;
   accessToken: string | null | undefined;
 }) {
