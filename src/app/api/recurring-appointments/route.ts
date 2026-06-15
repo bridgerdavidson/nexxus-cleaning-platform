@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateOccurrences, validateRecurrenceInput } from '@/lib/appointments/recurrence';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
@@ -65,6 +66,14 @@ export async function POST(request: NextRequest) {
       status,
       paymentMethodId,
     } = body;
+
+    // Auth first: only owner/admin/manager of the target org may create a series.
+    // requireOrgAuth verifies the caller is a member of `organizationId`, so a
+    // caller cannot write into an org they don't belong to.
+    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin', 'manager'],
+    });
+    if (!auth.ok) return auth.response;
 
     if (!organizationId || !homeownerId || !propertyId || !serviceTypeId) {
       return NextResponse.json(
@@ -241,6 +250,12 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // This endpoint returns homeowner PII + property addresses; gate to org staff.
+    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin', 'manager'],
+    });
+    if (!auth.ok) return auth.response;
 
     const { data: series, error } = await supabaseAdmin
       .from('recurring_appointment_series')

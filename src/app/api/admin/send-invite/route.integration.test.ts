@@ -5,9 +5,11 @@ import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   addOwnerToOrg,
+  addManagerToOrg,
   withPlatformAdmin,
   type TestOrgFixture,
   type OwnerMemberHandle,
+  type ManagerMemberHandle,
   type PlatformAdminFixture,
 } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
@@ -144,5 +146,59 @@ describe('POST /api/admin/send-invite (never deletes a real account)', () => {
       .eq('organization_id', otherOrg.organizationId)
       .maybeSingle();
     expect(data).not.toBeNull();
+  });
+});
+
+/**
+ * Role ceiling (security audit H4): a manager authorized via can_manage_cleaners may
+ * invite cleaners only — never a manager or admin, which would let them mint a
+ * peer/superior who could then revoke them.
+ */
+describe('POST /api/admin/send-invite (role ceiling)', () => {
+  let org: TestOrgFixture | null = null;
+  let manager: ManagerMemberHandle | null = null;
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await manager?.cleanup();
+    await org?.cleanup();
+    manager = null;
+    org = null;
+  });
+
+  it('rejects a manager inviting an admin (403)', async () => {
+    org = await withTestOrg();
+    manager = await addManagerToOrg(org.organizationId, { can_manage_cleaners: true });
+
+    const inviteSpy = vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail');
+
+    const { status, body } = await callRoute<{ success: boolean; error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(manager.accessToken),
+      body: { email: `esc-${randomUUID().slice(0, 8)}@test.local`, role: 'admin', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(403);
+    expect(body.error).toMatch(/managers can only invite cleaners/i);
+    // No invite email should have been attempted.
+    expect(inviteSpy).not.toHaveBeenCalled();
+  });
+
+  it('lets a manager invite a cleaner (200)', async () => {
+    org = await withTestOrg();
+    manager = await addManagerToOrg(org.organizationId, { can_manage_cleaners: true });
+
+    vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+
+    const { status, body } = await callRoute<{ success: boolean }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(manager.accessToken),
+      body: { email: `hire-${randomUUID().slice(0, 8)}@test.local`, role: 'cleaner', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
   });
 });

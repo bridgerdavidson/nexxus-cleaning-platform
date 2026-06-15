@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { RecurrenceType } from "../types";
 import { supabase } from "../lib/supabase";
+import { getAccessToken } from "../lib/auth/clientAccessToken";
 import { useAuth } from "../hooks/useAuth";
 import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
@@ -1093,10 +1094,12 @@ export default function AddAppointmentModal({
       // recurring-appointments route has no self-pay path), and the recurrence UI is
       // hidden in self-pay mode, so this branch never runs without a homeowner.
       if (recurrenceType !== "none" && !selfPay && selectedHomeowner) {
+        const token = await getAccessToken();
         const response = await fetch("/api/recurring-appointments", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
             organizationId: currentOrganizationId,

@@ -7,7 +7,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { accessToken, inviteId, firstName, lastName, phone, password } = body;
 
-    if (!accessToken || !inviteId || !firstName || !lastName || !password) {
+    // Prefer the standard Authorization header; fall back to the body token for
+    // backward compatibility with older clients. Either way the token is verified
+    // below — body-transported tokens are more likely to land in request logs.
+    const headerToken = request.headers
+      .get('Authorization')
+      ?.replace(/^Bearer\s+/i, '')
+      .trim();
+    const token = headerToken || accessToken;
+
+    if (!token || !inviteId || !firstName || !lastName || !password) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -17,7 +26,7 @@ export async function POST(request: NextRequest) {
     // Verify the token and get the caller. Prefers local getClaims verification
     // (no GoTrue /user round-trip on asymmetric signing keys), falling back to
     // getUser otherwise.
-    const verified = await verifyAccessToken(supabaseAdmin, accessToken);
+    const verified = await verifyAccessToken(supabaseAdmin, token);
 
     if (!verified) {
       return NextResponse.json(

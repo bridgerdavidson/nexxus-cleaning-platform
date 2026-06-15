@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { homeownerBelongsToOrg } from '@/lib/payments/orgHomeowner';
 
 // Generate invoice number in format: INV-YYYYMMDD-XXXX
 function generateInvoiceNumber(): string {
@@ -17,13 +16,6 @@ function generateInvoiceNumber(): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
     // Get request body
     const body = await request.json();
     const {
@@ -37,34 +29,41 @@ export async function POST(request: NextRequest) {
       status,
     } = body;
 
+    // ── Auth first: only org staff may create invoices, and only for their own org.
+    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin', 'manager'],
+    });
+    if (!auth.ok) return auth.response;
+
     // Validate required fields
-    if (!organization_id || !homeowner_id || !amount) {
+    if (!homeowner_id || !amount) {
       return NextResponse.json(
         { error: 'Missing required fields: organization_id, homeowner_id, amount' },
         { status: 400 }
       );
     }
 
-    // Verify homeowner exists
-    const { data: homeowner, error: homeownerError } = await supabaseAdmin
-      .from('user_profiles')
-      .select('id')
-      .eq('id', homeowner_id)
-      .single();
-
-    if (homeownerError || !homeowner) {
+    // Verify the homeowner is associated with the caller's org (not just that the
+    // user id exists somewhere in the system).
+    const homeownerBelongs = await homeownerBelongsToOrg(
+      supabaseAdmin,
+      homeowner_id,
+      organization_id,
+    );
+    if (!homeownerBelongs) {
       return NextResponse.json(
         { error: 'Homeowner not found' },
         { status: 404 }
       );
     }
 
-    // If payment_id is provided, verify it exists
+    // If payment_id is provided, verify it exists *and* belongs to the caller's org.
     if (payment_id) {
       const { data: payment, error: paymentError } = await supabaseAdmin
         .from('payments')
         .select('id')
         .eq('id', payment_id)
+        .eq('organization_id', organization_id)
         .single();
 
       if (paymentError || !payment) {
@@ -75,12 +74,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If appointment_id is provided, verify it exists
+    // If appointment_id is provided, verify it exists *and* belongs to the caller's org.
     if (appointment_id) {
       const { data: appointment, error: appointmentError } = await supabaseAdmin
         .from('appointments')
         .select('id')
         .eq('id', appointment_id)
+        .eq('organization_id', organization_id)
         .single();
 
       if (appointmentError || !appointment) {

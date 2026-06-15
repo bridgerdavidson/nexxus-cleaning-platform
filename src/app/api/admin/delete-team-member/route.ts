@@ -47,6 +47,20 @@ export async function DELETE(request: NextRequest) {
 
     const role = orgMember.role;
 
+    // Never delete the organization owner through this endpoint. An admin caller
+    // passes the owner/admin role gate, but removing the owner would leave the org
+    // with no owner and hand control to the remaining admins. Ownership changes go
+    // through a dedicated transfer flow, not team-member deletion.
+    if (role === 'owner') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'The organization owner cannot be removed here. Transfer ownership first.',
+        },
+        { status: 403 }
+      );
+    }
+
     // Look up the user's email so we can clean up matching invites later.
     // user_profiles stores email lower-cased on insert via the auth trigger;
     // invites.email has a CHECK (email = lower(email)) constraint, so we

@@ -16,8 +16,14 @@ export const runtime = 'nodejs';
  * a Next.js env var.
  */
 export async function POST(request: NextRequest) {
+  // Fail closed and stay robust to refactors: a missing secret is a 500 (misconfig),
+  // and the comparison is direct.
+  if (!process.env.CRON_SECRET) {
+    console.error('CRON_SECRET is not configured');
+    return NextResponse.json({ success: false, error: 'Server misconfigured' }, { status: 500 });
+  }
   const auth = request.headers.get('authorization')?.replace('Bearer ', '');
-  if (!auth || !process.env.CRON_SECRET || auth !== process.env.CRON_SECRET) {
+  if (auth !== process.env.CRON_SECRET) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 

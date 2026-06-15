@@ -75,11 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isSigningOutRef.current) return;
 
     const getRoleFromAuth = (u: SupabaseUser): User['role'] => {
-      return (
-        (u.app_metadata?.role as User['role']) ||
-        (u.user_metadata?.role as User['role']) ||
-        'homeowner'
-      );
+      // Only trust app_metadata.role (server-set). user_metadata is user-controllable
+      // via supabase.auth.updateUser({ data }), so it must never influence the role.
+      // Fall back to the least-privileged role when app_metadata.role is unavailable.
+      return (u.app_metadata?.role as User['role']) || 'homeowner';
     };
 
     const buildUserFromAuthOnly = (u: SupabaseUser): User => {

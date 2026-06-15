@@ -2,9 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Home, Sparkles, Users, Shield, ArrowLeft } from 'lucide-react';
+import { Home, ArrowLeft } from 'lucide-react';
 
 export default function SignupRoleSelector() {
+  // Public self-service signup is homeowner-only. Cleaner/manager/admin accounts
+  // are provisioned through the authenticated invite flow, so they are not offered
+  // here (and the signup API rejects any non-homeowner role).
   const roles = [
     {
       id: 'homeowner',
@@ -12,37 +15,13 @@ export default function SignupRoleSelector() {
       description: 'Book professional cleaning services for your home',
       icon: Home,
       color: 'primary',
-      featured: false,
-    },
-    {
-      id: 'cleaner',
-      title: 'Cleaner',
-      description: 'Join our team and start accepting cleaning jobs',
-      icon: Sparkles,
-      color: 'success',
-      featured: false,
-    },
-    {
-      id: 'manager',
-      title: 'Manager',
-      description: 'Manage cleaners and oversee operations',
-      icon: Users,
-      color: 'secondary',
-      featured: false,
-    },
-    {
-      id: 'admin',
-      title: 'Admin',
-      description: 'Full system access and administration',
-      icon: Shield,
-      color: 'secondary',
-      featured: false,
+      featured: true,
     },
   ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-5xl">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Header */}
         <div className="text-center mb-12">
           <Link href="/" className="inline-flex items-center text-gray-600 hover:text-primary-600 mb-6 transition-colors">
@@ -53,12 +32,12 @@ export default function SignupRoleSelector() {
             Join Nexxus Cleaning
           </h1>
           <p className="text-xl text-gray-600">
-            Choose your account type to get started
+            Create your homeowner account to get started
           </p>
         </div>
 
         {/* Role Cards Grid */}
-        <div className="grid md:grid-cols-2 gap-6 px-4">
+        <div className="grid grid-cols-1 gap-6 px-4">
           {roles.map((role) => {
             const Icon = role.icon;
             const borderColor = role.featured
@@ -118,8 +97,16 @@ export default function SignupRoleSelector() {
           })}
         </div>
 
+        {/* Staff invite note */}
+        <div className="mt-8 text-center">
+          <p className="text-sm text-gray-500">
+            Cleaners, managers, and admins join by invitation from an organization
+            owner. Ask your organization to send you an invite.
+          </p>
+        </div>
+
         {/* Login Link */}
-        <div className="mt-12 text-center">
+        <div className="mt-8 text-center">
           <p className="text-gray-600">
             Already have an account?{' '}
             <Link href="/login" className="font-semibold text-primary-600 hover:text-primary-700 transition-colors">

@@ -49,17 +49,11 @@ export async function getOrCreateStripeCustomer(
     }
   }
 
-  // Check if a customer with this email already exists
-  const existingCustomers = await stripe.customers.list({
-    email: email,
-    limit: 1,
-  });
-
-  if (existingCustomers.data.length > 0) {
-    return existingCustomers.data[0];
-  }
-
-  // Create a new customer
+  // Do NOT look the Customer up by email. In a multi-tenant platform an email match
+  // can alias onto another org's Customer (or another homeowner who reused the email),
+  // leaking/charging their saved cards. The stored stripe_customer_id (passed as
+  // existingCustomerId and persisted back by every caller) is the dedup key; when it
+  // is absent, always create a fresh Customer. Mirrors getOrCreateOrgSelfPayCustomer.
   const newCustomer = await stripe.customers.create({
     email: email,
     name: name,

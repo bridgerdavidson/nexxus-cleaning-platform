@@ -93,6 +93,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ── Role ceiling ─────────────────────────────────────────────────────────
+    // A manager is authorized here only via can_manage_cleaners, so they may
+    // invite cleaners only — never a manager or admin, which would let them mint
+    // a peer/superior who could then revoke them. Owners and admins may invite up
+    // to admin; nobody can invite an owner (not in the allowlist above).
+    if (membership.role === 'manager' && role !== 'cleaner') {
+      return NextResponse.json(
+        { success: false, error: 'Managers can only invite cleaners.' },
+        { status: 403 }
+      );
+    }
+
     // ── Guard 1: block if an accepted invite already exists for this org ──────
     // An accepted invite means the user completed onboarding — do not overwrite.
     const { data: acceptedInvite, error: acceptedInviteError } = await supabaseAdmin

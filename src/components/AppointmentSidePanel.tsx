@@ -29,6 +29,7 @@ import { supabase } from "../lib/supabase";
 import { useJobPhotosForAppointment } from "../hooks/useCleanerData";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useAuth } from "../hooks/useAuth";
+import { getAccessToken } from "../lib/auth/clientAccessToken";
 import { formatTimeTo12h } from "../lib/formatTime";
 import {
   DASHBOARD_HERO_SECONDARY_BUTTON_CLASS,
@@ -191,16 +192,22 @@ export default function AppointmentSidePanel({
   }, []);
 
   // Fetch payment method info when appointment changes
-  const fetchPaymentMethod = useCallback(async (homeownerId: string) => {
+  const fetchPaymentMethod = useCallback(
+    async (homeownerId: string, organizationId?: string | null) => {
     setPaymentMethodLoading(true);
     setPaymentMethodError(null);
     try {
+      const token = await getAccessToken();
       const response = await fetch("/api/stripe/get-payment-method", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ homeowner_id: homeownerId }),
+        body: JSON.stringify({
+          homeowner_id: homeownerId,
+          organization_id: organizationId ?? null,
+        }),
       });
 
       let data;
@@ -308,11 +315,11 @@ export default function AppointmentSidePanel({
 
   useEffect(() => {
     if (appointment?.homeowner_id && isOpen) {
-      fetchPaymentMethod(appointment.homeowner_id);
+      fetchPaymentMethod(appointment.homeowner_id, appointment.organization_id);
     }
     // Reset payment form state when appointment changes
     setShowPaymentForm(false);
-  }, [appointment?.homeowner_id, isOpen, fetchPaymentMethod]);
+  }, [appointment?.homeowner_id, appointment?.organization_id, isOpen, fetchPaymentMethod]);
 
   // Keep the local authorization mirror in sync as the appointment (or its status) changes.
   useEffect(() => {
@@ -1072,7 +1079,10 @@ export default function AppointmentSidePanel({
                       onSuccess={() => {
                         setShowPaymentForm(false);
                         if (appointment.homeowner_id) {
-                          fetchPaymentMethod(appointment.homeowner_id);
+                          fetchPaymentMethod(
+                            appointment.homeowner_id,
+                            appointment.organization_id,
+                          );
                         }
                       }}
                       onError={(errorMsg) => {
