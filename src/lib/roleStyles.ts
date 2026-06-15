@@ -12,3 +12,12 @@ export function getRoleBadgeClasses(role: string | null | undefined): string {
       return "bg-gray-100 text-gray-700";
   }
 }
+
+// User-facing label for a role. Homeowners are surfaced as "Customer" across
+// the app (Customers page, invite modal), so map it here rather than showing
+// the raw "Homeowner" enum value. Other roles are simply capitalized.
+export function getRoleLabel(role: string | null | undefined): string {
+  const r = (role || "").toLowerCase();
+  if (r === "homeowner") return "Customer";
+  return r ? r.charAt(0).toUpperCase() + r.slice(1) : "";
+}

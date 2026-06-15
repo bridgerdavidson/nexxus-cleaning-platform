@@ -249,6 +249,44 @@ export async function addManagerToOrg(
   };
 }
 
+export interface HomeownerMemberHandle extends TestUserHandle {
+  cleanup(): Promise<void>;
+}
+
+/**
+ * Adds a second OrgRole 'homeowner' member to an existing org (withTestOrg only
+ * seeds one). Returns a handle whose cleanup deletes the auth user (the
+ * org-delete cascade in withTestOrg removes the membership row). Useful for the
+ * customer-deletion tests that need more than one homeowner.
+ */
+export async function addHomeownerToOrg(organizationId: string): Promise<HomeownerMemberHandle> {
+  const db = createTestSupabaseClient();
+  const uniq = randomUUID().slice(0, 8);
+  const email = `homeowner2-${uniq}@test.local`;
+  const homeowner = await createAuthUser(email, 'homeowner', 'Homeowner');
+
+  const { error: profileErr } = await db.from('user_profiles').upsert(
+    { id: homeowner.id, email, first_name: 'Hugo', last_name: 'Homeowner', role: 'homeowner' },
+    { onConflict: 'id' },
+  );
+  if (profileErr) throw new Error(`seed homeowner profile failed: ${profileErr.message}`);
+
+  const { error: memErr } = await db
+    .from('organization_members')
+    .insert({ user_id: homeowner.id, organization_id: organizationId, role: 'homeowner' });
+  if (memErr) throw new Error(`seed homeowner member failed: ${memErr.message}`);
+
+  return {
+    userId: homeowner.id,
+    email,
+    password: PASSWORD,
+    accessToken: homeowner.accessToken,
+    async cleanup() {
+      await db.auth.admin.deleteUser(homeowner.id);
+    },
+  };
+}
+
 export interface PlatformAdminFixture {
   userId: string;
   email: string;
