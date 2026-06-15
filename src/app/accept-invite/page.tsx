@@ -28,6 +28,8 @@ function getDashboardPath(role: string): string {
       return "/manager-dashboard";
     case "admin":
       return "/admin-dashboard";
+    case "homeowner":
+      return "/homeowner-dashboard";
     default:
       return "/";
   }

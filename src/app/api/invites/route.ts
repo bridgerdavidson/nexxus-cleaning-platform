@@ -58,11 +58,15 @@ export async function GET(request: NextRequest) {
     // Allow org owners and admins, or managers with can_manage_cleaners.
     // (An org owner's organization_members.role is 'owner', not 'admin' — the
     // accept-invite mapping keeps OrgRole 'owner' while setting UserRole 'admin'.)
+    // Homeowner (customer) invites are additionally gated on a customer
+    // permission: a cleaner-only manager must not read customer email addresses
+    // through this list.
     let isAuthorized = membership.role === 'owner' || membership.role === 'admin';
+    let canSeeHomeownerInvites = isAuthorized;
     if (!isAuthorized && membership.role === 'manager') {
       const { data: managerPerms, error: permsError } = await supabaseAdmin
         .from('manager_permissions')
-        .select('can_manage_cleaners')
+        .select('can_manage_cleaners, can_view_customers, can_edit_customers')
         .eq('manager_id', verified.userId)
         .eq('organization_id', organizationId)
         .maybeSingle();
@@ -75,6 +79,9 @@ export async function GET(request: NextRequest) {
       }
 
       isAuthorized = managerPerms?.can_manage_cleaners === true;
+      canSeeHomeownerInvites =
+        managerPerms?.can_view_customers === true ||
+        managerPerms?.can_edit_customers === true;
     }
 
     if (!isAuthorized) {
@@ -140,11 +147,15 @@ export async function GET(request: NextRequest) {
     }
 
     const now = Date.now();
-    const enriched = (invites ?? []).map((inv) => ({
-      ...inv,
-      is_expired:
-        inv.status === 'pending' && new Date(inv.expiration_date).getTime() < now,
-    }));
+    const enriched = (invites ?? [])
+      // Hide homeowner (customer) invites from managers without a customer
+      // permission; owners/admins and customer-permitted managers see all.
+      .filter((inv) => canSeeHomeownerInvites || inv.role !== 'homeowner')
+      .map((inv) => ({
+        ...inv,
+        is_expired:
+          inv.status === 'pending' && new Date(inv.expiration_date).getTime() < now,
+      }));
 
     return NextResponse.json({ success: true, invites: enriched }, { status: 200 });
   } catch (error) {

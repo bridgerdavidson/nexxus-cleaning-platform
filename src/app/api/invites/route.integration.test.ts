@@ -1,12 +1,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { GET } from './route';
 import { callRoute, bearerHeader } from '../../../../tests/helpers/auth';
 import {
   withTestOrg,
   addOwnerToOrg,
+  addManagerToOrg,
   type TestOrgFixture,
   type OwnerMemberHandle,
+  type ManagerMemberHandle,
 } from '../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../tests/helpers/supabase';
 
 /**
  * Regression: an org OWNER (organization_members.role = 'owner') must be able to
@@ -67,5 +71,72 @@ describe('GET /api/invites (owner authorization)', () => {
       headers: bearerHeader(org.cleaner.accessToken),
     });
     expect(status).toBe(403);
+  });
+});
+
+/**
+ * Homeowner (customer) invites must not leak to a manager who can manage cleaners
+ * but has no customer permission — they would otherwise read customer email
+ * addresses through this list. Managers with a customer permission see them.
+ */
+describe('GET /api/invites (homeowner row visibility)', () => {
+  let org: TestOrgFixture | null = null;
+  let manager: ManagerMemberHandle | null = null;
+
+  afterEach(async () => {
+    await manager?.cleanup();
+    await org?.cleanup();
+    manager = null;
+    org = null;
+  });
+
+  const url = (organizationId: string) =>
+    `http://test.local/api/invites?organizationId=${organizationId}`;
+
+  async function seedCleanerAndHomeownerInvites(organizationId: string, invitedBy: string) {
+    const db = createTestSupabaseClient();
+    const uniq = randomUUID().slice(0, 8);
+    const { error } = await db.from('invites').insert([
+      { organization_id: organizationId, email: `cleaner-inv-${uniq}@test.local`, role: 'cleaner', status: 'pending', invited_by: invitedBy },
+      { organization_id: organizationId, email: `home-inv-${uniq}@test.local`, role: 'homeowner', status: 'pending', invited_by: invitedBy },
+    ]);
+    if (error) throw new Error(`seed invites failed: ${error.message}`);
+  }
+
+  it('hides homeowner invites from a manager without customer permission', async () => {
+    org = await withTestOrg();
+    await seedCleanerAndHomeownerInvites(org.organizationId, org.admin.userId);
+    manager = await addManagerToOrg(org.organizationId, { can_manage_cleaners: true });
+
+    const { status, body } = await callRoute<{ success: boolean; invites: { role: string }[] }>(GET, {
+      method: 'GET',
+      url: url(org.organizationId),
+      headers: bearerHeader(manager.accessToken),
+    });
+
+    expect(status).toBe(200);
+    const roles = body.invites.map((i) => i.role);
+    expect(roles).toContain('cleaner');
+    expect(roles).not.toContain('homeowner');
+  });
+
+  it('shows homeowner invites to a manager with can_view_customers', async () => {
+    org = await withTestOrg();
+    await seedCleanerAndHomeownerInvites(org.organizationId, org.admin.userId);
+    manager = await addManagerToOrg(org.organizationId, {
+      can_manage_cleaners: true,
+      can_view_customers: true,
+    });
+
+    const { status, body } = await callRoute<{ success: boolean; invites: { role: string }[] }>(GET, {
+      method: 'GET',
+      url: url(org.organizationId),
+      headers: bearerHeader(manager.accessToken),
+    });
+
+    expect(status).toBe(200);
+    const roles = body.invites.map((i) => i.role);
+    expect(roles).toContain('cleaner');
+    expect(roles).toContain('homeowner');
   });
 });
