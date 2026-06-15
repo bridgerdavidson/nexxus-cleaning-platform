@@ -40,6 +40,8 @@ describe('notificationTab', () => {
       expect(notificationTab('cancellation_fee_failed', role)).toBe('payments');
       expect(notificationTab('self_pay_no_card', role)).toBe('payments');
       expect(notificationTab('cancelled_job_refunded', role)).toBe('payments');
+      expect(notificationTab('refund_failed', role)).toBe('payments');
+      expect(notificationTab('clawback_blocked', role)).toBe('payments');
     }
   });
 });

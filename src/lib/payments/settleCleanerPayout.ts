@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { transferGroupFor, createPlatformTransfer } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
+import { chargeAmountRefundedCents } from './refundGuards';
 
 export interface SettleResult {
   settled: boolean;
@@ -62,12 +63,15 @@ export async function settleCleanerPayout(
   // cleaner payout could never self-heal. Skip the tenant leg once it's already recorded.
   const { data: payRow } = await supabase
     .from('payments')
-    .select('amount, transfer_amount, processing_fee_cents')
+    .select('amount, transfer_amount, processing_fee_cents, status, stripe_payment_intent_id')
     .eq('appointment_id', appointmentId)
     .eq('payment_type', 'revenue')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  const paymentRow = payRow as
+    | { status: string | null; stripe_payment_intent_id: string | null }
+    | null;
   const tenantAlreadyTransferred =
     (payRow as { transfer_amount: number | null } | null)?.transfer_amount != null;
 
@@ -80,13 +84,45 @@ export async function settleCleanerPayout(
   }
   if (capturedTotalCents <= 0) return { settled: false, reason: 'nothing_captured' };
 
+  // Money that already went BACK to the payer must never be split out (audit H2). A refund can
+  // land before settlement (out-of-band Dashboard refund, or charge.refunded delivered ahead of
+  // payment_intent.succeeded); the transfer-reversal path no-ops then because there are no
+  // transfers yet, so settlement itself has to shrink to what's left. Stripe is the source of
+  // truth; if it can't be read, the DB's terminal 'refunded' still blocks a known-refunded row.
+  let refundedCents = await chargeAmountRefundedCents({
+    platformChargeId,
+    paymentIntentId: paymentRow?.stripe_payment_intent_id ?? null,
+  });
+  if (refundedCents == null) {
+    refundedCents = paymentRow?.status === 'refunded' ? capturedTotalCents : 0;
+  }
+  if (refundedCents >= capturedTotalCents) {
+    // Fully refunded before settlement: nothing to distribute. Retire any retryable payout row
+    // so the failed-payout sweep stops re-selecting it.
+    await supabase
+      .from('payouts')
+      .update({ status: 'reversed', reversed_at: new Date().toISOString() })
+      .eq('appointment_id', appointmentId)
+      .in('status', ['pending', 'failed']);
+    await recordPaymentEvent(supabase, {
+      appointmentId,
+      organizationId: appt.organization_id,
+      eventType: 'settlement_skipped_refunded',
+      actor: 'webhook',
+      amount: refundedCents,
+      payload: { captured_cents: capturedTotalCents },
+    });
+    return { settled: false, reason: 'fully_refunded' };
+  }
+
   // Distribute only the SERVICE PRICE (captured minus the passed-through fee) — the fee was
   // consumed by Stripe, so splitting on it would overdraw the platform balance. Legacy/no-
-  // passthrough rows (null fee) distribute the full captured amount, unchanged.
+  // passthrough rows (null fee) distribute the full captured amount, unchanged. A PARTIAL
+  // pre-settlement refund shrinks the base the same way: only un-refunded money is split.
   const processingFeeCents = Number(
     (payRow as { processing_fee_cents: number | null } | null)?.processing_fee_cents ?? 0,
   );
-  const splitBaseCents = Math.max(0, capturedTotalCents - processingFeeCents);
+  const splitBaseCents = Math.max(0, capturedTotalCents - processingFeeCents - refundedCents);
 
   // Cleaner payability — never pay the cleaner for a cancelled job (the captured fee compensates
   // the tenant, not the cleaner).
@@ -173,13 +209,53 @@ export async function settleCleanerPayout(
   // over/underpay the cleaner and strand funds (conservation breaks).
   const { data: priorPayoutRow } = await supabase
     .from('payouts')
-    .select('id, amount, payout_percent_snapshot, status')
+    .select('id, amount, payout_percent_snapshot, status, stripe_transfer_id')
     .eq('appointment_id', appointmentId)
     .limit(1)
     .maybeSingle();
   const priorPayout = priorPayoutRow as
-    | { id: string; amount: number | string; payout_percent_snapshot: number | string | null; status: string }
+    | {
+        id: string;
+        amount: number | string;
+        payout_percent_snapshot: number | string | null;
+        status: string;
+        stripe_transfer_id: string | null;
+      }
     | null;
+
+  // Terminal payout states end the cleaner leg here. 'paid'/'bank_paid' = settled (re-running the
+  // transfer with a recomputed amount would collide with the spent idempotency key and falsely
+  // fail the row); 'reversed' = clawed back, never re-paid.
+  if (priorPayout && ['paid', 'bank_paid', 'reversed'].includes(priorPayout.status)) {
+    return { settled: true, reason: 'cleaner_already_settled' };
+  }
+
+  // A retryable row that ALREADY carries a transfer id means the money moved but the row was
+  // never marked paid: a crash between transfer and update, a payout.failed revert, or a legacy
+  // transfer under the old `payout-{id}` idempotency key (audit H4). Re-transferring under the
+  // current `cleaner-payout-{id}` key would double-pay the cleaner — repair the row instead.
+  if (
+    priorPayout &&
+    priorPayout.stripe_transfer_id &&
+    (priorPayout.status === 'pending' || priorPayout.status === 'failed')
+  ) {
+    await supabase
+      .from('payouts')
+      .update({ status: 'paid', paid_at: new Date().toISOString() })
+      .eq('id', priorPayout.id);
+    await recordPaymentEvent(supabase, {
+      appointmentId,
+      organizationId: appt.organization_id,
+      eventType: 'cleaner_payout_repaired',
+      prevStatus: priorPayout.status,
+      newStatus: 'paid',
+      actor: 'webhook',
+      amount: Math.round(Number(priorPayout.amount) * 100),
+      payload: { transfer_id: priorPayout.stripe_transfer_id, source: 'settle-repair' },
+    });
+    return { settled: true, reason: 'payout_repaired' };
+  }
+
   // A carved slice we still owe the cleaner: held ('pending') or a failed transfer. 'paid'/'reversed'
   // are terminal and must never be re-paid.
   const hasCarvedSlice =

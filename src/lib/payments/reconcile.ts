@@ -360,10 +360,16 @@ export async function retryFailedPayouts(
   // 'failed' = a transfer that errored; 'pending' = a cleaner slice HELD because the cleaner wasn't
   // Connect-onboarded at settlement (settleCleanerPayout). Re-running settle is idempotent: it pays
   // the cleaner once they've onboarded, or re-holds otherwise. No other flow writes a 'pending' payout.
+  // A retryable row that already carries a stripe_transfer_id (money moved, possibly under a legacy
+  // `payout-{id}` idempotency key) is deliberately INCLUDED: settle's repair path marks it paid
+  // without re-transferring (audit H4), so the sweep self-heals it. Rows with no
+  // payout_percent_snapshot are excluded — re-settling those would recompute from the CURRENT
+  // percent, which conservation forbids.
   const { data: rows } = await supabase
     .from('payouts')
     .select('id, appointment_id')
     .in('status', ['failed', 'pending'])
+    .not('payout_percent_snapshot', 'is', null)
     .not('appointment_id', 'is', null)
     .limit(batch);
 

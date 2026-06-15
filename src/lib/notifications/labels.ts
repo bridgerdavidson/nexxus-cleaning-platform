@@ -283,6 +283,22 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: Banknote,
       };
 
+    case 'refund_failed':
+      return {
+        title: customer ? `Refund to ${customer} did not go through` : 'A refund did not go through',
+        detail: joinDetail('The customer has not received the money', amount),
+        tone: 'error',
+        icon: AlertTriangle,
+      };
+
+    case 'clawback_blocked':
+      return {
+        title: cleaner ? `Payout recovery needs review for ${cleaner}` : 'Payout recovery needs review',
+        detail: joinDetail('The money already reached their bank', amount),
+        tone: 'warning',
+        icon: AlertTriangle,
+      };
+
     default:
       return FALLBACK;
   }
@@ -309,6 +325,8 @@ const KNOWN_TYPES = new Set<string>([
   'cancellation_fee_failed',
   'self_pay_no_card',
   'cancelled_job_refunded',
+  'refund_failed',
+  'clawback_blocked',
 ]);
 
 /**

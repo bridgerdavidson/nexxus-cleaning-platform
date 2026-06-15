@@ -21,6 +21,8 @@ const EVENT_TYPES: NotificationEventType[] = [
   'cancellation_fee_failed',
   'self_pay_no_card',
   'cancelled_job_refunded',
+  'refund_failed',
+  'clawback_blocked',
 ];
 
 const VALID_TONES: NotificationTone[] = ['success', 'error', 'warning', 'info'];
@@ -166,6 +168,18 @@ describe('describeNotification', () => {
     expect(refunded.title).toBe('Refund issued to Jane Doe');
     expect(refunded.tone).toBe('info');
     expect(describeNotification('cancelled_job_refunded').title).toBe('Refund issued for a cancelled job');
+  });
+
+  it('describes refund_failed and clawback_blocked', () => {
+    const failed = describeNotification('refund_failed', FULL_PAYLOAD);
+    expect(failed.title).toBe('Refund to Jane Doe did not go through');
+    expect(failed.tone).toBe('error');
+    expect(describeNotification('refund_failed').title).toBe('A refund did not go through');
+
+    const blocked = describeNotification('clawback_blocked', FULL_PAYLOAD);
+    expect(blocked.title).toBe('Payout recovery needs review for Wanda Jones');
+    expect(blocked.tone).toBe('warning');
+    expect(describeNotification('clawback_blocked').title).toBe('Payout recovery needs review');
   });
 });
 
