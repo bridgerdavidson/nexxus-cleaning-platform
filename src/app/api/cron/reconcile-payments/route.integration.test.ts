@@ -316,12 +316,15 @@ describe('POST /api/cron/reconcile-payments', () => {
       status: 'completed',
       totalPrice: 100,
     });
+    // Real settle-created rows always carry the percent snapshot; the retry sweep requires it
+    // (a snapshot-less row would re-settle from the CURRENT percent, which conservation forbids).
     await db.from('payouts').insert({
       organization_id: org.organizationId,
       cleaner_id: org.cleaner.userId,
       appointment_id: appt.id,
       amount: 60,
       status: 'failed',
+      payout_percent_snapshot: 60,
     });
 
     const { status, body } = await callRoute<{ failedPayouts: { settled: number } }>(POST, {

@@ -27,7 +27,9 @@ export type NotificationEventType =
   | 'charge_failed'                 // recipient: admins (completion charge declined / needs 3DS)
   | 'cancellation_fee_failed'       // recipient: admins (cancel fee uncollectable or declined)
   | 'self_pay_no_card'              // recipient: admins (self-pay completion, no company card)
-  | 'cancelled_job_refunded';       // recipient: admins (in-flight debit auto-refunded after cancel)
+  | 'cancelled_job_refunded'        // recipient: admins (in-flight debit auto-refunded after cancel)
+  | 'refund_failed'                 // recipient: admins (a refund failed/canceled at Stripe; payer not refunded)
+  | 'clawback_blocked';             // recipient: admins (payout already bank_paid; recovery needs an ops decision)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */
 export type NotificationAudience = 'admin' | 'cleaner' | 'homeowner';
