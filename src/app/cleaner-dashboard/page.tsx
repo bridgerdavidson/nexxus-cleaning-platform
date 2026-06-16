@@ -11,7 +11,6 @@ import {
   MessageCircle,
   DollarSign,
   Clock,
-  CheckCircle,
   Star,
   Loader2,
   Home,
@@ -31,7 +30,6 @@ import {
 } from "lucide-react";
 import {
   useCleanerAppointments,
-  useCleanerStats,
   useCleanerPayouts,
   useCleanerEarningsHistory,
   useCleanerAwaitingPayments,
@@ -181,7 +179,6 @@ function CleanerDashboardInner() {
     error: appointmentsError,
     refetch: refetchAppointments,
   } = useCleanerAppointments();
-  const { stats, loading: statsLoading, error: statsError } = useCleanerStats();
   const {
     conversations,
     loading: conversationsLoading,
@@ -703,23 +700,6 @@ function CleanerDashboardInner() {
     return "Address not available";
   };
 
-  const getTodaysJobs = () => {
-    // Today's scheduled jobs not yet in progress (stats cards use pending/confirmed)
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const today = `${year}-${month}-${day}`;
-
-    return appointments
-      .filter(
-        (appointment) =>
-          appointment.scheduled_date === today &&
-          ["pending", "confirmed"].includes(appointment.status)
-      )
-      .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
-  };
-
   const getUpcomingJobs = () => {
     // Get today's date in local timezone
     const now = new Date();
@@ -844,102 +824,27 @@ function CleanerDashboardInner() {
           className={dashboardHeroCardDesktopClass}
           style={DASHBOARD_HERO_BACKGROUND}
         >
-          <div className="relative flex flex-col gap-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
-                  <Star className="h-3.5 w-3.5" />
-                  Cleaner Dashboard
-                </div>
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
-                  Overview
-                </h2>
-                <p className="mt-2 max-w-2xl text-sm md:text-base text-gray-600">
-                  Manage your cleaning jobs, track your earnings, and stay on top of your schedule.
-                </p>
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700">
+                <Star className="h-3.5 w-3.5" />
+                Cleaner Dashboard
               </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  onClick={() => setActiveTab("jobs")}
-                  className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
-                >
-                  View all jobs
-                </button>
-              </div>
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
+                Overview
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm md:text-base text-gray-600">
+                Manage your cleaning jobs, track your earnings, and stay on top of your schedule.
+              </p>
             </div>
 
-            {/* Responsive Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-primary-100 p-1.5 ring-1 ring-primary-200/70">
-                    <CheckCircle className="h-4 w-4 text-primary-700" />
-                  </span>
-                  Total Jobs
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.totalJobs}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-green-100 p-1.5 ring-1 ring-green-200/70">
-                    <Clock className="h-4 w-4 text-green-700" />
-                  </span>
-                  This Week
-                </div>
-                {statsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
-                    {stats.upcomingJobs}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-emerald-100 p-1.5 ring-1 ring-emerald-200/70">
-                    <DollarSign className="h-4 w-4 text-emerald-700" />
-                  </span>
-                  <span className="truncate">Confirmed Today</span>
-                </div>
-                {appointmentsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
-                    ${getTodaysJobs()
-                      .filter((a) => a.status === "confirmed")
-                      .reduce((sum, a) => sum + Number(a.total_price), 0)
-                      .toFixed(0)}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-xl md:rounded-2xl border border-white/80 bg-white/80 px-4 py-3.5 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-gray-600">
-                  <span className="rounded-lg bg-amber-100 p-1.5 ring-1 ring-amber-200/80">
-                    <DollarSign className="h-4 w-4 text-amber-700" />
-                  </span>
-                  Pending Today
-                </div>
-                {appointmentsLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-                ) : (
-                  <p className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">
-                    ${getTodaysJobs()
-                      .filter((a) => a.status === "pending")
-                      .reduce((sum, a) => sum + Number(a.total_price), 0)
-                      .toFixed(0)}
-                  </p>
-                )}
-              </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setActiveTab("jobs")}
+                className="rounded-xl border border-primary-200 bg-white/90 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50"
+              >
+                View all jobs
+              </button>
             </div>
           </div>
         </div>

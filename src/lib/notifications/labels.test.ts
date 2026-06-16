@@ -25,6 +25,7 @@ const EVENT_TYPES: NotificationEventType[] = [
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
+  'member_joined',
 ];
 
 const VALID_TONES: NotificationTone[] = ['success', 'error', 'warning', 'info'];
@@ -126,6 +127,24 @@ describe('describeNotification', () => {
     const escalated = describeNotification('cleaner_declined', { cleaner_name: 'Wanda Jones' });
     expect(escalated.detail).toBe('Needs a new cleaner');
     expect(escalated.tone).toBe('error');
+  });
+
+  it('words member_joined for a customer vs a team member', () => {
+    const customer = describeNotification('member_joined', {
+      member_name: 'Jane Doe',
+      member_role: 'homeowner',
+    });
+    expect(customer.title).toBe('Jane Doe joined as a customer');
+
+    const teammate = describeNotification('member_joined', {
+      member_name: 'Sam Lee',
+      member_role: 'cleaner',
+    });
+    expect(teammate.title).toBe('Sam Lee joined your team');
+    expect(teammate.detail).toBe('Cleaner');
+
+    // No name -> generic.
+    expect(describeNotification('member_joined').title).toBe('A new team member joined');
   });
 
   it('falls back safely for an unknown / future event type', () => {

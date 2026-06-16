@@ -31,7 +31,8 @@ export type NotificationEventType =
   | 'self_pay_no_card'              // recipient: admins (self-pay completion, no company card)
   | 'cancelled_job_refunded'        // recipient: admins (in-flight debit auto-refunded after cancel)
   | 'refund_failed'                 // recipient: admins (a refund failed/canceled at Stripe; payer not refunded)
-  | 'clawback_blocked';             // recipient: admins (payout already bank_paid; recovery needs an ops decision)
+  | 'clawback_blocked'              // recipient: admins (payout already bank_paid; recovery needs an ops decision)
+  | 'member_joined';                // recipient: admins + managers (someone accepted an invite and joined the org)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */
 export type NotificationAudience = 'admin' | 'cleaner' | 'homeowner';
@@ -54,14 +55,23 @@ export interface NotificationContext {
 
 export interface NotificationEventPayload {
   event_type: NotificationEventType;
-  appointment_id: string;
+  /** Most events are about an appointment; org-level events (e.g. member_joined) have none. */
+  appointment_id?: string | null;
   organization_id: string;
   /**
-   * Explicit recipient. If omitted, the helper fans out to all admins of the
-   * organization (one row per admin). Use the explicit field for cleaner /
-   * homeowner events.
+   * Explicit recipient. If omitted, the helper fans out to the org members
+   * whose role is in `recipient_roles` (one row each). Use the explicit field
+   * for cleaner / homeowner events.
    */
   recipient_user_id?: string;
+  /**
+   * When fanning out (no `recipient_user_id`), which org-member roles receive
+   * the event. Defaults to owners + admins. Pass e.g. ['owner','admin','manager']
+   * to include managers.
+   */
+  recipient_roles?: string[];
+  /** User ids to drop from a fan-out (e.g. the actor who triggered the event). */
+  exclude_user_ids?: string[];
   /** Arbitrary extra data. Stored as JSONB. */
   payload?: Record<string, unknown>;
   /** ISO timestamp for scheduled/deferred events (e.g. deadline reminders). */

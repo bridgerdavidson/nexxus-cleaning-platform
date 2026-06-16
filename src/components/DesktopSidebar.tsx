@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import { LogOut, LucideIcon, User } from "lucide-react";
 
 interface NavigationGroup {
@@ -62,9 +61,9 @@ const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     <aside className="hidden md:flex flex-col fixed left-0 top-0 h-screen w-[260px] bg-gray-50 z-40">
       {/* Logo Section */}
       <div className="p-6 flex justify-center">
-        <Link href="/" className="flex items-center">
+        <div className="flex items-center">
           <div className="text-3xl font-bold text-primary-600">Nexxus</div>
-        </Link>
+        </div>
       </div>
 
       {/* Group Navigation */}

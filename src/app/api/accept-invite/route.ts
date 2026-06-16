@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { verifyAccessToken } from '@/lib/auth/verifyToken';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 
 export async function POST(request: NextRequest) {
   try {
@@ -245,6 +246,18 @@ export async function POST(request: NextRequest) {
       console.error('Failed to mark invite as accepted:', acceptError);
       // Non-fatal — profile is already created; log and continue
     }
+
+    // Notify the org's owners, admins, and managers that a new member joined.
+    // Best-effort (the helper swallows its own errors) and excludes the joiner
+    // themselves from the fan-out so they don't get notified of their own join.
+    const joinerName = `${firstName} ${lastName}`.trim() || email;
+    await recordNotificationEvent(supabaseAdmin, {
+      event_type: 'member_joined',
+      organization_id: organizationId,
+      recipient_roles: ['owner', 'admin', 'manager'],
+      exclude_user_ids: [verified.userId],
+      payload: { audience: 'admin', member_name: joinerName, member_role: role },
+    });
 
     return NextResponse.json({ success: true, role: userProfileRole }, { status: 200 });
 

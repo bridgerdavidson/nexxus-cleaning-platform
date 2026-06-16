@@ -1429,39 +1429,54 @@ export async function updateCustomer(
   }
 }
 
-// Helper function to delete a customer (removes from organization)
-export async function deleteCustomer(customerId: string, organizationId: string) {
-  try {
-    // Remove from organization_members (soft delete - keeps their user profile)
-    const { error } = await supabase
-      .from('organization_members')
-      .delete()
-      .eq('user_id', customerId)
-      .eq('organization_id', organizationId)
-      .eq('role', 'homeowner');
+// Per-customer outcome from the hard-delete route.
+export interface DeleteCustomerResult {
+  id: string;
+  status: 'deleted' | 'blocked' | 'error';
+  reason?: string;
+}
 
-    if (error) throw error;
-    return { success: true };
+// Hard-delete customers via the server route (removes org membership, any
+// pending invite, the user_profile, and the auth user for a clean account;
+// customers with booking/invoice history are blocked, not deleted). The route
+// processes the batch sequentially server-side, so a bulk delete is one request
+// (not N concurrent client deletes, which previously saturated the pool).
+export async function deleteCustomers(customerIds: string[], organizationId: string) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin/delete-customer', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+      },
+      body: JSON.stringify({ organizationId, customerIds }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return { success: false as const, error: data.error || 'Failed to delete customers' };
+    }
+
+    return { success: true as const, results: (data.results ?? []) as DeleteCustomerResult[] };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete customer' };
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : 'Failed to delete customers',
+    };
   }
 }
 
-// Helper function to delete multiple customers
-export async function deleteCustomers(customerIds: string[], organizationId: string) {
-  try {
-    const { error } = await supabase
-      .from('organization_members')
-      .delete()
-      .in('user_id', customerIds)
-      .eq('organization_id', organizationId)
-      .eq('role', 'homeowner');
-
-    if (error) throw error;
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete customers' };
+// Single-customer convenience wrapper over the batch route.
+export async function deleteCustomer(customerId: string, organizationId: string) {
+  const result = await deleteCustomers([customerId], organizationId);
+  if (!result.success) return result;
+  const item = result.results?.[0];
+  if (!item || item.status !== 'deleted') {
+    return { success: false as const, error: item?.reason || 'Customer could not be deleted' };
   }
+  return { success: true as const };
 }
 
 // ==========================================

@@ -18,12 +18,15 @@ import {
   AlertCircle,
   ChevronDown,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AdminCustomer,
   deleteCustomer,
   deleteCustomers,
 } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../contexts/ToastContext";
+import { keys } from "../lib/queryKeys";
 import { useReopenableModalUrl } from "../hooks/useReopenableModalUrl";
 import AddCustomerModal from "./AddCustomerModal";
 import CustomerDetailModal from "./CustomerDetailModal";
@@ -56,6 +59,18 @@ export default function CustomersPage({
   canEdit = true,
 }: CustomersPageProps) {
   const { currentOrganizationId } = useAuth();
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Refresh the customer list + invites after a delete (we remove invite rows
+  // too). Realtime also covers invites, but invalidate for immediate UI sync.
+  const refreshAfterDelete = () => {
+    if (currentOrganizationId) {
+      queryClient.invalidateQueries({ queryKey: keys.customers.byOrg(currentOrganizationId) });
+      queryClient.invalidateQueries({ queryKey: keys.invites.byOrg(currentOrganizationId) });
+    }
+    if (onRefreshCustomers) onRefreshCustomers();
+  };
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -195,9 +210,14 @@ export default function CustomersPage({
         customerId: null,
         customerName: "",
       });
-      if (onRefreshCustomers) onRefreshCustomers();
+      showToast("Customer deleted", { variant: "success" });
+      refreshAfterDelete();
     } else {
-      alert("Failed to delete customer: " + result.error);
+      // Includes the "has bookings/invoices" block reason. Leave the modal open.
+      showToast("Could not delete customer", {
+        description: result.error,
+        variant: "error",
+      });
     }
   };
 
@@ -211,14 +231,35 @@ export default function CustomersPage({
     );
     setIsBulkDeleting(false);
 
-    if (result.success) {
-      setShowBulkDeleteModal(false);
-      setSelectedIds(new Set());
-      setIsSelectMode(false);
-      if (onRefreshCustomers) onRefreshCustomers();
-    } else {
-      alert("Failed to delete customers: " + result.error);
+    if (!result.success) {
+      showToast("Failed to delete customers", {
+        description: result.error,
+        variant: "error",
+      });
+      return;
     }
+
+    const deleted = result.results.filter((r) => r.status === "deleted").length;
+    const blocked = result.results.filter((r) => r.status === "blocked").length;
+    const errored = result.results.filter((r) => r.status === "error").length;
+
+    const parts: string[] = [];
+    if (deleted > 0) parts.push(`${deleted} deleted`);
+    if (blocked > 0) parts.push(`${blocked} kept (has history)`);
+    if (errored > 0) parts.push(`${errored} failed`);
+
+    showToast(
+      deleted > 0 ? "Customers deleted" : "No customers deleted",
+      {
+        description: parts.join(", ") || undefined,
+        variant: deleted > 0 && blocked === 0 && errored === 0 ? "success" : "info",
+      },
+    );
+
+    setShowBulkDeleteModal(false);
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    refreshAfterDelete();
   };
 
   // Customer card click handler
@@ -641,7 +682,7 @@ export default function CustomersPage({
         }
         onConfirm={handleDeleteConfirm}
         title="Delete Customer"
-        message="Are you sure you want to remove this customer from your organization? This will remove their access but preserve their data."
+        message="This permanently deletes the customer and their login. Customers with bookings or invoices are kept and must be cleared first."
         itemName={deleteConfirmModal.customerName}
         isLoading={isDeleting}
       />
@@ -669,10 +710,9 @@ export default function CustomersPage({
 
             <div className="p-6">
               <p className="text-gray-700 mb-6">
-                Are you sure you want to remove {selectedIds.size} selected
-                customer
-                {selectedIds.size !== 1 ? "s" : ""} from your organization? This
-                will remove their access but preserve their data.
+                This permanently deletes {selectedIds.size} selected customer
+                {selectedIds.size !== 1 ? "s" : ""} and their logins. Any with
+                bookings or invoices are kept and must be cleared first.
               </p>
 
               <div className="flex gap-3">
