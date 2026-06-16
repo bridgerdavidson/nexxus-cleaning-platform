@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useCallback, useState } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
 import { ConversationWithDetails, MessageWithDetails } from "../types";
 import { useMessages } from "../hooks/useMessages";
@@ -19,6 +19,12 @@ export default function MessageThread({
   onUnreadCountUpdate,
 }: MessageThreadProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Top sentinel observed to fetch the previous page just before the user
+  // reaches the top of the thread (iOS-style incremental paging).
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  // Scroll-anchor baseline captured before an older-page prepend so the
+  // viewport can be held steady on the message the user is reading.
+  const pendingPrependRef = useRef<{ height: number; top: number } | null>(null);
   // Track if user is near bottom for smart auto-scroll
   const isNearBottomRef = useRef(true);
   // Track previous message count to detect new messages
@@ -35,6 +41,7 @@ export default function MessageThread({
     messages,
     loading,
     hasMore,
+    isLoadingMore,
     messagesEndRef,
     loadMoreMessages,
     addMessage,
@@ -90,6 +97,7 @@ export default function MessageThread({
     loadedImagesRef.current = 0;
     expectedImagesRef.current = 0;
     prevMessageCountRef.current = 0;
+    pendingPrependRef.current = null;
     if (revealTimerRef.current) {
       clearTimeout(revealTimerRef.current);
       revealTimerRef.current = null;
@@ -168,18 +176,66 @@ export default function MessageThread({
     });
   }, [reveal]);
 
-  const handleScroll = () => {
-    // Update scroll position tracking for smart auto-scroll
-    updateScrollPosition();
-
-    if (!scrollContainerRef.current || loading || !hasMore) return;
-
-    const { scrollTop } = scrollContainerRef.current;
-
-    // If scrolled near the top, load more messages
-    if (scrollTop < 100) {
-      loadMoreMessages();
+  // Fetch the previous page and hold the viewport anchored on the message the
+  // user is reading. Capture the scroll metrics BEFORE the prepend; the
+  // useLayoutEffect below restores the position once the older messages render.
+  const handleLoadMore = useCallback(async () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    pendingPrependRef.current = { height: el.scrollHeight, top: el.scrollTop };
+    const added = await loadMoreMessages();
+    if (added === 0) {
+      // Nothing prepended: no height change to compensate for.
+      pendingPrependRef.current = null;
     }
+  }, [loadMoreMessages]);
+
+  // Keep handleLoadMore reachable from the IntersectionObserver without making
+  // it re-subscribe each time the callback identity changes.
+  const handleLoadMoreRef = useRef(handleLoadMore);
+  useEffect(() => {
+    handleLoadMoreRef.current = handleLoadMore;
+  }, [handleLoadMore]);
+
+  // After older messages prepend, restore scrollTop by the exact height added
+  // above the viewport so the thread doesn't jump. Runs before paint
+  // (useLayoutEffect) so the shift is never visible. The append/new-message
+  // path leaves pendingPrependRef null, so it is untouched here.
+  useLayoutEffect(() => {
+    const pending = pendingPrependRef.current;
+    if (!pending) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTop = pending.top + (el.scrollHeight - pending.height);
+    pendingPrependRef.current = null;
+  }, [messages.length]);
+
+  // Observe the top sentinel: once it scrolls within ~200px of the top, fetch
+  // the previous page. Only active after the initial reveal and while there is
+  // more to load. With the anchor restore above, each load pushes the sentinel
+  // back out of view, so paging is one batch per scroll-up (no cascade).
+  useEffect(() => {
+    if (!revealed || !hasMore) return;
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting) {
+          void handleLoadMoreRef.current();
+        }
+      },
+      { root, rootMargin: "200px 0px 0px 0px", threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [revealed, hasMore, conversation?.id]);
+
+  const handleScroll = () => {
+    // Track near-bottom state for smart auto-scroll on new messages. Paging is
+    // driven by the IntersectionObserver above, not a scroll-position check.
+    updateScrollPosition();
   };
 
   const handleSendMessage = async (content: string, attachments: File[]) => {
@@ -321,6 +377,20 @@ export default function MessageThread({
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
           </div>
         )}
+
+        {/* Loading-older indicator, pinned to the top of the visible area while
+            the previous page is fetched. Absolute so it never shifts the thread
+            (it stays out of the scroll flow and the anchor math). */}
+        {revealed && isLoadingMore && (
+          <div className="pointer-events-none absolute top-2 left-0 right-0 z-10 flex justify-center">
+            <span className="inline-flex items-center justify-center rounded-full bg-white/90 p-1.5 shadow-sm">
+              <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+            </span>
+          </div>
+        )}
+
+        {/* Top sentinel: when it scrolls into view the previous page loads. */}
+        <div ref={loadMoreSentinelRef} aria-hidden="true" className="h-px" />
 
         {/* No messages state */}
         {revealed && messages.length === 0 && (
