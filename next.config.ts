@@ -9,6 +9,18 @@ const nextConfig: NextConfig = {
     // your project has type errors.
     ignoreBuildErrors: true,
   },
+  // The marketing landing page is gone (invite-only product). Send the domain
+  // root straight to the login page. Temporary (307) on purpose, not a cached
+  // permanent redirect, so this stays easy to revisit.
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/login",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

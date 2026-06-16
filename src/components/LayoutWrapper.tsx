@@ -1,12 +1,10 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AuthProvider } from '../contexts/AuthContext';
 import { ToastProvider } from '../contexts/ToastContext';
-import Navbar from './Navbar';
 import AuthQueryBridge from './AuthQueryBridge';
 import AuthDebugOverlay from './AuthDebugOverlay';
 import { ImpersonationBanner } from './platform/ImpersonationBanner';
@@ -14,7 +12,6 @@ import { makeQueryClient } from '../lib/queryClient';
 //import { useTabVisibility } from '../hooks/useTabVisibility';
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
   const [queryClient] = useState(() => makeQueryClient());
 
   // Suppress browser extension errors (React DevTools, Redux DevTools, etc.)
@@ -55,16 +52,9 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  // Determine if we're on a dashboard page or a page that manages its own header
-  const isDashboard = pathname?.includes('-dashboard');
-  const isFullScreen =
-    isDashboard ||
-    pathname === '/settings' ||
-    pathname?.startsWith('/settings/') ||
-    pathname?.startsWith('/accept-invite') ||
-    pathname?.startsWith('/forgot-password') ||
-    pathname?.startsWith('/reset-password');
-
+  // The legacy marketing Navbar is gone. Every page is now either full-screen
+  // (auth flows) or owns its own chrome (dashboards, platform owner), so we
+  // render children directly with no shared top bar.
   return (
     <ToastProvider>
       <QueryClientProvider client={queryClient}>
@@ -72,10 +62,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
           <AuthQueryBridge />
           <AuthDebugOverlay />
           <ImpersonationBanner />
-          {!isFullScreen && <Navbar />}
-          <div className={!isFullScreen ? 'pt-16' : ''}>
-            {children}
-          </div>
+          {children}
         </AuthProvider>
         {process.env.NODE_ENV === 'development' && (
           <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
