@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { formatTimeTo12h } from '@/lib/formatTime';
+import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { loadNotificationContext } from '@/lib/notifications/context';
 
 interface AcceptCounterProposalInput {
   appointmentId: string;
@@ -14,12 +15,6 @@ interface AcceptCounterProposalInput {
    * to assign to the appointment (HH:mm). When picking a time, this is ignored.
    */
   windowStartTime?: string;
-}
-
-function formatDateShort(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const twoDigitYear = year % 100;
-  return `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}/${twoDigitYear.toString().padStart(2, '0')}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -51,7 +46,6 @@ export async function POST(request: NextRequest) {
       allowedRoles: ['owner', 'admin', 'manager'],
     });
     if (!auth.ok) return auth.response;
-    const adminUserId = auth.userId;
 
     // Verify the appointment belongs to this org.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
@@ -192,13 +186,23 @@ export async function POST(request: NextRequest) {
       console.error('Error clearing feedback after counter-proposal accept:', deleteErr);
     }
 
-    // Message the cleaner so they see the confirmation in their thread with the admin.
-    await sendMessageToCleaner({
-      organizationId,
-      senderId: adminUserId,
-      recipientId: cleanerId,
+    // Tell the cleaner (via the notification bell) that their proposed time was
+    // accepted and the job is now confirmed. Best-effort; never blocks the response.
+    const cleanerCtx = await loadNotificationContext(supabaseAdmin, {
       appointmentId,
-      content: `I've accepted your alternative time for the appointment on ${formatDateShort(pickedDate)} at ${formatTimeTo12h(pickedTime)}. You're confirmed.`,
+      cleanerId,
+    });
+    await recordNotificationEvent(supabaseAdmin, {
+      event_type: 'cleaner_counter_accepted',
+      appointment_id: appointmentId,
+      organization_id: organizationId,
+      recipient_user_id: cleanerId,
+      payload: {
+        ...cleanerCtx,
+        audience: 'cleaner',
+        scheduled_date: pickedDate,
+        scheduled_time: pickedTime,
+      },
     });
 
     return NextResponse.json({
@@ -213,42 +217,5 @@ export async function POST(request: NextRequest) {
       { success: false, error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
-  }
-}
-
-async function sendMessageToCleaner({
-  organizationId,
-  senderId,
-  recipientId,
-  appointmentId,
-  content,
-}: {
-  organizationId: string;
-  senderId: string;
-  recipientId: string;
-  appointmentId: string;
-  content: string;
-}) {
-  try {
-    const { data: conversationId, error: convError } = await supabaseAdmin.rpc(
-      'get_or_create_conversation',
-      { user1_id: senderId, user2_id: recipientId },
-    );
-    if (convError || !conversationId) {
-      console.error('Error getting/creating conversation:', convError);
-      return;
-    }
-    const { error: messageError } = await supabaseAdmin.from('messages').insert({
-      organization_id: organizationId,
-      conversation_id: conversationId,
-      sender_id: senderId,
-      recipient_id: recipientId,
-      appointment_id: appointmentId,
-      content,
-      is_read: false,
-    });
-    if (messageError) console.error('Error sending message to cleaner:', messageError);
-  } catch (err) {
-    console.error('Error sending message to cleaner:', err);
   }
 }

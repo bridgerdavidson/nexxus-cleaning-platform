@@ -20,7 +20,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../hooks/useAuth";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { updateAppointment } from "../hooks/useAdminData";
+import { updateAppointment, notifyReschedule } from "../hooks/useAdminData";
 import { formatTimeTo12h } from "../lib/formatTime";
 import { computeResponseDeadlineISO } from "../lib/computeResponseDeadline";
 import { findConflicts, findNextAvailableSlot } from "../lib/appointmentConflicts";
@@ -77,12 +77,6 @@ const formatDateLong = (dateStr: string): string => {
   });
 };
 
-const formatDateShort = (dateStr: string): string => {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const twoDigitYear = year % 100;
-  return `${month.toString().padStart(2, "0")}/${day.toString().padStart(2, "0")}/${twoDigitYear.toString().padStart(2, "0")}`;
-};
-
 export default function RescheduleAppointmentModal({
   isOpen,
   onClose,
@@ -90,7 +84,7 @@ export default function RescheduleAppointmentModal({
   appointment,
   organizationId,
 }: RescheduleAppointmentModalProps) {
-  const { user } = useAuth();
+  const { accessToken } = useAuth();
 
   // Form state
   const [scheduledDate, setScheduledDate] = useState("");
@@ -471,34 +465,15 @@ export default function RescheduleAppointmentModal({
         throw new Error(result.error || "Failed to reschedule appointment");
       }
 
-      if (newStatus === "awaiting" && user?.id) {
-        try {
-          const { data: conversationId, error: convError } = await supabase.rpc(
-            "get_or_create_conversation",
-            {
-              user1_id: user.id,
-              user2_id: selectedCleaner.id,
-            },
-          );
-
-          if (!convError && conversationId) {
-            const homeownerName = getHomeownerName();
-            const newDateFormatted = formatDateShort(scheduledDate);
-            const newTimeFormatted = formatTimeTo12h(scheduledTime);
-
-            await supabase.from("messages").insert({
-              organization_id: organizationId,
-              conversation_id: conversationId,
-              sender_id: user.id,
-              recipient_id: selectedCleaner.id,
-              appointment_id: appointment.id,
-              content: `The appointment for ${homeownerName} has been rescheduled to ${newDateFormatted} at ${newTimeFormatted}. Please confirm your availability.`,
-              is_read: false,
-            });
-          }
-        } catch (msgErr) {
-          console.error("Error sending reschedule notification:", msgErr);
-        }
+      if (newStatus === "awaiting") {
+        // Let the assigned cleaner know (via the notification bell) that the
+        // job moved and needs their confirmation. Best-effort; never blocks
+        // the reschedule UI.
+        await notifyReschedule({
+          appointmentId: appointment.id,
+          organizationId,
+          accessToken,
+        });
       }
 
       onRescheduleComplete();

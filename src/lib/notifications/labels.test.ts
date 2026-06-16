@@ -6,6 +6,8 @@ const EVENT_TYPES: NotificationEventType[] = [
   'homeowner_request_submitted',
   'cleaner_assigned',
   'cleaner_force_assigned',
+  'cleaner_counter_accepted',
+  'appointment_rescheduled',
   'cleaner_accepted',
   'cleaner_declined',
   'cleaner_counter_proposed',
@@ -199,6 +201,16 @@ describe('describeNotification', () => {
     expect(blocked.title).toBe('Payout recovery needs review for Wanda Jones');
     expect(blocked.tone).toBe('warning');
     expect(describeNotification('clawback_blocked').title).toBe('Payout recovery needs review');
+  });
+
+  it('describes cleaner_counter_accepted and appointment_rescheduled (cleaner-facing)', () => {
+    const accepted = describeNotification('cleaner_counter_accepted', FULL_PAYLOAD);
+    expect(accepted.title).toBe('Your proposed time was accepted');
+    expect(accepted.tone).toBe('success');
+
+    const rescheduled = describeNotification('appointment_rescheduled', FULL_PAYLOAD);
+    expect(rescheduled.title).toBe('A job was rescheduled');
+    expect(rescheduled.tone).toBe('warning');
   });
 });
 

@@ -1,5 +1,6 @@
 import {
   CalendarPlus,
+  CalendarClock,
   UserCheck,
   CheckCircle,
   XCircle,
@@ -146,6 +147,22 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         detail: joinDetail(property, when),
         tone: 'error',
         icon: AlertTriangle,
+      };
+
+    case 'cleaner_counter_accepted':
+      return {
+        title: 'Your proposed time was accepted',
+        detail: joinDetail(when, property),
+        tone: 'success',
+        icon: CheckCircle,
+      };
+
+    case 'appointment_rescheduled':
+      return {
+        title: 'A job was rescheduled',
+        detail: joinDetail(when, property),
+        tone: 'warning',
+        icon: CalendarClock,
       };
 
     case 'cleaner_counter_proposed': {
@@ -332,6 +349,8 @@ const KNOWN_TYPES = new Set<string>([
   'homeowner_request_submitted',
   'cleaner_assigned',
   'cleaner_force_assigned',
+  'cleaner_counter_accepted',
+  'appointment_rescheduled',
   'cleaner_accepted',
   'cleaner_declined',
   'chain_exhausted',

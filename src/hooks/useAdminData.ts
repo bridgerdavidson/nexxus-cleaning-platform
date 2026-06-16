@@ -2060,3 +2060,28 @@ export async function acceptCounterProposal(args: {
     };
   }
 }
+
+// Client helper: ping the assigned cleaner's notification bell that their job
+// was rescheduled and needs re-confirmation. Posts to
+// /api/appointments/notify-reschedule. Best-effort — the route resolves the
+// cleaner from the appointment and writes a notification_events row; failures
+// are swallowed so the reschedule UI still completes.
+export async function notifyReschedule(args: {
+  appointmentId: string;
+  organizationId: string;
+  accessToken: string | null | undefined;
+}): Promise<void> {
+  try {
+    const { accessToken, ...rest } = args;
+    await fetch('/api/appointments/notify-reschedule', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: accessToken ? `Bearer ${accessToken}` : '',
+      },
+      body: JSON.stringify(rest),
+    });
+  } catch (err) {
+    console.error('Error notifying cleaner of reschedule:', err);
+  }
+}

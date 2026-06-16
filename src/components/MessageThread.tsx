@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useCallback, useState } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
 import { ConversationWithDetails, MessageWithDetails } from "../types";
 import { useMessages } from "../hooks/useMessages";
@@ -21,12 +21,15 @@ export default function MessageThread({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Track if user is near bottom for smart auto-scroll
   const isNearBottomRef = useRef(true);
-  // Track previous conversation to detect conversation changes
-  const prevConversationIdRef = useRef<string | null>(null);
   // Track previous message count to detect new messages
   const prevMessageCountRef = useRef(0);
-  // Ignore scroll-driven load-more while we're programmatically scrolling to bottom (smooth)
-  const isScrollingToBottomRef = useRef(false);
+  // Initial-open reveal gate: hold the thread hidden until its images have
+  // loaded, then show it already pinned to the bottom (no scroll animation).
+  const [revealed, setRevealed] = useState(false);
+  const revealedRef = useRef(false);
+  const expectedImagesRef = useRef(0);
+  const loadedImagesRef = useRef(0);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const {
     messages,
@@ -34,7 +37,6 @@ export default function MessageThread({
     hasMore,
     messagesEndRef,
     loadMoreMessages,
-    markMessagesAsRead,
     addMessage,
   } = useMessages({
     conversationId: conversation?.id || null,
@@ -59,86 +61,118 @@ export default function MessageThread({
     isNearBottomRef.current = checkIfNearBottom();
   }, [checkIfNearBottom]);
 
-  // Scroll to bottom helper
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    if (scrollContainerRef.current) {
-      const scrollHeight = scrollContainerRef.current.scrollHeight;
-      // Guard: Don't scroll if container isn't rendered yet (scrollHeight === 0)
-      if (scrollHeight === 0) return;
-      // Prevent handleScroll from triggering load-more while we animate to bottom
-      if (behavior === "smooth") {
-        isScrollingToBottomRef.current = true;
-        setTimeout(() => {
-          isScrollingToBottomRef.current = false;
-        }, 800);
-      }
-      requestAnimationFrame(() => {
-        if (scrollContainerRef.current) {
-          const targetTop = scrollContainerRef.current.scrollHeight;
-          scrollContainerRef.current.scrollTo({
-            top: targetTop,
-            behavior,
-          });
-        }
-      });
-    }
-  }, []);
-
-  // Each image bubble fires this when an attachment image finishes loading.
-  // Without it the auto-scroll runs before images have intrinsic height, so
-  // the latest image-bearing message ends up below the fold. Only re-pins
-  // when the user was already near the bottom — preserves scroll-up-to-read.
-  const handleImageLoad = useCallback(() => {
-    if (!isNearBottomRef.current) return;
-    if (!scrollContainerRef.current) return;
+  // Jump to the bottom instantly. No smooth behavior anywhere: the animated
+  // scroll used to run before images had height and landed above the fold, so
+  // we removed it in favor of an instant jump + the reveal gate below.
+  const scrollToBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el || el.scrollHeight === 0) return;
     requestAnimationFrame(() => {
-      if (!scrollContainerRef.current) return;
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior: "instant" as ScrollBehavior,
-      });
+      const node = scrollContainerRef.current;
+      if (node) node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
     });
   }, []);
 
-  // Auto-scroll logic:
-  // - Always scroll when switching conversations
-  // - Only scroll on new messages if user is already near bottom
-  useEffect(() => {
-    const conversationChanged = prevConversationIdRef.current !== conversation?.id;
-    const prevCount = prevMessageCountRef.current;
-    const newMessagesArrived = messages.length > prevCount;
-    // Update refs for next comparison
-    prevConversationIdRef.current = conversation?.id || null;
-    prevMessageCountRef.current = messages.length;
-    
-    if (messages.length === 0) return;
-    
-    if (conversationChanged) {
-      // Always scroll to bottom when switching conversations.
-      // Run twice across two frames: the first pass scrolls before cached
-      // images have painted their height; the second pass corrects after they
-      // have. Images that arrive from the network still rely on
-      // handleImageLoad to re-pin.
-      scrollToBottom("instant");
-      isNearBottomRef.current = true;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => scrollToBottom("instant"));
-      });
-    } else if (newMessagesArrived && isNearBottomRef.current) {
-      // Use smooth for scroll effect; isScrollingToBottomRef prevents load-more during animation
-      scrollToBottom("smooth");
+  const reveal = useCallback(() => {
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
     }
-    // If user scrolled up and new messages arrive, don't auto-scroll
-    // This lets them read history without being interrupted
-  }, [conversation?.id, messages.length, scrollToBottom]);
+    scrollToBottom();
+    revealedRef.current = true;
+    setRevealed(true);
+  }, [scrollToBottom]);
+
+  // Reset the reveal gate whenever the conversation changes.
+  useEffect(() => {
+    revealedRef.current = false;
+    setRevealed(false);
+    loadedImagesRef.current = 0;
+    expectedImagesRef.current = 0;
+    prevMessageCountRef.current = 0;
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+    return () => {
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    };
+  }, [conversation?.id]);
+
+  // Initial open: once the first page of messages has loaded, wait for their
+  // images to finish before revealing the thread already pinned to the bottom.
+  // A timeout guards against a slow or broken image hanging the view.
+  useEffect(() => {
+    if (revealedRef.current) return;
+    if (loading) return;
+    if (messages.length === 0) {
+      // Nothing to load or an empty conversation: reveal right away.
+      reveal();
+      return;
+    }
+    const expected = messages.reduce(
+      (n, m) => n + (m.attachments?.length ?? 0),
+      0,
+    );
+    expectedImagesRef.current = expected;
+    isNearBottomRef.current = true;
+    if (expected === 0) {
+      reveal();
+      return;
+    }
+    // Cached images may have fired onLoad before this effect set the count.
+    if (loadedImagesRef.current >= expected) {
+      reveal();
+      return;
+    }
+    // Pin to the current bottom now (behind the loader), then reveal when the
+    // images settle (handleImageLoad) or the safety timeout fires.
+    scrollToBottom();
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    revealTimerRef.current = setTimeout(reveal, 600);
+  }, [conversation?.id, loading, messages, reveal, scrollToBottom]);
+
+  // After the thread is revealed, keep it pinned to the bottom when new
+  // messages arrive and the user is already near the bottom.
+  useEffect(() => {
+    const prevCount = prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+    if (!revealedRef.current) return;
+    if (messages.length > prevCount && isNearBottomRef.current) {
+      scrollToBottom();
+    }
+  }, [messages.length, scrollToBottom]);
+
+  // Each attachment image calls this when it settles (load or error). During
+  // the initial reveal gate it advances the loaded count and reveals as soon as
+  // every image has settled; afterward it re-pins to the bottom so a
+  // late-arriving image doesn't push the latest message below the fold. Only
+  // re-pins when the user is already near the bottom (preserves scroll-up).
+  const handleImageLoad = useCallback(() => {
+    loadedImagesRef.current += 1;
+    if (
+      !revealedRef.current &&
+      expectedImagesRef.current > 0 &&
+      loadedImagesRef.current >= expectedImagesRef.current
+    ) {
+      reveal();
+      return;
+    }
+    if (!revealedRef.current) return;
+    if (!isNearBottomRef.current) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const node = scrollContainerRef.current;
+      if (node) node.scrollTo({ top: node.scrollHeight, behavior: "auto" });
+    });
+  }, [reveal]);
 
   const handleScroll = () => {
     // Update scroll position tracking for smart auto-scroll
     updateScrollPosition();
-    
+
     if (!scrollContainerRef.current || loading || !hasMore) return;
-    // Don't trigger load-more while we're programmatically scrolling to bottom (smooth)
-    if (isScrollingToBottomRef.current) return;
 
     const { scrollTop } = scrollContainerRef.current;
 
@@ -278,17 +312,18 @@ export default function MessageThread({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-6 py-4 bg-white md:bg-gray-50"
+        className="flex-1 overflow-y-auto px-6 py-4 bg-white md:bg-gray-50 relative"
       >
-        {/* Loading state */}
-        {loading && messages.length === 0 && (
-          <div className="flex items-center justify-center py-12">
+        {/* Reveal gate: hold a spinner over the thread until its images have
+            loaded, so it appears already scrolled to the bottom (no animation). */}
+        {!revealed && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white md:bg-gray-50">
             <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
           </div>
         )}
 
         {/* No messages state */}
-        {!loading && messages.length === 0 && (
+        {revealed && messages.length === 0 && (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -299,15 +334,17 @@ export default function MessageThread({
           </div>
         )}
 
-        {/* Messages */}
-        {messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            isSent={message.sender_id === currentUserId}
-            onImageLoad={handleImageLoad}
-          />
-        ))}
+        {/* Messages — rendered while hidden so images can load before reveal. */}
+        <div className={revealed ? "" : "opacity-0"}>
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              isSent={message.sender_id === currentUserId}
+              onImageLoad={handleImageLoad}
+            />
+          ))}
+        </div>
 
         {/* Scroll anchor */}
         <div ref={messagesEndRef} />

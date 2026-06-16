@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { formatTimeTo12h, formatDateShort } from '@/lib/formatTime';
 import { declineReasonLabel, type DeclineReason } from '@/types';
 import { advanceAppointmentRouting } from '@/lib/appointments/advanceRouting';
 import {
@@ -203,13 +202,6 @@ export async function POST(request: NextRequest) {
           .eq('id', pendingLog.id);
       }
 
-      await sendMessageToAdmins({
-        organizationId,
-        senderId: cleanerId,
-        appointmentId,
-        content: `I've confirmed my availability for the appointment on ${formatDateShort(acceptedDate)} at ${formatTimeTo12h(acceptedTime)}. I'm ready to go!`,
-      });
-
       // Notify both the homeowner (their appointment is confirmed) and admins.
       // The responding cleaner is the one accepting; enrich with their name +
       // property so each audience gets a descriptive line.
@@ -388,23 +380,6 @@ export async function POST(request: NextRequest) {
       if (windowsError) console.error('Error inserting suggested windows:', windowsError);
     }
 
-    let messageContent = `I'm not available for the appointment on ${formatDateShort(appointment.scheduled_date as string)} at ${formatTimeTo12h(appointment.scheduled_time as string)}.${
-      reasonText ? `\n\nReason: ${reasonText}` : ''
-    }`;
-    if (action === 'counter_propose' && feedback?.suggestedTimes && feedback.suggestedTimes.length > 0) {
-      messageContent += '\n\nSuggested alternative times:';
-      feedback.suggestedTimes.forEach((st) => {
-        messageContent += `\n- ${formatDateShort(st.date)} at ${formatTimeTo12h(st.time)}`;
-      });
-    }
-
-    await sendMessageToAdmins({
-      organizationId,
-      senderId: cleanerId,
-      appointmentId,
-      content: messageContent,
-    });
-
     // Decline auto-reassigns to the next cleaner regardless of how the
     // appointment was created. Homeowner-initiated requests already have a
     // pending routing_log row from assign-cleaner — close it. Admin-direct
@@ -520,65 +495,6 @@ export async function POST(request: NextRequest) {
       { success: false, error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
-  }
-}
-
-async function sendMessageToAdmins({
-  organizationId,
-  senderId,
-  appointmentId,
-  content,
-}: {
-  organizationId: string;
-  senderId: string;
-  appointmentId: string;
-  content: string;
-}) {
-  try {
-    const { data: adminMembers, error: membersError } = await supabaseAdmin
-      .from('organization_members')
-      .select('user_id')
-      .eq('organization_id', organizationId)
-      .in('role', ['owner', 'admin']);
-
-    if (membersError || !adminMembers || adminMembers.length === 0) {
-      console.error('Could not find admins for organization:', membersError);
-      return;
-    }
-
-    for (const adminMember of adminMembers) {
-      const memberUserId = (adminMember as { user_id: string }).user_id;
-      if (memberUserId === senderId) continue;
-
-      const { data: conversationId, error: convError } = await supabaseAdmin
-        .rpc('get_or_create_conversation', {
-          user1_id: senderId,
-          user2_id: memberUserId,
-        });
-
-      if (convError || !conversationId) {
-        console.error('Error getting/creating conversation:', convError);
-        continue;
-      }
-
-      const { error: messageError } = await supabaseAdmin
-        .from('messages')
-        .insert({
-          organization_id: organizationId,
-          conversation_id: conversationId,
-          sender_id: senderId,
-          recipient_id: memberUserId,
-          appointment_id: appointmentId,
-          content,
-          is_read: false,
-        });
-
-      if (messageError) {
-        console.error('Error sending message to admin:', messageError);
-      }
-    }
-  } catch (err) {
-    console.error('Error sending messages to admins:', err);
   }
 }
 

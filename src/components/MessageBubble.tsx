@@ -6,8 +6,9 @@ import MessageAttachmentsLightbox from "./MessageAttachmentsLightbox";
 interface MessageBubbleProps {
   message: MessageWithDetails;
   isSent: boolean;
-  // Fired once each attachment image finishes loading. Used by MessageThread
-  // to re-pin the scroll to the bottom after layout grows.
+  // Fired once each attachment image settles (load or error). MessageThread
+  // uses it to release the initial reveal gate and to re-pin the scroll to the
+  // bottom after layout grows.
   onImageLoad?: () => void;
 }
 
@@ -58,6 +59,7 @@ export default function MessageBubble({ message, isSent, onImageLoad }: MessageB
                   className="w-full h-auto object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setLightboxIndex(idx)}
                   onLoad={onImageLoad}
+                  onError={onImageLoad}
                 />
               </div>
             ))}

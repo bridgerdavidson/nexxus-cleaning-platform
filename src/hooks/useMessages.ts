@@ -163,10 +163,10 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
           void supabase.from('messages').update({ is_read: true }).eq('id', newMsg.id);
         }
 
-        // Smooth-scroll to the latest message.
+        // Snap to the latest message (no animation).
         if (didEnrichLocally) {
           setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
           }, 50);
         } else {
           // Cold start: cache had no prior messages, so we couldn't reuse a
@@ -194,7 +194,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
               );
             });
             setTimeout(() => {
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
             }, 50);
           })();
         }
@@ -348,7 +348,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
         );
       });
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
       }, 100);
     },
     [queryClient, queryKey]
