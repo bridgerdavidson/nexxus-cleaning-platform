@@ -94,28 +94,6 @@ export interface CleanerPayout {
   } | null;
 }
 
-export interface EarningsPayoutRow {
-  id: string;
-  amount: number;
-  status: 'pending' | 'approved' | 'paid' | 'failed' | 'reversed' | 'bank_paid';
-  paid_at: string | null;
-  bank_paid_at: string | null;
-  reversed_at: string | null;
-  created_at: string;
-  payout_percent_snapshot: number | null;
-  appointment: {
-    id: string;
-    scheduled_date: string;
-    homeowner: {
-      first_name: string;
-      last_name: string;
-    } | null;
-    service_type: {
-      name: string;
-    } | null;
-  } | null;
-}
-
 export interface CleanerPhoto {
   id: string;
   photo_url: string;
@@ -498,94 +476,6 @@ export function useCleanerPayouts() {
   };
 }
 
-/**
- * Payout history filtered by paid_at date range.
- * Changing history period only re-fetches history rows — no Stripe calls.
- */
-export function useCleanerEarningsHistory(startDate: string, endDate: string) {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: keys.cleanerEarnings.history(userId, startDate, endDate),
-    queryFn: async ({ orgId, userId }) => {
-      const { data: payoutsData, error: payoutsError } = await supabase
-        .from('payouts')
-        .select(`
-          id, amount, status, paid_at, bank_paid_at, reversed_at, created_at,
-          payout_percent_snapshot,
-          appointment:appointments(
-            id, scheduled_date,
-            homeowner:user_profiles!homeowner_id(first_name, last_name),
-            service_type:service_types(name)
-          )
-        `)
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .gte('paid_at', `${startDate}T00:00:00`)
-        .lte('paid_at', `${endDate}T23:59:59`)
-        .order('paid_at', { ascending: false });
-
-      if (payoutsError) throw payoutsError;
-
-      return (payoutsData || []).map((p: Record<string, unknown>) => {
-        const apptRaw = p.appointment;
-        let appointment: EarningsPayoutRow['appointment'] = null;
-        if (apptRaw) {
-          const appt = Array.isArray(apptRaw) ? apptRaw[0] : apptRaw;
-          if (appt) {
-            appointment = {
-              id: appt.id as string,
-              scheduled_date: appt.scheduled_date as string,
-              homeowner: Array.isArray(appt.homeowner) ? appt.homeowner[0] : appt.homeowner,
-              service_type: Array.isArray(appt.service_type) ? appt.service_type[0] : appt.service_type,
-            };
-          }
-        }
-        return {
-          id: p.id as string,
-          amount: Number(p.amount),
-          status: p.status as EarningsPayoutRow['status'],
-          paid_at: p.paid_at as string | null,
-          bank_paid_at: p.bank_paid_at as string | null,
-          reversed_at: p.reversed_at as string | null,
-          created_at: p.created_at as string,
-          payout_percent_snapshot: p.payout_percent_snapshot != null ? Number(p.payout_percent_snapshot) : null,
-          appointment,
-        } as EarningsPayoutRow;
-      });
-    },
-  });
-
-  // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven by
-  // approvals + Stripe webhooks on the payouts table. Refresh the cleaner's earnings
-  // history + awaiting list + stats tiles + payouts list so the dashboard updates live.
-  // (Previously lived in the now-removed useCleanerStripeSummary; the embedded Stripe
-  // payouts table is independent, so this is the one subscription that keeps our own
-  // payout-derived sections fresh.)
-  useSupabaseRealtimeSync({
-    channelName: `payouts:cleaner:${userId}`,
-    table: 'payouts',
-    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
-    enabled: !!userId,
-    onEvent: () => ({
-      type: 'invalidate',
-      keys: [
-        ['cleaner-earnings', 'history', userId],
-        ['cleaner-earnings', 'awaiting', userId],
-        keys.stats.cleaner(userId),
-        keys.payouts.byCleaner(userId),
-      ],
-    }),
-  });
-
-  return {
-    payoutHistory: query.data ?? [],
-    loading: query.isLoading,
-    error: query.error?.message ?? null,
-  };
-}
-
 export interface AwaitingPaymentRow {
   id: string;
   /** The cleaner's expected cut once the customer's bank debit clears. */
@@ -668,6 +558,26 @@ export function useCleanerAwaitingPayments() {
         } as AwaitingPaymentRow;
       });
     },
+  });
+
+  // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven by approvals +
+  // Stripe webhooks on the payouts table. A new or changed payout row means a customer payment just
+  // settled, so refresh this awaiting list plus the cleaner's stats tiles. (Relocated here from the
+  // removed earnings-history hook; the embedded Stripe payouts table owns its own data, so this is
+  // the one subscription that keeps our own payout-derived sections fresh.)
+  useSupabaseRealtimeSync({
+    channelName: `payouts:cleaner:${userId}`,
+    table: 'payouts',
+    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [
+        ['cleaner-earnings', 'awaiting', userId],
+        keys.stats.cleaner(userId),
+        keys.payouts.byCleaner(userId),
+      ],
+    }),
   });
 
   return {
