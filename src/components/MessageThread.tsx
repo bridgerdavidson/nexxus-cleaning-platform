@@ -182,6 +182,13 @@ export default function MessageThread({
   const handleLoadMore = useCallback(async () => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    // A non-null pendingPrependRef means a load is already in flight (it stays
+    // set from capture until the layout effect restores the anchor). Bail
+    // before overwriting it: a re-entrant call would otherwise capture a fresh
+    // baseline and then clear it (loadMoreMessages returns 0 under the hook's
+    // re-entrancy guard), stranding the in-flight load with no anchor to
+    // restore and reintroducing the jump.
+    if (pendingPrependRef.current) return;
     pendingPrependRef.current = { height: el.scrollHeight, top: el.scrollTop };
     const added = await loadMoreMessages();
     if (added === 0) {
