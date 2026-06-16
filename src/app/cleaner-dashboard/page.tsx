@@ -24,14 +24,9 @@ import {
   History,
   Briefcase,
   User,
-  AlertCircle,
-  Landmark,
-  ArrowDownToLine,
 } from "lucide-react";
 import {
   useCleanerAppointments,
-  useCleanerPayouts,
-  useCleanerEarningsHistory,
   useCleanerAwaitingPayments,
   updateAppointmentStatus,
 } from "../../hooks/useCleanerData";
@@ -60,7 +55,6 @@ import ServicesPage from "../../components/ServicesPage";
 import ActiveJobPage from "../../components/ActiveJobPage";
 import PendingConfirmationsSection from "../../components/PendingConfirmationsSection";
 import ActiveNowSection from "../../components/ActiveNowSection";
-import { format, startOfWeek, endOfWeek } from "date-fns";
 import StripeConnectionCard from "../../components/StripeConnectionCard";
 import PayoutsSection from "../../components/PayoutsSection";
 import { useStripeConnect } from "../../hooks/useStripeConnect";
@@ -70,78 +64,6 @@ import {
 } from "../../hooks/usePersistedDashboardTab";
 
 type ViewType = "list" | "calendar";
-
-type EarningsRangePreset = {
-  label: string;
-  get: () => { start: string; end: string };
-};
-
-/** Module scope so earnings UI can use stable preset list; `get()` is evaluated when matching. */
-const EARNINGS_RANGE_PRESETS: EarningsRangePreset[] = [
-  {
-    label: "This Week",
-    get: () => {
-      const now = new Date();
-      return {
-        start: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-        end: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      };
-    },
-  },
-  {
-    label: "Last Week",
-    get: () => {
-      const now = new Date();
-      const lastWeek = new Date(now);
-      lastWeek.setDate(now.getDate() - 7);
-      return {
-        start: format(startOfWeek(lastWeek, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-        end: format(endOfWeek(lastWeek, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      };
-    },
-  },
-  {
-    label: "This Month",
-    get: () => {
-      const now = new Date();
-      return {
-        start: format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd"),
-        end: format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd"),
-      };
-    },
-  },
-  {
-    label: "Last 30 Days",
-    get: () => {
-      const now = new Date();
-      const past = new Date(now);
-      past.setDate(now.getDate() - 30);
-      return {
-        start: format(past, "yyyy-MM-dd"),
-        end: format(now, "yyyy-MM-dd"),
-      };
-    },
-  },
-  {
-    label: "Last 90 Days",
-    get: () => {
-      const now = new Date();
-      const past = new Date(now);
-      past.setDate(now.getDate() - 90);
-      return {
-        start: format(past, "yyyy-MM-dd"),
-        end: format(now, "yyyy-MM-dd"),
-      };
-    },
-  },
-  {
-    label: "All Time",
-    get: () => ({
-      start: "2020-01-01",
-      end: format(new Date(), "yyyy-MM-dd"),
-    }),
-  },
-];
 
 function CleanerDashboardInner() {
   const { user, loading, signOut, currentOrganizationId, accessToken, orgStatus, reloadOrganization } = useAuth();
@@ -186,39 +108,10 @@ function CleanerDashboardInner() {
     refetch: refetchConversations,
     updateUnreadCount,
   } = useConversations({ userId: user?.id || "" });
-  const {
-    payouts,
-    loading: payoutsLoading,
-  } = useCleanerPayouts();
-
-  // Payout history date range — defaults to current week (Mon–Sun)
-  const [historyRange, setHistoryRange] = useState(() => {
-    const now = new Date();
-    return {
-      start: format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      end: format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-    };
-  });
-
-  // Independent hooks — each section loads/refreshes on its own
-  const {
-    payoutHistory,
-    loading: historyLoading,
-    error: historyError,
-  } = useCleanerEarningsHistory(historyRange.start, historyRange.end);
-
   const { awaitingPayments } = useCleanerAwaitingPayments();
 
   // Connect status gates the embedded Stripe payouts table in the Earnings tab.
   const { connectStatus } = useStripeConnect();
-
-  const activeHistoryPresetLabel = useMemo(() => {
-    const match = EARNINGS_RANGE_PRESETS.find((p) => {
-      const r = p.get();
-      return r.start === historyRange.start && r.end === historyRange.end;
-    });
-    return match?.label ?? "Custom";
-  }, [historyRange]);
 
   const {
     services,
@@ -1439,225 +1332,64 @@ function CleanerDashboardInner() {
     />
   );
 
-  const payoutStatusLabel = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "In Stripe";
-      case "bank_paid":
-        return "In Bank";
-      case "reversed":
-        return "Reversed";
-      case "failed":
-        return "Failed";
-      case "pending":
-        return "Pending";
-      case "approved":
-        return "Approved";
-      default:
-        return status;
-    }
-  };
-
-  const payoutStatusStyle = (status: string) => {
-    switch (status) {
-      case "bank_paid":
-        return "text-green-700 bg-green-100";
-      case "paid":
-        return "text-blue-700 bg-blue-100";
-      case "pending":
-      case "approved":
-        return "text-yellow-700 bg-yellow-100";
-      case "reversed":
-      case "failed":
-        return "text-red-700 bg-red-100";
-      default:
-        return "text-gray-700 bg-gray-100";
-    }
-  };
-
   const renderEarnings = () => (
     <div className="space-y-6">
       <h2 className="text-4xl font-bold text-gray-900">Earnings & Payouts</h2>
 
-      {historyError ? (
-        <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-          <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Error loading earnings
-          </h3>
-          <p className="text-gray-600">{historyError}</p>
-        </div>
-      ) : (
-        <>
-          {/* Embedded Stripe payouts table — the source of truth for the cleaner's
-              balance, next payout, and what's already landed in their bank. Gated on
-              an active Connect account; the connection card below handles setup when
-              they haven't onboarded yet. */}
-          {connectStatus?.onboarding_complete && (
-            <PayoutsSection variant="cleaner" connected />
-          )}
+      {/* Embedded Stripe payouts table — the source of truth for the cleaner's
+          balance, next payout, and what's already landed in their bank. Gated on
+          an active Connect account; the connection card below handles setup when
+          they haven't onboarded yet. */}
+      {connectStatus?.onboarding_complete && (
+        <PayoutsSection variant="cleaner" connected />
+      )}
 
-          {/* Awaiting customer payment — bank (ACH) debits still clearing the customer's
-              account (Hop 1). The cleaner is paid only once these settle (~4 business days). */}
-          {awaitingPayments.length > 0 && (
-            <div className="card space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Clock className="w-4 h-4 text-amber-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-gray-700">Awaiting customer payment</h3>
-                  <p className="text-xs text-gray-400">
-                    Bank payments clearing from the customer&apos;s account. You&apos;re paid once they
-                    settle (about 4 business days).
+      {/* Awaiting customer payment — bank (ACH) debits still clearing the customer's
+          account (Hop 1). The cleaner is paid only once these settle (~4 business days). */}
+      {awaitingPayments.length > 0 && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Clock className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-700">Awaiting customer payment</h3>
+              <p className="text-xs text-gray-400">
+                Bank payments clearing from the customer&apos;s account. You&apos;re paid once they
+                settle (about 4 business days).
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {awaitingPayments.map((row) => (
+              <div
+                key={row.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {row.appointment?.serviceName ?? "Cleaning"}
+                    {row.appointment?.homeownerName ? ` · ${row.appointment.homeownerName}` : ""}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {row.appointment?.scheduledDate
+                      ? new Date(row.appointment.scheduledDate).toLocaleDateString()
+                      : "Completed"}
+                    {" · "}
+                    <span className="font-medium text-amber-600">Clearing</span>
                   </p>
                 </div>
-              </div>
-              <div className="space-y-2">
-                {awaitingPayments.map((row) => (
-                  <div
-                    key={row.id}
-                    className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {row.appointment?.serviceName ?? "Cleaning"}
-                        {row.appointment?.homeownerName ? ` · ${row.appointment.homeownerName}` : ""}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {row.appointment?.scheduledDate
-                          ? new Date(row.appointment.scheduledDate).toLocaleDateString()
-                          : "Completed"}
-                        {" · "}
-                        <span className="font-medium text-amber-600">Clearing</span>
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                      ${row.cleanerCut.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Payout History */}
-          <div className="card space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-gray-700">Payout History</h3>
-                {!historyLoading && (
-                  <span className="text-xs text-gray-400">
-                    {payoutHistory.length} payout{payoutHistory.length !== 1 ? "s" : ""} in selected period
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {EARNINGS_RANGE_PRESETS.map((preset) => {
-                  const isActive = preset.label === activeHistoryPresetLabel;
-                  return (
-                    <button
-                      key={preset.label}
-                      onClick={() => setHistoryRange(preset.get())}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                        isActive
-                          ? "bg-primary-600 text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <input
-                    type="date"
-                    value={historyRange.start}
-                    onChange={(e) =>
-                      setHistoryRange((prev) => ({ ...prev, start: e.target.value }))
-                    }
-                    className="border border-gray-300 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                  <span>–</span>
-                  <input
-                    type="date"
-                    value={historyRange.end}
-                    onChange={(e) =>
-                      setHistoryRange((prev) => ({ ...prev, end: e.target.value }))
-                    }
-                    className="border border-gray-300 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-600">Loading payouts...</span>
-              </div>
-            ) : payoutHistory.length > 0 ? (
-              <div className="space-y-3">
-                {payoutHistory.map((row) => (
-                  <div
-                    key={row.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-gray-900 truncate">
-                        ${row.amount.toFixed(2)} &mdash;{" "}
-                        {row.appointment?.service_type?.name || "Service"}
-                      </p>
-                      <p className="text-sm text-gray-600 truncate">
-                        {row.appointment?.homeowner
-                          ? `${row.appointment.homeowner.first_name} ${row.appointment.homeowner.last_name}`
-                          : "Customer"}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1">
-                        {row.appointment?.scheduled_date && (
-                          <span className="text-xs text-gray-500">
-                            Job: {new Date(row.appointment.scheduled_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </span>
-                        )}
-                        {row.paid_at && (
-                          <span className="text-xs text-gray-400 flex items-center gap-1">
-                            <ArrowDownToLine className="w-3 h-3" />
-                            {new Date(row.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                          </span>
-                        )}
-                        {row.bank_paid_at && (
-                          <span className="text-xs text-emerald-600 flex items-center gap-1">
-                            <Landmark className="w-3 h-3" />
-                            {new Date(row.bank_paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span
-                      className={`ml-3 flex-shrink-0 px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${payoutStatusStyle(row.status)}`}
-                    >
-                      {payoutStatusLabel(row.status)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <DollarSign className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No payouts in this period
-                </h3>
-                <p className="text-gray-600">
-                  Payouts will appear here once transfers are made for your completed jobs.
+                <p className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                  ${row.cleanerCut.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-            )}
+            ))}
           </div>
-
-          {/* Stripe Connection Status */}
-          <StripeConnectionCard compact />
-        </>
+        </div>
       )}
+
+      {/* Stripe Connection Status */}
+      <StripeConnectionCard compact />
     </div>
   );
 

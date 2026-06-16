@@ -2,6 +2,7 @@
 
 import CleanerStripeConnect from './CleanerStripeConnect';
 import TenantStripeConnect from './TenantStripeConnect';
+import PayoutTimingNotice from './PayoutTimingNotice';
 
 type PayoutsVariant = 'cleaner' | 'tenant';
 
@@ -33,6 +34,7 @@ export default function PayoutsSection({ variant, connected }: PayoutsSectionPro
         <h2 className="text-lg font-bold text-gray-900">{copy.title}</h2>
         <p className="text-sm text-gray-500">{copy.subtitle}</p>
       </div>
+      <PayoutTimingNotice />
       {variant === 'cleaner' ? <CleanerStripeConnect /> : <TenantStripeConnect />}
     </section>
   );
