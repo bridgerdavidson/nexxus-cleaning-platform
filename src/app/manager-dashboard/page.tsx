@@ -1032,9 +1032,9 @@ function ManagerDashboardInner() {
         <main
           className={`${
             activeTab === "messages"
-              ? "p-0 md:p-4 md:sm:p-6 md:lg:p-8"
-              : "p-4 sm:p-6 lg:p-8"
-          } pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8`}
+              ? "p-0 pb-[calc(8rem+env(safe-area-inset-bottom))] md:px-4 lg:px-6 md:py-4"
+              : "p-4 sm:p-6 lg:p-8 pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-8"
+          }`}
         >
           {renderContent()}
         </main>

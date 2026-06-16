@@ -220,7 +220,7 @@ export default function MessagesPage({
   };
 
   return (
-    <div className="flex h-[calc(100dvh-6rem)] md:h-[calc(100dvh-9rem)] overflow-hidden relative md:rounded-2xl md:border md:border-gray-200 md:bg-white md:shadow-sm">
+    <div className="flex h-[calc(100dvh-6rem)] overflow-hidden relative md:rounded-2xl md:border md:border-gray-200 md:bg-white md:shadow-sm">
       {/* Conversation list - left panel */}
       <div
         className={`w-full md:w-96 lg:w-[400px] flex-shrink-0 transition-transform duration-300 ease-in-out ${
