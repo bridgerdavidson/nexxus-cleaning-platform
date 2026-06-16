@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   CreditCard,
   Bell,
+  UserPlus,
   type LucideIcon,
 } from 'lucide-react';
 import { formatTimeTo12h, formatDateShort } from '../formatTime';
@@ -299,6 +300,27 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: AlertTriangle,
       };
 
+    case 'member_joined': {
+      const name = str(payload, 'member_name');
+      const memberRole = str(payload, 'member_role');
+      const isCustomer = memberRole === 'homeowner';
+      const roleText = memberRole
+        ? memberRole.charAt(0).toUpperCase() + memberRole.slice(1)
+        : undefined;
+      return {
+        title: name
+          ? isCustomer
+            ? `${name} joined as a customer`
+            : `${name} joined your team`
+          : isCustomer
+            ? 'A new customer joined'
+            : 'A new team member joined',
+        detail: isCustomer ? undefined : roleText,
+        tone: 'info',
+        icon: UserPlus,
+      };
+    }
+
     default:
       return FALLBACK;
   }
@@ -327,6 +349,7 @@ const KNOWN_TYPES = new Set<string>([
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
+  'member_joined',
 ]);
 
 /**

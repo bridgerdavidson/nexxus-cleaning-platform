@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { X, Users, UserCheck, Loader2, Send, ShieldCheck } from "lucide-react";
+import { X, Users, UserCheck, Loader2, Send, ShieldCheck, Home } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { inviteTeamMember } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
+import { useManagerPermissions } from "../hooks/useManagerPermissions";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useDismissGuard } from "../hooks/useDismissGuard";
 import { useFormDraft } from "../hooks/useFormDraft";
@@ -14,15 +16,32 @@ import { useToast } from "../contexts/ToastContext";
 // Reload-restore: the in-progress invite (email + role) is persisted to sessionStorage so a
 // full page reload survives. A 6h TTL + org check (in the store) keep a stale or cross-tenant
 // draft from resurrecting.
+type InviteRole = "cleaner" | "manager" | "admin" | "homeowner";
+
 interface TeamMemberDraftBody {
   email: string;
-  role: "cleaner" | "manager" | "admin";
+  role: InviteRole;
 }
 
 const INITIAL_TEAM_MEMBER_DRAFT: TeamMemberDraftBody = {
   email: "",
   role: "cleaner",
 };
+
+// All invitable roles, in display order. "Customer" is the user-facing label
+// for the homeowner role (matches the Customers page). The available subset is
+// derived per-caller from their org role + manager permissions below.
+const ROLE_OPTIONS: {
+  value: InviteRole;
+  label: string;
+  Icon: LucideIcon;
+  activeClass: string;
+}[] = [
+  { value: "cleaner", label: "Cleaner", Icon: UserCheck, activeClass: "border-primary-500 bg-primary-50 text-primary-700" },
+  { value: "manager", label: "Manager", Icon: Users, activeClass: "border-primary-500 bg-primary-50 text-primary-700" },
+  { value: "admin", label: "Admin", Icon: ShieldCheck, activeClass: "border-purple-500 bg-purple-50 text-purple-700" },
+  { value: "homeowner", label: "Customer", Icon: Home, activeClass: "border-primary-500 bg-primary-50 text-primary-700" },
+];
 
 const teamMemberDraftStore = createDraftStore<TeamMemberDraftBody>({
   key: "nexxus.teamMemberDraft.v1",
@@ -41,14 +60,44 @@ export default function AddTeamMemberModal({
   onClose,
   onTeamMemberCreated,
 }: AddTeamMemberModalProps) {
-  const { currentOrganizationId, accessToken } = useAuth();
+  const { currentOrganizationId, accessToken, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
   const { showToast } = useToast();
 
   // Lock body scroll when modal is open
   useBodyScrollLock(isOpen);
 
+  // Role options this caller may actually send, mirroring the server's role
+  // ceiling in /api/admin/send-invite: owners/admins can invite anyone up to
+  // admin; a manager can invite a cleaner (with can_manage_cleaners) and/or a
+  // customer (with can_edit_customers), never a manager/admin.
+  const availableRoles = useMemo(() => {
+    if (currentOrgRole === "owner" || currentOrgRole === "admin") {
+      return ROLE_OPTIONS;
+    }
+    if (currentOrgRole === "manager") {
+      return ROLE_OPTIONS.filter(
+        (o) =>
+          (o.value === "cleaner" && permissions?.can_manage_cleaners === true) ||
+          (o.value === "homeowner" && permissions?.can_edit_customers === true),
+      );
+    }
+    return [];
+  }, [currentOrgRole, permissions]);
+  const defaultRole: InviteRole = availableRoles[0]?.value ?? "cleaner";
+
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"cleaner" | "manager" | "admin">("cleaner");
+  const [role, setRole] = useState<InviteRole>("cleaner");
+
+  // Keep `role` valid for this caller. Resets to the first available role when
+  // the current selection isn't permitted, e.g. after a saved draft hydrates a
+  // role the caller can't send, or once async manager permissions resolve.
+  useEffect(() => {
+    if (availableRoles.length === 0) return;
+    if (!availableRoles.some((o) => o.value === role)) {
+      setRole(availableRoles[0].value);
+    }
+  }, [availableRoles, role]);
   const [emailError, setEmailError] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,7 +167,7 @@ export default function AddTeamMemberModal({
 
         // Reset form
         setEmail("");
-        setRole("cleaner");
+        setRole(defaultRole);
         setEmailError("");
         setEmailTouched(false);
         setSubmitError("");
@@ -140,21 +189,21 @@ export default function AddTeamMemberModal({
   };
 
   const isEmailValid = emailRegex.test(email) && email.trim() !== "";
-  const isFormValid = isEmailValid && !isSubmitting;
+  const isFormValid = isEmailValid && !isSubmitting && availableRoles.length > 0;
 
   // Reset form when modal closes
   const handleClose = () => {
     // A deliberate close drops the saved draft (it only exists to survive a reload).
     teamMemberDraftStore.clear();
     setEmail("");
-    setRole("cleaner");
+    setRole(defaultRole);
     setEmailError("");
     setEmailTouched(false);
     setSubmitError("");
     onClose();
   };
 
-  const isDirty = email.trim() !== "" || role !== "cleaner";
+  const isDirty = email.trim() !== "" || role !== defaultRole;
   const guard = useDismissGuard({
     isOpen,
     isDirty,
@@ -236,44 +285,29 @@ export default function AddTeamMemberModal({
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Role
               </label>
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole("cleaner")}
-                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
-                    role === "cleaner"
-                      ? "border-primary-500 bg-primary-50 text-primary-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <UserCheck className="w-5 h-5" />
-                  <span className="font-medium">Cleaner</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("manager")}
-                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
-                    role === "manager"
-                      ? "border-primary-500 bg-primary-50 text-primary-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <Users className="w-5 h-5" />
-                  <span className="font-medium">Manager</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("admin")}
-                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
-                    role === "admin"
-                      ? "border-purple-500 bg-purple-50 text-purple-700"
-                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
-                  }`}
-                >
-                  <ShieldCheck className="w-5 h-5" />
-                  <span className="font-medium">Admin</span>
-                </button>
-              </div>
+              {availableRoles.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  You do not have permission to invite anyone.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {availableRoles.map(({ value, label, Icon, activeClass }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setRole(value)}
+                      className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg border-2 transition-colors ${
+                        role === value
+                          ? activeClass
+                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="font-medium">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Email Field */}

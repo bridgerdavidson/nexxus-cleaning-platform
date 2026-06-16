@@ -22,15 +22,23 @@ export async function recordNotificationEvent(
   event: NotificationEventPayload,
 ): Promise<void> {
   try {
-    const recipients = event.recipient_user_id
+    const resolved = event.recipient_user_id
       ? [event.recipient_user_id]
-      : await resolveOrgAdmins(supabaseAdmin, event.organization_id);
+      : await resolveOrgMembers(
+          supabaseAdmin,
+          event.organization_id,
+          event.recipient_roles ?? ['owner', 'admin'],
+        );
+
+    const recipients = event.exclude_user_ids?.length
+      ? resolved.filter((id) => !event.exclude_user_ids!.includes(id))
+      : resolved;
 
     if (recipients.length === 0) return;
 
     const rows = recipients.map((rid) => ({
       organization_id: event.organization_id,
-      appointment_id: event.appointment_id,
+      appointment_id: event.appointment_id ?? null,
       recipient_user_id: rid,
       event_type: event.event_type,
       payload: event.payload ?? {},
@@ -51,14 +59,15 @@ export async function recordNotificationEvent(
   }
 }
 
-async function resolveOrgAdmins(
+async function resolveOrgMembers(
   supabaseAdmin: SupabaseClient,
   orgId: string,
+  roles: string[],
 ): Promise<string[]> {
   const { data } = await supabaseAdmin
     .from('organization_members')
     .select('user_id')
     .eq('organization_id', orgId)
-    .in('role', ['owner', 'admin']);
+    .in('role', roles);
   return ((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id);
 }
