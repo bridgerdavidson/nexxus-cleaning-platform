@@ -13,6 +13,8 @@ export type NotificationEventType =
   | 'homeowner_request_submitted'  // recipient: admins
   | 'cleaner_assigned'              // recipient: cleaner
   | 'cleaner_force_assigned'        // recipient: cleaner (no confirmation needed)
+  | 'cleaner_counter_accepted'      // recipient: cleaner (admin accepted their proposed time)
+  | 'appointment_rescheduled'       // recipient: cleaner (moved to a new time; must re-confirm)
   | 'cleaner_accepted'              // recipient: homeowner + admins
   | 'cleaner_declined'              // recipient: admins
   | 'cleaner_counter_proposed'      // recipient: admins (one-click accept available)
