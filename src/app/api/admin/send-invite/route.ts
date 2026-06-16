@@ -212,25 +212,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── Supersede any existing pending/creating/expired/failed invites ───────
-    // for this email+org. Replaces the hard block on re-invite; old rows are
-    // kept for audit trail. Including 'expired' and 'failed' here means the
-    // admin "Resend" button stops re-appearing on the old row after refresh
-    // — only the freshly-created invite shows up as the active one.
-    const { error: supersededError } = await supabaseAdmin
-      .from('invites')
-      .update({ status: 'superseded' })
-      .eq('email', normalizedEmail)
-      .eq('organization_id', organizationId)
-      .in('status', ['pending', 'creating', 'expired', 'failed']);
-
-    if (supersededError) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to supersede prior invites: ' + supersededError.message },
-        { status: 500 }
-      );
-    }
-
     // ── Delete the prior incomplete invitee's auth user ──────────────────────
     // Only reached when the existing profile has NO membership in any org and
     // isn't a platform admin (Guard 2 above blocked every real account) — i.e. a
@@ -300,6 +281,31 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // ── Supersede prior invites, then promote the new row to 'pending' ────────
+    // Both run only AFTER the email was sent successfully. Superseding earlier
+    // would brick a still-valid pending invite when a resend fails partway: the
+    // old row would flip to 'superseded' (hitting that branch in accept-invite)
+    // even though no replacement email was sent. The partial unique index
+    // idx_invites_one_pending_per_org_email allows only one 'pending' row per
+    // (org, email), so the old pending row must flip to 'superseded' before we
+    // promote the new row. Exclude the new row itself from the supersede.
+    // Old rows are kept for audit; including 'expired'/'failed' stops a stale
+    // Resend button re-appearing on them.
+    const { error: supersededError } = await supabaseAdmin
+      .from('invites')
+      .update({ status: 'superseded' })
+      .eq('email', normalizedEmail)
+      .eq('organization_id', organizationId)
+      .neq('id', inviteData.id)
+      .in('status', ['pending', 'creating', 'expired', 'failed']);
+
+    if (supersededError) {
+      // The email already went out, so don't fail the request (a 500 here would
+      // tempt a re-send and a duplicate email). Log it; the promote below may
+      // then hit the unique index if an old pending row survived, also logged.
+      console.error('Failed to supersede prior invites:', supersededError);
     }
 
     // ── Promote row to 'pending' now that email was sent successfully ─────────

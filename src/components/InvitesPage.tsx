@@ -11,13 +11,14 @@ import {
   UserCheck,
   Users,
   ShieldCheck,
+  Home,
   Check,
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import AddTeamMemberModal from './AddTeamMemberModal';
 import { useReopenableModalUrl } from '../hooks/useReopenableModalUrl';
 import InviteStatusBadge from './InviteStatusBadge';
-import { getRoleBadgeClasses } from '../lib/roleStyles';
+import { getRoleBadgeClasses, getRoleLabel } from '../lib/roleStyles';
 import type { Invite, InviteDisplayStatus } from '../types';
 
 interface InvitesPageProps {
@@ -44,6 +45,7 @@ const ROLE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   cleaner: UserCheck,
   manager: Users,
   admin: ShieldCheck,
+  homeowner: Home,
 };
 
 function getDisplayStatus(invite: Invite): InviteDisplayStatus {
@@ -197,7 +199,10 @@ export default function InvitesPage({
   const canResendInvite = (invite: Invite): boolean => {
     if (!canResend) return false;
     const ds = getDisplayStatus(invite);
-    return ds === 'failed' || ds === 'expired';
+    // Pending is resendable too: resending supersedes the prior invite and
+    // sends a fresh email (handled by /api/admin/send-invite). 'creating' is
+    // transient and 'accepted'/'superseded' are terminal, so both stay out.
+    return ds === 'pending' || ds === 'failed' || ds === 'expired';
   };
 
   return (
@@ -377,7 +382,7 @@ export default function InvitesPage({
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${rolePill}`}
                         >
                           <RoleIcon className="w-3 h-3" />
-                          {invite.role.charAt(0).toUpperCase() + invite.role.slice(1)}
+                          {getRoleLabel(invite.role)}
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
