@@ -49,7 +49,7 @@ async function enrichMessages(
   })) as MessageWithDetails[];
 }
 
-export function useMessages({ conversationId, userId, limit = 50, onUnreadCountUpdate }: UseMessagesOptions) {
+export function useMessages({ conversationId, userId, limit = 30, onUnreadCountUpdate }: UseMessagesOptions) {
   const queryClient = useQueryClient();
   const queryKey = keys.messages.byConversation(conversationId ?? '');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -58,6 +58,13 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
   // hasMore is tracked separately from the cached data because it's a function
   // of the most-recent fetch, not a property of the cache itself.
   const [hasMore, setHasMore] = useState(false);
+
+  // Re-entrancy guard for older-message paging. loadMoreMessages is async and
+  // was previously unthrottled, so a single scroll near the top fired it on
+  // every scroll event and cascaded back through the whole conversation. The
+  // ref blocks overlapping fetches; isLoadingMore drives the top spinner.
+  const loadingMoreRef = useRef(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const query = useQuery({
     queryKey,
@@ -68,12 +75,18 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async () => {
+      // Refetches (60s interval, tab focus, manual) must NOT collapse a
+      // scrolled-up history back to one page. Fetch at least as many as are
+      // currently loaded so the window the user paged into survives the refresh.
+      const currentCount = queryClient.getQueryData<MessageWithDetails[]>(queryKey)?.length ?? 0;
+      const fetchN = Math.max(limit, currentCount);
+
       const { data: messagesData, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId as string)
         .order('created_at', { ascending: false })
-        .limit(limit);
+        .limit(fetchN);
 
       if (error) throw error;
       if (!messagesData || messagesData.length === 0) {
@@ -83,7 +96,10 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
 
       const enriched = await enrichMessages(messagesData);
       const chronological = [...enriched].reverse();
-      setHasMore(messagesData.length === limit);
+      // A full page means there may be older messages. When refetching a wider
+      // window this can read true even if everything is loaded; loadMoreMessages
+      // self-corrects to false on the next attempt (it fetches and gets none).
+      setHasMore(messagesData.length === fetchN);
       return chronological;
     },
   });
@@ -267,9 +283,12 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     enabled: !!conversationId && !!userId,
   });
 
-  // Reset the "marked as read" guard whenever conversation changes.
+  // Reset the "marked as read" guard and the paging guard whenever the
+  // conversation changes.
   useEffect(() => {
     if (conversationId) hasMarkedAsReadRef.current = null;
+    loadingMoreRef.current = false;
+    setIsLoadingMore(false);
   }, [conversationId]);
 
   const markMessagesAsRead = useCallback(async () => {
@@ -354,34 +373,56 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     [queryClient, queryKey]
   );
 
-  // Cursor-based load-more: fetch older messages and prepend to the cache.
-  const loadMoreMessages = useCallback(async () => {
-    if (!conversationId) return;
+  // Cursor-based load-more: fetch one older page and prepend it to the cache.
+  // Returns the number of messages actually prepended so the caller can anchor
+  // the scroll position (and skip the anchor restore on a no-op). Guarded so
+  // overlapping calls from rapid scroll events can't stack into a cascade.
+  const loadMoreMessages = useCallback(async (): Promise<number> => {
+    if (!conversationId) return 0;
+    if (loadingMoreRef.current) return 0;
+    if (!hasMore) return 0;
     const list = queryClient.getQueryData<MessageWithDetails[]>(queryKey) ?? [];
-    if (list.length === 0) return;
-    const cursor = list[0].created_at;
+    if (list.length === 0) return 0;
 
-    const { data: olderData, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .lt('created_at', cursor)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    try {
+      const cursor = list[0].created_at;
 
-    if (error || !olderData || olderData.length === 0) {
-      setHasMore(false);
-      return;
+      const { data: olderData, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .lt('created_at', cursor)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !olderData || olderData.length === 0) {
+        setHasMore(false);
+        return 0;
+      }
+
+      const enriched = await enrichMessages(olderData);
+      const olderChronological = [...enriched].reverse();
+
+      // Dedupe by id when prepending: identical created_at timestamps or a
+      // raced realtime insert could otherwise double a message.
+      let addedCount = 0;
+      queryClient.setQueryData<MessageWithDetails[]>(queryKey, prev => {
+        const existing = prev ?? [];
+        const existingIds = new Set(existing.map(m => m.id));
+        const fresh = olderChronological.filter(m => !existingIds.has(m.id));
+        addedCount = fresh.length;
+        return fresh.length ? [...fresh, ...existing] : existing;
+      });
+
+      setHasMore(olderData.length === limit);
+      return addedCount;
+    } finally {
+      loadingMoreRef.current = false;
+      setIsLoadingMore(false);
     }
-
-    const enriched = await enrichMessages(olderData);
-    const olderChronological = [...enriched].reverse();
-    queryClient.setQueryData<MessageWithDetails[]>(queryKey, prev => [
-      ...olderChronological,
-      ...(prev ?? []),
-    ]);
-    setHasMore(olderData.length === limit);
-  }, [conversationId, queryClient, queryKey, limit]);
+  }, [conversationId, queryClient, queryKey, limit, hasMore]);
 
   const refetch = useCallback(async () => {
     await query.refetch();
@@ -392,6 +433,7 @@ export function useMessages({ conversationId, userId, limit = 50, onUnreadCountU
     loading: query.isLoading,
     error: query.error?.message ?? null,
     hasMore,
+    isLoadingMore,
     messagesEndRef,
     loadMoreMessages,
     markMessagesAsRead,
