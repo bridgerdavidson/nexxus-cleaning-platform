@@ -79,10 +79,10 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   }, [activeIdx]);
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-x border-gray-200 z-40 rounded-t-2xl shadow-[0_-2px_12px_rgba(0,0,0,0.06)] pb-[env(safe-area-inset-bottom)]">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 pb-[env(safe-area-inset-bottom)]">
       <div
         ref={containerRef}
-        className="relative flex items-center justify-around px-2 py-2 h-[5.125rem]"
+        className="relative flex items-center justify-around px-2 py-2 h-16"
       >
         {/* Sliding active-pill (lifted out of buttons so it can travel) */}
         <span
@@ -106,6 +106,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
                 tabRefs.current[i] = el;
               }}
               onClick={() => onTabChange(tab.id)}
+              aria-current={isActive ? "page" : undefined}
               className={`flex flex-col items-center justify-center w-full min-w-[44px] h-full transition-colors duration-200 relative group ${
                 isActive
                   ? "text-primary-700"
