@@ -1481,14 +1481,17 @@ export default function AddAppointmentModal({
         iOS 26 Safari (Liquid Glass) tints the top safe-area strip by sampling the
         background-color of fixed/sticky elements near the viewport edge. The gold
         header is position:relative and uses a gradient (a background-image, which the
-        sampler ignores), so the strip falls back to white. This fixed, solid-gold
-        strip gives Safari a primary-600 background-color to sample so the status-bar
-        strip matches the header. Sits behind the header (no seam) and unmounts with
+        sampler ignores), so the strip otherwise falls back to white. This fixed strip
+        gives Safari a solid primary-600 background-color to sample so the status-bar
+        strip matches the header. It carries the same gradient as the header (as a
+        background-image over the solid color) and sits on top (z-10) so it reads as a
+        seamless continuation and stays the top-most edge element under either sampling
+        model. pointer-events-none keeps the close button tappable; it unmounts with
         the modal (no lingering tint). See docs/mobile-safari-safe-area-debug-instructions.md.
       */}
       <div
         aria-hidden="true"
-        className="fixed top-0 inset-x-0 h-[env(safe-area-inset-top)] bg-primary-600 pointer-events-none"
+        className="fixed top-0 inset-x-0 h-[env(safe-area-inset-top)] bg-primary-600 bg-gradient-to-r from-primary-600 to-primary-700 pointer-events-none z-10"
       />
       {/* Backdrop */}
       <div
