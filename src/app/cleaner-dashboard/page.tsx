@@ -558,7 +558,7 @@ function CleanerDashboardInner() {
   // Show loading while checking auth or while the org context is still resolving.
   if (loading || !user || orgStatus === "idle" || orgStatus === "loading") {
     return (
-      <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
           <p className="text-gray-600">Loading...</p>
@@ -1422,7 +1422,7 @@ function CleanerDashboardInner() {
   };
 
   return (
-    <div className="min-h-screen bg-white md:bg-gray-100">
+    <div className="min-h-screen bg-gray-100">
       {/* Persistent Desktop Sidebar - Shows Groups */}
       <DesktopSidebar
         tabs={sidebarTabs}
@@ -1469,6 +1469,8 @@ function CleanerDashboardInner() {
         role="cleaner"
         onTabChange={setActiveTab}
         onOpenAppointment={(id) => openAppointment(id)}
+        tabs={mobileNavTabs}
+        activeTab={activeTab}
       />
 
       <MobileNavigation
@@ -1507,7 +1509,7 @@ export default function CleanerDashboard() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center">
+        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
             <p className="text-gray-600">Loading...</p>

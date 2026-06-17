@@ -14,13 +14,18 @@ interface MobileTopBarProps {
    * bell renders the admin's own feed, not the tenant's), matching TopBar.
    */
   showNotifications?: boolean;
+  /** The nav tabs (same array passed to MobileNavigation). Drives the title. */
+  tabs: { id: string; label: string }[];
+  /** The active tab id (same value passed to MobileNavigation). */
+  activeTab: string;
 }
 
 /**
- * Mobile-only floating top bar (md:hidden). Mirrors the bottom nav's visual
- * language (translucent blur, rounded, soft shadow, safe-area inset) so the two
- * read as a matched pair with no hard divider. Left: the Nexxus app mark +
- * wordmark (white-label ready, swap for a tenant asset later). Right: the
+ * Mobile-only top bar (md:hidden). A flush, solid-white system bar separated
+ * from the gray-100 content surface by a single soft hairline (no blur, no
+ * rounded corners, no side borders, no halo shadow) so it reads as one matched
+ * pair with the bottom nav. Left: the Nexxus app mark, plus the wordmark on the
+ * home tab or the active section's title on every other tab. Right: the
  * notification bell, which opens a full-width bottom sheet on tap.
  */
 export default function MobileTopBar({
@@ -28,7 +33,11 @@ export default function MobileTopBar({
   onTabChange,
   onOpenAppointment,
   showNotifications = true,
+  tabs,
+  activeTab,
 }: MobileTopBarProps) {
+  const isHome = tabs.length > 0 && activeTab === tabs[0].id;
+  const activeLabel = tabs.find((t) => t.id === activeTab)?.label ?? "";
   // While the notification sheet is open, hide the whole bar (display:none).
   // iOS samples a fixed bar's background for the status-bar safe-area tint and
   // only unmount/display:none excludes it, so this keeps the safe area matching
@@ -37,21 +46,27 @@ export default function MobileTopBar({
   const [sheetOpen, setSheetOpen] = useState(false);
   return (
     <header
-      className={`md:hidden fixed top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-b border-x border-gray-200 rounded-b-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06)] pt-[env(safe-area-inset-top)] ${
+      className={`md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 pt-[env(safe-area-inset-top)] ${
         sheetOpen ? "hidden" : ""
       }`}
     >
       <div className="flex items-center justify-between px-4 h-14">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Nexxus app mark (gray + gold X). Inline so the brand slot is
               self-contained; swap for a tenant logo when white-label ships. */}
-          <svg viewBox="0 0 64 64" className="w-8 h-8" aria-hidden="true">
+          <svg viewBox="0 0 64 64" className="w-8 h-8 shrink-0" aria-hidden="true">
             <path d="M8 8 L24 8 L40 32 L24 56 L8 56 L24 32 Z" fill="#C2C2C2" />
             <path d="M56 8 L40 8 L24 32 L40 56 L56 56 L40 32 Z" fill="#D8A718" />
           </svg>
-          <span className="text-xl font-extrabold tracking-tight text-primary-600">
-            Nexxus
-          </span>
+          {isHome ? (
+            <span className="text-lg font-bold tracking-tight text-gray-900">
+              Nexxus
+            </span>
+          ) : (
+            <h1 className="text-base font-semibold text-gray-900 truncate">
+              {activeLabel}
+            </h1>
+          )}
         </div>
         {showNotifications && (
           <NotificationBell
