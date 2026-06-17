@@ -8,6 +8,7 @@ import WorkspaceErrorScreen from "../../components/WorkspaceErrorScreen";
 import { useToast } from "../../contexts/ToastContext";
 import { isAppointmentOverdue } from "../../lib/isAppointmentOverdue";
 import {
+  Activity,
   Calendar,
   Users,
   MessageCircle,
@@ -528,7 +529,7 @@ function AdminDashboardInner() {
             onClick={() => setActiveTab("bookings")}
           />
           <StatTile
-            icon={<Loader2 className="w-5 h-5" />}
+            icon={<Activity className="w-5 h-5" />}
             tone="blue"
             label="In progress"
             value={activeJobsAdmin.length}
