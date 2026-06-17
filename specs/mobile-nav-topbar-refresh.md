@@ -4,6 +4,25 @@ Derived from the grill-me session in
 `brainstorming/2026-06-16-mobile-nav-topbar-ui-audit.md` (decisions D1-D9).
 Planning artifact only. No code is written by this document.
 
+> **Post-review revisions (2026-06-17), after seeing it live.** Two decisions were
+> reverted on review and the sections below describe the original plan, not the
+> shipped code:
+> - **D5 (contextual top-bar title) REVERTED.** The active page's title in the top
+>   bar duplicated the title the page body already renders (e.g. admin Bookings
+>   showed "Bookings" twice, stacked). Per `ui-ux-pro-max` rules
+>   `navigation-consistency` (don't change nav content by page) and
+>   `heading-hierarchy` (no duplicate heading per screen), the top bar now shows
+>   the **persistent Nexxus brand lockup on every tab**; the page body owns its
+>   title. The `tabs`/`activeTab` props added to `MobileTopBar` were removed again.
+> - **D6/D9 (sliding gold capsule) REVERTED.** The active-tab indicator is back to
+>   the **original 3px gold sliding pill** under the active icon. The capsule +
+>   icon-box geometry measuring was removed; `MobileNavigation` measures the button
+>   center again (constant `PILL_WIDTH`).
+>
+> Still shipped: D1-D4 (flush solid-white bars, gray-100 surface, hairline, no
+> blur), D7 (near-black wordmark + standardized `primary-600`/white badges), D8
+> (no flag), plus `aria-current="page"` on the active tab and `h-16` nav height.
+
 ## Goal
 
 Make the mobile **top bar** (`MobileTopBar.tsx`) and **bottom nav**

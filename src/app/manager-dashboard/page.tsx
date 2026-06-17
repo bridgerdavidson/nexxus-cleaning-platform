@@ -1063,8 +1063,6 @@ function ManagerDashboardInner() {
           if (intent === "assign") setAssignIntentId(id);
           else openAppointment(id);
         }}
-        tabs={mobileNavTabs}
-        activeTab={activeTab}
       />
 
       {/* Mobile Bottom Navigation - most-used accessible tabs */}

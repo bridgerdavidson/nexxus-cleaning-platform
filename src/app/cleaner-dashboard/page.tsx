@@ -1469,8 +1469,6 @@ function CleanerDashboardInner() {
         role="cleaner"
         onTabChange={setActiveTab}
         onOpenAppointment={(id) => openAppointment(id)}
-        tabs={mobileNavTabs}
-        activeTab={activeTab}
       />
 
       <MobileNavigation

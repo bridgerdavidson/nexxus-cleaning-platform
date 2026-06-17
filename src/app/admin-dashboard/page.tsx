@@ -895,8 +895,6 @@ function AdminDashboardInner() {
           else openAppointment(id);
         }}
         showNotifications={!impersonatingOrgId}
-        tabs={mobileNavTabs}
-        activeTab={activeTab}
       />
 
       {/* Mobile Bottom Navigation - most-used tabs */}

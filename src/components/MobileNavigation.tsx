@@ -19,9 +19,7 @@ interface MobileNavigationProps {
   onMenuClick: () => void;
 }
 
-// Active-tab indicator: a soft gold capsule that slides behind the active icon.
-const CAPSULE_WIDTH = 56;
-const CAPSULE_HEIGHT = 32;
+const PILL_WIDTH = 28;
 const SLIDE_MS = 280;
 const EASE = "cubic-bezier(.22,.61,.36,1)";
 
@@ -36,68 +34,45 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const iconRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [pillStyle, setPillStyle] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-    opacity: number;
-  }>({
+  const [pillStyle, setPillStyle] = useState<{ left: number; width: number; opacity: number }>({
     left: 0,
-    top: 0,
-    width: CAPSULE_WIDTH,
-    height: CAPSULE_HEIGHT,
+    width: PILL_WIDTH,
     opacity: 0,
   });
 
   const activeIdx = visibleTabs.findIndex((t) => t.id === activeTab);
 
-  // Smooth glide: animate the capsule's position behind the active icon.
-  // When the active tab lives in the drawer (not in visibleTabs), hide it.
+  // Smooth glide: animate the pill's left position; width stays constant.
+  // When the active tab lives in the drawer (not in visibleTabs), hide the pill.
   useLayoutEffect(() => {
     if (activeIdx < 0) {
       setPillStyle((prev) => ({ ...prev, opacity: 0 }));
       return;
     }
-    const icon = iconRefs.current[activeIdx];
+    const btn = tabRefs.current[activeIdx];
     const parent = containerRef.current;
-    if (!icon || !parent) return;
+    if (!btn || !parent) return;
 
-    const iconRect = icon.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
     const parentRect = parent.getBoundingClientRect();
-    const centerX = iconRect.left - parentRect.left + iconRect.width / 2;
-    const centerY = iconRect.top - parentRect.top + iconRect.height / 2;
-    setPillStyle({
-      left: centerX - CAPSULE_WIDTH / 2,
-      top: centerY - CAPSULE_HEIGHT / 2,
-      width: CAPSULE_WIDTH,
-      height: CAPSULE_HEIGHT,
-      opacity: 1,
-    });
+    const newCenter = btnRect.left - parentRect.left + btnRect.width / 2;
+    setPillStyle({ left: newCenter - PILL_WIDTH / 2, width: PILL_WIDTH, opacity: 1 });
   }, [activeIdx]);
 
-  // Re-pin capsule on viewport resize (no animation, just snap to new layout).
+  // Re-pin pill on viewport resize (no animation, just snap to new layout).
   useEffect(() => {
     const onResize = () => {
       if (activeIdx < 0) {
         setPillStyle((prev) => ({ ...prev, opacity: 0 }));
         return;
       }
-      const icon = iconRefs.current[activeIdx];
+      const btn = tabRefs.current[activeIdx];
       const parent = containerRef.current;
-      if (!icon || !parent) return;
-      const iconRect = icon.getBoundingClientRect();
+      if (!btn || !parent) return;
+      const btnRect = btn.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
-      const centerX = iconRect.left - parentRect.left + iconRect.width / 2;
-      const centerY = iconRect.top - parentRect.top + iconRect.height / 2;
-      setPillStyle({
-        left: centerX - CAPSULE_WIDTH / 2,
-        top: centerY - CAPSULE_HEIGHT / 2,
-        width: CAPSULE_WIDTH,
-        height: CAPSULE_HEIGHT,
-        opacity: 1,
-      });
+      const center = btnRect.left - parentRect.left + btnRect.width / 2;
+      setPillStyle({ left: center - PILL_WIDTH / 2, width: PILL_WIDTH, opacity: 1 });
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -109,37 +84,17 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
         ref={containerRef}
         className="relative flex items-center justify-around px-2 py-2 h-16"
       >
-        {/* Sliding active-tab indicator (lifted out of buttons so it can travel
-            smoothly between tabs). A soft gold capsule that sits behind the
-            active icon; the icon paints on top (later in DOM order). */}
+        {/* Sliding active-pill (lifted out of buttons so it can travel) */}
         <span
           aria-hidden
-          className="absolute rounded-xl bg-primary-100 will-change-[left,top]"
+          className="absolute bottom-1 h-[3px] rounded-full bg-primary-600 will-change-[left]"
           style={{
             left: `${pillStyle.left}px`,
-            top: `${pillStyle.top}px`,
             width: `${pillStyle.width}px`,
-            height: `${pillStyle.height}px`,
             opacity: pillStyle.opacity,
-            transition: `left ${SLIDE_MS}ms ${EASE}, top ${SLIDE_MS}ms ${EASE}, opacity 200ms ease-out`,
+            transition: `left ${SLIDE_MS}ms ${EASE}, opacity 200ms ease-out`,
           }}
         />
-        {/* ROLLBACK: to restore the 3px sliding underline pill instead of the
-            capsule above, render this span instead, and in BOTH measuring
-            effects use the button's width/center (constant width 28) instead of
-            the icon's box:
-              <span
-                aria-hidden
-                className="absolute bottom-1 h-[3px] rounded-full bg-primary-600 will-change-[left]"
-                style={{
-                  left: `${pillStyle.left}px`,
-                  width: `28px`,
-                  opacity: pillStyle.opacity,
-                  transition: `left ${SLIDE_MS}ms ${EASE}, opacity 200ms ease-out`,
-                }}
-              />
-            i.e. measure tabRefs[activeIdx] (still set below) and set
-            left = btnCenter - 14; top/height go unused. */}
 
         {visibleTabs.map((tab, i) => {
           const Icon = tab.icon;
@@ -158,12 +113,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
                   : "text-gray-500 hover:text-gray-900 active:bg-gray-100/50"
               }`}
             >
-              <div
-                ref={(el) => {
-                  iconRefs.current[i] = el;
-                }}
-                className="relative mb-1"
-              >
+              <div className="relative mb-1">
                 <Icon
                   className={`w-[22px] h-[22px] transition-colors duration-200 ${
                     isActive ? "text-primary-600" : "text-gray-500 group-hover:text-gray-700"

@@ -421,8 +421,6 @@ function HomeownerDashboardInner() {
         role="homeowner"
         onTabChange={handleTabChange}
         onOpenAppointment={(id) => openAppointment(id)}
-        tabs={mobileNavTabs}
-        activeTab={activeTab}
       />
 
       <MobileNavigation
