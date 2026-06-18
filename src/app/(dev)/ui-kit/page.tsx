@@ -15,6 +15,8 @@ import { StatsSection } from './sections/stats-section'
 import { FeedbackSection } from './sections/feedback-section'
 import { TableSection } from './sections/table-section'
 import { DialogSection } from './sections/dialog-section'
+import { SheetSection } from './sections/sheet-section'
+import { MenusSection } from './sections/menus-section'
 
 export default function UiKitPage() {
   return (
@@ -43,6 +45,8 @@ export default function UiKitPage() {
         <FeedbackSection />
         <TableSection />
         <DialogSection />
+        <SheetSection />
+        <MenusSection />
       </div>
     </div>
   )
