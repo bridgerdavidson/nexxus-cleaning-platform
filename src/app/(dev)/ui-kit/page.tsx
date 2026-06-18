@@ -13,6 +13,7 @@ import { BadgesSection } from './sections/badges-section'
 import { AvatarsSection } from './sections/avatars-section'
 import { StatsSection } from './sections/stats-section'
 import { FeedbackSection } from './sections/feedback-section'
+import { TableSection } from './sections/table-section'
 
 export default function UiKitPage() {
   return (
@@ -39,6 +40,7 @@ export default function UiKitPage() {
         <AvatarsSection />
         <StatsSection />
         <FeedbackSection />
+        <TableSection />
       </div>
     </div>
   )
