@@ -266,7 +266,7 @@ export default function NotificationBell({ onOpenNotification, variant = "dropdo
         {unreadCount > 0 && (
           <span
             aria-hidden
-            className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-500 text-gray-900 text-[10px] font-bold leading-none flex items-center justify-center border-2 border-white tabular-nums"
+            className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-600 text-white text-[10px] font-bold leading-none flex items-center justify-center border-2 border-white tabular-nums"
           >
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>

@@ -1477,6 +1477,22 @@ export default function AddAppointmentModal({
       ref={overlayScrollRef}
       className="fixed inset-0 z-[300] flex"
     >
+      {/*
+        iOS 26 Safari (Liquid Glass) tints the top safe-area strip by sampling the
+        background-color of fixed/sticky elements near the viewport edge. The gold
+        header is position:relative and uses a gradient (a background-image, which the
+        sampler ignores), so the strip otherwise falls back to white. This fixed strip
+        gives Safari a solid primary-600 background-color to sample so the status-bar
+        strip matches the header. It carries the same gradient as the header (as a
+        background-image over the solid color) and sits on top (z-10) so it reads as a
+        seamless continuation and stays the top-most edge element under either sampling
+        model. pointer-events-none keeps the close button tappable; it unmounts with
+        the modal (no lingering tint). See docs/mobile-safari-safe-area-debug-instructions.md.
+      */}
+      <div
+        aria-hidden="true"
+        className="fixed top-0 inset-x-0 h-[env(safe-area-inset-top)] bg-primary-600 bg-gradient-to-r from-primary-600 to-primary-700 pointer-events-none z-10"
+      />
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
@@ -1571,7 +1587,7 @@ export default function AddAppointmentModal({
                       <h3 className="text-lg font-semibold text-gray-900 mb-3">
                         Who pays for this cleaning?
                       </h3>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button
                           type="button"
                           onClick={() => {
@@ -1589,11 +1605,11 @@ export default function AddAppointmentModal({
                           }`}
                         >
                           <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
                                 <User className="w-5 h-5 text-primary-600" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="font-medium text-gray-900">
                                   A homeowner
                                 </p>
