@@ -20,6 +20,8 @@ import { MenusSection } from './sections/menus-section'
 import { PopoverSection } from './sections/popover-section'
 import { ToastSection } from './sections/toast-section'
 import { ConfirmSection } from './sections/confirm-section'
+import { TabsSection } from './sections/tabs-section'
+import { NavSection } from './sections/nav-section'
 
 export default function UiKitPage() {
   return (
@@ -53,6 +55,8 @@ export default function UiKitPage() {
         <PopoverSection />
         <ToastSection />
         <ConfirmSection />
+        <TabsSection />
+        <NavSection />
       </div>
     </div>
   )
