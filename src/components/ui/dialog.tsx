@@ -51,6 +51,7 @@ const DialogContent = React.forwardRef<
     >
       {children}
       <DialogPrimitive.Close
+        type="button"
         aria-label="Close"
         className={cn(
           'absolute right-4 top-4 rounded-pill p-1.5',

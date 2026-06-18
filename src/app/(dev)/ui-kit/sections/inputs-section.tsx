@@ -40,7 +40,7 @@ export function InputsSection() {
             aria-invalid="true"
             aria-describedby="input-error-hint"
           />
-          <p id="input-error-hint" className="text-sm text-destructive">
+          <p id="input-error-hint" className="text-sm text-critical-700">
             Enter a valid email address.
           </p>
         </div>

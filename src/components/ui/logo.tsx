@@ -41,6 +41,7 @@ export function Logo({ variant = 'full', tone = 'auto', className, priority }: L
       alt="Nexxus"
       {...dims}
       priority={priority}
+      style={{ width: 'auto', height: 'auto' }}
       className={cn('h-10 w-auto select-none', className)}
     />
   )
