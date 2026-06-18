@@ -5,7 +5,6 @@ import { Button, type ButtonProps } from './button'
 
 export interface IconButtonProps extends Omit<ButtonProps, 'size'> {
   'aria-label': string
-  size?: 'default' | 'sm' | 'lg'
 }
 
 const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
