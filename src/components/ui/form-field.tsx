@@ -15,13 +15,20 @@ export interface FormFieldProps {
 
 export function FormField({ label, htmlFor, helper, error, required, className, children }: FormFieldProps) {
   const describedBy = error ? `${htmlFor}-error` : helper ? `${htmlFor}-helper` : undefined
+  const control =
+    React.isValidElement(children) && (describedBy || error)
+      ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+          'aria-describedby': [(children as React.ReactElement<Record<string, unknown>>).props['aria-describedby'], describedBy].filter(Boolean).join(' ') || undefined,
+          ...(error ? { 'aria-invalid': true } : {}),
+        })
+      : children
   return (
     <div className={cn('grid gap-2', className)}>
       <Label htmlFor={htmlFor}>
         {label}
         {required ? <span className="ml-0.5 text-destructive" aria-hidden>*</span> : null}
       </Label>
-      <div aria-describedby={describedBy}>{children}</div>
+      {control}
       {error ? (
         <p id={`${htmlFor}-error`} role="alert" className="text-sm font-medium text-destructive">{error}</p>
       ) : helper ? (

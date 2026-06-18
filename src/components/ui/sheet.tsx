@@ -61,6 +61,7 @@ const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
+        'redesign-overlay',
         'fixed z-50 flex flex-col',
         'bg-popover text-popover-foreground shadow-soft-lg',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',

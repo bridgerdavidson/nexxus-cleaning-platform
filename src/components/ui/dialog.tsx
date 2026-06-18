@@ -37,6 +37,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
+        'redesign-overlay',
         'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
         'rounded-card border border-border bg-popover p-6 text-popover-foreground shadow-soft-lg',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',

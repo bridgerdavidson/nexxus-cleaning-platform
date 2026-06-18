@@ -498,6 +498,12 @@ nav.sticky {
   color: hsl(var(--foreground));
 }
 
+/* Portaled overlays (Dialog/Sheet/Popover/Select/Dropdown/Tooltip/Toast) render
+   under document.body, outside .redesign. This gives them the redesign font. */
+.redesign-overlay {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
 /* Tabular numerals for money/tables/timers/stats. */
 .tnum {
   font-feature-settings: "tnum" 1;
@@ -508,7 +514,11 @@ nav.sticky {
 @media (prefers-reduced-motion: reduce) {
   .redesign *,
   .redesign *::before,
-  .redesign *::after {
+  .redesign *::after,
+  .redesign-overlay,
+  .redesign-overlay *,
+  .redesign-overlay *::before,
+  .redesign-overlay *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

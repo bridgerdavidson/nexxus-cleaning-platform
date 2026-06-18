@@ -180,6 +180,7 @@ export function Toaster({ position = 'top-right' }: { position?: Position }) {
   return createPortal(
     <div
       className={cn(
+        'redesign-overlay',
         'pointer-events-none fixed z-[100] flex w-full max-w-[420px] flex-col gap-3 p-4',
         positionClasses[position],
       )}
