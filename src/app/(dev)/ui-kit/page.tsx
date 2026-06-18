@@ -2,6 +2,7 @@
 'use client'
 
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { BrandSection } from './sections/brand-section'
 
 export default function UiKitPage() {
   return (
@@ -17,8 +18,7 @@ export default function UiKitPage() {
       </header>
 
       <div className="grid gap-16">
-        {/* Sections appended here as components land (Tasks 9-29). */}
-        <p className="text-sm text-muted-foreground">Sections render here as primitives are built.</p>
+        <BrandSection />
       </div>
     </div>
   )
