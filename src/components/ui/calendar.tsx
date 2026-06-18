@@ -109,12 +109,9 @@ function Calendar({
         ),
         range_middle: cn("rounded-none", defaultClassNames.range_middle),
         range_end: cn("bg-accent rounded-r-md", defaultClassNames.range_end),
-        today: cn(
-          "border border-ring rounded-md data-[selected=true]:rounded-none",
-          defaultClassNames.today
-        ),
+        today: cn(defaultClassNames.today),
         outside: cn(
-          "text-muted-foreground aria-selected:text-muted-foreground",
+          "text-muted-foreground opacity-50 aria-selected:text-muted-foreground",
           defaultClassNames.outside
         ),
         disabled: cn(
@@ -201,12 +198,18 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "rounded-pill data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none data-[range-end=true]:rounded-pill data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-pill group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] [&>span]:text-xs [&>span]:opacity-70",
+        "relative rounded-pill data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[selected-single=true]:font-semibold data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-medium leading-none data-[range-end=true]:rounded-pill data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-pill group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] [&>span]:text-xs [&>span]:opacity-70",
+        modifiers.today && !modifiers.selected && "text-primary font-bold",
         defaultClassNames.day,
         className
       )}
       {...props}
-    />
+    >
+      {props.children}
+      {modifiers.today && !modifiers.selected && (
+        <span className="pointer-events-none absolute bottom-1 left-1/2 size-1 -translate-x-1/2 rounded-full bg-primary" />
+      )}
+    </Button>
   )
 }
 
