@@ -38,7 +38,11 @@
       "Bash(where.exe node *)",
       "PowerShell(irm bun.sh/install.ps1 | iex)",
       "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
-      "Bash(docker info *)"
+      "Bash(docker info *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(node *codex-companion.mjs*)",
+      "mcp__plugin_context-mode_context-mode__ctx_execute"
     ]
   }
 }

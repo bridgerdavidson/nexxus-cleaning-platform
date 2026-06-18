@@ -1,5 +1,4 @@
 // src/app/(dev)/ui-kit/sections/badges-section.tsx
-import * as React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { Section, Specimen } from './section'
