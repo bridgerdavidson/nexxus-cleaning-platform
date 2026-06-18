@@ -20,6 +20,7 @@ import { SheetSection } from './sections/sheet-section'
 import { MenusSection } from './sections/menus-section'
 import { PopoverSection } from './sections/popover-section'
 import { ToastSection } from './sections/toast-section'
+import { Toaster } from '@/components/ui/sonner'
 import { ConfirmSection } from './sections/confirm-section'
 import { TabsSection } from './sections/tabs-section'
 import { NavSection } from './sections/nav-section'
@@ -59,6 +60,7 @@ export default function UiKitPage() {
         <TabsSection />
         <NavSection />
       </div>
+      <Toaster position="top-right" />
     </div>
   )
 }

@@ -8,7 +8,7 @@ import { Section, Specimen } from './section'
 export function ToastSection() {
   return (
     <Section id="toast" title="Toast">
-      <Specimen label="Success, error, and info variants">
+      <Specimen label="Success, error, info, and warning variants">
         <Button
           variant="outline"
           onClick={() => toast.success('Booking saved')}
@@ -24,12 +24,18 @@ export function ToastSection() {
         <Button
           variant="outline"
           onClick={() =>
-            toast('Heads up', {
+            toast.info('Heads up', {
               description: 'The cleaner is on the way.',
             })
           }
         >
           Info toast
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => toast.warning('Card expiring soon')}
+        >
+          Warning toast
         </Button>
       </Specimen>
     </Section>
