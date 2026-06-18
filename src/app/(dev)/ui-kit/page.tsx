@@ -11,6 +11,7 @@ import { DatePickerSection } from './sections/datepicker-section'
 import { CardsSection } from './sections/cards-section'
 import { BadgesSection } from './sections/badges-section'
 import { AvatarsSection } from './sections/avatars-section'
+import { StatsSection } from './sections/stats-section'
 
 export default function UiKitPage() {
   return (
@@ -35,6 +36,7 @@ export default function UiKitPage() {
         <CardsSection />
         <BadgesSection />
         <AvatarsSection />
+        <StatsSection />
       </div>
     </div>
   )
