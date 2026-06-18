@@ -1,7 +1,7 @@
 'use client'
 
 // src/app/(dev)/ui-kit/sections/toast-section.tsx
-import { toast } from '@/components/ui/sonner'
+import { toast } from '@/components/ui/toast'
 import { Button } from '@/components/ui/button'
 import { Section, Specimen } from './section'
 
