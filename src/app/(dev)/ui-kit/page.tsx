@@ -14,6 +14,7 @@ import { AvatarsSection } from './sections/avatars-section'
 import { StatsSection } from './sections/stats-section'
 import { FeedbackSection } from './sections/feedback-section'
 import { TableSection } from './sections/table-section'
+import { DialogSection } from './sections/dialog-section'
 
 export default function UiKitPage() {
   return (
@@ -41,6 +42,7 @@ export default function UiKitPage() {
         <StatsSection />
         <FeedbackSection />
         <TableSection />
+        <DialogSection />
       </div>
     </div>
   )
