@@ -435,3 +435,83 @@ nav.sticky {
 .animate-pulse-subtle {
   animation: pulse-subtle 2s ease-in-out infinite;
 }
+
+/* ============================================================
+   REDESIGN TOKENS (additive). Light = :root, dark = .dark.
+   shadcn HSL-channel convention: consumed as hsl(var(--x)).
+   Source of truth hex is in the trailing comment on each line.
+   ============================================================ */
+:root {
+  /* shadow base (warm near-black, light theme) */
+  --shadow-rgb: 20 18 15;
+
+  --background: 45 20% 96%;        /* #F7F6F3 warm-50 */
+  --foreground: 34 12% 12%;        /* #211E1A warm-900 */
+  --card: 0 0% 100%;               /* #FFFFFF */
+  --card-foreground: 34 12% 12%;   /* #211E1A */
+  --popover: 0 0% 100%;            /* #FFFFFF */
+  --popover-foreground: 34 12% 12%;/* #211E1A */
+  --primary: 221 99% 50%;          /* #0150FC brand-600 */
+  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --secondary: 43 18% 92%;         /* #EFEDE8 warm-100 */
+  --secondary-foreground: 34 12% 12%;/* #211E1A */
+  --muted: 43 18% 92%;             /* #EFEDE8 */
+  --muted-foreground: 37 9% 38%;   /* #6B6459 warm-600 */
+  --accent: 221 100% 97%;          /* #EFF4FF brand-50 */
+  --accent-foreground: 221 99% 40%;/* #0140CC brand-700 */
+  --border: 38 18% 88%;            /* #E6E2DB warm-200 */
+  --input: 38 18% 88%;             /* #E6E2DB */
+  --ring: 221 99% 50%;             /* #0150FC brand-600 */
+  --destructive: 358 75% 59%;      /* #E5484D danger */
+  --destructive-foreground: 0 0% 100%;/* #FFFFFF */
+}
+
+.dark {
+  --shadow-rgb: 0 0 0;             /* pure black base reads stronger on dark */
+
+  --background: 36 11% 9%;         /* #1A1815 */
+  --foreground: 40 23% 95%;        /* #F5F3EF */
+  --card: 40 14% 12%;              /* #24211B */
+  --card-foreground: 40 23% 95%;   /* #F5F3EF */
+  --popover: 40 14% 12%;           /* #24211B */
+  --popover-foreground: 40 23% 95%;/* #F5F3EF */
+  --primary: 225 100% 59%;         /* #2E62FF brand-500 (lifted) */
+  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --secondary: 33 11% 15%;         /* #2C2823 */
+  --secondary-foreground: 40 23% 95%;/* #F5F3EF */
+  --muted: 33 11% 15%;             /* #2C2823 */
+  --muted-foreground: 38 13% 68%;  /* #B8B0A2 */
+  --accent: 33 11% 15%;            /* #2C2823 */
+  --accent-foreground: 223 100% 93%;/* #DCE6FF brand-100 */
+  --border: 37 13% 19%;            /* #38332B */
+  --input: 37 13% 19%;             /* #38332B */
+  --ring: 225 100% 68%;            /* #5C84FF brand-400 */
+  --destructive: 358 86% 64%;      /* #F2555A */
+  --destructive-foreground: 36 11% 9%;/* #1A1815 */
+}
+
+/* Redesign scope: opt-in wrapper. Applies the redesign font + warm canvas
+   without touching the global html/body legacy rules. */
+.redesign {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Tabular numerals for money/tables/timers/stats. */
+.tnum {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respect reduced motion inside the kit. */
+@media (prefers-reduced-motion: reduce) {
+  .redesign *,
+  .redesign *::before,
+  .redesign *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
