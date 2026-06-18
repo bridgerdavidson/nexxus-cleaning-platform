@@ -25,22 +25,32 @@ type ToastOpts = { description?: React.ReactNode; duration?: number }
 // Module-level store
 // ---------------------------------------------------------------------------
 
-let _id = 0
-let _toasts: ToastRecord[] = []
-const _listeners = new Set<(toasts: ToastRecord[]) => void>()
+// Anchor the store on globalThis so that if this module gets instantiated more
+// than once (Turbopack / RSC client-boundary duplication), every copy shares
+// ONE store. Otherwise toast() and <Toaster> can land on separate stores and
+// nothing ever renders.
+type ToastStore = {
+  id: number
+  toasts: ToastRecord[]
+  listeners: Set<(toasts: ToastRecord[]) => void>
+}
+
+const store: ToastStore = ((
+  globalThis as unknown as { __nexxusToastStore?: ToastStore }
+).__nexxusToastStore ??= { id: 0, toasts: [], listeners: new Set() })
 
 function emit() {
-  _listeners.forEach((fn) => fn([..._toasts]))
+  store.listeners.forEach((fn) => fn([...store.toasts]))
 }
 
 function remove(id: number) {
-  _toasts = _toasts.filter((t) => t.id !== id)
+  store.toasts = store.toasts.filter((t) => t.id !== id)
   emit()
 }
 
 function add(partial: Omit<ToastRecord, 'id'>): number {
-  const id = ++_id
-  _toasts = [{ ...partial, id }, ..._toasts]
+  const id = ++store.id
+  store.toasts = [{ ...partial, id }, ...store.toasts]
   emit()
 
   // Skip auto-dismiss when duration is explicitly 0 or Infinity
@@ -153,15 +163,15 @@ const positionClasses: Record<Position, string> = {
 }
 
 export function Toaster({ position = 'top-right' }: { position?: Position }) {
-  const [toasts, setToasts] = useState<ToastRecord[]>([..._toasts])
+  const [toasts, setToasts] = useState<ToastRecord[]>([...store.toasts])
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    setToasts([..._toasts])
-    _listeners.add(setToasts)
+    setToasts([...store.toasts])
+    store.listeners.add(setToasts)
     return () => {
-      _listeners.delete(setToasts)
+      store.listeners.delete(setToasts)
     }
   }, [])
 
