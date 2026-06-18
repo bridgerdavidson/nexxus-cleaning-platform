@@ -12,6 +12,7 @@ import { CardsSection } from './sections/cards-section'
 import { BadgesSection } from './sections/badges-section'
 import { AvatarsSection } from './sections/avatars-section'
 import { StatsSection } from './sections/stats-section'
+import { FeedbackSection } from './sections/feedback-section'
 
 export default function UiKitPage() {
   return (
@@ -37,6 +38,7 @@ export default function UiKitPage() {
         <BadgesSection />
         <AvatarsSection />
         <StatsSection />
+        <FeedbackSection />
       </div>
     </div>
   )
