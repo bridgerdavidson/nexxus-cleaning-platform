@@ -2,6 +2,7 @@
 'use client'
 
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { CanvasToggle } from '@/components/ui/canvas-toggle'
 import { BrandSection } from './sections/brand-section'
 import { ButtonsSection } from './sections/buttons-section'
 import { InputsSection } from './sections/inputs-section'
@@ -33,7 +34,7 @@ export default function UiKitPage() {
             Redesign primitives. Plus Jakarta Sans, warm canvas, brand blue, pillowy shapes. Toggle the theme to verify both.
           </p>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-2"><CanvasToggle /><ThemeToggle /></div>
       </header>
 
       <div className="grid gap-16">
