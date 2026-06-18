@@ -1,7 +1,7 @@
 # Redesign Phase 0 + Phase 1: Design Tokens + Primitive Component Kit
 
 **Date:** 2026-06-17
-**Status:** Approved direction (brainstorm complete). Implementation-ready spec for Phase 0 (tokens) + Phase 1 (primitive kit).
+**Status:** IMPLEMENTED (2026-06-18) and pushed as PR #78 to master. This spec was the approved direction; the build is complete. See the completion summary `docs/superpowers/specs/2026-06-18-redesign-foundation-status.md` for what shipped, decisions, and open items.
 **Parent:** `docs/superpowers/specs/2026-06-08-ui-redesign-strategy-design.md` (Approach 3, foundation-first). This spec is the concrete decomposition of that roadmap's Phase 0 + Phase 1, which it says to brainstorm together because they are tightly coupled and backend-free.
 
 ## Goal

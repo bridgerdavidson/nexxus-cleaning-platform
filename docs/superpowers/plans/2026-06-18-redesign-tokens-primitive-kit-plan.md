@@ -1,5 +1,7 @@
 # Redesign Phase 0 + Phase 1: Tokens + Primitive Kit — Implementation Plan
 
+> **STATUS (2026-06-18): IMPLEMENTED & pushed (PR #78).** This plan is DONE. Steps below were executed via subagent-driven development and tracked in the worktree SDD ledger, not ticked here, so unchecked boxes do NOT mean "not built." See the completion summary: `docs/superpowers/specs/2026-06-18-redesign-foundation-status.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the redesign's brand foundation — design tokens (color, type, shape, motion) plus a complete, accessible primitive component kit and a dev-only `/ui-kit` preview gallery — entirely additive, with zero change to the live legacy UI.
