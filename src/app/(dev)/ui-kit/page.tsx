@@ -4,6 +4,7 @@
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { BrandSection } from './sections/brand-section'
 import { ButtonsSection } from './sections/buttons-section'
+import { InputsSection } from './sections/inputs-section'
 
 export default function UiKitPage() {
   return (
@@ -21,6 +22,7 @@ export default function UiKitPage() {
       <div className="grid gap-16">
         <BrandSection />
         <ButtonsSection />
+        <InputsSection />
       </div>
     </div>
   )
