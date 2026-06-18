@@ -3,7 +3,6 @@
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import { Section, Specimen } from './section'
 
 export function TogglesSection() {
@@ -47,22 +46,22 @@ export function TogglesSection() {
 
           <label className="flex items-center gap-3 min-h-11 cursor-pointer select-none">
             <RadioGroupItem value="weekly" id="rg-weekly" />
-            <Label htmlFor="rg-weekly" className="cursor-pointer font-normal">Weekly</Label>
+            <span className="text-sm text-foreground select-none">Weekly</span>
           </label>
 
           <label className="flex items-center gap-3 min-h-11 cursor-pointer select-none">
             <RadioGroupItem value="biweekly" id="rg-biweekly" />
-            <Label htmlFor="rg-biweekly" className="cursor-pointer font-normal">Biweekly (preselected)</Label>
+            <span className="text-sm text-foreground select-none">Biweekly (preselected)</span>
           </label>
 
           <label className="flex items-center gap-3 min-h-11 cursor-pointer select-none">
             <RadioGroupItem value="monthly" id="rg-monthly" />
-            <Label htmlFor="rg-monthly" className="cursor-pointer font-normal">Monthly</Label>
+            <span className="text-sm text-foreground select-none">Monthly</span>
           </label>
 
           <label className="flex items-center gap-3 min-h-11 cursor-not-allowed select-none opacity-50">
             <RadioGroupItem value="custom" id="rg-custom" disabled />
-            <Label htmlFor="rg-custom" className="cursor-not-allowed font-normal">Custom (disabled)</Label>
+            <span className="text-sm text-foreground select-none">Custom (disabled)</span>
           </label>
 
         </RadioGroup>
