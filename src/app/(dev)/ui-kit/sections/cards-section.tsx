@@ -13,7 +13,7 @@ export function CardsSection() {
       <Specimen label="Today's Jobs (with footer button)">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle>Today's jobs</CardTitle>
+            <CardTitle>Today&apos;s jobs</CardTitle>
             <CardDescription>3 appointments scheduled for today</CardDescription>
           </CardHeader>
           <CardContent>
