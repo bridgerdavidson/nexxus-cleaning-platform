@@ -23,7 +23,7 @@ export function StatTile({ label, value, unit, icon, trend }: StatTileProps) {
         {value}{unit ? <span className="ml-1 text-xl font-bold text-muted-foreground">{unit}</span> : null}
       </p>
       {trend ? (
-        <p className={cn('mt-2 inline-flex items-center gap-1 text-sm font-semibold', up ? 'text-positive-700' : 'text-critical-700')}>
+        <p className={cn('mt-2 inline-flex items-center gap-1 text-sm font-semibold', up ? 'text-positive-700 dark:text-positive' : 'text-critical-700 dark:text-destructive')}>
           {up ? <ArrowUpRight className="size-4" /> : <ArrowDownRight className="size-4" />}
           {trend.label}
         </p>

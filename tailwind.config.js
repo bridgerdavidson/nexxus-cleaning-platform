@@ -52,8 +52,8 @@ module.exports = {
           800: '#322E28', 900: '#211E1A', 950: '#14120F',
         },
         // status ramps (icon/label always accompanies color)
-        positive: { 50: '#E7F7EE', DEFAULT: '#1FAE63', 700: '#12814A' }, // success
-        caution:  { 50: '#FEF3E2', DEFAULT: '#F59E0B', 700: '#B4740B' }, // warning
+        positive: { 50: '#E7F7EE', DEFAULT: '#1FAE63', 700: '#0F7042' }, // success (700 darkened for AA on -50 tint: 5.5:1)
+        caution:  { 50: '#FEF3E2', DEFAULT: '#F59E0B', 700: '#9A6300' }, // warning (700 darkened for AA on -50 tint: 4.6:1)
         critical: { 50: '#FDECEC', DEFAULT: '#E5484D', 700: '#B42A2F' }, // danger
         info:     { 50: '#EAF4FE', DEFAULT: '#3F9DF5', 700: '#1E6FB8' }, // info/sky
 

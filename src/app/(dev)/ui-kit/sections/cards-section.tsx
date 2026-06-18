@@ -23,14 +23,14 @@ export function CardsSection() {
                   <p className="text-sm font-medium">Morning Clean</p>
                   <p className="text-xs text-muted-foreground">9:00 AM - 10:30 AM</p>
                 </div>
-                <span className="inline-block rounded-chip bg-positive/10 px-2 py-1 text-xs font-semibold text-positive">Confirmed</span>
+                <span className="inline-block rounded-chip bg-positive-50 px-2 py-1 text-xs font-semibold text-positive-700">Confirmed</span>
               </div>
               <div className="flex items-center justify-between rounded-control border border-border bg-background p-3">
                 <div>
                   <p className="text-sm font-medium">Deep Clean</p>
                   <p className="text-xs text-muted-foreground">2:00 PM - 4:00 PM</p>
                 </div>
-                <span className="inline-block rounded-chip bg-caution/10 px-2 py-1 text-xs font-semibold text-caution">Pending</span>
+                <span className="inline-block rounded-chip bg-caution-50 px-2 py-1 text-xs font-semibold text-caution-700">Pending</span>
               </div>
             </div>
           </CardContent>

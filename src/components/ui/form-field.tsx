@@ -23,7 +23,7 @@ export function FormField({ label, htmlFor, helper, error, required, className, 
       </Label>
       <div aria-describedby={describedBy}>{children}</div>
       {error ? (
-        <p id={`${htmlFor}-error`} role="alert" className="text-sm font-medium text-critical-700">{error}</p>
+        <p id={`${htmlFor}-error`} role="alert" className="text-sm font-medium text-destructive">{error}</p>
       ) : helper ? (
         <p id={`${htmlFor}-helper`} className="text-sm text-muted-foreground">{helper}</p>
       ) : null}

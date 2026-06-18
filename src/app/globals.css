@@ -462,7 +462,7 @@ nav.sticky {
   --border: 38 18% 88%;            /* #E6E2DB warm-200 */
   --input: 38 18% 88%;             /* #E6E2DB */
   --ring: 221 99% 50%;             /* #0150FC brand-600 */
-  --destructive: 358 75% 59%;      /* #E5484D danger */
+  --destructive: 0 72% 51%;        /* #DC2626 danger (darkened for WCAG AA: white-on label 4.83:1) */
   --destructive-foreground: 0 0% 100%;/* #FFFFFF */
 }
 
