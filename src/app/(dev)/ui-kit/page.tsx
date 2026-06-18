@@ -7,6 +7,7 @@ import { ButtonsSection } from './sections/buttons-section'
 import { InputsSection } from './sections/inputs-section'
 import { SelectSection } from './sections/select-section'
 import { TogglesSection } from './sections/toggles-section'
+import { DatePickerSection } from './sections/datepicker-section'
 
 export default function UiKitPage() {
   return (
@@ -27,6 +28,7 @@ export default function UiKitPage() {
         <InputsSection />
         <SelectSection />
         <TogglesSection />
+        <DatePickerSection />
       </div>
     </div>
   )
