@@ -3,6 +3,7 @@
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { FormField } from '@/components/ui/form-field'
 import { Section, Specimen } from './section'
 
 export function InputsSection() {
@@ -67,6 +68,44 @@ export function InputsSection() {
           <Label htmlFor="textarea-notes">Special requests</Label>
           <Textarea id="textarea-notes" placeholder="Let us know anything useful for the cleaner." />
         </div>
+      </Specimen>
+
+      <Specimen label="FormField - with helper">
+        <FormField
+          htmlFor="ff-phone"
+          label="Phone number"
+          helper="We text you when the cleaner is on the way."
+          className="w-full max-w-sm"
+        >
+          <Input id="ff-phone" type="tel" placeholder="(555) 000-0000" />
+        </FormField>
+      </Specimen>
+
+      <Specimen label="FormField - with error">
+        <FormField
+          htmlFor="ff-email"
+          label="Email"
+          error="Enter a valid email address."
+          className="w-full max-w-sm"
+        >
+          <Input
+            id="ff-email"
+            type="email"
+            defaultValue="bad-email"
+            aria-invalid="true"
+          />
+        </FormField>
+      </Specimen>
+
+      <Specimen label="FormField - required">
+        <FormField
+          htmlFor="ff-name"
+          label="Full name"
+          required
+          className="w-full max-w-sm"
+        >
+          <Input id="ff-name" placeholder="Jane Smith" />
+        </FormField>
       </Specimen>
     </Section>
   )
