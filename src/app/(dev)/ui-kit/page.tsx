@@ -5,6 +5,7 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { BrandSection } from './sections/brand-section'
 import { ButtonsSection } from './sections/buttons-section'
 import { InputsSection } from './sections/inputs-section'
+import { SelectSection } from './sections/select-section'
 
 export default function UiKitPage() {
   return (
@@ -23,6 +24,7 @@ export default function UiKitPage() {
         <BrandSection />
         <ButtonsSection />
         <InputsSection />
+        <SelectSection />
       </div>
     </div>
   )
