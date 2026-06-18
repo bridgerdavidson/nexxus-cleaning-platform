@@ -30,3 +30,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
 }
 
 export { Toaster }
+// Re-export the toast API from the same sonner module instance the Toaster uses,
+// so callers get a single shared toast store (one import surface for the kit).
+export { toast } from "sonner"
