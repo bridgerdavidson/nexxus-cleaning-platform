@@ -3,7 +3,7 @@
 // the wrapper can pass real rows and keep their full type via the generic.
 export interface OverviewAppointment {
   status: string; // 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
-  cleaner_id: string | null;
+  cleaner_id?: string | null; // optional so the real AdminAppointment shape satisfies this constraint
   cleaner_confirmation_status?: string | null; // 'awaiting' | 'approved' | 'rejected'
   scheduled_date: string; // YYYY-MM-DD
   cleaner_availability_feedback?: unknown[] | null;

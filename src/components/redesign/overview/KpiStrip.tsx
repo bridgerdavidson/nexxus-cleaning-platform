@@ -16,7 +16,7 @@ export function KpiStrip({ kpis, loading }: { kpis: OverviewKpis; loading?: bool
     );
   }
 
-  const showRevenue = kpis.canViewPayments && kpis.revenueThisMonthCents != null;
+  const showRevenue = kpis.canViewPayments && kpis.revenueThisMonth != null;
 
   return (
     <>
@@ -26,7 +26,7 @@ export function KpiStrip({ kpis, loading }: { kpis: OverviewKpis; loading?: bool
       <StatTile label="In progress" value={String(kpis.inProgress)} icon={<Activity />} />
       <StatTile label="Awaiting approval" value={String(kpis.awaitingApproval)} icon={<Clock />} />
       {showRevenue ? (
-        <StatTile label="Revenue this month" value={formatUsdCompact(kpis.revenueThisMonthCents as number)} icon={<DollarSign />} />
+        <StatTile label="Revenue this month" value={formatUsdCompact(kpis.revenueThisMonth as number)} icon={<DollarSign />} />
       ) : (
         <StatTile label="Unassigned" value={String(kpis.unassignedCount)} icon={<UserPlus />} />
       )}

@@ -5,8 +5,9 @@ export type OverviewKpis = {
   todayJobs: number;
   inProgress: number;
   awaitingApproval: number;
-  /** null when the viewer lacks can_view_payments (manager); then the 4th tile shows Unassigned. */
-  revenueThisMonthCents: number | null;
+  /** Dollars (the payment_stats RPC returns whole-dollar amounts, like the legacy UI).
+   *  null when the viewer lacks can_view_payments (manager); then the 4th tile shows Unassigned. */
+  revenueThisMonth: number | null;
   unassignedCount: number;
   canViewPayments: boolean;
 };
@@ -20,15 +21,16 @@ export type QueueItem = {
 export type ScheduleItem = { id: string; time: string; title: string };
 export type ActiveItem = { id: string; title: string };
 
-export function formatUsd(cents: number): string {
+/** Amounts are in whole dollars (matches the payment_stats RPC + legacy UI). */
+export function formatUsd(dollars: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
-    Math.round(cents / 100)
+    Math.round(dollars)
   );
 }
 
-export function formatUsdCompact(cents: number): string {
+export function formatUsdCompact(dollars: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 }).format(
-    cents / 100
+    dollars
   );
 }
 

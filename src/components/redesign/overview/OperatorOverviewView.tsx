@@ -31,7 +31,7 @@ export function OperatorOverviewView({
   activeNow,
 }: OperatorOverviewViewProps) {
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
+    <div className="max-w-[1700px] space-y-5">
       {greeting ? (
         <header>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">{greeting}</h1>
