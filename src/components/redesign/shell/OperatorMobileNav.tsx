@@ -49,11 +49,14 @@ export function OperatorMobileNav({
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium",
-                active ? "text-brand-600" : "text-muted-foreground"
+                "relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium",
+                active ? "font-semibold text-brand-600" : "text-muted-foreground"
               )}
             >
-              <Icon className="h-[21px] w-[21px]" aria-hidden />
+              {active && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-7 rounded-full bg-brand-600" aria-hidden />
+              )}
+              <Icon className="h-6 w-6" aria-hidden />
               {item.label}
             </Link>
           );
@@ -61,10 +64,10 @@ export function OperatorMobileNav({
 
         <Sheet>
           <SheetTrigger
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Open menu"
           >
-            <Menu className="h-[21px] w-[21px]" aria-hidden />
+            <Menu className="h-6 w-6" aria-hidden />
             Menu
           </SheetTrigger>
           <SheetContent side="left" className="w-[80%] max-w-[320px] p-0">

@@ -41,10 +41,11 @@ export function OperatorShell({
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background text-foreground">
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} />
         <div className="lg:pl-[56px]">
           <OperatorTopBar onNewBooking={onNewBooking} />
-          <main className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
+          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
         </div>
         <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} />
       </div>

@@ -14,12 +14,12 @@ export interface StatTileProps {
 export function StatTile({ label, value, unit, icon, trend }: StatTileProps) {
   const up = trend?.direction === 'up'
   return (
-    <Card className="p-6">
+    <Card className="p-4 lg:p-6">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</p>
         {icon ? <span className="text-muted-foreground [&_svg]:size-5">{icon}</span> : null}
       </div>
-      <p className="mt-3 text-3xl font-extrabold tracking-tight text-foreground tnum">
+      <p className="mt-2 text-3xl font-extrabold tracking-tight text-foreground tnum">
         {value}{unit ? <span className="ml-1 text-xl font-bold text-muted-foreground">{unit}</span> : null}
       </p>
       {trend ? (

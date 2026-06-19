@@ -44,6 +44,7 @@ export function OperatorRail({ activeId }: { activeId?: string }) {
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
+                  aria-label={item.label}
                   className={cn(
                     "flex items-center gap-[13px] rounded-control px-[9px] py-[9px] text-muted-foreground transition-colors",
                     "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
