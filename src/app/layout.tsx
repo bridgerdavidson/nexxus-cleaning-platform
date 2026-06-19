@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "../components/LayoutWrapper";
 import { APP_BG_COLOR } from "../constants/theme";
@@ -13,6 +13,16 @@ const inter = Inter({
   weight: ["300", "400", "500", "600", "700", "800", "900"],
   display: "swap",
   variable: "--font-inter",
+});
+
+// Redesign font. Self-hosted, exposed as --font-sans. Consumed only inside the
+// .redesign scope (the /ui-kit gallery and, later, the redesign route tree),
+// so legacy UI keeps Inter via --font-inter.
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
@@ -37,7 +47,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${jakarta.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-white">
         <LayoutWrapper>
           {children}

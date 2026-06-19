@@ -435,3 +435,131 @@ nav.sticky {
 .animate-pulse-subtle {
   animation: pulse-subtle 2s ease-in-out infinite;
 }
+
+/* ============================================================
+   REDESIGN TOKENS (additive). Light = :root, dark = .dark.
+   shadcn HSL-channel convention: consumed as hsl(var(--x)).
+   Source of truth hex is in the trailing comment on each line.
+   ============================================================ */
+:root {
+  /* shadow base (warm near-black, light theme) */
+  --shadow-rgb: 20 18 15;
+
+  --background: 45 20% 96%;        /* #F7F6F3 warm-50 */
+  --foreground: 34 12% 12%;        /* #211E1A warm-900 */
+  --card: 0 0% 100%;               /* #FFFFFF */
+  --card-foreground: 34 12% 12%;   /* #211E1A */
+  --popover: 0 0% 100%;            /* #FFFFFF */
+  --popover-foreground: 34 12% 12%;/* #211E1A */
+  --primary: 221 99% 50%;          /* #0150FC brand-600 */
+  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --secondary: 43 18% 92%;         /* #EFEDE8 warm-100 */
+  --secondary-foreground: 34 12% 12%;/* #211E1A */
+  --muted: 43 18% 92%;             /* #EFEDE8 */
+  --muted-foreground: 37 9% 38%;   /* #6B6459 warm-600 */
+  --accent: 221 100% 97%;          /* #EFF4FF brand-50 */
+  --accent-foreground: 221 99% 40%;/* #0140CC brand-700 */
+  --border: 38 18% 88%;            /* #E6E2DB warm-200 */
+  --input: 38 18% 88%;             /* #E6E2DB */
+  --ring: 221 99% 50%;             /* #0150FC brand-600 */
+  --destructive: 0 72% 51%;        /* #DC2626 danger (darkened for WCAG AA: white-on label 4.83:1) */
+  --destructive-foreground: 0 0% 100%;/* #FFFFFF */
+}
+
+.dark {
+  --shadow-rgb: 0 0 0;             /* pure black base reads stronger on dark */
+
+  --background: 36 11% 9%;         /* #1A1815 */
+  --foreground: 40 23% 95%;        /* #F5F3EF */
+  --card: 40 14% 12%;              /* #24211B */
+  --card-foreground: 40 23% 95%;   /* #F5F3EF */
+  --popover: 40 14% 12%;           /* #24211B */
+  --popover-foreground: 40 23% 95%;/* #F5F3EF */
+  --primary: 225 100% 59%;         /* #2E62FF brand-500 (lifted) */
+  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --secondary: 33 11% 15%;         /* #2C2823 */
+  --secondary-foreground: 40 23% 95%;/* #F5F3EF */
+  --muted: 33 11% 15%;             /* #2C2823 */
+  --muted-foreground: 38 13% 68%;  /* #B8B0A2 */
+  --accent: 33 11% 15%;            /* #2C2823 */
+  --accent-foreground: 223 100% 93%;/* #DCE6FF brand-100 */
+  --border: 37 13% 19%;            /* #38332B */
+  --input: 37 13% 19%;             /* #38332B */
+  --ring: 225 100% 68%;            /* #5C84FF brand-400 */
+  --destructive: 358 86% 64%;      /* #F2555A */
+  --destructive-foreground: 36 11% 9%;/* #1A1815 */
+}
+
+/* Redesign scope: opt-in wrapper. Applies the redesign font + warm canvas
+   without touching the global html/body legacy rules. */
+.redesign {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Portaled overlays (Dialog/Sheet/Popover/Select/Dropdown/Tooltip/Toast) render
+   under document.body, outside .redesign. This gives them the redesign font. */
+.redesign-overlay {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Tabular numerals for money/tables/timers/stats. */
+.tnum {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Respect reduced motion inside the kit. */
+@media (prefers-reduced-motion: reduce) {
+  .redesign *,
+  .redesign *::before,
+  .redesign *::after,
+  .redesign-overlay,
+  .redesign-overlay *,
+  .redesign-overlay *::before,
+  .redesign-overlay *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   CANVAS TEMPERATURE TOGGLE (presentation). data-canvas on <html>:
+   "warm" (default base :root/.dark), "slate", "neutral".
+   Overrides only neutral-derived semantic vars; brand/status/accent/ring stay.
+   ============================================================ */
+:root[data-canvas="slate"] {
+  --background: 220 43% 97%; --foreground: 215 51% 11%;
+  --card: 0 0% 100%; --card-foreground: 215 51% 11%;
+  --popover: 0 0% 100%; --popover-foreground: 215 51% 11%;
+  --secondary: 216 42% 95%; --secondary-foreground: 215 51% 11%;
+  --muted: 216 42% 95%; --muted-foreground: 215 19% 35%;
+  --border: 214 32% 91%; --input: 214 32% 91%;
+}
+:root[data-canvas="neutral"] {
+  --background: 240 6% 97%; --foreground: 240 6% 10%;
+  --card: 0 0% 100%; --card-foreground: 240 6% 10%;
+  --popover: 0 0% 100%; --popover-foreground: 240 6% 10%;
+  --secondary: 240 4% 95%; --secondary-foreground: 240 6% 10%;
+  --muted: 240 4% 95%; --muted-foreground: 240 4% 45%;
+  --border: 240 6% 90%; --input: 240 6% 90%;
+}
+.dark[data-canvas="slate"] {
+  --background: 214 33% 8%; --foreground: 217 39% 94%;
+  --card: 215 31% 14%; --card-foreground: 217 39% 94%;
+  --popover: 215 31% 14%; --popover-foreground: 217 39% 94%;
+  --secondary: 214 28% 16%; --secondary-foreground: 217 39% 94%;
+  --muted: 214 28% 16%; --muted-foreground: 215 20% 65%;
+  --border: 214 23% 21%; --input: 214 23% 21%;
+}
+.dark[data-canvas="neutral"] {
+  --background: 240 6% 10%; --foreground: 240 5% 96%;
+  --card: 240 5% 15%; --card-foreground: 240 5% 96%;
+  --popover: 240 5% 15%; --popover-foreground: 240 5% 96%;
+  --secondary: 240 4% 16%; --secondary-foreground: 240 5% 96%;
+  --muted: 240 4% 16%; --muted-foreground: 240 5% 65%;
+  --border: 240 5% 21%; --input: 240 5% 21%;
+}
