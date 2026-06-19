@@ -31,7 +31,12 @@ function OperatorOverviewInner() {
   if (orgStatus === "error") return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
 
   return (
-    <OperatorShell active="overview">
+    <OperatorShell
+      active="overview"
+      // New booking isn't redesigned yet — hand off to the legacy bookings flow
+      // so the primary action works instead of silently doing nothing.
+      onNewBooking={() => router.push("/admin-dashboard?tab=bookings")}
+    >
       <OperatorOverview />
     </OperatorShell>
   );
