@@ -1,0 +1,43 @@
+import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
+import { OperatorOverviewView } from "@/components/redesign/overview/OperatorOverviewView";
+import { getGreeting } from "@/components/redesign/overview/overview-types";
+
+// TEMPORARY dev-only preview for redesign fidelity iteration (gated by the (dev)
+// layout). Feeds the presentational Overview View mock data so it renders without
+// auth/hooks. Removed at Task 6 when the real /app/admin-dashboard page wires the
+// hook-backed OperatorOverview.
+export default function OperatorPreviewPage() {
+  const { greeting, dateLabel } = getGreeting("Sarah", new Date());
+  return (
+    <OperatorShell active="overview">
+      <OperatorOverviewView
+        greeting={greeting}
+        dateLabel={dateLabel}
+        kpis={{
+          todayJobs: 8,
+          inProgress: 2,
+          awaitingApproval: 4,
+          revenueThisMonth: 12845,
+          unassignedCount: 2,
+          canViewPayments: true,
+        }}
+        unassigned={[
+          { id: "u1", title: "Maple Ave · Deep clean", subtitle: "Thu Jun 25 · 10:30am" },
+          { id: "u2", title: "Oak St · Standard clean", subtitle: "Fri Jun 26 · 1:00pm" },
+        ]}
+        declined={[{ id: "d1", title: "Birch Ln · Move-out clean", subtitle: "Sat Jun 27 · 9:00am · 3 cleaners declined" }]}
+        counterProposed={[{ id: "c1", title: "Cedar Ct · Standard clean", subtitle: "Marco proposed Mon Jun 23 · 2:00pm" }]}
+        today={[
+          { id: "t1", time: "8:00", title: "Pine St · Standard clean · Marco D." },
+          { id: "t2", time: "10:30", title: "Elm Ave · Deep clean · Sara K." },
+          { id: "t3", time: "1:00", title: "Maple Ave · Standard clean · Marco D." },
+          { id: "t4", time: "3:30", title: "Oak St · Move-in clean · Priya R." },
+        ]}
+        activeNow={[
+          { id: "a1", title: "Pine St · Marco D. · started 8:05am" },
+          { id: "a2", title: "Elm Ave · Sara K. · started 10:35am" },
+        ]}
+      />
+    </OperatorShell>
+  );
+}
