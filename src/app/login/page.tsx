@@ -6,6 +6,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { AlertCircle, Eye, EyeOff, Loader } from "lucide-react";
 import Link from "next/link";
 import { AuthShell } from "../../components/auth/AuthShell";
+import { getDashboardPath } from "@/lib/redesign/dashboardPath";
+import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 function LoginContent() {
   const [email, setEmail] = useState("");
@@ -22,24 +24,11 @@ function LoginContent() {
     // resolve (non-null) so a platform admin lands on /owner instead of being
     // briefly bounced to a tenant dashboard.
     if (user && isPlatformAdmin !== null) {
-      router.push(isPlatformAdmin ? "/owner" : getDashboardPath(user.role));
+      router.push(
+        isPlatformAdmin ? "/owner" : getDashboardPath(user.role, { redesign: redesignUiEnabled() })
+      );
     }
   }, [user, isPlatformAdmin, router]);
-
-  const getDashboardPath = (userRole: string) => {
-    switch (userRole) {
-      case "homeowner":
-        return "/homeowner-dashboard";
-      case "cleaner":
-        return "/cleaner-dashboard";
-      case "manager":
-        return "/manager-dashboard";
-      case "admin":
-        return "/admin-dashboard";
-      default:
-        return "/";
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
