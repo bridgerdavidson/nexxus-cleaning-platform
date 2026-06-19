@@ -1,0 +1,109 @@
+<h2>Cleaner field app — direction</h2>
+<p class="subtitle">A phone-first work tool used one-handed in the field. Same brand + primitives, but a different vibe: bigger touch targets, one column, action-forward. The cleaner's three jobs — <strong>respond to offers · do the job · get paid</strong> — drive the layout. Bottom nav: Home, Jobs, Earnings, Messages + Menu (Services read-only, Settings). New-booking FAB doesn't exist here; the cleaner doesn't create work. Does this vibe feel right?</p>
+
+<style>
+  .cwrap { display:flex; gap:34px; justify-content:center; align-items:flex-start; flex-wrap:wrap; margin-top:8px; }
+  .ccol { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .ccap { text-align:left; max-width:300px; font-size:13px; color:#5a6473; line-height:1.5; }
+  .ccap h3 { margin:0 0 6px; font-size:15px; color:#1c2430; }
+  .ccap ul { margin:6px 0 0; padding-left:18px; } .ccap li { margin-bottom:4px; }
+
+  .phone { width:286px; height:580px; background:#0b1220; border-radius:38px; padding:10px; box-shadow:0 18px 50px rgba(15,23,42,.28); flex:none; }
+  .phone * { box-sizing:border-box; }
+  .screen { position:relative; background:#f5f6f9; border-radius:30px; height:100%; overflow:hidden; display:flex; flex-direction:column; }
+  .notch { position:absolute; top:9px; left:50%; transform:translateX(-50%); width:96px; height:6px; border-radius:6px; background:#cdd6e3; z-index:9; }
+  .chead { padding:18px 16px 6px; display:flex; align-items:center; gap:11px; }
+  .chead .av { width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg,#cdd6e3,#dfe5ee); flex:none; }
+  .chead .hi { font-size:17px; font-weight:800; color:#1c2430; }
+  .chead .sp { flex:1; }
+  .cbell { width:38px; height:38px; border-radius:12px; background:#fff; border:1px solid #e6eaf0; display:flex; align-items:center; justify-content:center; color:#5a6473; position:relative; }
+  .cbell .bd { position:absolute; top:-2px; right:-2px; width:13px; height:13px; border-radius:50%; background:#e5484d; border:2px solid #fff; }
+  .cbody { flex:1; padding:10px 14px; display:flex; flex-direction:column; gap:13px; overflow:hidden; }
+
+  .offer { background:#fff; border:2px solid #0150FC; border-radius:18px; padding:14px; box-shadow:0 6px 20px rgba(1,80,252,.12); }
+  .offer .top { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .offer .lbl { font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#0150FC; }
+  .offer .timer { font-size:11px; font-weight:700; color:#fff; background:#ff8a3d; border-radius:20px; padding:3px 10px; }
+  .offer .ln { height:11px; border-radius:5px; background:#e7ebf1; margin-bottom:8px; }
+  .offer .btns { display:flex; gap:8px; margin-top:13px; }
+  .bigbtn { flex:1; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; }
+  .bigbtn.primary { background:#0150FC; color:#fff; flex:1.6; }
+  .bigbtn.ghost { background:#eef2ff; color:#0150FC; }
+  .bigbtn.muted { background:#f1f4f8; color:#5a6473; }
+
+  .ccard { background:#fff; border:1px solid #e6eaf0; border-radius:18px; padding:14px; }
+  .ccard .h { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#9aa4b2; margin-bottom:10px; }
+  .jobline { display:flex; align-items:center; gap:11px; margin-bottom:6px; }
+  .jobline .time { font-size:14px; font-weight:800; color:#0150FC; width:54px; flex:none; }
+  .jobline .ln { flex:1; height:11px; border-radius:5px; background:#e7ebf1; }
+  .startbtn { margin-top:12px; height:50px; border-radius:14px; background:#0150FC; color:#fff; font-size:15px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; }
+
+  .earn { display:flex; align-items:center; justify-content:space-between; background:#fff; border:1px solid #e6eaf0; border-radius:18px; padding:14px; }
+  .earn .l { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#9aa4b2; margin-bottom:6px; }
+  .earn .amt { height:18px; width:80px; border-radius:5px; background:#16a34a; opacity:.85; }
+  .earn .arrow { width:34px; height:34px; border-radius:11px; background:#f1f4f8; display:flex; align-items:center; justify-content:center; color:#5a6473; }
+
+  .ctabbar { height:64px; flex:none; background:#fff; border-top:1px solid #e6eaf0; display:flex; padding:8px 4px 12px; }
+  .ctab { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; color:#9aa4b2; }
+  .ctab.active { color:#0150FC; }
+  .ctab .tl { font-size:9px; font-weight:600; }
+</style>
+
+<div class="cwrap">
+  <div class="ccol">
+    <div class="phone">
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="chead">
+          <div class="av"></div>
+          <div class="hi">Hi, Marco</div>
+          <div class="sp"></div>
+          <div class="cbell"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="bd"></span></div>
+        </div>
+        <div class="cbody">
+          <!-- OFFER: respond to work -->
+          <div class="offer">
+            <div class="top"><span class="lbl">New job offer</span><span class="timer">Respond in 1:45</span></div>
+            <div class="ln" style="width:75%"></div>
+            <div class="ln" style="width:55%; background:#eef1f5"></div>
+            <div class="btns">
+              <div class="bigbtn primary">Accept</div>
+              <div class="bigbtn ghost">Propose</div>
+              <div class="bigbtn muted">Decline</div>
+            </div>
+          </div>
+          <!-- DO THE JOB -->
+          <div class="ccard">
+            <div class="h">Up next today</div>
+            <div class="jobline"><span class="time">10:30</span><div class="ln"></div></div>
+            <div class="jobline"><span class="time" style="color:#9aa4b2; font-size:11px;">addr</span><div class="ln" style="width:60%; background:#eef1f5"></div></div>
+            <div class="startbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 3l14 9-14 9z"/></svg>Start job</div>
+          </div>
+          <!-- GET PAID -->
+          <div class="earn">
+            <div><div class="l">This week's earnings</div><div class="amt"></div></div>
+            <div class="arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></div>
+          </div>
+        </div>
+        <div class="ctabbar">
+          <div class="ctab active"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span class="tl">Home</span></div>
+          <div class="ctab"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg><span class="tl">Jobs</span></div>
+          <div class="ctab"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg><span class="tl">Earnings</span></div>
+          <div class="ctab"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5.5" width="17" height="11" rx="2.5"/><path d="M8.5 20l2.5-3.5"/></svg><span class="tl">Messages</span></div>
+          <div class="ctab"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span class="tl">Menu</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ccap">
+    <h3>What defines the cleaner vibe</h3>
+    <ul>
+      <li><strong>Offer-first:</strong> a pending job offer sits at the top with a live countdown and big Accept / Propose / Decline buttons — their #1 action.</li>
+      <li><strong>One big primary action:</strong> "Start job" is a full-width 50px button; the in-job flow (photos → checklist → photos → complete) opens full-screen from here.</li>
+      <li><strong>Get paid, glanceable:</strong> this week's earnings always one tap from home.</li>
+      <li><strong>Bigger everything:</strong> 44–50px touch targets, generous spacing, single column — built for gloves-and-daylight use.</li>
+      <li><strong>Desktop:</strong> same content in a simplified version of the rail shell (cleaners are ~all mobile, so phone is the source of truth).</li>
+    </ul>
+  </div>
+</div>

@@ -1,0 +1,132 @@
+<h2>Operator console — mobile (recommended hybrid)</h2>
+<p class="subtitle">Bottom tabs for the daily loop (Overview, Bookings, People, Messages) + a <strong>Menu</strong> tab that slides out the full Nexxus rail as a drawer for everything else (Services, Payments, Analytics, Settings). Best of A + B, and aligned with mobile nav heuristics: bottom bar = top-level only (≤5, icon+label), drawer = the secondary long tail. Big <strong>+</strong> FAB for New booking. Click to confirm.</p>
+
+<style>
+  .mwrap { display:flex; gap:40px; justify-content:center; align-items:flex-start; flex-wrap:wrap; margin-top:8px; }
+  .mcol { display:flex; flex-direction:column; align-items:center; gap:12px; cursor:pointer; padding:16px; border:2px solid transparent; border-radius:20px; transition:.15s; }
+  .mcol:hover { background:rgba(1,80,252,.04); }
+  .mcol.selected { border-color:#0150FC; background:rgba(1,80,252,.06); }
+  .cap { text-align:center; max-width:250px; }
+  .cap .pin { display:inline-block; font-size:11px; font-weight:700; color:#0150FC; background:#eef2ff; border-radius:20px; padding:3px 11px; margin-bottom:7px; }
+  .cap h3 { margin:0 0 5px; font-size:15px; }
+  .cap p { margin:0; font-size:12px; line-height:1.45; color:#5a6473; }
+
+  .phone { width:270px; height:548px; background:#0b1220; border-radius:36px; padding:9px; box-shadow:0 18px 50px rgba(15,23,42,.28); flex:none; }
+  .phone * { box-sizing:border-box; }
+  .screen { position:relative; background:#f7f8fa; border-radius:28px; height:100%; overflow:hidden; display:flex; flex-direction:column; }
+  .notch { position:absolute; top:8px; left:50%; transform:translateX(-50%); width:90px; height:6px; border-radius:6px; background:#cdd6e3; z-index:9; }
+  .mhead { height:50px; flex:none; display:flex; align-items:center; gap:10px; padding:14px 14px 0; background:#fff; }
+  .mhead .ttl { font-size:15px; font-weight:800; color:#1c2430; }
+  .mhead .sp { flex:1; }
+  .micon { width:30px; height:30px; border-radius:9px; background:#f1f4f8; border:1px solid #e2e7ee; display:flex; align-items:center; justify-content:center; color:#5a6473; position:relative; }
+  .micon .bd { position:absolute; top:-3px; right:-3px; width:13px; height:13px; border-radius:50%; background:#e5484d; border:2px solid #fff; }
+  .mbody { flex:1; padding:12px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+  .mkpis { display:flex; gap:8px; }
+  .mkpi { flex:1; background:#fff; border:1px solid #e6eaf0; border-radius:10px; padding:8px; }
+  .mkpi .l { font-size:8px; text-transform:uppercase; letter-spacing:.03em; color:#9aa4b2; margin-bottom:5px; }
+  .mkpi .n { height:13px; width:32px; border-radius:4px; background:#e7ebf1; }
+  .mkpi.live .n { background:#0150FC; }
+  .mcard { background:#fff; border:1px solid #e6eaf0; border-radius:12px; padding:11px; }
+  .mhd { display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; }
+  .mhd .h { font-size:13px; font-weight:700; color:#222b38; }
+  .mhd .c { font-size:10px; font-weight:700; color:#fff; background:#ff8a3d; border-radius:20px; padding:2px 8px; }
+  .mq { display:flex; align-items:center; gap:9px; padding:8px 9px; border:1px solid #eef1f5; border-radius:9px; margin-bottom:7px; }
+  .mq .bdg { width:8px; height:8px; border-radius:50%; flex:none; background:#ff8a3d; }
+  .mq .bdg.red { background:#e5484d; } .mq .bdg.blue { background:#0150FC; }
+  .mq .ln { flex:1; height:8px; border-radius:4px; background:#e7ebf1; }
+  .mq .ac { background:#0150FC; color:#fff; font-size:9.5px; font-weight:600; padding:4px 9px; border-radius:6px; flex:none; }
+  .fab { position:absolute; right:14px; bottom:74px; width:52px; height:52px; border-radius:17px; background:#0150FC; box-shadow:0 8px 20px rgba(1,80,252,.4); display:flex; align-items:center; justify-content:center; color:#fff; z-index:7; }
+  .tabbar { height:60px; flex:none; background:#fff; border-top:1px solid #e6eaf0; display:flex; padding:7px 4px 11px; }
+  .tab { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; color:#9aa4b2; }
+  .tab.active { color:#0150FC; }
+  .tab.menu { color:#5a6473; }
+  .tab .tl { font-size:8.5px; font-weight:600; }
+
+  /* drawer state */
+  .scrim { position:absolute; inset:0; background:rgba(10,18,32,.45); z-index:8; }
+  .drawer { position:absolute; top:0; left:0; bottom:0; width:76%; background:#fbfcfd; z-index:9; box-shadow:10px 0 40px rgba(10,18,32,.3); padding:16px 12px; display:flex; flex-direction:column; gap:2px; }
+  .dbrand { display:flex; align-items:center; gap:10px; padding:4px 8px 14px; }
+  .dbrand .mk { width:28px; height:28px; border-radius:8px; background:#0150FC; position:relative; }
+  .dbrand .mk::after { content:""; position:absolute; inset:7px; border-radius:3px; background:rgba(255,255,255,.9); clip-path:polygon(0 0,55% 0,100% 100%,45% 100%); }
+  .dbrand .wd { font-size:17px; font-weight:800; color:#1c2430; }
+  .ditem { display:flex; align-items:center; gap:12px; padding:9px; border-radius:9px; color:#5a6473; font-size:12px; }
+  .ditem.active { background:#0150FC; color:#fff; }
+  .ditem .ic { width:17px; height:17px; border-radius:5px; background:currentColor; opacity:.32; flex:none; }
+  .ditem.active .ic { opacity:.9; background:#fff; }
+  .ditem.sec { color:#8a93a2; }
+  .seclbl { font-size:9px; text-transform:uppercase; letter-spacing:.05em; color:#aab2bf; padding:8px 9px 4px; }
+</style>
+
+<div class="mwrap">
+  <!-- DEFAULT STATE -->
+  <div class="mcol" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="phone">
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="mhead">
+          <div class="ttl">Overview</div>
+          <div class="sp"></div>
+          <div class="micon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg></div>
+          <div class="micon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="bd"></span></div>
+        </div>
+        <div class="mbody">
+          <div class="mkpis">
+            <div class="mkpi"><div class="l">Today</div><div class="n"></div></div>
+            <div class="mkpi live"><div class="l">In prog.</div><div class="n"></div></div>
+            <div class="mkpi"><div class="l">Awaiting</div><div class="n"></div></div>
+          </div>
+          <div class="mcard">
+            <div class="mhd"><div class="h">Needs you now</div><div class="c">4</div></div>
+            <div class="mq"><span class="bdg"></span><div class="ln"></div><div class="ac">Assign</div></div>
+            <div class="mq"><span class="bdg red"></span><div class="ln"></div><div class="ac">Fix</div></div>
+            <div class="mq"><span class="bdg blue"></span><div class="ln"></div><div class="ac">Accept</div></div>
+          </div>
+          <div class="mcard" style="padding:9px 11px;">
+            <div class="mhd" style="margin:0;"><div class="h" style="font-size:12px;">Today's schedule</div></div>
+          </div>
+        </div>
+        <div class="fab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="tabbar">
+          <div class="tab active"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span class="tl">Overview</span></div>
+          <div class="tab"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg><span class="tl">Bookings</span></div>
+          <div class="tab"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3.2 2.6-5 6.5-5"/><circle cx="17" cy="9" r="2.5"/><path d="M14.6 14.2c3.4.2 5.4 2 5.4 4.8"/></svg><span class="tl">People</span></div>
+          <div class="tab"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5.5" width="17" height="11" rx="2.5"/><path d="M8.5 20l2.5-3.5"/></svg><span class="tl">Messages</span></div>
+          <div class="tab menu"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span class="tl">Menu</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><span class="pin">DEFAULT</span><h3>Daily loop on the bottom bar</h3><p>Overview, Bookings, People, Messages one thumb-tap away. FAB starts a New booking. 5th tab = Menu.</p></div>
+  </div>
+
+  <!-- MENU / DRAWER STATE -->
+  <div class="mcol" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="phone">
+      <div class="screen">
+        <div class="notch"></div>
+        <div class="mhead">
+          <div class="ttl">Overview</div><div class="sp"></div>
+          <div class="micon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg></div>
+        </div>
+        <div class="mbody">
+          <div class="mkpis"><div class="mkpi"><div class="l">Today</div><div class="n"></div></div><div class="mkpi live"><div class="l">In prog.</div><div class="n"></div></div><div class="mkpi"><div class="l">Awaiting</div><div class="n"></div></div></div>
+          <div class="mcard"><div class="mhd"><div class="h">Needs you now</div><div class="c">4</div></div><div class="mq"><span class="bdg"></span><div class="ln"></div></div></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="drawer">
+          <div class="dbrand"><div class="mk"></div><div class="wd">Nexxus</div></div>
+          <div class="seclbl">Primary</div>
+          <div class="ditem active"><span class="ic"></span>Overview</div>
+          <div class="ditem"><span class="ic"></span>Bookings</div>
+          <div class="ditem"><span class="ic"></span>People</div>
+          <div class="ditem"><span class="ic"></span>Messages</div>
+          <div class="seclbl">More</div>
+          <div class="ditem sec"><span class="ic"></span>Services</div>
+          <div class="ditem sec"><span class="ic"></span>Payments &amp; payouts</div>
+          <div class="ditem sec"><span class="ic"></span>Analytics</div>
+          <div class="ditem sec" style="margin-top:auto;"><span class="ic"></span>Settings</div>
+        </div>
+      </div>
+    </div>
+    <div class="cap"><span class="pin">MENU TAPPED</span><h3>Full rail as a drawer</h3><p>Same nav as desktop, grouped Primary + More. Nothing is unreachable; the long tail is one tap, not buried.</p></div>
+  </div>
+</div>
