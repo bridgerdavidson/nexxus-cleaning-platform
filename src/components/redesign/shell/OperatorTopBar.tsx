@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bell, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,7 +75,10 @@ export function OperatorTopBar({ onNewBooking }: { onNewBooking?: () => void }) 
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>{name}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              {/* Settings isn't redesigned yet — link to the legacy page so the menu item works. */}
+              <Link href="/settings">Settings</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem destructive onClick={() => signOut()}>
               Sign out
             </DropdownMenuItem>

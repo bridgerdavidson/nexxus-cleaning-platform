@@ -57,16 +57,19 @@ function toQueueItem(a: AdminAppointment): QueueItem {
  */
 export function OperatorOverview() {
   const { user, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  // Resolve payment visibility first so usePaymentStats can be gated: a manager
+  // without can_view_payments must not even fetch revenue into the client cache.
+  const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
+  const canViewPayments = privileged || !!permissions?.can_view_payments;
+
   const { appointments, loading: aLoading } = useAdminAppointments();
   const { stats, loading: sLoading } = useAdminStats();
-  const { stats: payStats, loading: pLoading } = usePaymentStats();
-  const { permissions } = useManagerPermissions();
+  const { stats: payStats, loading: pLoading } = usePaymentStats({ enabled: canViewPayments });
 
   const now = new Date();
   const sections = deriveOverviewSections(appointments, todayLocalISO(now), now);
 
-  const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
-  const canViewPayments = privileged || !!permissions?.can_view_payments;
   const { greeting, dateLabel } = getGreeting(user?.profile?.firstName, now);
 
   const today: ScheduleItem[] = [...sections.today]

@@ -778,12 +778,16 @@ export interface PaymentStats {
   thisMonthRevenue: number;
 }
 
-export function usePaymentStats() {
+export function usePaymentStats(options?: { enabled?: boolean }) {
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? '';
 
   const query = useOrgQuery({
     queryKey: keys.payments.statsByOrg(orgId),
+    // Gate so callers that hide revenue (e.g. a manager without
+    // can_view_payments) never fetch it into the client cache. Defaults to
+    // enabled when omitted, so existing callers are unaffected.
+    enabled: options?.enabled,
     queryFn: async ({ orgId }) => {
       // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
       const rpcRes = await supabase.rpc('payment_stats', { p_org_id: orgId });
