@@ -63,7 +63,7 @@ export function OperatorOverview() {
   const { permissions } = useManagerPermissions();
 
   const now = new Date();
-  const sections = deriveOverviewSections(appointments, todayLocalISO(now));
+  const sections = deriveOverviewSections(appointments, todayLocalISO(now), now);
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
@@ -98,6 +98,7 @@ export function OperatorOverview() {
       unassigned={sections.unassigned.map(toQueueItem)}
       declined={sections.declined.map(toQueueItem)}
       counterProposed={sections.counterProposed.map(toQueueItem)}
+      overdue={sections.overdue.map(toQueueItem)}
       today={today}
       activeNow={activeNow}
     />

@@ -26,6 +26,7 @@ export default function OperatorPreviewPage() {
           { id: "u2", title: "Oak St · Standard clean", subtitle: "Fri Jun 26 · 1:00pm" },
         ]}
         declined={[{ id: "d1", title: "Birch Ln · Move-out clean", subtitle: "Sat Jun 27 · 9:00am · 3 cleaners declined" }]}
+        overdue={[{ id: "o1", title: "Walnut Dr · Deep clean", subtitle: "Sun Jun 28 · 11:00am · Jordan P. hasn't responded" }]}
         counterProposed={[{ id: "c1", title: "Cedar Ct · Standard clean", subtitle: "Marco proposed Mon Jun 23 · 2:00pm" }]}
         today={[
           { id: "t1", time: "8:00", title: "Pine St · Standard clean · Marco D." },

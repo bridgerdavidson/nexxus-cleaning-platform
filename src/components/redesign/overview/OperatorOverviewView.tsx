@@ -12,6 +12,7 @@ export type OperatorOverviewViewProps = {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
+  overdue: QueueItem[];
   today: ScheduleItem[];
   activeNow: ActiveItem[];
 };
@@ -27,6 +28,7 @@ export function OperatorOverviewView({
   unassigned,
   declined,
   counterProposed,
+  overdue,
   today,
   activeNow,
 }: OperatorOverviewViewProps) {
@@ -47,6 +49,7 @@ export function OperatorOverviewView({
             unassigned={unassigned}
             declined={declined}
             counterProposed={counterProposed}
+            overdue={overdue}
             loading={loading}
           />
         </div>
