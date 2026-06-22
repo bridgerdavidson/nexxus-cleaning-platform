@@ -26,7 +26,7 @@ export type NavItem = {
 // rollout. Repoint each href to its /app/* redesign route as that screen ships.
 export const OPERATOR_NAV: NavItem[] = [
   { id: "overview", label: "Overview", href: "/app/admin-dashboard", icon: Home, primary: true },
-  { id: "bookings", label: "Bookings", href: "/admin-dashboard?tab=bookings", icon: CalendarDays, primary: true },
+  { id: "bookings", label: "Bookings", href: "/app/admin-dashboard/bookings", icon: CalendarDays, primary: true },
   { id: "people", label: "Customers", href: "/admin-dashboard?tab=customers", icon: Users, primary: true },
   { id: "cleaners", label: "Cleaners & team", href: "/admin-dashboard?tab=cleaners", icon: UsersRound },
   { id: "services", label: "Services", href: "/admin-dashboard?tab=services", icon: Tag },
