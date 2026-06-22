@@ -2,7 +2,7 @@ import {
   Home,
   CalendarDays,
   Users,
-  UsersRound,
+  SprayCan,
   Tag,
   CreditCard,
   BarChart3,
@@ -24,11 +24,14 @@ export type NavItem = {
 // every other destination falls back to its LEGACY route (/admin-dashboard?tab=…
 // or /settings) so the shell never dead-ends (404) during the incremental
 // rollout. Repoint each href to its /app/* redesign route as that screen ships.
+//
+// Icons are lucide. Cleaners & team uses SprayCan (a cleaning glyph) instead of
+// a second people-icon, so it never reads as a near-duplicate of Customers.
 export const OPERATOR_NAV: NavItem[] = [
   { id: "overview", label: "Overview", href: "/app/admin-dashboard", icon: Home, primary: true },
   { id: "bookings", label: "Bookings", href: "/app/admin-dashboard/bookings", icon: CalendarDays, primary: true },
   { id: "people", label: "Customers", href: "/app/admin-dashboard/customers", icon: Users, primary: true },
-  { id: "cleaners", label: "Cleaners & team", href: "/admin-dashboard?tab=cleaners", icon: UsersRound },
+  { id: "cleaners", label: "Cleaners & team", href: "/admin-dashboard?tab=cleaners", icon: SprayCan },
   { id: "services", label: "Services", href: "/admin-dashboard?tab=services", icon: Tag },
   { id: "payments", label: "Payments & payouts", href: "/admin-dashboard?tab=payments", icon: CreditCard },
   { id: "analytics", label: "Analytics", href: "/admin-dashboard?tab=analytics", icon: BarChart3 },

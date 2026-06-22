@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { Menu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -71,15 +72,25 @@ export function OperatorMobileNav({
             Menu
           </SheetTrigger>
           <SheetContent side="left" className="w-[80%] max-w-[320px] p-0">
-            <SheetHeader className="flex h-[56px] flex-row items-center gap-3 px-4">
-              <span className="relative h-7 w-7 flex-none rounded-control bg-brand-600">
-                <span
-                  aria-hidden
-                  className="absolute inset-[7px] rounded-[3px] bg-white/90"
-                  style={{ clipPath: "polygon(0 0,55% 0,100% 100%,45% 100%)" }}
-                />
-              </span>
-              <SheetTitle className="text-lg font-extrabold tracking-tight">Nexxus</SheetTitle>
+            <SheetHeader className="flex h-16 flex-row items-center px-4">
+              <SheetTitle className="sr-only">Nexxus</SheetTitle>
+              {/* light theme: dark wordmark */}
+              <Image
+                src="/brand/logo-black.svg"
+                alt="Nexxus"
+                width={567}
+                height={126}
+                priority
+                className="h-7 w-auto dark:hidden"
+              />
+              {/* dark theme: white wordmark */}
+              <Image
+                src="/brand/logo-white.svg"
+                alt="Nexxus"
+                width={565}
+                height={126}
+                className="hidden h-7 w-auto dark:block"
+              />
             </SheetHeader>
 
             <div className="flex flex-col gap-1 px-3 pb-4">
