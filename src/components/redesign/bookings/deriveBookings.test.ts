@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveBookingBadge,
   deriveBookings,
   matchesCleaner,
   matchesSearch,
@@ -135,6 +136,54 @@ describe("deriveBookings", () => {
     });
     expect(out).toHaveLength(1);
     expect(out[0].cleaner_id).toBe("c1");
+  });
+});
+
+describe("deriveBookingBadge", () => {
+  it("terminal statuses win", () => {
+    expect(deriveBookingBadge(appt({ status: "completed" }))).toBe("completed");
+    expect(deriveBookingBadge(appt({ status: "cancelled" }))).toBe("cancelled");
+    expect(deriveBookingBadge(appt({ status: "in_progress" }))).toBe("in_progress");
+  });
+
+  it("counter-proposal outranks decline and awaiting", () => {
+    expect(
+      deriveBookingBadge(
+        appt({
+          status: "pending",
+          cleaner_confirmation_status: "rejected",
+          cleaner_availability_feedback: [{ cleaner_suggested_times: [{}], cleaner_suggested_windows: [] }],
+        }),
+      ),
+    ).toBe("counter_proposed");
+  });
+
+  it("flags a windows-only counter-proposal", () => {
+    expect(
+      deriveBookingBadge(
+        appt({ status: "pending", cleaner_availability_feedback: [{ cleaner_suggested_windows: [{}] }] }),
+      ),
+    ).toBe("counter_proposed");
+  });
+
+  it("declined when the cleaner rejected (no counter)", () => {
+    expect(
+      deriveBookingBadge(appt({ status: "pending", cleaner_confirmation_status: "rejected" })),
+    ).toBe("declined");
+  });
+
+  it("confirmed maps straight through", () => {
+    expect(deriveBookingBadge(appt({ status: "confirmed" }))).toBe("confirmed");
+  });
+
+  it("unassigned when pending with no cleaner", () => {
+    expect(deriveBookingBadge(appt({ status: "pending", cleaner_id: null }))).toBe("unassigned");
+  });
+
+  it("awaiting_cleaner when pending, assigned, and awaiting acceptance", () => {
+    expect(
+      deriveBookingBadge(appt({ status: "pending", cleaner_id: "c1", cleaner_confirmation_status: "awaiting" })),
+    ).toBe("awaiting_cleaner");
   });
 });
 

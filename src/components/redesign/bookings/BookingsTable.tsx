@@ -3,7 +3,6 @@
 import { MoreHorizontal, UserPlus, CalendarX2, Trash2, Eye } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IconButton } from "@/components/ui/icon-button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Table,
@@ -20,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BookingStatusPill, PaymentBadge } from "./bookings-presenters";
+import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import type { BookingRowAction, BookingRowVM } from "./bookings-types";
 
 function initials(name: string): string {
@@ -30,11 +29,7 @@ function initials(name: string): string {
 
 function CleanerCell({ row }: { row: BookingRowVM }) {
   if (!row.cleaner) {
-    return (
-      <Badge variant="critical" className="font-semibold">
-        Unassigned
-      </Badge>
-    );
+    return <span className="text-sm text-muted-foreground">Unassigned</span>;
   }
   return (
     <div className="flex items-center gap-2">
@@ -170,12 +165,7 @@ export function BookingsTable({
                   <CleanerCell row={row} />
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-col items-start gap-1">
-                    <BookingStatusPill status={row.status} />
-                    {row.attention ? (
-                      <span className="text-xs font-medium text-caution-700">{row.attention}</span>
-                    ) : null}
-                  </div>
+                  <BookingStatusBadge badge={row.badge} />
                 </TableCell>
                 {canViewPayments ? (
                   <TableCell>

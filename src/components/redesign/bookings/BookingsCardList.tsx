@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BookingStatusPill, PaymentBadge } from "./bookings-presenters";
+import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import type { BookingRowAction, BookingRowVM } from "./bookings-types";
 
 export type BookingsCardListProps = {
@@ -60,7 +60,7 @@ export function BookingsCardList({
                   aria-label={`Select booking on ${row.dateLabel}`}
                 />
                 <div>
-                  <div className="font-semibold text-foreground">
+                  <div className="whitespace-nowrap font-semibold text-foreground">
                     {row.dateLabel}
                     <span className="ml-1.5 text-xs font-medium text-muted-foreground">
                       {row.timeLabel}
@@ -69,7 +69,7 @@ export function BookingsCardList({
                 </div>
               </div>
               <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                <BookingStatusPill status={row.status} />
+                <BookingStatusBadge badge={row.badge} />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <IconButton aria-label="Booking actions" className="h-9 w-9">
@@ -117,14 +117,11 @@ export function BookingsCardList({
               </div>
             </div>
 
-            {(row.attention || (canViewPayments && row.payment)) && (
+            {canViewPayments && row.payment ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {row.attention ? (
-                  <span className="text-xs font-medium text-caution-700">{row.attention}</span>
-                ) : null}
-                {canViewPayments ? <PaymentBadge payment={row.payment} /> : null}
+                <PaymentBadge payment={row.payment} />
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}

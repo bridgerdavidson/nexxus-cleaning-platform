@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BookingStatusPill, PaymentBadge } from "./bookings-presenters";
+import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -84,14 +84,11 @@ export function BookingDetailSheet({
           <>
             <SheetHeader className="pr-12">
               <div className="flex items-center gap-2">
-                <BookingStatusPill status={detail.status} />
+                <BookingStatusBadge badge={detail.badge} />
                 {detail.isSelfPay ? <PaymentBadge payment={{ tone: "selfpay", label: "Self-pay" }} /> : null}
               </div>
               <SheetTitle className="mt-1">{detail.title}</SheetTitle>
               <SheetDescription>{detail.service}</SheetDescription>
-              {detail.attention ? (
-                <div className="mt-1 text-sm font-medium text-caution-700">{detail.attention}</div>
-              ) : null}
             </SheetHeader>
 
             <div className="flex-1 space-y-5 overflow-y-auto px-6 py-2">

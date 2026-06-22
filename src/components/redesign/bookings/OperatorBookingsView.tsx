@@ -125,7 +125,7 @@ export function OperatorBookingsView({
 
       <div className="flex flex-col gap-3">
         <Tabs value={segment} onValueChange={(v) => onSegmentChange(v as BookingSegment)}>
-          <TabsList className="flex w-full justify-start gap-1 overflow-x-auto sm:w-auto">
+          <TabsList className="max-w-full justify-start gap-1 overflow-x-auto">
             {BOOKING_SEGMENTS.map((s) => (
               <TabsTrigger key={s.id} value={s.id} className="gap-1.5">
                 {s.label}
@@ -149,32 +149,34 @@ export function OperatorBookingsView({
               aria-label="Search bookings"
             />
           </div>
-          <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v as StatusFilter)}>
-            <SelectTrigger className="sm:w-44" aria-label="Filter by status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={cleanerFilter} onValueChange={onCleanerFilterChange}>
-            <SelectTrigger className="sm:w-48" aria-label="Filter by cleaner">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All cleaners</SelectItem>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              {cleanerOptions.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-3">
+            <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v as StatusFilter)}>
+              <SelectTrigger className="w-full sm:w-44" aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={cleanerFilter} onValueChange={onCleanerFilterChange}>
+              <SelectTrigger className="w-full sm:w-48" aria-label="Filter by cleaner">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All cleaners</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {cleanerOptions.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 

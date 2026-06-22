@@ -20,7 +20,7 @@ import { describeBulkAppointmentResult } from "@/lib/bulkAppointmentMessages";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { OperatorBookingsView } from "./OperatorBookingsView";
 import { BookingDetailSheet } from "./BookingDetailSheet";
-import { deriveBookings, localISODate, segmentCounts } from "./deriveBookings";
+import { deriveBookingBadge, deriveBookings, localISODate, segmentCounts } from "./deriveBookings";
 import type {
   BookingDetailVM,
   BookingPayment,
@@ -85,14 +85,6 @@ function cleanerLabel(a: AdminAppointment): string | null {
   return name || null;
 }
 
-const STATUS_LABEL: Record<BookingStatusKey, string> = {
-  pending: "Pending",
-  confirmed: "Confirmed",
-  in_progress: "In progress",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
-
 function paymentVM(a: AdminAppointment, canView: boolean): BookingPayment | null {
   if (!canView) return null;
   if (a.is_self_pay) return { tone: "selfpay", label: "Self-pay" };
@@ -108,19 +100,6 @@ function paymentVM(a: AdminAppointment, canView: boolean): BookingPayment | null
     default:
       return { tone: "none", label: "Unpaid" };
   }
-}
-
-function attentionLabel(a: AdminAppointment): string | null {
-  const fb = a.cleaner_availability_feedback ?? [];
-  const hasCounter = fb.some(
-    (f) => (f.cleaner_suggested_times?.length ?? 0) > 0 || (f.cleaner_suggested_windows?.length ?? 0) > 0,
-  );
-  if (hasCounter) return "Counter-proposed";
-  if (a.cleaner_confirmation_status === "rejected") return "Declined by cleaner";
-  if (a.status === "pending" && a.cleaner_id && a.cleaner_confirmation_status === "awaiting") {
-    return "Awaiting cleaner";
-  }
-  return null;
 }
 
 function priceLabel(a: AdminAppointment, canView: boolean): string | null {
@@ -173,8 +152,7 @@ function toRowVM(
     cleaner: cleanerLabel(a),
     cleanerAvatarUrl: a.cleaner_id ? avatarById.get(a.cleaner_id) ?? null : null,
     status,
-    statusLabel: STATUS_LABEL[status] ?? a.status,
-    attention: attentionLabel(a),
+    badge: deriveBookingBadge(a),
     payment: paymentVM(a, canViewPayments),
     isUnassigned: !a.cleaner_id,
     isSelfPay: !!a.is_self_pay,
@@ -191,8 +169,7 @@ function toDetailVM(a: AdminAppointment, canViewPayments: boolean): BookingDetai
     timeLabel: fmtTime(a.scheduled_time),
     durationLabel: durationLabel(a.duration_minutes),
     status,
-    statusLabel: STATUS_LABEL[status] ?? a.status,
-    attention: attentionLabel(a),
+    badge: deriveBookingBadge(a),
     customer: customerLabel(a),
     customerEmail: a.homeowner?.email ?? null,
     isSelfPay: !!a.is_self_pay,

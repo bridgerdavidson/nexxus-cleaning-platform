@@ -1,4 +1,4 @@
-import type { BookingSegment, StatusFilter } from "./bookings-types";
+import type { BookingBadgeKey, BookingSegment, StatusFilter } from "./bookings-types";
 
 // Pure filtering/sorting for the Operator Bookings list. Mirrors the legacy
 // BookingsPage predicates (time-based segments + free-text search + status +
@@ -12,11 +12,37 @@ export type BookingsAppointment = {
   scheduled_date: string;
   scheduled_time?: string;
   cleaner_id?: string | null;
+  cleaner_confirmation_status?: string | null;
+  cleaner_availability_feedback?:
+    | Array<{ cleaner_suggested_times?: unknown[] | null; cleaner_suggested_windows?: unknown[] | null }>
+    | null;
   cleaner_profile?: { user_profile?: { first_name?: string; last_name?: string } | null } | null;
   homeowner?: { first_name?: string; last_name?: string } | null;
   property?: { name?: string; address?: string; city?: string; state?: string } | null;
   service_type?: { name?: string } | null;
 };
+
+/**
+ * The single descriptive badge state for a booking. Folds the raw status
+ * together with the cleaner sub-state so the Status column never needs a caption
+ * tacked underneath a generic "Pending" pill. Terminal states win; otherwise a
+ * counter-proposal (needs a decision) outranks a decline, an awaiting, etc.
+ */
+export function deriveBookingBadge(a: BookingsAppointment): BookingBadgeKey {
+  if (a.status === "completed") return "completed";
+  if (a.status === "cancelled") return "cancelled";
+  if (a.status === "in_progress") return "in_progress";
+
+  const hasCounter = (a.cleaner_availability_feedback ?? []).some(
+    (f) => (f.cleaner_suggested_times?.length ?? 0) > 0 || (f.cleaner_suggested_windows?.length ?? 0) > 0,
+  );
+  if (hasCounter) return "counter_proposed";
+  if (a.cleaner_confirmation_status === "rejected") return "declined";
+  if (a.status === "confirmed") return "confirmed";
+  if (!a.cleaner_id) return "unassigned";
+  if (a.cleaner_confirmation_status === "awaiting") return "awaiting_cleaner";
+  return "pending";
+}
 
 /** Local YYYY-MM-DD for a Date (NOT UTC) so "today" matches the user's day. */
 export function localISODate(d: Date): string {

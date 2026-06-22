@@ -24,6 +24,20 @@ export type BookingStatusKey =
 
 export type StatusFilter = BookingStatusKey | "all";
 
+/** The descriptive, operator-facing state shown as a single badge. Folds the raw
+ *  status together with the cleaner sub-state (awaiting / declined / counter) so
+ *  there is never a caption tacked under a generic "Pending" pill. */
+export type BookingBadgeKey =
+  | "unassigned"
+  | "awaiting_cleaner"
+  | "counter_proposed"
+  | "declined"
+  | "confirmed"
+  | "in_progress"
+  | "completed"
+  | "cancelled"
+  | "pending";
+
 export type PaymentTone = "paid" | "pending" | "failed" | "refunded" | "selfpay" | "none";
 
 export type BookingPayment = { tone: PaymentTone; label: string };
@@ -41,10 +55,10 @@ export type BookingRowVM = {
   durationLabel: string; // "2h" / "90m" / ""
   cleaner: string | null; // null => Unassigned
   cleanerAvatarUrl: string | null;
+  /** Raw status, kept for action gating (cancellable / completable). */
   status: BookingStatusKey;
-  statusLabel: string;
-  /** Short caption flagging a sub-state needing attention (null when none). */
-  attention: string | null;
+  /** Descriptive single-badge state shown in the Status column. */
+  badge: BookingBadgeKey;
   /** Payment cell. null when the viewer can't see payments. */
   payment: BookingPayment | null;
   isUnassigned: boolean;
@@ -69,8 +83,7 @@ export type BookingDetailVM = {
   timeLabel: string;
   durationLabel: string;
   status: BookingStatusKey;
-  statusLabel: string;
-  attention: string | null;
+  badge: BookingBadgeKey;
   customer: string;
   customerEmail: string | null;
   isSelfPay: boolean;
