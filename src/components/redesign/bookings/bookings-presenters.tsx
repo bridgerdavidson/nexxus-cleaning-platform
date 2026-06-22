@@ -15,19 +15,27 @@ import type { BookingBadgeKey, BookingPayment } from "./bookings-types";
 // Shared presentational atoms so the desktop table and mobile cards render the
 // status and payment identically.
 
-const BADGE: Record<
-  BookingBadgeKey,
-  { label: string; variant: BadgeProps["variant"]; Icon: React.ComponentType<{ className?: string }> }
-> = {
+type BadgeConfig = {
+  label: string;
+  variant: BadgeProps["variant"];
+  Icon: React.ComponentType<{ className?: string }>;
+  /** Spin the icon (in progress = live work). Respects reduced-motion. */
+  spin?: boolean;
+};
+
+// Color hierarchy: amber = needs you, red = problem, gray = settled (confirmed),
+// blue = live (in progress), green = done. Confirmed is intentionally quiet so it
+// does not compete with the active blue state.
+const BADGE: Record<BookingBadgeKey, BadgeConfig> = {
   unassigned: { label: "Unassigned", variant: "caution", Icon: UserPlus },
   awaiting_cleaner: { label: "Awaiting cleaner", variant: "caution", Icon: Hourglass },
   counter_proposed: { label: "Counter-proposed", variant: "caution", Icon: Repeat },
+  pending: { label: "Pending", variant: "caution", Icon: Clock },
   declined: { label: "Declined", variant: "critical", Icon: UserX },
-  confirmed: { label: "Confirmed", variant: "info", Icon: CalendarCheck },
-  in_progress: { label: "In progress", variant: "default", Icon: Loader2 },
-  completed: { label: "Completed", variant: "positive", Icon: CheckCircle2 },
   cancelled: { label: "Cancelled", variant: "critical", Icon: XCircle },
-  pending: { label: "Pending", variant: "secondary", Icon: Clock },
+  confirmed: { label: "Confirmed", variant: "secondary", Icon: CalendarCheck },
+  in_progress: { label: "In progress", variant: "default", Icon: Loader2, spin: true },
+  completed: { label: "Completed", variant: "positive", Icon: CheckCircle2 },
 };
 
 /** Single descriptive status badge (replaces a generic pill + caption). */
@@ -35,7 +43,7 @@ export function BookingStatusBadge({ badge }: { badge: BookingBadgeKey }) {
   const c = BADGE[badge];
   return (
     <Badge variant={c.variant} className="shrink-0 whitespace-nowrap">
-      <c.Icon />
+      <c.Icon className={c.spin ? "motion-safe:animate-spin" : undefined} />
       {c.label}
     </Badge>
   );
