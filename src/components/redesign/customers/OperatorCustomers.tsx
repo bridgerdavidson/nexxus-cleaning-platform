@@ -153,27 +153,67 @@ type ConfirmKind = "delete" | "bulkDelete";
 type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
 
 /**
- * Hook-backed Operator Customers. Consumes the existing headless admin hooks
- * (useAdminCustomers list + useCustomerDetails for the open sheet) and the
- * customer mutation helpers unchanged, derives the filtered/sorted list, and
- * drives the presentational View, detail Sheet, invite dialog, and confirm
- * dialog. Customers have no time lifecycle, so the list is sorted (not
- * segmented). Adding a customer sends a homeowner invite.
+ * Permission gate for the Operator Customers screen. Customer data (profiles,
+ * contact, spend, history) is protected by an APP-LEVEL grant, not RLS (an org
+ * member can query homeowner rows), so we must not even fetch it until we know
+ * the viewer is allowed. The legacy dashboard achieved this by never mounting
+ * the customers list for a manager without the permission; we mirror that by
+ * keeping every data-fetching hook inside OperatorCustomersData, which only
+ * renders once the permission resolves and grants access.
  */
 export function OperatorCustomers() {
-  const { showToast } = useToast();
-  const { currentOrgRole, currentOrganizationId, accessToken } = useAuth();
-  const { customers, loading, refetch, updateCustomerInState } = useAdminCustomers();
+  const { currentOrgRole } = useAuth();
   const { permissions, loading: permsLoading } = useManagerPermissions();
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
-  // Customer data (profiles, contact, history) is gated by an explicit view
-  // permission, mirroring the legacy manager dashboard. RLS lets an org member
-  // query homeowner profiles, so this app-level grant is what actually hides
-  // the screen from a manager who lacks it.
   const canView = privileged || !!permissions?.can_view_customers;
-  const canViewPayments = privileged || !!permissions?.can_view_payments;
-  const canEdit = privileged || !!permissions?.can_edit_customers;
+
+  // Permissions not resolved yet: hold (and don't fetch) rather than flash the
+  // access-denied state before the grant is known.
+  if (!privileged && permsLoading) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!canView) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        <EmptyState
+          icon={<ShieldAlert />}
+          title="You do not have access to customers"
+          description="Ask an owner or admin to grant you the customers permission."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <OperatorCustomersData
+      canViewPayments={privileged || !!permissions?.can_view_payments}
+      canEdit={privileged || !!permissions?.can_edit_customers}
+    />
+  );
+}
+
+/**
+ * Data + behavior for the Customers screen. Only mounted for a viewer allowed to
+ * see customers, so the useAdminCustomers / useCustomerDetails fetches never run
+ * for an unauthorized manager. Consumes the existing headless hooks and mutation
+ * helpers unchanged; customers have no time lifecycle, so the list is sorted
+ * (not segmented). Adding a customer sends a homeowner invite.
+ */
+function OperatorCustomersData({
+  canViewPayments,
+  canEdit,
+}: {
+  canViewPayments: boolean;
+  canEdit: boolean;
+}) {
+  const { showToast } = useToast();
+  const { currentOrganizationId, accessToken } = useAuth();
+  const { customers, loading, refetch, updateCustomerInState } = useAdminCustomers();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<CustomerSort>("recent");
@@ -371,24 +411,6 @@ export function OperatorCustomers() {
       confirmLabel: "Delete",
     };
   }, [confirm]);
-
-  // Manager without the view grant: never render customer data. Wait for the
-  // permission query so the gate doesn't flash before it resolves.
-  if (!canView) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        {!privileged && permsLoading ? (
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        ) : (
-          <EmptyState
-            icon={<ShieldAlert />}
-            title="You do not have access to customers"
-            description="Ask an owner or admin to grant you the customers permission."
-          />
-        )}
-      </div>
-    );
-  }
 
   return (
     <>
