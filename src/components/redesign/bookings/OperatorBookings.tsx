@@ -140,6 +140,19 @@ function counterProposals(a: AdminAppointment): CounterProposal[] {
   return out;
 }
 
+function counterWindows(a: AdminAppointment): CounterProposal[] {
+  const out: CounterProposal[] = [];
+  for (const f of a.cleaner_availability_feedback ?? []) {
+    for (const w of f.cleaner_suggested_windows ?? []) {
+      out.push({
+        id: w.id,
+        label: `${monthDay(w.window_date)}, ${fmtTime(w.start_time)} to ${fmtTime(w.end_time)}`,
+      });
+    }
+  }
+  return out;
+}
+
 function toRowVM(
   a: AdminAppointment,
   today: string,
@@ -192,6 +205,7 @@ function toDetailVM(a: AdminAppointment, canViewPayments: boolean): BookingDetai
     notes: a.notes ?? null,
     isUnassigned: !a.cleaner_id,
     counterProposals: counterProposals(a),
+    counterWindows: counterWindows(a),
     declinedReason: a.cleaner_availability_feedback?.[0]?.reason ?? null,
   };
 }

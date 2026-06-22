@@ -82,6 +82,9 @@ export type BookingDetailVM = {
   specialRequests: string | null;
   notes: string | null;
   isUnassigned: boolean;
+  /** Cleaner-suggested exact times that can be accepted in-place. */
   counterProposals: CounterProposal[];
+  /** Cleaner-suggested availability windows (resolve via Reschedule, not Accept). */
+  counterWindows: CounterProposal[];
   declinedReason: string | null;
 };

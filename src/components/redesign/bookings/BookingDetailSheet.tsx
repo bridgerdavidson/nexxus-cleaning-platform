@@ -70,9 +70,10 @@ export function BookingDetailSheet({
   onCancel,
   onDelete,
 }: BookingDetailSheetProps) {
-  const canStart = detail
-    ? (detail.status === "pending" || detail.status === "confirmed") && !!detail.cleanerId
-    : false;
+  // Only a confirmed (cleaner-accepted) booking can be started. A pending one is
+  // still awaiting the cleaner's acceptance / counter-proposal, so starting it
+  // would bypass that workflow.
+  const canStart = detail ? detail.status === "confirmed" && !!detail.cleanerId : false;
   const canComplete = detail ? detail.status === "in_progress" && canManagePayments : false;
   const cancellable = detail ? detail.status !== "cancelled" && detail.status !== "completed" : false;
 
@@ -178,6 +179,28 @@ export function BookingDetailSheet({
                         </Button>
                       </div>
                     ))}
+                  </div>
+                </>
+              ) : null}
+
+              {detail.counterWindows.length > 0 ? (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                      <Sparkles className="size-3.5" /> Cleaner proposed windows
+                    </div>
+                    {detail.counterWindows.map((w) => (
+                      <div
+                        key={w.id}
+                        className="rounded-control border border-border bg-muted/30 px-3 py-2 text-sm text-foreground"
+                      >
+                        {w.label}
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">
+                      Use Reschedule to pick a time inside one of these windows.
+                    </p>
                   </div>
                 </>
               ) : null}

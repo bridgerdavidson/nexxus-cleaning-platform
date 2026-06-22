@@ -90,6 +90,7 @@ const DETAIL: BookingDetailVM = {
     { id: "p1", label: "Jun 27 at 9:00am" },
     { id: "p2", label: "Jun 28 at 1:00pm" },
   ],
+  counterWindows: [{ id: "w1", label: "Jun 29, 8:00am to 12:00pm" }],
   declinedReason: null,
 };
 
