@@ -68,7 +68,7 @@ export function OperatorRail({ activeId }: { activeId?: string }) {
                     active && "bg-brand-600 text-white hover:bg-brand-600 hover:text-white"
                   )}
                 >
-                  <Icon className="h-5 w-5 flex-none" aria-hidden />
+                  <Icon className="h-6 w-6 flex-none" aria-hidden />
                   <span className="whitespace-nowrap text-[13px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                     {item.label}
                   </span>
