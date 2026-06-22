@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/contexts/ToastContext";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   useAdminCustomers,
   useCustomerDetails,
@@ -162,9 +164,14 @@ export function OperatorCustomers() {
   const { showToast } = useToast();
   const { currentOrgRole, currentOrganizationId, accessToken } = useAuth();
   const { customers, loading, refetch, updateCustomerInState } = useAdminCustomers();
-  const { permissions } = useManagerPermissions();
+  const { permissions, loading: permsLoading } = useManagerPermissions();
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
+  // Customer data (profiles, contact, history) is gated by an explicit view
+  // permission, mirroring the legacy manager dashboard. RLS lets an org member
+  // query homeowner profiles, so this app-level grant is what actually hides
+  // the screen from a manager who lacks it.
+  const canView = privileged || !!permissions?.can_view_customers;
   const canViewPayments = privileged || !!permissions?.can_view_payments;
   const canEdit = privileged || !!permissions?.can_edit_customers;
 
@@ -183,7 +190,13 @@ export function OperatorCustomers() {
     loading: detailsLoading,
   } = useCustomerDetails(detailId);
 
-  const derived = useMemo(() => deriveCustomers(customers, { search, sort }), [customers, search, sort]);
+  // Don't let spend ordering leak when payments are hidden: fall back to the
+  // recent sort (the View also hides the "Top spenders" option in that case).
+  const effectiveSort: CustomerSort = !canViewPayments && sort === "spent" ? "recent" : sort;
+  const derived = useMemo(
+    () => deriveCustomers(customers, { search, sort: effectiveSort }),
+    [customers, search, effectiveSort],
+  );
   const rows: CustomerRowVM[] = useMemo(
     () => derived.map((c) => toRowVM(c, canViewPayments)),
     [derived, canViewPayments],
@@ -368,6 +381,24 @@ export function OperatorCustomers() {
       confirmLabel: "Delete",
     };
   }, [confirm]);
+
+  // Manager without the view grant: never render customer data. Wait for the
+  // permission query so the gate doesn't flash before it resolves.
+  if (!canView) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        {!privileged && permsLoading ? (
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        ) : (
+          <EmptyState
+            icon={<ShieldAlert />}
+            title="You do not have access to customers"
+            description="Ask an owner or admin to grant you the customers permission."
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <>

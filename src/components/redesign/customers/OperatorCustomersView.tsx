@@ -94,6 +94,8 @@ export function OperatorCustomersView({
   const filtersActive = !!search;
   const showNew = canEdit && !!onNewCustomer;
   const tileCols = canViewPayments ? "sm:grid-cols-3" : "sm:grid-cols-2";
+  // Don't expose spend ordering to a viewer who can't see payment amounts.
+  const sortOptions = canViewPayments ? CUSTOMER_SORTS : CUSTOMER_SORTS.filter((s) => s.id !== "spent");
 
   return (
     <div className="max-w-[1700px] space-y-5">
@@ -136,7 +138,7 @@ export function OperatorCustomersView({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CUSTOMER_SORTS.map((s) => (
+            {sortOptions.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 {s.label}
               </SelectItem>
