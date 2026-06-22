@@ -62,7 +62,7 @@ export function OperatorRail({ activeId }: { activeId?: string }) {
                   aria-current={active ? "page" : undefined}
                   aria-label={item.label}
                   className={cn(
-                    "flex items-center gap-[13px] rounded-control px-[10px] py-[9px] text-muted-foreground transition-colors",
+                    "flex items-center gap-[13px] rounded-control px-2 py-[9px] text-muted-foreground transition-colors",
                     "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     item.id === "settings" && "mt-auto",
                     active && "bg-brand-600 text-white hover:bg-brand-600 hover:text-white"
