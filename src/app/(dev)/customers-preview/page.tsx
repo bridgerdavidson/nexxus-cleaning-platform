@@ -108,15 +108,6 @@ export default function CustomersPreviewPage() {
     [search, sort],
   );
 
-  const stats = useMemo(
-    () => ({
-      totalCustomers: CUSTOMERS.length,
-      totalRevenueLabel: money0(CUSTOMERS.reduce((s, c) => s + (c.total_spent ?? 0), 0)),
-      totalAppointments: CUSTOMERS.reduce((s, c) => s + c.appointments_count, 0),
-    }),
-    [],
-  );
-
   const toggleRow = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -129,7 +120,6 @@ export default function CustomersPreviewPage() {
     <OperatorShell active="people" onNewBooking={() => {}}>
       <OperatorCustomersView
         rows={rows}
-        stats={stats}
         totalCount={CUSTOMERS.length}
         canViewPayments
         canEdit

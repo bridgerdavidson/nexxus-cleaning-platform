@@ -19,7 +19,7 @@ import {
   type DeleteCustomerResult,
 } from "@/hooks/useAdminData";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { OperatorCustomersView, type CustomerStats } from "./OperatorCustomersView";
+import { OperatorCustomersView } from "./OperatorCustomersView";
 import { CustomerDetailSheet, type CustomerSaveFields } from "./CustomerDetailSheet";
 import { AddCustomerDialog } from "./AddCustomerDialog";
 import { deriveCustomers } from "./deriveCustomers";
@@ -218,16 +218,6 @@ export function OperatorCustomers() {
     });
   }, [rows]);
 
-  const stats: CustomerStats = useMemo(() => {
-    const totalRevenue = customers.reduce((s, c) => s + (c.total_spent ?? 0), 0);
-    const totalAppointments = customers.reduce((s, c) => s + (c.appointments_count ?? 0), 0);
-    return {
-      totalCustomers: customers.length,
-      totalRevenueLabel: canViewPayments ? money0(totalRevenue) : null,
-      totalAppointments,
-    };
-  }, [customers, canViewPayments]);
-
   const detail = useMemo(() => {
     if (!detailId) return null;
     const c = customers.find((x) => x.id === detailId);
@@ -405,7 +395,6 @@ export function OperatorCustomers() {
       <OperatorCustomersView
         loading={loading}
         rows={rows}
-        stats={stats}
         totalCount={customers.length}
         canViewPayments={canViewPayments}
         canEdit={canEdit}

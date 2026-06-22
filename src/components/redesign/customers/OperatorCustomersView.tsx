@@ -1,11 +1,10 @@
 "use client";
 
-import { Search, Users, DollarSign, CalendarDays, Plus } from "lucide-react";
+import { Search, Users, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { StatTile } from "@/components/ui/stat-tile";
 import {
   Select,
   SelectContent,
@@ -18,13 +17,6 @@ import { CustomersCardList } from "./CustomersCardList";
 import { CustomersBulkBar } from "./CustomersBulkBar";
 import { CUSTOMER_SORTS } from "./customers-types";
 import type { CustomerRowAction, CustomerRowVM, CustomerSort } from "./customers-types";
-
-export type CustomerStats = {
-  totalCustomers: number;
-  /** null when the viewer cannot see payments (the Revenue tile is dropped). */
-  totalRevenueLabel: string | null;
-  totalAppointments: number;
-};
 
 function CustomersSkeleton() {
   return (
@@ -47,7 +39,6 @@ function CustomersSkeleton() {
 export type OperatorCustomersViewProps = {
   loading?: boolean;
   rows: CustomerRowVM[];
-  stats: CustomerStats;
   totalCount: number;
   canViewPayments: boolean;
   canEdit: boolean;
@@ -72,7 +63,6 @@ export type OperatorCustomersViewProps = {
 export function OperatorCustomersView({
   loading,
   rows,
-  stats,
   totalCount,
   canViewPayments,
   canEdit,
@@ -93,18 +83,23 @@ export function OperatorCustomersView({
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
   const filtersActive = !!search;
   const showNew = canEdit && !!onNewCustomer;
-  const tileCols = canViewPayments ? "sm:grid-cols-3" : "sm:grid-cols-2";
   // Don't expose spend ordering to a viewer who can't see payment amounts.
   const sortOptions = canViewPayments ? CUSTOMER_SORTS : CUSTOMER_SORTS.filter((s) => s.id !== "spent");
+  // A lightweight live count for orientation (replaces the old KPI tiles).
+  const countLabel = loading
+    ? "Loading customers..."
+    : totalCount === 0
+      ? "No customers yet"
+      : filtersActive
+        ? `Showing ${rows.length} of ${totalCount}`
+        : `${totalCount} ${totalCount === 1 ? "customer" : "customers"}`;
 
   return (
-    <div className="max-w-[1700px] space-y-5">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="max-w-[1700px] space-y-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Customers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            View profiles, properties, and booking history.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
         </div>
         {showNew ? (
           <Button onClick={onNewCustomer} className="sm:shrink-0">
@@ -113,16 +108,8 @@ export function OperatorCustomersView({
         ) : null}
       </header>
 
-      <div className={`grid grid-cols-2 gap-4 ${tileCols}`}>
-        <StatTile label="Customers" value={String(stats.totalCustomers)} icon={<Users />} />
-        {canViewPayments && stats.totalRevenueLabel ? (
-          <StatTile label="Revenue" value={stats.totalRevenueLabel} icon={<DollarSign />} />
-        ) : null}
-        <StatTile label="Bookings" value={String(stats.totalAppointments)} icon={<CalendarDays />} />
-      </div>
-
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative w-full sm:max-w-sm">
+        <div className="relative w-full sm:flex-1 sm:max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
@@ -134,7 +121,7 @@ export function OperatorCustomersView({
           />
         </div>
         <Select value={sort} onValueChange={(v) => onSortChange(v as CustomerSort)}>
-          <SelectTrigger className="w-full sm:w-48" aria-label="Sort customers">
+          <SelectTrigger className="w-full sm:w-44 sm:shrink-0" aria-label="Sort customers">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
