@@ -21,10 +21,6 @@ export type CleanerStatus = "active" | "benched";
  *  finished; none = no Connect account yet. */
 export type ConnectState = "ready" | "incomplete" | "none";
 
-/** Roster payout-health dot: settled = nothing owed; owed = money owed now;
- *  problem = a failed/reversed payout needs attention. */
-export type PayoutHealth = "settled" | "owed" | "problem";
-
 export type CleanerRowAction = "open" | "edit" | "deactivate" | "reactivate" | "remove";
 export type InviteRowAction = "resend" | "cancel";
 
@@ -42,7 +38,12 @@ export type CleanerRowVM = {
   initials: string;
   status: CleanerStatus;
   connect: ConnectState;
-  payoutHealth: PayoutHealth;
+  /** "Owed $240" alert: money not yet sent (pending + approved payouts), gated
+   *  by canViewPayments. null when nothing is owed or payments are hidden. */
+  owedLabel: string | null;
+  /** A failed/reversed payout needs attention (operational alert, not a dollar
+   *  figure, so it shows regardless of canViewPayments). */
+  payoutFailed: boolean;
   thisWeekLabel: string; // "4 this week" / "No jobs this week"
   upcomingCount: number;
   /** "$1,240" lifetime cleaner earnings, gated by canViewPayments; null when hidden. */

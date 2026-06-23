@@ -31,7 +31,6 @@ import type {
   CleanerUpcomingVM,
   ConnectState,
   InviteRowAction,
-  PayoutHealth,
   PendingInviteRowVM,
   PendingInviteStatus,
 } from "./cleaners-types";
@@ -76,11 +75,6 @@ function connectStateOf(c: AdminCleanerScorecard): ConnectState {
   if (c.stripe_connect_account_id) return "incomplete";
   return "none";
 }
-function payoutHealthOf(c: AdminCleanerScorecard): PayoutHealth {
-  if (c.payouts_failed_count > 0) return "problem";
-  if (c.owed_now > 0) return "owed";
-  return "settled";
-}
 function completionRateLabel(completed: number, cancelled: number): string {
   const total = completed + cancelled;
   if (total === 0) return "N/A";
@@ -102,7 +96,8 @@ function toRowVM(c: AdminCleanerScorecard, canViewPayments: boolean): CleanerRow
     initials: initials(hasName ? name : "", c.email),
     status: c.deactivated_at ? "benched" : "active",
     connect: connectStateOf(c),
-    payoutHealth: payoutHealthOf(c),
+    owedLabel: canViewPayments && c.owed_now > 0 ? money0(c.owed_now) : null,
+    payoutFailed: c.payouts_failed_count > 0,
     thisWeekLabel: thisWeekLabel(c.upcoming_this_week),
     upcomingCount: c.upcoming_jobs,
     earningsLabel: canViewPayments ? money0(c.cleaner_earnings) : null,

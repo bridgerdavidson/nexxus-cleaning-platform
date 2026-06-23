@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CleanerStatusBadge, ConnectBadge, PayoutHealthDot } from "./cleaners-presenters";
+import { CleanerStatusBadge, ConnectBadge, FailedPayoutBadge, OwedBadge } from "./cleaners-presenters";
 import type { CleanerRowAction, CleanerRowVM } from "./cleaners-types";
 
 function RowMenu({
@@ -144,6 +144,8 @@ export function CleanersTable({
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <CleanerStatusBadge status={row.status} />
                         <ConnectBadge state={row.connect} />
+                        {row.payoutFailed ? <FailedPayoutBadge /> : null}
+                        {row.owedLabel ? <OwedBadge label={row.owedLabel} /> : null}
                       </div>
                     </div>
                   </div>
@@ -151,10 +153,7 @@ export function CleanersTable({
                 <TableCell className="text-right text-sm text-foreground">{row.thisWeekLabel}</TableCell>
                 {canViewPayments ? (
                   <TableCell className="text-right">
-                    <span className="inline-flex items-center justify-end gap-2">
-                      <PayoutHealthDot health={row.payoutHealth} />
-                      <span className="font-semibold tnum text-foreground">{row.earningsLabel ?? "$0"}</span>
-                    </span>
+                    <span className="font-semibold tnum text-foreground">{row.earningsLabel ?? "$0"}</span>
                   </TableCell>
                 ) : null}
                 <TableCell className="text-right tnum text-muted-foreground">{row.payoutPercentLabel}</TableCell>

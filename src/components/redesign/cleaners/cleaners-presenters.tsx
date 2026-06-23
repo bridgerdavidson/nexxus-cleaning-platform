@@ -1,12 +1,6 @@
-import { AlertTriangle, Ban, Clock, Loader2, XCircle, CalendarClock } from "lucide-react";
+import { AlertTriangle, Ban, Banknote, Clock, Loader2, XCircle, CalendarClock } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import type {
-  CleanerStatus,
-  ConnectState,
-  PayoutHealth,
-  PendingInviteStatus,
-} from "./cleaners-types";
+import type { CleanerStatus, ConnectState, PendingInviteStatus } from "./cleaners-types";
 
 // Status presenters for the Cleaners roster. Reuses the operator color hierarchy:
 // amber/caution = needs action, gray/secondary = settled, green/positive = good,
@@ -33,22 +27,22 @@ export function ConnectBadge({ state }: { state: ConnectState }) {
   );
 }
 
-const HEALTH_DOT: Record<PayoutHealth, { className: string; label: string }> = {
-  settled: { className: "bg-positive", label: "Payouts settled" },
-  owed: { className: "bg-caution", label: "Payout owed" },
-  problem: { className: "bg-critical", label: "Payout problem" },
-};
-
-/** Small colored dot summarizing a cleaner's payout health. */
-export function PayoutHealthDot({ health }: { health: PayoutHealth }) {
-  const c = HEALTH_DOT[health];
+/** Amber alert: money owed to the cleaner that has not been sent yet
+ *  (pending + approved payouts). Only shown when there is something owed. */
+export function OwedBadge({ label }: { label: string }) {
   return (
-    <span
-      className={cn("inline-block size-2.5 shrink-0 rounded-pill", c.className)}
-      role="img"
-      aria-label={c.label}
-      title={c.label}
-    />
+    <Badge variant="caution" className="shrink-0 whitespace-nowrap">
+      <Banknote /> Owed {label}
+    </Badge>
+  );
+}
+
+/** Red alert: a payout to this cleaner failed or was reversed. */
+export function FailedPayoutBadge() {
+  return (
+    <Badge variant="critical" className="shrink-0 whitespace-nowrap">
+      <AlertTriangle /> Payout failed
+    </Badge>
   );
 }
 
