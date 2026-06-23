@@ -64,16 +64,16 @@ function PendingInvitesGroup({
         {invites.map((inv) => (
           <div
             key={inv.inviteId}
-            className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3 last:border-b-0"
+            className="flex flex-col items-start gap-2 border-b border-border/60 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
           >
-            <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-w-0 max-w-full items-center gap-2.5">
               <Mail className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-foreground">{inv.email}</div>
                 <div className="text-xs text-muted-foreground">{inv.invitedLabel}</div>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
               <InviteStatusBadge status={inv.status} />
               {canEdit ? (
                 <>

@@ -266,7 +266,7 @@ export function CleanerDetailSheet({
                       <StatBox label="Completed" value={String(sc?.completedJobs ?? 0)} />
                       <StatBox label="Completion rate" value={sc?.completionRateLabel ?? "N/A"} />
                       <StatBox label="Upcoming" value={String(sc?.upcomingJobs ?? 0)} />
-                      <StatBox label="This week" value={String(sc?.completedThisWeek ?? 0)} />
+                      <StatBox label="Done this week" value={String(sc?.completedThisWeek ?? 0)} />
                       {canViewPayments ? (
                         <>
                           <StatBox label="Lifetime earnings" value={sc?.lifetimeEarningsLabel ?? "$0"} />
