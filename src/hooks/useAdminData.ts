@@ -2085,3 +2085,263 @@ export async function notifyReschedule(args: {
     console.error('Error notifying cleaner of reschedule:', err);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Operator "Cleaners & team" screen (redesign): per-cleaner scorecard roster,
+// lazy workload/payouts, and the edit/bench/cancel-invite mutations. The
+// roster is one round trip via the cleaner_scorecard(p_org_id) RPC (migration
+// 091); never trusts cleaner_profiles.rating / total_jobs (those are never
+// written) - all counts are derived from appointments by the RPC.
+// ---------------------------------------------------------------------------
+
+/** One row of the cleaner_scorecard RPC: profile + derived aggregates. */
+export interface AdminCleanerScorecard {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+  payout_percent: number;
+  hourly_rate: number | null;
+  experience_years: number | null;
+  bio: string | null;
+  is_available: boolean;
+  background_check_verified: boolean;
+  insurance_verified: boolean;
+  stripe_connect_account_id: string | null;
+  stripe_connect_onboarding_complete: boolean;
+  deactivated_at: string | null;
+  created_at: string;
+  total_jobs: number;
+  completed_jobs: number;
+  cancelled_jobs: number;
+  upcoming_jobs: number;
+  upcoming_this_week: number;
+  completed_this_week: number;
+  cleaner_earnings: number;
+  owed_now: number;
+  payouts_failed_count: number;
+}
+
+export function useAdminCleanerScorecards() {
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryClient = useQueryClient();
+  const queryKey = keys.cleanerProfiles.scorecards(orgId);
+
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase.rpc('cleaner_scorecard', { p_org_id: orgId });
+      if (error) throw error;
+      return ((data as Array<Record<string, unknown>>) ?? []).map((row) => ({
+        id: row.id as string,
+        first_name: (row.first_name ?? null) as string | null,
+        last_name: (row.last_name ?? null) as string | null,
+        email: row.email as string,
+        phone: (row.phone ?? null) as string | null,
+        avatar_url: (row.avatar_url ?? null) as string | null,
+        payout_percent: Number(row.payout_percent ?? 0),
+        hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate),
+        experience_years: row.experience_years == null ? null : Number(row.experience_years),
+        bio: (row.bio ?? null) as string | null,
+        is_available: Boolean(row.is_available),
+        background_check_verified: Boolean(row.background_check_verified),
+        insurance_verified: Boolean(row.insurance_verified),
+        stripe_connect_account_id: (row.stripe_connect_account_id ?? null) as string | null,
+        stripe_connect_onboarding_complete: Boolean(row.stripe_connect_onboarding_complete),
+        deactivated_at: (row.deactivated_at ?? null) as string | null,
+        created_at: row.created_at as string,
+        total_jobs: Number(row.total_jobs ?? 0),
+        completed_jobs: Number(row.completed_jobs ?? 0),
+        cancelled_jobs: Number(row.cancelled_jobs ?? 0),
+        upcoming_jobs: Number(row.upcoming_jobs ?? 0),
+        upcoming_this_week: Number(row.upcoming_this_week ?? 0),
+        completed_this_week: Number(row.completed_this_week ?? 0),
+        cleaner_earnings: Number(row.cleaner_earnings ?? 0),
+        owed_now: Number(row.owed_now ?? 0),
+        payouts_failed_count: Number(row.payouts_failed_count ?? 0),
+      })) as AdminCleanerScorecard[];
+    },
+  });
+
+  // Refresh on profile/bench edits. Job/payout-driven scorecard changes refresh
+  // on the next staleTime/refetch (the container refetches after its mutations).
+  useSupabaseRealtimeSync({
+    channelName: `cleaner_scorecards:${orgId}`,
+    table: 'cleaner_profiles',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+
+  const updateCleanerInState = useCallback(
+    (cleanerId: string, updatedData: Partial<AdminCleanerScorecard>) => {
+      queryClient.setQueryData<AdminCleanerScorecard[]>(queryKey, (prev) =>
+        (prev ?? []).map((c) => (c.id === cleanerId ? { ...c, ...updatedData } : c)),
+      );
+    },
+    [queryClient, queryKey],
+  );
+
+  return {
+    cleaners: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    updateCleanerInState,
+  };
+}
+
+export interface CleanerUpcomingJob {
+  id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  service: string;
+  property: string | null;
+  total_price: number;
+}
+
+export interface CleanerPayoutRow {
+  id: string;
+  amount: number;
+  status: string;
+  created_at: string;
+}
+
+/** Lazy detail load for the cleaner Sheet: upcoming jobs + payout rows. */
+export function useCleanerWorkload(cleanerId: string | null) {
+  const query = useOrgQuery({
+    queryKey: keys.cleanerProfiles.detail(cleanerId ?? ''),
+    enabled: !!cleanerId,
+    queryFn: async ({ orgId }) => {
+      const [apptRes, payoutRes] = await Promise.all([
+        supabase
+          .from('appointments')
+          .select(`
+            id, scheduled_date, scheduled_time, status, total_price,
+            service_type:service_types(name),
+            property:properties(name, address)
+          `)
+          .eq('organization_id', orgId)
+          .eq('cleaner_id', cleanerId as string)
+          .in('status', ['pending', 'confirmed', 'in_progress'])
+          .order('scheduled_date', { ascending: true }),
+        supabase
+          .from('payouts')
+          .select('id, amount, status, created_at')
+          .eq('cleaner_id', cleanerId as string)
+          .order('created_at', { ascending: false }),
+      ]);
+      if (apptRes.error) throw apptRes.error;
+      if (payoutRes.error) throw payoutRes.error;
+      const upcoming = (apptRes.data || []).map((a) => {
+        const st = Array.isArray(a.service_type) ? a.service_type[0] : a.service_type;
+        const pr = Array.isArray(a.property) ? a.property[0] : a.property;
+        return {
+          id: a.id,
+          scheduled_date: a.scheduled_date,
+          scheduled_time: a.scheduled_time,
+          status: a.status,
+          total_price: Number(a.total_price ?? 0),
+          service: st?.name || 'Cleaning',
+          property: pr?.name || pr?.address || null,
+        };
+      }) as CleanerUpcomingJob[];
+      const payouts = (payoutRes.data || []).map((p) => ({
+        id: p.id,
+        amount: Number(p.amount ?? 0),
+        status: p.status as string,
+        created_at: p.created_at,
+      })) as CleanerPayoutRow[];
+      return { upcoming, payouts };
+    },
+  });
+
+  return {
+    upcoming: query.data?.upcoming ?? [],
+    payouts: query.data?.payouts ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
+export interface UpdateCleanerPayload {
+  cleanerId: string;
+  profile?: { first_name?: string; last_name?: string; email?: string; phone?: string };
+  cleaner?: { payout_percent?: number; hourly_rate?: number; experience_years?: number; bio?: string };
+  deactivated?: boolean;
+}
+
+export async function updateCleaner(
+  payload: UpdateCleanerPayload,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const response = await fetch('/api/admin/update-cleaner', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: session?.access_token ? `Bearer ${session.access_token}` : '',
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      return { success: false, error: data.error || 'Failed to update cleaner' };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to update cleaner' };
+  }
+}
+
+export async function deleteCleanerById(
+  cleanerId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const response = await fetch(`/api/admin/delete-cleaner?id=${encodeURIComponent(cleanerId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: session?.access_token ? `Bearer ${session.access_token}` : '' },
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      return { success: false, error: data.error || 'Failed to remove cleaner' };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to remove cleaner' };
+  }
+}
+
+export async function cancelInvite(
+  inviteId: string,
+  organizationId: string,
+  accessToken: string | null | undefined,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch('/api/admin/cancel-invite', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: accessToken ? `Bearer ${accessToken}` : '',
+      },
+      body: JSON.stringify({ inviteId, organizationId }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      return { success: false, error: data.error || 'Failed to cancel invite' };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to cancel invite' };
+  }
+}

@@ -77,6 +77,7 @@ export const keys = {
   },
   cleanerProfiles: {
     byOrg: (orgId: string) => ['cleaner-profiles', 'org', orgId] as const,
+    scorecards: (orgId: string) => ['cleaner-profiles', 'scorecards', orgId] as const,
     detail: (id: string) => ['cleaner-profiles', 'detail', id] as const,
   },
   stripeConnect: {

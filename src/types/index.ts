@@ -32,7 +32,7 @@ export type AppointmentFlowType =
   | 'admin_direct'
   | 'cleaner_availability';
 export type RoutingLogResponse = 'pending' | 'accepted' | 'declined' | 'expired';
-export type InviteStatus = 'pending' | 'accepted' | 'creating' | 'superseded' | 'failed' | 'expired';
+export type InviteStatus = 'pending' | 'accepted' | 'revoked' | 'creating' | 'superseded' | 'failed' | 'expired';
 // Display status mirrors InviteStatus 1:1 now that 'expired' is a real DB value;
 // kept as a separate name for callers that previously folded computed expiry in.
 export type InviteDisplayStatus = InviteStatus;
