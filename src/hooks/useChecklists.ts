@@ -38,12 +38,21 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
           *,
           checklist_line_items (*)
         `)
-        .eq('service_type_id', serviceTypeId as string)
-        .order('name', { ascending: true });
+        .eq('service_type_id', serviceTypeId as string);
 
       if (error) throw error;
 
       const checklistsWithItems = (data || []) as ChecklistWithItems[];
+      // Tiers ordered by position (nulls last) then name; matches sortChecklists.
+      checklistsWithItems.sort((a, b) => {
+        const ap = a.position ?? null;
+        const bp = b.position ?? null;
+        if (ap === null && bp === null) return a.name.localeCompare(b.name);
+        if (ap === null) return 1;
+        if (bp === null) return -1;
+        if (ap !== bp) return ap - bp;
+        return a.name.localeCompare(b.name);
+      });
       checklistsWithItems.forEach((checklist) => {
         if (checklist.checklist_line_items) {
           checklist.checklist_line_items.sort((a, b) => {
@@ -157,7 +166,15 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
   const applyChecklistAdded = useCallback(
     (checklist: ChecklistWithItems) => {
       updateCache(prev =>
-        [...prev, checklist].sort((a, b) => a.name.localeCompare(b.name))
+        [...prev, checklist].sort((a, b) => {
+          const ap = a.position ?? null;
+          const bp = b.position ?? null;
+          if (ap === null && bp === null) return a.name.localeCompare(b.name);
+          if (ap === null) return 1;
+          if (bp === null) return -1;
+          if (ap !== bp) return ap - bp;
+          return a.name.localeCompare(b.name);
+        })
       );
     },
     [updateCache]
@@ -413,6 +430,112 @@ export async function reorderLineItems(
       success: false,
       error: err instanceof Error ? err.message : 'Failed to reorder line items',
     };
+  }
+}
+
+/**
+ * Reorder checklists (tiers) within a service by writing 0-indexed positions.
+ * Sequential updates avoid request storms, matching reorderLineItems.
+ */
+export async function reorderChecklists(
+  serviceTypeId: string,
+  orderedIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    for (const [index, id] of orderedIds.entries()) {
+      const { error } = await supabase
+        .from('checklists')
+        .update({ position: index })
+        .eq('id', id)
+        .eq('service_type_id', serviceTypeId); // ensure the checklist belongs to this service
+      if (error) throw error;
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('Error reordering checklists:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to reorder checklists' };
+  }
+}
+
+/**
+ * Bulk-create line items from pasted text. Each non-blank line becomes one task,
+ * appended after existing items (position left NULL so they sort last by created_at).
+ */
+export async function createLineItems(
+  checklistId: string,
+  tasks: string[]
+): Promise<{ success: boolean; data?: ChecklistLineItem[]; error?: string }> {
+  try {
+    const rows = tasks
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((task) => ({ checklist_id: checklistId, task }));
+    if (rows.length === 0) return { success: false, error: 'No tasks to add' };
+
+    const { data, error } = await supabase
+      .from('checklist_line_items')
+      .insert(rows)
+      .select();
+    if (error) throw error;
+    return { success: true, data: (data ?? []) as ChecklistLineItem[] };
+  } catch (err) {
+    console.error('Error bulk-creating line items:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to add tasks' };
+  }
+}
+
+/**
+ * Clone a checklist (tier) within the same service, including all its line items
+ * in order. The copy is named "<name> (copy)" and appended (position = NULL so it
+ * sorts last until the user reorders).
+ */
+export async function duplicateChecklist(
+  checklistId: string
+): Promise<{ success: boolean; data?: ChecklistWithItems; error?: string }> {
+  try {
+    const { data: source, error: srcError } = await supabase
+      .from('checklists')
+      .select('*, checklist_line_items (*)')
+      .eq('id', checklistId)
+      .single();
+    if (srcError) throw srcError;
+
+    const src = source as ChecklistWithItems;
+    const { data: created, error: createError } = await supabase
+      .from('checklists')
+      .insert({
+        service_type_id: src.service_type_id,
+        name: `${src.name} (copy)`,
+        price_adder: src.price_adder,
+        position: null,
+      })
+      .select()
+      .single();
+    if (createError) throw createError;
+
+    const items = [...(src.checklist_line_items ?? [])].sort((a, b) => {
+      if (a.position === null && b.position === null) {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      if (a.position === null) return 1;
+      if (b.position === null) return -1;
+      return (a.position ?? 0) - (b.position ?? 0);
+    });
+
+    let clonedItems: ChecklistLineItem[] = [];
+    if (items.length > 0) {
+      const { data: inserted, error: itemsError } = await supabase
+        .from('checklist_line_items')
+        .insert(items.map((it, idx) => ({ checklist_id: created.id, task: it.task, position: idx })))
+        .select();
+      if (itemsError) throw itemsError;
+      clonedItems = (inserted ?? []) as ChecklistLineItem[];
+    }
+
+    return { success: true, data: { ...(created as Checklist), checklist_line_items: clonedItems } };
+  } catch (err) {
+    console.error('Error duplicating checklist:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to duplicate checklist' };
   }
 }
 

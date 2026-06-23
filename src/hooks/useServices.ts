@@ -412,3 +412,114 @@ export async function canDeleteService(
     return { canDelete: false, appointmentCount: -1, seriesCount: -1 };
   }
 }
+
+// Local row shape for the duplicate query (checklists + nested line items).
+type ChecklistWithItemsRow = {
+  id: string;
+  name: string;
+  price_adder: number;
+  position: number | null;
+  checklist_line_items: { id: string; task: string; position: number | null; created_at: string }[] | null;
+};
+
+// Duplicate a service, cloning all of its checklists + line items.
+// GOTCHA: inserting a service_type fires the create_default_checklist_for_service
+// trigger, which seeds a "Default Checklist". We delete that auto-seeded checklist
+// before copying the source's real checklists, so the clone is an exact copy.
+export async function duplicateService(
+  organizationId: string,
+  serviceId: string
+): Promise<{ success: boolean; data?: ServiceType; error?: string }> {
+  // Track the clone so a mid-copy failure doesn't leave an orphaned, partial
+  // service in the list (best-effort cleanup in the catch; cascade removes its
+  // checklists + items).
+  let createdServiceId: string | null = null;
+  try {
+    const { data: source, error: srcError } = await supabase
+      .from('service_types')
+      .select('*')
+      .eq('id', serviceId)
+      .eq('organization_id', organizationId)
+      .single();
+    if (srcError) throw srcError;
+    const src = source as ServiceType;
+
+    // 1. Clone the service row (fires the default-checklist trigger).
+    const { data: created, error: createError } = await supabase
+      .from('service_types')
+      .insert({
+        organization_id: organizationId,
+        name: `${src.name} (copy)`,
+        description: src.description,
+        base_price: src.base_price,
+        duration_minutes: src.duration_minutes,
+        service_type: src.service_type,
+        is_active: src.is_active,
+      })
+      .select()
+      .single();
+    if (createError) throw createError;
+    const newService = created as ServiceType;
+    createdServiceId = newService.id;
+
+    // 2. Remove the trigger-seeded "Default Checklist" so we copy only the source's.
+    const { error: delError } = await supabase
+      .from('checklists')
+      .delete()
+      .eq('service_type_id', newService.id);
+    if (delError) throw delError;
+
+    // 3. Copy the source's checklists + their line items, preserving order.
+    const { data: srcChecklists, error: clError } = await supabase
+      .from('checklists')
+      .select('*, checklist_line_items (*)')
+      .eq('service_type_id', serviceId);
+    if (clError) throw clError;
+
+    for (const cl of (srcChecklists ?? []) as ChecklistWithItemsRow[]) {
+      const { data: newCl, error: insClError } = await supabase
+        .from('checklists')
+        .insert({
+          service_type_id: newService.id,
+          name: cl.name,
+          price_adder: cl.price_adder,
+          position: cl.position,
+        })
+        .select()
+        .single();
+      if (insClError) throw insClError;
+
+      // Preserve order: position asc, NULLs last with created_at as the
+      // tiebreaker (matches useChecklists/duplicateChecklist), so NULL-position
+      // items (e.g. default-checklist tasks) keep their order in the copy.
+      const items = [...(cl.checklist_line_items ?? [])].sort((a, b) => {
+        if (a.position === null && b.position === null) {
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        }
+        if (a.position === null) return 1;
+        if (b.position === null) return -1;
+        if (a.position !== b.position) return a.position - b.position;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+      if (items.length > 0) {
+        const { error: insItemsError } = await supabase
+          .from('checklist_line_items')
+          .insert(items.map((it, idx) => ({ checklist_id: newCl.id, task: it.task, position: idx })));
+        if (insItemsError) throw insItemsError;
+      }
+    }
+
+    return { success: true, data: newService };
+  } catch (err) {
+    console.error('Error duplicating service:', err);
+    if (createdServiceId) {
+      // Best-effort: drop the partial clone so it doesn't linger in the list.
+      try {
+        await supabase.from('service_types').delete().eq('id', createdServiceId);
+      } catch (cleanupErr) {
+        console.error('Error cleaning up partial service duplicate:', cleanupErr);
+      }
+    }
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to duplicate service' };
+  }
+}

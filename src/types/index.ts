@@ -375,6 +375,7 @@ export interface Checklist {
   name: string; // Defaults to 'checklist'
   service_type_id: string; // References service_types(id)
   price_adder: number; // numeric(10,2) adder to service base price
+  position: number | null; // 0-indexed tier order; NULL sorts last (migration 090)
   created_at: string;
   updated_at: string;
 }
