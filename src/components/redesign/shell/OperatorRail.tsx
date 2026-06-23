@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { OPERATOR_NAV } from "./nav-items";
 
@@ -55,28 +54,23 @@ export function OperatorRail({ activeId }: { activeId?: string }) {
           const Icon = item.icon;
           const active = item.id === activeId;
           return (
-            <Tooltip key={item.id}>
-              <TooltipTrigger asChild>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  aria-label={item.label}
-                  className={cn(
-                    "flex items-center gap-[13px] rounded-control px-2 py-[9px] text-muted-foreground transition-colors",
-                    "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    item.id === "settings" && "mt-auto",
-                    active && "bg-brand-600 text-white hover:bg-brand-600 hover:text-white"
-                  )}
-                >
-                  <Icon className="h-6 w-6 flex-none" aria-hidden />
-                  <span className="whitespace-nowrap text-[13px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                    {item.label}
-                  </span>
-                </Link>
-              </TooltipTrigger>
-              {/* Tooltip only useful while collapsed; harmless when expanded */}
-              <TooltipContent side="right">{item.label}</TooltipContent>
-            </Tooltip>
+            <Link
+              key={item.id}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              aria-label={item.label}
+              className={cn(
+                "flex items-center gap-[13px] rounded-control px-2 py-[9px] text-muted-foreground transition-colors",
+                "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                item.id === "settings" && "mt-auto",
+                active && "bg-brand-600 text-white hover:bg-brand-600 hover:text-white"
+              )}
+            >
+              <Icon className="h-6 w-6 flex-none" aria-hidden />
+              <span className="whitespace-nowrap text-[13px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                {item.label}
+              </span>
+            </Link>
           );
         })}
       </nav>
