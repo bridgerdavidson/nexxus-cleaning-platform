@@ -251,7 +251,20 @@ export function usePaymentsTriage(): PaymentsTriage {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not create card link");
-        setNotice("Card link sent to the customer.");
+        // The endpoint returns a shareable URL but does NOT itself deliver it, so
+        // copy it to the clipboard for the operator to send, rather than claiming
+        // it was sent.
+        const url = typeof data.url === "string" ? data.url : null;
+        if (url && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(url);
+            setNotice("Card link copied to your clipboard. Share it with the customer.");
+          } catch {
+            setNotice(`Card link ready: ${url}`);
+          }
+        } else {
+          setNotice(url ? `Card link ready: ${url}` : "Card link created.");
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create card link");
       } finally {

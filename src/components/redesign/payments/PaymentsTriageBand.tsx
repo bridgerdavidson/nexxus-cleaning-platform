@@ -67,21 +67,23 @@ export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: b
                         : "Customer needs to verify their identity (3D Secure)"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button size="sm" onClick={() => t.fixCard(c.apptId)}>
-                      Fix card
-                    </Button>
-                    {c.canSendLink ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        loading={t.busyId === c.apptId}
-                        onClick={() => t.sendCardLink(c.apptId, c.homeownerId)}
-                      >
-                        Send card link
+                  {canManagePayments ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button size="sm" onClick={() => t.fixCard(c.apptId)}>
+                        Fix card
                       </Button>
-                    ) : null}
-                  </div>
+                      {c.canSendLink ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={t.busyId === c.apptId}
+                          onClick={() => t.sendCardLink(c.apptId, c.homeownerId)}
+                        >
+                          Copy card link
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

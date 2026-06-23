@@ -349,7 +349,7 @@ function OperatorPaymentsData({
             loading={statsLoading}
           />
         }
-        yourMoney={<PaymentsYourMoney />}
+        yourMoney={canManagePayments ? <PaymentsYourMoney /> : undefined}
       />
 
       <PaymentDetailSheet
