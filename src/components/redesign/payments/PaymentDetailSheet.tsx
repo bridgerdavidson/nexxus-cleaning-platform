@@ -103,7 +103,9 @@ export function PaymentDetailSheet({
         ) : kind === "payouts" && payout ? (
           <>
             <SheetHeader className="pr-12">
-              <PayoutStatusBadge badge={payout.badge} />
+              <div className="flex items-center gap-2">
+                <PayoutStatusBadge badge={payout.badge} />
+              </div>
               <SheetTitle className="truncate">{payout.cleaner}</SheetTitle>
               <SheetDescription>
                 {payout.amountLabel} · {payout.dateLabel}
