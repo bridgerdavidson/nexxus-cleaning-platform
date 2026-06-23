@@ -80,9 +80,11 @@ AS $$
        WHERE a.cleaner_id = cp.id AND a.organization_id = p_org_id AND a.status = 'completed')
       * coalesce(cp.payout_percent, 0) / 100.0,
     (SELECT coalesce(sum(pay.amount), 0) FROM payouts pay
-       WHERE pay.cleaner_id = cp.id AND pay.status IN ('pending','approved','paid')),
+       WHERE pay.cleaner_id = cp.id AND pay.organization_id = p_org_id
+         AND pay.status IN ('pending','approved','paid')),
     (SELECT count(*) FROM payouts pay
-       WHERE pay.cleaner_id = cp.id AND pay.status IN ('failed','reversed'))
+       WHERE pay.cleaner_id = cp.id AND pay.organization_id = p_org_id
+         AND pay.status IN ('failed','reversed'))
   FROM cleaner_profiles cp
   JOIN user_profiles up ON up.id = cp.id
   WHERE cp.organization_id = p_org_id

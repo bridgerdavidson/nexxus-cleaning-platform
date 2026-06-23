@@ -2204,40 +2204,27 @@ export interface CleanerUpcomingJob {
   total_price: number;
 }
 
-export interface CleanerPayoutRow {
-  id: string;
-  amount: number;
-  status: string;
-  created_at: string;
-}
-
-/** Lazy detail load for the cleaner Sheet: upcoming jobs + payout rows. */
+/** Lazy detail load for the cleaner Sheet: the cleaner's upcoming jobs. (Owed /
+ *  failed payout figures come from the scorecard RPC, so we don't refetch
+ *  payout rows here.) */
 export function useCleanerWorkload(cleanerId: string | null) {
   const query = useOrgQuery({
     queryKey: keys.cleanerProfiles.detail(cleanerId ?? ''),
     enabled: !!cleanerId,
     queryFn: async ({ orgId }) => {
-      const [apptRes, payoutRes] = await Promise.all([
-        supabase
-          .from('appointments')
-          .select(`
-            id, scheduled_date, scheduled_time, status, total_price,
-            service_type:service_types(name),
-            property:properties(name, address)
-          `)
-          .eq('organization_id', orgId)
-          .eq('cleaner_id', cleanerId as string)
-          .in('status', ['pending', 'confirmed', 'in_progress'])
-          .order('scheduled_date', { ascending: true }),
-        supabase
-          .from('payouts')
-          .select('id, amount, status, created_at')
-          .eq('cleaner_id', cleanerId as string)
-          .order('created_at', { ascending: false }),
-      ]);
-      if (apptRes.error) throw apptRes.error;
-      if (payoutRes.error) throw payoutRes.error;
-      const upcoming = (apptRes.data || []).map((a) => {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          id, scheduled_date, scheduled_time, status, total_price,
+          service_type:service_types(name),
+          property:properties(name, address)
+        `)
+        .eq('organization_id', orgId)
+        .eq('cleaner_id', cleanerId as string)
+        .in('status', ['pending', 'confirmed', 'in_progress'])
+        .order('scheduled_date', { ascending: true });
+      if (error) throw error;
+      const upcoming = (data || []).map((a) => {
         const st = Array.isArray(a.service_type) ? a.service_type[0] : a.service_type;
         const pr = Array.isArray(a.property) ? a.property[0] : a.property;
         return {
@@ -2250,19 +2237,12 @@ export function useCleanerWorkload(cleanerId: string | null) {
           property: pr?.name || pr?.address || null,
         };
       }) as CleanerUpcomingJob[];
-      const payouts = (payoutRes.data || []).map((p) => ({
-        id: p.id,
-        amount: Number(p.amount ?? 0),
-        status: p.status as string,
-        created_at: p.created_at,
-      })) as CleanerPayoutRow[];
-      return { upcoming, payouts };
+      return { upcoming };
     },
   });
 
   return {
     upcoming: query.data?.upcoming ?? [],
-    payouts: query.data?.payouts ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,
