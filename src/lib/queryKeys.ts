@@ -74,6 +74,13 @@ export const keys = {
   },
   analytics: {
     byOrg: (orgId: string, range: string) => ['analytics', 'org', orgId, range] as const,
+    all: ['analytics'] as const,
+    summary: (orgId: string, range: string) => ['analytics', 'summary', orgId, range] as const,
+    timeseries: (orgId: string, range: string) => ['analytics', 'timeseries', orgId, range] as const,
+    serviceMix: (orgId: string, range: string) => ['analytics', 'serviceMix', orgId, range] as const,
+    leaderboard: (orgId: string, range: string) => ['analytics', 'leaderboard', orgId, range] as const,
+    demand: (orgId: string, range: string) => ['analytics', 'demand', orgId, range] as const,
+    cancellations: (orgId: string, range: string) => ['analytics', 'cancellations', orgId, range] as const,
   },
   jobPhotos: {
     byAppointment: (apptId: string) => ['job-photos', 'appointment', apptId] as const,
