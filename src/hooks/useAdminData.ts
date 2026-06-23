@@ -137,7 +137,13 @@ export interface AdminStats {
 export interface AdminPayment {
   id: string;
   amount: number;
-  status: 'pending' | 'paid' | 'failed' | 'refunded';
+  status: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded';
+  /** 'revenue' | 'expense' | 'refund'. Already fetched by the select. */
+  payment_type?: string;
+  /** 'card' | 'ach' | 'manual'. Already fetched by the select. */
+  payment_method?: string;
+  reference?: string;
+  notes?: string;
   paid_at?: string;
   created_at: string;
   /** True when this payment was funded by an org self-pay charge (no homeowner). */
@@ -617,7 +623,12 @@ export function useAdminPayments() {
 export interface AdminPayout {
   id: string;
   amount: number;
+  // NOTE: the DB also emits 'bank_paid' and 'reversed' at runtime; consumers that
+  // render those (redesign Payouts ledger) treat status as a string. The union is
+  // kept narrow here so legacy consumers with their own AdminPayout stay assignable.
   status: 'pending' | 'approved' | 'paid' | 'failed';
+  /** = cleaner_profiles.id = auth user id. Used by the redesign "Message cleaner" nudge. */
+  cleaner_id?: string;
   approved_at?: string;
   paid_at?: string;
   created_at: string;
@@ -644,6 +655,7 @@ export function useAdminPayouts() {
           id,
           amount,
           status,
+          cleaner_id,
           approved_at,
           paid_at,
           created_at,

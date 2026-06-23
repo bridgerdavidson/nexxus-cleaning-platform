@@ -33,7 +33,7 @@ export const OPERATOR_NAV: NavItem[] = [
   { id: "people", label: "Customers", href: "/app/admin-dashboard/customers", icon: Users, primary: true },
   { id: "cleaners", label: "Cleaners & team", href: "/app/admin-dashboard/cleaners", icon: SprayCan },
   { id: "services", label: "Services", href: "/app/admin-dashboard/services", icon: Tag },
-  { id: "payments", label: "Payments & payouts", href: "/admin-dashboard?tab=payments", icon: CreditCard },
+  { id: "payments", label: "Payments & payouts", href: "/app/admin-dashboard/payments", icon: CreditCard },
   { id: "analytics", label: "Analytics", href: "/admin-dashboard?tab=analytics", icon: BarChart3 },
   { id: "messages", label: "Messages", href: "/admin-dashboard?tab=messages", icon: MessageSquare, primary: true },
   { id: "settings", label: "Settings", href: "/settings", icon: Settings },

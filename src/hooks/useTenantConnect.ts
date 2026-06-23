@@ -74,7 +74,16 @@ export interface TenantConnectState {
  * account and returns a fresh Account Session client secret. The embedded
  * `ConnectAccountOnboarding` component consumes the instance.
  */
-export function useTenantConnect(): TenantConnectState {
+export function useTenantConnect(
+  /**
+   * Optional Stripe Connect appearance override. When omitted the legacy brand
+   * yellow is used (Settings). The redesign Payments screen passes redesign tokens
+   * so only that embed instance is re-themed. Applied at init (org-change) time;
+   * a mid-session theme toggle restyles on the next remount, by design (the iframe
+   * is never re-initialized in place).
+   */
+  appearanceOverride?: Parameters<typeof loadConnectAndInitialize>[0]['appearance'],
+): TenantConnectState {
   const { currentOrganizationId, currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
   // Only the OWNER may run setup. Financial *visibility* is broader: owner, any
@@ -242,8 +251,9 @@ export function useTenantConnect(): TenantConnectState {
       const instance = loadConnectAndInitialize({
         publishableKey: PUBLISHABLE_KEY,
         fetchClientSecret,
-        appearance: {
-          // Match the brand yellow (tailwind primary-500 = #F7C41E).
+        // Caller-supplied theme (redesign) wins; otherwise the legacy brand yellow
+        // (tailwind primary-500 = #F7C41E).
+        appearance: appearanceOverride ?? {
           variables: { colorPrimary: '#F7C41E' },
         },
       });
@@ -253,6 +263,10 @@ export function useTenantConnect(): TenantConnectState {
     } finally {
       setLoading(false);
     }
+    // appearanceOverride is intentionally excluded: re-running this effect would
+    // re-create (and unmount) the iframe-bearing instance, which breaks the Connect
+    // popup flow. The appearance is applied at init/org-change time by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, currentOrganizationId]);
 
   return { enabled, canSetup, connectInstance, initError, loading, status, statusLoading, drift, refreshStatus };
