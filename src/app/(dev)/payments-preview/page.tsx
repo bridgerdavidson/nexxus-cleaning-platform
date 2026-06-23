@@ -72,7 +72,7 @@ function MockTriageBand() {
             </div>
             <div className="flex shrink-0 gap-2">
               <Button size="sm">Fix card</Button>
-              <Button size="sm" variant="secondary">Send card link</Button>
+              <Button size="sm" variant="secondary">Copy card link</Button>
             </div>
           </div>
         </section>
