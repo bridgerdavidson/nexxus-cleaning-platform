@@ -2325,3 +2325,136 @@ export async function cancelInvite(
     return { success: false, error: error instanceof Error ? error.message : 'Failed to cancel invite' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Operator "Staff" segment (managers + admins + owner). Distinct from the
+// legacy useState-based useAdminTeamMembers (which omits the owner and mixes in
+// cleaners); this is a focused, TanStack-cached read of the non-cleaner staff
+// plus their manager_permissions, for the Cleaners & team screen's Staff tab.
+// ---------------------------------------------------------------------------
+
+export interface AdminStaffMember {
+  id: string; // organization_members.user_id (= user_profiles.id)
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  avatar_url: string | null;
+  role: 'owner' | 'admin' | 'manager';
+  created_at: string;
+  /** Manager permission flags; null for owner/admin (they have full access). */
+  permissions: ManagerPermissions | null;
+}
+
+const STAFF_PERMISSION_KEYS: (keyof ManagerPermissions)[] = [
+  'can_view_customers',
+  'can_edit_customers',
+  'can_view_bookings',
+  'can_edit_bookings',
+  'can_approve_decline_bookings',
+  'can_manage_cleaners',
+  'can_view_properties',
+  'can_edit_properties',
+  'can_view_analytics',
+  'can_view_payments',
+  'can_manage_payments',
+  'can_view_messages',
+  'can_view_services',
+  'can_manage_services',
+  'can_handle_requests',
+];
+
+export function useAdminStaff() {
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+  const queryKey = keys.staff.byOrg(orgId);
+
+  const query = useOrgQuery({
+    queryKey,
+    queryFn: async ({ orgId }) => {
+      const { data: members, error: mErr } = await supabase
+        .from('organization_members')
+        .select('user_id, role, created_at')
+        .eq('organization_id', orgId)
+        .in('role', ['owner', 'admin', 'manager']);
+      if (mErr) throw mErr;
+      const rows = members ?? [];
+      if (rows.length === 0) return [] as AdminStaffMember[];
+
+      const userIds = rows.map((m) => m.user_id);
+      const managerIds = rows.filter((m) => m.role === 'manager').map((m) => m.user_id);
+
+      const { data: profiles, error: pErr } = await supabase
+        .from('user_profiles')
+        .select('id, first_name, last_name, email, avatar_url')
+        .in('id', userIds);
+      if (pErr) throw pErr;
+
+      let perms: Array<Record<string, unknown>> = [];
+      if (managerIds.length > 0) {
+        const { data: permData, error: permErr } = await supabase
+          .from('manager_permissions')
+          .select(
+            `manager_id, ${STAFF_PERMISSION_KEYS.join(', ')}`,
+          )
+          .eq('organization_id', orgId)
+          .in('manager_id', managerIds);
+        if (permErr) throw permErr;
+        perms = (permData as unknown as Array<Record<string, unknown>>) ?? [];
+      }
+
+      const rank: Record<string, number> = { owner: 0, admin: 1, manager: 2 };
+      return rows
+        .map((m) => {
+          const profile = profiles?.find((p) => p.id === m.user_id);
+          const role = m.role as 'owner' | 'admin' | 'manager';
+          const raw = role === 'manager' ? perms.find((x) => x.manager_id === m.user_id) : null;
+          let permissions: ManagerPermissions | null = null;
+          if (raw) {
+            permissions = STAFF_PERMISSION_KEYS.reduce((acc, k) => {
+              acc[k] = !!raw[k];
+              return acc;
+            }, {} as ManagerPermissions);
+          }
+          return {
+            id: m.user_id,
+            first_name: profile?.first_name ?? null,
+            last_name: profile?.last_name ?? null,
+            email: profile?.email ?? '',
+            avatar_url: profile?.avatar_url ?? null,
+            role,
+            created_at: m.created_at as string,
+            permissions,
+          } as AdminStaffMember;
+        })
+        .sort((a, b) => {
+          const r = (rank[a.role] ?? 9) - (rank[b.role] ?? 9);
+          if (r !== 0) return r;
+          const an = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || a.email;
+          const bn = `${b.first_name ?? ''} ${b.last_name ?? ''}`.trim() || b.email;
+          return an.localeCompare(bn, undefined, { sensitivity: 'base' });
+        });
+    },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `org_staff:${orgId}`,
+    table: 'organization_members',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+  useSupabaseRealtimeSync({
+    channelName: `org_staff_perms:${orgId}`,
+    table: 'manager_permissions',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
+  });
+
+  return {
+    staff: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}

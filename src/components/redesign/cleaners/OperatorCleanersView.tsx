@@ -178,18 +178,15 @@ export function OperatorCleanersView({
           .join(" · ");
 
   return (
-    <div className="max-w-[1700px] space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
-        </div>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">{countLabel}</p>
         {showNew ? (
           <Button onClick={onNewCleaner} className="sm:shrink-0">
             <Plus /> Invite cleaner
           </Button>
         ) : null}
-      </header>
+      </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative w-full sm:flex-1 sm:max-w-xl">

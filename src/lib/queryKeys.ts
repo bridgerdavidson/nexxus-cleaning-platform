@@ -60,6 +60,9 @@ export const keys = {
   teamMembers: {
     byOrg: (orgId: string) => ['team-members', 'org', orgId] as const,
   },
+  staff: {
+    byOrg: (orgId: string) => ['staff', 'org', orgId] as const,
+  },
   checklists: {
     byServiceType: (serviceTypeId: string) => ['checklists', 'service-type', serviceTypeId] as const,
   },

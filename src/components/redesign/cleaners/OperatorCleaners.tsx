@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/contexts/ToastContext";
-import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useInvites } from "@/hooks/useInvites";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   useAdminCleanerScorecards,
@@ -170,47 +167,11 @@ type ConfirmKind = "remove" | "bulkDeactivate";
 type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
 
 /**
- * Permission gate for the Operator "Cleaners & team" screen. Cleaner roster
- * data (profiles, contact, earnings) is protected by an APP-LEVEL grant, not
- * RLS, so we must not even fetch it until we know the viewer is allowed. We
- * mirror the Customers gate: every data-fetching hook lives inside
- * OperatorCleanersData, which only renders once the permission resolves.
+ * Data + behavior for the Cleaners segment. Mounted by OperatorPeople only once
+ * the viewer is allowed to manage cleaners, so the useAdminCleanerScorecards /
+ * useCleanerWorkload fetches never run for an unauthorized manager.
  */
-export function OperatorCleaners() {
-  const { currentOrgRole } = useAuth();
-  const { permissions, loading: permsLoading } = useManagerPermissions();
-
-  const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
-  const canManage = privileged || !!permissions?.can_manage_cleaners;
-
-  if (!privileged && permsLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-  if (!canManage) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <EmptyState
-          icon={<ShieldAlert />}
-          title="You do not have access to cleaners"
-          description="Ask an owner or admin to grant you the cleaners permission."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <OperatorCleanersData
-      canViewPayments={privileged || !!permissions?.can_view_payments}
-      canEdit={canManage}
-    />
-  );
-}
-
-function OperatorCleanersData({
+export function OperatorCleanersData({
   canViewPayments,
   canEdit,
 }: {

@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
-import { OperatorCleaners } from "@/components/redesign/cleaners/OperatorCleaners";
+import { OperatorPeople } from "@/components/redesign/cleaners/OperatorPeople";
 
 function Spinner() {
   return (
@@ -36,7 +36,7 @@ function OperatorCleanersInner() {
 
   return (
     <OperatorShell active="cleaners" onNewBooking={goNewBooking}>
-      <OperatorCleaners />
+      <OperatorPeople />
     </OperatorShell>
   );
 }
