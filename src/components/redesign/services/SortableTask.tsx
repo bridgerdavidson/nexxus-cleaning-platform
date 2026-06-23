@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Pencil, Trash2, Check, X } from "lucide-react";
@@ -23,6 +23,13 @@ export function SortableTask({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(task.task);
+
+  // Keep the edit buffer in sync with the upstream task when not actively
+  // editing (e.g., after a realtime refetch), so opening edit shows fresh text
+  // without clobbering an in-progress edit.
+  useEffect(() => {
+    if (!editing) setText(task.task);
+  }, [task.task, editing]);
 
   const style = { transform: CSS.Transform.toString(transform), transition };
 

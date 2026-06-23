@@ -419,7 +419,7 @@ type ChecklistWithItemsRow = {
   name: string;
   price_adder: number;
   position: number | null;
-  checklist_line_items: { id: string; task: string; position: number | null }[] | null;
+  checklist_line_items: { id: string; task: string; position: number | null; created_at: string }[] | null;
 };
 
 // Duplicate a service, cloning all of its checklists + line items.
@@ -430,6 +430,10 @@ export async function duplicateService(
   organizationId: string,
   serviceId: string
 ): Promise<{ success: boolean; data?: ServiceType; error?: string }> {
+  // Track the clone so a mid-copy failure doesn't leave an orphaned, partial
+  // service in the list (best-effort cleanup in the catch; cascade removes its
+  // checklists + items).
+  let createdServiceId: string | null = null;
   try {
     const { data: source, error: srcError } = await supabase
       .from('service_types')
@@ -456,6 +460,7 @@ export async function duplicateService(
       .single();
     if (createError) throw createError;
     const newService = created as ServiceType;
+    createdServiceId = newService.id;
 
     // 2. Remove the trigger-seeded "Default Checklist" so we copy only the source's.
     const { error: delError } = await supabase
@@ -484,9 +489,18 @@ export async function duplicateService(
         .single();
       if (insClError) throw insClError;
 
-      const items = [...(cl.checklist_line_items ?? [])].sort(
-        (a, b) => (a.position ?? 1e9) - (b.position ?? 1e9)
-      );
+      // Preserve order: position asc, NULLs last with created_at as the
+      // tiebreaker (matches useChecklists/duplicateChecklist), so NULL-position
+      // items (e.g. default-checklist tasks) keep their order in the copy.
+      const items = [...(cl.checklist_line_items ?? [])].sort((a, b) => {
+        if (a.position === null && b.position === null) {
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        }
+        if (a.position === null) return 1;
+        if (b.position === null) return -1;
+        if (a.position !== b.position) return a.position - b.position;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
       if (items.length > 0) {
         const { error: insItemsError } = await supabase
           .from('checklist_line_items')
@@ -498,6 +512,14 @@ export async function duplicateService(
     return { success: true, data: newService };
   } catch (err) {
     console.error('Error duplicating service:', err);
+    if (createdServiceId) {
+      // Best-effort: drop the partial clone so it doesn't linger in the list.
+      try {
+        await supabase.from('service_types').delete().eq('id', createdServiceId);
+      } catch (cleanupErr) {
+        console.error('Error cleaning up partial service duplicate:', cleanupErr);
+      }
+    }
     return { success: false, error: err instanceof Error ? err.message : 'Failed to duplicate service' };
   }
 }

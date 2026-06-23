@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
@@ -226,20 +226,24 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     [checklists],
   );
 
-  // Auto-select the first service on desktop (once), so the detail pane isn't
-  // empty. Mobile starts on the list.
-  const didAutoSelectRef = useRef(false);
+  // Keep the selection valid. On desktop, auto-select the first service (on
+  // mount, after a delete, or when the URL points at a service that no longer
+  // exists) so the detail pane is never stranded empty. On mobile, drop a stale
+  // ?service param rather than auto-opening detail, so the user lands on the list.
+  // Validity is checked against the full services list (not the filtered rows),
+  // so a selected service hidden by the status filter stays selected.
   useEffect(() => {
-    if (selectedId) {
-      didAutoSelectRef.current = true;
-      return;
+    if (loading) return;
+    const validSelection = !!selectedId && services.some((s) => s.id === selectedId);
+    if (validSelection) return;
+    const isDesktop =
+      typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop && services.length > 0) {
+      onSelect(services[0].id);
+    } else if (selectedId) {
+      clearSelection();
     }
-    if (didAutoSelectRef.current || loading || rows.length === 0) return;
-    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-      didAutoSelectRef.current = true;
-      onSelect(rows[0].id);
-    }
-  }, [selectedId, loading, rows, onSelect]);
+  }, [loading, selectedId, services, onSelect, clearSelection]);
 
   // --- service mutations ---
   const serviceFormInitial = useMemo<ServiceFormValues | null>(() => {
@@ -430,7 +434,10 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
   const handleAddTasks = useCallback(
     async (checklistId: string, raw: string) => {
       const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
-      if (lines.length === 0) return;
+      if (lines.length === 0) {
+        showToast("Enter at least one task", { variant: "error" });
+        return;
+      }
       const r = lines.length === 1
         ? await createLineItem(checklistId, lines[0])
         : await createLineItems(checklistId, lines);

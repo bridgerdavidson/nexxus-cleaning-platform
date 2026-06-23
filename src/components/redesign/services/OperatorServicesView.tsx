@@ -83,7 +83,7 @@ export function OperatorServicesView({
         : `${totalCount} ${totalCount === 1 ? "service" : "services"} · ${activeCount} active`;
 
   return (
-    <div className="max-w-[1700px] space-y-5">
+    <div className="max-w-[1700px] space-y-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Services</h1>

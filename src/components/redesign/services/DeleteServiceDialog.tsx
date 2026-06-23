@@ -10,6 +10,21 @@ export function DeleteServiceDialog({
   onConfirm: () => void;
 }) {
   if (!canDelete) {
+    // canDeleteService returns -1 counts when the usage check itself failed
+    // (network/RLS). Don't render a nonsensical "used by ." message in that case.
+    const checkFailed = appointmentCount < 0 || seriesCount < 0;
+    if (checkFailed) {
+      return (
+        <ConfirmDialog
+          open={open}
+          onOpenChange={onOpenChange}
+          title="Could not check this service"
+          description={`We could not verify whether ${serviceName} is in use. Please try again in a moment.`}
+          confirmLabel="Got it"
+          onConfirm={() => onOpenChange(false)}
+        />
+      );
+    }
     const parts = [
       appointmentCount > 0 ? `${appointmentCount} booking${appointmentCount === 1 ? "" : "s"}` : null,
       seriesCount > 0 ? `${seriesCount} recurring series` : null,
