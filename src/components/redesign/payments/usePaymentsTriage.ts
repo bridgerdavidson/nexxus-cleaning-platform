@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -72,10 +72,13 @@ export function usePaymentsTriage(): PaymentsTriage {
   const [notice, setNotice] = useState<string | null>(null);
 
   const orgName = currentOrganization?.name || "Your company";
+  // Only the first load shows the skeleton; realtime-triggered reloads update the
+  // content in place so the band doesn't flash on every appointment/payout change.
+  const loadedOnce = useRef(false);
 
   const reload = useCallback(async () => {
     if (!currentOrganizationId) return;
-    setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
     const chargesEnabled = stripeNewChargeFlowUiEnabled();
     const payoutSelect =
       "id, amount, status, cleaner_id, cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles(first_name, last_name))";
@@ -148,6 +151,7 @@ export function usePaymentsTriage(): PaymentsTriage {
     setCharges(chargeVMs);
     setFailedPayouts(failedVMs);
     setHeldPayouts(heldVMs);
+    loadedOnce.current = true;
     setLoading(false);
   }, [currentOrganizationId, orgName]);
 
