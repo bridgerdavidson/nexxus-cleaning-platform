@@ -31,6 +31,7 @@ import type {
   PendingInviteRowVM,
   PendingInviteStatus,
 } from "./cleaners-types";
+import type { PeopleSegment } from "./staff-types";
 
 // --- formatting + derivation helpers (AdminCleanerScorecard -> view-model) ---
 
@@ -174,9 +175,15 @@ type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
 export function OperatorCleanersData({
   canViewPayments,
   canEdit,
+  segment,
+  onSegmentChange,
+  showSegmentTabs,
 }: {
   canViewPayments: boolean;
   canEdit: boolean;
+  segment: PeopleSegment;
+  onSegmentChange: (v: PeopleSegment) => void;
+  showSegmentTabs: boolean;
 }) {
   const { showToast } = useToast();
   const { currentOrganizationId, accessToken } = useAuth();
@@ -452,6 +459,9 @@ export function OperatorCleanersData({
   return (
     <>
       <OperatorCleanersView
+        segment={segment}
+        onSegmentChange={onSegmentChange}
+        showSegmentTabs={showSegmentTabs}
         loading={loading}
         rows={rows}
         pendingInvites={pendingInvites}

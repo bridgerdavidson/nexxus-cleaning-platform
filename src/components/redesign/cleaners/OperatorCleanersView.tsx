@@ -16,6 +16,7 @@ import { CleanersTable } from "./CleanersTable";
 import { CleanersCardList } from "./CleanersCardList";
 import { CleanersBulkBar } from "./CleanersBulkBar";
 import { InviteStatusBadge } from "./cleaners-presenters";
+import { PeopleSegmentTabs } from "./PeopleSegmentTabs";
 import { CLEANER_SORTS } from "./cleaners-types";
 import type {
   CleanerRowAction,
@@ -24,6 +25,7 @@ import type {
   InviteRowAction,
   PendingInviteRowVM,
 } from "./cleaners-types";
+import type { PeopleSegment } from "./staff-types";
 
 function CleanersSkeleton() {
   return (
@@ -107,6 +109,9 @@ function PendingInvitesGroup({
 }
 
 export type OperatorCleanersViewProps = {
+  segment: PeopleSegment;
+  onSegmentChange: (v: PeopleSegment) => void;
+  showSegmentTabs: boolean;
   loading?: boolean;
   rows: CleanerRowVM[];
   pendingInvites: PendingInviteRowVM[];
@@ -136,6 +141,9 @@ export type OperatorCleanersViewProps = {
 };
 
 export function OperatorCleanersView({
+  segment,
+  onSegmentChange,
+  showSegmentTabs,
   loading,
   rows,
   pendingInvites,
@@ -164,66 +172,63 @@ export function OperatorCleanersView({
   const filtersActive = !!search;
   const showNew = canEdit && !!onNewCleaner;
   const pendingCount = pendingInvites.length;
-  // A lightweight live count for orientation (replaces the old KPI tiles).
-  const countLabel = loading
-    ? "Loading cleaners..."
-    : totalActiveCount === 0 && pendingCount === 0
-      ? "No cleaners yet"
-      : [
-          `${totalActiveCount} active`,
-          pendingCount > 0 ? `${pendingCount} pending` : null,
-          showBenched && benchedCount > 0 ? `${benchedCount} benched` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">{countLabel}</p>
-        {showNew ? (
-          <Button onClick={onNewCleaner} className="sm:shrink-0">
-            <Plus /> Invite cleaner
-          </Button>
-        ) : null}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
+          {showNew ? (
+            <Button onClick={onNewCleaner} className="sm:shrink-0">
+              <Plus /> Invite cleaner
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
+          <div className="relative w-full lg:flex-1 lg:max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search by name, email, or phone"
+              className="pl-10"
+              aria-label="Search cleaners"
+            />
+          </div>
+          <Select value={sort} onValueChange={(v) => onSortChange(v as CleanerSort)}>
+            <SelectTrigger className="w-full lg:w-48 lg:shrink-0" aria-label="Sort cleaners">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CLEANER_SORTS.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {benchedCount > 0 || showBenched ? (
+            <Button
+              variant="secondary"
+              onClick={onToggleBenched}
+              className="lg:shrink-0"
+              aria-pressed={showBenched}
+            >
+              {showBenched ? <EyeOff /> : <Eye />}
+              {showBenched ? "Hide benched" : `Show benched (${benchedCount})`}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative w-full sm:flex-1 sm:max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search by name, email, or phone"
-            className="pl-10"
-            aria-label="Search cleaners"
-          />
-        </div>
-        <Select value={sort} onValueChange={(v) => onSortChange(v as CleanerSort)}>
-          <SelectTrigger className="w-full sm:w-52 sm:shrink-0" aria-label="Sort cleaners">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CLEANER_SORTS.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {benchedCount > 0 || showBenched ? (
-          <Button
-            variant="secondary"
-            onClick={onToggleBenched}
-            className="sm:shrink-0"
-            aria-pressed={showBenched}
-          >
-            {showBenched ? <EyeOff /> : <Eye />}
-            {showBenched ? "Hide benched" : `Show benched (${benchedCount})`}
-          </Button>
-        ) : null}
-      </div>
+      {filtersActive && !loading && rows.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Showing {rows.length} of {totalActiveCount}
+        </p>
+      ) : null}
 
       <PendingInvitesGroup
         invites={pendingInvites}

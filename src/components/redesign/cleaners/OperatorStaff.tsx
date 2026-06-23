@@ -19,6 +19,7 @@ import { OperatorStaffView } from "./OperatorStaffView";
 import { StaffDetailSheet, PERMISSION_KEYS } from "./StaffDetailSheet";
 import { AddStaffDialog, type StaffInviteRole } from "./AddStaffDialog";
 import type {
+  PeopleSegment,
   StaffDetailVM,
   StaffInviteStatus,
   StaffPendingInviteVM,
@@ -116,7 +117,17 @@ function matchesSearch(s: AdminStaffMember, q: string): boolean {
 
 /** Staff segment (managers + admins + owner). Only rendered for owner/admin
  *  (canManage); a manager who can only manage cleaners never sees this. */
-export function OperatorStaffData({ canManage }: { canManage: boolean }) {
+export function OperatorStaffData({
+  canManage,
+  segment,
+  onSegmentChange,
+  showSegmentTabs,
+}: {
+  canManage: boolean;
+  segment: PeopleSegment;
+  onSegmentChange: (v: PeopleSegment) => void;
+  showSegmentTabs: boolean;
+}) {
   const { showToast } = useToast();
   const { user, currentOrganizationId, accessToken } = useAuth();
   const { staff, loading, refetch } = useAdminStaff();
@@ -136,18 +147,6 @@ export function OperatorStaffData({ canManage }: { canManage: boolean }) {
     () => staff.filter((s) => matchesSearch(s, search)).map((s) => toRowVM(s, user?.id)),
     [staff, search, user?.id],
   );
-
-  const summaryLabel = useMemo(() => {
-    const counts: Record<StaffRole, number> = { owner: 0, admin: 0, manager: 0 };
-    staff.forEach((s) => {
-      counts[s.role] += 1;
-    });
-    const parts: string[] = [];
-    if (counts.owner) parts.push(`${counts.owner} owner${counts.owner === 1 ? "" : "s"}`);
-    if (counts.admin) parts.push(`${counts.admin} admin${counts.admin === 1 ? "" : "s"}`);
-    if (counts.manager) parts.push(`${counts.manager} manager${counts.manager === 1 ? "" : "s"}`);
-    return parts.join(" · ") || "No staff yet";
-  }, [staff]);
 
   const pendingInvites: StaffPendingInviteVM[] = useMemo(
     () =>
@@ -264,11 +263,13 @@ export function OperatorStaffData({ canManage }: { canManage: boolean }) {
   return (
     <>
       <OperatorStaffView
+        segment={segment}
+        onSegmentChange={onSegmentChange}
+        showSegmentTabs={showSegmentTabs}
         loading={loading}
         rows={rows}
         pendingInvites={pendingInvites}
         totalCount={staff.length}
-        summaryLabel={summaryLabel}
         canManage={canManage}
         busy={busy}
         search={search}

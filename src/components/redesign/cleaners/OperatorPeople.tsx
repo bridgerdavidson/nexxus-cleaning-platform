@@ -8,7 +8,6 @@ import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { OperatorCleanersData } from "./OperatorCleaners";
 import { OperatorStaffData } from "./OperatorStaff";
-import { PeopleSegmentTabs } from "./PeopleSegmentTabs";
 import type { PeopleSegment } from "./staff-types";
 
 /**
@@ -62,18 +61,21 @@ export function OperatorPeople() {
   }
 
   return (
-    <div className="max-w-[1700px] space-y-6">
-      <div className="space-y-3">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
-        {canViewStaff ? <PeopleSegmentTabs value={view} onChange={setView} /> : null}
-      </div>
-
+    <div className="max-w-[1700px]">
       {view === "staff" ? (
-        <OperatorStaffData canManage={privileged} />
+        <OperatorStaffData
+          canManage={privileged}
+          segment={view}
+          onSegmentChange={setView}
+          showSegmentTabs={canViewStaff}
+        />
       ) : (
         <OperatorCleanersData
           canViewPayments={privileged || !!permissions?.can_view_payments}
           canEdit={canManageCleaners}
+          segment={view}
+          onSegmentChange={setView}
+          showSegmentTabs={canViewStaff}
         />
       )}
     </div>

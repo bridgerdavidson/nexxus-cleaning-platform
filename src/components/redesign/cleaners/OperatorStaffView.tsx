@@ -8,7 +8,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StaffTable } from "./StaffTable";
 import { StaffCardList } from "./StaffCardList";
 import { InviteStatusBadge } from "./cleaners-presenters";
-import type { StaffRowAction, StaffRowVM, StaffPendingInviteVM } from "./staff-types";
+import { PeopleSegmentTabs } from "./PeopleSegmentTabs";
+import type { PeopleSegment, StaffRowAction, StaffRowVM, StaffPendingInviteVM } from "./staff-types";
 import type { InviteRowAction } from "./cleaners-types";
 
 function StaffSkeleton() {
@@ -89,11 +90,13 @@ function StaffPendingInvitesGroup({
 }
 
 export type OperatorStaffViewProps = {
+  segment: PeopleSegment;
+  onSegmentChange: (v: PeopleSegment) => void;
+  showSegmentTabs: boolean;
   loading?: boolean;
   rows: StaffRowVM[];
   pendingInvites: StaffPendingInviteVM[];
   totalCount: number;
-  summaryLabel: string;
   canManage: boolean;
   busy?: boolean;
   search: string;
@@ -105,11 +108,13 @@ export type OperatorStaffViewProps = {
 };
 
 export function OperatorStaffView({
+  segment,
+  onSegmentChange,
+  showSegmentTabs,
   loading,
   rows,
   pendingInvites,
   totalCount,
-  summaryLabel,
   canManage,
   busy,
   search,
@@ -122,34 +127,40 @@ export function OperatorStaffView({
   const filtersActive = !!search;
   const showNew = canManage && !!onNewStaff;
   const pendingCount = pendingInvites.length;
-  const countLabel = loading
-    ? "Loading staff..."
-    : totalCount === 0 && pendingCount === 0
-      ? "No staff yet"
-      : [summaryLabel, pendingCount > 0 ? `${pendingCount} pending` : null].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">{countLabel}</p>
-        {showNew ? (
-          <Button onClick={onNewStaff} className="sm:shrink-0">
-            <Plus /> Invite team member
-          </Button>
-        ) : null}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
+          {showNew ? (
+            <Button onClick={onNewStaff} className="sm:shrink-0">
+              <Plus /> Invite team member
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
+          <div className="relative w-full lg:flex-1 lg:max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search by name or email"
+              className="pl-10"
+              aria-label="Search staff"
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="relative w-full sm:max-w-xl">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search by name or email"
-          className="pl-10"
-          aria-label="Search staff"
-        />
-      </div>
+      {filtersActive && !loading && rows.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Showing {rows.length} of {totalCount}
+        </p>
+      ) : null}
 
       <StaffPendingInvitesGroup
         invites={pendingInvites}
