@@ -60,6 +60,9 @@ export const keys = {
   teamMembers: {
     byOrg: (orgId: string) => ['team-members', 'org', orgId] as const,
   },
+  staff: {
+    byOrg: (orgId: string) => ['staff', 'org', orgId] as const,
+  },
   checklists: {
     byServiceType: (serviceTypeId: string) => ['checklists', 'service-type', serviceTypeId] as const,
   },
@@ -77,6 +80,7 @@ export const keys = {
   },
   cleanerProfiles: {
     byOrg: (orgId: string) => ['cleaner-profiles', 'org', orgId] as const,
+    scorecards: (orgId: string) => ['cleaner-profiles', 'scorecards', orgId] as const,
     detail: (id: string) => ['cleaner-profiles', 'detail', id] as const,
   },
   stripeConnect: {
