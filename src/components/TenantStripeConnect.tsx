@@ -70,7 +70,12 @@ export function shouldShowConnectSkeleton(args: {
  * Caller is responsible for the disabled-flag case; we expose the status via
  * `useTenantConnect()` so callers can decide how to chrome the page.
  */
-export default function TenantStripeConnect() {
+export default function TenantStripeConnect({
+  appearance,
+}: {
+  /** Optional Stripe Connect appearance override (redesign passes brand tokens). */
+  appearance?: Parameters<typeof useTenantConnect>[0];
+} = {}) {
   const {
     enabled,
     canSetup,
@@ -81,7 +86,7 @@ export default function TenantStripeConnect() {
     statusLoading,
     drift,
     refreshStatus,
-  } = useTenantConnect();
+  } = useTenantConnect(appearance);
 
   if (!enabled) {
     return (
