@@ -58,7 +58,7 @@ export type PaymentsTriage = {
   messageCleaner: (cleanerId: string | null) => Promise<void>;
 };
 
-export function usePaymentsTriage(canManagePayments: boolean): PaymentsTriage {
+export function usePaymentsTriage(): PaymentsTriage {
   const { currentOrganizationId, currentOrganization } = useAuth();
   const router = useRouter();
   const { startConversation } = useStartConversation();

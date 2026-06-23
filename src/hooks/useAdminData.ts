@@ -623,9 +623,10 @@ export function useAdminPayments() {
 export interface AdminPayout {
   id: string;
   amount: number;
-  // 'pending' = held (cleaner not onboarded); 'bank_paid'/'reversed' are terminal
-  // DB states the redesign Payouts ledger renders.
-  status: 'pending' | 'approved' | 'paid' | 'bank_paid' | 'failed' | 'reversed';
+  // NOTE: the DB also emits 'bank_paid' and 'reversed' at runtime; consumers that
+  // render those (redesign Payouts ledger) treat status as a string. The union is
+  // kept narrow here so legacy consumers with their own AdminPayout stay assignable.
+  status: 'pending' | 'approved' | 'paid' | 'failed';
   /** = cleaner_profiles.id = auth user id. Used by the redesign "Message cleaner" nudge. */
   cleaner_id?: string;
   approved_at?: string;

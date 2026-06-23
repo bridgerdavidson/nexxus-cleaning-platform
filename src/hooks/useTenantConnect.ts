@@ -263,6 +263,10 @@ export function useTenantConnect(
     } finally {
       setLoading(false);
     }
+    // appearanceOverride is intentionally excluded: re-running this effect would
+    // re-create (and unmount) the iframe-bearing instance, which breaks the Connect
+    // popup flow. The appearance is applied at init/org-change time by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, currentOrganizationId]);
 
   return { enabled, canSetup, connectInstance, initError, loading, status, statusLoading, drift, refreshStatus };

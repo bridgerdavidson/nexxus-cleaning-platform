@@ -13,7 +13,7 @@ import { usePaymentsTriage } from "./usePaymentsTriage";
  * via usePaymentsTriage; actions map to real endpoints.
  */
 export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: boolean }) {
-  const t = usePaymentsTriage(canManagePayments);
+  const t = usePaymentsTriage();
 
   if (t.loading) {
     return (
