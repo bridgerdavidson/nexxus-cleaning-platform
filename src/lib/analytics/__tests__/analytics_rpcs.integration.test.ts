@@ -14,7 +14,12 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { withTestOrg, type TestOrgFixture } from '../../../../tests/helpers/fixtures';
+import {
+  withTestOrg,
+  addManagerToOrg,
+  type TestOrgFixture,
+  type ManagerMemberHandle,
+} from '../../../../tests/helpers/fixtures';
 
 // Wide date range so zero-seeded orgs still return non-null (just zeroed numbers)
 const START = '2020-01-01';
@@ -93,12 +98,36 @@ describe('analytics RPC authorization + org-scoping', () => {
     expect(data).toHaveLength(0);
   });
 
-  // TODO(follow-up): manager money-null case
-  // A manager with can_view_analytics=true, can_view_payments=false should see
-  // jobsTotal as a number but revenueCents as null. This requires:
-  //   1. createAuthUser(..., 'manager', ...) to get a manager access token
-  //   2. service-role insert into organization_members(role='manager') for the org
-  //   3. service-role insert into manager_permissions(can_view_analytics=true, can_view_payments=false)
-  // The setup is straightforward but adds ~3 auth/DB calls per test run.
-  // Deferred to a follow-up once a withTestOrgWithManager() helper exists.
+  // ---- Case 4: manager with analytics-but-not-payments sees ops data, money nulled ----
+  it('manager with can_view_analytics=true, can_view_payments=false sees jobsTotal but null money fields', async () => {
+    let manager: ManagerMemberHandle | undefined;
+    try {
+      manager = await addManagerToOrg(orgA.organizationId, {
+        can_view_analytics: true,
+        can_view_payments: false,
+      });
+
+      const { data, error } = await clientAs(manager.accessToken).rpc('analytics_summary', {
+        p_org_id: orgA.organizationId,
+        p_start: START,
+        p_end: END,
+      });
+
+      expect(error).toBeNull();
+      expect(data).not.toBeNull();
+
+      const row = data as Record<string, unknown>;
+
+      // Operational metric — must be present (manager has can_view_analytics)
+      expect(typeof row.jobsTotal).toBe('number');
+
+      // Money fields — must be nulled (manager lacks can_view_payments)
+      // Verifies migration 094's money-gating in analytics_authz.
+      expect(row.revenueCents).toBeNull();
+      expect(row.recurringCents).toBeNull();
+      expect(row.arAging).toBeNull();
+    } finally {
+      await manager?.cleanup();
+    }
+  });
 });
