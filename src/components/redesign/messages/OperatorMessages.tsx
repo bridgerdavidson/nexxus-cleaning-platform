@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Loader2, ShieldAlert } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useConversations } from '@/hooks/useConversations'
 import { useMessages } from '@/hooks/useMessages'
@@ -10,6 +11,7 @@ import { useDeleteConversation } from '@/hooks/useDeleteConversation'
 import { useOrganizationMembers } from '@/hooks/useOrganizationMembers'
 import { useAdminAppointments } from '@/hooks/useAdminData'
 import { useManagerPermissions } from '@/hooks/useManagerPermissions'
+import { EmptyState } from '@/components/ui/empty-state'
 import { toast } from '@/components/ui/toast'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -29,7 +31,7 @@ const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
   { value: 'admin', label: 'Admins' },
 ]
 
-export default function OperatorMessages() {
+function OperatorMessagesData() {
   const { user, currentOrgRole } = useAuth()
   const userId = user?.id ?? ''
   const userRole = (user?.role as UserRole) ?? 'admin'
@@ -89,6 +91,7 @@ export default function OperatorMessages() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const consumedToRef = useRef<string | null>(null)
+  const linkApptRef = useRef<string | null>(null)
 
   // VM build
   const rowsAll = useMemo(
@@ -146,11 +149,21 @@ export default function OperatorMessages() {
   useEffect(() => {
     if (!toParam || !userId || consumedToRef.current === toParam) return
     consumedToRef.current = toParam
-    if (apptParam) setStagedAppointmentId(apptParam)
+    if (apptParam) linkApptRef.current = apptParam
     startConversation(toParam).then((res) => {
       if (res.success && res.conversationId) setSelected(res.conversationId)
     })
   }, [toParam, apptParam, userId, startConversation, setSelected])
+
+  // Reset per-conversation composer state when the selected conversation changes.
+  // If a deep-link queued a staged booking for this conversation, apply it now and
+  // clear the ref so subsequent switches don't re-apply it.
+  useEffect(() => {
+    setDraft('')
+    setPendingFiles([])
+    setStagedAppointmentId(linkApptRef.current)
+    linkApptRef.current = null
+  }, [selectedId])
 
   // handlers
   const onSend = useCallback(async () => {
@@ -292,4 +305,35 @@ export default function OperatorMessages() {
       />
     </>
   )
+}
+
+export default function OperatorMessages() {
+  const { currentOrgRole } = useAuth()
+  const { permissions, loading: permsLoading } = useManagerPermissions()
+
+  const privileged = currentOrgRole === 'owner' || currentOrgRole === 'admin'
+  const canView = privileged || !!permissions?.can_view_messages
+
+  // Permissions not resolved yet: hold (and do not mount data hooks) rather than
+  // flash the access-denied state before the grant is known.
+  if (!privileged && permsLoading) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+  if (!canView) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        <EmptyState
+          icon={<ShieldAlert />}
+          title="You do not have access to messages"
+          description="Ask an owner or admin to grant you the messages permission."
+        />
+      </div>
+    )
+  }
+
+  return <OperatorMessagesData />
 }

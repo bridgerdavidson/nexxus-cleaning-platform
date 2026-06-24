@@ -27,6 +27,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 export function MessageThreadPanel(props: {
   hasSelection: boolean
+  conversationKey: string | null
   title: string
   role: string | null
   initials: string
@@ -48,6 +49,14 @@ export function MessageThreadPanel(props: {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const lastIdRef = useRef<string | null>(null)
+  const didInitialScrollRef = useRef(false)
+
+  // Reset initial-scroll flag whenever the conversation changes so the first
+  // batch of messages for the new thread always jumps to the bottom.
+  useEffect(() => {
+    didInitialScrollRef.current = false
+    lastIdRef.current = null
+  }, [props.conversationKey])
 
   // paging: observe the top sentinel
   useEffect(() => {
@@ -63,11 +72,21 @@ export function MessageThreadPanel(props: {
     return () => io.disconnect()
   }, [props.hasMore, props.isLoadingMore, props.onLoadMore])
 
-  // auto-scroll to bottom only when a genuinely new trailing message arrives
+  // auto-scroll to bottom on initial load (unconditional); on subsequent new
+  // trailing messages only when already near the bottom (don't yank the user up
+  // if they are paging back through history).
   useEffect(() => {
     const last = props.messages[props.messages.length - 1]
-    const isNew = !!last && last.id !== lastIdRef.current
-    lastIdRef.current = last?.id ?? null
+    if (!last) return
+    if (!didInitialScrollRef.current) {
+      // First render of this conversation's messages: jump to latest immediately.
+      didInitialScrollRef.current = true
+      lastIdRef.current = last.id
+      props.messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+      return
+    }
+    const isNew = last.id !== lastIdRef.current
+    lastIdRef.current = last.id
     if (!isNew) return
     const sc = scrollRef.current
     if (!sc) return

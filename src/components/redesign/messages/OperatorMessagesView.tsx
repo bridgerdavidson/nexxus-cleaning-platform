@@ -60,6 +60,7 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
         <div className={cn('min-w-0 flex-1', !hasSelection && 'hidden lg:block')}>
           <MessageThreadPanel
             hasSelection={hasSelection}
+            conversationKey={props.selectedId}
             title={props.threadTitle}
             role={props.threadRole}
             initials={props.threadInitials}
