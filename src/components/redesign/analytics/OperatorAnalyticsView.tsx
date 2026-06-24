@@ -1,4 +1,5 @@
 "use client";
+import { MotionConfig, motion } from "motion/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
@@ -31,12 +32,19 @@ export type OperatorAnalyticsViewProps = {
   onExport?: () => void;
 };
 
+const SECTION_MOTION = {
+  initial: { opacity: 0, y: 10 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-80px" },
+  transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
+} as const;
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-4">
+    <motion.section className="space-y-4" {...SECTION_MOTION}>
       <h2 className="flex items-center gap-3 text-xs font-extrabold uppercase tracking-[0.08em] text-muted-foreground after:h-px after:flex-1 after:bg-border after:content-['']">{title}</h2>
       {children}
-    </section>
+    </motion.section>
   );
 }
 function Panel({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
@@ -45,6 +53,7 @@ function Panel({ title, desc, children }: { title: string; desc?: string; childr
 
 export function OperatorAnalyticsView(p: OperatorAnalyticsViewProps) {
   return (
+    <MotionConfig reducedMotion="user">
     <div className="max-w-[1700px] space-y-7">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -57,7 +66,13 @@ export function OperatorAnalyticsView(p: OperatorAnalyticsViewProps) {
         </div>
       </header>
 
-      <KpiRail kpis={p.kpis} />
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <KpiRail kpis={p.kpis} />
+      </motion.div>
 
       <Section title="Are we on pace?">
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -90,5 +105,6 @@ export function OperatorAnalyticsView(p: OperatorAnalyticsViewProps) {
         </div>
       </Section>
     </div>
+    </MotionConfig>
   );
 }
