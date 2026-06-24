@@ -50,7 +50,7 @@ export function bucketAging(s: AnalyticsSummary): { label: string; dollars: numb
 }
 
 function fmtMoneyShort(cents: number | null): string {
-  if (cents == null) return "—";
+  if (cents == null) return "-";
   const d = cents / 100;
   return d >= 1000 ? `$${(d / 1000).toFixed(1)}k` : `$${Math.round(d)}`;
 }

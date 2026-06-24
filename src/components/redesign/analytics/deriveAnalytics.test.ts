@@ -55,7 +55,7 @@ describe("bucketAging", () => {
 });
 
 describe("buildKpis", () => {
-  it("hides money KPIs when money=false; emits 3 non-money KPIs", () => {
+  it("hides money KPIs when money=false; emits 2 non-money KPIs", () => {
     const s = { jobsCompleted: 132, jobsTotal: 140, cancelRate: 0.042 } as AnalyticsSummary;
     const kpis = buildKpis(s, [], false);
     expect(kpis.every((k) => !k.money)).toBe(true);

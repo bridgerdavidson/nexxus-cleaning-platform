@@ -12,12 +12,14 @@ const OPTS: { value: RangePreset; label: string }[] = [
 
 export function AnalyticsRangeControl({ preset, onChange }: { preset: RangePreset; onChange: (p: RangePreset) => void }) {
   return (
-    <div className="inline-flex rounded-pill border border-border bg-card p-1 shadow-soft-sm">
+    <div role="tablist" className="inline-flex rounded-pill border border-border bg-card p-1 shadow-soft-sm">
       {OPTS.map((o) => {
         const active = o.value === preset;
         return (
           <button
             key={o.value}
+            role="tab"
+            aria-selected={active}
             onClick={() => onChange(o.value)}
             className={cn(
               "relative rounded-pill px-3.5 py-1.5 text-sm font-semibold",

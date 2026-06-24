@@ -17,7 +17,7 @@ export function Leaderboard({ rows }: { rows: LeaderRow[] }) {
             <div className="text-[11.5px] text-muted-foreground">{r.jobs} jobs{r.avgRating != null ? ` · ${r.avgRating.toFixed(1)}★` : ""}</div>
             <div className="mt-1.5 h-[5px] w-32 overflow-hidden rounded bg-muted"><span className="block h-full rounded bg-[var(--chart-1)]" style={{ width: `${((r.revenueCents ?? 0) / max) * 100}%` }} /></div>
           </div>
-          <span className="text-sm font-extrabold tnum">{r.revenueCents == null ? "—" : `$${Math.round(r.revenueCents / 100).toLocaleString()}`}</span>
+          <span className="text-sm font-extrabold tnum">{r.revenueCents == null ? "-" : `$${Math.round(r.revenueCents / 100).toLocaleString()}`}</span>
         </div>
       ))}
     </div>

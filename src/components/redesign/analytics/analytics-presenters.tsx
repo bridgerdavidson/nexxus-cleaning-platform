@@ -2,7 +2,7 @@ import { DollarSign, CalendarDays, CheckCircle2, Repeat, XCircle, TrendingUp, Al
 import type { Kpi, InsightVM } from "./analytics-types";
 
 export function money2(cents: number | null): string {
-  if (cents == null) return "—";
+  if (cents == null) return "-";
   return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 export function pctLabel(frac: number): string { return `${(frac * 100).toFixed(1)}%`; }

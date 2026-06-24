@@ -19,7 +19,7 @@ export function KpiRail({ kpis }: { kpis: Kpi[] }) {
               <span className="grid size-7 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950"><Icon className="size-4" /></span>
             </div>
             <p className="mt-2 text-2xl font-extrabold tracking-tight tnum">
-              {k.rawValue == null ? "—" : <AnimatedNumber value={k.rawValue} prefix={prefix} suffix={k.unit} />}
+              {k.rawValue == null ? "-" : <AnimatedNumber value={k.rawValue} prefix={prefix} suffix={k.unit} />}
             </p>
             <div className="mt-2 flex items-center justify-between">
               {k.delta ? <span className={cn("rounded-md px-1.5 py-0.5 text-xs font-bold", k.delta.tone === "good" ? "bg-positive-50 text-positive-700" : k.delta.tone === "bad" ? "bg-critical-50 text-critical-700" : "bg-muted text-muted-foreground")}>{k.delta.dir === "up" ? "▲" : k.delta.dir === "down" ? "▼" : ""} {k.delta.label}</span> : <span />}
