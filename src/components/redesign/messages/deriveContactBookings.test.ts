@@ -46,6 +46,16 @@ describe('deriveContactBookings', () => {
     expect(r.recent.map(b => b.appointmentId)).toEqual(['cxl', 'past']) // past/cancelled, newest first
   })
 
+  it('overflow future-confirmed bookings beyond maxUpcoming do not leak into recent', () => {
+    const appts = [
+      appt({ id: 'soon', homeowner_id: 'h1', scheduled_date: '2026-06-27', status: 'confirmed' }),
+      appt({ id: 'later', homeowner_id: 'h1', scheduled_date: '2026-07-10', status: 'confirmed' }),
+    ]
+    const r = deriveContactBookings({ id: 'h1', role: 'homeowner' }, appts, { today: TODAY, maxUpcoming: 1 })
+    expect(r.upcoming.map(b => b.appointmentId)).toEqual(['soon'])
+    expect(r.recent).toEqual([]) // 'later' is future+confirmed — must not appear in recent
+  })
+
   it('returns empty for a non-customer contact (manager)', () => {
     const appts = [appt({ id: 'x', homeowner_id: 'h1' })]
     const r = deriveContactBookings({ id: 'm1', role: 'manager' }, appts, { today: TODAY })

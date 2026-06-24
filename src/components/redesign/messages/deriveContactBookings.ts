@@ -60,15 +60,18 @@ export function deriveContactBookings(
     .sort((x, y) => y.scheduled_date.localeCompare(x.scheduled_date)) // newest first
     .map(toVM)
 
-  const upcoming = matches
-    .filter((a) => a.scheduled_date >= opts.today && a.status !== 'cancelled' && a.status !== 'completed')
+  const upcomingMatches = matches.filter(
+    (a) => a.scheduled_date >= opts.today && a.status !== 'cancelled' && a.status !== 'completed',
+  )
+  const upcoming = upcomingMatches
+    .slice()
     .sort((x, y) => x.scheduled_date.localeCompare(y.scheduled_date)) // soonest first
     .slice(0, maxUpcoming)
     .map(toVM)
 
-  const upcomingIds = new Set(upcoming.map((u) => u.appointmentId))
+  const upcomingMatchIds = new Set(upcomingMatches.map((a) => a.id))
   const recent = matches
-    .filter((a) => !upcomingIds.has(a.id))
+    .filter((a) => !upcomingMatchIds.has(a.id))
     .sort((x, y) => y.scheduled_date.localeCompare(x.scheduled_date)) // newest first
     .slice(0, maxRecent)
     .map(toVM)
