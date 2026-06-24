@@ -29,11 +29,11 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
       </div>
 
       {/* console */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-card border border-border bg-card shadow-soft-sm">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-card border border-border bg-card shadow-soft-md">
         {/* inbox pane: always visible on desktop; hidden on mobile when a thread is open */}
         <div
           className={cn(
-            'w-[300px] shrink-0 border-r border-border/60',
+            'lg:w-[360px] shrink-0 border-r border-border/60',
             hasSelection && 'hidden lg:block',
           )}
         >

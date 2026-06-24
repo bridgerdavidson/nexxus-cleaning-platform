@@ -35,7 +35,7 @@ export default function OperatorMessages() {
   const userRole = (user?.role as UserRole) ?? 'admin'
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isMobile = useIsMobile()
+  const isMobile = useIsMobile('(max-width: 1023px)')
 
   // useManagerPermissions returns { permissions, loading, error, refetch }
   // permissions is a ManagerPermissions object or null

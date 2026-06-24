@@ -41,7 +41,7 @@ export function InlineBookingCard({
         )}
       </span>
       {booking.found && <BookingBadge status={booking.status} />}
-      <span className="shrink-0 text-xs font-bold text-primary">Open &rsaquo;</span>
+      <span className="hidden shrink-0 text-xs font-bold text-primary sm:inline">Open &rsaquo;</span>
     </button>
   )
 }

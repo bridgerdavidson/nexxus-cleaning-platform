@@ -2,6 +2,7 @@
 import React, { useRef, useState } from 'react'
 import { OperatorShell } from '@/components/redesign/shell/OperatorShell'
 import { OperatorMessagesView } from '@/components/redesign/messages/OperatorMessagesView'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { ConversationRowVM, MessageVM, ContactContextVM, ContactBookingVM, RoleFilter } from '@/components/redesign/messages/messages-types'
 
 const ROWS: ConversationRowVM[] = [
@@ -26,6 +27,7 @@ const CONTEXT: ContactContextVM = {
 
 export default function MessagesPreviewPage() {
   const endRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>
+  const isMobile = useIsMobile('(max-width: 1023px)')
   const [search, setSearch] = useState('')
   const [unreadOnly, setUnreadOnly] = useState(false)
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
@@ -51,7 +53,7 @@ export default function MessagesPreviewPage() {
         onSend={() => {}} sending={false}
         detailsOpen={detailsOpen} onToggleDetails={() => setDetailsOpen((v) => !v)} context={CONTEXT}
         onViewProfile={() => {}} onNewBooking={() => {}} onCopy={() => {}}
-        isMobile={false}
+        isMobile={isMobile}
       />
     </OperatorShell>
   )
