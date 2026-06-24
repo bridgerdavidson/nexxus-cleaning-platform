@@ -30,9 +30,7 @@ export function ConversationRow({
       role="button"
       tabIndex={0}
       onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') onSelect()
-      }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
       aria-pressed={active}
       className={cn(
         'group relative flex items-center gap-3 border-b border-border/60 px-4 py-3 text-left',
