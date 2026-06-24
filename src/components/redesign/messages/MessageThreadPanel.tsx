@@ -47,7 +47,7 @@ export function MessageThreadPanel(props: {
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
-  const countRef = useRef(0)
+  const lastIdRef = useRef<string | null>(null)
 
   // paging: observe the top sentinel
   useEffect(() => {
@@ -63,15 +63,17 @@ export function MessageThreadPanel(props: {
     return () => io.disconnect()
   }, [props.hasMore, props.isLoadingMore, props.onLoadMore])
 
-  // auto-scroll to bottom when a NEW message arrives and we are near the bottom
+  // auto-scroll to bottom only when a genuinely new trailing message arrives
   useEffect(() => {
-    const grew = props.messages.length > countRef.current
-    countRef.current = props.messages.length
+    const last = props.messages[props.messages.length - 1]
+    const isNew = !!last && last.id !== lastIdRef.current
+    lastIdRef.current = last?.id ?? null
+    if (!isNew) return
     const sc = scrollRef.current
-    if (!grew || !sc) return
+    if (!sc) return
     const nearBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 150
     if (nearBottom) props.messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
-  }, [props.messages.length, props.messagesEndRef])
+  }, [props.messages, props.messagesEndRef])
 
   if (!props.hasSelection) {
     return (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Send, X, CalendarDays, ImagePlus } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { IconButton } from '@/components/ui/icon-button'
@@ -31,6 +31,14 @@ export function MessageComposer(props: {
   isMobile: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const [objectUrls, setObjectUrls] = useState<string[]>([])
+  useEffect(() => {
+    const urls = props.pendingFiles.map((f) => URL.createObjectURL(f))
+    setObjectUrls(urls)
+    return () => urls.forEach((u) => URL.revokeObjectURL(u))
+  }, [props.pendingFiles])
+
   const canSend =
     (props.draft.trim().length > 0 || props.pendingFiles.length > 0 || !!props.stagedBooking) &&
     !props.sending
@@ -66,13 +74,15 @@ export function MessageComposer(props: {
       )}
       {props.pendingFiles.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
-          {props.pendingFiles.map((f, i) => (
+          {props.pendingFiles.map((_, i) => (
             <div key={i} className="relative">
-              <img
-                src={URL.createObjectURL(f)}
-                alt=""
-                className="size-14 rounded-control object-cover"
-              />
+              {objectUrls[i] && (
+                <img
+                  src={objectUrls[i]}
+                  alt=""
+                  className="size-14 rounded-control object-cover"
+                />
+              )}
               <button
                 type="button"
                 onClick={() => props.onRemoveFile(i)}
