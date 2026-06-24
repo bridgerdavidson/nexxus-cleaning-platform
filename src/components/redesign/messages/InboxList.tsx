@@ -55,32 +55,32 @@ export function InboxList(props: {
               value={props.search}
               onChange={(e) => props.onSearchChange(e.target.value)}
               placeholder="Search conversations"
-              className="h-10 pl-9"
+              className="h-11 pl-9"
               aria-label="Search conversations"
             />
           </div>
           <IconButton
             aria-label="New message"
-            className="h-10 w-10 bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-11 w-11 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={props.onNewMessage}
           >
             <Plus className="size-5" />
           </IconButton>
         </div>
 
-        {/* Filter row */}
+        {/* Filter row: compact, left-aligned (segment hugs its content, never stretches) */}
         <div className="mt-3 flex items-center gap-2">
           <SegmentedControl<'all' | 'unread'>
             options={filterOptions}
             value={props.unreadOnly ? 'unread' : 'all'}
             onChange={(v) => props.onUnreadOnlyChange(v === 'unread')}
-            className="flex-1"
+            className="shrink-0 [&>button]:h-10"
           />
           <Select
             value={props.roleFilter}
             onValueChange={(v) => props.onRoleFilterChange(v as RoleFilter)}
           >
-            <SelectTrigger className="h-9 w-[120px] shrink-0" aria-label="Filter by role">
+            <SelectTrigger className="h-11 w-[128px] shrink-0" aria-label="Filter by role">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -3,6 +3,12 @@ module.exports = {
   content: [
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  // Gate `hover:` utilities behind `@media (hover: hover)` so hover styles never
+  // apply on touch devices. Fixes the iOS "first tap reveals hover, second tap
+  // activates" double-tap and sticky-highlight on tappable rows/cards.
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   darkMode: ['class'],
   theme: {
     extend: {

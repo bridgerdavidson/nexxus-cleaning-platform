@@ -28,8 +28,10 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
         </div>
       </div>
 
-      {/* console */}
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-card border border-border bg-card shadow-soft-md">
+      {/* console: full-bleed flush surface on mobile (no floating card); a bordered,
+          rounded console on desktop. -mx-4 cancels the shell's mobile gutters so the
+          list runs edge-to-edge like a native messaging app. */}
+      <div className="-mx-4 flex min-h-0 flex-1 overflow-hidden bg-card lg:mx-0 lg:rounded-card lg:border lg:border-border lg:shadow-soft-md">
         {/* inbox pane: always visible on desktop; hidden on mobile when a thread is open */}
         <div
           className={cn(
