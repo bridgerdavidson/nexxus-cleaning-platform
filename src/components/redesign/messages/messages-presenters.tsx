@@ -118,7 +118,7 @@ export function toContactContext(
 ): ContactContextVM {
   const role = (participant.role as UserRole) ?? 'homeowner'
   // Cast to AppointmentLike-compatible shape (fields match; AdminAppointment is a superset)
-  const { upcoming, recent, all } = deriveContactBookings(
+  const { upcoming, recent } = deriveContactBookings(
     { id: participant.id, role },
     appts as never,
     { today: opts.today },
