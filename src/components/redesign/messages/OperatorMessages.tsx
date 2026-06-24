@@ -91,7 +91,7 @@ function OperatorMessagesData() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const consumedToRef = useRef<string | null>(null)
-  const linkApptRef = useRef<string | null>(null)
+  const linkApptRef = useRef<{ apptId: string; convId: string } | null>(null)
 
   // VM build
   const rowsAll = useMemo(
@@ -149,9 +149,12 @@ function OperatorMessagesData() {
   useEffect(() => {
     if (!toParam || !userId || consumedToRef.current === toParam) return
     consumedToRef.current = toParam
-    if (apptParam) linkApptRef.current = apptParam
+    const appt = apptParam
     startConversation(toParam).then((res) => {
-      if (res.success && res.conversationId) setSelected(res.conversationId)
+      if (res.success && res.conversationId) {
+        if (appt) linkApptRef.current = { apptId: appt, convId: res.conversationId }
+        setSelected(res.conversationId)
+      }
     })
   }, [toParam, apptParam, userId, startConversation, setSelected])
 
@@ -161,7 +164,8 @@ function OperatorMessagesData() {
   useEffect(() => {
     setDraft('')
     setPendingFiles([])
-    setStagedAppointmentId(linkApptRef.current)
+    const queued = linkApptRef.current
+    setStagedAppointmentId(queued && queued.convId === selectedId ? queued.apptId : null)
     linkApptRef.current = null
   }, [selectedId])
 
