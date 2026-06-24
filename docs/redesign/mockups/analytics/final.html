@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Analytics — Final direction</title>
+<link rel="stylesheet" href="theme.css"></head>
+<body><div id="root"></div>
+<script src="_shell.js"></script>
+<script src="charts.js"></script>
+<script>
+mountShell(`
+  <div class="phead">
+    <div><h1>Analytics</h1><div class="sub">Last 30 days &middot; compared to previous period</div></div>
+    <div class="controls">
+      <div class="seg"><button>7D</button><button class="on">30D</button><button>90D</button><button>12M</button></div>
+      <span class="cmp">vs previous period</span>
+      <button class="btn-ghost"><span data-ico="download" style="width:16px;height:16px;display:flex"></span>Export</button>
+    </div>
+  </div>
+  ${kpiRailHTML()}
+
+  <div class="band-h">Are we on pace?</div>
+  <div class="grid r-66-33 mb">
+    <div class="card hero">
+      <div class="ch"><div><div class="t">Realized vs booked revenue</div><div class="d">Cash collected vs scheduled-but-not-yet-landed, by week</div></div><div class="picker">Weekly &#9662;</div></div>
+      <div class="legend-inline" style="margin:-2px 0 6px"><span><i style="background:#0150FC"></i>Collected</span><span><i style="background:#BBDAFB"></i>Booked / pending</span><span><i style="background:#F59E0B"></i>Weekly target</span></div>
+      <div data-chart="hero"></div>
+    </div>
+    <div class="card">
+      <div class="ch"><div class="t">Insights</div><div class="picker">Auto &#9662;</div></div>
+      ${insightsHTML()}
+    </div>
+  </div>
+
+  <div class="band-h">What's driving revenue?</div>
+  <div class="grid r-3 mb">
+    <div class="card"><div class="ch"><div><div class="t">Run-rate &amp; forecast</div><div class="d">Are we on pace to target?</div></div></div><div data-chart="runrate"></div></div>
+    <div class="card"><div class="ch"><div><div class="t">Recurring vs one-off</div><div class="d">Predictable backbone</div></div></div><div data-chart="donut"></div></div>
+    <div class="card"><div class="ch"><div><div class="t">Revenue by service</div><div class="d">Which lines pay</div></div></div><div data-chart="servicemix"></div></div>
+  </div>
+
+  <div class="band-h">Who's doing the work?</div>
+  <div class="grid r-2 mb">
+    <div class="card"><div class="ch"><div><div class="t">Cleaner leaderboard</div><div class="d">Top performers this period</div></div><div class="picker">Revenue &#9662;</div></div><div data-chart="leaderboard"></div></div>
+    <div class="card"><div class="ch"><div><div class="t">Demand by day &amp; hour</div><div class="d">Busiest windows for staffing</div></div></div><div data-chart="heatmap"></div></div>
+  </div>
+
+  <div class="band-h">What's leaking?</div>
+  <div class="grid r-2">
+    <div class="card"><div class="ch"><div><div class="t">Cancellations &amp; reasons</div><div class="d">Lost revenue, and why</div></div></div><div data-chart="cancellations"></div></div>
+    <div class="card"><div class="ch"><div><div class="t">Owed money &middot; AR aging</div><div class="d">Collections worklist</div></div></div><div data-chart="aging"></div></div>
+  </div>
+`);
+render();
+</script>
+</body></html>

@@ -464,6 +464,12 @@ nav.sticky {
   --ring: 221 99% 50%;             /* #0150FC brand-600 */
   --destructive: 0 72% 51%;        /* #DC2626 danger (darkened for WCAG AA: white-on label 4.83:1) */
   --destructive-foreground: 0 0% 100%;/* #FFFFFF */
+  --chart-1: hsl(221 99% 50%);
+  --chart-2: hsl(211 89% 60%);
+  --chart-3: hsl(152 70% 40%);
+  --chart-4: hsl(38 92% 50%);
+  --chart-5: hsl(0 72% 51%);
+  --chart-6: hsl(255 90% 67%);
 }
 
 .dark {
@@ -488,6 +494,12 @@ nav.sticky {
   --ring: 225 100% 68%;            /* #5C84FF brand-400 */
   --destructive: 358 86% 64%;      /* #F2555A */
   --destructive-foreground: 36 11% 9%;/* #1A1815 */
+  --chart-1: hsl(221 99% 63%);
+  --chart-2: hsl(211 89% 68%);
+  --chart-3: hsl(152 60% 52%);
+  --chart-4: hsl(38 92% 58%);
+  --chart-5: hsl(0 80% 65%);
+  --chart-6: hsl(255 90% 75%);
 }
 
 /* Redesign scope: opt-in wrapper. Applies the redesign font + warm canvas

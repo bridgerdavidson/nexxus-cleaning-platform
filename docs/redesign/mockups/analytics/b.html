@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Analytics — Direction B</title>
+<link rel="stylesheet" href="theme.css"></head>
+<body><div id="root"></div>
+<script src="_shell.js"></script>
+<script src="charts.js"></script>
+<script>
+mountShell(`
+  <div class="phead">
+    <div><h1>Analytics</h1><div class="sub">Last 30 days &middot; money &amp; operations side by side</div></div>
+    <div class="controls">
+      <div class="seg"><button>7D</button><button class="on">30D</button><button>90D</button><button>12M</button></div>
+      <span class="cmp">vs previous period</span>
+      <button class="btn-ghost"><span data-ico="download" style="width:16px;height:16px;display:flex"></span>Export</button>
+    </div>
+  </div>
+  ${kpiRailHTML()}
+  <div class="grid r-2" style="align-items:start;gap:22px">
+    <div>
+      <div class="colhead"><span data-ico="dollar" style="width:17px;height:17px;display:flex"></span>Money</div>
+      <div class="card hero mb"><div class="ch"><div><div class="t">Run-rate &amp; forecast</div><div class="d">Annualized, trailing 30 days</div></div></div><div data-chart="runrate"></div></div>
+      <div class="card mb"><div class="ch"><div><div class="t">Realized vs booked revenue</div><div class="d">Collected vs pending, weekly</div></div></div><div class="legend-inline" style="margin:-2px 0 6px"><span><i style="background:#0150FC"></i>Collected</span><span><i style="background:#BBDAFB"></i>Booked</span><span><i style="background:#F59E0B"></i>Target</span></div><div data-chart="hero"></div></div>
+      <div class="card mb"><div class="ch"><div><div class="t">Recurring vs one-off</div></div></div><div data-chart="donut"></div></div>
+      <div class="card"><div class="ch"><div><div class="t">Owed money &middot; AR aging</div></div></div><div data-chart="aging"></div></div>
+    </div>
+    <div>
+      <div class="colhead ops"><span data-ico="cal" style="width:17px;height:17px;display:flex"></span>Operations</div>
+      <div class="card hero mb"><div class="ch"><div><div class="t">Demand by day &amp; hour</div><div class="d">Busiest windows</div></div></div><div data-chart="heatmap"></div></div>
+      <div class="card mb"><div class="ch"><div><div class="t">Cleaner leaderboard</div></div><div class="picker">Revenue &#9662;</div></div><div data-chart="leaderboard"></div></div>
+      <div class="card mb"><div class="ch"><div><div class="t">Cancellations &amp; reasons</div></div></div><div data-chart="cancellations"></div></div>
+      <div class="card"><div class="ch"><div><div class="t">Revenue by service</div></div></div><div data-chart="servicemix"></div></div>
+    </div>
+  </div>
+`);
+render();
+</script>
+</body></html>
