@@ -20,7 +20,7 @@ export const BOOKING_STATUS_CONFIG: Record<
 > = {
   pending:     { label: 'Pending',     variant: 'caution',    Icon: Clock },
   confirmed:   { label: 'Confirmed',   variant: 'secondary',  Icon: CalendarCheck },
-  in_progress: { label: 'In Progress', variant: 'default',    Icon: Loader2, spin: true },
+  in_progress: { label: 'In progress', variant: 'default',    Icon: Loader2, spin: true },
   completed:   { label: 'Completed',   variant: 'positive',   Icon: CheckCircle2 },
   cancelled:   { label: 'Cancelled',   variant: 'critical',   Icon: XCircle },
 }
