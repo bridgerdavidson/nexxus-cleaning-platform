@@ -116,7 +116,7 @@ function OperatorAnalyticsData({ canMoney }: { canMoney: boolean }) {
       cancellations={cancellations}
       insightsSlot={<InsightsPanel insights={insights} />}
       animate={animate}
-      onExport={onExport}
+      onExport={canMoney ? onExport : undefined}
     />
   );
 }
