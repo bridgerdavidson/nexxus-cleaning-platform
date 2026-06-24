@@ -92,33 +92,39 @@ export interface OperatorMessagesViewProps {
   selectedId: string | null
   onSelect: (conversationId: string) => void
   onRequestDelete: (conversationId: string) => void
-  isLoadingConversations: boolean
-
+  onNewMessage: () => void
+  inboxLoading: boolean
   // thread
-  selectedParticipantName: string | null
-  selectedParticipantRole: UserRoleLike | null
-  selectedParticipantInitials: string | null
-  selectedParticipantAvatarUrl: string | null
+  threadTitle: string
+  threadRole: UserRole | null
+  threadInitials: string
+  threadAvatarUrl: string | null
   messages: MessageVM[]
-  isLoadingMessages: boolean
+  threadLoading: boolean
   hasMore: boolean
+  isLoadingMore: boolean
   onLoadMore: () => void
-  onSend: (content: string) => void
-  isSending: boolean
   messagesEndRef: React.RefObject<HTMLDivElement>
   onOpenBooking: (appointmentId: string) => void
-
   // composer
+  draft: string
+  onDraftChange: (v: string) => void
+  pendingFiles: File[]
+  onAddFiles: (files: File[]) => void
+  onRemoveFile: (index: number) => void
   stagedBooking: ContactBookingVM | null
   onStageBooking: (appointmentId: string) => void
-  onClearStaged: () => void
+  onClearStagedBooking: () => void
   attachableBookings: ContactBookingVM[]
-
-  // new message
-  onNewMessage: () => void
-
-  // context panel
+  onSend: () => void
+  sending: boolean
+  // about panel
+  detailsOpen: boolean
+  onToggleDetails: () => void
   context: ContactContextVM | null
-  isLoadingContext: boolean
-  canViewPayments: boolean
+  onViewProfile: () => void
+  onNewBooking: () => void
+  onCopy: (text: string, label: string) => void
+  // layout
+  isMobile: boolean
 }
