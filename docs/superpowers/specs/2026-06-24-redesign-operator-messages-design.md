@@ -33,7 +33,7 @@ Below the header, a single full-height bordered/rounded **console** card splits 
 ```
 
 - **Default desktop** = two-pane (Inbox + Thread). The **Details** toggle in the thread header reveals the About column as a third pane (no awkward empty third column when nothing is selected; thread stays roomy by default).
-- **Mobile** = inbox full-screen (shell bottom tabs visible, Messages active) → tapping a conversation pushes a **full-screen thread** (back arrow). **Details** opens the About panel as a bottom **Sheet**; **Reference a booking** opens its picker as a bottom **Sheet**. "New message" is an icon button in the inbox header (no competing FAB — the shell owns the New-booking FAB).
+- **Mobile** = inbox full-screen (shell bottom tabs visible, Messages active) → tapping a conversation pushes a **full-screen thread** (back arrow). **Details** (About panel) and **Reference a booking** open as **drag-dismissable bottom drawers** (the new `Drawer` primitive in §3, "New shared primitive"): the user can grab **anywhere on the sheet** and slide/fling it down to close, with a velocity threshold + snap-back, a visible grab handle, and tap-scrim-to-close as a fallback. "New message" is an icon button in the inbox header (no competing FAB — the shell owns the New-booking FAB).
 
 ## 3. Component architecture
 
@@ -55,8 +55,8 @@ All new components under `src/components/redesign/messages/`. Legacy `src/compon
 - **`MessageBubble.tsx`** — one message: sender `Avatar`, content bubble (mine = brand bg / right; theirs = muted bg / left; `whitespace-pre-wrap break-words`), attachments grid (1 col for 1, 2 cols for 2+, click → lightbox), timestamp + read ticks on my messages (✓ sent / ✓✓ read from `is_read`). Renders an **`InlineBookingCard`** above/within the bubble when `message.appointment_id` is set.
 - **`InlineBookingCard.tsx`** — the attached-booking card rendered in the thread ("You/<name> linked a booking"): service · date · time, address, cleaner, status badge (reusing the badge convention below), and **Open ›** → `useAppointmentPanel().openAppointment(id)` (deep-links the legacy `/admin-dashboard?appointment=<id>` drawer host; the panel is not mounted in the redesign tree, same approach Payments used). Hydrated by looking up `appointment_id` in `useAdminAppointments()` data; if not found (out-of-scope/old), a minimal fallback card that still deep-links by id.
 - **`MessageComposer.tsx`** — `Textarea` (enter-to-send, shift+enter newline, auto-grow), a **+ menu** (`DropdownMenu`/`IconButton`) with "Add image" (image-only, ≤5 files, ≤10MB, preview thumbnails with remove) and "Reference a booking" (opens `ReferenceBookingMenu`), the **staged booking chip** above the input when one is attached (`📎 service · date ✕`), and Send. Send calls `sendMessage({ conversationId, senderId, recipientId, content, attachments: pendingFiles, appointmentId: stagedAppointmentId })`. The HEIC→compress→upload pipeline stays **inside `useSendMessage`** (unchanged); the composer only collects `File[]`.
-- **`ReferenceBookingMenu.tsx`** — picker of the **contact's** bookings (popover on desktop, `Sheet` on mobile): searchable list from `deriveContactBookings`, each row = date · service · status; selecting sets `stagedAppointmentId`. Empty state "No bookings for this person" (e.g. a manager/admin contact).
-- **`ContextPanel.tsx`** — the About column / mobile Sheet: identity (`Avatar`, name, role `Badge`), contact rows (email, phone) with copy-to-clipboard (`toast` confirm), quick actions (**Profile** → the redesign Customers/Cleaners screen detail; **New booking** → existing new-booking flow), a stat strip (`N cleanings · $X lifetime · N properties`, the **$ gated by `canViewPayments`**), and **Upcoming** + **Recent** booking mini-rows (status badge + Open). Bookings come from `deriveContactBookings`.
+- **`ReferenceBookingMenu.tsx`** — picker of the **contact's** bookings (`Popover` on desktop, drag-dismissable `Drawer` on mobile): searchable list from `deriveContactBookings`, each row = date · service · status; selecting sets `stagedAppointmentId`. Empty state "No bookings for this person" (e.g. a manager/admin contact).
+- **`ContextPanel.tsx`** — the About column on desktop / mobile drag-dismissable `Drawer`: identity (`Avatar`, name, role `Badge`), contact rows (email, phone) with copy-to-clipboard (`toast` confirm), quick actions (**Profile** → the redesign Customers/Cleaners screen detail; **New booking** → existing new-booking flow), a stat strip (`N cleanings · $X lifetime · N properties`, the **$ gated by `canViewPayments`**), and **Upcoming** + **Recent** booking mini-rows (status badge + Open). Bookings come from `deriveContactBookings`.
 - **`NewMessageDialog.tsx`** — start a conversation (`Dialog`): searchable list of `useOrganizationMembers` filtered by `rolesUserCanMessage(role)`; selecting calls `startConversation(member.id)` then selects the resulting thread. Empty/permission states.
 
 ### Pure logic (+ colocated Vitest)
@@ -68,6 +68,10 @@ All new components under `src/components/redesign/messages/`. Legacy `src/compon
 
 - **`messages-types.ts`** — `ConversationRowVM`, `MessageVM` (incl. optional `booking?: InlineBookingVM`), `InlineBookingVM`, `ContactContextVM`, `ContactBookingVM`, `RoleFilter`, `MessagesViewProps`, etc.
 - **`messages-presenters.tsx`** — `timeAgo`, `lastMessagePreview` (text/photo/mixed + `You:`), `bookingBadge` (reusing the Customers `HistoryStatusBadge` config: pending=caution/Clock, confirmed=secondary/CalendarCheck, in_progress=default/Loader2 spin, completed=positive/CheckCircle2, cancelled=critical/XCircle), `longDate`, `fmtTime`, `money2`. Shared by desktop + mobile so rendering stays in sync.
+
+### New shared primitive: `Drawer` (vaul)
+
+The current `src/components/ui/sheet.tsx` is built on Radix Dialog and has **no drag gesture** (it closes only on scrim-tap or the X). Mobile bottom sheets here need the native grab-and-slide feel, so add a new **`src/components/ui/drawer.tsx`** primitive built on **`vaul`** (the library behind shadcn's Drawer; React 19 + Next 16 compatible; small, and Radix-Dialog-based underneath so it composes with our portal/a11y patterns). Exports mirror shadcn: `Drawer, DrawerTrigger, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter, DrawerClose`, themed with our tokens (warm `popover` bg, `rounded-t-card`, `shadow-soft-lg`, a visible grab handle). Behavior: drag **anywhere on the sheet** to dismiss, velocity-based fling-to-close, snap-back when not pulled far enough, scrim tap-to-close fallback, body-scroll lock, focus trap, and correct scroll-vs-drag handling for scrollable content. Desktop side panels keep the existing Radix `Sheet`. **`vaul` is a new dependency** (the only one this PR adds). The primitive is reusable: adopting it for the other redesign screens' mobile detail sheets is a noted follow-up.
 
 ### Reused as-is
 
@@ -107,15 +111,17 @@ All new components under `src/components/redesign/messages/`. Legacy `src/compon
 ## 8. Build order (for the plan)
 
 1. Hook change: `useSendMessage` optional `appointmentId`.
-2. Types + presenters + the two pure derives (+ tests) — TDD.
-3. Pure View pieces: `ConversationRow`, `InboxList`, `MessageBubble`, `InlineBookingCard`, `MessageComposer`, `ReferenceBookingMenu`, `ContextPanel`, `NewMessageDialog`, `MessageThreadPanel`, `OperatorMessagesView`.
-4. Container `OperatorMessages` (wire hooks, URL params, handlers, view models).
-5. Route page + dev preview + nav-items href repoint.
-6. Playwright verify (preview + live) → Codex pre-push review → PR.
+2. Add `vaul`; build the `Drawer` primitive (`ui/drawer.tsx`) and verify drag-dismiss in a quick preview/`/ui-kit` demo.
+3. Types + presenters + the two pure derives (+ tests) — TDD.
+4. Pure View pieces: `ConversationRow`, `InboxList`, `MessageBubble`, `InlineBookingCard`, `MessageComposer`, `ReferenceBookingMenu`, `ContextPanel`, `NewMessageDialog`, `MessageThreadPanel`, `OperatorMessagesView`.
+5. Container `OperatorMessages` (wire hooks, URL params, handlers, view models).
+6. Route page + dev preview + nav-items href repoint.
+7. Playwright verify (preview + live) → Codex pre-push review → PR.
 
 ## 9. Explicitly out of scope (noted follow-ups)
 
 - Wiring "Message about this job" buttons onto booking surfaces (Bookings drawer, Overview, cleaner jobs) that deep-link `?to=&appointment=` into Messages. The screen *accepts* the deep-link now; adding the buttons is a follow-up.
 - Prefilling the customer in the "New booking" quick action (links to the existing flow for now).
+- Migrating the other redesign screens' mobile detail sheets (Customers/Cleaners/Payments) from Radix `Sheet` to the new drag-dismissable `Drawer`. This PR introduces the primitive and uses it for Messages; rolling it out elsewhere is a follow-up.
 - Cleaner/Homeowner messaging experiences (their own redesign phases).
 - Typing indicators, reactions, message editing/deleting (not in legacy; not added).
