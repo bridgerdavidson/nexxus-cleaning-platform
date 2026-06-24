@@ -11,9 +11,7 @@ import { RecurringDonut } from "./charts/RecurringDonut";
 import { DemandHeatmap } from "./charts/DemandHeatmap";
 import { ServiceMixBars } from "./charts/ServiceMixBars";
 import { Leaderboard } from "./charts/Leaderboard";
-import { Cancellations } from "./charts/Cancellations";
-import { ArAging } from "./charts/ArAging";
-import type { AnalyticsSummary, CancellationsData, DemandCell, Kpi, LeaderRow, RangePreset, ServiceMixRow, TimeseriesPoint } from "./analytics-types";
+import type { AnalyticsSummary, DemandCell, Kpi, LeaderRow, RangePreset, ServiceMixRow, TimeseriesPoint } from "./analytics-types";
 import type { ReactNode } from "react";
 
 export type OperatorAnalyticsViewProps = {
@@ -26,7 +24,6 @@ export type OperatorAnalyticsViewProps = {
   serviceMix: ServiceMixRow[];
   leaderboard: LeaderRow[];
   demand: DemandCell[];
-  cancellations: CancellationsData | null;
   insightsSlot: ReactNode;
   animate: boolean;
   onExport?: () => void;
@@ -95,13 +92,6 @@ export function OperatorAnalyticsView(p: OperatorAnalyticsViewProps) {
         <div className="grid gap-4 lg:grid-cols-2">
           <Panel title="Cleaner leaderboard" desc="Top performers this period"><Leaderboard rows={p.leaderboard} /></Panel>
           <Panel title="Demand by day & hour" desc="Busiest windows for staffing"><DemandHeatmap cells={p.demand} /></Panel>
-        </div>
-      </Section>
-
-      <Section title="What's leaking?">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Cancellations" desc="Lost revenue, and why"><Cancellations data={p.cancellations} /></Panel>
-          <Panel title="Owed money, AR aging" desc="Collections worklist"><ArAging summary={p.summary} /></Panel>
         </div>
       </Section>
     </div>

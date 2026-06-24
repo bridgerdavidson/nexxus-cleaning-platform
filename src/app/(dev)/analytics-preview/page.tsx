@@ -23,7 +23,7 @@ export default function AnalyticsPreviewPage() {
       <OperatorAnalyticsView
         preset={preset} onPresetChange={setPreset} kpis={kpis} summary={SUMMARY} series={SERIES}
         runRateSpark={SERIES.map((p) => (p.collectedCents ?? 0) / 100)} serviceMix={MIX} leaderboard={LEADERS}
-        demand={DEMAND} cancellations={CANCEL} insightsSlot={<InsightsPanel insights={insights} />} animate onExport={() => {}}
+        demand={DEMAND} insightsSlot={<InsightsPanel insights={insights} />} animate onExport={() => {}}
       />
     </OperatorShell>
   );

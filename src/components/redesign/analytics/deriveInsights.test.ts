@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveInsights } from "./deriveInsights";
-import type { AnalyticsSummary, ServiceMixRow, LeaderRow, CancellationsData } from "./analytics-types";
+import type { AnalyticsSummary, ServiceMixRow } from "./analytics-types";
 
 const summary = (o: Partial<AnalyticsSummary> = {}): AnalyticsSummary => ({
   revenueCents: 4820000, revenuePrevCents: 4300000, bookedCents: 6100000,

@@ -57,18 +57,22 @@ function fmtMoneyShort(cents: number | null): string {
 
 export function buildKpis(s: AnalyticsSummary, series: TimeseriesPoint[], money: boolean): Kpi[] {
   const collectedSpark = series.map((p) => (p.collectedCents ?? 0) / 100);
+  const bookedSpark = series.map((p) => (p.bookedCents ?? 0) / 100);
   const jobsSpark = series.map((p) => p.jobs);
+  const completion = s.jobsTotal === 0 ? 0 : Math.round((s.jobsCompleted / s.jobsTotal) * 100);
+  // Only revenue has a previous-period figure to delta against; the rest carry an
+  // honest muted context line instead of a fake "flat" delta badge.
   const moneyKpis: Kpi[] = money
     ? [
-        { key: "revenue", label: "Revenue collected", value: fmtMoneyShort(s.revenueCents), rawValue: (s.revenueCents ?? 0) / 100, delta: pctDelta(s.revenueCents, s.revenuePrevCents), spark: collectedSpark, iconKey: "revenue", money: true },
-        { key: "booked", label: "Booked pipeline", value: fmtMoneyShort(s.bookedCents), rawValue: (s.bookedCents ?? 0) / 100, spark: collectedSpark, iconKey: "booked", money: true },
-        { key: "recurring", label: "Recurring share", value: `${Math.round(recurringShare(s) * 100)}%`, rawValue: Math.round(recurringShare(s) * 100), unit: "%", spark: [], iconKey: "recurring", money: true },
-        { key: "avg", label: "Avg job value", value: fmtMoneyShort(avgJob(s)), rawValue: avgJob(s) == null ? null : avgJob(s)! / 100, spark: [], iconKey: "avg", money: true },
+        { key: "revenue", label: "Revenue collected", value: fmtMoneyShort(s.revenueCents), rawValue: (s.revenueCents ?? 0) / 100, delta: pctDelta(s.revenueCents, s.revenuePrevCents), context: "vs previous", spark: collectedSpark, iconKey: "revenue", money: true },
+        { key: "booked", label: "Booked pipeline", value: fmtMoneyShort(s.bookedCents), rawValue: (s.bookedCents ?? 0) / 100, context: "scheduled", spark: bookedSpark, iconKey: "booked", money: true },
+        { key: "recurring", label: "Recurring share", value: `${Math.round(recurringShare(s) * 100)}%`, rawValue: Math.round(recurringShare(s) * 100), unit: "%", context: "of collected revenue", spark: [], iconKey: "recurring", money: true },
+        { key: "avg", label: "Avg job value", value: fmtMoneyShort(avgJob(s)), rawValue: avgJob(s) == null ? null : Math.round(avgJob(s)! / 100), context: "per completed job", spark: [], iconKey: "avg", money: true },
       ]
     : [];
   const baseKpis: Kpi[] = [
-    { key: "jobs", label: "Jobs completed", value: `${s.jobsCompleted}`, rawValue: s.jobsCompleted, delta: { dir: "flat", label: `of ${s.jobsTotal}`, tone: "neutral" }, spark: jobsSpark, iconKey: "jobs", money: false },
-    { key: "cancel", label: "Cancel rate", value: `${(s.cancelRate * 100).toFixed(1)}%`, rawValue: +(s.cancelRate * 100).toFixed(1), unit: "%", delta: { dir: "flat", label: "vs prev", tone: "neutral" }, spark: [], iconKey: "cancel", money: false },
+    { key: "jobs", label: "Jobs completed", value: `${s.jobsCompleted}`, rawValue: s.jobsCompleted, context: `of ${s.jobsTotal} (${completion}%)`, spark: jobsSpark, iconKey: "jobs", money: false },
+    { key: "cancel", label: "Cancel rate", value: `${(s.cancelRate * 100).toFixed(1)}%`, rawValue: +(s.cancelRate * 100).toFixed(1), unit: "%", context: `${s.cancelled} cancelled`, spark: [], iconKey: "cancel", money: false },
   ];
   // order: revenue, booked, jobs, recurring, cancel, avg (money ones interleaved when present)
   return money ? [moneyKpis[0], moneyKpis[1], baseKpis[0], moneyKpis[2], baseKpis[1], moneyKpis[3]] : baseKpis;

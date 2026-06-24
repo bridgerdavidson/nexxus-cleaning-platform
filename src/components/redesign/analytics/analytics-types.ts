@@ -51,9 +51,10 @@ export interface Kpi {
   key: string;
   label: string;
   value: string;               // preformatted display ("$48.2k", "132", "4.2%")
-  rawValue: number | null;     // for NumberFlow; null = "—"
+  rawValue: number | null;     // for NumberFlow; null = "-"
   unit?: string;
   delta?: { dir: "up" | "down" | "flat"; label: string; tone: DeltaTone };
+  context?: string;            // muted secondary line under the value (e.g. "of 27 (63%)")
   spark: number[];
   iconKey: "revenue" | "booked" | "jobs" | "recurring" | "cancel" | "avg";
   money: boolean;              // hidden entirely when viewer lacks can_view_payments

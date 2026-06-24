@@ -1,5 +1,5 @@
 "use client";
-import { Bar, ComposedChart, Line, ReferenceLine, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { Bar, ComposedChart, ReferenceLine, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { ChartFrame, CHART_AXIS, CHART_GRID } from "@/components/ui/chart";
 import type { TimeseriesPoint } from "../analytics-types";
 

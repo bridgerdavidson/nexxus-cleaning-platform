@@ -113,7 +113,6 @@ function OperatorAnalyticsData({ canMoney }: { canMoney: boolean }) {
       serviceMix={serviceMix}
       leaderboard={leaderboard}
       demand={demand}
-      cancellations={cancellations}
       insightsSlot={<InsightsPanel insights={insights} />}
       animate={animate}
       onExport={canMoney ? onExport : undefined}
