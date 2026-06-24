@@ -127,23 +127,25 @@ begin
   with buckets as (
     select generate_series(date_trunc(v_g, p_start::timestamp), date_trunc(v_g, p_end::timestamp), ('1 '||v_g)::interval)::date as b
   ),
-  coll as (
-    select date_trunc(v_g, paid_at)::date as b, round(sum(amount)*100)::bigint as c
-    from payments where organization_id=p_org_id and status='paid' and payment_type='revenue'
-      and paid_at::date between p_start and p_end group by 1
-  ),
+  -- collected and booked are computed from the SAME scheduled-date cohort, so the
+  -- stacked "collected + pending" bar (pending = booked - collected) never double-
+  -- counts or mis-attributes work that was paid in a different bucket than scheduled.
   book as (
-    select date_trunc(v_g, scheduled_date::timestamp)::date as b,
-           round(sum(total_price)*100)::bigint as bk, count(*)::bigint as j
-    from appointments where organization_id=p_org_id
-      and status in ('confirmed','in_progress','completed')
-      and scheduled_date between p_start and p_end group by 1
+    select date_trunc(v_g, a.scheduled_date::timestamp)::date as b,
+           round(sum(a.total_price)*100)::bigint as bk,
+           round(sum(a.total_price) filter (where exists (
+             select 1 from payments p where p.appointment_id = a.id
+               and p.status = 'paid' and p.payment_type = 'revenue'))*100)::bigint as c,
+           count(*)::bigint as j
+    from appointments a where a.organization_id = p_org_id
+      and a.status in ('confirmed','in_progress','completed')
+      and a.scheduled_date between p_start and p_end group by 1
   )
   select bk.b,
-    case when v_money then coalesce(coll.c,0) else null end,
+    case when v_money then coalesce(book.c,0) else null end,
     case when v_money then coalesce(book.bk,0) else null end,
     coalesce(book.j,0)
-  from buckets bk left join coll on coll.b=bk.b left join book on book.b=bk.b order by bk.b;
+  from buckets bk left join book on book.b=bk.b order by bk.b;
 end; $$;
 
 -- ---- 3. service mix ----
