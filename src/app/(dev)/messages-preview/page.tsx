@@ -7,8 +7,10 @@ import type { ConversationRowVM, MessageVM, ContactContextVM, ContactBookingVM, 
 
 const ROWS: ConversationRowVM[] = [
   { id: 'a', participantId: 'u1', name: 'Jordan Avery', email: 'jordan@x.com', role: 'homeowner', initials: 'JA', avatarUrl: null, preview: 'Can we move Friday to the morning?', timeLabel: '2m', unreadCount: 2, hasBooking: true, lastMessageAt: '2026-06-24T17:58:00Z' },
-  { id: 'b', participantId: 'u2', name: 'Wanda Jacobs', email: 'wanda@x.com', role: 'cleaner', initials: 'WJ', avatarUrl: null, preview: 'Running 10 min late to the Oak St job', timeLabel: '18m', unreadCount: 1, hasBooking: false, lastMessageAt: '2026-06-24T17:42:00Z' },
+  { id: 'b', participantId: 'u2', name: 'Wanda Jacobs', email: 'wanda@x.com', role: 'cleaner', initials: 'WJ', avatarUrl: null, preview: 'You: The appointment for the Henderson property has been rescheduled to 06/27 at 9:44 PM, please confirm your availability', timeLabel: '18m', unreadCount: 1, hasBooking: true, lastMessageAt: '2026-06-24T17:42:00Z' },
   { id: 'c', participantId: 'u3', name: 'Marcus Lee', email: 'marcus@x.com', role: 'manager', initials: 'ML', avatarUrl: null, preview: 'Approved the payout, thanks', timeLabel: '1h', unreadCount: 0, hasBooking: false, lastMessageAt: '2026-06-24T17:00:00Z' },
+  { id: 'd', participantId: 'u4', name: 'Priya Shah', email: 'priya@x.com', role: 'homeowner', initials: 'PS', avatarUrl: null, preview: 'Thank you so much, the place looks amazing', timeLabel: '3h', unreadCount: 0, hasBooking: false, lastMessageAt: '2026-06-24T15:00:00Z' },
+  { id: 'e', participantId: 'u5', name: 'Diego Torres', email: 'diego@x.com', role: 'cleaner', initials: 'DT', avatarUrl: null, preview: 'You: Photos uploaded for 412 Pine St', timeLabel: 'Yest', unreadCount: 0, hasBooking: true, lastMessageAt: '2026-06-23T19:00:00Z' },
 ]
 const MESSAGES: MessageVM[] = [
   { id: 'm0', senderId: 'me', isMine: true, content: '', timeLabel: '2:38 PM', isRead: true, attachments: [], createdAt: '2026-06-24T14:38:00Z', dayLabel: 'Today', showDayDivider: true,
@@ -31,8 +33,8 @@ export default function MessagesPreviewPage() {
   const [search, setSearch] = useState('')
   const [unreadOnly, setUnreadOnly] = useState(false)
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
-  const [selectedId, setSelectedId] = useState<string | null>('a')
-  const [detailsOpen, setDetailsOpen] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const [draft, setDraft] = useState('')
 
   return (
