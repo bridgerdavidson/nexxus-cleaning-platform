@@ -18,6 +18,7 @@ interface SendMessageOptions {
   recipientId: string;
   content: string;
   attachments?: File[];
+  appointmentId?: string; // NEW: link this message to a booking (messages.appointment_id)
 }
 
 export function useSendMessage() {
@@ -31,6 +32,7 @@ export function useSendMessage() {
       recipientId,
       content,
       attachments = [],
+      appointmentId,
     }: SendMessageOptions) => {
       if (!currentOrganizationId) {
         throw new Error('No organization selected. Please select an organization to send messages.');
@@ -95,6 +97,7 @@ export function useSendMessage() {
           recipient_id: recipientId,
           content,
           is_read: false,
+          appointment_id: appointmentId ?? null, // NEW
         });
         if (messageError) throw messageError;
 
@@ -130,6 +133,7 @@ export function useSendMessage() {
         senderId,
         recipientId,
         uploaded,
+        appointmentId,
       };
     },
     onSuccess: async result => {
@@ -170,7 +174,7 @@ export function useSendMessage() {
         conversation_id: result.conversationId,
         sender_id: result.senderId,
         recipient_id: result.recipientId,
-        appointment_id: null,
+        appointment_id: result.appointmentId ?? null,
         subject: null,
         content: result.content,
         is_read: false,
