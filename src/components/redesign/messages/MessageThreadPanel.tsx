@@ -166,6 +166,10 @@ export function MessageThreadPanel(props: {
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
           </div>
         )}
+        {/* Bottom-anchor: this spacer grows to push a short thread down to the
+            composer (like iMessage/WhatsApp) and collapses to 0 once messages
+            overflow, so normal scrolling is unaffected. */}
+        <div aria-hidden className="flex-1" />
         {props.loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (

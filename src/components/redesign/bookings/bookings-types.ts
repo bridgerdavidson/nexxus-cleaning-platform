@@ -86,6 +86,7 @@ export type BookingDetailVM = {
   badge: BookingBadgeKey;
   customer: string;
   customerEmail: string | null;
+  customerId: string | null; // homeowner user id, for the "Message customer" deep-link
   isSelfPay: boolean;
   cleaner: string | null;
   cleanerId: string | null;

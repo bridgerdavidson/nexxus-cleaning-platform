@@ -81,7 +81,7 @@ const DETAIL: BookingDetailVM = {
   id: "5", title: "17 Birch Ln", service: "Standard clean",
   dateLabel: "Friday, June 26", timeLabel: "2:00pm", durationLabel: "2h",
   status: "pending", badge: "counter_proposed",
-  customer: "Tom Reyes", customerEmail: "tom@example.com", isSelfPay: false,
+  customer: "Tom Reyes", customerEmail: "tom@example.com", customerId: "tom", isSelfPay: false,
   cleaner: "Marco Diaz", cleanerId: "marco", cleanerAvatarUrl: null,
   payment: { tone: "pending", label: "Pending" }, priceLabel: "$120.00",
   specialRequests: "Please use the side gate and watch for the dog.", notes: null,
@@ -183,6 +183,8 @@ export default function BookingsPreviewPage() {
         onReschedule={() => {}}
         onCancel={() => {}}
         onDelete={() => {}}
+        onMessageCustomer={() => {}}
+        onMessageCleaner={() => {}}
       />
     </OperatorShell>
   );

@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Clock,
   Mail,
+  MessageSquare,
   Play,
   CheckCircle2,
   CalendarCog,
@@ -51,6 +52,8 @@ export type BookingDetailSheetProps = {
   onReschedule: () => void;
   onCancel: () => void;
   onDelete: () => void;
+  onMessageCustomer: () => void;
+  onMessageCleaner: () => void;
 };
 
 export function BookingDetailSheet({
@@ -69,6 +72,8 @@ export function BookingDetailSheet({
   onReschedule,
   onCancel,
   onDelete,
+  onMessageCustomer,
+  onMessageCleaner,
 }: BookingDetailSheetProps) {
   // Only a confirmed (cleaner-accepted) booking can be started. A pending one is
   // still awaiting the cleaner's acceptance / counter-proposal, so starting it
@@ -138,6 +143,21 @@ export function BookingDetailSheet({
                   </SelectContent>
                 </Select>
               </Field>
+
+              {detail.customerId || detail.cleanerId ? (
+                <div className="flex flex-wrap gap-2">
+                  {detail.customerId ? (
+                    <Button variant="outline" size="sm" onClick={onMessageCustomer}>
+                      <MessageSquare /> Message customer
+                    </Button>
+                  ) : null}
+                  {detail.cleanerId ? (
+                    <Button variant="outline" size="sm" onClick={onMessageCleaner}>
+                      <MessageSquare /> Message cleaner
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
 
               {canViewPayments ? (
                 <>
