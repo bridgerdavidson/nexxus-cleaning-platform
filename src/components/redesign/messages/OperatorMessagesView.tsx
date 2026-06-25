@@ -30,6 +30,9 @@ function MobileThreadOverlay({
     setShown(false)
     window.setTimeout(onClosed, 300)
   }, [onClosed])
+  // Keep the latest close reachable from mount-only effects without re-running them.
+  const closeRef = useRef(close)
+  closeRef.current = close
 
   // Slide in on mount.
   useEffect(() => {
@@ -37,20 +40,27 @@ function MobileThreadOverlay({
     return () => cancelAnimationFrame(id)
   }, [])
 
-  // Lock background scroll, move focus into the takeover, close on Escape.
+  // Lock background scroll + move focus into the takeover ONCE when it opens.
+  // This MUST be mount-only: re-running it on every render would re-call
+  // .focus() and steal focus from the composer on each keystroke, which
+  // collapses the on-screen keyboard (you'd have to re-tap after every letter).
   useEffect(() => {
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     ref.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
-    }
-    window.addEventListener('keydown', onKey)
     return () => {
       document.body.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKey)
     }
-  }, [close])
+  }, [])
+
+  // Close on Escape (bind once; call the latest close via a ref).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Keep the composer above the on-screen keyboard on iOS: the visual viewport
   // shrinks when the keyboard opens but a `fixed`/`dvh` layout does not, so we
