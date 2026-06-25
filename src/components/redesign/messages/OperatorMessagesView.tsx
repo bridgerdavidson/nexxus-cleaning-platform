@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { InboxList } from './InboxList'
 import { MessageThreadPanel } from './MessageThreadPanel'
@@ -22,27 +22,66 @@ function MobileThreadOverlay({
 }) {
   const [shown, setShown] = useState(false)
   const closingRef = useRef(false)
+  const ref = useRef<HTMLDivElement>(null)
 
+  const close = useCallback(() => {
+    if (closingRef.current) return
+    closingRef.current = true
+    setShown(false)
+    window.setTimeout(onClosed, 300)
+  }, [onClosed])
+
+  // Slide in on mount.
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(true))
     return () => cancelAnimationFrame(id)
   }, [])
 
-  const close = () => {
-    if (closingRef.current) return
-    closingRef.current = true
-    setShown(false)
-    window.setTimeout(onClosed, 300)
-  }
+  // Lock background scroll, move focus into the takeover, close on Escape.
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    ref.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [close])
+
+  // Keep the composer above the on-screen keyboard on iOS: the visual viewport
+  // shrinks when the keyboard opens but a `fixed`/`dvh` layout does not, so we
+  // lift the overlay's bottom by the keyboard height.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      ref.current?.style.setProperty('--kbd', `${kb}px`)
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
 
   return (
     <div
+      ref={ref}
       role="dialog"
       aria-modal="true"
+      tabIndex={-1}
+      style={{ paddingBottom: 'max(env(safe-area-inset-bottom), var(--kbd, 0px))' }}
       className={cn(
-        'redesign-overlay fixed inset-0 z-50 flex flex-col bg-card lg:hidden',
-        'pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]',
-        'transition-transform duration-300 ease-out',
+        'redesign-overlay fixed inset-0 z-50 flex flex-col bg-card outline-none lg:hidden',
+        'pt-[env(safe-area-inset-top)]',
+        'transition-transform duration-300 ease-out motion-reduce:transition-none',
         shown ? 'translate-x-0' : 'translate-x-full',
       )}
     >

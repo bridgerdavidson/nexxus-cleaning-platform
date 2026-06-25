@@ -158,7 +158,7 @@ export function MessageThreadPanel(props: {
       {/* Message scroll area */}
       <div
         ref={scrollRef}
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-5 py-4"
       >
         <div ref={sentinelRef} aria-hidden className="h-px" />
         {props.isLoadingMore && (
