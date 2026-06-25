@@ -172,6 +172,7 @@ function toDetailVM(a: AdminAppointment, canViewPayments: boolean): BookingDetai
     badge: deriveBookingBadge(a),
     customer: customerLabel(a),
     customerEmail: a.homeowner?.email ?? null,
+    customerId: a.homeowner_id ?? null,
     isSelfPay: !!a.is_self_pay,
     cleaner: cleanerLabel(a),
     cleanerId: a.cleaner_id ?? null,
@@ -466,6 +467,14 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
         onReschedule={handleReschedule}
         onCancel={() => detail && setConfirm({ kind: "cancel", ids: [detail.id] })}
         onDelete={() => detail && setConfirm({ kind: "delete", ids: [detail.id] })}
+        onMessageCustomer={() => {
+          if (detail?.customerId)
+            router.push(`/app/admin-dashboard/messages?to=${detail.customerId}&appointment=${detail.id}`);
+        }}
+        onMessageCleaner={() => {
+          if (detail?.cleanerId)
+            router.push(`/app/admin-dashboard/messages?to=${detail.cleanerId}&appointment=${detail.id}`);
+        }}
       />
 
       <ConfirmDialog
