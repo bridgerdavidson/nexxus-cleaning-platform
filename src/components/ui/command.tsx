@@ -45,7 +45,7 @@ function CommandDialog({
           className={cn(
             'redesign-overlay',
             'fixed left-1/2 top-[12vh] z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2',
-            'overflow-hidden rounded-card border border-border bg-popover text-popover-foreground shadow-soft-lg',
+            'overflow-hidden rounded-card border border-border bg-popover text-popover-foreground shadow-soft-lg outline-none',
             'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
           )}
         >
@@ -74,7 +74,10 @@ const CommandInput = React.forwardRef<
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        'flex h-12 w-full bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
+        // border-0 + focus:ring-0 defeat the @tailwindcss/forms default input
+        // border + blue focus ring; the wrapper's bottom divider is the only
+        // chrome, so the field reads clean (caret-only focus) in the soft system.
+        'flex h-12 w-full border-0 bg-transparent py-3 text-sm shadow-none outline-none focus:border-0 focus:outline-none focus:ring-0 placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
       {...props}
