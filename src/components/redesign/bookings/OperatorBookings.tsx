@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/contexts/ToastContext";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
+import { useDetailParam } from "@/hooks/useDetailParam";
 import {
   useAdminAppointments,
   useAdminCleaners,
@@ -205,6 +206,7 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
   const { appointments, loading, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
   const { permissions } = useManagerPermissions();
+  const { paramId: bookingParam, setParam: setBookingParam } = useDetailParam("booking");
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
@@ -221,6 +223,24 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
   const [busy, setBusy] = useState(false);
 
   const today = useMemo(() => localISODate(new Date()), []);
+
+  // --- detail open/close (URL-synced for deep links) ---
+  const openDetail = useCallback(
+    (id: string) => {
+      setDetailId(id);
+      setBookingParam(id);
+    },
+    [setBookingParam],
+  );
+  const closeDetail = useCallback(() => {
+    setDetailId(null);
+    setBookingParam(null);
+  }, [setBookingParam]);
+
+  // Open the detail when arrived at via a `?booking=<id>` deep link.
+  useEffect(() => {
+    if (bookingParam) setDetailId(bookingParam);
+  }, [bookingParam]);
 
   const avatarById = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -344,7 +364,7 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
         await refetch();
         if (r.success) {
           showToast("Proposed time accepted", { variant: "success" });
-          setDetailId(null);
+          closeDetail();
         } else {
           showToast(r.error || "Could not accept the time", { variant: "error" });
         }
@@ -352,7 +372,7 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, refetch, showToast],
+    [currentOrganizationId, accessToken, refetch, showToast, closeDetail],
   );
 
   const handleReschedule = useCallback(() => {
@@ -371,14 +391,14 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
         showToast(r.success ? "Booking cancelled" : r.error || "Could not cancel", {
           variant: r.success ? "success" : "error",
         });
-        if (r.success) setDetailId(null);
+        if (r.success) closeDetail();
       } else if (kind === "delete") {
         const r = await deleteAppointment(ids[0]);
         await refetch();
         showToast(r.success ? "Booking deleted" : r.error || "Could not delete", {
           variant: r.success ? "success" : "error",
         });
-        if (r.success) setDetailId(null);
+        if (r.success) closeDetail();
       } else if (kind === "bulkCancel") {
         const result = await cancelAppointments(ids);
         await refetch();
@@ -396,13 +416,13 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, refetch, showToast, clearSelection]);
+  }, [confirm, refetch, showToast, clearSelection, closeDetail]);
 
   const handleRowAction = useCallback((id: string, action: BookingRowAction) => {
-    if (action === "open" || action === "assign") setDetailId(id);
+    if (action === "open" || action === "assign") openDetail(id);
     else if (action === "cancel") setConfirm({ kind: "cancel", ids: [id] });
     else if (action === "delete") setConfirm({ kind: "delete", ids: [id] });
-  }, []);
+  }, [openDetail]);
 
   const confirmCopy = useMemo(() => {
     if (!confirm) return null;
@@ -442,7 +462,7 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
         onToggleRow={toggleRow}
         onToggleAll={toggleAll}
         onClearSelection={clearSelection}
-        onOpenRow={setDetailId}
+        onOpenRow={openDetail}
         onRowAction={handleRowAction}
         onBulkCancel={() => setConfirm({ kind: "bulkCancel", ids: [...selectedIds] })}
         onBulkDelete={() => setConfirm({ kind: "bulkDelete", ids: [...selectedIds] })}
@@ -452,7 +472,7 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
       <BookingDetailSheet
         open={!!detail}
         onOpenChange={(o) => {
-          if (!o) setDetailId(null);
+          if (!o) closeDetail();
         }}
         detail={detail}
         cleanerOptions={cleanerOptions}

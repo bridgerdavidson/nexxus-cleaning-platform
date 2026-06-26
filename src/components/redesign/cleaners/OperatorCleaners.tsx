@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/contexts/ToastContext";
 import { useInvites } from "@/hooks/useInvites";
+import { useDetailParam } from "@/hooks/useDetailParam";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   useAdminCleanerScorecards,
@@ -188,6 +189,7 @@ export function OperatorCleanersData({
   const { showToast } = useToast();
   const { currentOrganizationId, accessToken } = useAuth();
   const { cleaners, loading, refetch } = useAdminCleanerScorecards();
+  const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
   const { invites, resend, refetch: refetchInvites } = useInvites(
     currentOrganizationId,
     accessToken,
@@ -273,15 +275,25 @@ export function OperatorCleanersData({
   }, [rows]);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // --- detail open/close ---
-  const openDetail = useCallback((id: string) => {
-    setEditing(false);
-    setDetailId(id);
-  }, []);
+  // --- detail open/close (URL-synced for deep links) ---
+  const openDetail = useCallback(
+    (id: string) => {
+      setEditing(false);
+      setDetailId(id);
+      setCleanerParam(id);
+    },
+    [setCleanerParam],
+  );
   const closeDetail = useCallback(() => {
     setEditing(false);
     setDetailId(null);
-  }, []);
+    setCleanerParam(null);
+  }, [setCleanerParam]);
+
+  // Open the detail when arrived at via a `?cleaner=<id>` deep link.
+  useEffect(() => {
+    if (cleanerParam) setDetailId(cleanerParam);
+  }, [cleanerParam]);
 
   // --- mutations ---
   const handleSave = useCallback(
