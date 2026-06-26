@@ -26,9 +26,9 @@ export const REDESIGN_SETTINGS_SECTIONS: RedesignSettingsSection[] = [
   { id: "profile", label: "Profile", icon: User, group: "account" },
   { id: "organization", label: "Organization", icon: Building2, group: "account", roles: ["owner"] },
   { id: "payments", label: "Payments", icon: CreditCard, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_payments" },
-  { id: "cancellation", label: "Cancellation policy", icon: Receipt, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_payments" },
+  { id: "cancellation", label: "Cancellation policy", icon: Receipt, group: "business", roles: ["admin", "owner"] },
   { id: "payout", label: "Payout settings", icon: Wallet, group: "business", roles: ["owner"] },
-  { id: "business-hours", label: "Business hours", icon: CalendarClock, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_cleaners" },
+  { id: "business-hours", label: "Business hours", icon: CalendarClock, group: "business", roles: ["admin", "owner"] },
 ];
 
 /** Mirrors src/lib/settings.ts getSectionsForRole: additive role match, manager narrowed by permission. */

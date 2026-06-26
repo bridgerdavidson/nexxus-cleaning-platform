@@ -26,14 +26,14 @@ describe("deriveSettingsSections", () => {
   it("manager with no permissions sees only Profile", () => {
     expect(ids("manager", "manager", perms())).toEqual(["profile"]);
   });
-  it("manager with can_manage_payments sees payments + cancellation", () => {
+  it("manager with can_manage_payments sees payments only (cancellation is owner/admin-only)", () => {
     expect(ids("manager", "manager", perms({ can_manage_payments: true }))).toEqual([
-      "profile", "payments", "cancellation",
+      "profile", "payments",
     ]);
   });
-  it("manager with can_manage_cleaners sees business hours", () => {
+  it("manager with can_manage_cleaners sees profile only (business-hours is owner/admin-only)", () => {
     expect(ids("manager", "manager", perms({ can_manage_cleaners: true }))).toEqual([
-      "profile", "business-hours",
+      "profile",
     ]);
   });
   it("groups every section as account or business", () => {
