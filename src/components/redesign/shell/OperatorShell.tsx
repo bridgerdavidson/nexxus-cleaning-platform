@@ -15,8 +15,11 @@ function deriveActive(pathname: string | null): string | undefined {
   // "bookings", not "overview" (whose href is a prefix of every other).
   let best: { id: string; len: number } | undefined;
   for (const item of OPERATOR_NAV) {
-    if (pathname === item.href || pathname.startsWith(item.href + "/")) {
-      if (!best || item.href.length > best.len) best = { id: item.id, len: item.href.length };
+    const roots = [item.href, ...(item.activeFor ?? [])];
+    for (const root of roots) {
+      if (pathname === root || pathname.startsWith(root + "/")) {
+        if (!best || root.length > best.len) best = { id: item.id, len: root.length };
+      }
     }
   }
   return best?.id;
