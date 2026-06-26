@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/redesign/notifications/NotificationBell";
@@ -88,7 +89,9 @@ export function OperatorTopBar({
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>{name}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/app/admin-dashboard/settings">Settings</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem destructive onClick={() => signOut()}>
               Sign out
             </DropdownMenuItem>

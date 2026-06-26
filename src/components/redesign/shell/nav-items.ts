@@ -18,6 +18,8 @@ export type NavItem = {
   icon: LucideIcon;
   /** Shown in the mobile bottom bar (max 4 + Menu). All items show in the rail/drawer. */
   primary?: boolean;
+  /** Extra path roots that should also mark this item active (incremental rollout aliasing). */
+  activeFor?: string[];
 };
 
 // Operator (admin + manager) destinations. Only Overview is redesigned so far;
@@ -36,7 +38,7 @@ export const OPERATOR_NAV: NavItem[] = [
   { id: "payments", label: "Payments & payouts", href: "/app/admin-dashboard/payments", icon: CreditCard },
   { id: "analytics", label: "Analytics", href: "/app/admin-dashboard/analytics", icon: BarChart3 },
   { id: "messages", label: "Messages", href: "/app/admin-dashboard/messages", icon: MessageSquare, primary: true },
-  { id: "settings", label: "Settings", href: "/settings", icon: Settings },
+  { id: "settings", label: "Settings", href: "/app/admin-dashboard/settings", icon: Settings, activeFor: ["/settings"] },
 ];
 
 export const OPERATOR_PRIMARY_NAV = OPERATOR_NAV.filter((i) => i.primary);
