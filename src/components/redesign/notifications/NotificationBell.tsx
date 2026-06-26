@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,10 +33,17 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  // Drives the relative-time labels; refreshed each time the panel opens so
+  // "just now"/"5m ago" don't go stale during a long-lived session.
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (open) setNow(Date.now());
+  }, [open]);
 
   const groups = useMemo(
-    () => deriveNotificationGroups(notifications, Date.now()),
-    [notifications],
+    () => deriveNotificationGroups(notifications, now),
+    [notifications, now],
   );
 
   const handleOpen = useCallback(
@@ -54,14 +61,18 @@ export function NotificationBell() {
         return;
       }
       setAcceptingId(item.id);
-      await acceptCounterProposal({
+      const result = await acceptCounterProposal({
         appointmentId: item.appointmentId,
         organizationId: item.organizationId,
         suggestedTimeId: item.action.suggestedTimeId,
       });
       setAcceptingId(null);
-      if (item.unread) markOneRead(item.id);
-      setOpen(false);
+      // Only clear + close on confirmed success; on failure the hook already
+      // surfaced an error toast and the row stays unread so the user can retry.
+      if (result) {
+        if (item.unread) markOneRead(item.id);
+        setOpen(false);
+      }
     },
     [acceptCounterProposal, markOneRead],
   );
