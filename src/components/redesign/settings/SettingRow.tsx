@@ -1,3 +1,5 @@
+"use client";
+
 import { Label } from "@/components/ui/label";
 
 /** Native settings row: label + helper on the left, control on the right, hairline divider. */
