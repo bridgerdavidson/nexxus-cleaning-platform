@@ -75,7 +75,7 @@ export function BusinessHoursSection() {
       <SectionHeader title="Business hours" lead="Drives default availability and scheduling bounds." />
       <SettingRow label="Timezone" htmlFor="bh-tz">
         <Select value={value.timezone} onValueChange={(tz) => setValue({ ...value, timezone: tz })}>
-          <SelectTrigger className="sm:w-72" aria-label="Timezone"><SelectValue /></SelectTrigger>
+          <SelectTrigger id="bh-tz" className="sm:w-72" aria-label="Timezone"><SelectValue /></SelectTrigger>
           <SelectContent>{tzOptions.map((tz) => <SelectItem key={tz} value={tz}>{tz}</SelectItem>)}</SelectContent>
         </Select>
       </SettingRow>

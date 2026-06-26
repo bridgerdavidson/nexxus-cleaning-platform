@@ -78,7 +78,7 @@ export function CancellationSection() {
         <div className="flex items-center gap-2">
           <Select
             value={value.cancellationFeeType}
-            onValueChange={(t) => setValue({ ...value, cancellationFeeType: t as FeeType })}
+            onValueChange={(t) => setValue({ ...value, cancellationFeeType: t as FeeType, ...(t === "none" && { cancellationFeeValue: "0" }) })}
           >
             <SelectTrigger className="w-40" aria-label="Cancellation fee type">
               <SelectValue />
@@ -106,7 +106,7 @@ export function CancellationSection() {
         <div className="flex items-center gap-2">
           <Select
             value={value.noShowFeeType}
-            onValueChange={(t) => setValue({ ...value, noShowFeeType: t as FeeType })}
+            onValueChange={(t) => setValue({ ...value, noShowFeeType: t as FeeType, ...(t === "none" && { noShowFeeValue: "0" }) })}
           >
             <SelectTrigger className="w-40" aria-label="No-show fee type">
               <SelectValue />
