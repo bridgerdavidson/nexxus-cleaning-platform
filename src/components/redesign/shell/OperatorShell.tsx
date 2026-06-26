@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
 import { OperatorMobileNav } from "./OperatorMobileNav";
+import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { OPERATOR_NAV } from "./nav-items";
 
 function deriveActive(pathname: string | null): string | undefined {
@@ -37,6 +39,7 @@ export function OperatorShell({
 }) {
   const pathname = usePathname();
   const activeId = active ?? deriveActive(pathname);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -44,10 +47,11 @@ export function OperatorShell({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} />
         <div className="lg:pl-16">
-          <OperatorTopBar onNewBooking={onNewBooking} />
+          <OperatorTopBar onNewBooking={onNewBooking} onOpenSearch={() => setSearchOpen(true)} />
           <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
         </div>
         <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} />
+        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />
       </div>
     </TooltipProvider>
   );

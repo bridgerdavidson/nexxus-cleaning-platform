@@ -5,6 +5,7 @@ import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/contexts/ToastContext";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
+import { useDetailParam } from "@/hooks/useDetailParam";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   useAdminCustomers,
@@ -214,6 +215,7 @@ function OperatorCustomersData({
   const { showToast } = useToast();
   const { currentOrganizationId, accessToken } = useAuth();
   const { customers, loading, refetch, updateCustomerInState } = useAdminCustomers();
+  const { paramId: customerParam, setParam: setCustomerParam } = useDetailParam("customer");
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<CustomerSort>("recent");
@@ -293,15 +295,26 @@ function OperatorCustomersData({
   }, [rows]);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // --- detail open/close ---
-  const openDetail = useCallback((id: string) => {
-    setEditing(false);
-    setDetailId(id);
-  }, []);
+  // --- detail open/close (URL-synced for deep links) ---
+  const openDetail = useCallback(
+    (id: string) => {
+      setEditing(false);
+      setDetailId(id);
+      setCustomerParam(id);
+    },
+    [setCustomerParam],
+  );
   const closeDetail = useCallback(() => {
     setEditing(false);
     setDetailId(null);
-  }, []);
+    setCustomerParam(null);
+  }, [setCustomerParam]);
+
+  // Keep the detail in sync with the `?customer=<id>` deep link: open it when the
+  // param is present and close it when the param is removed (e.g. browser Back).
+  useEffect(() => {
+    setDetailId(customerParam);
+  }, [customerParam]);
 
   // --- mutations ---
   const handleSave = useCallback(
@@ -386,7 +399,7 @@ function OperatorCustomersData({
     (id: string, action: CustomerRowAction) => {
       if (action === "open") openDetail(id);
       else if (action === "edit") {
-        setDetailId(id);
+        openDetail(id);
         setEditing(true);
       } else if (action === "delete") setConfirm({ kind: "delete", ids: [id] });
     },

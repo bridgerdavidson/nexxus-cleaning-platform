@@ -1,8 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { NotificationBell } from "@/components/redesign/notifications/NotificationBell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -27,27 +27,43 @@ function initials(p?: Profile) {
  * Operator top bar: global search + primary "New booking" action + notifications
  * + profile menu. Sits to the right of the rail on desktop (parent offsets it).
  */
-export function OperatorTopBar({ onNewBooking }: { onNewBooking?: () => void }) {
+export function OperatorTopBar({
+  onNewBooking,
+  onOpenSearch,
+}: {
+  onNewBooking?: () => void;
+  onOpenSearch?: () => void;
+}) {
   const { user, signOut } = useAuth() as { user: { profile?: Profile } | null; signOut: () => void };
   const profile = user?.profile;
   const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") || "Operator";
+
+  // Platform-correct shortcut hint, set after mount to avoid an SSR mismatch.
+  const [modLabel, setModLabel] = useState("⌘K");
+  useEffect(() => {
+    const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+    setModLabel(isMac ? "⌘K" : "Ctrl K");
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border bg-card">
       {/* inner content capped to the same width as the page content (1700px) so edges align on wide screens */}
       <div className="flex h-full max-w-[1700px] items-center gap-3 px-4 lg:px-6">
-      {/* search — full on sm+, icon on mobile */}
-      <div className="relative hidden flex-1 sm:block">
+      {/* search — opens the command palette (full trigger on sm+, icon on mobile) */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        className="relative hidden h-9 flex-1 items-center gap-2 rounded-pill border border-border bg-background pl-9 pr-2 text-left text-sm text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+      >
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-        <label htmlFor="op-search" className="sr-only">Search</label>
-        <Input
-          id="op-search"
-          type="search"
-          placeholder="Search bookings, customers, cleaners…"
-          className="h-9 rounded-pill pl-9"
-        />
-      </div>
-      <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search">
+        <span className="flex-1 truncate">Search bookings, customers, cleaners...</span>
+        {/* Soft, on-brand shortcut hint: inherit Jakarta (kbd defaults to mono),
+            borderless muted chip so it matches the pillowy system. */}
+        <kbd className="hidden shrink-0 items-center rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground [font-family:inherit] md:inline-flex">
+          {modLabel}
+        </kbd>
+      </button>
+      <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Search" onClick={onOpenSearch}>
         <Search className="h-5 w-5" aria-hidden />
       </Button>
 
