@@ -40,6 +40,9 @@ export function OperatorSettings() {
     router.replace(`${pathname}?${params.toString()}`);
   }, [router, pathname, searchParams]);
 
+  // Dirty-guard covers in-app section switches only. Direct ?section= URL edits, rail
+  // navigation via browser back, and page unload are NOT intercepted; a beforeunload
+  // guard is a deliberate follow-up.
   const onSelectSection = useCallback((id: SettingsSectionId) => {
     if (id === activeId) return;
     if (guardRef.current?.isDirty) { setPending(id); return; }

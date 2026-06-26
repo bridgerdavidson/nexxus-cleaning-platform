@@ -33,9 +33,10 @@ export function PayoutSettingsSection() {
 
   const save = useCallback(async (v: PayoutForm) => {
     if (!currentOrganizationId) throw new Error("No organization");
-    await updateOrgProfile(currentOrganizationId, { default_payout_model: v.model });
+    // Validate before any network write so an invalid % never half-persists a model change.
     const pct = parseFloat(v.defaultPct);
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new Error("Default payout % must be between 0 and 100");
+    await updateOrgProfile(currentOrganizationId, { default_payout_model: v.model });
     await updateOrgCleanerPayouts(currentOrganizationId, { default_cleaner_payout_percent: pct });
   }, [currentOrganizationId]);
 

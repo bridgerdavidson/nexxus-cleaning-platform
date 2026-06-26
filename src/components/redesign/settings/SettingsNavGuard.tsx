@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 
 export interface SettingsGuard {
   isDirty: boolean;
@@ -19,7 +19,8 @@ export function SettingsNavGuardProvider({
   register: (g: SettingsGuard | null) => void;
   children: React.ReactNode;
 }) {
-  return <Ctx.Provider value={{ register }}>{children}</Ctx.Provider>;
+  const value = useMemo(() => ({ register }), [register]);
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 /** A section calls this to expose its dirty state + save handler to the container's leave guard. */
