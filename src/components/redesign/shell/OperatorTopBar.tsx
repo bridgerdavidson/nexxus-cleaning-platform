@@ -56,7 +56,9 @@ export function OperatorTopBar({
       >
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <span className="flex-1 truncate">Search bookings, customers, cleaners...</span>
-        <kbd className="hidden shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground md:inline-flex">
+        {/* Soft, on-brand shortcut hint: inherit Jakarta (kbd defaults to mono),
+            borderless muted chip so it matches the pillowy system. */}
+        <kbd className="hidden shrink-0 items-center rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-muted-foreground [font-family:inherit] md:inline-flex">
           {modLabel}
         </kbd>
       </button>
