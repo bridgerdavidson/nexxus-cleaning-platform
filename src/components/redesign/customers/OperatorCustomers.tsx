@@ -310,9 +310,10 @@ function OperatorCustomersData({
     setCustomerParam(null);
   }, [setCustomerParam]);
 
-  // Open the detail when arrived at via a `?customer=<id>` deep link.
+  // Keep the detail in sync with the `?customer=<id>` deep link: open it when the
+  // param is present and close it when the param is removed (e.g. browser Back).
   useEffect(() => {
-    if (customerParam) setDetailId(customerParam);
+    setDetailId(customerParam);
   }, [customerParam]);
 
   // --- mutations ---
@@ -398,7 +399,7 @@ function OperatorCustomersData({
     (id: string, action: CustomerRowAction) => {
       if (action === "open") openDetail(id);
       else if (action === "edit") {
-        setDetailId(id);
+        openDetail(id);
         setEditing(true);
       } else if (action === "delete") setConfirm({ kind: "delete", ids: [id] });
     },

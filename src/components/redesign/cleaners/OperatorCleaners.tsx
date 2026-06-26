@@ -290,9 +290,10 @@ export function OperatorCleanersData({
     setCleanerParam(null);
   }, [setCleanerParam]);
 
-  // Open the detail when arrived at via a `?cleaner=<id>` deep link.
+  // Keep the detail in sync with the `?cleaner=<id>` deep link: open it when the
+  // param is present and close it when the param is removed (e.g. browser Back).
   useEffect(() => {
-    if (cleanerParam) setDetailId(cleanerParam);
+    setDetailId(cleanerParam);
   }, [cleanerParam]);
 
   // --- mutations ---
@@ -440,7 +441,7 @@ export function OperatorCleanersData({
     (id: string, action: CleanerRowAction) => {
       if (action === "open") openDetail(id);
       else if (action === "edit") {
-        setDetailId(id);
+        openDetail(id);
         setEditing(true);
       } else if (action === "deactivate") void doDeactivate(id, true);
       else if (action === "reactivate") void doDeactivate(id, false);

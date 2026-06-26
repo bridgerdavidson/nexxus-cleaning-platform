@@ -124,12 +124,15 @@ export function CommandPaletteData({
   const [services, setServices] = useState<PaletteService[]>([]);
 
   const privileged = currentOrgRole === 'owner' || currentOrgRole === 'admin';
+  // Match each redesign screen's own gate so palette search surfaces exactly the
+  // content the viewer can reach. Bookings has no gate (every operator can open
+  // it); services is viewable with either the view or manage grant.
   const can = useMemo(
     () => ({
-      bookings: privileged || !!permissions?.can_view_bookings,
+      bookings: true,
       customers: privileged || !!permissions?.can_view_customers,
       cleaners: privileged || !!permissions?.can_manage_cleaners,
-      services: privileged || !!permissions?.can_view_services,
+      services: privileged || !!permissions?.can_view_services || !!permissions?.can_manage_services,
     }),
     [privileged, permissions],
   );

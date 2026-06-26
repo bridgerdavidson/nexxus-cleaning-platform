@@ -237,9 +237,10 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
     setBookingParam(null);
   }, [setBookingParam]);
 
-  // Open the detail when arrived at via a `?booking=<id>` deep link.
+  // Keep the detail in sync with the `?booking=<id>` deep link: open it when the
+  // param is present and close it when the param is removed (e.g. browser Back).
   useEffect(() => {
-    if (bookingParam) setDetailId(bookingParam);
+    setDetailId(bookingParam);
   }, [bookingParam]);
 
   const avatarById = useMemo(() => {
