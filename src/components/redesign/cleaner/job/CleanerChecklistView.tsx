@@ -32,9 +32,12 @@ import { checklistProgressLabel } from './active-job-presenters';
 export interface CleanerChecklistViewProps {
   appointmentId: string;
   /** Preferred checklist id (from appointment.checklist_id). May be null for
-   *  legacy rows — in that case the parent should supply serviceTypeId instead,
-   *  but this component accepts null and shows an empty state. */
+   *  legacy rows — in that case `serviceTypeId` is used as a fallback (the first
+   *  checklist for that service type); if neither resolves, an empty state shows. */
   checklistId: string | null;
+  /** Fallback when `checklistId` is null (legacy rows): resolve the service
+   *  type's first checklist. From appointment.service_type_id. */
+  serviceTypeId?: string | null;
   onBack: () => void;
 }
 
@@ -45,11 +48,12 @@ export interface CleanerChecklistViewProps {
 export function CleanerChecklistView({
   appointmentId,
   checklistId,
+  serviceTypeId = null,
   onBack,
 }: CleanerChecklistViewProps) {
   const { lineItems, loading: checklistLoading } = useChecklist({
     checklistId,
-    serviceTypeId: null,
+    serviceTypeId,
   });
   const { completed, isLoading: completionsLoading } = useChecklistCompletions(appointmentId);
   const toggle = useToggleChecklistItem();

@@ -21,6 +21,8 @@ export interface CleanerAppointment {
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   job_progress?: 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
+  /** True once the cleaner skipped the photo gate with a reason (migration 095). */
+  photos_skipped?: boolean;
   total_price: number;
   special_requests?: string;
   cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected';
@@ -138,6 +140,7 @@ export function useCleanerAppointments() {
           scheduled_time,
           status,
           job_progress,
+          photos_skipped,
           total_price,
           special_requests,
           cleaner_confirmation_status,
@@ -1246,4 +1249,35 @@ export function useSkipPhotos() {
       }
     },
   });
+}
+
+/**
+ * Reads `organizations.require_job_photos` for the cleaner's current org.
+ *
+ * IMPORTANT: this is sourced from a dedicated query that actually SELECTs the
+ * column. The org object on AuthContext only selects `id, name, logo_url`, so
+ * `currentOrganization.require_job_photos` there always falls back to its default
+ * (`true`) and would make the photo gate ignore an org that set it to `false`.
+ * Reading it here avoids that trap. Defaults to `true` (gate required) while
+ * loading, on error, or when the column is null — never silently bypass the gate.
+ *
+ * For a cleaner, `currentOrganizationId` is the org their appointments belong to
+ * (one membership; appointments are org-scoped), so this matches the active job's org.
+ */
+export function useOrgRequireJobPhotos(): boolean {
+  const { currentOrganizationId } = useAuth();
+  const query = useQuery({
+    queryKey: ['organization', 'require-job-photos', currentOrganizationId ?? ''] as const,
+    enabled: !!currentOrganizationId,
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('require_job_photos')
+        .eq('id', currentOrganizationId as string)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as { require_job_photos?: boolean } | null)?.require_job_photos ?? true;
+    },
+  });
+  return query.data ?? true;
 }
