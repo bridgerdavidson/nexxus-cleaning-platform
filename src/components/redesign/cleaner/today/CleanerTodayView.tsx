@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
-import { formatTimeParts, propertyTitle, jobSubtitle, statusBadge } from "./today-presenters";
+import { formatTimeParts, propertyTitle, jobSubtitle, statusBadge, formatRespondBy } from "./today-presenters";
 
 const TONE: Record<string, string> = {
   blue: "bg-[#E1EAFF] text-brand-600",
@@ -123,13 +123,21 @@ export function CleanerTodayView({
           <div className="space-y-3">
             {data.offers.map((o) => {
               const t = formatTimeParts(o.scheduled_time);
+              const respondBy = formatRespondBy(o.response_deadline);
               return (
                 <div
                   key={o.id}
-                  className="rounded-card border border-l-4 border-border border-l-[#F59E0B] bg-card p-4 shadow-soft-sm"
+                  className="rounded-card border border-border bg-card p-4 shadow-soft-sm"
                 >
-                  <div className="text-sm font-extrabold">
-                    {t.h} {t.ap}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-extrabold">
+                      {t.h} {t.ap}
+                    </div>
+                    {respondBy && (
+                      <span className="rounded-pill bg-[#FEF3C7] px-2.5 py-1 text-[10px] font-bold text-[#92660A]">
+                        {respondBy}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
                   <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>

@@ -24,3 +24,17 @@ export function statusBadge(a: CleanerAppointment): { label: string; tone: "blue
   if (a.status === "pending" && a.cleaner_confirmation_status === "awaiting") return { label: "Needs response", tone: "amber" };
   return { label: "Upcoming", tone: "gray" };
 }
+
+/**
+ * Label for an offer's response deadline, e.g. "Respond by 9:00 PM". Returns
+ * null when there is no (or an invalid) deadline so the caller can omit the
+ * pill. Uses the viewer's locale time; day is intentionally omitted (deadlines
+ * are near-term and the offer's own date is already shown on the card).
+ */
+export function formatRespondBy(deadline?: string | null): string | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  if (Number.isNaN(d.getTime())) return null;
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `Respond by ${time}`;
+}

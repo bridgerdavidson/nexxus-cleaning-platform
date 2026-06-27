@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTimeParts, propertyTitle, jobSubtitle, statusBadge } from "./today-presenters";
+import { formatTimeParts, propertyTitle, jobSubtitle, statusBadge, formatRespondBy } from "./today-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
 const base = {
@@ -30,5 +30,14 @@ describe("today-presenters", () => {
     expect(statusBadge({ ...base, status: "pending", cleaner_confirmation_status: "awaiting" }).tone).toBe("amber");
     expect(statusBadge({ ...base, status: "completed" }).tone).toBe("green");
     expect(statusBadge({ ...base, status: "confirmed" }).tone).toBe("gray");
+  });
+
+  it("formats a response deadline, and returns null when absent or invalid", () => {
+    // TZ-stable assertion: check the label shape, not the exact local hour.
+    expect(formatRespondBy("2026-06-26T21:00:00Z")).toMatch(/^Respond by \d{1,2}:\d{2}\s(AM|PM)$/);
+    expect(formatRespondBy(null)).toBeNull();
+    expect(formatRespondBy(undefined)).toBeNull();
+    expect(formatRespondBy("")).toBeNull();
+    expect(formatRespondBy("not-a-date")).toBeNull();
   });
 });
