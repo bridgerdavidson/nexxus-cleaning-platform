@@ -1191,18 +1191,27 @@ export function useToggleChecklistItem() {
 /** Fetch the charge projection for the active-job completion summary.
  * Lazy: only fetches when `enabled` (e.g. the completion sheet is open). */
 export function useChargeProjection(appointmentId: string | null, enabled: boolean) {
-  const queryKey = keys.appointments.chargeProjection(appointmentId ?? '');
+  const { currentOrganizationId } = useAuth();
+  // Org in the key so a switch refetches; the route requires organization_id via
+  // requireOrgAuth (400 without it), so only fetch once we have one.
+  const queryKey = [
+    ...keys.appointments.chargeProjection(appointmentId ?? ''),
+    currentOrganizationId ?? '',
+  ] as const;
   const query = useQuery({
     queryKey,
-    enabled: enabled && !!appointmentId,
+    enabled: enabled && !!appointmentId && !!currentOrganizationId,
     queryFn: async ({ signal }): Promise<ChargeProjection | null> => {
       const token = await getAccessToken();
-      const res = await fetch(`/api/appointments/${appointmentId}/charge-projection`, {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      const res = await fetch(
+        `/api/appointments/${appointmentId}/charge-projection?organization_id=${currentOrganizationId}`,
+        {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          signal,
         },
-        signal,
-      });
+      );
       if (!res.ok) throw new Error('Could not load charge projection');
       const body = (await res.json()) as { projection: ChargeProjection | null };
       return body.projection;
@@ -1217,7 +1226,7 @@ export function useChargeProjection(appointmentId: string | null, enabled: boole
 
 /** POST photo-skip for an appointment; invalidates appointment detail + byCleaner lists. */
 export function useSkipPhotos() {
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
   const qc = useQueryClient();
   const userId = user?.id;
   return useMutation({
@@ -1235,7 +1244,8 @@ export function useSkipPhotos() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ reason }),
+        // organizationId is required by the route's requireOrgAuth (400 without it).
+        body: JSON.stringify({ organizationId: currentOrganizationId, reason }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({} as Record<string, unknown>));

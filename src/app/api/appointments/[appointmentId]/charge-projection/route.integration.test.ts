@@ -6,6 +6,7 @@ import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 import { projectCompletionCharge } from '@/lib/payments/projectCompletionCharge';
+import { stripeFeePassthroughEnabled } from '@/lib/stripe/flags';
 
 // Wrap the route handler the same way the charge route test does (passing
 // appointmentId through params while the request carries organization_id in
@@ -74,6 +75,7 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
       isSelfPay: false,
       payoutPercent: 40,
       platformFeeBps: 0,
+      feePassthrough: stripeFeePassthroughEnabled(),
     });
     expect(body.projection).toMatchObject(expected);
   });
@@ -98,6 +100,7 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
       isSelfPay: false,
       payoutPercent: 40,
       platformFeeBps: 0,
+      feePassthrough: stripeFeePassthroughEnabled(),
     });
     expect(body.projection).toMatchObject(expected);
   });
@@ -122,6 +125,7 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
       isSelfPay: true,
       payoutPercent: 40,
       platformFeeBps: 0,
+      feePassthrough: stripeFeePassthroughEnabled(),
     });
     expect(body.projection).toMatchObject(expected);
     expect(body.projection.isSelfPay).toBe(true);

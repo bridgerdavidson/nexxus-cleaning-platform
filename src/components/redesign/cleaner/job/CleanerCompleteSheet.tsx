@@ -14,6 +14,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Drawer,
   DrawerContent,
@@ -42,10 +43,12 @@ export interface CleanerCompleteSheetProps {
 // ---------------------------------------------------------------------------
 
 function SkeletonRow() {
+  // Uses the shared Skeleton primitive (matches the rest of the cleaner slice)
+  // instead of a bare animate-pulse div.
   return (
     <div className="flex items-center justify-between py-2">
-      <div className="h-4 w-32 animate-pulse rounded-full bg-muted" />
-      <div className="h-4 w-16 animate-pulse rounded-full bg-muted" />
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-4 w-16" />
     </div>
   );
 }
@@ -219,13 +222,6 @@ export function CleanerCompleteSheet({
             </p>
           )}
         </div>
-
-        {/* ACH note — never imply settled money for bank-transfer */}
-        {!isLoading && projection?.method === 'us_bank_account' && (
-          <p className="mx-5 mt-2 text-xs text-muted-foreground">
-            Bank transfer payments take 1 to 5 business days to clear.
-          </p>
-        )}
 
         <DrawerFooter>
           <Button

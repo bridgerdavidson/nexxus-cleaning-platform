@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
-import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
+import { stripeEnabled, stripeNewChargeFlowEnabled, stripeFeePassthroughEnabled } from '@/lib/stripe/flags';
 import { projectCompletionCharge } from '@/lib/payments/projectCompletionCharge';
 
 export const runtime = 'nodejs';
@@ -123,6 +123,9 @@ export async function GET(
       isSelfPay: appt.is_self_pay,
       payoutPercent,
       platformFeeBps,
+      // Honor the same fee-passthrough flag the actual charge path uses so the sheet
+      // never overstates the charge when passthrough is off.
+      feePassthrough: stripeFeePassthroughEnabled(),
     });
 
     return NextResponse.json({ projection });
