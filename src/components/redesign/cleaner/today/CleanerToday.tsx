@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCleanerAppointments, useRespondToOffer } from "@/hooks/useCleanerData";
+import { useOpenJob } from "@/components/redesign/cleaner/job/useOpenJob";
 import { deriveToday } from "./deriveToday";
 import { CleanerTodayView } from "./CleanerTodayView";
 
@@ -11,22 +12,24 @@ function ymd(d: Date): string {
 
 export function CleanerToday() {
   const router = useRouter();
+  const openJob = useOpenJob();
   const { appointments, loading } = useCleanerAppointments();
   const respond = useRespondToOffer();
 
   const now = new Date();
   const data = deriveToday(appointments, ymd(now), ymd(new Date(now.getTime() + 864e5)), "percentage_contractor");
 
-  // Job-detail + active-job flow are not in-redesign yet here; bridge to legacy
-  // until Task 9 (job detail) / Slice 3 (active-job flow).
-  const openLegacy = (id: string) => router.push(`/cleaner-dashboard?appointment=${id}`);
+  // The active-job flow (photos/checklist/complete) is not in-redesign yet, so
+  // "Continue job" bridges to the legacy wizard until Slice 3. All other taps
+  // open the in-redesign job detail (?job=).
+  const continueLegacy = (id: string) => router.push(`/cleaner-dashboard?appointment=${id}`);
 
   return (
     <CleanerTodayView
       data={data}
       loading={loading}
-      onContinueActive={() => data.activeJob && openLegacy(data.activeJob.id)}
-      onOpenJob={openLegacy}
+      onContinueActive={() => data.activeJob && continueLegacy(data.activeJob.id)}
+      onOpenJob={openJob}
       onAcceptOffer={(id, slotIndex) => respond.accept.mutateAsync({ appointmentId: id, slotIndex })}
       onDeclineOffer={(id, reason, other) => respond.decline.mutateAsync({ appointmentId: id, reason, other })}
       onSeeTomorrow={() => router.push("/app/cleaner-dashboard/schedule")}
