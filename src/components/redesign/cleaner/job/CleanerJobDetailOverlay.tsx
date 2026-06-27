@@ -25,10 +25,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function CleanerJobDetailOverlay({
-  appointment, loading, onClosed, onStart, starting, onContinue, onAcceptOffer, onDeclineOffer,
+  appointment, loading, todayStr, onClosed, onStart, starting, onContinue, onAcceptOffer, onDeclineOffer,
 }: {
   appointment: CleanerAppointment | null;
   loading: boolean;
+  todayStr?: string;
   onClosed: () => void;
   onStart: () => Promise<unknown> | void;
   starting: boolean;
@@ -106,7 +107,7 @@ export function CleanerJobDetailOverlay({
             <div className="text-sm font-bold">Job</div>
           )}
         </div>
-        {appointment && <CleanerJobBadge appointment={appointment} />}
+        {appointment && <CleanerJobBadge appointment={appointment} todayStr={todayStr} />}
         <div className="w-1" />
       </div>
 

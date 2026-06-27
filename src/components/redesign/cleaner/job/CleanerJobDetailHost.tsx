@@ -14,12 +14,15 @@ export function CleanerJobDetailHost() {
 
   if (!paramId) return null;
   const appointment = appointments.find((a) => a.id === paramId) ?? null;
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   return (
     <CleanerJobDetailOverlay
       key={paramId}
       appointment={appointment}
       loading={loading}
+      todayStr={todayStr}
       onClosed={() => setParam(null)}
       onStart={() => startJob.mutateAsync(paramId)}
       starting={startJob.isPending}

@@ -88,7 +88,7 @@ export function CleanerScheduleView({
           <Skeleton className="h-16 w-full rounded-card" />
           <Skeleton className="h-16 w-full rounded-card" />
         </div>
-      ) : data.isEmpty ? (
+      ) : data.isEmpty && data.needsAttention.length === 0 ? (
         <div className="pt-10">
           <EmptyState
             icon={<CalendarDays />}
