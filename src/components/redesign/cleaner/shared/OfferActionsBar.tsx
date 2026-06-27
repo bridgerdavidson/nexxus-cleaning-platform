@@ -72,7 +72,7 @@ export function OfferActionsBar({
                 aria-checked={active}
                 onClick={() => setSlotIndex(s.slot_index)}
                 className={cn(
-                  "rounded-pill border px-3 py-1.5 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "min-h-[44px] rounded-pill border px-4 py-2 text-sm font-bold outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   active ? "border-brand-600 bg-brand-50 text-brand-700" : "border-border bg-card text-muted-foreground",
                 )}
               >
