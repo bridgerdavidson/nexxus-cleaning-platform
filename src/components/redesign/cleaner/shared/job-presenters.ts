@@ -73,6 +73,21 @@ export function formatDuration(minutes?: number | null): string | null {
   return `${h}h ${m}m`;
 }
 
+/** Compact card date ("Wed, Jul 1"), null when it is today (date implied) or
+ * invalid. Year appears only when it differs from today's year. */
+export function formatCardDate(dateStr: string, todayStr: string): string | null {
+  if (!dateStr || dateStr === todayStr) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const sameYear = todayStr.slice(0, 4) === String(y);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
 export interface OfferSlot {
   slot_index: number;
   scheduled_date: string;

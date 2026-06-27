@@ -18,3 +18,17 @@ describe("jobBadgeKey", () => {
     expect(jobBadgeKey(a({ status: "pending", cleaner_confirmation_status: "approved" }))).toBe("upcoming");
   });
 });
+
+describe("jobBadgeKey zone-awareness (todayStr given)", () => {
+  const PAST = "2026-06-05";
+  it("stale confirmed/in_progress -> unfinished", () => {
+    expect(jobBadgeKey(a({ status: "confirmed", scheduled_date: PAST }), "2026-06-10")).toBe("unfinished");
+    expect(jobBadgeKey(a({ status: "in_progress", scheduled_date: PAST }), "2026-06-10")).toBe("unfinished");
+  });
+  it("stale pending -> expired", () => {
+    expect(jobBadgeKey(a({ status: "pending", cleaner_confirmation_status: "awaiting", scheduled_date: PAST }), "2026-06-10")).toBe("expired");
+  });
+  it("without todayStr, falls back to status-only mapping", () => {
+    expect(jobBadgeKey(a({ status: "confirmed", scheduled_date: PAST }))).toBe("upcoming");
+  });
+});

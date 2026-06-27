@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy,
-  customerLabel, propertyAddress, mapsUrl, formatDateLong, formatDuration,
+  customerLabel, propertyAddress, mapsUrl, formatDateLong, formatDuration, formatCardDate,
 } from "./job-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
@@ -54,6 +54,21 @@ describe("formatRespondBy", () => {
   });
   it("prefixes 'Respond by'", () => {
     expect(formatRespondBy("2026-06-01T21:00:00Z")).toMatch(/^Respond by /);
+  });
+});
+
+describe("formatCardDate", () => {
+  it("returns null for today (date is implied)", () => {
+    expect(formatCardDate("2026-06-10", "2026-06-10")).toBeNull();
+  });
+  it("formats a non-today date as weekday + month + day", () => {
+    expect(formatCardDate("2026-07-01", "2026-06-10")).toBe("Wed, Jul 1");
+  });
+  it("includes the year only when different from today's year", () => {
+    expect(formatCardDate("2027-01-05", "2026-06-10")).toBe("Tue, Jan 5, 2027");
+  });
+  it("null on empty/invalid", () => {
+    expect(formatCardDate("", "2026-06-10")).toBeNull();
   });
 });
 
