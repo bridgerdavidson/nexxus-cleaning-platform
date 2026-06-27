@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, Clock, Sparkles } from "lucide-react";
+import { AlertTriangle, ChevronRight, Clock, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,6 +28,7 @@ export function CleanerTodayView({
   onDeclineOffer,
   onOpenJob,
   onSeeTomorrow,
+  todayStr,
 }: {
   data: TodayData;
   loading: boolean;
@@ -36,6 +37,7 @@ export function CleanerTodayView({
   onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onOpenJob: (id: string) => void;
   onSeeTomorrow: () => void;
+  todayStr: string;
 }) {
   if (loading) {
     return (
@@ -73,6 +75,25 @@ export function CleanerTodayView({
             >
               Continue job
             </button>
+          </div>
+        </section>
+      )}
+
+      {data.needsAttention.length > 0 && (
+        <section>
+          <SectionHeader
+            title="Needs attention"
+            trailing={
+              <span className="inline-flex items-center gap-1 rounded-pill bg-caution-50 px-2 py-0.5 text-[11px] font-extrabold text-caution-700">
+                <AlertTriangle className="size-3" aria-hidden />
+                {data.needsAttention.length}
+              </span>
+            }
+          />
+          <div className="space-y-2.5">
+            {data.needsAttention.map((j) => (
+              <JobRow key={j.id} appointment={j} todayStr={todayStr} onClick={() => onOpenJob(j.id)} />
+            ))}
           </div>
         </section>
       )}
@@ -135,7 +156,7 @@ export function CleanerTodayView({
           />
           <div className="space-y-2.5">
             {data.todayJobs.map((j) => (
-              <JobRow key={j.id} appointment={j} onClick={() => onOpenJob(j.id)} />
+              <JobRow key={j.id} appointment={j} todayStr={todayStr} onClick={() => onOpenJob(j.id)} />
             ))}
           </div>
         </section>
