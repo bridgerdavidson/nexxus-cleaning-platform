@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useToast } from '../contexts/ToastContext';
@@ -1058,7 +1058,9 @@ export function useCompleteJob() {
         paymentStatus?: string;
       };
       if (!r.success) throw new Error(r.error || 'Could not complete the job');
-      return { chargeOutcome: r.paymentStatus };
+      // Map the paymentStatus ('paid'|'processing'|'failed') to the outcome-code
+      // vocabulary the Complete sheet keys off ('charged'|'processing'|'failed').
+      return { chargeOutcome: r.paymentStatus === 'paid' ? 'charged' : r.paymentStatus };
     },
     onSuccess: () => {
       if (userId) {
@@ -1091,6 +1093,10 @@ export function useUpdateJobProgress() {
   });
 }
 
+// Stable empty-Set fallback so consumers that depend on `completed` don't see a
+// fresh reference on every render before data arrives (mirrors EMPTY_LINE_ITEMS).
+const EMPTY_COMPLETIONS: ReadonlySet<string> = new Set<string>();
+
 /** Read checklist item completions for an appointment as a Set of checklist_line_item_ids.
  * Uses the anon Supabase client so the cleaner RLS policy authorizes reads. */
 export function useChecklistCompletions(appointmentId: string | null) {
@@ -1098,11 +1104,12 @@ export function useChecklistCompletions(appointmentId: string | null) {
   const query = useOrgQuery({
     queryKey,
     enabled: !!appointmentId,
-    queryFn: async (): Promise<Set<string>> => {
+    queryFn: async ({ signal }): Promise<Set<string>> => {
       const { data, error } = await supabase
         .from('checklist_item_completions')
         .select('checklist_line_item_id')
-        .eq('appointment_id', appointmentId as string);
+        .eq('appointment_id', appointmentId as string)
+        .abortSignal(signal);
       if (error) throw error;
       return new Set(
         (data ?? []).map(
@@ -1112,7 +1119,7 @@ export function useChecklistCompletions(appointmentId: string | null) {
     },
   });
   return {
-    completed: query.data ?? new Set<string>(),
+    completed: query.data ?? EMPTY_COMPLETIONS,
     isLoading: query.isLoading,
     error: query.error ?? null,
   };
@@ -1182,15 +1189,16 @@ export function useToggleChecklistItem() {
  * Lazy: only fetches when `enabled` (e.g. the completion sheet is open). */
 export function useChargeProjection(appointmentId: string | null, enabled: boolean) {
   const queryKey = keys.appointments.chargeProjection(appointmentId ?? '');
-  const query = useOrgQuery({
+  const query = useQuery({
     queryKey,
     enabled: enabled && !!appointmentId,
-    queryFn: async (): Promise<ChargeProjection | null> => {
+    queryFn: async ({ signal }): Promise<ChargeProjection | null> => {
       const token = await getAccessToken();
       const res = await fetch(`/api/appointments/${appointmentId}/charge-projection`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
+        signal,
       });
       if (!res.ok) throw new Error('Could not load charge projection');
       const body = (await res.json()) as { projection: ChargeProjection | null };
