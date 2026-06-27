@@ -100,6 +100,8 @@ export interface Organization {
   cancellation_fee_type?: 'none' | 'flat' | 'percent';
   cancellation_fee_value?: number; // dollars (flat) or percent (percent)
   billing_email?: string | null;
+  // Active-job photo gate — added in migration 095.
+  require_job_photos: boolean;
 }
 
 // ORGANIZATION MEMBERS
@@ -196,6 +198,9 @@ export interface Appointment {
   // Sidecar lifecycle state; NULL on admin direct-book appointments that
   // aren't going through the routing flow.
   request_state: AppointmentRequestState | null;
+  // Active-job photo gate — added in migration 095.
+  photos_skipped: boolean;
+  photo_skip_reason: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -605,6 +610,26 @@ export interface PricingTier {
   basePrice: number;
   description: string;
   features: string[];
+}
+
+// CHECKLIST ITEM COMPLETIONS — added in migration 095
+export interface ChecklistItemCompletion {
+  id: string;
+  appointment_id: string;
+  checklist_line_item_id: string;
+  organization_id: string | null;
+  completed_at: string;
+  created_at: string;
+}
+
+// Charge projection for the active-job summary (consumed by Tasks 3, 4, 6, 9)
+export interface ChargeProjection {
+  baseCents: number;
+  method: 'card' | 'us_bank_account';
+  chargeCents: number;
+  feeCents: number;
+  cleanerCutCents: number;
+  isSelfPay: boolean;
 }
 
 // ==========================================
