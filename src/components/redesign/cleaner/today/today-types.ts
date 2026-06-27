@@ -3,8 +3,11 @@ import type { CleanerAppointment } from "@/hooks/useCleanerData";
 export type CleanerPayoutModel = "percentage_contractor" | "hourly_external";
 
 export interface TodayData {
-  /** First in-progress job, pinned at the top. */
+  /** First in-progress job scheduled today or later, pinned at the top. */
   activeJob: CleanerAppointment | null;
+  /** Recent unfinished jobs (past-day, never completed) needing the cleaner's
+   *  attention. Surfaced near the top so they are not lost. */
+  needsAttention: CleanerAppointment[];
   /** Pending offers awaiting the cleaner's response. Always empty in the
    *  employee (hourly_external) model, where jobs are assigned, not offered. */
   offers: CleanerAppointment[];
