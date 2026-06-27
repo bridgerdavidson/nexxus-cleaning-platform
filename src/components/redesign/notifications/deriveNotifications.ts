@@ -104,16 +104,15 @@ export function operatorNotificationHref(
 /**
  * Click destination for a cleaner notification.
  *
- * Appointment-scoped rows use the legacy cleaner-dashboard bridge (query param
- * opens the cleaner appointment panel, same pattern as the operator bridge).
- * Pay notifications go to the Earnings screen. Everything else lands on the
- * cleaner dashboard home.
+ * Appointment-scoped rows deep-link the in-redesign job detail (`?job=<id>`
+ * opens the takeover via the layout-level host). Pay notifications go to the
+ * Earnings screen. Everything else lands on the cleaner dashboard home.
  */
 function cleanerNotificationHref(
   item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
 ): string {
   if (item.appointment_id) {
-    return `/cleaner-dashboard?appointment=${item.appointment_id}`;
+    return `/app/cleaner-dashboard?job=${item.appointment_id}`;
   }
   if (item.event_type === 'cleaner_paid') {
     return '/app/cleaner-dashboard/earnings';

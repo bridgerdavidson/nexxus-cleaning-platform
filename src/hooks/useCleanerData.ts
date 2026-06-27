@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { useToast } from '../contexts/ToastContext';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
@@ -959,4 +960,80 @@ export function useJobPhotosForAppointment(appointmentId: string | null): UseJob
     error: query.error?.message ?? null,
     refetch,
   };
+}
+
+export type DeclineReason = 'sick' | 'not_my_service' | 'too_far' | 'other';
+
+/** Start a confirmed job (status -> in_progress; fires the 'started' lifecycle
+ * notification inside updateAppointmentStatus). */
+export function useStartJob() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const userId = user?.id;
+  return useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const r = (await updateAppointmentStatus(appointmentId, 'in_progress')) as { success: boolean; error?: string };
+      if (!r.success) throw new Error(r.error || 'Could not start the job');
+      return r;
+    },
+    onSuccess: () => {
+      if (userId) {
+        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+        qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+      }
+      showToast('Job started', { variant: 'success' });
+    },
+    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+  });
+}
+
+/** Accept or decline a job offer via POST /api/appointments/confirm. */
+export function useRespondToOffer() {
+  const { user, currentOrganizationId } = useAuth();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const userId = user?.id;
+
+  async function post(body: Record<string, unknown>) {
+    const token = await getAccessToken();
+    const res = await fetch('/api/appointments/confirm', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ organizationId: currentOrganizationId, ...body }),
+    });
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !(data as { success?: boolean }).success) {
+      const msg = (data as { error?: string; message?: string }).error
+        || (data as { message?: string }).message
+        || 'Could not submit your response';
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function invalidate() {
+    if (!userId) return;
+    qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+    qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+  }
+
+  const accept = useMutation({
+    mutationFn: (v: { appointmentId: string; slotIndex: number }) =>
+      post({ appointmentId: v.appointmentId, action: 'accept', slotIndex: v.slotIndex }),
+    onSuccess: () => { invalidate(); showToast('Job accepted', { variant: 'success' }); },
+    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+  });
+
+  const decline = useMutation({
+    mutationFn: (v: { appointmentId: string; reason: DeclineReason; other?: string }) =>
+      post({ appointmentId: v.appointmentId, action: 'decline', declineReason: v.reason, declineReasonOther: v.other }),
+    onSuccess: () => { invalidate(); showToast('Offer declined', { variant: 'info' }); },
+    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+  });
+
+  return { accept, decline };
 }

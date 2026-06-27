@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCleanerAppointments } from "@/hooks/useCleanerData";
+import { useCleanerAppointments, useRespondToOffer } from "@/hooks/useCleanerData";
+import { useOpenJob } from "@/components/redesign/cleaner/job/useOpenJob";
+import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
 import { deriveToday } from "./deriveToday";
 import { CleanerTodayView } from "./CleanerTodayView";
 
@@ -11,27 +13,29 @@ function ymd(d: Date): string {
 
 export function CleanerToday() {
   const router = useRouter();
+  const openJob = useOpenJob();
   const { appointments, loading } = useCleanerAppointments();
+  const respond = useRespondToOffer();
 
   const now = new Date();
   const todayStr = ymd(now);
-  const tomorrowStr = ymd(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const graceFloorStr = ymd(new Date(now.getTime() - NEEDS_ATTENTION_DAYS * 864e5));
+  const data = deriveToday(appointments, todayStr, ymd(new Date(now.getTime() + 864e5)), graceFloorStr, "percentage_contractor");
 
-  // Slice 1 ships the contractor model only; the employee-model read is wired
-  // in the placeholders slice. deriveToday already branches on this param.
-  const data = deriveToday(appointments, todayStr, tomorrowStr, "percentage_contractor");
-
-  // Deep actions bridge to the legacy panel (?appointment=) until Slice 2 ships
-  // the in-redesign job detail. Never dead-ends.
-  const openLegacy = (id: string) => router.push(`/cleaner-dashboard?appointment=${id}`);
+  // The active-job flow (photos/checklist/complete) is not in-redesign yet, so
+  // "Continue job" bridges to the legacy wizard until Slice 3. All other taps
+  // open the in-redesign job detail (?job=).
+  const continueLegacy = (id: string) => router.push(`/cleaner-dashboard?appointment=${id}`);
 
   return (
     <CleanerTodayView
       data={data}
       loading={loading}
-      onContinueActive={() => data.activeJob && openLegacy(data.activeJob.id)}
-      onRespondOffer={openLegacy}
-      onOpenJob={openLegacy}
+      onContinueActive={() => data.activeJob && continueLegacy(data.activeJob.id)}
+      onOpenJob={openJob}
+      todayStr={todayStr}
+      onAcceptOffer={(id, slotIndex) => respond.accept.mutateAsync({ appointmentId: id, slotIndex })}
+      onDeclineOffer={(id, reason, other) => respond.decline.mutateAsync({ appointmentId: id, reason, other })}
       onSeeTomorrow={() => router.push("/app/cleaner-dashboard/schedule")}
     />
   );

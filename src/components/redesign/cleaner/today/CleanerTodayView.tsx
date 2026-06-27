@@ -1,29 +1,15 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { AlertTriangle, ChevronRight, Clock, Sparkles } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { CleanerAppointment } from "@/hooks/useCleanerData";
+import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
-import { formatTimeParts, propertyTitle, jobSubtitle, statusBadge, formatRespondBy } from "./today-presenters";
-
-const TONE: Record<string, string> = {
-  blue: "bg-[#E1EAFF] text-brand-600",
-  amber: "bg-[#FEF3C7] text-[#92660A]",
-  green: "bg-[#DCFCE7] text-[#15803D]",
-  gray: "bg-muted text-muted-foreground",
-};
-
-function Badge({ a }: { a: CleanerAppointment }) {
-  const b = statusBadge(a);
-  return (
-    <span className={cn("rounded-pill px-2.5 py-1 text-[10px] font-bold", TONE[b.tone])}>
-      {b.label}
-    </span>
-  );
-}
+import { formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
+import { JobRow } from "../shared/JobRow";
+import { OfferActionsBar } from "../shared/OfferActionsBar";
 
 function SectionHeader({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
   return (
@@ -34,41 +20,24 @@ function SectionHeader({ title, trailing }: { title: string; trailing?: React.Re
   );
 }
 
-function JobRow({ a, onClick }: { a: CleanerAppointment; onClick: () => void }) {
-  const t = formatTimeParts(a.scheduled_time);
-  return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-card border border-border bg-card p-3 text-left shadow-soft-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <div className="w-14 flex-none text-center">
-        <div className="text-sm font-extrabold tabular-nums">{t.h}</div>
-        <div className="text-[10px] font-bold text-muted-foreground">{t.ap}</div>
-      </div>
-      <div className="self-stretch w-px bg-border" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold">{propertyTitle(a)}</div>
-        <div className="truncate text-xs text-muted-foreground">{jobSubtitle(a)}</div>
-      </div>
-      <Badge a={a} />
-    </button>
-  );
-}
-
 export function CleanerTodayView({
   data,
   loading,
   onContinueActive,
-  onRespondOffer,
+  onAcceptOffer,
+  onDeclineOffer,
   onOpenJob,
   onSeeTomorrow,
+  todayStr,
 }: {
   data: TodayData;
   loading: boolean;
   onContinueActive: () => void;
-  onRespondOffer: (id: string) => void;
+  onAcceptOffer: (id: string, slotIndex: number) => Promise<unknown> | void;
+  onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onOpenJob: (id: string) => void;
   onSeeTomorrow: () => void;
+  todayStr: string;
 }) {
   if (loading) {
     return (
@@ -110,12 +79,31 @@ export function CleanerTodayView({
         </section>
       )}
 
+      {data.needsAttention.length > 0 && (
+        <section>
+          <SectionHeader
+            title="Needs attention"
+            trailing={
+              <span className="inline-flex items-center gap-1 rounded-pill bg-caution-50 px-2 py-0.5 text-[11px] font-extrabold text-caution-700">
+                <AlertTriangle className="size-3" aria-hidden />
+                {data.needsAttention.length}
+              </span>
+            }
+          />
+          <div className="space-y-2.5">
+            {data.needsAttention.map((j) => (
+              <JobRow key={j.id} appointment={j} todayStr={todayStr} onClick={() => onOpenJob(j.id)} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {data.offers.length > 0 && (
         <section>
           <SectionHeader
             title="Needs your response"
             trailing={
-              <span className="rounded-pill bg-[#E1EAFF] px-2 py-0.5 text-[11px] font-extrabold text-brand-600">
+              <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[11px] font-extrabold text-brand-700">
                 {data.offers.length}
               </span>
             }
@@ -129,24 +117,26 @@ export function CleanerTodayView({
                   key={o.id}
                   className="rounded-card border border-border bg-card p-4 shadow-soft-sm"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-extrabold">
-                      {t.h} {t.ap}
-                    </div>
-                    {respondBy && (
-                      <span className="rounded-pill bg-[#FEF3C7] px-2.5 py-1 text-[10px] font-bold text-[#92660A]">
-                        {respondBy}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
-                  <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>
                   <button
-                    onClick={() => onRespondOffer(o.id)}
-                    className="mt-3 min-h-[44px] w-full rounded-pill bg-brand-600 text-sm font-extrabold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onOpenJob(o.id)}
+                    className="block w-full rounded-control text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Respond
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-extrabold">
+                        {t.h} {t.ap}
+                      </div>
+                      {respondBy && (
+                        <Badge variant="caution"><Clock />{respondBy}</Badge>
+                      )}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
+                    <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>
                   </button>
+                  <OfferActionsBar
+                    appointment={o}
+                    onAccept={(slot) => onAcceptOffer(o.id, slot)}
+                    onDecline={(reason, other) => onDeclineOffer(o.id, reason, other)}
+                  />
                 </div>
               );
             })}
@@ -166,7 +156,7 @@ export function CleanerTodayView({
           />
           <div className="space-y-2.5">
             {data.todayJobs.map((j) => (
-              <JobRow key={j.id} a={j} onClick={() => onOpenJob(j.id)} />
+              <JobRow key={j.id} appointment={j} todayStr={todayStr} onClick={() => onOpenJob(j.id)} />
             ))}
           </div>
         </section>
