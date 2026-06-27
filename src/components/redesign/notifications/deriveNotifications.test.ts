@@ -80,13 +80,13 @@ describe('operatorNotificationHref', () => {
 });
 
 describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")', () => {
-  it('routes appointment notifications to the cleaner dashboard bridge', () => {
+  it('routes appointment notifications to the in-redesign job detail', () => {
     const [g] = deriveNotificationGroups(
       [item({ appointment_id: 'appt-42', event_type: 'job_completed' })],
       NOW,
       'cleaner',
     );
-    expect(g.latest.href).toBe('/cleaner-dashboard?appointment=appt-42');
+    expect(g.latest.href).toBe('/app/cleaner-dashboard?job=appt-42');
   });
 
   it('routes cleaner_paid (no appointment) to the earnings screen', () => {
