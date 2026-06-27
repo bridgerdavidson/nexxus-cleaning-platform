@@ -1,23 +1,26 @@
 # Cleaner app redesign , status & resume notes
 
-**Last updated:** 2026-06-26
+**Last updated:** 2026-06-27
 
 This is the single place to re-orient when starting a fresh session on the cleaner (field-worker) app redesign. It complements the auto-loaded memory; read this first, then the spec + plan below.
 
 ## Where we are
 
 - **Operator experience:** fully redesigned and shipped (PRs #79-#92). Done.
-- **Cleaner app , Slice 1 (shell + Today): DONE.** Shipped in **PR #93** (squash-merged to master). Built via subagent-driven development (8 tasks, per-task review + a final Codex review).
+- **Cleaner app , Slice 1 (shell + Today): DONE.** Shipped in **PR #93** (squash-merged to master).
 - **UI guardrail (so this doesn't regress): DONE.** The `ui-feature-workflow` skill + CLAUDE.md rules shipped in **PR #94** (squash-merged). See "Guardrail" below.
+- **Cleaner app , Slice 2 (Schedule + job-detail overview): DONE — PR #95 (open, awaiting checks/merge).** The §9 cut: Schedule screen + a deep-linkable job-detail takeover (read + Start + inline offer Accept/Decline + `?job=`), Today/notifications rewired off the legacy `?appointment=` bridge. Plan: `docs/superpowers/plans/2026-06-27-cleaner-app-slice-2-schedule-job-detail.md`. **NEXT = Slice 3 (the active-job flow).**
 
 ## The plan: ship the cleaner app in 6 flag-gated slices
 
 Spec: `docs/superpowers/specs/2026-06-26-redesign-cleaner-app-design.md`
 Slice-1 plan: `docs/superpowers/plans/2026-06-26-cleaner-app-slice-1-shell-today.md`
 
+> Note: the live cut follows the spec **§9** (it splits the old doc's item 2 into 2 + 3): Slice 2 = Schedule + job-detail overview (read + start + offers); Slice 3 = the full active-job flow.
+
 1. **Shell + Today , DONE (PR #93).**
-2. **Job detail + active-job flow , NEXT.** In-redesign job detail that replaces the legacy bridge; the hybrid section-card flow (overview cards -> Before photos / Checklist / After photos sub-screens -> Complete confirmation). Inline offer Accept/Decline moves into the redesign here.
-3. **Photo gate + lifecycle/charge.** Required-by-default + skip-with-reason; gate on photo *queued* not upload-confirmed. Migration: `organizations.require_job_photos` (default true) + a place to record the skip reason for the operator. Wire `updateAppointmentStatus`/`updateJobProgress`/charge-at-completion.
+2. **Schedule + job-detail overview (read + Start + inline offer Accept/Decline + `?job=` deep-link) , DONE (PR #95).**
+3. **Active-job flow + photo gate + lifecycle/charge , NEXT.** The hybrid section-card flow from the in-redesign job detail (overview section cards -> Before photos / Checklist / After photos sub-screens -> Complete confirmation), required-by-default + skip-with-reason photo gate (gate on photo *queued*, not upload-confirmed), migration `organizations.require_job_photos` (default true) + a place to record the skip reason, and wiring `updateJobProgress` + charge-at-completion. In Slice 2 the in_progress "Continue job" bridges to the legacy active-job wizard; this slice replaces that.
 4. **Earnings.** Reuse the Stripe Connect embed (`PayoutsSection`/`ConnectPayouts`), payouts list, "awaiting customer payment".
 5. **Messages.** Reuse the operator chat components + mobile thread takeover; job-scoped threads via `messages.appointment_id`.
 6. **Profile + employee-model placeholders.** Profile/availability placeholder + read-only services; **wire the real `organizations.default_payout_model` read into Today** (replacing the slice-1 hardcoded `"percentage_contractor"`).
@@ -44,12 +47,19 @@ Slice-1 plan: `docs/superpowers/plans/2026-06-26-cleaner-app-slice-1-shell-today
 - The companion is **UX/structure only**; mockups are reference-only even when brand-fidelity. Implement from the design system (`src/components/ui/*` + tokens); new patterns become reusable primitives, not one-offs.
 - Run **ui-ux-pro-max at BOTH** design and implementation (implementation pass catches off-system styling like raw hex).
 
-## How to resume Slice 2
+## What Slice 2 contains (so you don't re-derive it)
 
-1. `git checkout master && git pull` (it now has #93 + #94).
-2. Create a worktree/branch off master: `feat/redesign-cleaner-app-slice2`. Fresh worktree needs `npm install` + a copied `.env.development.local`.
+- **Shared atoms** (`src/components/redesign/cleaner/shared/`): `job-presenters.ts` (the per-job presenters + `offeredSlots`/`OfferSlot` , the single tested source of slot derivation), `jobBadge.ts` + `CleanerJobBadge.tsx` (system-token status badge, replaced the slice-1 raw-hex tones), `JobRow.tsx`, `OfferActionsBar.tsx` (accept slot-chips + decline-reason vaul drawer). Reused by Today / Schedule / job-detail.
+- **Schedule** (`.../cleaner/schedule/`): pure `deriveSchedule.ts` (date buckets Today/Tomorrow/This week/Later + Past, search, view-scoped status filter) -> `CleanerScheduleView` -> `CleanerSchedule`. Page renders the container (no Suspense needed; opening uses `useOpenJob`).
+- **Job detail** (`.../cleaner/job/`): `deriveJobDetail.ts` (action mode offer/start/continue/done/none), `useOpenJob.ts` (`router.replace ?job=`), `CleanerJobDetailOverlay.tsx` (the `MobileThreadOverlay`-style takeover: safe-area, scroll-lock, Escape that yields to nested Radix layers, `aria-label`), `CleanerJobDetailHost.tsx` (reads `?job=` via `useDetailParam`, mounted once under `<Suspense>` in the cleaner **layout**). Data glue `useStartJob` / `useRespondToOffer` live in `src/hooks/useCleanerData.ts`.
+- **Seam:** `?job=<id>` opens the detail from any tab (bell deep-links here too). The in_progress "Continue job" + the active card still bridge to legacy `/cleaner-dashboard?appointment=` (that flow = Slice 3). `Message operator` is NOT in the detail yet (Slice 5).
+
+## How to resume Slice 3 (the active-job flow)
+
+1. `git checkout master && git pull` (after #95 merges).
+2. Worktree/branch off master: `feat/redesign-cleaner-app-slice3`. Fresh worktree needs `npm install` + a copied `.env.development.local`. Dev server points at the REMOTE dev Supabase; log in as `cleaner@nexxus.com` / `Cleaner123!` (creds for all roles are in `.env.development.local`).
 3. Invoke `ui-feature-workflow` first; if exploring UX, ask companion + mobile/desktop.
-4. Build via subagent-driven development; flag-gated; dollars (not cents) in UI; no em dashes in copy; Codex review before push.
+4. Build the hybrid section-card flow off the existing `CleanerJobDetailOverlay` (it already has the takeover chrome + the in_progress "continue" hook to replace). Add the photo/checklist/complete sub-screens, the photo gate + skip-reason, the `require_job_photos` migration, and charge-at-completion. Flag-gated; dollars not cents; no em dashes; Codex + a final review before push.
 
 ## Strategic gut-check
 
