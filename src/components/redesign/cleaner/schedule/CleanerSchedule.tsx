@@ -36,7 +36,7 @@ export function CleanerSchedule() {
     <CleanerScheduleView
       data={data} loading={loading}
       search={search} onSearchChange={setSearch}
-      view={view} onViewChange={setView}
+      view={view} onViewChange={(v) => { setView(v); setStatusFilter("all"); }}
       statusFilter={statusFilter} onStatusFilterChange={setStatusFilter}
       onOpenJob={openJob}
     />

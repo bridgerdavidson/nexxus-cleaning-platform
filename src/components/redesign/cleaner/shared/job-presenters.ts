@@ -72,3 +72,18 @@ export function formatDuration(minutes?: number | null): string | null {
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
+
+export interface OfferSlot {
+  slot_index: number;
+  scheduled_date: string;
+  scheduled_time: string;
+}
+
+/** The offered time slots for an appointment, sorted by slot_index. Falls back
+ * to a single synthesized primary slot when none are attached (admin direct-book).
+ * Single tested source of truth for slot derivation (used by the offer UI). */
+export function offeredSlots(a: CleanerAppointment): OfferSlot[] {
+  const slots = a.requested_slots;
+  if (slots && slots.length > 0) return [...slots].sort((x, y) => x.slot_index - y.slot_index);
+  return [{ slot_index: 0, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time }];
+}

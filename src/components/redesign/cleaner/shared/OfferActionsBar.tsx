@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { CleanerAppointment, DeclineReason } from "@/hooks/useCleanerData";
-import { formatTimeParts } from "./job-presenters";
+import { formatTimeParts, offeredSlots } from "./job-presenters";
 
 const DECLINE_REASONS: { value: DeclineReason; label: string }[] = [
   { value: "sick", label: "I'm not available" },
@@ -19,14 +19,6 @@ const DECLINE_REASONS: { value: DeclineReason; label: string }[] = [
   { value: "not_my_service", label: "Not a service I do" },
   { value: "other", label: "Other reason" },
 ];
-
-type Slot = { slot_index: number; scheduled_date: string; scheduled_time: string };
-
-function slotsOf(a: CleanerAppointment): Slot[] {
-  const s = a.requested_slots;
-  if (s && s.length > 0) return [...s].sort((x, y) => x.slot_index - y.slot_index);
-  return [{ slot_index: 0, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time }];
-}
 
 export function OfferActionsBar({
   appointment, onAccept, onDecline, onDone, layout = "inline",
@@ -37,7 +29,7 @@ export function OfferActionsBar({
   onDone?: () => void;
   layout?: "inline" | "stacked";
 }) {
-  const slots = slotsOf(appointment);
+  const slots = offeredSlots(appointment);
   const multi = slots.length > 1;
   const [slotIndex, setSlotIndex] = useState(slots[0].slot_index);
   const [busy, setBusy] = useState<null | "accept" | "decline">(null);

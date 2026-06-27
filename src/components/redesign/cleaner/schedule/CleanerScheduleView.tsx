@@ -9,14 +9,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { JobRow } from "../shared/JobRow";
 import type { ScheduleData, ScheduleStatusFilter, ScheduleView } from "./schedule-types";
 
-const STATUS_OPTIONS: { value: ScheduleStatusFilter; label: string }[] = [
-  { value: "all", label: "All statuses" },
-  { value: "needs_response", label: "Needs response" },
-  { value: "confirmed", label: "Upcoming" },
-  { value: "in_progress", label: "In progress" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-];
+// Status options are scoped to the active view so the dropdown never offers a
+// status that the view excludes (e.g. Completed under Upcoming), which would
+// always return an empty, misleading list.
+const STATUS_OPTIONS: Record<ScheduleView, { value: ScheduleStatusFilter; label: string }[]> = {
+  upcoming: [
+    { value: "all", label: "All statuses" },
+    { value: "needs_response", label: "Needs response" },
+    { value: "confirmed", label: "Upcoming" },
+    { value: "in_progress", label: "In progress" },
+  ],
+  past: [
+    { value: "all", label: "All statuses" },
+    { value: "completed", label: "Completed" },
+    { value: "cancelled", label: "Cancelled" },
+  ],
+};
 
 export function CleanerScheduleView({
   data, loading, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob,
@@ -47,7 +55,7 @@ export function CleanerScheduleView({
         <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v as ScheduleStatusFilter)}>
           <SelectTrigger className="h-9 w-[150px] rounded-pill"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {STATUS_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            {STATUS_OPTIONS[view].map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>

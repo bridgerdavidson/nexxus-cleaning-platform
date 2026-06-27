@@ -61,7 +61,10 @@ export function CleanerJobDetailOverlay({
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeRef.current(); };
+    // Skip when a nested layer (the vaul/Radix decline drawer) already consumed
+    // Escape; Radix calls preventDefault on dismiss, so the takeover only closes
+    // when nothing else handled the key.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) closeRef.current(); };
     window.addEventListener("keydown", onKey);
     return () => { document.body.style.overflow = prev; window.removeEventListener("keydown", onKey); };
   }, []);
@@ -80,6 +83,7 @@ export function CleanerJobDetailOverlay({
       ref={ref}
       role="dialog"
       aria-modal="true"
+      aria-label="Job details"
       tabIndex={-1}
       className={`redesign-overlay fixed inset-0 z-50 flex flex-col bg-card outline-none transition-transform duration-300 ease-out motion-reduce:transition-none ${shown ? "translate-x-0" : "translate-x-full"}`}
     >
@@ -108,7 +112,7 @@ export function CleanerJobDetailOverlay({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto w-full max-w-lg space-y-5 px-5 py-5">
+        <div className="mx-auto w-full max-w-lg space-y-5 px-5 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
           {loading && !appointment ? (
             <>
               <Skeleton className="h-16 w-full rounded-card" />
@@ -134,7 +138,7 @@ export function CleanerJobDetailOverlay({
                 {addr && <div className="text-muted-foreground">{addr}</div>}
                 {maps && (
                   <a href={maps} target="_blank" rel="noopener noreferrer"
-                     className="mt-2 inline-flex items-center gap-1.5 rounded-control text-sm font-semibold text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                     className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 rounded-control py-2 text-sm font-semibold text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <Navigation className="size-4" /> Directions
                   </a>
                 )}

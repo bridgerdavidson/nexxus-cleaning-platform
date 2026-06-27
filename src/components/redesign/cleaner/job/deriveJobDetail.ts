@@ -1,5 +1,10 @@
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
-import type { JobActionMode, OfferSlot } from "./job-detail-types";
+import type { JobActionMode } from "./job-detail-types";
+
+// Single source of truth for slot derivation lives in the shared layer (it is
+// the path the offer UI actually runs); re-exported here so its co-located test
+// keeps covering the shipped function.
+export { offeredSlots, type OfferSlot } from "../shared/job-presenters";
 
 export function deriveJobActionMode(a: CleanerAppointment): JobActionMode {
   if (a.status === "pending" && a.cleaner_confirmation_status === "awaiting") return "offer";
@@ -7,10 +12,4 @@ export function deriveJobActionMode(a: CleanerAppointment): JobActionMode {
   if (a.status === "in_progress") return "continue";
   if (a.status === "completed") return "done";
   return "none";
-}
-
-export function offeredSlots(a: CleanerAppointment): OfferSlot[] {
-  const slots = a.requested_slots;
-  if (slots && slots.length > 0) return [...slots].sort((x, y) => x.slot_index - y.slot_index);
-  return [{ slot_index: 0, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time }];
 }

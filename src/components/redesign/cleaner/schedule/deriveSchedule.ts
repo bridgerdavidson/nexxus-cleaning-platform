@@ -32,13 +32,14 @@ const isUpcoming = (a: CleanerAppointment) =>
   a.status === "pending" || a.status === "confirmed" || a.status === "in_progress";
 const isPast = (a: CleanerAppointment) => a.status === "completed" || a.status === "cancelled";
 
-/** Upcoming-only bucket. Past-dated-but-still-active jobs fall under Today so
- * they are never hidden. Returns null only for non-upcoming statuses. */
+/** Date-bucket for the upcoming view. Buckets purely by scheduled_date (callers
+ * pre-filter to upcoming statuses); past-dated-but-still-active jobs fall under
+ * Today so they are never hidden. Always returns one of the four upcoming
+ * buckets (never "past", never null). */
 export function scheduleGroupOf(
   a: CleanerAppointment, todayStr: string, tomorrowStr: string, weekEndStr: string,
-): ScheduleGroupKey | null {
+): Exclude<ScheduleGroupKey, "past"> {
   const date = a.scheduled_date ?? "";
-  if (date === todayStr) return "today";
   if (date === tomorrowStr) return "tomorrow";
   if (date > tomorrowStr && date <= weekEndStr) return "this_week";
   if (date > weekEndStr) return "later";
@@ -64,8 +65,7 @@ export function deriveSchedule(appointments: CleanerAppointment[], opts: DeriveS
   const order: ScheduleGroupKey[] = ["today", "tomorrow", "this_week", "later"];
   const buckets: Record<string, CleanerAppointment[]> = { today: [], tomorrow: [], this_week: [], later: [] };
   for (const a of base) {
-    const k = scheduleGroupOf(a, todayStr, tomorrowStr, weekEndStr);
-    if (k && buckets[k]) buckets[k].push(a);
+    buckets[scheduleGroupOf(a, todayStr, tomorrowStr, weekEndStr)].push(a);
   }
   const groups: ScheduleGroup[] = order
     .filter((k) => buckets[k].length > 0)
