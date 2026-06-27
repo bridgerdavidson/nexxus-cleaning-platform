@@ -127,6 +127,32 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
     expect(body.projection.isSelfPay).toBe(true);
   });
 
+  it('403 when a manager WITHOUT can_manage_payments requests a self-pay projection', async () => {
+    const apptId = await seedAppt({ selfPay: true });
+    const db = createTestSupabaseClient();
+    // Convert the homeowner member into a manager without the Manage Payments permission,
+    // mirroring the charge route's self-pay manager fence test.
+    await db
+      .from('organization_members')
+      .update({ role: 'manager' })
+      .eq('user_id', org.homeowner.userId)
+      .eq('organization_id', org.organizationId);
+    await db.from('manager_permissions').insert({
+      manager_id: org.homeowner.userId,
+      organization_id: org.organizationId,
+      can_manage_payments: false,
+    });
+
+    const { status, body } = await callRoute<{ error: string }>(handlerFor(apptId), {
+      method: 'GET',
+      url: urlFor(apptId, org.organizationId),
+      headers: bearerHeader(org.homeowner.accessToken),
+    });
+
+    expect(status).toBe(403);
+    expect(body.error).toBe('Requires the Manage Payments permission');
+  });
+
   // --- (b) non-members and unassigned cleaners are rejected ---
 
   it('403 for a cleaner not assigned to the appointment', async () => {

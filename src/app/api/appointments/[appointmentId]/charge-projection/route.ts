@@ -62,6 +62,21 @@ export async function GET(
       return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
     }
 
+    // Self-pay projections expose the org's company-card math, so gate them behind Manage
+    // Payments for managers (owner/admin always pass), the SAME fence as the charge route
+    // (charge/route.ts lines 70-82).
+    if (appt.is_self_pay === true && auth.role === 'manager') {
+      const { data: perms } = await supabaseAdmin
+        .from('manager_permissions')
+        .select('can_manage_payments')
+        .eq('manager_id', auth.userId)
+        .eq('organization_id', organization_id!)
+        .maybeSingle();
+      if (!(perms as { can_manage_payments: boolean } | null)?.can_manage_payments) {
+        return NextResponse.json({ error: 'Requires the Manage Payments permission' }, { status: 403 });
+      }
+    }
+
     // Load cleaner payout_percent and org fields in parallel.
     const [cleanerRes, orgRes] = await Promise.all([
       appt.cleaner_id
