@@ -11,6 +11,7 @@ import { keys } from '../lib/queryKeys';
 import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
+import type { ChargeProjection, ChecklistItemCompletion } from '../types';
 
 export interface CleanerAppointment {
   id: string;
@@ -1036,4 +1037,205 @@ export function useRespondToOffer() {
   });
 
   return { accept, decline };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Active-job flow hooks (Slice 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Complete a job (status -> completed; triggers charge + lifecycle notification).
+ * Returns { chargeOutcome } mapped from the completion charge paymentStatus. */
+export function useCompleteJob() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const userId = user?.id;
+  return useMutation({
+    mutationFn: async (appointmentId: string): Promise<{ chargeOutcome?: string }> => {
+      const r = await updateAppointmentStatus(appointmentId, 'completed') as {
+        success: boolean;
+        error?: string;
+        paymentStatus?: string;
+      };
+      if (!r.success) throw new Error(r.error || 'Could not complete the job');
+      return { chargeOutcome: r.paymentStatus };
+    },
+    onSuccess: () => {
+      if (userId) {
+        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+        qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+      }
+      showToast('Job completed', { variant: 'success' });
+    },
+    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+  });
+}
+
+/** Silently update job_progress (step transitions; no toast). */
+export function useUpdateJobProgress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      progress,
+    }: {
+      appointmentId: string;
+      progress: string;
+    }): Promise<void> => {
+      const r = await updateJobProgress(appointmentId, progress);
+      if (!r.success) throw new Error(r.error || 'Could not update job progress');
+    },
+    onSuccess: (_data, { appointmentId }) => {
+      qc.invalidateQueries({ queryKey: keys.appointments.detail(appointmentId) });
+    },
+  });
+}
+
+/** Read checklist item completions for an appointment as a Set of checklist_line_item_ids.
+ * Uses the anon Supabase client so the cleaner RLS policy authorizes reads. */
+export function useChecklistCompletions(appointmentId: string | null) {
+  const queryKey = keys.appointments.checklistCompletions(appointmentId ?? '');
+  const query = useOrgQuery({
+    queryKey,
+    enabled: !!appointmentId,
+    queryFn: async (): Promise<Set<string>> => {
+      const { data, error } = await supabase
+        .from('checklist_item_completions')
+        .select('checklist_line_item_id')
+        .eq('appointment_id', appointmentId as string);
+      if (error) throw error;
+      return new Set(
+        (data ?? []).map(
+          (r: Pick<ChecklistItemCompletion, 'checklist_line_item_id'>) => r.checklist_line_item_id,
+        ),
+      );
+    },
+  });
+  return {
+    completed: query.data ?? new Set<string>(),
+    isLoading: query.isLoading,
+    error: query.error ?? null,
+  };
+}
+
+/** Toggle a checklist line item completion for an appointment.
+ * Optimistic: updates the cached Set immediately, then invalidates on settle.
+ * organization_id is sourced from auth context so RLS reads by org staff are authorized. */
+export function useToggleChecklistItem() {
+  const { currentOrganizationId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      lineItemId,
+      done,
+    }: {
+      appointmentId: string;
+      lineItemId: string;
+      done: boolean;
+    }): Promise<void> => {
+      if (done) {
+        const { error } = await supabase
+          .from('checklist_item_completions')
+          .upsert(
+            {
+              appointment_id: appointmentId,
+              checklist_line_item_id: lineItemId,
+              organization_id: currentOrganizationId ?? null,
+            },
+            { onConflict: 'appointment_id,checklist_line_item_id' },
+          );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('checklist_item_completions')
+          .delete()
+          .eq('appointment_id', appointmentId)
+          .eq('checklist_line_item_id', lineItemId);
+        if (error) throw error;
+      }
+    },
+    onMutate: async ({ appointmentId, lineItemId, done }) => {
+      const queryKey = keys.appointments.checklistCompletions(appointmentId);
+      await qc.cancelQueries({ queryKey });
+      const previous = qc.getQueryData<Set<string>>(queryKey);
+      qc.setQueryData<Set<string>>(queryKey, (old) => {
+        const next = new Set(old ?? []);
+        if (done) next.add(lineItemId);
+        else next.delete(lineItemId);
+        return next;
+      });
+      return { previous, queryKey };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) {
+        qc.setQueryData(ctx.queryKey, ctx.previous);
+      }
+    },
+    onSettled: (_data, _err, { appointmentId }) => {
+      qc.invalidateQueries({ queryKey: keys.appointments.checklistCompletions(appointmentId) });
+    },
+  });
+}
+
+/** Fetch the charge projection for the active-job completion summary.
+ * Lazy: only fetches when `enabled` (e.g. the completion sheet is open). */
+export function useChargeProjection(appointmentId: string | null, enabled: boolean) {
+  const queryKey = keys.appointments.chargeProjection(appointmentId ?? '');
+  const query = useOrgQuery({
+    queryKey,
+    enabled: enabled && !!appointmentId,
+    queryFn: async (): Promise<ChargeProjection | null> => {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/appointments/${appointmentId}/charge-projection`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) throw new Error('Could not load charge projection');
+      const body = (await res.json()) as { projection: ChargeProjection | null };
+      return body.projection;
+    },
+  });
+  return {
+    projection: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error ?? null,
+  };
+}
+
+/** POST photo-skip for an appointment; invalidates appointment detail + byCleaner lists. */
+export function useSkipPhotos() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const userId = user?.id;
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      reason,
+    }: {
+      appointmentId: string;
+      reason: string;
+    }): Promise<void> => {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/appointments/${appointmentId}/photo-skip`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        throw new Error((data as { error?: string }).error || 'Could not skip photos');
+      }
+    },
+    onSuccess: (_data, { appointmentId }) => {
+      qc.invalidateQueries({ queryKey: keys.appointments.detail(appointmentId) });
+      if (userId) {
+        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+      }
+    },
+  });
 }
