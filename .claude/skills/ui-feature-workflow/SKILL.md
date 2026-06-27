@@ -11,7 +11,9 @@ description: >-
   before writing a UI spec or plan, and before building UI, even if the user only
   says "let's redesign X", "build the cleaner screen", "mock up a layout", "design
   this dashboard", or "use the browser companion". Do not skip it just because the
-  task sounds like plain implementation.
+  task sounds like plain implementation. Skip it only for trivial tweaks to an
+  existing component (changing a color, timing, or label) or for non-visual work
+  (backend, data, tests, performance) that involves no UI design.
 ---
 
 # Building UI features: browser companion + design-system discipline
