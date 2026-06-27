@@ -93,7 +93,6 @@ function UploadStatusChip({ item }: { item: UploadItem }) {
 
 export interface CleanerPhotoCaptureProps {
   phase: 'before' | 'after';
-  appointmentId: string;
   uploader: UploaderProp;
   confirmedPhotos: JobPhoto[];
   onBack: () => void;
@@ -106,8 +105,6 @@ export interface CleanerPhotoCaptureProps {
 
 export function CleanerPhotoCapture({
   phase,
-  // appointmentId is required by the Task-10 container for context but not
-  // consumed inside this component — the uploader already carries it.
   uploader,
   confirmedPhotos,
   onBack,
@@ -369,23 +366,28 @@ export function CleanerPhotoCapture({
                       alt={`${title} thumbnail`}
                       className="h-full w-full object-cover"
                     />
-                    {/* Touch-always-visible delete — important on mobile */}
+                    {/* Touch-always-visible delete. The button is a 44px tap
+                        target (accessibility minimum); the visible chip inside
+                        stays small and tucked into the top-right corner. */}
                     <button
                       type="button"
                       aria-label="Remove photo"
-                      className={cn(
-                        'absolute right-1 top-1',
-                        'flex h-7 w-7 items-center justify-center',
-                        'rounded-full bg-foreground/60 text-background',
-                        'transition-colors duration-base hover:bg-foreground/80 active:bg-foreground',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      )}
+                      className="group absolute right-0 top-0 flex h-11 w-11 items-start justify-end p-1 focus-visible:outline-none"
                       onClick={() => {
                         setDeleteError(null);
                         setPendingDelete(photo);
                       }}
                     >
-                      <X className="size-3.5" aria-hidden />
+                      <span
+                        className={cn(
+                          'flex h-7 w-7 items-center justify-center',
+                          'rounded-full bg-foreground/60 text-background',
+                          'transition-colors duration-base group-hover:bg-foreground/80 group-active:bg-foreground',
+                          'group-focus-visible:ring-2 group-focus-visible:ring-ring',
+                        )}
+                      >
+                        <X className="size-3.5" aria-hidden />
+                      </span>
                     </button>
                   </div>
                 ))}
