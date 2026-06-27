@@ -62,11 +62,13 @@ export function CleanerScheduleView({
       </div>
 
       {data.needsAttention.length > 0 && (
-        <section className="rounded-card border border-border bg-caution-50 p-3">
+        <section>
           <div className="mb-2 flex items-center gap-1.5 px-0.5">
             <AlertTriangle className="size-4 text-caution-700" aria-hidden />
             <h2 className="text-sm font-bold text-caution-700">Needs attention</h2>
-            <span className="ml-auto text-xs font-bold text-caution-700">{data.needsAttention.length}</span>
+            <span className="ml-auto inline-flex items-center rounded-pill bg-caution-50 px-2 py-0.5 text-[11px] font-extrabold text-caution-700">
+              {data.needsAttention.length}
+            </span>
           </div>
           <div className="space-y-2.5">
             {data.needsAttention.map((j) => (
