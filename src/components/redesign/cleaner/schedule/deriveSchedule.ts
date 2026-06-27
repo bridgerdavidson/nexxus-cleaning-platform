@@ -1,4 +1,5 @@
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
+import { isNeedsAttention, isPastZone, isUpcomingZone } from "../shared/zones";
 import type {
   DeriveScheduleOptions, ScheduleData, ScheduleGroup, ScheduleGroupKey, ScheduleStatusFilter,
 } from "./schedule-types";
@@ -28,10 +29,6 @@ export function matchesScheduleStatus(a: CleanerAppointment, filter: ScheduleSta
   }
 }
 
-const isUpcoming = (a: CleanerAppointment) =>
-  a.status === "pending" || a.status === "confirmed" || a.status === "in_progress";
-const isPast = (a: CleanerAppointment) => a.status === "completed" || a.status === "cancelled";
-
 /** Date-bucket for the upcoming view. Buckets purely by scheduled_date (callers
  * pre-filter to upcoming statuses); past-dated-but-still-active jobs fall under
  * Today so they are never hidden. Always returns one of the four upcoming
@@ -51,15 +48,26 @@ const GROUP_LABEL: Record<ScheduleGroupKey, string> = {
 };
 
 export function deriveSchedule(appointments: CleanerAppointment[], opts: DeriveScheduleOptions): ScheduleData {
-  const { search, statusFilter, view, todayStr, tomorrowStr, weekEndStr } = opts;
+  const { search, statusFilter, view, todayStr, tomorrowStr, weekEndStr, graceFloorStr } = opts;
+
+  // Pinned triage, independent of the Upcoming/Past toggle + status filter.
+  const needsAttention = appointments
+    .filter((a) => matchesScheduleSearch(a, search) && isNeedsAttention(a, todayStr, graceFloorStr))
+    .sort(byTimeDesc);
+
   const base = appointments.filter(
     (a) => matchesScheduleSearch(a, search) && matchesScheduleStatus(a, statusFilter)
-      && (view === "upcoming" ? isUpcoming(a) : isPast(a)),
+      && (view === "upcoming" ? isUpcomingZone(a, todayStr) : isPastZone(a, todayStr, graceFloorStr)),
   );
 
   if (view === "past") {
     const jobs = [...base].sort(byTimeDesc);
-    return { groups: jobs.length ? [{ key: "past", label: GROUP_LABEL.past, jobs }] : [], total: jobs.length, isEmpty: jobs.length === 0 };
+    return {
+      needsAttention,
+      groups: jobs.length ? [{ key: "past", label: GROUP_LABEL.past, jobs }] : [],
+      total: jobs.length,
+      isEmpty: jobs.length === 0,
+    };
   }
 
   const order: ScheduleGroupKey[] = ["today", "tomorrow", "this_week", "later"];
@@ -70,5 +78,5 @@ export function deriveSchedule(appointments: CleanerAppointment[], opts: DeriveS
   const groups: ScheduleGroup[] = order
     .filter((k) => buckets[k].length > 0)
     .map((k) => ({ key: k, label: GROUP_LABEL[k], jobs: buckets[k].sort(byTimeAsc) }));
-  return { groups, total: base.length, isEmpty: base.length === 0 };
+  return { needsAttention, groups, total: base.length, isEmpty: base.length === 0 };
 }

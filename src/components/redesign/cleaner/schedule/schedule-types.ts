@@ -12,8 +12,12 @@ export interface ScheduleGroup {
 }
 
 export interface ScheduleData {
+  /** Recent unfinished jobs (pinned above the view toggle); view-independent. */
+  needsAttention: CleanerAppointment[];
   groups: ScheduleGroup[];
+  /** Count for the active view (excludes needsAttention). */
   total: number;
+  /** True when the active view's groups are empty. */
   isEmpty: boolean;
 }
 
@@ -24,4 +28,5 @@ export interface DeriveScheduleOptions {
   todayStr: string;
   tomorrowStr: string;
   weekEndStr: string;
+  graceFloorStr: string;
 }
