@@ -176,10 +176,10 @@ export function CleanerTodayView({
                 {data.tomorrowCount} {data.tomorrowCount === 1 ? "job" : "jobs"}
               </b>
               {data.tomorrowFirstTime
-                ? `, first at ${formatTimeParts(data.tomorrowFirstTime).h} ${formatTimeParts(data.tomorrowFirstTime).ap}`
+                ? ` · first at ${formatTimeParts(data.tomorrowFirstTime).h} ${formatTimeParts(data.tomorrowFirstTime).ap}`
                 : ""}
             </span>
-            <ChevronRight className="size-4 text-muted-foreground" />
+            <ChevronRight aria-hidden className="h-5 w-5 text-muted-foreground" />
           </button>
         </section>
       )}
