@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Grilling**: When the user says "grill me", asks to be grilled, or wants a plan/design stress-tested, ALWAYS use the project skill at `.claude/skills/grill-me` (invocable as `/grill-me`). NEVER use `context-mode:grill-me` for this. The two share a name, but only the project skill has the session-log step (it records every Q&A to a per-session file under `brainstorming/` so early answers survive long interviews). The context-mode copy lacks this and must not be used.
 
+## Building features with significant UI
+
+Any feature with real UI (a new screen, redesign work, a dashboard, a visually-weighty component) goes through the **`ui-feature-workflow`** skill (`.claude/skills/ui-feature-workflow`). Invoke it before opening the browser companion, before writing a UI spec/plan, and before building UI.
+
+1. **Ask two things up front** when a feature has real UI:
+   - whether to use the **browser companion** for UX/structure exploration, and
+   - whether the user is on **mobile or desktop**. Mobile means they cannot see localhost, so drive the companion yourself and send **screenshots**; desktop means send the **link**.
+2. **The browser companion is UX/structure only.** Its mockups are reference-only even when they use our brand feel; never copy mockup styling (colors, raw hex, one-off borders/accents) into shipped code. Implement every screen from the design system (`src/components/ui/*` primitives + tokens in `tailwind.config.js` / `src/app/globals.css`); if a pattern does not exist yet, build it as a reusable primitive, not a one-off. Run the **ui-ux-pro-max** skill at BOTH the design phase (UX) and the implementation phase (design-system conformance, which catches raw-hex/off-system styling).
+
 ## Commands
 
 ```bash
@@ -118,6 +127,7 @@ This project uses a feature-branch + PR-to-master flow with automated checks in 
 - Commit `.env*.local` files (gitignored already) or `.claude/settings.local.json` (per-machine).
 - Move/rename files in `supabase/migrations/` after they've shipped. Migrations are immutable once applied to dev or prod; create a new migration to undo or modify schema instead.
 - Use em dashes (the `—` character) in any user-facing web app copy: UI text, labels, buttons, toasts, emails, error messages. They read as AI-written. Use a period, comma, parentheses, or the word "to" for ranges instead. (Pre-existing em dashes will be swept out later; just never add new ones. This applies to product copy, not code comments or this doc.)
+- Copy browser-companion mockup styling (colors, raw hex, one-off accents) into shipped UI. Mockups are UX/structure reference only; implement from the design system. See the `ui-feature-workflow` skill.
 
 ### Pre-push checklist
 
