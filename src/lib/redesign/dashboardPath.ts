@@ -1,12 +1,12 @@
-/** Post-login destination for a user role. When redesign is on, only admin
- *  is routed to the new operator screen (other redesign screens don't exist yet). */
+/** Post-login destination for a user role. When redesign is on, admin and cleaner
+ *  route to new screens (other redesign screens don't exist yet). */
 export function getDashboardPath(role: string, opts?: { redesign?: boolean }): string {
   const redesign = opts?.redesign ?? false;
   switch (role) {
     case "homeowner":
       return "/homeowner-dashboard";
     case "cleaner":
-      return "/cleaner-dashboard";
+      return redesign ? "/app/cleaner-dashboard" : "/cleaner-dashboard";
     case "manager":
       return "/manager-dashboard";
     case "admin":

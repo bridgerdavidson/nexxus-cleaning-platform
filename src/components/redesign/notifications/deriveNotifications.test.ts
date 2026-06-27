@@ -79,6 +79,35 @@ describe('operatorNotificationHref', () => {
   });
 });
 
+describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")', () => {
+  it('routes appointment notifications to the cleaner dashboard bridge', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: 'appt-42', event_type: 'job_completed' })],
+      NOW,
+      'cleaner',
+    );
+    expect(g.latest.href).toBe('/cleaner-dashboard?appointment=appt-42');
+  });
+
+  it('routes cleaner_paid (no appointment) to the earnings screen', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: null, event_type: 'cleaner_paid' })],
+      NOW,
+      'cleaner',
+    );
+    expect(g.latest.href).toBe('/app/cleaner-dashboard/earnings');
+  });
+
+  it('falls back to cleaner dashboard home for non-appointment, non-paid events', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: null, event_type: 'something_else' })],
+      NOW,
+      'cleaner',
+    );
+    expect(g.latest.href).toBe('/app/cleaner-dashboard');
+  });
+});
+
 describe('deriveNotificationGroups', () => {
   it('groups consecutive notifications by appointment, newest as latest', () => {
     const items = [

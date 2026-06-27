@@ -11,7 +11,7 @@ import {
   describeNotification,
   type NotificationDescriptor,
 } from '@/lib/notifications/labels';
-import { notificationTab } from '@/lib/notifications/navigation';
+import { notificationTab, type NotificationRole } from '@/lib/notifications/navigation';
 import { formatTimeTo12h } from '@/lib/formatTime';
 import type { NotificationItem } from '@/hooks/useNotifications';
 
@@ -101,6 +101,35 @@ export function operatorNotificationHref(
   }
 }
 
+/**
+ * Click destination for a cleaner notification.
+ *
+ * Appointment-scoped rows use the legacy cleaner-dashboard bridge (query param
+ * opens the cleaner appointment panel, same pattern as the operator bridge).
+ * Pay notifications go to the Earnings screen. Everything else lands on the
+ * cleaner dashboard home.
+ */
+function cleanerNotificationHref(
+  item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
+): string {
+  if (item.appointment_id) {
+    return `/cleaner-dashboard?appointment=${item.appointment_id}`;
+  }
+  if (item.event_type === 'cleaner_paid') {
+    return '/app/cleaner-dashboard/earnings';
+  }
+  return '/app/cleaner-dashboard';
+}
+
+function notificationHref(
+  item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
+  role: NotificationRole,
+): string {
+  if (role === 'cleaner') return cleanerNotificationHref(item);
+  // admin and manager both use the operator console
+  return operatorNotificationHref(item);
+}
+
 function deriveAction(item: NotificationItem): NotificationAction | undefined {
   if (item.event_type === 'cleaner_counter_proposed') {
     const suggestedTimeId = payloadString(item.payload, 'suggested_time_id');
@@ -118,7 +147,7 @@ function deriveAction(item: NotificationItem): NotificationAction | undefined {
   return undefined;
 }
 
-function toItemVM(item: NotificationItem, now: number): NotificationItemVM {
+function toItemVM(item: NotificationItem, now: number, role: NotificationRole): NotificationItemVM {
   return {
     id: item.id,
     eventType: item.event_type,
@@ -127,7 +156,7 @@ function toItemVM(item: NotificationItem, now: number): NotificationItemVM {
     unread: !item.in_app_dispatched_at,
     appointmentId: item.appointment_id,
     organizationId: item.organization_id,
-    href: operatorNotificationHref(item),
+    href: notificationHref(item, role),
     action: deriveAction(item),
   };
 }
@@ -141,12 +170,13 @@ function toItemVM(item: NotificationItem, now: number): NotificationItemVM {
 export function deriveNotificationGroups(
   items: NotificationItem[],
   now: number,
+  role: NotificationRole = 'admin',
 ): NotificationGroupVM[] {
   const groups: NotificationGroupVM[] = [];
   const byAppointment = new Map<string, NotificationGroupVM>();
 
   for (const item of items) {
-    const vm = toItemVM(item, now);
+    const vm = toItemVM(item, now, role);
     if (item.appointment_id) {
       const existing = byAppointment.get(item.appointment_id);
       if (existing) {

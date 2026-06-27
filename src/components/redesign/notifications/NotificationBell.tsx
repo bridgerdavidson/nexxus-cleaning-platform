@@ -10,6 +10,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { deriveNotificationGroups, type NotificationItemVM } from './deriveNotifications';
 import { NotificationPanel } from './NotificationPanel';
+import type { NotificationRole } from '@/lib/notifications/navigation';
 
 /**
  * Redesign operator notification bell. Reuses the headless `useNotifications`
@@ -17,7 +18,7 @@ import { NotificationPanel } from './NotificationPanel';
  * redesign panel: a Popover on desktop, a vaul Drawer (bottom sheet) on mobile.
  * Lives in the operator top bar.
  */
-export function NotificationBell() {
+export function NotificationBell({ role = 'admin' }: { role?: NotificationRole } = {}) {
   const {
     notifications,
     unreadCount,
@@ -42,8 +43,8 @@ export function NotificationBell() {
   }, [open]);
 
   const groups = useMemo(
-    () => deriveNotificationGroups(notifications, now),
-    [notifications, now],
+    () => deriveNotificationGroups(notifications, now, role),
+    [notifications, now, role],
   );
 
   const handleOpen = useCallback(
