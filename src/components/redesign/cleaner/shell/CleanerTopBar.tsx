@@ -46,7 +46,7 @@ export function CleanerTopBar() {
           <p className="text-xs text-muted-foreground">{greeting(new Date())}</p>
           <p className="truncate text-lg font-extrabold leading-tight">{first}</p>
         </div>
-        <NotificationBell />
+        <NotificationBell role="cleaner" />
         <DropdownMenu>
           <DropdownMenuTrigger
             className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
