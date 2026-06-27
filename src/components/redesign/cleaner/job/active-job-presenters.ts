@@ -39,3 +39,48 @@ export function checklistProgressLabel(done: number, total: number): string {
   if (done >= total) return `All ${total} done`;
   return `${done} of ${total} done`;
 }
+
+/**
+ * Format a cent amount as a dollar string, e.g. 12000 -> '$120.00'.
+ */
+export function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * Copy for the job-complete success state. Title is always "Job complete".
+ * Body varies by chargeOutcome. Never blames the cleaner. No em dashes.
+ *
+ * Reachable outcomes from useCompleteJob: 'charged' | 'processing' | 'failed'.
+ * Defensive extras: 'declined' | 'no_card' | 'requires_action'.
+ */
+export function completeSuccessCopy(
+  outcome: string | undefined,
+  cleanerCutCents: number,
+): { title: string; body: string } {
+  const title = 'Job complete';
+
+  switch (outcome) {
+    case 'charged':
+      return {
+        title,
+        body: `Payment collected. Your cut of ${formatCents(cleanerCutCents)} is on its way.`,
+      };
+
+    case 'processing':
+      return {
+        title,
+        body: `The job is recorded. Payment is processing via bank transfer and will arrive once it clears.`,
+      };
+
+    case 'declined':
+    case 'no_card':
+    case 'requires_action':
+    case 'failed':
+    default:
+      return {
+        title,
+        body: `The job is marked complete. There was a payment issue on the customer side. The operator has been notified and will sort it out.`,
+      };
+  }
+}
