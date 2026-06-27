@@ -1,12 +1,15 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight, Clock, Sparkles } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
 import { formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
 import { JobRow } from "../shared/JobRow";
+import { OfferActionsBar } from "../shared/OfferActionsBar";
 
 function SectionHeader({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
   return (
@@ -21,14 +24,16 @@ export function CleanerTodayView({
   data,
   loading,
   onContinueActive,
-  onRespondOffer,
+  onAcceptOffer,
+  onDeclineOffer,
   onOpenJob,
   onSeeTomorrow,
 }: {
   data: TodayData;
   loading: boolean;
   onContinueActive: () => void;
-  onRespondOffer: (id: string) => void;
+  onAcceptOffer: (id: string, slotIndex: number) => Promise<unknown> | void;
+  onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onOpenJob: (id: string) => void;
   onSeeTomorrow: () => void;
 }) {
@@ -77,7 +82,7 @@ export function CleanerTodayView({
           <SectionHeader
             title="Needs your response"
             trailing={
-              <span className="rounded-pill bg-[#E1EAFF] px-2 py-0.5 text-[11px] font-extrabold text-brand-600">
+              <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[11px] font-extrabold text-brand-700">
                 {data.offers.length}
               </span>
             }
@@ -91,24 +96,26 @@ export function CleanerTodayView({
                   key={o.id}
                   className="rounded-card border border-border bg-card p-4 shadow-soft-sm"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-extrabold">
-                      {t.h} {t.ap}
-                    </div>
-                    {respondBy && (
-                      <span className="rounded-pill bg-[#FEF3C7] px-2.5 py-1 text-[10px] font-bold text-[#92660A]">
-                        {respondBy}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
-                  <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>
                   <button
-                    onClick={() => onRespondOffer(o.id)}
-                    className="mt-3 min-h-[44px] w-full rounded-pill bg-brand-600 text-sm font-extrabold text-white outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onOpenJob(o.id)}
+                    className="block w-full rounded-control text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Respond
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-extrabold">
+                        {t.h} {t.ap}
+                      </div>
+                      {respondBy && (
+                        <Badge variant="caution"><Clock />{respondBy}</Badge>
+                      )}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
+                    <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>
                   </button>
+                  <OfferActionsBar
+                    appointment={o}
+                    onAccept={(slot) => onAcceptOffer(o.id, slot)}
+                    onDecline={(reason, other) => onDeclineOffer(o.id, reason, other)}
+                  />
                 </div>
               );
             })}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCleanerAppointments } from "@/hooks/useCleanerData";
+import { useCleanerAppointments, useRespondToOffer } from "@/hooks/useCleanerData";
 import { deriveToday } from "./deriveToday";
 import { CleanerTodayView } from "./CleanerTodayView";
 
@@ -12,17 +12,13 @@ function ymd(d: Date): string {
 export function CleanerToday() {
   const router = useRouter();
   const { appointments, loading } = useCleanerAppointments();
+  const respond = useRespondToOffer();
 
   const now = new Date();
-  const todayStr = ymd(now);
-  const tomorrowStr = ymd(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const data = deriveToday(appointments, ymd(now), ymd(new Date(now.getTime() + 864e5)), "percentage_contractor");
 
-  // Slice 1 ships the contractor model only; the employee-model read is wired
-  // in the placeholders slice. deriveToday already branches on this param.
-  const data = deriveToday(appointments, todayStr, tomorrowStr, "percentage_contractor");
-
-  // Deep actions bridge to the legacy panel (?appointment=) until Slice 2 ships
-  // the in-redesign job detail. Never dead-ends.
+  // Job-detail + active-job flow are not in-redesign yet here; bridge to legacy
+  // until Task 9 (job detail) / Slice 3 (active-job flow).
   const openLegacy = (id: string) => router.push(`/cleaner-dashboard?appointment=${id}`);
 
   return (
@@ -30,8 +26,9 @@ export function CleanerToday() {
       data={data}
       loading={loading}
       onContinueActive={() => data.activeJob && openLegacy(data.activeJob.id)}
-      onRespondOffer={openLegacy}
       onOpenJob={openLegacy}
+      onAcceptOffer={(id, slotIndex) => respond.accept.mutateAsync({ appointmentId: id, slotIndex })}
+      onDeclineOffer={(id, reason, other) => respond.decline.mutateAsync({ appointmentId: id, reason, other })}
       onSeeTomorrow={() => router.push("/app/cleaner-dashboard/schedule")}
     />
   );
