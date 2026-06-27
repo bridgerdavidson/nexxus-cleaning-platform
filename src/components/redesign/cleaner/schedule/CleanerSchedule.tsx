@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useCleanerAppointments } from "@/hooks/useCleanerData";
 import { useOpenJob } from "../job/useOpenJob";
+import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
 import { deriveSchedule } from "./deriveSchedule";
 import { CleanerScheduleView } from "./CleanerScheduleView";
 import type { ScheduleStatusFilter, ScheduleView } from "./schedule-types";
@@ -24,6 +25,7 @@ export function CleanerSchedule() {
       todayStr: ymd(now),
       tomorrowStr: ymd(new Date(now.getTime() + 864e5)),
       weekEndStr: ymd(new Date(now.getTime() + 6 * 864e5)),
+      graceFloorStr: ymd(new Date(now.getTime() - NEEDS_ATTENTION_DAYS * 864e5)),
     };
   }, []);
 
@@ -38,7 +40,7 @@ export function CleanerSchedule() {
       search={search} onSearchChange={setSearch}
       view={view} onViewChange={(v) => { setView(v); setStatusFilter("all"); }}
       statusFilter={statusFilter} onStatusFilterChange={setStatusFilter}
-      onOpenJob={openJob}
+      onOpenJob={openJob} todayStr={dateStrs.todayStr}
     />
   );
 }

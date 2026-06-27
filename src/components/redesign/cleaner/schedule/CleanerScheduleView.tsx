@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, CalendarDays } from "lucide-react";
+import { AlertTriangle, Search, CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -27,7 +27,7 @@ const STATUS_OPTIONS: Record<ScheduleView, { value: ScheduleStatusFilter; label:
 };
 
 export function CleanerScheduleView({
-  data, loading, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob,
+  data, loading, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob, todayStr,
 }: {
   data: ScheduleData;
   loading: boolean;
@@ -38,6 +38,7 @@ export function CleanerScheduleView({
   statusFilter: ScheduleStatusFilter;
   onStatusFilterChange: (v: ScheduleStatusFilter) => void;
   onOpenJob: (id: string) => void;
+  todayStr: string;
 }) {
   return (
     <div className="space-y-4 pt-1">
@@ -59,6 +60,21 @@ export function CleanerScheduleView({
           </SelectContent>
         </Select>
       </div>
+
+      {data.needsAttention.length > 0 && (
+        <section className="rounded-card border border-border bg-caution-50 p-3">
+          <div className="mb-2 flex items-center gap-1.5 px-0.5">
+            <AlertTriangle className="size-4 text-caution-700" aria-hidden />
+            <h2 className="text-sm font-bold text-caution-700">Needs attention</h2>
+            <span className="ml-auto text-xs font-bold text-caution-700">{data.needsAttention.length}</span>
+          </div>
+          <div className="space-y-2.5">
+            {data.needsAttention.map((j) => (
+              <JobRow key={j.id} appointment={j} todayStr={todayStr} onClick={() => onOpenJob(j.id)} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {!loading && (
         <div className="px-0.5 text-xs font-medium text-muted-foreground">
@@ -89,7 +105,7 @@ export function CleanerScheduleView({
                 <span className="ml-auto text-xs font-medium text-muted-foreground">{g.jobs.length}</span>
               </div>
               <div className="space-y-2.5">
-                {g.jobs.map((j) => <JobRow key={j.id} appointment={j} onClick={() => onOpenJob(j.id)} />)}
+                {g.jobs.map((j) => <JobRow key={j.id} appointment={j} todayStr={todayStr} onClick={() => onOpenJob(j.id)} />)}
               </div>
             </section>
           ))}
