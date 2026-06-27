@@ -27,3 +27,15 @@ export function photoStatusLabel(confirmed: number, inFlight: number): string {
 
   return parts.join(', ');
 }
+
+/**
+ * Human-readable progress summary for a checklist.
+ *
+ * @param done  - Number of completed line items.
+ * @param total - Total line items in the checklist.
+ */
+export function checklistProgressLabel(done: number, total: number): string {
+  if (total === 0) return 'No tasks';
+  if (done >= total) return `All ${total} done`;
+  return `${done} of ${total} done`;
+}
