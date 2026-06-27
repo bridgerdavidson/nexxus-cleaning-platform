@@ -2,28 +2,11 @@
 
 import React from "react";
 import { ChevronRight, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { CleanerAppointment } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
-import { formatTimeParts, propertyTitle, jobSubtitle, statusBadge, formatRespondBy } from "./today-presenters";
-
-const TONE: Record<string, string> = {
-  blue: "bg-[#E1EAFF] text-brand-600",
-  amber: "bg-[#FEF3C7] text-[#92660A]",
-  green: "bg-[#DCFCE7] text-[#15803D]",
-  gray: "bg-muted text-muted-foreground",
-};
-
-function Badge({ a }: { a: CleanerAppointment }) {
-  const b = statusBadge(a);
-  return (
-    <span className={cn("rounded-pill px-2.5 py-1 text-[10px] font-bold", TONE[b.tone])}>
-      {b.label}
-    </span>
-  );
-}
+import { formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
+import { JobRow } from "../shared/JobRow";
 
 function SectionHeader({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
   return (
@@ -31,27 +14,6 @@ function SectionHeader({ title, trailing }: { title: string; trailing?: React.Re
       <h2 className="text-sm font-bold">{title}</h2>
       {trailing}
     </div>
-  );
-}
-
-function JobRow({ a, onClick }: { a: CleanerAppointment; onClick: () => void }) {
-  const t = formatTimeParts(a.scheduled_time);
-  return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-card border border-border bg-card p-3 text-left shadow-soft-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <div className="w-14 flex-none text-center">
-        <div className="text-sm font-extrabold tabular-nums">{t.h}</div>
-        <div className="text-[10px] font-bold text-muted-foreground">{t.ap}</div>
-      </div>
-      <div className="self-stretch w-px bg-border" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold">{propertyTitle(a)}</div>
-        <div className="truncate text-xs text-muted-foreground">{jobSubtitle(a)}</div>
-      </div>
-      <Badge a={a} />
-    </button>
   );
 }
 
@@ -166,7 +128,7 @@ export function CleanerTodayView({
           />
           <div className="space-y-2.5">
             {data.todayJobs.map((j) => (
-              <JobRow key={j.id} a={j} onClick={() => onOpenJob(j.id)} />
+              <JobRow key={j.id} appointment={j} onClick={() => onOpenJob(j.id)} />
             ))}
           </div>
         </section>
