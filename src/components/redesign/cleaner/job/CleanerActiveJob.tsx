@@ -247,10 +247,13 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   // ---- Gate + section summaries ----
   const beforeInProgress = inProgressCount(beforeUploader.items);
   const afterInProgress = inProgressCount(afterUploader.items);
-  const beforeInFlight = beforeUploader.items.filter((i) => i.status !== 'failed').length;
-  const afterInFlight = afterUploader.items.filter((i) => i.status !== 'failed').length;
-  const beforeSatisfied = beforePhotos.length > 0 || beforeInFlight > 0;
-  const afterSatisfied = afterPhotos.length > 0 || afterInFlight > 0;
+  // A photo satisfies the gate when it is confirmed in the DB (beforePhotos) or
+  // actively uploading (queued/converting/compressing/uploading). A 'done' item
+  // is deliberately NOT counted here: it is already reflected in beforePhotos,
+  // and counting it would keep the gate satisfied after the cleaner deletes the
+  // persisted photo (the completed item lingers in uploader.items).
+  const beforeSatisfied = beforePhotos.length > 0 || beforeInProgress > 0;
+  const afterSatisfied = afterPhotos.length > 0 || afterInProgress > 0;
 
   const gate = deriveActiveJob({
     requireJobPhotos,
