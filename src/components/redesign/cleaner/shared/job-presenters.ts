@@ -35,11 +35,21 @@ export function propertyAddress(a: CleanerAppointment): string | null {
   return full || null;
 }
 
+/** A Google Maps search URL for a plain address string. */
+export function googleMapsUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+/** An Apple Maps search URL for a plain address string. */
+export function appleMapsUrl(address: string): string {
+  return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
+}
+
 /** A Google Maps search link for the property address, or null. */
 export function mapsUrl(a: CleanerAppointment): string | null {
   const addr = propertyAddress(a);
   if (!addr) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+  return googleMapsUrl(addr);
 }
 
 /**

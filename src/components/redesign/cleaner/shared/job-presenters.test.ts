@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy,
-  customerLabel, propertyAddress, mapsUrl, formatDateLong, formatDuration, formatCardDate,
+  customerLabel, propertyAddress, mapsUrl, googleMapsUrl, appleMapsUrl,
+  formatDateLong, formatDuration, formatCardDate,
 } from "./job-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
@@ -44,6 +45,31 @@ describe("propertyAddress / mapsUrl", () => {
   it("builds a maps search url or null", () => {
     expect(mapsUrl(base)).toBe("https://www.google.com/maps/search/?api=1&query=123%20Main%20St%2C%20Austin%2C%20TX%2078701");
     expect(mapsUrl({ ...base, property: null } as unknown as CleanerAppointment)).toBeNull();
+  });
+});
+
+describe("googleMapsUrl / appleMapsUrl", () => {
+  const addr = "8225 S Desert Bloom Dr, Phoenix, AZ 85044";
+  it("googleMapsUrl encodes the address into a Google Maps search URL", () => {
+    const url = googleMapsUrl(addr);
+    expect(url).toBe(
+      "https://www.google.com/maps/search/?api=1&query=8225%20S%20Desert%20Bloom%20Dr%2C%20Phoenix%2C%20AZ%2085044",
+    );
+  });
+  it("appleMapsUrl encodes the address and starts with https://maps.apple.com/?q=", () => {
+    const url = appleMapsUrl(addr);
+    expect(url.startsWith("https://maps.apple.com/?q=")).toBe(true);
+    expect(url).toBe(
+      "https://maps.apple.com/?q=8225%20S%20Desert%20Bloom%20Dr%2C%20Phoenix%2C%20AZ%2085044",
+    );
+  });
+  it("appleMapsUrl encodes spaces and commas", () => {
+    expect(appleMapsUrl("123 Main St, Austin, TX")).toContain("%20");
+    expect(appleMapsUrl("123 Main St, Austin, TX")).toContain("%2C");
+  });
+  it("mapsUrl delegates to googleMapsUrl (same output)", () => {
+    const expected = googleMapsUrl("123 Main St, Austin, TX 78701");
+    expect(mapsUrl(base)).toBe(expected);
   });
 });
 
