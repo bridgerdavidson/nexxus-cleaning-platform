@@ -53,8 +53,24 @@ export function shouldShowCleanerConnectSkeleton(args: {
  * renders the embedded onboarding OR the payouts table inside a
  * `<StripeFramedCard>` (fixed min-height → zero layout shift).
  */
-export default function CleanerStripeConnect() {
-  const { enabled, connectInstance, initError, loading } = useCleanerConnect();
+export default function CleanerStripeConnect({
+  appearance,
+  payoutsMaxHeight,
+}: {
+  /** Optional Stripe Connect appearance override (redesign passes brand tokens). */
+  appearance?: Parameters<typeof useCleanerConnect>[0];
+  /**
+   * Optional Tailwind max-height class (e.g. `max-h-[460px]`) applied to the
+   * embedded payouts table ONLY. Connect components grow with their content and
+   * expose no height prop; per Stripe's docs the only supported way to bound them
+   * is `max-height` + `overflow: scroll`. This stops the payout history from
+   * growing the page without end and tames the load-time height creep. Onboarding
+   * is never capped (its forms and bank-link popups must grow freely). Legacy
+   * callers pass nothing and keep the uncapped behavior.
+   */
+  payoutsMaxHeight?: string;
+} = {}) {
+  const { enabled, connectInstance, initError, loading } = useCleanerConnect(appearance);
   const { connectStatus, statusLoading, connectError, refetchStatus } = useStripeConnect();
 
   if (!enabled) {
@@ -93,7 +109,13 @@ export default function CleanerStripeConnect() {
       <StripeFramedCard>
         <ConnectComponentsProvider connectInstance={connectInstance!}>
           {isActive ? (
-            <ConnectPayouts />
+            payoutsMaxHeight ? (
+              <div className={`${payoutsMaxHeight} overflow-y-auto`}>
+                <ConnectPayouts />
+              </div>
+            ) : (
+              <ConnectPayouts />
+            )
           ) : (
             <ConnectAccountOnboarding
               onExit={() => {

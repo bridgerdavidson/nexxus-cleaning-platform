@@ -406,6 +406,10 @@ export function useCleanerMessages() {
   };
 }
 
+// privacy-unsafe: selects the full customer charge (payments.amount) joined with the
+// homeowner name and has no payment_type filter. Do NOT render its rows to a cleaner
+// (would leak the customer charge to a payout_only org). Dead code kept only because
+// keys.payouts.byCleaner is invalidated elsewhere. See Slice 4 spec section 5.
 export function useCleanerPayouts() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
@@ -486,6 +490,7 @@ export interface AwaitingPaymentRow {
   /** The cleaner's expected cut once the customer's bank debit clears. */
   cleanerCut: number;
   createdAt: string;
+  paymentMethod: string | null;
   appointment: {
     id: string;
     scheduledDate: string | null;
@@ -517,7 +522,7 @@ export function useCleanerAwaitingPayments() {
       const { data, error } = await supabase
         .from('payments')
         .select(`
-          id, amount, processing_fee_cents, is_self_pay, created_at,
+          id, amount, processing_fee_cents, payment_method, is_self_pay, created_at,
           appointment:appointments!inner(
             id, scheduled_date, cleaner_id,
             homeowner:user_profiles!homeowner_id(first_name, last_name),
@@ -548,6 +553,7 @@ export function useCleanerAwaitingPayments() {
           id: p.id as string,
           cleanerCut: cleanerCutCents / 100,
           createdAt: p.created_at as string,
+          paymentMethod: (p as { payment_method?: string | null }).payment_method ?? null,
           appointment: appt
             ? {
                 id: appt.id as string,

@@ -37,7 +37,9 @@ export interface CleanerConnectState {
  * `ConnectAccountOnboarding` / `ConnectBalances` / `ConnectPayouts` components consume it,
  * so the cleaner never leaves the app. Mirrors `useTenantConnect`.
  */
-export function useCleanerConnect(): CleanerConnectState {
+export function useCleanerConnect(
+  appearanceOverride?: Parameters<typeof loadConnectAndInitialize>[0]["appearance"],
+): CleanerConnectState {
   const { user } = useAuth();
   const enabled =
     !!user?.id && user.role === 'cleaner' && stripeUiEnabled() && !!PUBLISHABLE_KEY;
@@ -48,6 +50,9 @@ export function useCleanerConnect(): CleanerConnectState {
   // Track which user we initialized for so an account switch re-creates the instance.
   const initedForRef = useRef<string | null>(null);
 
+  // NOTE: appearanceOverride is intentionally NOT in the deps below. It is consumed
+  // once at loadConnectAndInitialize time; re-running the effect would re-create the
+  // Connect instance and tear down any in-flight bank-link popup (window.opener dies).
   useEffect(() => {
     if (!enabled || !user?.id) return;
     if (initedForRef.current === user.id) return;
@@ -78,8 +83,8 @@ export function useCleanerConnect(): CleanerConnectState {
       const instance = loadConnectAndInitialize({
         publishableKey: PUBLISHABLE_KEY,
         fetchClientSecret,
-        appearance: {
-          // Match the brand yellow (tailwind primary-500 = #F7C41E).
+        appearance: appearanceOverride ?? {
+          // Legacy fallback for callers that pass nothing (brand yellow).
           variables: { colorPrimary: '#F7C41E' },
         },
       });
