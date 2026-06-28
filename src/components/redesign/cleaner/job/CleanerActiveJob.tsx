@@ -255,18 +255,20 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   const beforeSatisfied = beforePhotos.length > 0 || beforeInProgress > 0;
   const afterSatisfied = afterPhotos.length > 0 || afterInProgress > 0;
 
-  const gate = deriveActiveJob({
-    requireJobPhotos,
-    photosSkipped: appointment?.photos_skipped ?? false,
-    beforeSatisfied,
-    afterSatisfied,
-  });
-
   const checklistDone = useMemo(
     () => lineItems.reduce((n, it) => (completed.has(it.id) ? n + 1 : n), 0),
     [lineItems, completed],
   );
   const checklistTotal = lineItems.length;
+
+  const gate = deriveActiveJob({
+    requireJobPhotos,
+    photosSkipped: appointment?.photos_skipped ?? false,
+    beforeSatisfied,
+    afterSatisfied,
+    checklistDone,
+    checklistTotal,
+  });
 
   const beforeSummary = photoSummary(beforePhotos.length, beforeInProgress, gate.beforeNeeded, beforeSatisfied);
   const afterSummary = photoSummary(afterPhotos.length, afterInProgress, gate.afterNeeded, afterSatisfied);

@@ -3,6 +3,8 @@ export interface ActiveJobGateInput {
   photosSkipped: boolean;
   beforeSatisfied: boolean;
   afterSatisfied: boolean;
+  checklistDone: number;
+  checklistTotal: number;
 }
 
 export interface ActiveJobGate {
@@ -10,6 +12,7 @@ export interface ActiveJobGate {
   beforeNeeded: boolean;
   afterNeeded: boolean;
   photoGateMet: boolean;
+  checklistComplete: boolean;
   remaining: string[];
 }
 
