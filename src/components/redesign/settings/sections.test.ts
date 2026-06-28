@@ -20,8 +20,10 @@ describe("deriveSettingsSections", () => {
       "profile", "organization", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
     ]);
   });
-  it("admin does not see owner-only sections (organization, payout, cleaner-experience)", () => {
-    expect(ids("admin", "admin")).toEqual(["profile", "payments", "cancellation", "business-hours"]);
+  it("admin sees owner+admin sections but not owner-only (organization, payout)", () => {
+    expect(ids("admin", "admin")).toEqual([
+      "profile", "payments", "cancellation", "cleaner-experience", "business-hours",
+    ]);
   });
   it("manager with no permissions sees only Profile", () => {
     expect(ids("manager", "manager", perms())).toEqual(["profile"]);
@@ -48,10 +50,13 @@ describe("isVisibleSection", () => {
   it("payout is visible to owners", () => {
     expect(isVisibleSection("payout", "admin", "owner")).toBe(true);
   });
-  it("cleaner-experience is hidden from admins", () => {
-    expect(isVisibleSection("cleaner-experience", "admin", "admin")).toBe(false);
+  it("cleaner-experience is visible to admins", () => {
+    expect(isVisibleSection("cleaner-experience", "admin", "admin")).toBe(true);
   });
   it("cleaner-experience is visible to owners", () => {
     expect(isVisibleSection("cleaner-experience", "admin", "owner")).toBe(true);
+  });
+  it("cleaner-experience is hidden from a manager without permission", () => {
+    expect(isVisibleSection("cleaner-experience", "manager", "manager", NONE)).toBe(false);
   });
 });

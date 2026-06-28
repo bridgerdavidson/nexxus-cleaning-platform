@@ -2,12 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { PATCH } from './route';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
-import {
-  withTestOrg,
-  addOwnerToOrg,
-  type TestOrgFixture,
-  type OwnerMemberHandle,
-} from '../../../../../../tests/helpers/fixtures';
+import { withTestOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (orgId: string) => (req: NextRequest) =>
@@ -15,15 +10,12 @@ const handlerFor = (orgId: string) => (req: NextRequest) =>
 
 describe('PATCH /api/organizations/:orgId/cleaner-experience', () => {
   let org: TestOrgFixture;
-  let owner: OwnerMemberHandle;
 
   beforeEach(async () => {
     org = await withTestOrg();
-    owner = await addOwnerToOrg(org.organizationId);
   });
 
   afterEach(async () => {
-    await owner.cleanup();
     await org.cleanup();
   });
 
@@ -35,19 +27,19 @@ describe('PATCH /api/organizations/:orgId/cleaner-experience', () => {
     expect(status).toBe(401);
   });
 
-  it('rejects an admin (owner-only route)', async () => {
+  it('rejects a cleaner (insufficient role)', async () => {
     const { status } = await callRoute(handlerFor(org.organizationId), {
       method: 'PATCH',
-      headers: bearerHeader(org.admin.accessToken),
+      headers: bearerHeader(org.cleaner.accessToken),
       body: { cleaner_pay_display: 'payout_only' },
     });
     expect(status).toBe(403);
   });
 
-  it('owner updates cleaner_pay_display and require_job_photos, org row reflects both', async () => {
+  it('admin updates cleaner_pay_display and require_job_photos, org row reflects both', async () => {
     const { status, body } = await callRoute<{ success: boolean }>(handlerFor(org.organizationId), {
       method: 'PATCH',
-      headers: bearerHeader(owner.accessToken),
+      headers: bearerHeader(org.admin.accessToken),
       body: { cleaner_pay_display: 'payout_only', require_job_photos: false },
     });
     expect(status).toBe(200);
@@ -66,7 +58,7 @@ describe('PATCH /api/organizations/:orgId/cleaner-experience', () => {
   it('returns 400 on an invalid cleaner_pay_display value', async () => {
     const { status } = await callRoute(handlerFor(org.organizationId), {
       method: 'PATCH',
-      headers: bearerHeader(owner.accessToken),
+      headers: bearerHeader(org.admin.accessToken),
       body: { cleaner_pay_display: 'bogus' },
     });
     expect(status).toBe(400);
@@ -75,7 +67,7 @@ describe('PATCH /api/organizations/:orgId/cleaner-experience', () => {
   it('returns 400 when body has no valid fields', async () => {
     const { status } = await callRoute(handlerFor(org.organizationId), {
       method: 'PATCH',
-      headers: bearerHeader(owner.accessToken),
+      headers: bearerHeader(org.admin.accessToken),
       body: {},
     });
     expect(status).toBe(400);

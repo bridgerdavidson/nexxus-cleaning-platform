@@ -5,7 +5,7 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 /**
  * PATCH /api/organizations/:orgId/cleaner-experience
  *
- * OWNER-ONLY: sets org-wide cleaner experience controls.
+ * Owner/admin: sets org-wide cleaner experience controls.
  *   - cleaner_pay_display  ('full' | 'payout_only') — what cleaners see at job complete
  *   - require_job_photos   (boolean)                — enforce before+after photo gate
  *
@@ -19,7 +19,7 @@ export async function PATCH(
     const { orgId } = await params;
 
     const auth = await requireOrgAuth(request, orgId, supabaseAdmin, {
-      allowedRoles: ['owner'],
+      allowedRoles: ['owner', 'admin'],
     });
     if (!auth.ok) return auth.response;
 

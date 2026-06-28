@@ -28,7 +28,7 @@ export const REDESIGN_SETTINGS_SECTIONS: RedesignSettingsSection[] = [
   { id: "payments", label: "Payments", icon: CreditCard, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_payments" },
   { id: "cancellation", label: "Cancellation policy", icon: Receipt, group: "business", roles: ["admin", "owner"] },
   { id: "payout", label: "Payout settings", icon: Wallet, group: "business", roles: ["owner"] },
-  { id: "cleaner-experience", label: "Cleaner experience", icon: Users, group: "business", roles: ["owner"] },
+  { id: "cleaner-experience", label: "Cleaner experience", icon: Users, group: "business", roles: ["admin", "owner"] },
   { id: "business-hours", label: "Business hours", icon: CalendarClock, group: "business", roles: ["admin", "owner"] },
 ];
 
