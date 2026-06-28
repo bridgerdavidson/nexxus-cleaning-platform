@@ -52,7 +52,11 @@ export function CleanerEarnings() {
   const appearance = getRedesignConnectAppearance(resolvedTheme === "dark");
   // The embed element is created here but only placed in the DOM by the View's revealed
   // branch. Because `revealed` latches, it mounts once and never unmounts.
-  const embed = <CleanerStripeConnect appearance={appearance} />;
+  // Bound the payouts table so the history can't grow the page forever and the
+  // load-time height creep settles into a fixed scroll window (Stripe exposes no
+  // height prop; max-height + scroll is its documented lever). Onboarding stays
+  // uncapped.
+  const embed = <CleanerStripeConnect appearance={appearance} payoutsMaxHeight="max-h-[460px]" />;
 
   return (
     <CleanerEarningsView
