@@ -40,7 +40,7 @@ export function CleanerMessagesView({
     );
   }
 
-  if (mode === "empty" || noOfficeContacts) {
+  if (mode === "empty") {
     return (
       <div className="py-6">
         <EmptyState
@@ -68,9 +68,11 @@ export function CleanerMessagesView({
             className="pl-9"
           />
         </div>
-        <Button onClick={onCompose} className="shrink-0 gap-1.5">
-          <Plus className="size-4" aria-hidden /> New
-        </Button>
+        {!noOfficeContacts && (
+          <Button onClick={onCompose} className="shrink-0 gap-1.5">
+            <Plus className="size-4" aria-hidden /> New
+          </Button>
+        )}
       </div>
 
       <div className="-mx-4 overflow-hidden border-y border-border/60 bg-card">

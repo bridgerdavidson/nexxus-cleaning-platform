@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -72,20 +72,22 @@ function ThreadHostInner({
   }, [toParam, threadParam, officeContacts, conversations]);
 
   // For ?to= get/create the conversation (idempotent). For ?thread= the id is the param.
+  // `startConversation` is a fresh reference each render, so we guard with a ref to
+  // fire the RPC ONCE per recipient (mirrors the operator deep-link's consumed-ref).
+  // Without this, each successful start re-renders, the effect re-runs, and it loops.
   const [resolvedConvId, setResolvedConvId] = useState<string | null>(threadParam);
+  const startedForRef = useRef<string | null>(null);
   useEffect(() => {
-    let cancelled = false;
     if (toParam) {
-      setResolvedConvId(null);
+      if (startedForRef.current === toParam) return;
+      startedForRef.current = toParam;
       startConversation(toParam).then((res) => {
-        if (!cancelled && res.success && res.conversationId) setResolvedConvId(res.conversationId);
+        if (res.success && res.conversationId) setResolvedConvId(res.conversationId);
       });
     } else {
+      startedForRef.current = null;
       setResolvedConvId(threadParam);
     }
-    return () => {
-      cancelled = true;
-    };
   }, [toParam, threadParam, startConversation]);
 
   const [armedConsumed, setArmedConsumed] = useState(false);
