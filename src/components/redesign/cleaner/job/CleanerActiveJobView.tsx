@@ -141,10 +141,10 @@ export function CleanerActiveJobView({
               )}
             </div>
 
-            {/* Actions: Directions (outline button) + Message operator placeholder */}
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <CleanerDirectionsButton address={addr ?? ''} />
-              {/* Operator messaging arrives in Slice 5; placeholder kept visible
+            {/* Actions: Directions + Message office placeholder, side by side */}
+            <div className="mt-4 flex items-stretch gap-3">
+              <CleanerDirectionsButton address={addr ?? ''} className="flex-1" />
+              {/* Office messaging arrives in Slice 5; placeholder kept visible
                   but disabled so the affordance is discoverable. */}
               <Button
                 variant="outline"
@@ -152,10 +152,10 @@ export function CleanerActiveJobView({
                 disabled
                 aria-disabled="true"
                 title="Coming soon"
-                className="gap-2"
+                className="flex-1 gap-2"
               >
                 <MessageSquare className="size-4" aria-hidden />
-                Message operator
+                Message office
               </Button>
             </div>
           </section>
