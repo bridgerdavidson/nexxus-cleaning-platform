@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { projectCompletionCharge } from './projectCompletionCharge';
+import { projectCompletionCharge, type FullChargeBreakdown } from './projectCompletionCharge';
 import { computeChargeBreakdown } from './processingFee';
 import { computePaymentSplit } from '../stripe/charges/splits';
 import { computeSelfPayAmounts } from './selfPayMath';
@@ -9,12 +9,14 @@ describe('projectCompletionCharge', () => {
     const base = 12000, pct = 40, bps = 0;
     const bd = computeChargeBreakdown('card', base);
     const split = computePaymentSplit({ grossCents: base, payoutPercent: pct, platformFeeBps: bps });
-    const p = projectCompletionCharge({ baseCents: base, method: 'card', isSelfPay: false, payoutPercent: pct, platformFeeBps: bps, feePassthrough: true });
+    const p: FullChargeBreakdown = projectCompletionCharge({ baseCents: base, method: 'card', isSelfPay: false, payoutPercent: pct, platformFeeBps: bps, feePassthrough: true });
     expect(p.chargeCents).toBe(bd.chargeCents);
     expect(p.feeCents).toBe(bd.feeCents);
     expect(p.cleanerCutCents).toBe(split.cleanerCents);
     expect(p.isSelfPay).toBe(false);
     expect(p.baseCents).toBe(base);
+    // payoutPercent passes through unchanged (the presenter decides whether to expose it).
+    expect(p.payoutPercent).toBe(pct);
   });
 
   it('homeowner-paid card with passthrough OFF: charge = base, zero fee, cleaner cut unchanged', () => {
@@ -46,5 +48,6 @@ describe('projectCompletionCharge', () => {
     expect(p.chargeCents).toBe(sp.chargeCents);
     expect(p.feeCents).toBe(sp.estimatedFeeCents);
     expect(p.isSelfPay).toBe(true);
+    expect(p.payoutPercent).toBe(pct);
   });
 });

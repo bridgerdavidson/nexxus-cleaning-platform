@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled, stripeFeePassthroughEnabled } from '@/lib/stripe/flags';
 import { projectCompletionCharge } from '@/lib/payments/projectCompletionCharge';
+import { presentChargeProjection } from '@/lib/payments/presentChargeProjection';
 
 export const runtime = 'nodejs';
 
@@ -88,13 +89,17 @@ export async function GET(
         : Promise.resolve({ data: null }),
       supabaseAdmin
         .from('organizations')
-        .select('platform_fee_bps, default_cleaner_payout_percent')
+        .select('platform_fee_bps, default_cleaner_payout_percent, cleaner_pay_display')
         .eq('id', organization_id!)
         .maybeSingle(),
     ]);
 
     type CleanerProfileRow = { payout_percent: number | string | null } | null;
-    type OrgRow = { platform_fee_bps: number; default_cleaner_payout_percent: number } | null;
+    type OrgRow = {
+      platform_fee_bps: number;
+      default_cleaner_payout_percent: number;
+      cleaner_pay_display: 'full' | 'payout_only' | null;
+    } | null;
 
     const cleanerProfile = cleanerRes.data as CleanerProfileRow;
     const org = orgRes.data as OrgRow;
@@ -117,7 +122,7 @@ export async function GET(
     // payment method type, keeping it read-only and fast.
     const method: 'card' | 'us_bank_account' = 'card';
 
-    const projection = projectCompletionCharge({
+    const full = projectCompletionCharge({
       baseCents,
       method,
       isSelfPay: appt.is_self_pay,
@@ -126,6 +131,16 @@ export async function GET(
       // Honor the same fee-passthrough flag the actual charge path uses so the sheet
       // never overstates the charge when passthrough is off.
       feePassthrough: stripeFeePassthroughEnabled(),
+    });
+
+    // PRIVACY: when the org chose payout-only AND the caller is the assigned cleaner,
+    // the presenter strips the customer charge + payout percentage from the response so
+    // those numbers never reach the cleaner's device. Org staff (owner/admin/manager)
+    // are not cleaner viewers, so they always get the full breakdown.
+    const isCleanerViewer = auth.role === 'cleaner';
+    const projection = presentChargeProjection(full, {
+      display: org?.cleaner_pay_display ?? 'full',
+      isCleanerViewer,
     });
 
     return NextResponse.json({ projection });

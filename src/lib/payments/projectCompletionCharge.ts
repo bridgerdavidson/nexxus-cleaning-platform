@@ -1,7 +1,22 @@
-import type { ChargeProjection } from '@/types';
 import { computeChargeBreakdown } from './processingFee';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { computeSelfPayAmounts } from './selfPayMath';
+
+/**
+ * The complete, unredacted breakdown computed by {@link projectCompletionCharge}.
+ * Every field is always present. The presenter ({@link presentChargeProjection})
+ * decides which fields are exposed to the cleaner under the org's pay-display
+ * setting, so this internal shape never travels to the client directly.
+ */
+export interface FullChargeBreakdown {
+  baseCents: number;
+  method: 'card' | 'us_bank_account';
+  chargeCents: number;
+  feeCents: number;
+  cleanerCutCents: number;
+  payoutPercent: number;
+  isSelfPay: boolean;
+}
 
 export interface ProjectCompletionChargeInput {
   baseCents: number;
@@ -23,7 +38,7 @@ export interface ProjectCompletionChargeInput {
  * Projects the exact charge and cleaner cut for the Complete sheet.
  * Composes three existing helpers without duplicating any math.
  */
-export function projectCompletionCharge(input: ProjectCompletionChargeInput): ChargeProjection {
+export function projectCompletionCharge(input: ProjectCompletionChargeInput): FullChargeBreakdown {
   const { baseCents, method, isSelfPay, payoutPercent, platformFeeBps, feePassthrough } = input;
 
   if (isSelfPay) {
@@ -34,6 +49,7 @@ export function projectCompletionCharge(input: ProjectCompletionChargeInput): Ch
       chargeCents: sp.chargeCents,
       feeCents: sp.estimatedFeeCents,
       cleanerCutCents: sp.cleanerCutCents,
+      payoutPercent,
       isSelfPay: true,
     };
   }
@@ -50,6 +66,7 @@ export function projectCompletionCharge(input: ProjectCompletionChargeInput): Ch
     chargeCents,
     feeCents,
     cleanerCutCents: split.cleanerCents,
+    payoutPercent,
     isSelfPay: false,
   };
 }

@@ -157,6 +157,74 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
     expect(body.error).toBe('Requires the Manage Payments permission');
   });
 
+  // --- payout_only display: the cleaner must NOT receive the customer charge ---
+
+  it("payout_only org: assigned cleaner gets display='payout_only' with NO customer charge", async () => {
+    const totalPrice = 150;
+    const apptId = await seedAppt({ totalPrice });
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ cleaner_pay_display: 'payout_only' })
+      .eq('id', org.organizationId);
+
+    const { status, body } = await callRoute<{
+      projection: {
+        display: string;
+        cleanerCutCents: number;
+        chargeCents?: number;
+        feeCents?: number;
+        baseCents?: number;
+        payoutPercent?: number;
+      };
+    }>(handlerFor(apptId), {
+      method: 'GET',
+      url: urlFor(apptId, org.organizationId),
+      headers: bearerHeader(org.cleaner.accessToken),
+    });
+
+    expect(status).toBe(200);
+    expect(body.projection.display).toBe('payout_only');
+    // The cut is still present so the cleaner sees what they earn.
+    const full = projectCompletionCharge({
+      baseCents: totalPrice * 100,
+      method: 'card',
+      isSelfPay: false,
+      payoutPercent: 40,
+      platformFeeBps: 0,
+      feePassthrough: stripeFeePassthroughEnabled(),
+    });
+    expect(body.projection.cleanerCutCents).toBe(full.cleanerCutCents);
+    // PRIVACY: the customer charge + percentage are omitted from the payload entirely.
+    expect(body.projection.chargeCents).toBeUndefined();
+    expect(body.projection.feeCents).toBeUndefined();
+    expect(body.projection.baseCents).toBeUndefined();
+    expect(body.projection.payoutPercent).toBeUndefined();
+  });
+
+  it("payout_only org: org admin still gets display='full' with the customer charge", async () => {
+    const totalPrice = 200;
+    const apptId = await seedAppt({ totalPrice });
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ cleaner_pay_display: 'payout_only' })
+      .eq('id', org.organizationId);
+
+    const { status, body } = await callRoute<{
+      projection: { display: string; chargeCents?: number; payoutPercent?: number };
+    }>(handlerFor(apptId), {
+      method: 'GET',
+      url: urlFor(apptId, org.organizationId),
+      headers: bearerHeader(org.admin.accessToken),
+    });
+
+    expect(status).toBe(200);
+    expect(body.projection.display).toBe('full');
+    expect(body.projection.chargeCents).toBeDefined();
+    expect(body.projection.payoutPercent).toBeDefined();
+  });
+
   // --- (b) non-members and unassigned cleaners are rejected ---
 
   it('403 for a cleaner not assigned to the appointment', async () => {

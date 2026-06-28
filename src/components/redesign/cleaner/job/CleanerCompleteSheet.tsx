@@ -206,10 +206,12 @@ export function CleanerCompleteSheet({
             </>
           ) : projection ? (
             <>
-              <BreakdownRow
-                label="Customer is charged"
-                value={formatCents(projection.chargeCents)}
-              />
+              {projection.display === 'full' && projection.chargeCents != null && (
+                <BreakdownRow
+                  label="Customer is charged"
+                  value={formatCents(projection.chargeCents)}
+                />
+              )}
               <BreakdownRow
                 label="Your cut"
                 value={formatCents(projection.cleanerCutCents)}

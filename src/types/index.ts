@@ -102,6 +102,10 @@ export interface Organization {
   billing_email?: string | null;
   // Active-job photo gate — added in migration 095.
   require_job_photos: boolean;
+  // What the assigned cleaner sees on the Complete sheet — added in migration 096.
+  //   'full'        -> full breakdown (customer charge + cut).
+  //   'payout_only' -> only the cleaner's cut (no customer charge, no percentage).
+  cleaner_pay_display: 'full' | 'payout_only';
 }
 
 // ORGANIZATION MEMBERS
@@ -622,14 +626,20 @@ export interface ChecklistItemCompletion {
   created_at: string;
 }
 
-// Charge projection for the active-job summary (consumed by Tasks 3, 4, 6, 9)
+// Charge projection sent to the client (consumed by the cleaner Complete sheet).
+// In 'payout_only' mode the customer-charge fields (baseCents/method/chargeCents/
+// feeCents/payoutPercent) are OMITTED from the cleaner's response by the API, so
+// they are optional here. Org staff always receive the full ('full') shape.
 export interface ChargeProjection {
-  baseCents: number;
-  method: 'card' | 'us_bank_account';
-  chargeCents: number;
-  feeCents: number;
+  display: 'full' | 'payout_only';
   cleanerCutCents: number;
   isSelfPay: boolean;
+  // present only when display === 'full':
+  baseCents?: number;
+  method?: 'card' | 'us_bank_account';
+  chargeCents?: number;
+  feeCents?: number;
+  payoutPercent?: number;
 }
 
 // ==========================================
