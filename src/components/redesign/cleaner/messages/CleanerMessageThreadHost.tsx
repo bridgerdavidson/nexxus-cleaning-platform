@@ -100,7 +100,8 @@ function ThreadHostInner({
     const sp = new URLSearchParams(searchParams.toString());
     sp.delete("thread");
     sp.delete("to");
-    sp.delete("appointment");
+    // Keep ?appointment so backing out returns to the armed inbox (pick another
+    // person); it clears on send (clearArmed) or via the inbox banner's cancel.
     const qs = sp.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     setArmedConsumed(false);

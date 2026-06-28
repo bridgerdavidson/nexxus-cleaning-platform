@@ -36,9 +36,7 @@ import {
   useSkipPhotos,
   useUpdateJobProgress,
 } from '@/hooks/useCleanerData';
-import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
 import { useOpenOfficeThread } from '@/hooks/useOpenOfficeThread';
-import { resolvePrimaryOfficeContact } from '../messages/office-contacts';
 import { deriveActiveJob } from './deriveActiveJob';
 import { checklistProgressLabel, photoStatusLabel } from './active-job-presenters';
 import type { ActiveJobScreen } from './active-job-types';
@@ -224,16 +222,11 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   const updateProgress = useUpdateJobProgress();
   const skipPhotos = useSkipPhotos();
 
-  // "Message office": resolve a default office contact (owner -> admin -> manager)
-  // and open the office thread with this job armed. Navigating to Messages closes
-  // the active-job takeover (it clears ?job=); the cleaner can pick a specific
-  // person from the Messages picker instead.
-  const { members } = useOrganizationMembers({ excludeCurrentUser: true });
-  const office = useMemo(() => resolvePrimaryOfficeContact(members), [members]);
-  const { openWith } = useOpenOfficeThread();
-  const onMessageOffice = useCallback(() => {
-    if (office) openWith(office.id, appointmentId);
-  }, [office, openWith, appointmentId]);
+  // "Message office": carry this job to the Messages tab so the cleaner picks WHO at
+  // the office to message; the job attaches to whichever thread they open. Navigating
+  // to Messages closes the active-job takeover (it clears ?job=).
+  const { armForJob } = useOpenOfficeThread();
+  const onMessageOffice = useCallback(() => armForJob(appointmentId), [armForJob, appointmentId]);
 
   // First-open progress advance (best-effort, loose order, non-blocking).
   const firedRef = useRef<Set<string>>(new Set());

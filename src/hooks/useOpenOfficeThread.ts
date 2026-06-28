@@ -26,12 +26,23 @@ export function useOpenOfficeThread() {
     [router, pathname],
   );
 
-  const openConversation = useCallback((conversationId: string) => go(`thread=${conversationId}`), [go]);
+  const openConversation = useCallback(
+    (conversationId: string, appointmentId?: string) =>
+      go(`thread=${conversationId}${appointmentId ? `&appointment=${appointmentId}` : ""}`),
+    [go],
+  );
   const openWith = useCallback(
     (userId: string, appointmentId?: string) =>
       go(`to=${userId}${appointmentId ? `&appointment=${appointmentId}` : ""}`),
     [go],
   );
+  // Carry a job to the Messages tab WITHOUT a recipient and pop the office picker
+  // (`compose=1`) so the cleaner chooses who to message; the job (`&appointment=`) stays
+  // armed and attaches to whichever thread they open (preserved by openConversation/openWith).
+  const armForJob = useCallback(
+    (appointmentId: string) => go(`compose=1&appointment=${appointmentId}`),
+    [go],
+  );
 
-  return { openConversation, openWith };
+  return { openConversation, openWith, armForJob };
 }

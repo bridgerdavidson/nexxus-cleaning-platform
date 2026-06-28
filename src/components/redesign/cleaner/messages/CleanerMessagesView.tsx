@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, Plus, Search } from "lucide-react";
+import { CalendarDays, MessageSquare, Plus, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,6 +17,9 @@ export interface CleanerMessagesViewProps {
   onSearch: (v: string) => void;
   onOpenRow: (id: string) => void;
   onCompose: () => void;
+  /** A job armed from the active-job "Message office" button: a label for the banner. */
+  armedJobLabel?: string | null;
+  onCancelArm?: () => void;
 }
 
 /** The cleaner Messages inbox: search + "New message" compose + a list of office
@@ -29,6 +32,8 @@ export function CleanerMessagesView({
   onSearch,
   onOpenRow,
   onCompose,
+  armedJobLabel,
+  onCancelArm,
 }: CleanerMessagesViewProps) {
   if (mode === "loading") {
     return (
@@ -54,6 +59,24 @@ export function CleanerMessagesView({
 
   return (
     <div className="space-y-3 py-1">
+      {armedJobLabel && (
+        <div className="flex items-center gap-2 rounded-control border border-primary/25 bg-primary/10 px-3 py-2">
+          <CalendarDays className="size-4 shrink-0 text-primary" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-primary">
+            Attaching to your next message: {armedJobLabel}
+          </span>
+          {onCancelArm && (
+            <button
+              type="button"
+              onClick={onCancelArm}
+              aria-label="Cancel attaching the job"
+              className="grid size-6 shrink-0 place-items-center rounded-full text-primary transition-colors hover:bg-primary/15"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search
