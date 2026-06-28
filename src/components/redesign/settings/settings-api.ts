@@ -20,3 +20,5 @@ export const updateOrgBusinessHours = (orgId: string, body: Record<string, unkno
   patch(`/api/organizations/${orgId}/business-hours`, body);
 export const updateOrgCleanerPayouts = (orgId: string, body: Record<string, unknown>) =>
   patch(`/api/organizations/${orgId}/cleaner-payouts`, body);
+export const updateOrgCleanerExperience = (orgId: string, body: Record<string, unknown>) =>
+  patch(`/api/organizations/${orgId}/cleaner-experience`, body);

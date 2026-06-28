@@ -15,12 +15,12 @@ const ids = (role?: string, orgRole?: string, p?: ManagerPermissions) =>
   deriveSettingsSections(role, orgRole, p).map((s) => s.id);
 
 describe("deriveSettingsSections", () => {
-  it("owner sees all six sections", () => {
+  it("owner sees all seven sections", () => {
     expect(ids("admin", "owner")).toEqual([
-      "profile", "organization", "payments", "cancellation", "payout", "business-hours",
+      "profile", "organization", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
     ]);
   });
-  it("admin does not see owner-only sections (organization, payout)", () => {
+  it("admin does not see owner-only sections (organization, payout, cleaner-experience)", () => {
     expect(ids("admin", "admin")).toEqual(["profile", "payments", "cancellation", "business-hours"]);
   });
   it("manager with no permissions sees only Profile", () => {
@@ -47,5 +47,11 @@ describe("isVisibleSection", () => {
   });
   it("payout is visible to owners", () => {
     expect(isVisibleSection("payout", "admin", "owner")).toBe(true);
+  });
+  it("cleaner-experience is hidden from admins", () => {
+    expect(isVisibleSection("cleaner-experience", "admin", "admin")).toBe(false);
+  });
+  it("cleaner-experience is visible to owners", () => {
+    expect(isVisibleSection("cleaner-experience", "admin", "owner")).toBe(true);
   });
 });
