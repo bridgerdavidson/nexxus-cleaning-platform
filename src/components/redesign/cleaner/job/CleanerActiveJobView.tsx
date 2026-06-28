@@ -13,9 +13,10 @@ import React from 'react';
 import {
   Camera,
   ChevronRight,
+  Clock,
   ListChecks,
+  MapPin,
   MessageSquare,
-  Navigation,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
@@ -26,12 +27,10 @@ import type { ActiveJobGate } from './active-job-types';
 import {
   propertyTitle,
   jobSubtitle,
-  customerLabel,
   propertyAddress,
-  mapsUrl,
-  formatDateLong,
-  formatTimeParts,
+  formatJobWhen,
 } from '../shared/job-presenters';
+import { CleanerDirectionsButton } from '../shared/CleanerDirectionsButton';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -110,8 +109,6 @@ export function CleanerActiveJobView({
   onSkipPhotos,
 }: CleanerActiveJobViewProps) {
   const addr = propertyAddress(appointment);
-  const maps = mapsUrl(appointment);
-  const { h, ap } = formatTimeParts(appointment.scheduled_time);
   const remainingHint = gate.remaining.join(', ');
 
   return (
@@ -127,38 +124,39 @@ export function CleanerActiveJobView({
             <h1 className="mt-1 text-lg font-bold leading-tight text-foreground">
               {propertyTitle(appointment)}
             </h1>
+            {/* Customer name appears only here, via jobSubtitle */}
             <p className="text-sm text-muted-foreground">{jobSubtitle(appointment)}</p>
 
-            <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
-              <div>
-                {formatDateLong(appointment.scheduled_date)} at {h} {ap}
+            {/* Icon-led meta rows: date-time + address */}
+            <div className="mt-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="size-4 shrink-0" aria-hidden />
+                <span>{formatJobWhen(appointment.scheduled_date, appointment.scheduled_time)}</span>
               </div>
-              <div>{customerLabel(appointment)}</div>
-              {addr && <div>{addr}</div>}
+              {addr && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <MapPin className="size-4 shrink-0" aria-hidden />
+                  <span>{addr}</span>
+                </div>
+              )}
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-              {maps && (
-                <a
-                  href={maps}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-control text-sm font-semibold text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Navigation className="size-4" aria-hidden /> Directions
-                </a>
-              )}
+            {/* Actions: Directions (outline button) + Message operator placeholder */}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <CleanerDirectionsButton address={addr ?? ''} />
               {/* Operator messaging arrives in Slice 5; placeholder kept visible
                   but disabled so the affordance is discoverable. */}
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="default"
                 disabled
                 aria-disabled="true"
                 title="Coming soon"
-                className="inline-flex min-h-[44px] cursor-not-allowed items-center gap-1.5 rounded-control text-sm font-semibold text-muted-foreground opacity-60"
+                className="gap-2"
               >
-                <MessageSquare className="size-4" aria-hidden /> Message operator
-              </button>
+                <MessageSquare className="size-4" aria-hidden />
+                Message operator
+              </Button>
             </div>
           </section>
 

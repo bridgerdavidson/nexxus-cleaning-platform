@@ -98,6 +98,24 @@ export function formatCardDate(dateStr: string, todayStr: string): string | null
   });
 }
 
+/**
+ * Compact "Sat, Jun 27 · 2:00 PM" string for the active-job meta row.
+ * Always shows the date — unlike formatCardDate which suppresses today's date.
+ */
+export function formatJobWhen(dateStr: string, time: string): string {
+  const [y, m, d] = (dateStr ?? "").split("-").map(Number);
+  const dateLabel =
+    y && m && d
+      ? new Date(y, m - 1, d).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        })
+      : (dateStr ?? "");
+  const { h, ap } = formatTimeParts(time);
+  return `${dateLabel} · ${h} ${ap}`;
+}
+
 export interface OfferSlot {
   slot_index: number;
   scheduled_date: string;

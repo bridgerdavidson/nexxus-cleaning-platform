@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, MapPin, Navigation, Play } from "lucide-react";
+import { ChevronLeft, MapPin, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { CleanerAppointment, DeclineReason } from "@/hooks/useCleanerData";
 import {
-  propertyTitle, customerLabel, propertyAddress, mapsUrl, jobSubtitle,
+  propertyTitle, customerLabel, propertyAddress, jobSubtitle,
   formatDateLong, formatTimeParts, formatDuration,
 } from "../shared/job-presenters";
+import { CleanerDirectionsButton } from "../shared/CleanerDirectionsButton";
 import { CleanerJobBadge } from "../shared/CleanerJobBadge";
 import { OfferActionsBar } from "../shared/OfferActionsBar";
 import { deriveJobActionMode } from "./deriveJobDetail";
@@ -76,7 +77,6 @@ export function CleanerJobDetailOverlay({
 
   const mode = appointment ? deriveJobActionMode(appointment) : "none";
   const addr = appointment ? propertyAddress(appointment) : null;
-  const maps = appointment ? mapsUrl(appointment) : null;
   const duration = appointment ? formatDuration(appointment.service_type?.duration_minutes) : null;
 
   return (
@@ -143,12 +143,7 @@ export function CleanerJobDetailOverlay({
                   <Field label="Where">
                     <div className="font-semibold">{propertyTitle(appointment)}</div>
                     {addr && <div className="text-muted-foreground">{addr}</div>}
-                    {maps && (
-                      <a href={maps} target="_blank" rel="noopener noreferrer"
-                         className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 rounded-control py-2 text-sm font-semibold text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <Navigation className="size-4" /> Directions
-                      </a>
-                    )}
+                    <CleanerDirectionsButton address={addr ?? ''} className="mt-2" />
                   </Field>
                   <Separator />
                   <Field label="Customer">{customerLabel(appointment)}</Field>

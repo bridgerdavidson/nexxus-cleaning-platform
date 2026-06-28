@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy,
   customerLabel, propertyAddress, mapsUrl, googleMapsUrl, appleMapsUrl,
-  formatDateLong, formatDuration, formatCardDate,
+  formatDateLong, formatDuration, formatCardDate, formatJobWhen,
 } from "./job-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
@@ -95,6 +95,24 @@ describe("formatCardDate", () => {
   });
   it("null on empty/invalid", () => {
     expect(formatCardDate("", "2026-06-10")).toBeNull();
+  });
+});
+
+describe("formatJobWhen", () => {
+  it("formats a date+time as compact weekday-month-day + time", () => {
+    expect(formatJobWhen("2026-06-27", "14:00:00")).toBe("Sat, Jun 27 · 2:00 PM");
+  });
+  it("handles midnight (12:00 AM)", () => {
+    expect(formatJobWhen("2026-07-01", "00:05:00")).toBe("Wed, Jul 1 · 12:05 AM");
+  });
+  it("always shows the date even when it is today", () => {
+    // The result must contain a weekday abbreviation regardless of what today is.
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    const result = formatJobWhen(`${y}-${m}-${d}`, "09:00:00");
+    expect(result).toMatch(/^[A-Z][a-z]{2},/); // starts with "Mon,", "Tue,", etc.
   });
 });
 
