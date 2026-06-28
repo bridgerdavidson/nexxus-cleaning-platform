@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { CleanerShell } from "@/components/redesign/cleaner/shell/CleanerShell";
 import { CleanerJobDetailHost } from "@/components/redesign/cleaner/job/CleanerJobDetailHost";
+import { CleanerMessageThreadHost } from "@/components/redesign/cleaner/messages/CleanerMessageThreadHost";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 import { redesignUiEnabled } from "@/lib/redesign/flags";
 
@@ -47,6 +48,9 @@ export default function CleanerDashboardLayout({ children }: { children: ReactNo
       <CleanerShell>{children}</CleanerShell>
       <Suspense fallback={null}>
         <CleanerJobDetailHost />
+      </Suspense>
+      <Suspense fallback={null}>
+        <CleanerMessageThreadHost />
       </Suspense>
     </>
   );
