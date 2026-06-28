@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import CleanerStripeConnect, { cleanerStatusKind } from "@/components/CleanerStripeConnect";
+import { useAuth } from "@/hooks/useAuth";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { useCleanerAwaitingPayments, useCleanerStats } from "@/hooks/useCleanerData";
 import { getRedesignConnectAppearance } from "@/lib/stripe/appearance";
@@ -24,6 +25,7 @@ export function CleanerEarnings() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const { currentOrganization } = useAuth();
   const { connectStatus, statusLoading, connectError, dashboardLoading, handleOpenStripeDashboard } =
     useStripeConnect();
   const { awaitingPayments: awaiting } = useCleanerAwaitingPayments();
@@ -42,8 +44,7 @@ export function CleanerEarnings() {
 
   const data = deriveEarnings({
     stripeEnabled,
-    // Slice 6 wires the real organizations.default_payout_model; contractor is the live path today.
-    payoutModel: "percentage_contractor",
+    payoutModel: currentOrganization?.default_payout_model ?? "percentage_contractor",
     connectKind,
     awaiting,
     stats,

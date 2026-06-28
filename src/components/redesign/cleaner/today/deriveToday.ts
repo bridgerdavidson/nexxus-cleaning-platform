@@ -46,5 +46,7 @@ export function deriveToday(
   const isEmpty =
     !activeJob && needsAttention.length === 0 && offers.length === 0 && todayJobs.length === 0 && tomorrowCount === 0;
 
-  return { activeJob, needsAttention, offers, todayJobs, tomorrowCount, tomorrowFirstTime, isEmpty };
+  const isEmployee = payoutModel !== "percentage_contractor";
+
+  return { activeJob, needsAttention, offers, todayJobs, tomorrowCount, tomorrowFirstTime, isEmpty, isEmployee };
 }

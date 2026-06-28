@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { useCleanerAppointments } from "@/hooks/useCleanerData";
 import { useOpenJob } from "../job/useOpenJob";
 import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
@@ -13,11 +14,20 @@ function ymd(d: Date): string {
 }
 
 export function CleanerSchedule() {
+  const { currentOrganization } = useAuth();
   const { appointments, loading } = useCleanerAppointments();
   const openJob = useOpenJob();
+  const isEmployee = (currentOrganization?.default_payout_model ?? "percentage_contractor") !== "percentage_contractor";
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ScheduleView>("upcoming");
   const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");
+
+  // If the org resolves to the employee model while "needs response" was the
+  // active filter (it's hidden for employees), reset it so the list isn't stuck
+  // empty.
+  useEffect(() => {
+    if (isEmployee && statusFilter === "needs_response") setStatusFilter("all");
+  }, [isEmployee, statusFilter]);
 
   const dateStrs = useMemo(() => {
     const now = new Date();
@@ -36,7 +46,7 @@ export function CleanerSchedule() {
 
   return (
     <CleanerScheduleView
-      data={data} loading={loading}
+      data={data} loading={loading} isEmployee={isEmployee}
       search={search} onSearchChange={setSearch}
       view={view} onViewChange={(v) => { setView(v); setStatusFilter("all"); }}
       statusFilter={statusFilter} onStatusFilterChange={setStatusFilter}

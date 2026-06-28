@@ -30,3 +30,30 @@ export interface DeriveScheduleOptions {
   weekEndStr: string;
   graceFloorStr: string;
 }
+
+/** Status-filter options per view. Scoped so the dropdown never offers a status
+ *  the view excludes (e.g. Completed under Upcoming). */
+export const SCHEDULE_STATUS_OPTIONS: Record<ScheduleView, { value: ScheduleStatusFilter; label: string }[]> = {
+  upcoming: [
+    { value: "all", label: "All statuses" },
+    { value: "needs_response", label: "Needs response" },
+    { value: "confirmed", label: "Upcoming" },
+    { value: "in_progress", label: "In progress" },
+  ],
+  past: [
+    { value: "all", label: "All statuses" },
+    { value: "completed", label: "Completed" },
+    { value: "cancelled", label: "Cancelled" },
+  ],
+};
+
+/** Status-filter options for a view, dropping the contractor-only
+ *  "needs_response" option in the employee model (employees are assigned jobs
+ *  by the office, they do not respond to offers). */
+export function scheduleStatusOptions(
+  view: ScheduleView,
+  isEmployee: boolean,
+): { value: ScheduleStatusFilter; label: string }[] {
+  const opts = SCHEDULE_STATUS_OPTIONS[view];
+  return isEmployee ? opts.filter((o) => o.value !== "needs_response") : opts;
+}

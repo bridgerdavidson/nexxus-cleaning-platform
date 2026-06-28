@@ -274,7 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const query = supabase
         .from('organization_members')
-        .select('organization_id, role, organizations ( id, name, logo_url )')
+        .select('organization_id, role, organizations ( id, name, logo_url, default_payout_model )')
         .eq('user_id', currentUser.id)
         .limit(1);
 
@@ -324,6 +324,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 require_job_photos: (org as { require_job_photos?: boolean }).require_job_photos ?? true,
                 cleaner_pay_display:
                   (org as { cleaner_pay_display?: 'full' | 'payout_only' }).cleaner_pay_display ?? 'full',
+                default_payout_model:
+                  (org as { default_payout_model?: 'percentage_contractor' | 'hourly_external' })
+                    .default_payout_model ?? 'percentage_contractor',
               }
             : null,
         );

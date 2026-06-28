@@ -49,6 +49,11 @@ describe("deriveToday", () => {
     expect(r.offers).toHaveLength(0);
   });
 
+  it("flags isEmployee from the payout model", () => {
+    expect(deriveToday([], TODAY, TOMORROW, GRACE, "percentage_contractor").isEmployee).toBe(false);
+    expect(deriveToday([], TODAY, TOMORROW, GRACE, "hourly_external").isEmployee).toBe(true);
+  });
+
   it("lists today's confirmed jobs sorted by time (excludes completed)", () => {
     const r = deriveToday(
       [

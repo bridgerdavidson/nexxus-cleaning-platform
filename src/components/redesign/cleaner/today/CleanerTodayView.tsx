@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, ChevronRight, Clock, Sparkles } from "lucide-react";
+import { AlertTriangle, Building2, ChevronRight, Clock, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,7 +55,11 @@ export function CleanerTodayView({
         <EmptyState
           icon={<Sparkles />}
           title="Nothing scheduled"
-          description="When you have jobs or new offers, they'll show up here."
+          description={
+            data.isEmployee
+              ? "When your office assigns you jobs, they'll show up here."
+              : "When you have jobs or new offers, they'll show up here."
+          }
         />
       </div>
     );
@@ -180,6 +184,13 @@ export function CleanerTodayView({
             <ChevronRight aria-hidden className="h-5 w-5 text-muted-foreground" />
           </button>
         </section>
+      )}
+
+      {data.isEmployee && (
+        <div className="flex items-start gap-2.5 rounded-card border border-border bg-muted/40 p-3.5 text-xs text-muted-foreground">
+          <Building2 aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <span>Your office assigns your jobs. New assignments show up here and on your Schedule.</span>
+        </div>
       )}
     </div>
   );
