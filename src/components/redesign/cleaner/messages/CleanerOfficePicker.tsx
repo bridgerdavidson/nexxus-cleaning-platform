@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import type { OfficeContact } from "./office-contacts";
@@ -25,11 +26,14 @@ export function CleanerOfficePicker({
   onOpenChange,
   contacts,
   onPick,
+  loading = false,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   contacts: OfficeContact[];
   onPick: (contact: OfficeContact) => void;
+  /** While the office contacts are still loading, show a spinner instead of the empty state. */
+  loading?: boolean;
 }) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -38,7 +42,11 @@ export function CleanerOfficePicker({
           <DrawerTitle>Message your office</DrawerTitle>
         </DrawerHeader>
         <div className="max-h-[60dvh] overflow-y-auto px-2 pb-[max(env(safe-area-inset-bottom),1rem)]">
-          {contacts.length === 0 ? (
+          {loading && contacts.length === 0 ? (
+            <div className="grid place-items-center py-8">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Loading office contacts" />
+            </div>
+          ) : contacts.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">No office contacts yet.</p>
           ) : (
             contacts.map((c) => (

@@ -24,6 +24,7 @@ export function CleanerThread({
   recipient,
   variant,
   onBack,
+  backLabel,
   armedAppointment,
   onArmedConsumed,
 }: {
@@ -31,6 +32,8 @@ export function CleanerThread({
   recipient: OfficeContact;
   variant: "inline" | "takeover";
   onBack?: () => void;
+  /** Label next to the back chevron (e.g. "Back to job" when opened from an active job). */
+  backLabel?: string;
   armedAppointment?: CleanerAppointment | null;
   onArmedConsumed?: () => void;
 }) {
@@ -131,6 +134,7 @@ export function CleanerThread({
       }}
       variant={variant}
       onBack={onBack}
+      backLabel={backLabel}
     />
   );
 }

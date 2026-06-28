@@ -26,6 +26,8 @@ export interface CleanerMessageThreadViewProps {
   /** 'inline' = the Messages tab itself (no back); 'takeover' = full-screen overlay. */
   variant: "inline" | "takeover";
   onBack?: () => void;
+  /** Label shown next to the back chevron (e.g. "Back to job"). */
+  backLabel?: string;
 }
 
 /**
@@ -90,10 +92,14 @@ export function CleanerMessageThreadView(props: CleanerMessageThreadViewProps) {
           <button
             type="button"
             onClick={props.onBack}
-            aria-label="Back"
-            className="grid size-11 shrink-0 place-items-center rounded-control text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={props.backLabel ?? "Back"}
+            className={cn(
+              "flex h-11 shrink-0 items-center gap-1 rounded-control text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+              props.backLabel ? "px-2" : "w-11 justify-center",
+            )}
           >
-            <ChevronLeft className="size-6" />
+            <ChevronLeft className="size-6 shrink-0" />
+            {props.backLabel && <span className="text-sm font-semibold">{props.backLabel}</span>}
           </button>
         )}
         <Avatar className={cn("size-9 shrink-0", !props.onBack && "ml-1")}>

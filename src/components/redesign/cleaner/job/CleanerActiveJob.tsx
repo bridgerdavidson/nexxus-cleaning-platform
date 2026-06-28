@@ -36,7 +36,10 @@ import {
   useSkipPhotos,
   useUpdateJobProgress,
 } from '@/hooks/useCleanerData';
+import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
 import { useOpenOfficeThread } from '@/hooks/useOpenOfficeThread';
+import { filterOfficeContacts } from '../messages/office-contacts';
+import { CleanerOfficePicker } from '../messages/CleanerOfficePicker';
 import { deriveActiveJob } from './deriveActiveJob';
 import { checklistProgressLabel, photoStatusLabel } from './active-job-presenters';
 import type { ActiveJobScreen } from './active-job-types';
@@ -222,11 +225,14 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   const updateProgress = useUpdateJobProgress();
   const skipPhotos = useSkipPhotos();
 
-  // "Message office": carry this job to the Messages tab so the cleaner picks WHO at
-  // the office to message; the job attaches to whichever thread they open. Navigating
-  // to Messages closes the active-job takeover (it clears ?job=).
-  const { armForJob } = useOpenOfficeThread();
-  const onMessageOffice = useCallback(() => armForJob(appointmentId), [armForJob, appointmentId]);
+  // "Message office": open a bottom sheet ON this page (like Directions) to pick who at
+  // the office to message. Dismissing it keeps the cleaner on the active job; picking a
+  // person opens that thread with this job staged + a "Back to job" return.
+  const { members, loading: officeLoading } = useOrganizationMembers({ excludeCurrentUser: true });
+  const officeContacts = useMemo(() => filterOfficeContacts(members), [members]);
+  const { openThreadFromJob } = useOpenOfficeThread();
+  const [officePickerOpen, setOfficePickerOpen] = useState(false);
+  const onMessageOffice = useCallback(() => setOfficePickerOpen(true), []);
 
   // First-open progress advance (best-effort, loose order, non-blocking).
   const firedRef = useRef<Set<string>>(new Set());
@@ -379,6 +385,17 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
         onOpenChange={setSkipOpen}
         onSubmit={handleSkipSubmit}
         submitting={skipPhotos.isPending}
+      />
+
+      <CleanerOfficePicker
+        open={officePickerOpen}
+        onOpenChange={setOfficePickerOpen}
+        contacts={officeContacts}
+        loading={officeLoading}
+        onPick={(c) => {
+          setOfficePickerOpen(false);
+          openThreadFromJob(c.id, appointmentId);
+        }}
       />
     </div>
   );

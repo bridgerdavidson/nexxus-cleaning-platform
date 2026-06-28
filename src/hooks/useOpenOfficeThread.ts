@@ -7,9 +7,10 @@ const MESSAGES_PATH = "/app/cleaner-dashboard/messages";
 
 /**
  * Open the cleaner's office thread takeover via URL params:
- * - `openConversation(convId)` -> `?thread=<convId>` (an existing thread, e.g. an inbox row)
- * - `openWith(userId, appt?)`  -> `?to=<userId>(&appointment=<id>)` (start/open a thread with a
- *   specific office person, e.g. the picker or the active-job "Message office" button)
+ * - `openConversation(convId)`         -> `?thread=<convId>` (an existing thread, e.g. an inbox row)
+ * - `openWith(userId)`                 -> `?to=<userId>` (start/open a thread with a specific office person)
+ * - `openThreadFromJob(userId, jobId)` -> `?to=<userId>&appointment=<jobId>&from=<jobId>`
+ *   (from the active-job "Message office" sheet: stage the job + enable a "Back to job" return)
  * On the Messages page we replace (no history spam); from elsewhere we push to navigate there.
  * Reads no search params, so callers need no Suspense boundary (matches useOpenJob).
  */
@@ -26,23 +27,15 @@ export function useOpenOfficeThread() {
     [router, pathname],
   );
 
-  const openConversation = useCallback(
-    (conversationId: string, appointmentId?: string) =>
-      go(`thread=${conversationId}${appointmentId ? `&appointment=${appointmentId}` : ""}`),
-    [go],
-  );
-  const openWith = useCallback(
-    (userId: string, appointmentId?: string) =>
-      go(`to=${userId}${appointmentId ? `&appointment=${appointmentId}` : ""}`),
-    [go],
-  );
-  // Carry a job to the Messages tab WITHOUT a recipient and pop the office picker
-  // (`compose=1`) so the cleaner chooses who to message; the job (`&appointment=`) stays
-  // armed and attaches to whichever thread they open (preserved by openConversation/openWith).
-  const armForJob = useCallback(
-    (appointmentId: string) => go(`compose=1&appointment=${appointmentId}`),
+  const openConversation = useCallback((conversationId: string) => go(`thread=${conversationId}`), [go]);
+  const openWith = useCallback((userId: string) => go(`to=${userId}`), [go]);
+  // From the active-job "Message office" sheet: open a thread with the chosen person,
+  // stage the job (&appointment=), and mark its origin (&from=) so the thread's back
+  // button returns to that active job ("Back to job").
+  const openThreadFromJob = useCallback(
+    (userId: string, jobId: string) => go(`to=${userId}&appointment=${jobId}&from=${jobId}`),
     [go],
   );
 
-  return { openConversation, openWith, armForJob };
+  return { openConversation, openWith, openThreadFromJob };
 }

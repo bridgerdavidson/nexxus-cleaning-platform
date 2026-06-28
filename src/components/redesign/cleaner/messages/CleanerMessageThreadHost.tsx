@@ -29,6 +29,7 @@ export function CleanerMessageThreadHost() {
       threadParam={threadParam}
       toParam={toParam}
       appointmentParam={searchParams.get("appointment")}
+      fromParam={searchParams.get("from")}
     />
   );
 }
@@ -37,10 +38,12 @@ function ThreadHostInner({
   threadParam,
   toParam,
   appointmentParam,
+  fromParam,
 }: {
   threadParam: string | null;
   toParam: string | null;
   appointmentParam: string | null;
+  fromParam: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -96,16 +99,24 @@ function ThreadHostInner({
     return appointments.find((a) => a.id === appointmentParam) ?? null;
   }, [armedConsumed, appointmentParam, appointments]);
 
+  // Close the thread back to the inbox (clears all thread params).
   const clearAll = useCallback(() => {
     const sp = new URLSearchParams(searchParams.toString());
     sp.delete("thread");
     sp.delete("to");
-    // Keep ?appointment so backing out returns to the armed inbox (pick another
-    // person); it clears on send (clearArmed) or via the inbox banner's cancel.
+    sp.delete("appointment");
+    sp.delete("from");
     const qs = sp.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     setArmedConsumed(false);
   }, [router, pathname, searchParams]);
+
+  // Opened from the active job (?from=<jobId>): the thread's back returns to that job.
+  // REPLACE (not push) so the dismissed /messages?to=...&from=... entry is collapsed off
+  // the back-stack; otherwise a gesture/hardware back would re-open the thread we just left.
+  const backToJob = useCallback(() => {
+    router.replace(`/app/cleaner-dashboard?job=${fromParam}`, { scroll: false });
+  }, [router, fromParam]);
 
   const clearArmed = useCallback(() => {
     setArmedConsumed(true);
@@ -115,7 +126,11 @@ function ThreadHostInner({
   }, [router, pathname, searchParams]);
 
   return (
-    <MobileTakeover key={threadParam ?? toParam ?? ""} onClosed={clearAll} ariaLabel="Office conversation">
+    <MobileTakeover
+      key={threadParam ?? toParam ?? ""}
+      onClosed={fromParam ? backToJob : clearAll}
+      ariaLabel="Office conversation"
+    >
       {(close) =>
         recipient ? (
           <CleanerThread
@@ -123,28 +138,30 @@ function ThreadHostInner({
             conversationId={resolvedConvId}
             recipient={recipient}
             onBack={close}
+            backLabel={fromParam ? "Back to job" : undefined}
             armedAppointment={armedAppointment}
             onArmedConsumed={clearArmed}
           />
         ) : (
-          <ThreadLoading onBack={close} />
+          <ThreadLoading onBack={close} backLabel={fromParam ? "Back to job" : undefined} />
         )
       }
     </MobileTakeover>
   );
 }
 
-function ThreadLoading({ onBack }: { onBack: () => void }) {
+function ThreadLoading({ onBack, backLabel }: { onBack: () => void; backLabel?: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2">
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back"
-          className="grid size-11 place-items-center rounded-control text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={backLabel ?? "Back"}
+          className="flex h-11 items-center gap-1 rounded-control px-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ChevronLeft className="size-6" />
+          <ChevronLeft className="size-6 shrink-0" />
+          {backLabel && <span className="text-sm font-semibold">{backLabel}</span>}
         </button>
         <div className="text-sm font-bold text-foreground">Office</div>
       </div>
