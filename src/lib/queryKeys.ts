@@ -52,6 +52,7 @@ export const keys = {
   },
   messages: {
     byConversation: (convId: string) => ['messages', 'conversation', convId] as const,
+    unreadCount: (userId: string) => ['messages', 'unread', userId] as const,
   },
   notifications: {
     byUser: (userId: string) => ['notifications', 'user', userId] as const,
