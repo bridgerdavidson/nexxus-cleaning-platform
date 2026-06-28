@@ -53,8 +53,13 @@ export function shouldShowCleanerConnectSkeleton(args: {
  * renders the embedded onboarding OR the payouts table inside a
  * `<StripeFramedCard>` (fixed min-height → zero layout shift).
  */
-export default function CleanerStripeConnect() {
-  const { enabled, connectInstance, initError, loading } = useCleanerConnect();
+export default function CleanerStripeConnect({
+  appearance,
+}: {
+  /** Optional Stripe Connect appearance override (redesign passes brand tokens). */
+  appearance?: Parameters<typeof useCleanerConnect>[0];
+} = {}) {
+  const { enabled, connectInstance, initError, loading } = useCleanerConnect(appearance);
   const { connectStatus, statusLoading, connectError, refetchStatus } = useStripeConnect();
 
   if (!enabled) {
