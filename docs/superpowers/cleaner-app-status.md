@@ -2,68 +2,66 @@
 
 **Last updated:** 2026-06-28
 
-This is the single place to re-orient when starting a fresh session on the cleaner (field-worker) app redesign. It complements the auto-loaded memory; read this first, then the spec + plan below.
+This is the single place to re-orient when starting a fresh session on the cleaner (field-worker) app redesign. It complements the auto-loaded memory ([[project_redesign_cleaner_app]]); read this first, then the spec + the per-slice plan.
 
 ## Where we are
 
 - **Operator experience:** fully redesigned and shipped (PRs #79-#92). Done.
-- **Cleaner app, Slice 1 (shell + Today): DONE.** Shipped in **PR #93** (squash-merged) + UI guardrail in **PR #94**.
-- **Cleaner app, Slice 2 (Schedule + job-detail overview): DONE.** Shipped in **PR #95** (squash `aeea1e5`). The §9 cut: Schedule screen + a deep-linkable job-detail takeover (read + Start + inline offer Accept/Decline + `?job=`), Today/notifications rewired off the legacy `?appointment=` bridge, plus an appointment-sort overhaul (Needs-attention / Upcoming-with-dates / Past zones).
-- **Cleaner app, Slice 3 (active-job flow): DONE.** Shipped in **PR #96** (squash `2ea1594`, merged 2026-06-28). Replaced the `in_progress` "Continue job" legacy bridge with the in-redesign active-job flow, plus two follow-ons added during review: an org pay-display toggle and its owner/admin settings UI, and a round of UI refinements. See "What Slice 3 contains" below.
-- **NEXT = Slice 4 (Earnings).**
+- **Slice 1 (shell + Today): DONE** (PR #93; UI guardrail #94).
+- **Slice 2 (Schedule + job-detail overview): DONE** (PR #95, squash `aeea1e5`). + appointment-sort overhaul (Needs-attention / Upcoming / Past zones).
+- **Slice 3 (active-job flow): DONE** (PR #96, squash `2ea1594`). + org pay-display toggle + owner/admin settings UI + UI refinements.
+- **Slice 4 (Earnings): DONE** (PR #98, squash `e79b596`). Stripe owns every money number (embedded `ConnectPayouts` is the sole authority); the one money thing we add is the **"Still clearing"** (ACH-settling) list + 3 activity counts; embed height-capped (`payoutsMaxHeight`). Detail in the memory.
+- **Slice 5 (Messages): DONE** (PR #99, squash `2ff63c6`, merged 2026-06-28). See "What Slice 5 contains" below.
+- **NEXT = Slice 6 (Profile + employee-model placeholders + wire the real `default_payout_model`).** This is the LAST cleaner slice.
 
 ## The plan: ship the cleaner app in 6 flag-gated slices
 
 Spec: `docs/superpowers/specs/2026-06-26-redesign-cleaner-app-design.md`
-Slice-3 spec/plan: `docs/superpowers/specs/2026-06-27-cleaner-app-slice-3-active-job.md` + `docs/superpowers/plans/2026-06-27-cleaner-app-slice-3-active-job.md`
+Slice specs/plans live under `docs/superpowers/specs|plans/2026-06-2x-cleaner-app-slice-*`.
 
-> Note: the live cut follows the spec **§9** (it splits the old doc's item 2 into 2 + 3): Slice 2 = Schedule + job-detail overview (read + start + offers); Slice 3 = the full active-job flow.
+> The live cut follows the spec **§9** (it splits the old doc's item 2 into 2 + 3): Slice 2 = Schedule + job-detail overview; Slice 3 = the full active-job flow.
 
-1. [x] **Shell + Today** , DONE (PR #93; guardrail PR #94).
-2. [x] **Schedule + job-detail overview** (read + Start + inline offer Accept/Decline + `?job=` deep-link + sort overhaul) , DONE (PR #95).
-3. [x] **Active-job flow + photo gate + charge-at-completion + migration** , DONE (PR #96). Plus the pay-display toggle + settings UI + UI refinements (see below).
-4. [ ] **Earnings , NEXT.** Reuse the Stripe Connect embed (`PayoutsSection`/`ConnectPayouts`), payouts list, "awaiting customer payment". There is already a cleaner "awaiting payment" earnings query in `useCleanerData.ts` to build on.
-5. [ ] **Messages.** Reuse the operator chat components + mobile thread takeover; job-scoped threads via `messages.appointment_id`. **This also wires the disabled "Message office" button** on the active-job screen (currently a deliberate Slice 5 placeholder).
-6. [ ] **Profile + employee-model placeholders.** Profile/availability placeholder + read-only services; **wire the real `organizations.default_payout_model` read into Today** (replacing the slice-1 hardcoded `"percentage_contractor"`).
+1. [x] **Shell + Today** (PR #93; guardrail PR #94).
+2. [x] **Schedule + job-detail overview** + sort overhaul (PR #95).
+3. [x] **Active-job flow + photo gate + charge-at-completion + migrations 095/096** (PR #96).
+4. [x] **Earnings** , Stripe embed + "Still clearing" + activity counts (PR #98).
+5. [x] **Messages** , collapsing office inbox + thread takeover + unread badge + active-job "Message office" (PR #99).
+6. [ ] **Profile + employee-model placeholders , NEXT (last slice).** Profile edit (name/phone/avatar via `/api/user/upload-avatar`); **Availability placeholder** (employee model, gated on `default_payout_model==='hourly_external'`); **read-only services catalog** (reuse the services read path); **Notifications/Security** link into the shared R2 settings shell (do not rebuild settings in Profile); **wire the real `organizations.default_payout_model`** read into Today (replacing the slice-1 hardcoded `"percentage_contractor"`) + the cross-screen employee-model placeholders (hide contractor offers, show "assigned by your manager" framing on Today/Schedule). Sign-out visually separated. See spec §5.6 / §5.7.
 
-## What Slice 3 contains (so you don't re-derive it)
+## What Slice 5 (Messages) contains (so you don't re-derive it)
 
-The active-job flow lives under `src/components/redesign/cleaner/job/`, built on the existing `CleanerJobDetailOverlay` takeover (mode `'continue'` now renders the active job instead of bridging to legacy).
+Reuses the shipped operator messaging stack; **no new data layer, migration, or API route**. Components under `src/components/redesign/cleaner/messages/**`; shared `src/components/redesign/shared/MobileTakeover.tsx` + `src/hooks/useKeyboardInset.ts`.
 
-- **Container + overview:** `CleanerActiveJob.tsx` (owns the local sub-screen stack + the TWO `useImageUpload` managers so in-flight uploads survive sub-screen nav + the gate + the skip flow) -> `CleanerActiveJobView.tsx` (pure overview: decluttered context header, 3 section cards, persistent Complete bar). Sub-screens are LOCAL state; only `?job=<id>` is URL-addressable.
-- **Sub-screens:** `CleanerPhotoCapture.tsx` (reuses `useImageUpload` + `job_photos`), `CleanerChecklistView.tsx` (persisted ticks), `CleanerCompleteSheet.tsx` (vaul drawer; shows the projected charge + cut, then `useCompleteJob`).
-- **Pure logic (TDD):** `deriveActiveJob.ts` (the gate: `canComplete = photoGateMet && checklistComplete`; checklist is required, photos required only if `require_job_photos` and not skipped) + `projectCompletionCharge.ts` (composes existing split/fee helpers; honors `STRIPE_FEE_PASSTHROUGH_ENABLED`) + `presentChargeProjection.ts` (redacts the customer charge for payout-only cleaners).
-- **Migrations:** `095` (`organizations.require_job_photos` default true, `appointments.photos_skipped` + `photo_skip_reason`, `checklist_item_completions` table + RLS) and `096` (`organizations.cleaner_pay_display` text 'full'|'payout_only').
-- **Routes:** `GET /api/appointments/[id]/charge-projection` (exact cut; omits the customer charge for payout-only cleaners), `POST /api/appointments/[id]/photo-skip`, and the owner/admin `PATCH /api/organizations/[orgId]/cleaner-experience`.
-- **Hooks (in `useCleanerData.ts`):** `useCompleteJob`, `useUpdateJobProgress`, `useChecklistCompletions`, `useToggleChecklistItem`, `useChargeProjection`, `useSkipPhotos`, `useOrgRequireJobPhotos`. Charge-at-completion backend is REUSED unchanged (`updateAppointmentStatus(id,'completed')`).
-- **Settings:** `src/components/redesign/settings/sections/CleanerExperienceSection.tsx` (operator Settings > Business > "Cleaner experience") toggles `cleaner_pay_display` (full vs payout-only) and `require_job_photos`. Owner+admin gated. Pattern: `useSettingsSection` + `SettingRow`/`SettingsSaveBar` + a `settings-api.ts` patch helper, registered in `sections.ts` + `sections/registry.ts`.
-- **UI refinements (post-review):** decluttered the active-job header (customer name appears once; compact `formatJobWhen` + icon-led meta rows); `shared/CleanerDirectionsButton.tsx` (an `outline` button opening an Apple Maps / Google Maps action-sheet); the Complete button gates on the checklist being 100% done; the messaging placeholder is labeled **"Message office"** (NOT "operator" , "operator" is internal jargon for the admin/manager side and must not face cleaners).
+- **Office model = "collapsing inbox":** conversations are strictly 1:1 and there is NO "office" entity, so "the office" = N threads with the org's admins/managers. `deriveOfficeInbox` keys mode on reachable people (officeContacts ∪ existing-conversation participants): 0 → `empty`, 1 → `single` (the Messages tab IS that Office thread, rendered inline as a fixed surface below the 4rem top bar + above the bottom nav, keyboard-aware via `--kbd`), ≥2 → `inbox` (search + "New" picker + rows).
+- **NO permission gate for cleaners:** the operator `can_view_messages` is manager-only (cleaners have no `manager_permissions` row → always false → copying it would lock them out). Who a cleaner can message is the role matrix `rolesUserCanMessage('cleaner')` = admin/manager (server-enforced via RLS + `get_or_create_conversation`).
+- **Reuse:** extracted ONE shared `MobileTakeover` (slide-in + iOS keyboard takeover) from the operator `MobileThreadOverlay` and migrated the operator view onto it. `CleanerThread`/`CleanerMessageThreadView` reuse `MessageBubble`+`MessageComposer` (added a backward-compat `showReferenceBooking=false`) + the canonical `toConversationRowVM`/`toMessageVM`; trimmed header. Threads open as a takeover via `?thread=<convId>` (inbox row) or `?to=<userId>` (picker), hosted by `CleanerMessageThreadHost` (Suspense layout sibling, mirrors `CleanerJobDetailHost`).
+- **Unread nav badge:** dedicated lightweight `useUnreadMessageCount(userId)` (one count query + one realtime channel, NOT the full inbox app-wide) → `CleanerShell`→`CleanerBottomNav`; clears on visit via `markMessagesAsRead`.
+- **Active-job "Message office"** (Bridger iterated twice, FINAL): the button opens the `CleanerOfficePicker` **bottom sheet ON the active-job page** (inside `CleanerActiveJob`, like the Directions/Skip drawers; dismiss keeps them on the job). Picking → `openThreadFromJob(id, jobId)` → `/messages?to=<id>&appointment=<jobId>&from=<jobId>`: stages the job as a "Re: <job>" chip (reuse `useSendMessage.appointmentId`, no schema change) and the thread back button reads **"Back to job"** + `router.replace`s back to `?job=<jobId>` (replace, not push, so the dismissed thread is not stranded on the back-stack). `resolvePrimaryOfficeContact` exists but is UNUSED (Bridger chose explicit recipient choice).
+- **Pure/TDD:** `office-contacts`, `deriveOfficeInbox`, `messages-cleaner-presenters` (18 tests). E2E smoke `tests/e2e/cleaner-messages.spec.ts` (resilient skip-on-uncertainty; preview auth/data latency is a known E2E flake — re-run clears it).
 
-### Slice 3 deferred / follow-ups
-- **Payments-RLS privacy:** the pay-display redaction is server-side at the API, but a cleaner's RLS still grants SELECT on `payments.amount` for their own jobs, so a savvy cleaner could read the customer charge directly. Full DB-level privacy = a separate, riskier payments-RLS tightening.
-- **"Message office"** wiring = Slice 5.
-- **Future "cleaner_priced" payout model** (cleaner names a price; if within what the homeowner paid they keep it, org keeps the spread): becomes a 3rd `cleaner_pay_display` value + its own completion flow. Text column was chosen to slot it in. NOT YET.
-- Minor: `useToggleChecklistItem` / `useOrgRequireJobPhotos` key off `currentOrganizationId` (single-org-cleaner assumption); the projection assumes `card` method (cleaner cut is correct; only the ACH customer-charge fee estimate overstates).
+## What Slice 3 contains (still-relevant reference)
+
+The active-job flow lives under `src/components/redesign/cleaner/job/`, on the `CleanerJobDetailOverlay` takeover (mode `'continue'` renders the active job). `CleanerActiveJob` (container: sub-screen stack + 2 `useImageUpload` managers + gate + skip) → `CleanerActiveJobView` (pure overview: 3 section cards + Complete bar). Pure/TDD: `deriveActiveJob` (gate) + `projectCompletionCharge` + `presentChargeProjection`. Migrations 095/096 (`require_job_photos`, `photos_skipped`, `checklist_item_completions`, `cleaner_pay_display`). Operator Settings > Business > "Cleaner experience" (`CleanerExperienceSection`, owner+admin) toggles pay-display + require-photos. Known gap: a cleaner's RLS still grants SELECT on `payments.amount` for own jobs (server redaction only; full DB privacy = a separate payments-RLS tightening). Future "cleaner_priced" payout model = a 3rd `cleaner_pay_display` value (NOT YET).
 
 ## Locked design decisions
 
-- **Model-aware** (`organizations.default_payout_model`): `percentage_contractor` (BUILT = offers + accept/decline, % pay) is the MVP; `hourly_external` (employee: availability + direct admin assignment) is placeholder-only, deferred to its own brainstorm (Brain target Aug-Sep 2026).
-- Today-centric home; hybrid active-job flow (layout "C"); photo gate = required + skip-with-reason; Settings link into the shared R2 settings shell (Profile is the personal hub only); read-only services catalog is IN; counter-propose times + calendar/month view are deferred.
+- **Model-aware** (`organizations.default_payout_model`): `percentage_contractor` (BUILT) vs `hourly_external` (employee: availability + direct admin assignment, NOT built; placeholder-only; Brain target Aug-Sep 2026).
+- Today-centric home; hybrid active-job flow (layout "C"); photo gate = required + skip-with-reason; Settings link into the shared R2 settings shell (Profile is the personal hub only); read-only services catalog is IN; counter-propose + calendar/month view deferred.
 
 ## Guardrail (PR #94) , follow this for every UI slice
 
 - Invoke the **`ui-feature-workflow`** skill at the start of any UI work (CLAUDE.md makes this binding).
-- Two up-front asks: (1) use the **browser companion** for UX/structure? (2) **mobile or desktop?** , mobile means send screenshots (the user can't open localhost on a phone), desktop means send the link.
-- The companion is **UX/structure only**; mockups are reference-only. Implement from the design system (`src/components/ui/*` + tokens); new patterns become reusable primitives, not one-offs.
-- Run **ui-ux-pro-max at BOTH** design and implementation (run the real Python 3.11 exe, not the `python`/`python3` Store stubs; script at `<ui-ux-pro-max>/2.5.0/src/ui-ux-pro-max/scripts/search.py`).
+- Two up-front asks: (1) use the **browser companion** for UX/structure? (2) **mobile or desktop?** , mobile means send screenshots (the user can't open localhost on a phone).
+- Companion is **UX/structure only**; mockups are reference-only. Implement from the design system (`src/components/ui/*` + tokens); new patterns become reusable primitives.
+- Run **ui-ux-pro-max at BOTH** design and implementation (real Python 3.11 exe, NOT the `python`/`python3` Store stubs; script at `<ui-ux-pro-max>/2.5.0/src/ui-ux-pro-max/scripts/search.py`; resolve via `py -c "import sys; print(sys.executable)"` if the launcher misbehaves in a subshell).
 
-## How to resume Slice 4 (Earnings)
+## How to resume Slice 6 (Profile + placeholders)
 
-1. `git checkout master && git pull` (master now has #96 / `2ea1594`).
-2. Worktree/branch off master: `feat/redesign-cleaner-app-slice4`. A fresh worktree needs `npm install` + a copied `.env.development.local`. Dev server + tests point at the REMOTE dev Supabase (no local Docker); log in as `cleaner@nexxus.com` / `Cleaner123!` (creds for all roles are in `.env.development.local`). No local Supabase means migration + integration tests validate in CI only.
-3. Invoke `ui-feature-workflow` first; if exploring UX, ask companion + mobile/desktop. Bridger is usually on mobile (send screenshots).
-4. Build the Earnings tab. Reuse the operator Stripe Connect embed (`PayoutsSection` / `ConnectPayouts`) and the cleaner earnings/awaiting-payment hooks already in `useCleanerData.ts`. Flag-gated; dollars not cents; no em dashes; Codex + a final whole-branch review before push; PR to master, merge when the 4 checks are green.
+1. `git checkout master && git pull` (master now has #99 / `2ff63c6`).
+2. Branch off master: `feat/redesign-cleaner-app-slice6-profile`. Dev server + tests point at the REMOTE dev Supabase (no local Docker); log in as `cleaner@nexxus.com` / `Cleaner123!` (all-role creds in `.env.development.local`). **node_modules gotcha:** if you see a `tailwindcss-animate`/`tailwind-merge`/`class-variance-authority` build error or 2 "flaky" unit-file LOAD failures, that's STALE node_modules (deps in the lockfile but uninstalled after a branch reset) , run `npm install`, not a code bug.
+3. Invoke `ui-feature-workflow` first; ask companion + mobile/desktop (Bridger usually mobile → send screenshots).
+4. Build Slice 6 (spec §5.6 / §5.7): Profile edit, Availability placeholder, read-only services, Notifications/Security → shared R2 settings shell, wire real `default_payout_model` into Today + employee-model placeholders. Flag-gated; dollars not cents; no em dashes; Codex + whole-branch review (a workflow review pass works well) before push; PR to master, merge when the 4 checks are green. After merge: update THIS doc (Slice 6 done) + the memory.
 
-## Strategic gut-check
+## Strategic gut-check (read before starting Slice 6)
 
-The redesign is a hard gate before paid customers (per the Brain), and the cleaner UX feeds the pre-sell demo. BUT the binding $5k/mo levers , **price and pre-sell** , are still at zero. The redesign is build motion; it should not be the *only* thing moving. Worth raising with Bridger before sinking the next several slices in without parallel progress on price/pre-sell.
+**5 of 6 cleaner slices are shipped.** The redesign keeps moving , but the binding $5k/mo levers, **price and pre-sell**, are STILL at zero (per the AI Second Brain GOALS.md). Slice 6 (Profile + placeholders) is the LOWEST-value remaining cleaner slice, so this is the natural pause point: **strongly consider spending the next session on price/pre-sell** (the things that actually move the revenue target) rather than auto-continuing to Slice 6. The cleaner app is already demo-able end-to-end (Today → active job → complete → earnings → messages). Raise this with Bridger before sinking the next slice in. Use the `brain-context` skill to pull the strategy.
