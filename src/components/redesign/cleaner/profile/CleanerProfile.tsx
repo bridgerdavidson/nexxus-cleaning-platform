@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { formatPhoneDisplay, normalizePhoneToDigits } from "@/lib/phone";
@@ -18,6 +18,16 @@ export function CleanerProfile() {
   const [lastName, setLastName] = useState(baseLast);
   const [phone, setPhone] = useState(formatPhoneDisplay(basePhoneDigits));
   const [saving, setSaving] = useState(false);
+
+  // Resync the form to the auth profile when it changes externally (late
+  // hydration, sign-in, account switch). In-progress edits never change
+  // user.profile, so they are not clobbered; after a successful save the stored
+  // values match the local ones, so this is a no-op.
+  useEffect(() => {
+    setFirstName(user?.profile.firstName ?? "");
+    setLastName(user?.profile.lastName ?? "");
+    setPhone(formatPhoneDisplay(normalizePhoneToDigits(user?.profile.phone ?? "")));
+  }, [user?.profile.firstName, user?.profile.lastName, user?.profile.phone]);
 
   const isDirty =
     firstName.trim() !== baseFirst.trim() ||

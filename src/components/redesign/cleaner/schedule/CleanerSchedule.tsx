@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCleanerAppointments } from "@/hooks/useCleanerData";
 import { useOpenJob } from "../job/useOpenJob";
@@ -21,6 +21,13 @@ export function CleanerSchedule() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ScheduleView>("upcoming");
   const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");
+
+  // If the org resolves to the employee model while "needs response" was the
+  // active filter (it's hidden for employees), reset it so the list isn't stuck
+  // empty.
+  useEffect(() => {
+    if (isEmployee && statusFilter === "needs_response") setStatusFilter("all");
+  }, [isEmployee, statusFilter]);
 
   const dateStrs = useMemo(() => {
     const now = new Date();
