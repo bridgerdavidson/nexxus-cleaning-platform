@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 import { useCleanerAppointments, useRespondToOffer } from "@/hooks/useCleanerData";
 import { useOpenJob } from "@/components/redesign/cleaner/job/useOpenJob";
 import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
@@ -14,13 +15,15 @@ function ymd(d: Date): string {
 export function CleanerToday() {
   const router = useRouter();
   const openJob = useOpenJob();
+  const { currentOrganization } = useAuth();
   const { appointments, loading } = useCleanerAppointments();
   const respond = useRespondToOffer();
 
+  const payoutModel = currentOrganization?.default_payout_model ?? "percentage_contractor";
   const now = new Date();
   const todayStr = ymd(now);
   const graceFloorStr = ymd(new Date(now.getTime() - NEEDS_ATTENTION_DAYS * 864e5));
-  const data = deriveToday(appointments, todayStr, ymd(new Date(now.getTime() + 864e5)), graceFloorStr, "percentage_contractor");
+  const data = deriveToday(appointments, todayStr, ymd(new Date(now.getTime() + 864e5)), graceFloorStr, payoutModel);
 
   return (
     <CleanerTodayView

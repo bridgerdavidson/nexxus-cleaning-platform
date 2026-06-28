@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Search, CalendarDays } from "lucide-react";
+import { AlertTriangle, Building2, Search, CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,29 +8,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { JobRow } from "../shared/JobRow";
 import type { ScheduleData, ScheduleStatusFilter, ScheduleView } from "./schedule-types";
-
-// Status options are scoped to the active view so the dropdown never offers a
-// status that the view excludes (e.g. Completed under Upcoming), which would
-// always return an empty, misleading list.
-const STATUS_OPTIONS: Record<ScheduleView, { value: ScheduleStatusFilter; label: string }[]> = {
-  upcoming: [
-    { value: "all", label: "All statuses" },
-    { value: "needs_response", label: "Needs response" },
-    { value: "confirmed", label: "Upcoming" },
-    { value: "in_progress", label: "In progress" },
-  ],
-  past: [
-    { value: "all", label: "All statuses" },
-    { value: "completed", label: "Completed" },
-    { value: "cancelled", label: "Cancelled" },
-  ],
-};
+import { scheduleStatusOptions } from "./schedule-types";
 
 export function CleanerScheduleView({
-  data, loading, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob, todayStr,
+  data, loading, isEmployee, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob, todayStr,
 }: {
   data: ScheduleData;
   loading: boolean;
+  isEmployee: boolean;
   search: string;
   onSearchChange: (v: string) => void;
   view: ScheduleView;
@@ -56,10 +41,17 @@ export function CleanerScheduleView({
         <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange(v as ScheduleStatusFilter)}>
           <SelectTrigger className="h-9 w-[150px] rounded-pill"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {STATUS_OPTIONS[view].map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+            {scheduleStatusOptions(view, isEmployee).map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
+
+      {isEmployee && (
+        <div className="flex items-start gap-2.5 rounded-card border border-border bg-muted/40 p-3.5 text-xs text-muted-foreground">
+          <Building2 aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <span>Your office assigns your jobs. You'll see your assignments here.</span>
+        </div>
+      )}
 
       {data.needsAttention.length > 0 && (
         <section>

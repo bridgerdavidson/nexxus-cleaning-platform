@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { useCleanerAppointments } from "@/hooks/useCleanerData";
 import { useOpenJob } from "../job/useOpenJob";
 import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
@@ -13,8 +14,10 @@ function ymd(d: Date): string {
 }
 
 export function CleanerSchedule() {
+  const { currentOrganization } = useAuth();
   const { appointments, loading } = useCleanerAppointments();
   const openJob = useOpenJob();
+  const isEmployee = (currentOrganization?.default_payout_model ?? "percentage_contractor") !== "percentage_contractor";
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ScheduleView>("upcoming");
   const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");
@@ -36,7 +39,7 @@ export function CleanerSchedule() {
 
   return (
     <CleanerScheduleView
-      data={data} loading={loading}
+      data={data} loading={loading} isEmployee={isEmployee}
       search={search} onSearchChange={setSearch}
       view={view} onViewChange={(v) => { setView(v); setStatusFilter("all"); }}
       statusFilter={statusFilter} onStatusFilterChange={setStatusFilter}

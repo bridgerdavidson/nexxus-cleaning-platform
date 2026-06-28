@@ -19,4 +19,7 @@ export interface TodayData {
   tomorrowFirstTime: string | null;
   /** True when there is nothing to show (drives the empty state). */
   isEmpty: boolean;
+  /** True in the employee (hourly_external) model: jobs are assigned by the
+   *  office, not offered. Drives the "assigned by your office" framing. */
+  isEmployee: boolean;
 }
