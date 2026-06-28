@@ -29,6 +29,8 @@ export function MessageComposer(props: {
   onSend: () => void
   sending: boolean
   isMobile: boolean
+  /** Hide the "Reference a booking" affordance (cleaner has no contact-bookings to attach). Defaults to shown. */
+  showReferenceBooking?: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -110,17 +112,19 @@ export function MessageComposer(props: {
               <ImagePlus className="size-4" />
               Add image
             </DropdownMenuItem>
-            <ReferenceBookingMenu
-              isMobile={props.isMobile}
-              bookings={props.attachableBookings}
-              onPick={props.onStageBooking}
-              trigger={
-                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                  <CalendarDays className="size-4" />
-                  Reference a booking
-                </DropdownMenuItem>
-              }
-            />
+            {props.showReferenceBooking !== false && (
+              <ReferenceBookingMenu
+                isMobile={props.isMobile}
+                bookings={props.attachableBookings}
+                onPick={props.onStageBooking}
+                trigger={
+                  <DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}>
+                    <CalendarDays className="size-4" />
+                    Reference a booking
+                  </DropdownMenuItem>
+                }
+              />
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={handleFiles} />
