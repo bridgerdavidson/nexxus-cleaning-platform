@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy,
-  customerLabel, propertyAddress, mapsUrl, formatDateLong, formatDuration, formatCardDate,
+  customerLabel, propertyAddress, mapsUrl, googleMapsUrl, appleMapsUrl,
+  formatDateLong, formatDuration, formatCardDate, formatJobWhen,
 } from "./job-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
@@ -47,6 +48,31 @@ describe("propertyAddress / mapsUrl", () => {
   });
 });
 
+describe("googleMapsUrl / appleMapsUrl", () => {
+  const addr = "8225 S Desert Bloom Dr, Phoenix, AZ 85044";
+  it("googleMapsUrl encodes the address into a Google Maps search URL", () => {
+    const url = googleMapsUrl(addr);
+    expect(url).toBe(
+      "https://www.google.com/maps/search/?api=1&query=8225%20S%20Desert%20Bloom%20Dr%2C%20Phoenix%2C%20AZ%2085044",
+    );
+  });
+  it("appleMapsUrl encodes the address and starts with https://maps.apple.com/?q=", () => {
+    const url = appleMapsUrl(addr);
+    expect(url.startsWith("https://maps.apple.com/?q=")).toBe(true);
+    expect(url).toBe(
+      "https://maps.apple.com/?q=8225%20S%20Desert%20Bloom%20Dr%2C%20Phoenix%2C%20AZ%2085044",
+    );
+  });
+  it("appleMapsUrl encodes spaces and commas", () => {
+    expect(appleMapsUrl("123 Main St, Austin, TX")).toContain("%20");
+    expect(appleMapsUrl("123 Main St, Austin, TX")).toContain("%2C");
+  });
+  it("mapsUrl delegates to googleMapsUrl (same output)", () => {
+    const expected = googleMapsUrl("123 Main St, Austin, TX 78701");
+    expect(mapsUrl(base)).toBe(expected);
+  });
+});
+
 describe("formatRespondBy", () => {
   it("returns null on missing/invalid deadline", () => {
     expect(formatRespondBy(null)).toBeNull();
@@ -69,6 +95,24 @@ describe("formatCardDate", () => {
   });
   it("null on empty/invalid", () => {
     expect(formatCardDate("", "2026-06-10")).toBeNull();
+  });
+});
+
+describe("formatJobWhen", () => {
+  it("formats a date+time as compact weekday-month-day + time", () => {
+    expect(formatJobWhen("2026-06-27", "14:00:00")).toBe("Sat, Jun 27 · 2:00 PM");
+  });
+  it("handles midnight (12:00 AM)", () => {
+    expect(formatJobWhen("2026-07-01", "00:05:00")).toBe("Wed, Jul 1 · 12:05 AM");
+  });
+  it("always shows the date even when it is today", () => {
+    // The result must contain a weekday abbreviation regardless of what today is.
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    const result = formatJobWhen(`${y}-${m}-${d}`, "09:00:00");
+    expect(result).toMatch(/^[A-Z][a-z]{2},/); // starts with "Mon,", "Tue,", etc.
   });
 });
 

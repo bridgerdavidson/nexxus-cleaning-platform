@@ -6,6 +6,7 @@ import { OrganizationSection } from "./OrganizationSection";
 import { PaymentsSection } from "./PaymentsSection";
 import { CancellationSection } from "./CancellationSection";
 import { PayoutSettingsSection } from "./PayoutSettingsSection";
+import { CleanerExperienceSection } from "./CleanerExperienceSection";
 import { BusinessHoursSection } from "./BusinessHoursSection";
 
 export const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
@@ -14,5 +15,6 @@ export const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
   payments: PaymentsSection,
   cancellation: CancellationSection,
   payout: PayoutSettingsSection,
+  "cleaner-experience": CleanerExperienceSection,
   "business-hours": BusinessHoursSection,
 };

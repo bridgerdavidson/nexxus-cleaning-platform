@@ -100,6 +100,12 @@ export interface Organization {
   cancellation_fee_type?: 'none' | 'flat' | 'percent';
   cancellation_fee_value?: number; // dollars (flat) or percent (percent)
   billing_email?: string | null;
+  // Active-job photo gate — added in migration 095.
+  require_job_photos: boolean;
+  // What the assigned cleaner sees on the Complete sheet — added in migration 096.
+  //   'full'        -> full breakdown (customer charge + cut).
+  //   'payout_only' -> only the cleaner's cut (no customer charge, no percentage).
+  cleaner_pay_display: 'full' | 'payout_only';
 }
 
 // ORGANIZATION MEMBERS
@@ -196,6 +202,9 @@ export interface Appointment {
   // Sidecar lifecycle state; NULL on admin direct-book appointments that
   // aren't going through the routing flow.
   request_state: AppointmentRequestState | null;
+  // Active-job photo gate — added in migration 095.
+  photos_skipped: boolean;
+  photo_skip_reason: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -605,6 +614,32 @@ export interface PricingTier {
   basePrice: number;
   description: string;
   features: string[];
+}
+
+// CHECKLIST ITEM COMPLETIONS — added in migration 095
+export interface ChecklistItemCompletion {
+  id: string;
+  appointment_id: string;
+  checklist_line_item_id: string;
+  organization_id: string | null;
+  completed_at: string;
+  created_at: string;
+}
+
+// Charge projection sent to the client (consumed by the cleaner Complete sheet).
+// In 'payout_only' mode the customer-charge fields (baseCents/method/chargeCents/
+// feeCents/payoutPercent) are OMITTED from the cleaner's response by the API, so
+// they are optional here. Org staff always receive the full ('full') shape.
+export interface ChargeProjection {
+  display: 'full' | 'payout_only';
+  cleanerCutCents: number;
+  isSelfPay: boolean;
+  // present only when display === 'full':
+  baseCents?: number;
+  method?: 'card' | 'us_bank_account';
+  chargeCents?: number;
+  feeCents?: number;
+  payoutPercent?: number;
 }
 
 // ==========================================

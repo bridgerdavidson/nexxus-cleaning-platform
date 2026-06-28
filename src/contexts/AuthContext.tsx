@@ -321,6 +321,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 logo_url: org.logo_url || undefined,
                 created_at: new Date().toISOString(),
                 created_by: null,
+                require_job_photos: (org as { require_job_photos?: boolean }).require_job_photos ?? true,
+                cleaner_pay_display:
+                  (org as { cleaner_pay_display?: 'full' | 'payout_only' }).cleaner_pay_display ?? 'full',
               }
             : null,
         );

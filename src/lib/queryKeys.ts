@@ -11,6 +11,10 @@ export const keys = {
       ['appointments', 'action-items', 'org', orgId] as const,
     routingLog: (appointmentId: string) =>
       ['appointments', 'routing-log', appointmentId] as const,
+    checklistCompletions: (appointmentId: string) =>
+      ['appointments', 'checklist-completions', appointmentId] as const,
+    chargeProjection: (appointmentId: string) =>
+      ['appointments', 'charge-projection', appointmentId] as const,
   },
   payments: {
     all: ['payments'] as const,

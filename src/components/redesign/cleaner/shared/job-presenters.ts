@@ -35,11 +35,21 @@ export function propertyAddress(a: CleanerAppointment): string | null {
   return full || null;
 }
 
+/** A Google Maps search URL for a plain address string. */
+export function googleMapsUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+/** An Apple Maps search URL for a plain address string. */
+export function appleMapsUrl(address: string): string {
+  return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
+}
+
 /** A Google Maps search link for the property address, or null. */
 export function mapsUrl(a: CleanerAppointment): string | null {
   const addr = propertyAddress(a);
   if (!addr) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+  return googleMapsUrl(addr);
 }
 
 /**
@@ -86,6 +96,24 @@ export function formatCardDate(dateStr: string, todayStr: string): string | null
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),
   });
+}
+
+/**
+ * Compact "Sat, Jun 27 · 2:00 PM" string for the active-job meta row.
+ * Always shows the date — unlike formatCardDate which suppresses today's date.
+ */
+export function formatJobWhen(dateStr: string, time: string): string {
+  const [y, m, d] = (dateStr ?? "").split("-").map(Number);
+  const dateLabel =
+    y && m && d
+      ? new Date(y, m - 1, d).toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        })
+      : (dateStr ?? "");
+  const { h, ap } = formatTimeParts(time);
+  return `${dateLabel} · ${h} ${ap}`;
 }
 
 export interface OfferSlot {

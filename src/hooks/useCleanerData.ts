@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useToast } from '../contexts/ToastContext';
@@ -11,6 +11,7 @@ import { keys } from '../lib/queryKeys';
 import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
+import type { ChargeProjection, ChecklistItemCompletion } from '../types';
 
 export interface CleanerAppointment {
   id: string;
@@ -20,6 +21,8 @@ export interface CleanerAppointment {
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   job_progress?: 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
+  /** True once the cleaner skipped the photo gate with a reason (migration 095). */
+  photos_skipped?: boolean;
   total_price: number;
   special_requests?: string;
   cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected';
@@ -137,6 +140,7 @@ export function useCleanerAppointments() {
           scheduled_time,
           status,
           job_progress,
+          photos_skipped,
           total_price,
           special_requests,
           cleaner_confirmation_status,
@@ -1036,4 +1040,254 @@ export function useRespondToOffer() {
   });
 
   return { accept, decline };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Active-job flow hooks (Slice 3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Complete a job (status -> completed; triggers charge + lifecycle notification).
+ * Returns { chargeOutcome } mapped from the completion charge paymentStatus. */
+export function useCompleteJob() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const userId = user?.id;
+  return useMutation({
+    mutationFn: async (appointmentId: string): Promise<{ chargeOutcome?: string }> => {
+      const r = await updateAppointmentStatus(appointmentId, 'completed') as {
+        success: boolean;
+        error?: string;
+        paymentStatus?: string;
+      };
+      if (!r.success) throw new Error(r.error || 'Could not complete the job');
+      // Map the paymentStatus ('paid'|'processing'|'failed') to the outcome-code
+      // vocabulary the Complete sheet keys off ('charged'|'processing'|'failed').
+      return { chargeOutcome: r.paymentStatus === 'paid' ? 'charged' : r.paymentStatus };
+    },
+    onSuccess: () => {
+      if (userId) {
+        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+        qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+      }
+      showToast('Job completed', { variant: 'success' });
+    },
+    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+  });
+}
+
+/** Silently update job_progress (step transitions; no toast). */
+export function useUpdateJobProgress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      progress,
+    }: {
+      appointmentId: string;
+      progress: string;
+    }): Promise<void> => {
+      const r = await updateJobProgress(appointmentId, progress);
+      if (!r.success) throw new Error(r.error || 'Could not update job progress');
+    },
+    onSuccess: (_data, { appointmentId }) => {
+      qc.invalidateQueries({ queryKey: keys.appointments.detail(appointmentId) });
+    },
+  });
+}
+
+// Stable empty-Set fallback so consumers that depend on `completed` don't see a
+// fresh reference on every render before data arrives (mirrors EMPTY_LINE_ITEMS).
+const EMPTY_COMPLETIONS: ReadonlySet<string> = new Set<string>();
+
+/** Read checklist item completions for an appointment as a Set of checklist_line_item_ids.
+ * Uses the anon Supabase client so the cleaner RLS policy authorizes reads. */
+export function useChecklistCompletions(appointmentId: string | null) {
+  const queryKey = keys.appointments.checklistCompletions(appointmentId ?? '');
+  const query = useOrgQuery({
+    queryKey,
+    enabled: !!appointmentId,
+    queryFn: async ({ signal }): Promise<Set<string>> => {
+      const { data, error } = await supabase
+        .from('checklist_item_completions')
+        .select('checklist_line_item_id')
+        .eq('appointment_id', appointmentId as string)
+        .abortSignal(signal);
+      if (error) throw error;
+      return new Set(
+        (data ?? []).map(
+          (r: Pick<ChecklistItemCompletion, 'checklist_line_item_id'>) => r.checklist_line_item_id,
+        ),
+      );
+    },
+  });
+  return {
+    completed: query.data ?? EMPTY_COMPLETIONS,
+    isLoading: query.isLoading,
+    error: query.error ?? null,
+  };
+}
+
+/** Toggle a checklist line item completion for an appointment.
+ * Optimistic: updates the cached Set immediately, then invalidates on settle.
+ * organization_id is sourced from auth context so RLS reads by org staff are authorized. */
+export function useToggleChecklistItem() {
+  const { currentOrganizationId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      lineItemId,
+      done,
+    }: {
+      appointmentId: string;
+      lineItemId: string;
+      done: boolean;
+    }): Promise<void> => {
+      if (done) {
+        const { error } = await supabase
+          .from('checklist_item_completions')
+          .upsert(
+            {
+              appointment_id: appointmentId,
+              checklist_line_item_id: lineItemId,
+              organization_id: currentOrganizationId ?? null,
+            },
+            { onConflict: 'appointment_id,checklist_line_item_id' },
+          );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('checklist_item_completions')
+          .delete()
+          .eq('appointment_id', appointmentId)
+          .eq('checklist_line_item_id', lineItemId);
+        if (error) throw error;
+      }
+    },
+    onMutate: async ({ appointmentId, lineItemId, done }) => {
+      const queryKey = keys.appointments.checklistCompletions(appointmentId);
+      await qc.cancelQueries({ queryKey });
+      const previous = qc.getQueryData<Set<string>>(queryKey);
+      qc.setQueryData<Set<string>>(queryKey, (old) => {
+        const next = new Set(old ?? []);
+        if (done) next.add(lineItemId);
+        else next.delete(lineItemId);
+        return next;
+      });
+      return { previous, queryKey };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) {
+        qc.setQueryData(ctx.queryKey, ctx.previous);
+      }
+    },
+    onSettled: (_data, _err, { appointmentId }) => {
+      qc.invalidateQueries({ queryKey: keys.appointments.checklistCompletions(appointmentId) });
+    },
+  });
+}
+
+/** Fetch the charge projection for the active-job completion summary.
+ * Lazy: only fetches when `enabled` (e.g. the completion sheet is open). */
+export function useChargeProjection(appointmentId: string | null, enabled: boolean) {
+  const { currentOrganizationId } = useAuth();
+  // Org in the key so a switch refetches; the route requires organization_id via
+  // requireOrgAuth (400 without it), so only fetch once we have one.
+  const queryKey = [
+    ...keys.appointments.chargeProjection(appointmentId ?? ''),
+    currentOrganizationId ?? '',
+  ] as const;
+  const query = useQuery({
+    queryKey,
+    enabled: enabled && !!appointmentId && !!currentOrganizationId,
+    queryFn: async ({ signal }): Promise<ChargeProjection | null> => {
+      const token = await getAccessToken();
+      const res = await fetch(
+        `/api/appointments/${appointmentId}/charge-projection?organization_id=${currentOrganizationId}`,
+        {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          signal,
+        },
+      );
+      if (!res.ok) throw new Error('Could not load charge projection');
+      const body = (await res.json()) as { projection: ChargeProjection | null };
+      return body.projection;
+    },
+  });
+  return {
+    projection: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error ?? null,
+  };
+}
+
+/** POST photo-skip for an appointment; invalidates appointment detail + byCleaner lists. */
+export function useSkipPhotos() {
+  const { user, currentOrganizationId } = useAuth();
+  const qc = useQueryClient();
+  const userId = user?.id;
+  return useMutation({
+    mutationFn: async ({
+      appointmentId,
+      reason,
+    }: {
+      appointmentId: string;
+      reason: string;
+    }): Promise<void> => {
+      const token = await getAccessToken();
+      const res = await fetch(`/api/appointments/${appointmentId}/photo-skip`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        // organizationId is required by the route's requireOrgAuth (400 without it).
+        body: JSON.stringify({ organizationId: currentOrganizationId, reason }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        throw new Error((data as { error?: string }).error || 'Could not skip photos');
+      }
+    },
+    onSuccess: (_data, { appointmentId }) => {
+      qc.invalidateQueries({ queryKey: keys.appointments.detail(appointmentId) });
+      if (userId) {
+        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+      }
+    },
+  });
+}
+
+/**
+ * Reads `organizations.require_job_photos` for the cleaner's current org.
+ *
+ * IMPORTANT: this is sourced from a dedicated query that actually SELECTs the
+ * column. The org object on AuthContext only selects `id, name, logo_url`, so
+ * `currentOrganization.require_job_photos` there always falls back to its default
+ * (`true`) and would make the photo gate ignore an org that set it to `false`.
+ * Reading it here avoids that trap. Defaults to `true` (gate required) while
+ * loading, on error, or when the column is null — never silently bypass the gate.
+ *
+ * For a cleaner, `currentOrganizationId` is the org their appointments belong to
+ * (one membership; appointments are org-scoped), so this matches the active job's org.
+ */
+export function useOrgRequireJobPhotos(): boolean {
+  const { currentOrganizationId } = useAuth();
+  const query = useQuery({
+    queryKey: ['organization', 'require-job-photos', currentOrganizationId ?? ''] as const,
+    enabled: !!currentOrganizationId,
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('require_job_photos')
+        .eq('id', currentOrganizationId as string)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as { require_job_photos?: boolean } | null)?.require_job_photos ?? true;
+    },
+  });
+  return query.data ?? true;
 }

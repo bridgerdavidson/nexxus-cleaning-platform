@@ -1,9 +1,9 @@
 // src/components/redesign/settings/sections.ts
-import { User, Building2, CreditCard, Receipt, Wallet, CalendarClock, type LucideIcon } from "lucide-react";
+import { User, Building2, CreditCard, Receipt, Wallet, CalendarClock, Users, type LucideIcon } from "lucide-react";
 import type { ManagerPermissions } from "@/hooks/useAdminData";
 
 export type SettingsSectionId =
-  | "profile" | "organization" | "payments" | "cancellation" | "payout" | "business-hours";
+  | "profile" | "organization" | "payments" | "cancellation" | "payout" | "cleaner-experience" | "business-hours";
 export type SettingsGroupId = "account" | "business";
 
 export interface RedesignSettingsSection {
@@ -28,6 +28,7 @@ export const REDESIGN_SETTINGS_SECTIONS: RedesignSettingsSection[] = [
   { id: "payments", label: "Payments", icon: CreditCard, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_payments" },
   { id: "cancellation", label: "Cancellation policy", icon: Receipt, group: "business", roles: ["admin", "owner"] },
   { id: "payout", label: "Payout settings", icon: Wallet, group: "business", roles: ["owner"] },
+  { id: "cleaner-experience", label: "Cleaner experience", icon: Users, group: "business", roles: ["admin", "owner"] },
   { id: "business-hours", label: "Business hours", icon: CalendarClock, group: "business", roles: ["admin", "owner"] },
 ];
 
