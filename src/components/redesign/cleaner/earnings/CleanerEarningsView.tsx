@@ -198,24 +198,27 @@ function ClearingSection({
       </CardHeader>
       <CardContent className="p-0">
         <div className="divide-y divide-border">
-          {rows.map((r) => (
-            <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{r.serviceLabel}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {r.customerLabel}
-                  {r.dateRaw ? ` · ${formatCardDate(r.dateRaw, todayStr)}` : ""}
-                </p>
+          {rows.map((r) => {
+            const dateLabel = r.dateRaw ? formatCardDate(r.dateRaw, todayStr) : null;
+            return (
+              <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{r.serviceLabel}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {r.customerLabel}
+                    {dateLabel ? ` · ${dateLabel}` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <TxnStatusBadge badge="processing" />
+                  <span className="tabular-nums text-sm font-semibold text-foreground">
+                    {money2(r.cutDollars)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{settleCopy(r.settleKind)}</span>
+                </div>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <TxnStatusBadge badge="processing" />
-                <span className="tabular-nums text-sm font-semibold text-foreground">
-                  {money2(r.cutDollars)}
-                </span>
-                <span className="text-[10px] text-muted-foreground">{settleCopy(r.settleKind)}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <p className="px-4 py-3 text-xs text-muted-foreground">
           {setUp
