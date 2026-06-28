@@ -1,104 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { MobileTakeover } from '../shared/MobileTakeover'
 import { InboxList } from './InboxList'
 import { MessageThreadPanel } from './MessageThreadPanel'
 import { ContextPanel } from './ContextPanel'
 import type { OperatorMessagesViewProps } from './messages-types'
-
-/**
- * Mobile thread takeover: a full-screen surface that slides in from the right
- * over the entire shell (top bar, bottom nav, FAB) so the conversation gets the
- * whole screen, like a native messaging app. Mirrors the legacy slide behavior.
- * `onClosed` runs after the slide-out completes (it deselects the conversation).
- */
-function MobileThreadOverlay({
-  onClosed,
-  children,
-}: {
-  onClosed: () => void
-  children: (close: () => void) => React.ReactNode
-}) {
-  const [shown, setShown] = useState(false)
-  const closingRef = useRef(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  const close = useCallback(() => {
-    if (closingRef.current) return
-    closingRef.current = true
-    setShown(false)
-    window.setTimeout(onClosed, 300)
-  }, [onClosed])
-  // Keep the latest close reachable from mount-only effects without re-running them.
-  const closeRef = useRef(close)
-  closeRef.current = close
-
-  // Slide in on mount.
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setShown(true))
-    return () => cancelAnimationFrame(id)
-  }, [])
-
-  // Lock background scroll + move focus into the takeover ONCE when it opens.
-  // This MUST be mount-only: re-running it on every render would re-call
-  // .focus() and steal focus from the composer on each keystroke, which
-  // collapses the on-screen keyboard (you'd have to re-tap after every letter).
-  useEffect(() => {
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    ref.current?.focus()
-    return () => {
-      document.body.style.overflow = prevOverflow
-    }
-  }, [])
-
-  // Close on Escape (bind once; call the latest close via a ref).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeRef.current()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  // Keep the composer above the on-screen keyboard on iOS: the visual viewport
-  // shrinks when the keyboard opens but a `fixed`/`dvh` layout does not, so we
-  // lift the overlay's bottom by the keyboard height.
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const update = () => {
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-      ref.current?.style.setProperty('--kbd', `${kb}px`)
-    }
-    update()
-    vv.addEventListener('resize', update)
-    vv.addEventListener('scroll', update)
-    return () => {
-      vv.removeEventListener('resize', update)
-      vv.removeEventListener('scroll', update)
-    }
-  }, [])
-
-  return (
-    <div
-      ref={ref}
-      role="dialog"
-      aria-modal="true"
-      tabIndex={-1}
-      style={{ paddingBottom: 'max(env(safe-area-inset-bottom), var(--kbd, 0px))' }}
-      className={cn(
-        'redesign-overlay fixed inset-0 z-50 flex flex-col bg-card outline-none lg:hidden',
-        'pt-[env(safe-area-inset-top)]',
-        'transition-transform duration-300 ease-out motion-reduce:transition-none',
-        shown ? 'translate-x-0' : 'translate-x-full',
-      )}
-    >
-      <div className="flex min-h-0 flex-1 flex-col">{children(close)}</div>
-    </div>
-  )
-}
 
 export function OperatorMessagesView(props: OperatorMessagesViewProps) {
   const hasSelection = !!props.selectedId
@@ -207,9 +114,9 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
 
       {/* Mobile: full-screen thread takeover that slides in over the whole shell */}
       {props.isMobile && hasSelection && (
-        <MobileThreadOverlay onClosed={() => props.onSelect('')}>
+        <MobileTakeover onClosed={() => props.onSelect('')} ariaLabel="Conversation" desktopHidden keyboardAware>
           {(close) => renderThread(close)}
-        </MobileThreadOverlay>
+        </MobileTakeover>
       )}
 
       {/* Mobile About: drag-dismiss Drawer */}

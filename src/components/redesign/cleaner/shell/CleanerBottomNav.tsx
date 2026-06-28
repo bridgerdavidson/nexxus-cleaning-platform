@@ -5,7 +5,13 @@ import { cn } from "@/lib/utils";
 import { CLEANER_NAV } from "./cleaner-nav-items";
 
 /** Phone-first bottom tab bar (5 top-level tabs), shown at all widths. */
-export function CleanerBottomNav({ activeId }: { activeId?: string }) {
+export function CleanerBottomNav({
+  activeId,
+  messagesUnread = 0,
+}: {
+  activeId?: string;
+  messagesUnread?: number;
+}) {
   return (
     <nav
       aria-label="Primary"
@@ -27,8 +33,21 @@ export function CleanerBottomNav({ activeId }: { activeId?: string }) {
             {active && (
               <span className="absolute top-0 left-1/2 h-0.5 w-7 -translate-x-1/2 rounded-full bg-brand-600" aria-hidden />
             )}
-            <Icon className="h-6 w-6" aria-hidden />
+            <span className="relative">
+              <Icon className="h-6 w-6" aria-hidden />
+              {item.id === "messages" && messagesUnread > 0 && (
+                <span
+                  aria-hidden
+                  className="absolute -right-2 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card bg-brand-600 px-1 text-[10px] font-bold leading-none tabular-nums text-white"
+                >
+                  {messagesUnread > 99 ? "99+" : messagesUnread}
+                </span>
+              )}
+            </span>
             {item.label}
+            {item.id === "messages" && messagesUnread > 0 && (
+              <span className="sr-only">{messagesUnread} unread</span>
+            )}
           </Link>
         );
       })}

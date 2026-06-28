@@ -52,6 +52,8 @@ export interface CleanerActiveJobViewProps {
   onOpen: (screen: 'before' | 'checklist' | 'after') => void;
   onComplete: () => void;
   onSkipPhotos: () => void;
+  /** Open the office thread with this job armed (the office sees which job it's about). */
+  onMessageOffice: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +109,7 @@ export function CleanerActiveJobView({
   onOpen,
   onComplete,
   onSkipPhotos,
+  onMessageOffice,
 }: CleanerActiveJobViewProps) {
   const addr = propertyAddress(appointment);
   const remainingHint = gate.remaining.join(', ');
@@ -144,14 +147,10 @@ export function CleanerActiveJobView({
             {/* Actions: Directions + Message office placeholder, side by side */}
             <div className="mt-4 flex items-stretch gap-3">
               <CleanerDirectionsButton address={addr ?? ''} className="flex-1" />
-              {/* Office messaging arrives in Slice 5; placeholder kept visible
-                  but disabled so the affordance is discoverable. */}
               <Button
                 variant="outline"
                 size="default"
-                disabled
-                aria-disabled="true"
-                title="Coming soon"
+                onClick={onMessageOffice}
                 className="flex-1 gap-2"
               >
                 <MessageSquare className="size-4" aria-hidden />

@@ -3,6 +3,8 @@
 import { type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuth } from "@/hooks/useAuth";
+import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
 import { CleanerTopBar } from "./CleanerTopBar";
 import { CleanerBottomNav } from "./CleanerBottomNav";
 import { deriveCleanerActive } from "./cleaner-nav-items";
@@ -12,6 +14,8 @@ import { deriveCleanerActive } from "./cleaner-nav-items";
 export function CleanerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const activeId = deriveCleanerActive(pathname);
+  const { user } = useAuth();
+  const messagesUnread = useUnreadMessageCount(user?.id);
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-dvh bg-background text-foreground">
@@ -25,7 +29,7 @@ export function CleanerShell({ children }: { children: ReactNode }) {
         <main id="main-content" className="mx-auto max-w-lg px-4 pb-28 pt-4">
           {children}
         </main>
-        <CleanerBottomNav activeId={activeId} />
+        <CleanerBottomNav activeId={activeId} messagesUnread={messagesUnread} />
       </div>
     </TooltipProvider>
   );
