@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -58,7 +59,6 @@ export function CleanerDirectionsButton({ address, className }: CleanerDirection
         size="default"
         className={cn('gap-2', className)}
         onClick={() => setOpen(true)}
-        aria-label="Get directions"
       >
         <Navigation className="size-5" aria-hidden />
         Directions
@@ -68,6 +68,7 @@ export function CleanerDirectionsButton({ address, className }: CleanerDirection
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>Open in maps</DrawerTitle>
+            <DrawerDescription className="sr-only">Choose a maps app</DrawerDescription>
           </DrawerHeader>
 
           <div className="px-5 pb-1 space-y-2.5">
