@@ -4,10 +4,12 @@ import { cn } from '@/lib/utils';
 export function Progress({
   value,
   className,
+  barClassName,
   'aria-label': ariaLabel,
 }: {
   value: number;
   className?: string;
+  barClassName?: string;
   'aria-label'?: string;
 }) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
@@ -21,7 +23,10 @@ export function Progress({
       className={cn('h-2 w-full overflow-hidden rounded-pill bg-muted', className)}
     >
       <div
-        className="h-full rounded-pill bg-brand-600 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+        className={cn(
+          'h-full rounded-pill bg-brand-600 transition-[width] duration-500 ease-out motion-reduce:transition-none',
+          barClassName,
+        )}
         style={{ width: `${pct}%` }}
       />
     </div>

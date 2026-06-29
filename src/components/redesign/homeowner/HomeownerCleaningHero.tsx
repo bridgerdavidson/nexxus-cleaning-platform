@@ -10,6 +10,7 @@ import {
   cleanerDisplayName,
   formatCleaningWhen,
 } from './home/home-presenters';
+import { LiveCleaningProgress } from './home/LiveCleaningProgress';
 
 const TONE_TO_VARIANT = {
   default: 'default',
@@ -71,6 +72,7 @@ export function HomeownerCleaningHero({ appointment }: { appointment: Appointmen
           </div>
         </div>
       )}
+      {state === 'in_progress' && <LiveCleaningProgress appointment={appointment} />}
     </div>
   );
 }
