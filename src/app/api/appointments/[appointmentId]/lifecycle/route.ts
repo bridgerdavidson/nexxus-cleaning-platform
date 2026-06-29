@@ -63,6 +63,18 @@ export async function POST(
       );
     }
 
+    // Stamp started_at / completed_at. The .is(..., null) guard keeps the
+    // first timestamp stable across retries / realtime re-fires (idempotent).
+    await supabaseAdmin
+      .from('appointments')
+      .update(
+        event === 'started'
+          ? { started_at: new Date().toISOString() }
+          : { completed_at: new Date().toISOString() },
+      )
+      .eq('id', appointmentId)
+      .is(event === 'started' ? 'started_at' : 'completed_at', null);
+
     const eventType = event === 'started' ? 'job_started' : 'job_completed';
     const ctx = await loadNotificationContext(supabaseAdmin, {
       appointmentId,

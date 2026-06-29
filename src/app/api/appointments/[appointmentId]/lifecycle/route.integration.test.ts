@@ -113,6 +113,88 @@ describe('POST /api/appointments/:appointmentId/lifecycle', () => {
     expect(recipients).toContain(org.admin.userId);
   });
 
+  it('stamps started_at when the job starts', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+    });
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organizationId: org.organizationId, event: 'started' },
+    });
+    expect(status).toBe(200);
+
+    const { data: row } = await admin
+      .from('appointments')
+      .select('started_at')
+      .eq('id', appt.id)
+      .single();
+    expect(row?.started_at).not.toBeNull();
+  });
+
+  it('stamps completed_at when the job completes', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+    });
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organizationId: org.organizationId, event: 'completed' },
+    });
+    expect(status).toBe(200);
+
+    const { data: row } = await admin
+      .from('appointments')
+      .select('completed_at')
+      .eq('id', appt.id)
+      .single();
+    expect(row?.completed_at).not.toBeNull();
+  });
+
+  it('does not move started_at on a second started call (idempotency guard)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+    });
+
+    // First call — stamps started_at.
+    await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organizationId: org.organizationId, event: 'started' },
+    });
+
+    const { data: first } = await admin
+      .from('appointments')
+      .select('started_at')
+      .eq('id', appt.id)
+      .single();
+    const firstStampedAt = first?.started_at;
+    expect(firstStampedAt).not.toBeNull();
+
+    // Second call — the .is('started_at', null) guard means the UPDATE
+    // matches zero rows; started_at must remain unchanged.
+    await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { organizationId: org.organizationId, event: 'started' },
+    });
+
+    const { data: second } = await admin
+      .from('appointments')
+      .select('started_at')
+      .eq('id', appt.id)
+      .single();
+    expect(second?.started_at).toBe(firstStampedAt);
+  });
+
   it('notifies only admins for a self-pay appointment (no homeowner)', async () => {
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
