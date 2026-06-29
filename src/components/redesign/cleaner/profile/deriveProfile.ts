@@ -1,3 +1,4 @@
+import { personInitials } from "@/lib/initials";
 import type { ProfileNameLike } from "./profile-types";
 
 /** Display name from a name shim, e.g. "Maria Alvarez", "Maria", or a generic
@@ -10,12 +11,9 @@ export function cleanerDisplayName(p: ProfileNameLike): string {
   return name || "Your profile";
 }
 
-/** Up-to-two-letter initials for the avatar fallback, uppercased. */
+/** Up-to-two-letter initials for the avatar fallback, uppercased ("U" fallback). */
 export function cleanerInitials(p: ProfileNameLike): string {
-  const f = (p.firstName ?? "").trim();
-  const l = (p.lastName ?? "").trim();
-  const initials = `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
-  return initials || "U";
+  return personInitials(p.firstName, p.lastName) || "U";
 }
 
 /** The Availability section is an employee-model placeholder. */
