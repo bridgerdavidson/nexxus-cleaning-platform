@@ -35,6 +35,9 @@ export interface Appointment {
     } | null;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  job_progress?: 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed' | null;
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface Property {
@@ -110,6 +113,9 @@ export function useHomeownerAppointments() {
           scheduled_time,
           status,
           total_price,
+          job_progress,
+          started_at,
+          completed_at,
           property:properties(
             name,
             address,
