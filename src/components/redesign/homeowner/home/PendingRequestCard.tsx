@@ -5,6 +5,7 @@ import type { HomeownerRequest } from '@/hooks/useHomeownerRequests';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { toast } from '@/components/ui/toast';
 
 export function PendingRequestCard({
   request,
@@ -49,8 +50,12 @@ export function PendingRequestCard({
         destructive
         loading={cancelling}
         onConfirm={async () => {
-          await onCancel(request.id);
-          setOpen(false);
+          try {
+            await onCancel(request.id);
+            setOpen(false);
+          } catch {
+            toast.error('Could not cancel the request. Please try again.');
+          }
         }}
       />
     </div>
