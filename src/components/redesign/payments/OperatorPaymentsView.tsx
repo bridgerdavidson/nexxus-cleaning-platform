@@ -102,12 +102,10 @@ export function OperatorPaymentsView({
 
   return (
     <div className="max-w-[1700px] space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Payments</h1>
-        </div>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Payments</h1>
         {canManagePayments && onRecordPayment ? (
-          <Button onClick={onRecordPayment} className="sm:shrink-0">
+          <Button onClick={onRecordPayment} className="shrink-0">
             <Plus /> Record payment
           </Button>
         ) : null}

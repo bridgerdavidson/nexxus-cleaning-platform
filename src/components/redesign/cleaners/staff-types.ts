@@ -9,6 +9,15 @@ export type StaffRole = "owner" | "admin" | "manager";
 export type PeopleSegment = "cleaners" | "staff";
 export type StaffRowAction = "open" | "permissions" | "remove";
 
+/** Sort options for the Staff segment (mirrors the Cleaners segment's sort slot
+ *  so the People toolbar is identical across the toggle). */
+export type StaffSort = "name_asc" | "name_desc" | "role";
+export const STAFF_SORTS: { id: StaffSort; label: string }[] = [
+  { id: "name_asc", label: "Name (A to Z)" },
+  { id: "name_desc", label: "Name (Z to A)" },
+  { id: "role", label: "Role" },
+];
+
 /** Staff invite statuses shown in the Staff segment's Pending group. */
 export type StaffInviteStatus = "pending" | "creating" | "failed" | "expired";
 

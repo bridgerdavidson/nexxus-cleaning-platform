@@ -1,15 +1,28 @@
 "use client";
 
-import { Search, Users, Plus, RefreshCw, X, Mail } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Users, Plus, RefreshCw, X, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StaffTable } from "./StaffTable";
 import { StaffCardList } from "./StaffCardList";
 import { InviteStatusBadge } from "./cleaners-presenters";
-import { PeopleSegmentTabs } from "./PeopleSegmentTabs";
-import type { PeopleSegment, StaffRowAction, StaffRowVM, StaffPendingInviteVM } from "./staff-types";
+import { PeopleToolbar } from "./PeopleToolbar";
+import { STAFF_SORTS } from "./staff-types";
+import type {
+  PeopleSegment,
+  StaffRowAction,
+  StaffRowVM,
+  StaffPendingInviteVM,
+  StaffSort,
+} from "./staff-types";
 import type { InviteRowAction } from "./cleaners-types";
 
 function StaffSkeleton() {
@@ -101,6 +114,8 @@ export type OperatorStaffViewProps = {
   busy?: boolean;
   search: string;
   onSearchChange: (v: string) => void;
+  sort: StaffSort;
+  onSortChange: (v: StaffSort) => void;
   onOpenRow: (id: string) => void;
   onRowAction: (id: string, action: StaffRowAction) => void;
   onInviteAction: (inviteId: string, action: InviteRowAction) => void;
@@ -119,6 +134,8 @@ export function OperatorStaffView({
   busy,
   search,
   onSearchChange,
+  sort,
+  onSortChange,
   onOpenRow,
   onRowAction,
   onInviteAction,
@@ -130,31 +147,33 @@ export function OperatorStaffView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
-          {showNew ? (
-            <Button onClick={onNewStaff} className="sm:shrink-0">
-              <Plus /> Invite team member
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
-          <div className="relative w-full lg:flex-1 lg:max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search by name or email"
-              className="pl-10"
-              aria-label="Search staff"
-            />
-          </div>
-        </div>
-      </div>
+      <PeopleToolbar
+        title="Cleaners & team"
+        createLabel="Invite staff"
+        onCreate={onNewStaff}
+        showCreate={showNew}
+        search={search}
+        onSearchChange={onSearchChange}
+        searchPlaceholder="Search by name or email"
+        searchAriaLabel="Search staff"
+        segment={segment}
+        onSegmentChange={onSegmentChange}
+        showSegmentTabs={showSegmentTabs}
+        sort={
+          <Select value={sort} onValueChange={(v) => onSortChange(v as StaffSort)}>
+            <SelectTrigger className="w-full" aria-label="Sort staff">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STAFF_SORTS.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
 
       {filtersActive && !loading && rows.length > 0 ? (
         <p className="text-xs text-muted-foreground">
