@@ -145,15 +145,7 @@ export default function PaymentsPreviewPage() {
         canManagePayments
         onRecordPayment={() => {}}
         triage={<MockTriageBand />}
-        kpis={
-          <PaymentsKpiStrip
-            totalRevenue={12480}
-            thisMonth={3210}
-            queuedPayouts={640}
-            txnCount={TXN_ROWS.length}
-            payoutCount={PAYOUT_ROWS.length}
-          />
-        }
+        kpis={<PaymentsKpiStrip totalRevenue={12480} thisMonth={3210} />}
         yourMoney={<MockYourMoney />}
       />
 

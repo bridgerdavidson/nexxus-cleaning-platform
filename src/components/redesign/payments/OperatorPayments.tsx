@@ -369,9 +369,6 @@ function OperatorPaymentsData({
           <PaymentsKpiStrip
             totalRevenue={stats?.totalRevenue ?? 0}
             thisMonth={stats?.thisMonthRevenue ?? 0}
-            queuedPayouts={stats?.pendingPayouts ?? 0}
-            txnCount={txnTotal}
-            payoutCount={payoutTotal}
             loading={statsLoading}
           />
         }
