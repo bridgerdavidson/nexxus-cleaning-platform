@@ -826,6 +826,19 @@ export function useAdminPaymentsInfinite() {
       keys: [keys.payments.infinite(orgId), keys.payments.statsByOrg(orgId)],
     }),
   });
+  // Direct payments-table sub: charges land async from Stripe webhooks, so a new
+  // paid charge (or status flip) refreshes the paginated list + the KPI tiles.
+  // Distinct channel name so it never dedupes against the legacy byOrg subs.
+  useSupabaseRealtimeSync({
+    channelName: `payments-inf:${orgId}`,
+    table: 'payments',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payments.infinite(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
 
   const rows = query.data?.pages.flatMap(p => p.rows) ?? [];
   const total = query.data?.pages?.[0]?.count ?? 0;

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
+import { keys } from "@/lib/queryKeys";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useToast } from "@/contexts/ToastContext";
@@ -126,6 +128,7 @@ function OperatorPaymentsData({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const { currentOrganizationId, currentOrganization } = useAuth();
   const { showToast } = useToast();
   const { startConversation } = useStartConversation();
@@ -396,6 +399,13 @@ function OperatorPaymentsData({
         onOpenChange={setRecordOpen}
         onRecorded={() => {
           void refetchPayments();
+          // The recorded payment changes revenue/this-month, refresh the KPI
+          // tiles (sourced from usePaymentStats, a separate query).
+          if (currentOrganizationId) {
+            void queryClient.invalidateQueries({
+              queryKey: keys.payments.statsByOrg(currentOrganizationId),
+            });
+          }
         }}
       />
     </>
