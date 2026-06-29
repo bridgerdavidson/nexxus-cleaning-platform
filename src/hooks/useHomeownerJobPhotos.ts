@@ -29,12 +29,13 @@ export function useHomeownerJobPhotos(appointmentId: string | null): {
   const query = useOrgQuery({
     queryKey,
     enabled: !!appointmentId,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { data, error } = await supabase
         .from('job_photos')
         .select('id, photo_url, photo_type, uploaded_at')
         .eq('appointment_id', appointmentId as string)
-        .order('uploaded_at', { ascending: true });
+        .order('uploaded_at', { ascending: true })
+        .abortSignal(signal);
       if (error) throw error;
       return (data ?? []) as JobPhoto[];
     },

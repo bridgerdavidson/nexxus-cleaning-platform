@@ -42,6 +42,7 @@ export function LiveCleaningProgress({ appointment }: { appointment: Appointment
       {beforePhotos.length > 0 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {beforePhotos.slice(0, 3).map((p) => (
+            // eslint-disable-next-line @next/next/no-img-element -- public bucket, next/image needs domain config
             <img
               key={p.id}
               src={p.photo_url}
