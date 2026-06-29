@@ -10,6 +10,8 @@ import {
   cleanerDisplayName,
   formatCleaningWhen,
 } from './home/home-presenters';
+import { LiveCleaningProgress } from './home/LiveCleaningProgress';
+import { CompletedCleaningRecap } from './home/CompletedCleaningRecap';
 
 const TONE_TO_VARIANT = {
   default: 'default',
@@ -46,31 +48,35 @@ export function HomeownerCleaningHero({ appointment }: { appointment: Appointmen
         : 'Your next cleaning';
 
   return (
-    <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-5 text-white shadow-soft-lg">
-      <div className="flex items-start justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-white/85">{heading}</p>
-        <Badge variant={TONE_TO_VARIANT[tone]} className="border-white/20 bg-white/20 text-white">
-          {label}
-        </Badge>
-      </div>
-      <p className="mt-2 text-xl font-extrabold tabular-nums">
-        {formatCleaningWhen(appointment.scheduled_date, appointment.scheduled_time)}
-      </p>
-      <p className="text-sm text-white/90">
-        {appointment.property?.address ?? appointment.property?.name ?? 'Your home'}
-        {appointment.service_type?.name ? ` · ${appointment.service_type.name}` : ''}
-      </p>
-      {cleaner && (
-        <div className="mt-4 flex items-center gap-3 border-t border-white/20 pt-3">
-          <Avatar className="size-9">
-            <AvatarFallback className="bg-white/30 text-white">{cleaner.charAt(0)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="text-sm font-semibold">{cleaner}</p>
-            <p className="text-xs text-white/80">Your cleaner</p>
-          </div>
+    <>
+      <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-5 text-white shadow-soft-lg">
+        <div className="flex items-start justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-white/85">{heading}</p>
+          <Badge variant={TONE_TO_VARIANT[tone]} className="border-white/20 bg-white/20 text-white">
+            {label}
+          </Badge>
         </div>
-      )}
-    </div>
+        <p className="mt-2 text-xl font-extrabold tabular-nums">
+          {formatCleaningWhen(appointment.scheduled_date, appointment.scheduled_time)}
+        </p>
+        <p className="text-sm text-white/90">
+          {appointment.property?.address ?? appointment.property?.name ?? 'Your home'}
+          {appointment.service_type?.name ? ` · ${appointment.service_type.name}` : ''}
+        </p>
+        {cleaner && (
+          <div className="mt-4 flex items-center gap-3 border-t border-white/20 pt-3">
+            <Avatar className="size-9">
+              <AvatarFallback className="bg-white/30 text-white">{cleaner.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="text-sm font-semibold">{cleaner}</p>
+              <p className="text-xs text-white/80">Your cleaner</p>
+            </div>
+          </div>
+        )}
+        {state === 'in_progress' && <LiveCleaningProgress appointment={appointment} />}
+      </div>
+      {state === 'complete' && <CompletedCleaningRecap appointment={appointment} />}
+    </>
   );
 }

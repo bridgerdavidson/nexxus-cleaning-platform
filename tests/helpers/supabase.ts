@@ -21,6 +21,23 @@ export function createTestSupabaseClient(): SupabaseClient {
 }
 
 /**
+ * Per-token RLS-enforced client. Bakes the user's bearer token into the Authorization header
+ * so every query runs as that user under RLS. Do NOT memoize — the token is per-user.
+ * Use this (not createAnonClient) when you need to prove a specific user's read/write access.
+ */
+export function createUserClient(accessToken: string): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY missing in test env.');
+  }
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+}
+
+/**
  * Anon-key client. Use to exercise RLS as a real user (with `setSession` after sign-in).
  */
 export function createAnonClient(): SupabaseClient {
