@@ -120,11 +120,26 @@ function cleanerNotificationHref(
   return '/app/cleaner-dashboard';
 }
 
+/**
+ * Click destination for a homeowner notification. Appointment-scoped rows
+ * deep-link the homeowner dashboard (its detail takeover opens on `?appointment=`,
+ * built in Slice 2); everything else lands on the homeowner home.
+ */
+function homeownerNotificationHref(
+  item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
+): string {
+  if (item.appointment_id) {
+    return `/app/homeowner-dashboard?appointment=${item.appointment_id}`;
+  }
+  return '/app/homeowner-dashboard';
+}
+
 function notificationHref(
   item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
   role: NotificationRole,
 ): string {
   if (role === 'cleaner') return cleanerNotificationHref(item);
+  if (role === 'homeowner') return homeownerNotificationHref(item);
   // admin and manager both use the operator console
   return operatorNotificationHref(item);
 }
