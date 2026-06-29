@@ -189,3 +189,23 @@ describe('deriveNotificationGroups', () => {
     expect(g.latest.action?.label).toBe('Assign cleaner');
   });
 });
+
+describe('homeownerNotificationHref (via deriveNotificationGroups role="homeowner")', () => {
+  it('deep-links appointment notifications to the homeowner dashboard', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: 'appt-7', event_type: 'job_started' })],
+      NOW,
+      'homeowner',
+    );
+    expect(g.latest.href).toBe('/app/homeowner-dashboard?appointment=appt-7');
+  });
+
+  it('falls back to the homeowner dashboard for appointment-less events', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: null, event_type: 'something_else' })],
+      NOW,
+      'homeowner',
+    );
+    expect(g.latest.href).toBe('/app/homeowner-dashboard');
+  });
+});

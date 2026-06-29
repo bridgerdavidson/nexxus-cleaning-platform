@@ -1,0 +1,45 @@
+# Job messaging (homeowner ↔ cleaner) — design brief
+
+> Status: **design complete — all decisions closed (2026-06-29); ready for writing-plans.** Extracted from the Homeowner redesign spec (`2026-06-29-redesign-homeowner-app-design.md`) on 2026-06-29 because it is a cross-cutting, backend-bearing feature, not a homeowner screen.
+> Cross-cutting scope: **homeowner Messages tab** (consumer) + **cleaner-app Messages** (today office-only — needs a companion update) + **operator office read-only** + **DB migrations** + **send-gating route**. The homeowner Messages slice consumes this; build this around/before that slice.
+
+## 1. Why
+
+Stakeholders originally wanted homeowner↔operator and cleaner↔operator only (no direct homeowner↔cleaner). This adds a **tightly-scoped** direct channel for real coordination (cleaner running late, homeowner pre-job info) **without** opening arbitrary contact.
+
+## 2. Decided model (locked in brainstorm 2026-06-29)
+
+- **A thread is a property of an appointment, not a contact.** It exists only because a specific homeowner + assigned cleaner share that job, so arbitrary contact is impossible by construction — there is **no compose-to-a-person picker** for either side.
+- **Lifecycle (send window):** send-enabled from **cleaner-assigned** until **`completed_at` + 24h grace** (see §4.3); a **cancelled** appointment closes immediately. After the window the thread is **archived read-only** (sending disabled, history preserved) — never deleted. Temporary *access*, permanent *record*.
+- **Visibility:** homeowner + assigned cleaner + **office (org staff, read-only)**. The parties know it is not fully private — supports oversight, dispute resolution, and discourages off-platform poaching.
+- **Org kill-switch:** per-org toggle `organizations.homeowner_cleaner_messaging_enabled` (**default `true`** / opt-out), in operator Settings → "Cleaner experience" (owner/admin), reusing the `/api/organizations/[orgId]/cleaner-experience` route + `CleanerExperienceSection`. When **off**: entry points don't render, the send route rejects (server-enforced), no new threads are created, existing threads go read-only with history retained. **Messaging only** — Office threads + homeowner live-tracking are unaffected.
+- **PII minimization:** first names + in-app only; no phone/email exchanged.
+- **Quick presets** on top of free text: cleaner "On my way" / "Running ~15 min late"; homeowner pre-job "access & notes".
+- **Entry points:** homeowner from the cleaning (Home hero / Cleanings detail "Message about this cleaning") while active; cleaner from the job (cleaner-app companion update).
+
+## 3. Verified backend reality (from spec-review investigation, 2026-06-29)
+
+- **`messages` already has `appointment_id`** (nullable, FK→appointments, PR #88) and `useSendMessage({ appointmentId })` already passes it. **`conversations` does NOT** have `appointment_id` (pure user-pair: `participant_1_id`/`participant_2_id` + `different_participants` CHECK).
+- **`get_or_create_conversation(user1,user2)` keys ONLY on the ordered participant pair** → two appointments with the same homeowner+cleaner (and **every recurring-series instance**) collide into one conversation. **This is the core rework**: a new appointment-aware get-or-create + a uniqueness constraint that includes `appointment_id`.
+- **RLS today:** `conversations_select` = participant-1/2 OR platform-admin (NO org-staff read). `messages_select` **already** allows org admin/manager read via `is_admin_or_manager_in_org(messages.organization_id)` + participant + platform-admin. So the office can already read job *messages* (messages carry `organization_id NOT NULL`) but **cannot list/open the conversation row** without a new policy.
+- **Send-gating cannot be RLS-only:** `messages_insert` is permissive (sender + `can_message_user`, plus managers can insert). A **dedicated guarded send route** must enforce: appointment in active window + org flag on + sender is the *current* homeowner/assigned cleaner. RLS is a backstop, not the gate.
+- **Appointment lifecycle for the window:** `appointment_status` = `pending|confirmed|in_progress|completed|cancelled`. Assignment sets `cleaner_id` (+ force-assign → `confirmed`); **reassignment resets `status→'pending'`** until re-confirm (the send window legitimately closes in that gap). `cancelled_at` exists; **there is no `completed_at` / job-start timestamp** (`job_progress` is a bare enum) — so a 24h-after-*completion* grace needs either a new timestamp column or anchoring grace to `scheduled_date/time + 24h`.
+- **No message notification exists today** (not even for Office threads) — a `message`/`job_message` notification event would be net-new (`notification_events.event_type` is free-text; emit from the send route via the existing outbox).
+- **Client hooks are 2-party-shaped:** `useConversations` derives a single `other_participant`; `deriveOfficeInbox` is built for a contact set. The thread UI (`ChatThread`, scroll/mark-read/realtime) is participant-agnostic and reusable; the **send box** and the **inbox derivation** need the new modes (read-only viewer, appointment-scoped thread, N active threads).
+
+## 4. Resolved decisions (2026-06-29)
+
+1. **Reassignment → per-(appointment, cleaner) stint.** A thread is keyed on `appointment_id` + the ordered participant pair, so reassignment to a new cleaner naturally creates a fresh thread; the old thread goes read-only (the old cleaner is no longer the current `cleaner_id`, so the send route blocks them). No participant mutation. Each cleaner sees only their own thread; the homeowner may see >1 thread on a reassigned cleaning (labeled by cleaner). Re-assigning the same cleaner back reuses their existing thread.
+2. **Office-read → booking/appointment context.** The office reads job threads as a **read-only "messages on this job" panel in operator Bookings/appointment detail**, via `messages.appointment_id` + the existing org-staff `messages` read policy (`is_admin_or_manager_in_org(organization_id)`). **No new `conversations` policy**, no operator-inbox clutter. The office never injects into the thread (their channel is the separate Office thread).
+3. **Grace → real timestamps.** Add `appointments.started_at` + `appointments.completed_at`, stamped by the lifecycle route on job start / completion. Grace = `completed_at + 24h`. **These columns also restore the homeowner live-tracking "elapsed time"**, so they land in **homeowner Slice 1b** (live tracking needs them first) and this feature reuses them.
+4. **Notification → job threads only.** A `job_message` event fires to the counterparty from the new guarded send route (via the existing `notification_events` outbox). Standing Office threads keep today's unread-badge behavior (no notification); Office-thread notifications are a possible separate follow-up, out of scope here.
+5. **Inbox → sectioned, in the Messages tab.** Job threads appear in the homeowner Messages tab (Office pinned at top; active job threads under "Your cleanings"; archived under "Past") **and** are reachable from the cleaning (Home hero / Cleanings detail). Replace the `deriveOfficeInbox` "1-vs-many" heuristic with this sectioned model. Same sectioned approach on the cleaner side (Office + active job threads).
+6. **Kill-switch → existing "Cleaner experience" settings section.** A row "Homeowner–cleaner messaging" reusing the `/api/organizations/[orgId]/cleaner-experience` route + `CleanerExperienceSection` + hook (zero new plumbing).
+
+## 5. Backend shape (per the resolved decisions)
+- **Migration (this feature):** `conversations.appointment_id` (nullable, FK cascade, index); appointment-aware get-or-create keyed on `appointment_id` + ordered pair, with `UNIQUE(appointment_id, participant_1_id, participant_2_id)`; `organizations.homeowner_cleaner_messaging_enabled boolean NOT NULL DEFAULT true`. **No `conversations` org-staff policy** (office reads via `messages` + `appointment_id`). `started_at`/`completed_at` are added earlier in homeowner Slice 1b and reused here for grace.
+- **Guarded send route** enforcing: org flag on + appointment in the active window (`status IN ('confirmed','in_progress')`, not cancelled, or within `completed_at + 24h`) + sender is the **current** homeowner/assigned `cleaner_id`. Emits the `job_message` notification. (RLS `messages_insert` is too permissive to be the gate — the route is.)
+- **Client:** sectioned inbox (Office + N job threads, active/archived) replacing `deriveOfficeInbox`'s 1-vs-many; `useMessages`/send box gain appointment-scoped + read-only modes; cleaner-app Messages companion update; operator Bookings read-only job-thread panel; homeowner Messages consumption.
+
+## 6. Tests
+Send-gating (blocked after complete+grace, on cancel, when org flag off, by non-current-participant); RLS negatives (non-participant / non-org-staff cannot read); reassignment access (old cleaner read-only, new cleaner active); recurring series → distinct threads; org-staff read scoped to own org.
