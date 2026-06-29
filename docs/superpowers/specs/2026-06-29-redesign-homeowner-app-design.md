@@ -57,7 +57,7 @@ The hero (on Home and in the Cleanings detail) reads the appointment state and m
 | State | Source | What the homeowner sees |
 | --- | --- | --- |
 | **Confirmed / scheduled** | `appointments.status` | Date · service · cleaner face · "Confirmed" pill. "It's handled." |
-| **In progress** | `appointments.job_progress` enum + `checklist_item_completions` count | Cleaner + **stage label** (before-photos → cleaning → after-photos) + **live checklist progress bar** ("8 of 14 tasks done") + a **before-photo peek**, updating in **real time**. (Elapsed time is dropped — no job-start timestamp exists; see §5 caveat.) |
+| **In progress** | `appointments.job_progress` enum + `checklist_item_completions` count + `started_at` | Cleaner + **stage label** (before-photos → cleaning → after-photos) + **live checklist progress bar** ("8 of 14 tasks done") + **elapsed time** (from the new `started_at`) + a **before-photo peek**, updating in **real time**. |
 | **Complete** | `appointments.status` + `job_photos` + payment | "Cleaning complete" recap: **after-photos**, checklist-done summary, and **receipt** (charge-at-completion amount/status). |
 
 **Why this combination:** `appointments.job_progress` (`not_started → before_photos → checklist → after_photos → completed`) gives the coarse stage label (RLS-readable by the homeowner). The fine **"X of Y"** granularity (the actual wow) counts `checklist_item_completions` against the appointment's checklist line-item total. **Correction (verified):** `useHomeownerAppointments` joins only checklist *metadata* (name/price), **not** line items, completions, or `job_progress`; `checklist_line_items` is homeowner-readable but isn't currently selected. So the new `useHomeownerJobProgress` hook does its **own targeted selects** (`job_progress` + line-items + completions) rather than bloating the shared appointments query. Enum-only was considered and rejected — it loses the per-task progress that makes the feature feel alive.
@@ -70,7 +70,7 @@ New migration (next sequential number, e.g. `097`):
 1. **Homeowner SELECT RLS on `checklist_item_completions`** — scoped to appointments the user owns (`EXISTS (SELECT 1 FROM appointments a WHERE a.id = checklist_item_completions.appointment_id AND a.homeowner_id = auth.uid())`). Add alongside the existing `cic_cleaner_rw` / `cic_org_read` policies (do not modify those).
 2. **Realtime**: add `checklist_item_completions` to the `supabase_realtime` publication + `ALTER TABLE ... REPLICA IDENTITY FULL` (template: `048_invites_realtime.sql`). `job_photos` + `appointments` realtime already work for the homeowner.
 
-**Elapsed-time / grace caveat:** `appointments` has **no `completed_at` or job-start timestamp** (`job_progress` is a bare enum). So in-progress "elapsed time" is dropped here unless we add a `started_at` column. (The same missing timestamp affects the job-messaging grace window — tracked in that feature's brief.)
+**Timestamps (decided):** `appointments` has no job-start/complete timestamp today, so Slice 1b **adds `started_at` + `completed_at`**, stamped by the lifecycle route on job start / completion. These power the in-progress **elapsed time** here and the job-messaging **grace window** (which reuses them — see `2026-06-29-job-messaging-design.md` §4.3).
 
 ### New homeowner read hooks (mirror the cleaner's, read-only)
 - `useHomeownerJobProgress(appointmentId)` — reads `appointments.job_progress`/`status` + `checklist_item_completions` count + checklist total; subscribes to completions + appointment changes via `useSupabaseRealtimeSync` (invalidate/patch). Returns `{ stage, doneCount, totalCount, percent, isLoading }`.
@@ -106,13 +106,13 @@ New migration (next sequential number, e.g. `097`):
 - **Reschedule / request-change** — deferred (net-new route; revisit later). Ship cancel + message only.
 - **Rate / favorite cleaner** — deferred (no ratings/favorites backend today; outside the "simple homeowner" goal).
 - **Homeowner↔cleaner messaging** is **extracted to its own cross-cutting feature** (`2026-06-29-job-messaging-design.md`) and consumed by the Messages tab here; not built inside this spec.
-- **Backend changes (this spec)** — one migration: the live-tracking `checklist_item_completions` RLS + realtime (§5). The job-messaging migrations live in that feature's brief.
+- **Backend changes (this spec)** — one migration: the live-tracking `checklist_item_completions` RLS + realtime + `appointments.started_at`/`completed_at` (§5, Slice 1b) + lifecycle-route stamping. The job-messaging migrations live in that feature's brief.
 
 ## 9. Slice plan (one PR per slice, like the cleaner app)
 
 **Slice 1a — Shell + Home (static, no migration).** Route group + `HomeownerShell` + `HomeownerBottomNav`; `getDashboardPath` homeowner case + **notification href fix** (add the missing homeowner branch so taps route to `/app/homeowner-dashboard?appointment=`); Home greeting + `NotificationBell`; the lifecycle hero **Confirmed** + **Complete** states (after-photos + receipt — both already homeowner-readable) + an **empty/no-upcoming state**; pending-request cards + cancel (with fee disclosure); "Request a cleaning" button + FAB → legacy modal. Tests: hero state derivation, notification href routing (homeowner).
 
-**Slice 1b — Live cleaning tracking (the headline).** The migration (`checklist_item_completions` homeowner RLS + realtime) + `useHomeownerJobProgress` (targeted selects of `job_progress` + line-items + completions; realtime via `useSupabaseRealtimeSync`) + the **in-progress** hero state + `LiveCleaningProgress` + the checklist-done count in `CompletedCleaningRecap`. Tests: `useHomeownerJobProgress` unit (count/percent/stage), migration `db reset` + RLS integration (homeowner reads own completions, not others').
+**Slice 1b — Live cleaning tracking (the headline).** The migration (`checklist_item_completions` homeowner RLS + realtime; **`appointments.started_at` + `completed_at`** + stamping them in the lifecycle route) + `useHomeownerJobProgress` (targeted selects of `job_progress` + line-items + completions; realtime via `useSupabaseRealtimeSync`) + the **in-progress** hero state + `LiveCleaningProgress` (progress bar + X/Y + stage + **elapsed time** + before-photo peek) + the checklist-done count in `CompletedCleaningRecap`. Tests: `useHomeownerJobProgress` unit (count/percent/stage), migration `db reset` + RLS integration (homeowner reads own completions, not others'). *(The `started_at`/`completed_at` columns are also a dependency for the job-messaging grace window.)*
 
 **Slice 2 — Cleanings.** List (Upcoming/Past) + deep-linkable detail takeover (`?appointment=`) reusing the hero/tracking/recap; cancel (fee disclosure) + Message-office actions. The "Message about this cleaning" entry renders once the Job-messaging feature ships. Tests: list grouping/sort derive; detail deep-link.
 
@@ -131,8 +131,8 @@ Each slice: branch off current master, build from the design system, Playwright 
 - **Charge-at-completion receipt** — the completed recap reads payment state via `useHomeownerPayments` / the `paymentStatusMap` (both available); no new query.
 - **Empty/skeleton states** — the hero's no-upcoming-cleaning state + basic per-screen empty states are in scope per slice, not deferred wholesale to R4.
 - **Cancel fee disclosure** — the cancel confirm must surface any cancellation fee before charging.
-- **Elapsed time dropped** — no job-start timestamp exists (§5 caveat).
-- **Job-messaging risks** (send-gating, reassignment model, office-read surface, notification, inbox derivation, grace) now live in `2026-06-29-job-messaging-design.md`.
+- **Timestamps** — Slice 1b adds `started_at`/`completed_at` (lifecycle-stamped); these power elapsed-time here and the job-messaging grace window.
+- **Job-messaging** — all six open decisions are now closed in `2026-06-29-job-messaging-design.md` §4 (per-stint threads, booking-context office-read, timestamp grace, job-thread-only notifications, sectioned inbox, kill-switch in Cleaner experience).
 
 ## 11. Gates (per repo workflow)
 `ui-ux-pro-max` at implementation (design-system conformance), Playwright MCP fidelity loop vs. mockup, one Codex review per slice before push, `npm run test` + `npx tsc --noEmit` + `npm run lint`, `npx supabase db reset` for the migration slice. No em dashes in user-facing copy.
