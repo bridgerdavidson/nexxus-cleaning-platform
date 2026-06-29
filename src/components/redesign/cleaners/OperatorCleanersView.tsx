@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
 import { CleanersTable } from "./CleanersTable";
 import { CleanersCardList } from "./CleanersCardList";
 import { CleanersBulkBar } from "./CleanersBulkBar";
@@ -185,21 +186,25 @@ export function OperatorCleanersView({
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
-          <div className="relative w-full lg:flex-1 lg:max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search by name, email, or phone"
-              className="pl-10"
-              aria-label="Search cleaners"
-            />
-          </div>
+        {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
+
+        <ListFilterBar
+          search={
+            <div className="relative w-full">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="Search by name, email, or phone"
+                className="pl-10"
+                aria-label="Search cleaners"
+              />
+            </div>
+          }
+        >
           <Select value={sort} onValueChange={(v) => onSortChange(v as CleanerSort)}>
-            <SelectTrigger className="w-full lg:w-48 lg:shrink-0" aria-label="Sort cleaners">
+            <SelectTrigger className="w-44" aria-label="Sort cleaners">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -211,17 +216,12 @@ export function OperatorCleanersView({
             </SelectContent>
           </Select>
           {benchedCount > 0 || showBenched ? (
-            <Button
-              variant="secondary"
-              onClick={onToggleBenched}
-              className="lg:shrink-0"
-              aria-pressed={showBenched}
-            >
+            <Button variant="secondary" onClick={onToggleBenched} aria-pressed={showBenched}>
               {showBenched ? <EyeOff /> : <Eye />}
               {showBenched ? "Hide benched" : `Show benched (${benchedCount})`}
             </Button>
           ) : null}
-        </div>
+        </ListFilterBar>
       </div>
 
       {filtersActive && !loading && rows.length > 0 ? (

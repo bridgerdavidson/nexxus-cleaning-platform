@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
 import { CustomersTable } from "./CustomersTable";
 import { CustomersCardList } from "./CustomersCardList";
 import { CustomersBulkBar } from "./CustomersBulkBar";
@@ -108,20 +109,23 @@ export function OperatorCustomersView({
         ) : null}
       </header>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative w-full sm:flex-1 sm:max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search by name, email, or phone"
-            className="pl-10"
-            aria-label="Search customers"
-          />
-        </div>
+      <ListFilterBar
+        search={
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search by name, email, or phone"
+              className="pl-10"
+              aria-label="Search customers"
+            />
+          </div>
+        }
+      >
         <Select value={sort} onValueChange={(v) => onSortChange(v as CustomerSort)}>
-          <SelectTrigger className="w-full sm:w-44 sm:shrink-0" aria-label="Sort customers">
+          <SelectTrigger className="w-44" aria-label="Sort customers">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -132,7 +136,7 @@ export function OperatorCustomersView({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </ListFilterBar>
 
       {loading ? (
         <CustomersSkeleton />
