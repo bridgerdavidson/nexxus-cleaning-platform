@@ -32,16 +32,29 @@ The homeowner mockup (`docs/redesign/mockups/homeowner-shell.html`) and any comp
 ### Cleanings
 - List of cleanings grouped **Upcoming** / **Past** (from `useHomeownerAppointments`), each a glanceable status card (descriptive badge, date in a pill, service, cleaner).
 - Tap → **deep-linkable detail takeover** (`?appointment=<id>`, via `MobileTakeover`) carrying the **same lifecycle hero/live-tracking + completed recap** as Home, plus:
-  - Actions: **Message office**, **Message assigned cleaner**, **Cancel cleaning** (reuse the existing homeowner cancel/confirm path; late cancels trigger the cancellation-fee off-session charge already built into charge-at-completion).
+  - Actions: **Message office** (persistent thread), **Message about this cleaning** (the per-cleaning job thread with the assigned cleaner, §4 Messages — available while the cleaning is active; lights up with Slice 3), **Cancel cleaning** (reuse the existing homeowner cancel/confirm path; late cancels trigger the cancellation-fee off-session charge already built into charge-at-completion).
   - Read-only details: property/address, special requests, price/receipt.
 - **No reschedule** (deferred — see §8). **No after-the-fact editing.**
 
 ### Messages
-- **Collapsing office-inbox** pattern reused from cleaner Slice 5 (`deriveOfficeInbox.ts` + operator `deriveMessages.ts` + `ChatThread.tsx` in a `MobileTakeover`):
-  - **Contacts = Office (admin/manager) + the homeowner's assigned cleaner(s).**
-  - 1 contact → inline thread; 2+ → list + picker.
-- Unread badge on the Messages nav tab (`messagesUnread` from `useConversations`).
-- Booking ↔ message link: messages started from a cleaning carry `appointmentId` (the additive `useSendMessage({ appointmentId })` seam already exists — no new route/migration).
+The homeowner Messages tab has two kinds of thread, built on the cleaner Slice 5 inbox + operator `ChatThread.tsx` in a `MobileTakeover`, with an unread badge on the nav tab (`messagesUnread` from `useConversations`):
+1. **Office** (persistent) — the existing homeowner↔operator thread, always available. Unchanged from today.
+2. **Per-cleaning job threads** (new, scoped) — see "Job messaging" below. They appear contextually while a cleaning is active and as read-only history after.
+
+There is **no compose-to-a-person entry point** for cleaners. Job threads are reachable only from a cleaning, so a homeowner can never start a conversation with an arbitrary cleaner (and vice versa).
+
+#### Job messaging (homeowner ↔ assigned cleaner) — cross-cutting feature
+Original stakeholder stance was homeowner↔operator and cleaner↔operator only (no direct homeowner↔cleaner). This adds a **tightly-scoped** direct channel for real coordination (cleaner running late, homeowner pre-job info) without opening arbitrary contact.
+
+- **Model:** a thread is a property of an **appointment**, not a contact. It exists only because a specific homeowner + assigned cleaner share that job, so arbitrary contact is impossible by construction. One thread per appointment (incl. each instance of a recurring series).
+- **Lifecycle (send window):** send-enabled from **cleaner-assigned** until **completed + a short grace window (default 24h)** for immediate follow-ups; a cancelled appointment closes immediately. After the window the thread is **archived read-only** (sending disabled, history preserved) — never deleted. Temporary *access*, permanent *record*.
+- **Visibility:** homeowner + assigned cleaner + **the office (org staff, read-only)**. The parties know it is not fully private — supports oversight, dispute resolution, and discourages taking the relationship off-platform.
+- **Reassignment:** the active thread follows the appointment's current `cleaner_id`; a reassigned-away cleaner keeps read access to messages from their assignment but cannot send.
+- **PII minimization:** first names + in-app only; no phone/email exchanged. Keeps comms on-platform.
+- **Quick presets** layered on free text for the common cases: cleaner "On my way" / "Running ~15 min late"; homeowner pre-job "access & notes". (Presets can be a fast-follow if they balloon the slice.)
+- **Entry points:** homeowner reaches the thread from the cleaning (Home hero / Cleanings detail "Message about this cleaning") while active; the cleaner reaches it from the job — a **companion update to the already-merged, office-only cleaner Messages**.
+- **Backend shape:** `conversations` is currently a pure user-pair table (`participant_1_id`/`participant_2_id`; no `appointment_id`/`organization_id`); `messages` already carries `appointment_id` (PR #88). Migration: add nullable `appointment_id` (+ index, FK cascade) to `conversations` (NULL = standing office/user threads; set = job thread keyed by appointment); RLS for participant + org-staff read; **send-gating** (server route + guard) allowing inserts only when the appointment is active and the sender is the current homeowner/assigned cleaner; realtime is already on `conversations`/`messages`. Add a `message_received` notification to the counterparty via the existing `notification_events` outbox.
+- **Cross-cutting note:** this is a backend-bearing feature consumed by the homeowner Messages tab AND a cleaner-app update AND office read-only visibility — not a homeowner-only screen.
 
 ### Account
 - **Properties** — list/add/edit/delete (reuse the existing properties components + `useHomeownerProperties`; `PATCH/POST/DELETE /api/properties*`). Rebuilt presentation; same hooks/routes.
@@ -104,7 +117,8 @@ New migration (next sequential number, e.g. `097`):
 - **Deep "Request a cleaning" flow** — only the entry (button + FAB) is redesigned; it opens the legacy `RequestAppointmentModal`. The full redesigned booking flow is the next roadmap step (shared by operator + homeowner).
 - **Reschedule / request-change** — deferred (net-new route; revisit later). Ship cancel + message only.
 - **Rate / favorite cleaner** — deferred (no ratings/favorites backend today; outside the "simple homeowner" goal).
-- **Backend changes** — none beyond the single RLS + realtime migration in §5.
+- **Homeowner↔cleaner messaging IS in scope** (per the brainstorm) as the scoped per-cleaning job thread in §4 — not deferred.
+- **Backend changes** — two migrations: the live-tracking RLS+realtime migration (§5) and the job-messaging migration (§4 Messages). No others.
 
 ## 9. Slice plan (one PR per slice, like the cleaner app)
 
@@ -114,7 +128,7 @@ Tests: `useHomeownerJobProgress` unit (count/percent/stage derivation), migratio
 
 **Slice 2 — Cleanings.** List (Upcoming/Past) + deep-linkable detail takeover (`?appointment=`) reusing the hero/tracking/recap; cancel + message actions. Tests: list grouping/sort derive; detail deep-link.
 
-**Slice 3 — Messages.** Collapsing office-inbox (Office + assigned cleaner) reusing the cleaner/operator chat; unread nav badge; message-from-cleaning entry. Tests: `deriveOfficeInbox` single/inbox modes for the homeowner contact set.
+**Slice 3 — Messages + job messaging (cross-cutting, backend-bearing).** Migration (`conversations.appointment_id` + index/FK, RLS incl. office read-only, send-gating guard) + get-or-create job thread + `message_received` counterparty notification; homeowner Messages tab (persistent Office thread + active/archived per-cleaning job threads) with entry points from Home/Cleanings; **companion cleaner-app update** so the cleaner can read/send the per-job thread (today's cleaner Messages is office-only). The biggest backend slice — the migration + send-gating + cleaner-app wiring may stack as a sub-PR under the homeowner UI. Tests: send-gating (blocked after complete/cancel; only current participants can send), RLS negatives (non-participant / non-org-staff cannot read), reassignment access, thread derivation.
 
 **Slice 4 — Account.** Properties (CRUD), payment methods (Stripe-gated), payment history/receipts, browse services, profile/settings. Tests: per existing route coverage; presentation built fresh.
 
@@ -125,6 +139,9 @@ Each slice: branch off current master, build from the design system, Playwright 
 - **`appointments` realtime for `job_progress`** drives the in-progress stage label; the homeowner appointments hook already subscribes, so stage changes invalidate. Confirm `job_progress` column changes propagate (it's on the appointments row).
 - **RLS correctness** — the new homeowner SELECT policies must be own-appointment-scoped only; integration test the negative case (cannot read another homeowner's completions/photos).
 - **Charge-at-completion receipt** — the completed recap reads payment state; reuse `useHomeownerPayments` rather than a new query.
+- **Job-thread send-gating** must be enforced server-side (route + RLS), not just hidden in the UI — a homeowner/cleaner could otherwise POST to a closed or non-owned thread. Integration-test the closed-window and non-participant cases.
+- **Reassignment** — decide whether the job thread's cleaner participant is stored (and rebound on reassignment) or derived from the appointment's current `cleaner_id`; the reassigned-away cleaner must retain read-only access to their own messages but lose send. Resolve in the plan.
+- **Office read-only** — operators can read job threads but should not inject into the homeowner↔cleaner thread (their channel is the separate Office thread); enforce read-vs-write in RLS/route.
 
 ## 11. Gates (per repo workflow)
 `ui-ux-pro-max` at implementation (design-system conformance), Playwright MCP fidelity loop vs. mockup, one Codex review per slice before push, `npm run test` + `npx tsc --noEmit` + `npm run lint`, `npx supabase db reset` for the migration slice. No em dashes in user-facing copy.
