@@ -177,16 +177,14 @@ export function OperatorCleanersView({
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
           {showNew ? (
-            <Button onClick={onNewCleaner} className="sm:shrink-0">
+            <Button onClick={onNewCleaner} className="shrink-0">
               <Plus /> Invite cleaner
             </Button>
           ) : null}
         </div>
-
-        {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
 
         <ListFilterBar
           search={
@@ -203,8 +201,9 @@ export function OperatorCleanersView({
             </div>
           }
         >
+          {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
           <Select value={sort} onValueChange={(v) => onSortChange(v as CleanerSort)}>
-            <SelectTrigger className="w-44" aria-label="Sort cleaners">
+            <SelectTrigger className="w-40" aria-label="Sort cleaners">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

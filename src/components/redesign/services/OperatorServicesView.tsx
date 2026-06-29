@@ -82,13 +82,13 @@ export function OperatorServicesView({
 
   return (
     <div className="max-w-[1700px] space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Services</h1>
           <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
         </div>
         {canManage ? (
-          <Button onClick={onNewService} className="sm:shrink-0">
+          <Button onClick={onNewService} className="shrink-0">
             <Plus /> New service
           </Button>
         ) : null}
