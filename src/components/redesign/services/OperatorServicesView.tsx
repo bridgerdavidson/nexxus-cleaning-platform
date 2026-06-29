@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
 import { ServicesList } from "./ServicesList";
 import { ServiceDetailPane, type ServiceDetailHandlers } from "./ServiceDetailPane";
 import { SERVICE_SORTS, SERVICE_STATUS_FILTERS } from "./services-types";
@@ -18,12 +19,9 @@ import type {
 
 function ListSkeleton() {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2.5">
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="rounded-field px-3 py-2.5">
-          <Skeleton className="h-5 w-3/4" />
-          <Skeleton className="mt-1.5 h-3 w-1/2" />
-        </div>
+        <Skeleton key={i} className="h-[68px] w-full rounded-card" />
       ))}
     </div>
   );
@@ -106,38 +104,43 @@ export function OperatorServicesView({
       ) : (
         <>
           {/* Toolbar applies to the list; hidden on mobile when a service detail is open. */}
-          <div className={cn("flex-col gap-3 sm:flex-row sm:items-center", selectedId ? "hidden lg:flex" : "flex")}>
-            <div className="relative w-full sm:flex-1 sm:max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                value={search}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Search services"
-                className="pl-10"
-                aria-label="Search services"
-              />
-            </div>
-            <Select value={sort} onValueChange={(v: string) => onSortChange(v as ServiceSort)}>
-              <SelectTrigger className="w-full sm:w-48 sm:shrink-0" aria-label="Sort services">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SERVICE_SORTS.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={status} onValueChange={(v: string) => onStatusChange(v as ServiceStatusFilter)}>
-              <SelectTrigger className="w-full sm:w-36 sm:shrink-0" aria-label="Filter by status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SERVICE_STATUS_FILTERS.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className={cn(selectedId ? "hidden lg:block" : "block")}>
+            <ListFilterBar
+              search={
+                <div className="relative w-full">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    value={search}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    placeholder="Search services"
+                    className="pl-10"
+                    aria-label="Search services"
+                  />
+                </div>
+              }
+            >
+              <Select value={sort} onValueChange={(v: string) => onSortChange(v as ServiceSort)}>
+                <SelectTrigger className="w-44" aria-label="Sort services">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICE_SORTS.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={status} onValueChange={(v: string) => onStatusChange(v as ServiceStatusFilter)}>
+                <SelectTrigger className="w-36" aria-label="Filter by status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICE_STATUS_FILTERS.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ListFilterBar>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
