@@ -58,7 +58,7 @@ export function MessageComposer(props: {
   }
 
   return (
-    <div className="border-t border-border/60 bg-background p-3">
+    <div className="border-t border-border/60 bg-card p-3">
       {props.stagedBooking && (
         <div className="mb-2 inline-flex items-center gap-2 rounded-control border border-primary/25 bg-primary/10 py-1.5 pl-3 pr-1.5">
           <CalendarDays className="size-3.5 text-primary" aria-hidden />
@@ -97,7 +97,7 @@ export function MessageComposer(props: {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 rounded-card border border-border bg-muted/50 p-1.5">
+      <div className="flex items-end gap-2 rounded-card border border-border bg-card p-1.5 shadow-soft-sm">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <IconButton
