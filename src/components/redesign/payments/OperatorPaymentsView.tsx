@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Plus, Search, Wallet } from "lucide-react";
+import { Plus, Search, Wallet, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,6 +49,9 @@ export type OperatorPaymentsViewProps = {
   payoutRows: PayoutRowVM[];
   txnTotal: number;
   payoutTotal: number;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 
   search: string;
   onSearchChange: (v: string) => void;
@@ -62,7 +65,7 @@ export type OperatorPaymentsViewProps = {
   onRecordPayment?: () => void;
 
   triage?: ReactNode;
-  moneyGlance?: ReactNode;
+  kpis?: ReactNode;
   yourMoney?: ReactNode;
 };
 
@@ -74,6 +77,9 @@ export function OperatorPaymentsView({
   payoutRows,
   txnTotal,
   payoutTotal,
+  hasMore,
+  onLoadMore,
+  loadingMore,
   search,
   onSearchChange,
   sort,
@@ -84,7 +90,7 @@ export function OperatorPaymentsView({
   canManagePayments,
   onRecordPayment,
   triage,
-  moneyGlance,
+  kpis,
   yourMoney,
 }: OperatorPaymentsViewProps) {
   const isTxn = ledger === "transactions";
@@ -94,28 +100,19 @@ export function OperatorPaymentsView({
   const filtersActive = !!search || statusFilter !== "all";
   const noun = isTxn ? "transaction" : "payout";
 
-  const countLabel = loading
-    ? "Loading payments..."
-    : `${txnTotal} ${txnTotal === 1 ? "transaction" : "transactions"} · ${payoutTotal} ${
-        payoutTotal === 1 ? "payout" : "payouts"
-      }`;
-
   return (
     <div className="max-w-[1700px] space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Payments</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
-        </div>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Payments</h1>
         {canManagePayments && onRecordPayment ? (
-          <Button onClick={onRecordPayment} className="sm:shrink-0">
+          <Button onClick={onRecordPayment} className="shrink-0">
             <Plus /> Record payment
           </Button>
         ) : null}
       </header>
 
       {triage}
-      {moneyGlance}
+      {kpis}
       {yourMoney}
 
       <div className="space-y-4">
@@ -164,16 +161,29 @@ export function OperatorPaymentsView({
         ) : rowsLen === 0 ? (
           <EmptyState
             icon={<Wallet />}
-            title={activeTotal === 0 ? `No ${noun}s yet` : `No ${noun}s match your filters`}
+            title={
+              activeTotal === 0
+                ? `No ${noun}s yet`
+                : filtersActive && hasMore
+                  ? `No matches in the loaded ${noun}s`
+                  : `No ${noun}s match your filters`
+            }
             description={
               activeTotal === 0
                 ? isTxn
                   ? "Charges and refunds will show up here."
                   : "Cleaner payouts will show up here."
-                : "Try a different search or status."
+                : filtersActive && hasMore
+                  ? `Load more to search older ${noun}s.`
+                  : "Try a different search or status."
             }
             action={
-              filtersActive ? (
+              filtersActive && hasMore ? (
+                <Button variant="secondary" onClick={onLoadMore} disabled={loadingMore}>
+                  {loadingMore ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Load more {noun}s to search
+                </Button>
+              ) : filtersActive ? (
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -204,6 +214,13 @@ export function OperatorPaymentsView({
                 onOpenRow={onOpenRow}
               />
             </div>
+            {hasMore ? (
+              <div className="flex justify-center pt-2">
+                <Button variant="secondary" onClick={onLoadMore} disabled={loadingMore}>
+                  {loadingMore ? <Loader2 className="mr-2 size-4 animate-spin" /> : null} Load more
+                </Button>
+              </div>
+            ) : null}
           </>
         )}
       </div>

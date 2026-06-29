@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
+import { keys } from "@/lib/queryKeys";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useToast } from "@/contexts/ToastContext";
@@ -10,8 +12,8 @@ import { useStartConversation } from "@/hooks/useStartConversation";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
-  useAdminPayments,
-  useAdminPayouts,
+  useAdminPaymentsInfinite,
+  useAdminPayoutsInfinite,
   usePaymentStats,
   type AdminPayment,
   type AdminPayout,
@@ -21,7 +23,7 @@ import { deriveTransactionBadge, derivePayoutBadge } from "./derivePaymentsBadge
 import { longDate, methodLabel, money2 } from "./payments-presenters";
 import { OperatorPaymentsView } from "./OperatorPaymentsView";
 import { PaymentsTriageBand } from "./PaymentsTriageBand";
-import { PaymentsMoneyGlance } from "./PaymentsMoneyGlance";
+import { PaymentsKpiStrip } from "./PaymentsKpiStrip";
 import { PaymentsYourMoney } from "./PaymentsYourMoney";
 import { PaymentDetailSheet } from "./PaymentDetailSheet";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
@@ -126,12 +128,29 @@ function OperatorPaymentsData({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const { currentOrganizationId, currentOrganization } = useAuth();
   const { showToast } = useToast();
   const { startConversation } = useStartConversation();
 
-  const { payments, loading: paymentsLoading, refetch: refetchPayments } = useAdminPayments();
-  const { payouts, loading: payoutsLoading, refetch: refetchPayouts } = useAdminPayouts();
+  const {
+    rows: payments,
+    total: txnTotal,
+    hasMore: txnHasMore,
+    fetchNextPage: txnFetchNext,
+    isFetchingNextPage: txnLoadingMore,
+    loading: paymentsLoading,
+    refetch: refetchPayments,
+  } = useAdminPaymentsInfinite();
+  const {
+    rows: payouts,
+    total: payoutTotal,
+    hasMore: payoutHasMore,
+    fetchNextPage: payoutFetchNext,
+    isFetchingNextPage: payoutLoadingMore,
+    loading: payoutsLoading,
+    refetch: refetchPayouts,
+  } = useAdminPayoutsInfinite();
   const { stats, loading: statsLoading } = usePaymentStats();
 
   const orgName = currentOrganization?.name || "Your company";
@@ -329,8 +348,13 @@ function OperatorPaymentsData({
         onLedgerChange={setLedger}
         txnRows={txnRows}
         payoutRows={payoutRows}
-        txnTotal={payments.length}
-        payoutTotal={payouts.length}
+        txnTotal={txnTotal}
+        payoutTotal={payoutTotal}
+        hasMore={ledger === "transactions" ? txnHasMore : payoutHasMore}
+        onLoadMore={() => {
+          void (ledger === "transactions" ? txnFetchNext() : payoutFetchNext());
+        }}
+        loadingMore={ledger === "transactions" ? txnLoadingMore : payoutLoadingMore}
         search={search}
         onSearchChange={setSearch}
         sort={sort}
@@ -341,11 +365,10 @@ function OperatorPaymentsData({
         canManagePayments={canManagePayments}
         onRecordPayment={() => setRecordOpen(true)}
         triage={<PaymentsTriageBand canManagePayments={canManagePayments} />}
-        moneyGlance={
-          <PaymentsMoneyGlance
+        kpis={
+          <PaymentsKpiStrip
             totalRevenue={stats?.totalRevenue ?? 0}
             thisMonth={stats?.thisMonthRevenue ?? 0}
-            queuedPayouts={stats?.pendingPayouts ?? 0}
             loading={statsLoading}
           />
         }
@@ -373,6 +396,13 @@ function OperatorPaymentsData({
         onOpenChange={setRecordOpen}
         onRecorded={() => {
           void refetchPayments();
+          // The recorded payment changes revenue/this-month, refresh the KPI
+          // tiles (sourced from usePaymentStats, a separate query).
+          if (currentOrganizationId) {
+            void queryClient.invalidateQueries({
+              queryKey: keys.payments.statsByOrg(currentOrganizationId),
+            });
+          }
         }}
       />
     </>

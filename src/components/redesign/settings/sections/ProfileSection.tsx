@@ -1,7 +1,8 @@
 "use client";
 import { useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import AvatarUpload from "@/components/AvatarUpload";
+import { AvatarEditor } from "@/components/redesign/shared/AvatarEditor";
+import { personInitials } from "@/lib/initials";
 import { Input } from "@/components/ui/input";
 import { formatPhoneDisplay, normalizePhoneToDigits } from "@/lib/phone";
 import { useSettingsSection } from "../useSettingsSection";
@@ -29,14 +30,19 @@ export function ProfileSection() {
 
   if (loading || !value) return <SectionSkeleton />;
 
+  const avatarInitials =
+    personInitials(value.firstName, value.lastName) ||
+    user?.email?.charAt(0)?.toUpperCase() ||
+    "U";
+
   return (
     <div>
       <SectionHeader title="Profile" lead="Your personal account details." />
       <SettingRow label="Profile photo" helper="PNG or JPG, at least 200x200.">
-        <AvatarUpload
+        <AvatarEditor
           currentAvatarUrl={user?.profile.avatarUrl}
-          onUploadSuccess={(url) => updateProfile({ avatarUrl: url })}
-          size="lg"
+          initials={avatarInitials}
+          onUploaded={(url) => updateProfile({ avatarUrl: url })}
         />
       </SettingRow>
       <SettingRow label="First name" htmlFor="profile-first">

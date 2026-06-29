@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Menu, Plus } from "lucide-react";
+import { Menu, CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -31,14 +31,18 @@ export function OperatorMobileNav({
 }) {
   return (
     <>
-      {/* New-booking FAB, above the bar */}
-      <Button
-        onClick={onNewBooking}
-        aria-label="New booking"
-        className="fixed bottom-[76px] right-4 z-40 h-14 w-14 rounded-full p-0 shadow-soft-lg lg:hidden"
-      >
-        <Plus className="h-6 w-6" aria-hidden />
-      </Button>
+      {/* New-booking FAB (labeled, the one persistent global action), above the
+          bar. Hidden on Settings, where a booking action is out of context. */}
+      {activeId !== "settings" && (
+        <Button
+          onClick={onNewBooking}
+          aria-label="New booking"
+          className="fixed bottom-[76px] right-4 z-40 h-12 gap-2 rounded-pill px-4 shadow-soft-lg lg:hidden"
+        >
+          <CalendarPlus className="h-5 w-5" aria-hidden />
+          <span className="text-sm font-semibold">New booking</span>
+        </Button>
+      )}
 
       <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[60px] items-stretch border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden">
         {OPERATOR_PRIMARY_NAV.map((item) => {

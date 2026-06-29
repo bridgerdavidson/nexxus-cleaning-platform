@@ -1,7 +1,6 @@
 "use client";
 
-import { Search, SprayCan, Plus, RefreshCw, X, Eye, EyeOff, Mail } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { SprayCan, Plus, RefreshCw, X, Eye, EyeOff, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,7 +15,7 @@ import { CleanersTable } from "./CleanersTable";
 import { CleanersCardList } from "./CleanersCardList";
 import { CleanersBulkBar } from "./CleanersBulkBar";
 import { InviteStatusBadge } from "./cleaners-presenters";
-import { PeopleSegmentTabs } from "./PeopleSegmentTabs";
+import { PeopleToolbar } from "./PeopleToolbar";
 import { CLEANER_SORTS } from "./cleaners-types";
 import type {
   CleanerRowAction,
@@ -175,31 +174,21 @@ export function OperatorCleanersView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Cleaners &amp; team</h1>
-          {showNew ? (
-            <Button onClick={onNewCleaner} className="sm:shrink-0">
-              <Plus /> Invite cleaner
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          {showSegmentTabs ? <PeopleSegmentTabs value={segment} onChange={onSegmentChange} /> : null}
-          <div className="relative w-full lg:flex-1 lg:max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search by name, email, or phone"
-              className="pl-10"
-              aria-label="Search cleaners"
-            />
-          </div>
+      <PeopleToolbar
+        title="Cleaners & team"
+        createLabel="Invite cleaner"
+        onCreate={onNewCleaner}
+        showCreate={showNew}
+        search={search}
+        onSearchChange={onSearchChange}
+        searchPlaceholder="Search by name, email, or phone"
+        searchAriaLabel="Search cleaners"
+        segment={segment}
+        onSegmentChange={onSegmentChange}
+        showSegmentTabs={showSegmentTabs}
+        sort={
           <Select value={sort} onValueChange={(v) => onSortChange(v as CleanerSort)}>
-            <SelectTrigger className="w-full lg:w-48 lg:shrink-0" aria-label="Sort cleaners">
+            <SelectTrigger className="w-full" aria-label="Sort cleaners">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -210,19 +199,21 @@ export function OperatorCleanersView({
               ))}
             </SelectContent>
           </Select>
-          {benchedCount > 0 || showBenched ? (
+        }
+        trailing={
+          benchedCount > 0 || showBenched ? (
             <Button
               variant="secondary"
               onClick={onToggleBenched}
-              className="lg:shrink-0"
               aria-pressed={showBenched}
+              className="shrink-0"
             >
               {showBenched ? <EyeOff /> : <Eye />}
               {showBenched ? "Hide benched" : `Show benched (${benchedCount})`}
             </Button>
-          ) : null}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
       {filtersActive && !loading && rows.length > 0 ? (
         <p className="text-xs text-muted-foreground">

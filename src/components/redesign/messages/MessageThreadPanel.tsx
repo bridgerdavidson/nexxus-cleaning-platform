@@ -107,9 +107,9 @@ export function MessageThreadPanel(props: {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-background to-muted/30">
-      {/* Thread header */}
-      <div className="flex items-center gap-3 border-b border-border/60 bg-background px-3 py-2.5">
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      {/* Thread header (white; the warm message list below separates the white bubbles) */}
+      <div className="flex items-center gap-3 border-b border-border/60 bg-card px-3 py-2.5">
         {props.onBack && (
           <IconButton
             aria-label="Back to conversations"
@@ -132,10 +132,15 @@ export function MessageThreadPanel(props: {
           )}
         </div>
         <Button
-          variant={props.detailsOpen ? 'secondary' : 'outline'}
+          variant="outline"
           size="sm"
           onClick={props.onToggleDetails}
-          className="gap-1.5"
+          aria-pressed={props.detailsOpen}
+          className={`gap-1.5 ${
+            props.detailsOpen
+              ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'
+              : ''
+          }`}
         >
           <Info className="size-4" />
           Details

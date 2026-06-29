@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
 import { OperatorPaymentsView } from "@/components/redesign/payments/OperatorPaymentsView";
-import { PaymentsMoneyGlance } from "@/components/redesign/payments/PaymentsMoneyGlance";
+import { PaymentsKpiStrip } from "@/components/redesign/payments/PaymentsKpiStrip";
 import { PaymentDetailSheet } from "@/components/redesign/payments/PaymentDetailSheet";
 import type {
   PaymentLedger,
@@ -145,7 +145,7 @@ export default function PaymentsPreviewPage() {
         canManagePayments
         onRecordPayment={() => {}}
         triage={<MockTriageBand />}
-        moneyGlance={<PaymentsMoneyGlance totalRevenue={12480} thisMonth={3210} queuedPayouts={640} />}
+        kpis={<PaymentsKpiStrip totalRevenue={12480} thisMonth={3210} />}
         yourMoney={<MockYourMoney />}
       />
 

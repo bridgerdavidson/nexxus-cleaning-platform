@@ -26,6 +26,7 @@ import type {
   StaffRole,
   StaffRowAction,
   StaffRowVM,
+  StaffSort,
 } from "./staff-types";
 import type { InviteRowAction } from "./cleaners-types";
 
@@ -138,15 +139,25 @@ export function OperatorStaffData({
   );
 
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<StaffSort>("name_asc");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const rows: StaffRowVM[] = useMemo(
-    () => staff.filter((s) => matchesSearch(s, search)).map((s) => toRowVM(s, user?.id)),
-    [staff, search, user?.id],
-  );
+  const rows: StaffRowVM[] = useMemo(() => {
+    const ROLE_RANK: Record<StaffRole, number> = { owner: 0, admin: 1, manager: 2 };
+    const filtered = staff.filter((s) => matchesSearch(s, search));
+    const sorted = [...filtered].sort((a, b) => {
+      if (sort === "role") {
+        const r = ROLE_RANK[a.role] - ROLE_RANK[b.role];
+        return r !== 0 ? r : nameOf(a).localeCompare(nameOf(b));
+      }
+      const cmp = nameOf(a).localeCompare(nameOf(b));
+      return sort === "name_desc" ? -cmp : cmp;
+    });
+    return sorted.map((s) => toRowVM(s, user?.id));
+  }, [staff, search, sort, user?.id]);
 
   const pendingInvites: StaffPendingInviteVM[] = useMemo(
     () =>
@@ -274,6 +285,8 @@ export function OperatorStaffData({
         busy={busy}
         search={search}
         onSearchChange={setSearch}
+        sort={sort}
+        onSortChange={setSort}
         onOpenRow={openDetail}
         onRowAction={handleRowAction}
         onInviteAction={handleInviteAction}

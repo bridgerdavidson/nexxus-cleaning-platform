@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
+import { pageRange, nextPageParam, PAYMENTS_PAGE_SIZE } from '../lib/pagination';
 import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
 
@@ -707,6 +708,213 @@ export function useAdminPayouts() {
 
   return {
     payouts: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
+// --- Paginated (infinite) variants for the redesign Payments screen ---
+// Additive: the legacy useAdminPayments/useAdminPayouts above stay untouched
+// (the legacy admin + manager dashboards depend on their `byOrg` keys). These
+// fetch one page at a time via .range() and return the exact total via
+// { count: 'exact' }, so the screen no longer waits on the whole ledger.
+
+const PAYMENTS_INFINITE_SELECT = `
+  id,
+  amount,
+  status,
+  payment_type,
+  payment_method,
+  reference,
+  notes,
+  paid_at,
+  created_at,
+  is_self_pay,
+  appointment:appointments(
+    scheduled_date,
+    homeowner:user_profiles!homeowner_id(
+      first_name,
+      last_name
+    ),
+    service_type:service_types(
+      name
+    )
+  )
+`;
+
+const PAYOUTS_INFINITE_SELECT = `
+  id,
+  amount,
+  status,
+  cleaner_id,
+  approved_at,
+  paid_at,
+  created_at,
+  notes,
+  cleaner:cleaner_profiles!cleaner_id(
+    user_profile:user_profiles(
+      first_name,
+      last_name
+    )
+  ),
+  appointment:appointments(
+    id,
+    scheduled_date
+  )
+`;
+
+export function useAdminPaymentsInfinite() {
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+
+  const query = useInfiniteQuery({
+    queryKey: keys.payments.infinite(orgId),
+    enabled: !!orgId,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const { from, to } = pageRange(pageParam as number, PAYMENTS_PAGE_SIZE);
+      const { data, count, error } = await supabase
+        .from('payments')
+        .select(PAYMENTS_INFINITE_SELECT, { count: 'exact' })
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+
+      const rows = (data || []).map(payment => ({
+        ...payment,
+        appointment: Array.isArray(payment.appointment)
+          ? {
+              ...payment.appointment[0],
+              homeowner: Array.isArray(payment.appointment[0]?.homeowner)
+                ? payment.appointment[0].homeowner[0]
+                : payment.appointment[0]?.homeowner,
+              service_type: Array.isArray(payment.appointment[0]?.service_type)
+                ? payment.appointment[0].service_type[0]
+                : payment.appointment[0]?.service_type,
+            }
+          : payment.appointment,
+      })) as AdminPayment[];
+
+      return { rows, count: count ?? 0 };
+    },
+    getNextPageParam: (lastPage, all) => {
+      const loaded = all.reduce((n, p) => n + p.rows.length, 0);
+      return nextPageParam(loaded, lastPage.count, all.length);
+    },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `payments-inf-refunds:${orgId}`,
+    table: 'refunds',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payments.infinite(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+  useSupabaseRealtimeSync({
+    channelName: `payments-inf-disputes:${orgId}`,
+    table: 'disputes',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payments.infinite(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+  // Direct payments-table sub: charges land async from Stripe webhooks, so a new
+  // paid charge (or status flip) refreshes the paginated list + the KPI tiles.
+  // Distinct channel name so it never dedupes against the legacy byOrg subs.
+  useSupabaseRealtimeSync({
+    channelName: `payments-inf:${orgId}`,
+    table: 'payments',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payments.infinite(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+
+  const rows = query.data?.pages.flatMap(p => p.rows) ?? [];
+  const total = query.data?.pages?.[0]?.count ?? 0;
+
+  return {
+    rows,
+    total,
+    hasMore: !!query.hasNextPage,
+    fetchNextPage: query.fetchNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
+export function useAdminPayoutsInfinite() {
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+
+  const query = useInfiniteQuery({
+    queryKey: keys.payouts.infinite(orgId),
+    enabled: !!orgId,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const { from, to } = pageRange(pageParam as number, PAYMENTS_PAGE_SIZE);
+      const { data, count, error } = await supabase
+        .from('payouts')
+        .select(PAYOUTS_INFINITE_SELECT, { count: 'exact' })
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+
+      const rows = (data || []).map(payout => {
+        const cleanerData = Array.isArray(payout.cleaner) ? payout.cleaner[0] : payout.cleaner;
+        const userProfile = cleanerData?.user_profile;
+        const userProfileData = Array.isArray(userProfile) ? userProfile[0] : userProfile;
+        return {
+          ...payout,
+          cleaner: userProfileData || null,
+          appointment: Array.isArray(payout.appointment)
+            ? payout.appointment[0]
+            : payout.appointment,
+        };
+      }) as AdminPayout[];
+
+      return { rows, count: count ?? 0 };
+    },
+    getNextPageParam: (lastPage, all) => {
+      const loaded = all.reduce((n, p) => n + p.rows.length, 0);
+      return nextPageParam(loaded, lastPage.count, all.length);
+    },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `payouts-inf:${orgId}`,
+    table: 'payouts',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.payouts.infinite(orgId), keys.payments.statsByOrg(orgId)],
+    }),
+  });
+
+  const rows = query.data?.pages.flatMap(p => p.rows) ?? [];
+  const total = query.data?.pages?.[0]?.count ?? 0;
+
+  return {
+    rows,
+    total,
+    hasMore: !!query.hasNextPage,
+    fetchNextPage: query.fetchNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,

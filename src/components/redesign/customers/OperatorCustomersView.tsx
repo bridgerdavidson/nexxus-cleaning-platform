@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
 import { CustomersTable } from "./CustomersTable";
 import { CustomersCardList } from "./CustomersCardList";
 import { CustomersBulkBar } from "./CustomersBulkBar";
@@ -96,32 +97,35 @@ export function OperatorCustomersView({
 
   return (
     <div className="max-w-[1700px] space-y-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Customers</h1>
           <p className="mt-1 text-sm text-muted-foreground">{countLabel}</p>
         </div>
         {showNew ? (
-          <Button onClick={onNewCustomer} className="sm:shrink-0">
+          <Button onClick={onNewCustomer} className="shrink-0">
             <Plus /> New customer
           </Button>
         ) : null}
       </header>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative w-full sm:flex-1 sm:max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search by name, email, or phone"
-            className="pl-10"
-            aria-label="Search customers"
-          />
-        </div>
+      <ListFilterBar
+        search={
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder="Search by name, email, or phone"
+              className="pl-10"
+              aria-label="Search customers"
+            />
+          </div>
+        }
+      >
         <Select value={sort} onValueChange={(v) => onSortChange(v as CustomerSort)}>
-          <SelectTrigger className="w-full sm:w-44 sm:shrink-0" aria-label="Sort customers">
+          <SelectTrigger className="w-44" aria-label="Sort customers">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -132,7 +136,7 @@ export function OperatorCustomersView({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </ListFilterBar>
 
       {loading ? (
         <CustomersSkeleton />
