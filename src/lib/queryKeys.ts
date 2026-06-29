@@ -19,6 +19,7 @@ export const keys = {
   payments: {
     all: ['payments'] as const,
     byOrg: (orgId: string) => ['payments', 'org', orgId] as const,
+    infinite: (orgId: string) => ['payments', 'infinite', orgId] as const,
     byHomeowner: (homeownerId: string) => ['payments', 'homeowner', homeownerId] as const,
     byAppointment: (apptId: string) => ['payments', 'appointment', apptId] as const,
     statsByOrg: (orgId: string) => ['payments', 'stats', orgId] as const,
@@ -26,6 +27,7 @@ export const keys = {
   payouts: {
     all: ['payouts'] as const,
     byOrg: (orgId: string) => ['payouts', 'org', orgId] as const,
+    infinite: (orgId: string) => ['payouts', 'infinite', orgId] as const,
     byCleaner: (cleanerId: string) => ['payouts', 'cleaner', cleanerId] as const,
   },
   invoices: {
