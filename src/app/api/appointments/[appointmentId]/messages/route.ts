@@ -8,6 +8,7 @@ import { isJobMessagingWindowOpen } from '@/lib/messaging/jobMessagingWindow';
 import { uuidv4 } from '@/lib/uuid';
 
 const MAX_CONTENT = 4000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * POST /api/appointments/:appointmentId/messages
@@ -37,12 +38,15 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
     }
 
-    const body = (await request.json().catch(() => ({}))) as { content?: unknown };
+    const body = (await request.json().catch(() => ({}))) as {
+      content?: unknown;
+      clientMessageId?: unknown;
+    };
 
     // 2. Load the appointment.
     const { data: apptRow } = await supabaseAdmin
       .from('appointments')
-      .select('id, organization_id, homeowner_id, cleaner_id, status, started_at, completed_at, cancelled_at')
+      .select('id, organization_id, homeowner_id, cleaner_id, status, cleaner_confirmation_status, started_at, completed_at, cancelled_at')
       .eq('id', appointmentId)
       .maybeSingle();
     const appt = apptRow as {
@@ -51,6 +55,7 @@ export async function POST(
       homeowner_id: string | null;
       cleaner_id: string | null;
       status: string;
+      cleaner_confirmation_status: string | null;
       started_at: string | null;
       completed_at: string | null;
       cancelled_at: string | null;
@@ -80,15 +85,18 @@ export async function POST(
       return NextResponse.json({ error: 'There is no one to message on this cleaning yet' }, { status: 409 });
     }
 
-    // 5. Org kill-switch.
-    const { data: orgRow } = await supabaseAdmin
+    // 5. Org kill-switch. Fail CLOSED: a transient read error must not deliver a
+    //    message when the company may have opted out.
+    const { data: orgRow, error: orgError } = await supabaseAdmin
       .from('organizations')
       .select('homeowner_cleaner_messaging_enabled')
       .eq('id', appt.organization_id)
       .maybeSingle();
-    const messagingEnabled =
-      (orgRow as { homeowner_cleaner_messaging_enabled: boolean } | null)?.homeowner_cleaner_messaging_enabled ?? true;
-    if (!messagingEnabled) {
+    const org = orgRow as { homeowner_cleaner_messaging_enabled: boolean } | null;
+    if (orgError || !org) {
+      return NextResponse.json({ error: 'Could not verify messaging settings' }, { status: 503 });
+    }
+    if (!org.homeowner_cleaner_messaging_enabled) {
       return NextResponse.json({ error: 'Messaging is turned off for this company' }, { status: 403 });
     }
 
@@ -124,17 +132,28 @@ export async function POST(
 
     // 9. Insert the message (bypasses RLS; the gate above is the authority). The
     //    update_conversation_last_message trigger maintains conversations.last_message_at.
-    const messageId = uuidv4();
-    const { error: insertError } = await supabaseAdmin.from('messages').insert({
-      id: messageId,
-      organization_id: appt.organization_id,
-      conversation_id: convId as string,
-      sender_id: verified.userId,
-      recipient_id: recipientId,
-      content,
-      is_read: false,
-      appointment_id: appointmentId,
-    });
+    //    Idempotent on the message id: a client may pass a stable clientMessageId so
+    //    a retried send (lost 201, flaky network) does not duplicate the row or the
+    //    notification (dedupe_key is keyed on the same id). Falls back to a fresh id.
+    const messageId =
+      typeof body.clientMessageId === 'string' && UUID_RE.test(body.clientMessageId)
+        ? body.clientMessageId
+        : uuidv4();
+    const { error: insertError } = await supabaseAdmin.from('messages').upsert(
+      [
+        {
+          id: messageId,
+          organization_id: appt.organization_id,
+          conversation_id: convId as string,
+          sender_id: verified.userId,
+          recipient_id: recipientId,
+          content,
+          is_read: false,
+          appointment_id: appointmentId,
+        },
+      ],
+      { onConflict: 'id', ignoreDuplicates: true },
+    );
     if (insertError) {
       return NextResponse.json(
         { error: 'Could not send the message', details: insertError.message },

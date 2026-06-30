@@ -35,13 +35,21 @@ describe('POST /api/appointments/:appointmentId/messages (job messaging)', () =>
     await Promise.all([org.cleanup(), org2.cleanup()]);
   });
 
+  // A confirmed appointment whose assigned cleaner has accepted (approved) -> the
+  // send window is open. createTestAppointment leaves cleaner_confirmation_status
+  // at its 'awaiting' default, so mark it approved explicitly.
   async function confirmedAppt() {
-    return createTestAppointment({
+    const appt = await createTestAppointment({
       organizationId: org.organizationId,
       cleanerId: org.cleaner.userId,
       homeownerId: org.homeowner.userId,
       status: 'confirmed',
     });
+    await admin
+      .from('appointments')
+      .update({ cleaner_confirmation_status: 'approved' })
+      .eq('id', appt.id);
+    return appt;
   }
 
   it('401 with no Authorization header', async () => {
@@ -176,6 +184,40 @@ describe('POST /api/appointments/:appointmentId/messages (job messaging)', () =>
       body: { content: 'blocked?' },
     });
     expect(status).toBe(403);
+  });
+
+  it('403 when the assigned cleaner has not accepted yet (confirmed + awaiting)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'confirmed',
+    });
+    // Explicitly awaiting (the DB default), i.e. the cleaner has not approved.
+    await admin.from('appointments').update({ cleaner_confirmation_status: 'awaiting' }).eq('id', appt.id);
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { content: 'are you coming?' },
+    });
+    expect(status).toBe(403);
+  });
+
+  it('is idempotent for a repeated clientMessageId (no duplicate message or notification)', async () => {
+    const appt = await confirmedAppt();
+    const clientMessageId = '11111111-1111-4111-8111-111111111111';
+    for (let i = 0; i < 2; i++) {
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.homeowner.accessToken),
+        body: { content: 'idempotent hi', clientMessageId },
+      });
+      expect(status).toBe(201);
+    }
+    const { data: msgs } = await admin.from('messages').select('id').eq('appointment_id', appt.id);
+    expect(msgs).toHaveLength(1);
+    const notifs = await jobMessageNotifs(appt.id);
+    expect(notifs).toHaveLength(1);
   });
 
   it('403 when the window is closed (pending)', async () => {
