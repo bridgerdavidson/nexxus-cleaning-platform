@@ -52,7 +52,7 @@ export const keys = {
     byHomeowner: (homeownerId: string) => ['properties', 'homeowner', homeownerId] as const,
   },
   conversations: {
-    byUser: (userId: string, scope: 'office' | 'job' = 'office') =>
+    byUser: (userId: string, scope: 'office' | 'job' | 'org-office' = 'office') =>
       ['conversations', 'user', userId, scope] as const,
   },
   messages: {
