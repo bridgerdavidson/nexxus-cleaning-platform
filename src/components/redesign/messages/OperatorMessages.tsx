@@ -21,7 +21,7 @@ import { deriveMessages, unreadTotal } from './deriveMessages'
 import { deriveContactBookings } from './deriveContactBookings'
 import { toConversationRowVM, toMessageVM, toInlineBookingVM, toContactContext } from './messages-presenters'
 import type { ContactBookingVM, RoleFilter } from './messages-types'
-import type { UserRole } from '@/types'
+import type { UserRole, ConversationWithDetails } from '@/types'
 
 const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
   { value: 'all', label: 'All roles' },
@@ -32,7 +32,7 @@ const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
 ]
 
 function OperatorMessagesData() {
-  const { user, currentOrgRole } = useAuth()
+  const { user, currentOrgRole, currentOrganizationId } = useAuth()
   const userId = user?.id ?? ''
   const userRole = (user?.role as UserRole) ?? 'admin'
   const router = useRouter()
@@ -62,8 +62,15 @@ function OperatorMessagesData() {
     [router, searchParams],
   )
 
-  // data — useConversations returns `loading` (maps to inboxLoading)
-  const { conversations, loading: inboxLoading, updateUnreadCount } = useConversations({ userId })
+  // data — useConversations returns `loading` (maps to inboxLoading).
+  // org-office: the shared OFFICE inbox shows ALL of the org's office threads
+  // (any admin/manager can read/answer any of them via the 099 RLS), not just
+  // the logged-in operator's own. Each thread is labeled by its customer.
+  const { conversations, loading: inboxLoading, updateUnreadCount } = useConversations({
+    userId,
+    scope: 'org-office',
+    orgId: currentOrganizationId ?? '',
+  })
   // useMessages returns `loading` (maps to threadLoading)
   const {
     messages: rawMessages,
@@ -89,6 +96,12 @@ function OperatorMessagesData() {
   const [stagedAppointmentId, setStagedAppointmentId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // A just-started thread has organization_id NULL until its first message fires
+  // the 099 backfill trigger, so it is absent from the org-scoped list. Hold the
+  // freshly-started conversation (which useStartConversation returns fully formed)
+  // so the composer has a recipient and can send that first message; once the row
+  // lands org-stamped, the org-office list includes it and this is superseded.
+  const [pendingConv, setPendingConv] = useState<ConversationWithDetails | null>(null)
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const consumedToRef = useRef<string | null>(null)
   const linkApptRef = useRef<{ apptId: string; convId: string } | null>(null)
@@ -103,7 +116,9 @@ function OperatorMessagesData() {
     [rowsAll, search, unreadOnly, roleFilter],
   )
 
-  const selectedConv = conversations.find((c) => c.id === selectedId) ?? null
+  const selectedConv =
+    conversations.find((c) => c.id === selectedId) ??
+    (pendingConv && pendingConv.id === selectedId ? pendingConv : null)
   const participant = selectedConv?.other_participant ?? null
 
   const apptById = useMemo(() => {
@@ -152,6 +167,7 @@ function OperatorMessagesData() {
     const appt = apptParam
     startConversation(toParam).then((res) => {
       if (res.success && res.conversationId) {
+        if (res.conversation) setPendingConv(res.conversation)
         if (appt) linkApptRef.current = { apptId: appt, convId: res.conversationId }
         setSelected(res.conversationId)
       }
@@ -174,6 +190,11 @@ function OperatorMessagesData() {
     if (!participant) return
     const content = draft.trim()
     if (!content && pendingFiles.length === 0 && !stagedAppointmentId) return
+    // recipient = the CUSTOMER participant of the thread (other_participant from
+    // the org-office derivation), NOT "the participant that isn't me" — the
+    // operator answering is usually not a participant of the thread. useSendMessage
+    // stamps organization_id = currentOrganizationId, so messages_insert branch 2
+    // (is_admin_or_manager_in_org) authorizes the reply into a non-participant thread.
     const res = await sendMessage({
       conversationId: selectedId ?? undefined,
       senderId: userId,
@@ -223,8 +244,10 @@ function OperatorMessagesData() {
     async (memberId: string) => {
       setNewOpen(false)
       const res = await startConversation(memberId)
-      if (res.success && res.conversationId) setSelected(res.conversationId)
-      else if (!res.success) toast.error(res.error || 'Could not start the conversation.')
+      if (res.success && res.conversationId) {
+        if (res.conversation) setPendingConv(res.conversation)
+        setSelected(res.conversationId)
+      } else if (!res.success) toast.error(res.error || 'Could not start the conversation.')
     },
     [startConversation, setSelected],
   )
