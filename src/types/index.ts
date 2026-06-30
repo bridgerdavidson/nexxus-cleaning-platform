@@ -322,6 +322,8 @@ export interface Conversation {
   id: string;
   participant_1_id: string; // References user_profiles(id)
   participant_2_id: string; // References user_profiles(id)
+  /** NULL = office thread (a contact pair). NON-NULL = a per-appointment job thread (homeowner<->cleaner). */
+  appointment_id: string | null;
   last_message_at: string;
   created_at: string;
 }

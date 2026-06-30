@@ -10,13 +10,14 @@ import { ConversationWithDetails, UserRole, UserProfile, Message } from '../type
 
 interface UseConversationsOptions {
   userId: string;
+  scope?: 'office' | 'job';
   searchQuery?: string;
   roleFilter?: UserRole | 'all';
 }
 
-export function useConversations({ userId, searchQuery = '', roleFilter = 'all' }: UseConversationsOptions) {
+export function useConversations({ userId, scope = 'office', searchQuery = '', roleFilter = 'all' }: UseConversationsOptions) {
   const queryClient = useQueryClient();
-  const queryKey = keys.conversations.byUser(userId);
+  const queryKey = keys.conversations.byUser(userId, scope);
 
   const query = useQuery({
     queryKey,
@@ -25,10 +26,14 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async () => {
-      const { data: conversationsData, error: conversationsError } = await supabase
+      let convQuery = supabase
         .from('conversations')
         .select('*')
-        .or(`participant_1_id.eq.${userId},participant_2_id.eq.${userId}`)
+        .or(`participant_1_id.eq.${userId},participant_2_id.eq.${userId}`);
+      convQuery = scope === 'job'
+        ? convQuery.not('appointment_id', 'is', null)
+        : convQuery.is('appointment_id', null);
+      const { data: conversationsData, error: conversationsError } = await convQuery
         .order('last_message_at', { ascending: false });
 
       if (conversationsError) throw conversationsError;
@@ -116,7 +121,7 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
 
   // Conversations realtime: invalidate on INSERT/DELETE that involve this user.
   useSupabaseRealtimeSync({
-    channelName: `conversations:${userId}`,
+    channelName: `conversations:${userId}:${scope}`,
     table: 'conversations',
     enabled: !!userId,
     onEvent: payload => {
@@ -133,14 +138,14 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
   // Supabase realtime filters don't support OR — one matches messages this
   // user sent, the other matches messages addressed to them.
   useSupabaseRealtimeSync({
-    channelName: `messages:sender:${userId}`,
+    channelName: `messages:sender:${userId}:${scope}`,
     table: 'messages',
     filter: userId ? `sender_id=eq.${userId}` : undefined,
     enabled: !!userId,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
   useSupabaseRealtimeSync({
-    channelName: `messages:recipient:${userId}`,
+    channelName: `messages:recipient:${userId}:${scope}`,
     table: 'messages',
     filter: userId ? `recipient_id=eq.${userId}` : undefined,
     enabled: !!userId,
@@ -151,7 +156,7 @@ export function useConversations({ userId, searchQuery = '', roleFilter = 'all' 
   // sequentially after the INSERT). Subscribe so the recipient's conversation
   // list refetches the attachment count once the photos land.
   useSupabaseRealtimeSync({
-    channelName: `message_attachments:user:${userId}`,
+    channelName: `message_attachments:user:${userId}:${scope}`,
     table: 'message_attachments',
     enabled: !!userId,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),

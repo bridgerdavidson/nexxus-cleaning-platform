@@ -12,19 +12,24 @@ import { useSupabaseRealtimeSync } from "@/lib/useSupabaseRealtimeSync";
  * channels) on every cleaner page; this is one count query + one realtime channel.
  * This is conversation unread, distinct from the notification bell's outbox.
  */
-export function useUnreadMessageCount(userId: string | undefined): number {
-  const key = keys.messages.unreadCount(userId ?? "anon");
+export function useUnreadMessageCount(
+  userId: string | undefined,
+  scope: 'office' | 'all' = 'office',
+): number {
+  const key = keys.messages.unreadCount(userId ?? "anon", scope);
 
   const query = useQuery({
     queryKey: key,
     enabled: !!userId,
     staleTime: 15_000,
     queryFn: async () => {
-      const { count, error } = await supabase
+      let q = supabase
         .from("messages")
         .select("id", { count: "exact", head: true })
         .eq("recipient_id", userId as string)
         .eq("is_read", false);
+      if (scope === "office") q = q.is("appointment_id", null);
+      const { count, error } = await q;
       if (error) throw error;
       return count ?? 0;
     },
@@ -32,7 +37,7 @@ export function useUnreadMessageCount(userId: string | undefined): number {
 
   useSupabaseRealtimeSync({
     enabled: !!userId,
-    channelName: `messages:recipient:${userId ?? "anon"}:badge`,
+    channelName: `messages:recipient:${userId ?? "anon"}:badge:${scope}`,
     table: "messages",
     filter: userId ? `recipient_id=eq.${userId}` : undefined,
     onEvent: () => ({ type: "invalidate", keys: [key] }),
