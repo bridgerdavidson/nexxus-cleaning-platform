@@ -25,23 +25,21 @@ function dateLabel(date: string): string {
 }
 
 /**
- * Sections the homeowner inbox: the single office thread (pinned), active job
+ * Sections the homeowner inbox: every office thread (a homeowner can hold more
+ * than one, e.g. one with the owner/admin and one with a manager), active job
  * threads (send window open), and past job threads (archived, read-only).
  * Job rows whose appointment is not in the loaded set are dropped (defensive).
  */
 export function deriveHomeownerInbox(input: DeriveInput): HomeownerInboxModel {
   const { officeRows, jobRows, appointmentsById, now, currentUserId } = input;
 
-  const office = officeRows.length
-    ? toConversationRowVM(
-        [...officeRows].sort(
-          (a, b) =>
-            new Date(b.last_message_at ?? b.created_at).getTime() -
-            new Date(a.last_message_at ?? a.created_at).getTime(),
-        )[0],
-        currentUserId,
-      )
-    : null;
+  const office = [...officeRows]
+    .sort(
+      (a, b) =>
+        new Date(b.last_message_at ?? b.created_at).getTime() -
+        new Date(a.last_message_at ?? a.created_at).getTime(),
+    )
+    .map((row) => toConversationRowVM(row, currentUserId));
 
   const active: JobThreadRowVM[] = [];
   const past: JobThreadRowVM[] = [];

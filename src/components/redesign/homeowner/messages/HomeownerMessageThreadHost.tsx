@@ -72,10 +72,17 @@ function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null;
 
   // ---- Job thread resolution (?job) ----
   const jobAppt = useMemo(() => (jobParam ? appointments.find((a) => a.id === jobParam) ?? null : null), [jobParam, appointments]);
-  const jobConvId = useMemo(
-    () => (jobParam ? jobConvs.find((c) => c.appointment_id === jobParam)?.id ?? null : null),
-    [jobParam, jobConvs],
-  );
+  const jobConvId = useMemo(() => {
+    if (!jobParam) return null;
+    const matches = jobConvs.filter((c) => c.appointment_id === jobParam);
+    if (jobAppt?.cleaner_id) {
+      const current = matches.find(
+        (c) => c.participant_1_id === jobAppt.cleaner_id || c.participant_2_id === jobAppt.cleaner_id,
+      );
+      if (current) return current.id;
+    }
+    return null; // no conversation with the CURRENT cleaner yet -> first send creates it
+  }, [jobParam, jobConvs, jobAppt]);
 
   const close = useCallback(() => {
     const next = new URLSearchParams(sp.toString());

@@ -41,8 +41,7 @@ export function HomeownerMessages() {
       model={model}
       loading={lo || lj || la}
       onOpenOffice={() => {
-        if (model.office) openOfficeThread(model.office.id);
-        else if (office) openOffice(office.id);
+        if (office) openOffice(office.id);
       }}
       onOpenOfficeThread={openOfficeThread}
       onOpenJob={openJob}

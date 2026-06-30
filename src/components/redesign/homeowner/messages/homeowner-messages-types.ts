@@ -15,8 +15,8 @@ export interface JobThreadRowVM {
 }
 
 export interface HomeownerInboxModel {
-  /** The office thread row, or null when the homeowner has not messaged the office yet. */
-  office: ConversationRowVM | null;
+  /** All office thread rows (most-recent first); empty when the homeowner has not messaged the office yet. */
+  office: ConversationRowVM[];
   active: JobThreadRowVM[];
   past: JobThreadRowVM[];
 }

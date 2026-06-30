@@ -67,7 +67,7 @@ function OfficeRow({
   onOpenThread,
   onStart,
 }: {
-  office: HomeownerInboxModel['office'];
+  office: HomeownerInboxModel['office'][number] | null;
   onOpenThread: () => void;
   onStart: () => void;
 }) {
@@ -122,7 +122,7 @@ function JobRow({
     <button
       type="button"
       onClick={onOpen}
-      className={cn(ROW_BASE, muted && 'opacity-70 shadow-none')}
+      className={cn(ROW_BASE, muted && 'bg-muted/30 shadow-none')}
     >
       <Avatar className="size-11 shrink-0">
         {row.avatarUrl ? <AvatarImage src={row.avatarUrl} alt="" /> : null}
@@ -188,7 +188,7 @@ export function HomeownerMessagesView({
 }: HomeownerMessagesViewProps) {
   if (loading) return <LoadingState />;
 
-  const officeUnread = model.office?.unreadCount ?? 0;
+  const officeUnread = model.office.reduce((n, r) => n + r.unreadCount, 0);
   const jobUnread = [...model.active, ...model.past].reduce((n, r) => n + r.unreadCount, 0);
   const totalUnread = officeUnread + jobUnread;
   const subtitle =
@@ -196,7 +196,8 @@ export function HomeownerMessagesView({
       ? `${totalUnread} unread message${totalUnread === 1 ? '' : 's'}`
       : 'Your office and cleaning conversations';
 
-  const isEmpty = !model.office && model.active.length === 0 && model.past.length === 0;
+  const isEmpty =
+    model.office.length === 0 && model.active.length === 0 && model.past.length === 0;
 
   return (
     <div className="space-y-6 pt-1">
@@ -221,12 +222,21 @@ export function HomeownerMessagesView({
       ) : (
         <>
           <section>
-            <SectionHeader label="Office" count={model.office ? 1 : 0} />
-            <OfficeRow
-              office={model.office}
-              onOpenThread={() => model.office && onOpenOfficeThread(model.office.id)}
-              onStart={onOpenOffice}
-            />
+            <SectionHeader label="Office" count={model.office.length} />
+            {model.office.length > 0 ? (
+              <div className="space-y-2.5">
+                {model.office.map((row) => (
+                  <OfficeRow
+                    key={row.id}
+                    office={row}
+                    onOpenThread={() => onOpenOfficeThread(row.id)}
+                    onStart={onOpenOffice}
+                  />
+                ))}
+              </div>
+            ) : (
+              <OfficeRow office={null} onOpenThread={() => {}} onStart={onOpenOffice} />
+            )}
           </section>
 
           {model.active.length > 0 ? (

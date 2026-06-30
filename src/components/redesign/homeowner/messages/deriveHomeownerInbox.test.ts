@@ -32,9 +32,21 @@ describe('deriveHomeownerInbox', () => {
       officeRows: [conv({ id: 'office-c', appointment_id: null })],
       jobRows: [], appointmentsById: new Map(), now: NOW, currentUserId: ME,
     });
-    expect(m.office?.id).toBe('office-c');
+    expect(m.office.map((o) => o.id)).toContain('office-c');
+    expect(m.office).toHaveLength(1);
     expect(m.active).toHaveLength(0);
     expect(m.past).toHaveLength(0);
+  });
+
+  it('returns ALL office threads, most-recent first', () => {
+    const m = deriveHomeownerInbox({
+      officeRows: [
+        conv({ id: 'office-older', appointment_id: null, last_message_at: '2026-06-30T10:00:00Z' }),
+        conv({ id: 'office-newer', appointment_id: null, last_message_at: '2026-06-30T16:00:00Z' }),
+      ],
+      jobRows: [], appointmentsById: new Map(), now: NOW, currentUserId: ME,
+    });
+    expect(m.office.map((o) => o.id)).toEqual(['office-newer', 'office-older']);
   });
 
   it('partitions an in-progress job thread into active', () => {
