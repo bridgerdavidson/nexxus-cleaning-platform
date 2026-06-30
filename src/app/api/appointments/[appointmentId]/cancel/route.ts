@@ -49,7 +49,7 @@ export async function POST(
     };
 
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+      allowedRoles: ['owner', 'admin', 'manager', 'homeowner'],
     });
     if (!auth.ok) return auth.response;
 
@@ -76,6 +76,19 @@ export async function POST(
       | null;
     if (!appt || appt.organization_id !== organization_id) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
+    }
+
+    // A homeowner caller may only cancel their OWN appointment, and always as the
+    // homeowner party (never as cleaner/org to dodge the fee, never a self-declared
+    // no-show). Org staff keep the client-supplied party/no_show.
+    let effectiveParty = party;
+    let effectiveNoShow = no_show;
+    if (auth.role === 'homeowner') {
+      if (appt.homeowner_id !== auth.userId) {
+        return NextResponse.json({ error: 'Appointment not found' }, { status: 404 });
+      }
+      effectiveParty = 'homeowner';
+      effectiveNoShow = false;
     }
 
     // The Stripe-backed revenue row decides whether this job's money is already moving:
@@ -125,8 +138,8 @@ export async function POST(
     let insideWindow = false;
     if (!appt.is_self_pay && appt.status !== 'completed' && !inflightDebit) {
       const fee = computeCancellationFee({
-        party,
-        noShow: no_show,
+        party: effectiveParty,
+        noShow: effectiveNoShow,
         grossCents,
         windowHours: org?.cancellation_window_hours ?? 24,
         feeType: org?.cancellation_fee_type ?? 'none',
@@ -159,7 +172,7 @@ export async function POST(
         organizationId: organization_id,
         eventType: 'cancelled_with_inflight_debit',
         actor: `user:${auth.userId}`,
-        payload: { party, no_show },
+        payload: { party: effectiveParty, no_show: effectiveNoShow },
       });
     }
 
@@ -172,7 +185,7 @@ export async function POST(
           organizationId: organization_id,
           eventType: 'appointment_cancelled',
           actor: `user:${auth.userId}`,
-          payload: { party, no_show, inside_window: insideWindow },
+          payload: { party: effectiveParty, no_show: effectiveNoShow, inside_window: insideWindow },
         });
       }
       return NextResponse.json({
@@ -198,7 +211,7 @@ export async function POST(
       },
       feeCents,
       `user:${auth.userId}`,
-      { party, noShow: no_show, insideWindow },
+      { party: effectiveParty, noShow: effectiveNoShow, insideWindow },
     );
 
     return NextResponse.json({
