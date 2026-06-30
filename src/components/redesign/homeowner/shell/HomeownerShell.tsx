@@ -15,7 +15,7 @@ export function HomeownerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const activeId = deriveHomeownerActive(pathname);
   const { user } = useAuth();
-  const messagesUnread = useUnreadMessageCount(user?.id);
+  const messagesUnread = useUnreadMessageCount(user?.id, 'all');
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-dvh bg-background text-foreground">
