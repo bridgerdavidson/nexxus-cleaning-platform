@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarX, ChevronLeft } from 'lucide-react';
+import { CalendarX, ChevronLeft, MessageCircle } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -12,6 +12,10 @@ import type { Appointment } from '@/hooks/useHomeownerData';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
 import { formatCleaningWhen } from '../home/home-presenters';
 import { CancelCleaningSheet } from './CancelCleaningSheet';
+import { useOpenMessageThread } from '../messages/useOpenMessageThread';
+import { useHomeownerOfficeContact } from '../messages/useHomeownerOfficeContact';
+import { useHomeownerOrgMessagingEnabled } from '../messages/useHomeownerOrgMessagingEnabled';
+import { isJobMessagingWindowOpen } from '@/lib/messaging/jobMessagingWindow';
 
 function formatUsd(n: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -42,6 +46,23 @@ export function HomeownerCleaningDetail({
     !!appointment &&
     stripeNewChargeFlowUiEnabled() &&
     (appointment.status === 'pending' || appointment.status === 'confirmed');
+
+  const { openOffice, openJob } = useOpenMessageThread();
+  const { office } = useHomeownerOfficeContact();
+  const messagingEnabled = useHomeownerOrgMessagingEnabled();
+  const canMessageJob =
+    !!appointment &&
+    messagingEnabled &&
+    !!appointment.cleaner_id &&
+    isJobMessagingWindowOpen(
+      {
+        status: appointment.status,
+        cleaner_confirmation_status: appointment.cleaner_confirmation_status ?? null,
+        completed_at: appointment.completed_at ?? null,
+        cancelled_at: appointment.cancelled_at ?? null,
+      },
+      new Date(),
+    );
 
   return (
     <MobileTakeover ariaLabel="Cleaning details" keyboardAware={false} onClosed={onClose}>
@@ -122,6 +143,29 @@ export function HomeownerCleaningDetail({
                         </span>
                       </Field>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {canMessageJob && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => openJob(appointment.id)}
+                      >
+                        <MessageCircle className="size-4" />
+                        Message about this cleaning
+                      </Button>
+                    )}
+                    {office && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => openOffice(office.id)}
+                      >
+                        <MessageCircle className="size-4" />
+                        Message office
+                      </Button>
+                    )}
                   </div>
 
                   {canCancel && (
