@@ -1,7 +1,5 @@
+import { HomeownerCleanings } from '@/components/redesign/homeowner/cleanings/HomeownerCleanings';
+
 export default function CleaningsPage() {
-  return (
-    <div className="py-16 text-center text-sm text-muted-foreground">
-      Coming soon.
-    </div>
-  );
+  return <HomeownerCleanings />;
 }
