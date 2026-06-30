@@ -5,11 +5,11 @@ import { ChevronLeft, MessageSquare } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { MessageBubble } from "@/components/redesign/messages/MessageBubble";
-import { MessageComposer } from "@/components/redesign/messages/MessageComposer";
-import type { MessageVM } from "@/components/redesign/messages/messages-types";
+import { MessageBubble } from "./MessageBubble";
+import { MessageComposer } from "./MessageComposer";
+import type { MessageVM } from "./messages-types";
 
-export interface CleanerMessageThreadViewProps {
+export interface MessageThreadTakeoverViewProps {
   title: string;
   initials: string;
   avatarUrl: string | null;
@@ -28,14 +28,22 @@ export interface CleanerMessageThreadViewProps {
   onBack?: () => void;
   /** Label shown next to the back chevron (e.g. "Back to job"). */
   backLabel?: string;
+  /** When true the composer is replaced by a closed-thread notice (history stays readable). */
+  readOnly?: boolean;
+  readOnlyNotice?: string;
+  /** Empty-state copy (defaults to the office wording). */
+  emptyTitle?: string;
+  emptyBody?: string;
 }
 
 /**
- * The cleaner's office thread. Reuses the operator MessageBubble + MessageComposer
+ * Shared full-screen takeover thread view. Reuses the operator MessageBubble + MessageComposer
  * and mirrors MessageThreadPanel's scroll/paging body, but with a trimmed header
  * (back + avatar + title only; no Details/Delete/role subtitle).
+ *
+ * Used by CleanerThread and HomeownerMessageThread.
  */
-export function CleanerMessageThreadView(props: CleanerMessageThreadViewProps) {
+export function MessageThreadTakeoverView(props: MessageThreadTakeoverViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<string | null>(null);
@@ -136,9 +144,11 @@ export function CleanerMessageThreadView(props: CleanerMessageThreadViewProps) {
         ) : props.messages.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <MessageSquare className="size-6 text-muted-foreground" aria-hidden />
-            <p className="text-sm font-semibold text-foreground">Start the conversation</p>
+            <p className="text-sm font-semibold text-foreground">
+              {props.emptyTitle ?? 'Start the conversation'}
+            </p>
             <p className="max-w-xs text-xs text-muted-foreground">
-              Send your office a message. They will see it right away.
+              {props.emptyBody ?? 'Send your office a message. They will see it right away.'}
             </p>
           </div>
         ) : (
@@ -156,7 +166,13 @@ export function CleanerMessageThreadView(props: CleanerMessageThreadViewProps) {
         <div ref={props.messagesEndRef} aria-hidden />
       </div>
 
-      <MessageComposer {...props.composer} />
+      {props.readOnly ? (
+        <div className="border-t border-border/60 bg-muted/40 px-4 py-3 text-center text-xs font-medium text-muted-foreground">
+          {props.readOnlyNotice ?? 'This conversation is closed. You can still read the history.'}
+        </div>
+      ) : (
+        <MessageComposer {...props.composer} />
+      )}
     </div>
   );
 }

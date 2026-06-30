@@ -10,7 +10,7 @@ import { isMessagingForbiddenError, MESSAGING_FORBIDDEN_TEXT } from "@/lib/messa
 import { toMessageVM } from "@/components/redesign/messages/messages-presenters";
 import { useOpenJob } from "../job/useOpenJob";
 import { cleanerApptToContactBookingVM, cleanerApptToInlineBookingVM } from "./messages-cleaner-presenters";
-import { CleanerMessageThreadView } from "./CleanerMessageThreadView";
+import { MessageThreadTakeoverView } from "@/components/redesign/messages/MessageThreadTakeoverView";
 import type { OfficeContact } from "./office-contacts";
 
 function initialsFromName(name: string): string {
@@ -105,7 +105,7 @@ export function CleanerThread({
   }, [draft, pendingFiles, armedAppointment, sendMessage, activeConvId, userId, recipient.id, onArmedConsumed]);
 
   return (
-    <CleanerMessageThreadView
+    <MessageThreadTakeoverView
       title={variant === "inline" ? "Office" : recipient.name}
       initials={initialsFromName(recipient.name)}
       avatarUrl={recipient.avatarUrl}
