@@ -1,13 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { CalendarX, ChevronLeft } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { stripeNewChargeFlowUiEnabled } from '@/lib/stripe/flags';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
 import { formatCleaningWhen } from '../home/home-presenters';
+import { CancelCleaningSheet } from './CancelCleaningSheet';
 
 function formatUsd(n: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -33,6 +37,12 @@ export function HomeownerCleaningDetail({
   loading: boolean;
   onClose: () => void;
 }) {
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const canCancel =
+    !!appointment &&
+    stripeNewChargeFlowUiEnabled() &&
+    (appointment.status === 'pending' || appointment.status === 'confirmed');
+
   return (
     <MobileTakeover ariaLabel="Cleaning details" keyboardAware={false} onClosed={onClose}>
       {(close) => (
@@ -113,6 +123,24 @@ export function HomeownerCleaningDetail({
                       </Field>
                     </div>
                   </div>
+
+                  {canCancel && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="w-full text-critical-700"
+                        onClick={() => setCancelOpen(true)}
+                      >
+                        Cancel cleaning
+                      </Button>
+                      <CancelCleaningSheet
+                        open={cancelOpen}
+                        onOpenChange={setCancelOpen}
+                        appointment={appointment}
+                        onCancelled={close}
+                      />
+                    </>
+                  )}
                 </>
               )}
             </div>
