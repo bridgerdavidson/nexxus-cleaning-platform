@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { toJobTranscriptVM } from './jobTranscript';
 
+// Pin the timezone: toJobTranscriptVM's day-divider / "Today" logic uses
+// local-time day boundaries, so the absolute expectations below are only stable
+// under a fixed zone. UTC matches CI's default; this keeps non-UTC dev machines
+// passing too. (Set at module load, before any `it` runs the date math.)
+process.env.TZ = 'UTC';
+
 const NOW = new Date('2026-06-30T18:00:00Z');
 
 function msg(over: Partial<Parameters<typeof toJobTranscriptVM>[0][number]> = {}) {

@@ -18,6 +18,7 @@ export function JobThreadTranscript({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  conversationKey = null,
   emptyText = 'No messages between the homeowner and cleaner yet.',
 }: {
   rows: JobTranscriptRowVM[];
@@ -25,17 +26,47 @@ export function JobThreadTranscript({
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  /** Changes when the underlying thread changes, to reset the initial scroll. */
+  conversationKey?: string | null;
   emptyText?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const didInitialScrollRef = useRef(false);
 
+  // Reset the initial-scroll flag whenever the thread changes.
+  useEffect(() => {
+    didInitialScrollRef.current = false;
+  }, [conversationKey]);
+
+  // Initial load: jump to the latest message (bottom). This shows the most
+  // recent message first AND pushes the top load-more sentinel off-screen, so
+  // the IntersectionObserver below does not immediately auto-page the whole
+  // history while the view is pinned at the top.
+  useEffect(() => {
+    if (loading || rows.length === 0 || didInitialScrollRef.current) return;
+    const sc = scrollRef.current;
+    if (!sc) return;
+    didInitialScrollRef.current = true;
+    sc.scrollTop = sc.scrollHeight;
+  }, [loading, rows]);
+
+  // Paging: observe the top sentinel, but only fire once the initial
+  // scroll-to-bottom has happened (so a recreated observer can never auto-page
+  // on first paint). Older pages prepend above the current view.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasMore) return;
     const io = new IntersectionObserver(
       entries => {
-        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) onLoadMore();
+        if (
+          entries[0]?.isIntersecting &&
+          hasMore &&
+          !isLoadingMore &&
+          didInitialScrollRef.current
+        ) {
+          onLoadMore();
+        }
       },
       { root: scrollRef.current, rootMargin: '120px 0px 0px 0px' },
     );

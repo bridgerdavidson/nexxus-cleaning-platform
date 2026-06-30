@@ -38,6 +38,7 @@ export function JobMessagesPanel({
         hasMore={hasMore}
         isLoadingMore={isLoadingMore}
         onLoadMore={loadMoreMessages}
+        conversationKey={appointmentId}
       />
     </div>
   );

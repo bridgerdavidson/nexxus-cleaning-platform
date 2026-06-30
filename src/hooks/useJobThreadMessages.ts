@@ -28,7 +28,6 @@ interface UseJobThreadMessagesOptions {
 export function useJobThreadMessages({ appointmentId, limit = 30 }: UseJobThreadMessagesOptions) {
   const queryClient = useQueryClient();
   const queryKey = keys.messages.byAppointment(appointmentId ?? '');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [hasMore, setHasMore] = useState(false);
   const loadingMoreRef = useRef(false);
@@ -117,6 +116,5 @@ export function useJobThreadMessages({ appointmentId, limit = 30 }: UseJobThread
     hasMore,
     isLoadingMore,
     loadMoreMessages,
-    messagesEndRef,
   };
 }
