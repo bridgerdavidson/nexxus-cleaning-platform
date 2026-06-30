@@ -10,38 +10,86 @@ import { ConversationWithDetails, UserRole, UserProfile, Message } from '../type
 
 interface UseConversationsOptions {
   userId: string;
-  scope?: 'office' | 'job';
+  scope?: 'office' | 'job' | 'org-office';
+  orgId?: string; // required when scope === 'org-office'
   searchQuery?: string;
   roleFilter?: UserRole | 'all';
 }
 
-export function useConversations({ userId, scope = 'office', searchQuery = '', roleFilter = 'all' }: UseConversationsOptions) {
+/**
+ * Pick the participant to DISPLAY for a conversation in org-office (shared
+ * inbox) mode. The logged-in operator is usually NOT a participant of a
+ * customer's office thread, so "the participant that isn't me" is wrong here.
+ * Show the CUSTOMER (homeowner/cleaner) participant; for a staff<->staff thread
+ * (no customer) fall back to the other party (or participant_1).
+ */
+function pickDisplayParticipant(
+  conv: { participant_1_id: string; participant_2_id: string },
+  profiles: Map<string, UserProfile>,
+  selfId: string,
+): UserProfile | undefined {
+  const p1 = profiles.get(conv.participant_1_id);
+  const p2 = profiles.get(conv.participant_2_id);
+  const isCustomer = (p?: UserProfile) => p?.role === 'homeowner' || p?.role === 'cleaner';
+  if (isCustomer(p1)) return p1;
+  if (isCustomer(p2)) return p2;
+  // staff<->staff: show the other party.
+  return conv.participant_1_id === selfId ? p2 : p1;
+}
+
+export function useConversations({ userId, scope = 'office', orgId, searchQuery = '', roleFilter = 'all' }: UseConversationsOptions) {
   const queryClient = useQueryClient();
+  const isOrgOffice = scope === 'org-office';
   const queryKey = keys.conversations.byUser(userId, scope);
 
   const query = useQuery({
     queryKey,
-    enabled: !!userId,
+    // org-office is org-scoped, so it additionally needs an orgId before it can run.
+    enabled: !!userId && (!isOrgOffice || !!orgId),
     // Background safety net for missed realtime events. Foreground only.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async () => {
-      let convQuery = supabase
-        .from('conversations')
-        .select('*')
-        .or(`participant_1_id.eq.${userId},participant_2_id.eq.${userId}`);
-      convQuery = scope === 'job'
-        ? convQuery.not('appointment_id', 'is', null)
-        : convQuery.is('appointment_id', null);
-      const { data: conversationsData, error: conversationsError } = await convQuery
-        .order('last_message_at', { ascending: false });
+      let conversationsData;
+      let conversationsError;
+      if (isOrgOffice) {
+        // Shared OFFICE inbox: every office thread (appointment_id IS NULL) of
+        // the org, not just the logged-in operator's own. Authorized by the 099
+        // conversations_select_org_office RLS (admin/manager of the org).
+        const res = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('organization_id', orgId as string)
+          .is('appointment_id', null)
+          .order('last_message_at', { ascending: false });
+        conversationsData = res.data;
+        conversationsError = res.error;
+      } else {
+        let convQuery = supabase
+          .from('conversations')
+          .select('*')
+          .or(`participant_1_id.eq.${userId},participant_2_id.eq.${userId}`);
+        convQuery = scope === 'job'
+          ? convQuery.not('appointment_id', 'is', null)
+          : convQuery.is('appointment_id', null);
+        const res = await convQuery.order('last_message_at', { ascending: false });
+        conversationsData = res.data;
+        conversationsError = res.error;
+      }
 
       if (conversationsError) throw conversationsError;
       if (!conversationsData || conversationsData.length === 0) return [];
 
-      const participantIds = conversationsData.map(conv =>
-        conv.participant_1_id === userId ? conv.participant_2_id : conv.participant_1_id
-      );
+      // org-office: the operator is usually not a participant, so fetch BOTH
+      // participants' profiles per thread and derive the customer for display.
+      // Participant modes: just the non-self participant, as before.
+      const participantIds = isOrgOffice
+        ? Array.from(
+            new Set(conversationsData.flatMap(conv => [conv.participant_1_id, conv.participant_2_id])),
+          )
+        : conversationsData.map(conv =>
+            conv.participant_1_id === userId ? conv.participant_2_id : conv.participant_1_id
+          );
 
       const conversationIds = conversationsData.map(c => c.id);
 
@@ -55,6 +103,10 @@ export function useConversations({ userId, scope = 'office', searchQuery = '', r
           .select('*')
           .in('conversation_id', conversationIds)
           .order('created_at', { ascending: false }),
+        // Unread is counted as messages addressed to ME and still unread. In
+        // org-office mode this is the operator's own unread for the thread (a
+        // true team-wide shared-inbox unread model is out of scope); threads
+        // they were never addressed in simply show 0, which is acceptable.
         supabase
           .from('messages')
           .select('conversation_id, id')
@@ -103,8 +155,11 @@ export function useConversations({ userId, scope = 'office', searchQuery = '', r
 
       return conversationsData
         .map(conv => {
-          const otherId = conv.participant_1_id === userId ? conv.participant_2_id : conv.participant_1_id;
-          const otherParticipant = profilesMap.get(otherId);
+          const otherParticipant = isOrgOffice
+            ? pickDisplayParticipant(conv, profilesMap, userId)
+            : profilesMap.get(
+                conv.participant_1_id === userId ? conv.participant_2_id : conv.participant_1_id,
+              );
           if (!otherParticipant) return null;
           const lastMsg = lastMessageMap.get(conv.id) ?? null;
           return {
@@ -119,12 +174,23 @@ export function useConversations({ userId, scope = 'office', searchQuery = '', r
     },
   });
 
-  // Conversations realtime: invalidate on INSERT/DELETE that involve this user.
+  // Realtime keys. In org-office mode subscriptions are scoped to the ORG, not
+  // the operator (any admin/manager seeing the same org shares one logical
+  // stream), and use DB-level organization_id filters. The channel NAMES for
+  // the participant scopes are kept byte-identical so office/job callers are
+  // unaffected (channel dedup hinges on the exact name).
+  const rtEnabled = isOrgOffice ? !!orgId : !!userId;
+
+  // Conversations realtime. Participant mode: invalidate on changes involving
+  // this user. Org-office: invalidate on any office-thread change in the org
+  // (the org filter + the 099 trigger's UPDATE that stamps organization_id).
   useSupabaseRealtimeSync({
-    channelName: `conversations:${userId}:${scope}`,
+    channelName: isOrgOffice ? `conversations:org:${orgId}:org-office` : `conversations:${userId}:${scope}`,
     table: 'conversations',
-    enabled: !!userId,
+    filter: isOrgOffice && orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: rtEnabled,
     onEvent: payload => {
+      if (isOrgOffice) return { type: 'invalidate', keys: [queryKey] };
       const conv = (payload.new ?? payload.old) as { participant_1_id?: string; participant_2_id?: string } | undefined;
       if (!conv) return;
       if (conv.participant_1_id !== userId && conv.participant_2_id !== userId) return;
@@ -132,33 +198,39 @@ export function useConversations({ userId, scope = 'office', searchQuery = '', r
     },
   });
 
-  // Messages realtime: any message INSERT/UPDATE that involves this user
+  // Messages realtime: any message INSERT/UPDATE that affects a listed thread
   // changes either the last_message preview or the unread count, so we
-  // invalidate the conversation list. Split into two channels because
-  // Supabase realtime filters don't support OR — one matches messages this
-  // user sent, the other matches messages addressed to them.
+  // invalidate the conversation list. Participant mode splits into two channels
+  // because Supabase realtime filters don't support OR — one matches messages
+  // this user sent, the other matches messages addressed to them. Org-office
+  // mode uses ONE org-filtered channel instead, so the second (recipient) slot
+  // is left idle (the org channel already covers every org message).
   useSupabaseRealtimeSync({
-    channelName: `messages:sender:${userId}:${scope}`,
+    channelName: isOrgOffice ? `messages:org:${orgId}:org-office` : `messages:sender:${userId}:${scope}`,
     table: 'messages',
-    filter: userId ? `sender_id=eq.${userId}` : undefined,
-    enabled: !!userId,
+    filter: isOrgOffice
+      ? (orgId ? `organization_id=eq.${orgId}` : undefined)
+      : (userId ? `sender_id=eq.${userId}` : undefined),
+    enabled: rtEnabled,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
   useSupabaseRealtimeSync({
     channelName: `messages:recipient:${userId}:${scope}`,
     table: 'messages',
     filter: userId ? `recipient_id=eq.${userId}` : undefined,
-    enabled: !!userId,
+    enabled: !isOrgOffice && !!userId,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
   // Attachments arrive AFTER the parent message row (sender uploads them
-  // sequentially after the INSERT). Subscribe so the recipient's conversation
-  // list refetches the attachment count once the photos land.
+  // sequentially after the INSERT). Subscribe so the conversation list refetches
+  // the attachment count once the photos land. message_attachments has no
+  // organization_id column, so org-office can't DB-filter it; it just keys the
+  // channel by org and invalidates on any attachment event.
   useSupabaseRealtimeSync({
-    channelName: `message_attachments:user:${userId}:${scope}`,
+    channelName: isOrgOffice ? `message_attachments:org:${orgId}:org-office` : `message_attachments:user:${userId}:${scope}`,
     table: 'message_attachments',
-    enabled: !!userId,
+    enabled: rtEnabled,
     onEvent: () => ({ type: 'invalidate', keys: [queryKey] }),
   });
 
