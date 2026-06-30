@@ -15,7 +15,7 @@ import { POST } from './route';
 import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { withTestOrg, createTestAppointment, addHomeownerToOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
@@ -433,5 +433,70 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
       .eq('appointment_id', appt.id)
       .eq('event_type', 'cancellation_fee_failed');
     expect((notifs ?? []).length).toBeGreaterThan(0);
+  });
+
+  // ── Owning-homeowner self-cancel (Slice 2) ───────────────────────────────────
+  // A homeowner caller may cancel only their OWN appointment, and the server forces
+  // party='homeowner' + no_show=false so they can't dodge the fee by blaming the
+  // cleaner or self-declaring a no-show. Org-staff behavior is unchanged.
+
+  it('owning homeowner cannot dodge the fee by claiming a cleaner-caused cancel (party forced)', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment({ scheduledDate: today(), scheduledTime: '12:00:00' });
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId, party: 'cleaner', no_show: false },
+    });
+    expect(status).toBe(200);
+    // The homeowner flat fee IS charged despite party:'cleaner' — the override won.
+    expect(body.fee_captured_cents).toBe(5000);
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createDestinationCharge).mock.calls[0][0].grossCents).toBe(5000);
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
+    expect((a as { status: string }).status).toBe('cancelled');
+  });
+
+  it('an in-org homeowner who does NOT own the appointment is rejected (404, no charge)', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment(); // owned by org.homeowner
+    const other = await addHomeownerToOrg(org.organizationId);
+    try {
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(other.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner', no_show: false },
+      });
+      expect(status).toBe(404);
+      expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+      const db = createTestSupabaseClient();
+      const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
+      expect((a as { status: string }).status).toBe('confirmed');
+    } finally {
+      await other.cleanup();
+    }
+  });
+
+  it('owning homeowner cancels their own on-time appointment for free', async () => {
+    await setPolicy({ type: 'percent', value: 20, windowHours: 24 });
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const appt = await seedAppointment({ scheduledDate: future, scheduledTime: '12:00:00' });
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    expect(body.fee_captured_cents).toBe(0);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
+    expect((a as { status: string }).status).toBe('cancelled');
   });
 });

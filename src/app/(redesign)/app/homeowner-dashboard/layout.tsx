@@ -1,11 +1,12 @@
 "use client";
 
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { HomeownerShell } from "@/components/redesign/homeowner/shell/HomeownerShell";
+import { HomeownerCleaningDetailHost } from "@/components/redesign/homeowner/cleanings/HomeownerCleaningDetailHost";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 import { redesignUiEnabled } from "@/lib/redesign/flags";
 
@@ -49,5 +50,12 @@ export default function HomeownerDashboardLayout({
     );
   if (user.role && user.role !== "homeowner") return <Spinner />;
 
-  return <HomeownerShell>{children}</HomeownerShell>;
+  return (
+    <>
+      <HomeownerShell>{children}</HomeownerShell>
+      <Suspense fallback={null}>
+        <HomeownerCleaningDetailHost />
+      </Suspense>
+    </>
+  );
 }
