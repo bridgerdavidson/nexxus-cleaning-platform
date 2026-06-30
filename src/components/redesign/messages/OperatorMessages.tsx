@@ -32,7 +32,7 @@ const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
 ]
 
 function OperatorMessagesData() {
-  const { user, currentOrgRole } = useAuth()
+  const { user, currentOrgRole, currentOrganizationId } = useAuth()
   const userId = user?.id ?? ''
   const userRole = (user?.role as UserRole) ?? 'admin'
   const router = useRouter()
@@ -62,8 +62,15 @@ function OperatorMessagesData() {
     [router, searchParams],
   )
 
-  // data — useConversations returns `loading` (maps to inboxLoading)
-  const { conversations, loading: inboxLoading, updateUnreadCount } = useConversations({ userId })
+  // data — useConversations returns `loading` (maps to inboxLoading).
+  // org-office: the shared OFFICE inbox shows ALL of the org's office threads
+  // (any admin/manager can read/answer any of them via the 099 RLS), not just
+  // the logged-in operator's own. Each thread is labeled by its customer.
+  const { conversations, loading: inboxLoading, updateUnreadCount } = useConversations({
+    userId,
+    scope: 'org-office',
+    orgId: currentOrganizationId ?? '',
+  })
   // useMessages returns `loading` (maps to threadLoading)
   const {
     messages: rawMessages,
@@ -174,6 +181,11 @@ function OperatorMessagesData() {
     if (!participant) return
     const content = draft.trim()
     if (!content && pendingFiles.length === 0 && !stagedAppointmentId) return
+    // recipient = the CUSTOMER participant of the thread (other_participant from
+    // the org-office derivation), NOT "the participant that isn't me" — the
+    // operator answering is usually not a participant of the thread. useSendMessage
+    // stamps organization_id = currentOrganizationId, so messages_insert branch 2
+    // (is_admin_or_manager_in_org) authorizes the reply into a non-participant thread.
     const res = await sendMessage({
       conversationId: selectedId ?? undefined,
       senderId: userId,
