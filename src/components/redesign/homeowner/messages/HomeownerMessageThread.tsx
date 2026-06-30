@@ -49,8 +49,11 @@ export function HomeownerMessageThread({
     [rawMessages, userId],
   );
 
-  const title = config.kind === 'office' ? config.recipient.name : config.cleanerName;
-  const avatarUrl = config.kind === 'office' ? config.recipient.avatarUrl : config.avatarUrl;
+  // The homeowner messages "the office" as one entity, never a named individual,
+  // so the office thread header reads "Cleaning office" with a generic icon (matching
+  // the inbox row) even though the underlying conversation is with one staff member.
+  const title = config.kind === 'office' ? 'Cleaning office' : config.cleanerName;
+  const avatarUrl = config.kind === 'office' ? null : config.avatarUrl;
   const readOnly = config.kind === 'job' && config.readOnly;
   const sending = config.kind === 'office' ? sendingOffice : sendingJob;
 
