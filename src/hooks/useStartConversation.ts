@@ -56,10 +56,12 @@ export function useStartConversation() {
             id: convData.id,
             participant_1_id: convData.participant_1_id,
             participant_2_id: convData.participant_2_id,
+            appointment_id: convData.appointment_id ?? null,
             last_message_at: convData.last_message_at,
             created_at: convData.created_at,
             other_participant: profileData as UserProfile,
             last_message: null,
+            last_message_attachment_count: 0,
             unread_count: 0,
           }
         : undefined;
