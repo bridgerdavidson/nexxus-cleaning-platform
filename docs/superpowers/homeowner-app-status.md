@@ -15,17 +15,16 @@ The Homeowner app is the **3rd redesign surface** (Operator + Cleaner are done).
 | --- | --- | --- |
 | 1a | Shell + Home (static, no migration) | **MERGED** (PR #104, squash 6ed1a98) |
 | 1b | Live cleaning tracking (migration 097 + hooks + in-progress hero + completed recap) | **MERGED** (PR #105, squash 37c34f3); migration 097 on dev **and** prod |
-| 2 | **Cleanings** (list + `?appointment=` detail takeover + cancel w/ fee disclosure) | **PR #107** (open to master 2026-06-30; merging when CI green) |
-| 3 | **Messages** (Office thread + per-cleaning job threads) | **NEXT** — see below |
+| 2 | **Cleanings** (list + `?appointment=` detail takeover + cancel w/ fee disclosure) | **MERGED** (PR #107 + #108) |
+| 3 | **Messages** (Office thread + per-cleaning job threads) | gated on Job-messaging; **PR1 backend = PR #109 (open)**, then build Slice 3 as PR2 |
 | 4 | Account (properties, cards, receipts, browse services, profile) | not started |
 
-## NEXT (for the fresh session): Slice 3 is gated on the Job-messaging feature
+## NEXT (for the fresh session): finish Job-messaging, then Slice 3
 
-**Do NOT start Slice 3 by building UI.** Slice 3 (homeowner Messages tab) **consumes** a cross-cutting feature — **Job messaging** — that does not exist yet. Build that feature first.
+The cross-cutting **Job messaging** feature (which Slice 3 consumes) is being built first. Brief (all 6 decisions closed): `docs/superpowers/specs/2026-06-29-job-messaging-design.md`. PR1 plan: `docs/superpowers/plans/2026-06-30-job-messaging-backend.md`. Full state + architecture in memory `[[project_job_messaging]]`.
 
-1. **Job-messaging feature first** (own brainstorm → plan → build). Brief is already written and all 6 decisions are closed: `docs/superpowers/specs/2026-06-29-job-messaging-design.md`. It spans: homeowner Messages + cleaner-app companion update + operator office-read + DB migration (`conversations.appointment_id` + per-org kill-switch flag + RLS) + a **guarded send route** (send-gating is a route, NOT RLS — messages_insert is permissive today) + a `message_received` notification on job threads only. Key modeled decision: **a job thread is a property of an appointment, not a contact** (no compose-to-person picker), per-(appt, cleaner) **stint** on reassignment, send-open from cleaner-assigned → completed + ~24h grace (uses `appointments.started_at`/`completed_at`, added in Slice 1b), then archived read-only. Per-org kill-switch `organizations.homeowner_cleaner_messaging_enabled` (default true), server-enforced in send-gating, toggled under Settings → Cleaner experience.
-   - GOTCHA from the spec review: `get_or_create_conversation` keys only on the participant pair, so it **collides** for >1 appointment with the same homeowner+cleaner (recurring) — the job-thread work needs `conversations.appointment_id` to disambiguate.
-2. **Then Slice 3 (Messages tab):** sectioned inbox (Office pinned + active "Your cleanings" job threads + Past), reusing the operator/cleaner chat + `MobileTakeover`. Also wire the **"Message office" / "Message about this cleaning"** actions into the Slice 2 Cleanings detail (deferred from Slice 2 — there's a clean seam: `HomeownerCleaningDetail.tsx` is where they go).
+1. **Job-messaging PR1 (backend) = PR #109, OPEN, green locally** (branch `feat/job-messaging-backend`): migration 098 (`conversations.appointment_id` + 2 partial uniques + org kill-switch + server-only `get_or_create_job_conversation`), guarded `POST /api/appointments/[id]/messages` (admin-client write because `can_message_role` blocks homeowner<->cleaner; idempotent on `clientMessageId`; fails closed), `job_message` notification, kill-switch in the Cleaner-experience settings. **Merge is user-gated** - wait for it before building consumers.
+2. **Then Slice 3 = PR2 (homeowner Messages tab):** sectioned inbox (Office pinned + active job threads + Past) reusing the operator/cleaner chat + `MobileTakeover`; wire "Message office" / "Message about this cleaning" into `HomeownerCleaningDetail.tsx`. **REQUIRED (dominant risk):** segregate job threads out of the existing Office inbox/unread badge (`useConversations`, `useUnreadMessageCount`, legacy `MessagesPage`, the shipped `CleanerMessages`) by filtering `appointment_id IS NULL`; route job sends/replies through the PR1 route with a `clientMessageId` (client `useSendMessage` INSERT is RLS-blocked for the pair). Then PR3 (cleaner companion) + PR4 (operator read-only panel).
 3. **Then Slice 4 (Account).**
 
 User wants to plow through consecutively.
