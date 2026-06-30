@@ -21,7 +21,7 @@ import { deriveMessages, unreadTotal } from './deriveMessages'
 import { deriveContactBookings } from './deriveContactBookings'
 import { toConversationRowVM, toMessageVM, toInlineBookingVM, toContactContext } from './messages-presenters'
 import type { ContactBookingVM, RoleFilter } from './messages-types'
-import type { UserRole } from '@/types'
+import type { UserRole, ConversationWithDetails } from '@/types'
 
 const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
   { value: 'all', label: 'All roles' },
@@ -96,6 +96,12 @@ function OperatorMessagesData() {
   const [stagedAppointmentId, setStagedAppointmentId] = useState<string | null>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // A just-started thread has organization_id NULL until its first message fires
+  // the 099 backfill trigger, so it is absent from the org-scoped list. Hold the
+  // freshly-started conversation (which useStartConversation returns fully formed)
+  // so the composer has a recipient and can send that first message; once the row
+  // lands org-stamped, the org-office list includes it and this is superseded.
+  const [pendingConv, setPendingConv] = useState<ConversationWithDetails | null>(null)
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
   const consumedToRef = useRef<string | null>(null)
   const linkApptRef = useRef<{ apptId: string; convId: string } | null>(null)
@@ -110,7 +116,9 @@ function OperatorMessagesData() {
     [rowsAll, search, unreadOnly, roleFilter],
   )
 
-  const selectedConv = conversations.find((c) => c.id === selectedId) ?? null
+  const selectedConv =
+    conversations.find((c) => c.id === selectedId) ??
+    (pendingConv && pendingConv.id === selectedId ? pendingConv : null)
   const participant = selectedConv?.other_participant ?? null
 
   const apptById = useMemo(() => {
@@ -159,6 +167,7 @@ function OperatorMessagesData() {
     const appt = apptParam
     startConversation(toParam).then((res) => {
       if (res.success && res.conversationId) {
+        if (res.conversation) setPendingConv(res.conversation)
         if (appt) linkApptRef.current = { apptId: appt, convId: res.conversationId }
         setSelected(res.conversationId)
       }
@@ -235,8 +244,10 @@ function OperatorMessagesData() {
     async (memberId: string) => {
       setNewOpen(false)
       const res = await startConversation(memberId)
-      if (res.success && res.conversationId) setSelected(res.conversationId)
-      else if (!res.success) toast.error(res.error || 'Could not start the conversation.')
+      if (res.success && res.conversationId) {
+        if (res.conversation) setPendingConv(res.conversation)
+        setSelected(res.conversationId)
+      } else if (!res.success) toast.error(res.error || 'Could not start the conversation.')
     },
     [startConversation, setSelected],
   )
