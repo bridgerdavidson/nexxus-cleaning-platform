@@ -52,11 +52,13 @@ export const keys = {
     byHomeowner: (homeownerId: string) => ['properties', 'homeowner', homeownerId] as const,
   },
   conversations: {
-    byUser: (userId: string) => ['conversations', 'user', userId] as const,
+    byUser: (userId: string, scope: 'office' | 'job' = 'office') =>
+      ['conversations', 'user', userId, scope] as const,
   },
   messages: {
     byConversation: (convId: string) => ['messages', 'conversation', convId] as const,
-    unreadCount: (userId: string) => ['messages', 'unread', userId] as const,
+    unreadCount: (userId: string, scope: 'office' | 'all' = 'office') =>
+      ['messages', 'unread', userId, scope] as const,
   },
   notifications: {
     byUser: (userId: string) => ['notifications', 'user', userId] as const,

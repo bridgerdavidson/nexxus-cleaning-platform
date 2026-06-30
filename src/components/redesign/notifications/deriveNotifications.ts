@@ -123,12 +123,17 @@ function cleanerNotificationHref(
 /**
  * Click destination for a homeowner notification. Appointment-scoped rows
  * deep-link the homeowner dashboard (its detail takeover opens on `?appointment=`,
- * built in Slice 2); everything else lands on the homeowner home.
+ * built in Slice 2); a job_message routes to the conversation thread instead
+ * (`?job=` opens the layout-mounted thread host, read-only after the window
+ * closes); everything else lands on the homeowner home.
  */
 function homeownerNotificationHref(
   item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
 ): string {
   if (item.appointment_id) {
+    if (item.event_type === 'job_message') {
+      return `/app/homeowner-dashboard?job=${item.appointment_id}`;
+    }
     return `/app/homeowner-dashboard?appointment=${item.appointment_id}`;
   }
   return '/app/homeowner-dashboard';

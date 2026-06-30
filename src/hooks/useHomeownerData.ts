@@ -13,6 +13,9 @@ export interface Appointment {
   scheduled_date: string;
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  cleaner_id?: string | null;
+  cancelled_at?: string | null;
+  cleaner_confirmation_status?: string | null;
   total_price: number;
   special_requests?: string | null;
   property: {
@@ -33,6 +36,7 @@ export interface Appointment {
     user_profile: {
       first_name: string;
       last_name: string;
+      avatar_url?: string | null;
     } | null;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
@@ -113,11 +117,14 @@ export function useHomeownerAppointments() {
           scheduled_date,
           scheduled_time,
           status,
+          cleaner_id,
           total_price,
           special_requests,
           job_progress,
           started_at,
           completed_at,
+          cancelled_at,
+          cleaner_confirmation_status,
           property:properties(
             name,
             address,
@@ -135,7 +142,8 @@ export function useHomeownerAppointments() {
           cleaner_profile:cleaner_profiles(
             user_profile:user_profiles(
               first_name,
-              last_name
+              last_name,
+              avatar_url
             )
           )
         `)

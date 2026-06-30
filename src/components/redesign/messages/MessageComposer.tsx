@@ -31,6 +31,8 @@ export function MessageComposer(props: {
   isMobile: boolean
   /** Hide the "Reference a booking" affordance (cleaner has no contact-bookings to attach). Defaults to shown. */
   showReferenceBooking?: boolean
+  /** Hide the "Add image" affordance (job threads are text-only). Defaults to shown. */
+  showAddImage?: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -98,35 +100,36 @@ export function MessageComposer(props: {
         </div>
       )}
       <div className="flex items-end gap-2 rounded-card border border-border bg-card p-1.5 shadow-soft-sm">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton
-              aria-label="Add to message"
-              className="h-9 w-9 shrink-0 bg-primary/10 text-primary"
-            >
-              <Plus className="size-5" />
-            </IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top">
-            <DropdownMenuItem onSelect={() => fileRef.current?.click()}>
-              <ImagePlus className="size-4" />
-              Add image
-            </DropdownMenuItem>
-            {props.showReferenceBooking !== false && (
-              <ReferenceBookingMenu
-                isMobile={props.isMobile}
-                bookings={props.attachableBookings}
-                onPick={props.onStageBooking}
-                trigger={
-                  <DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}>
-                    <CalendarDays className="size-4" />
-                    Reference a booking
-                  </DropdownMenuItem>
-                }
-              />
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {(props.showAddImage !== false || props.showReferenceBooking !== false) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton aria-label="Add to message" className="h-9 w-9 shrink-0 bg-primary/10 text-primary">
+                <Plus className="size-5" />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top">
+              {props.showAddImage !== false && (
+                <DropdownMenuItem onSelect={() => fileRef.current?.click()}>
+                  <ImagePlus className="size-4" />
+                  Add image
+                </DropdownMenuItem>
+              )}
+              {props.showReferenceBooking !== false && (
+                <ReferenceBookingMenu
+                  isMobile={props.isMobile}
+                  bookings={props.attachableBookings}
+                  onPick={props.onStageBooking}
+                  trigger={
+                    <DropdownMenuItem onSelect={(e: Event) => e.preventDefault()}>
+                      <CalendarDays className="size-4" />
+                      Reference a booking
+                    </DropdownMenuItem>
+                  }
+                />
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={handleFiles} />
         <Textarea
           value={props.draft}
