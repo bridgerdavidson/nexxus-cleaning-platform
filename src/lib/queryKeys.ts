@@ -57,6 +57,7 @@ export const keys = {
   },
   messages: {
     byConversation: (convId: string) => ['messages', 'conversation', convId] as const,
+    byAppointment: (apptId: string) => ['messages', 'appointment', apptId] as const,
     unreadCount: (userId: string, scope: 'office' | 'all' = 'office') =>
       ['messages', 'unread', userId, scope] as const,
   },
