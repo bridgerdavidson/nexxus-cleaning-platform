@@ -16,16 +16,17 @@ The Homeowner app is the **3rd redesign surface** (Operator + Cleaner are done).
 | 1a | Shell + Home (static, no migration) | **MERGED** (PR #104, squash 6ed1a98) |
 | 1b | Live cleaning tracking (migration 097 + hooks + in-progress hero + completed recap) | **MERGED** (PR #105, squash 37c34f3); migration 097 on dev **and** prod |
 | 2 | **Cleanings** (list + `?appointment=` detail takeover + cancel w/ fee disclosure) | **MERGED** (PR #107 + #108) |
-| 3 | **Messages** (Office thread + per-cleaning job threads) | gated on Job-messaging; **PR1 backend = PR #109 (open)**, then build Slice 3 as PR2 |
+| 3 | **Messages** (sectioned inbox: Office threads + active/Past per-cleaning job threads + "Message office"/"Message about this cleaning" entry points) | **BUILT, in PR** (`feat/homeowner-messages-slice3`); consumes job-messaging PR #109; plan `docs/superpowers/plans/2026-06-30-homeowner-messages-slice3.md` |
 | 4 | Account (properties, cards, receipts, browse services, profile) | not started |
 
-## NEXT (for the fresh session): finish Job-messaging, then Slice 3
+## NEXT (for the fresh session): job-messaging consumers, then Slice 4
 
-The cross-cutting **Job messaging** feature (which Slice 3 consumes) is being built first. Brief (all 6 decisions closed): `docs/superpowers/specs/2026-06-29-job-messaging-design.md`. PR1 plan: `docs/superpowers/plans/2026-06-30-job-messaging-backend.md`. Full state + architecture in memory `[[project_job_messaging]]`.
+The cross-cutting **Job messaging** feature: brief `docs/superpowers/specs/2026-06-29-job-messaging-design.md`; full state + architecture in memory `[[project_job_messaging]]`.
 
-1. **Job-messaging PR1 (backend) = PR #109, OPEN, green locally** (branch `feat/job-messaging-backend`): migration 098 (`conversations.appointment_id` + 2 partial uniques + org kill-switch + server-only `get_or_create_job_conversation`), guarded `POST /api/appointments/[id]/messages` (admin-client write because `can_message_role` blocks homeowner<->cleaner; idempotent on `clientMessageId`; fails closed), `job_message` notification, kill-switch in the Cleaner-experience settings. **Merge is user-gated** - wait for it before building consumers.
-2. **Then Slice 3 = PR2 (homeowner Messages tab):** sectioned inbox (Office pinned + active job threads + Past) reusing the operator/cleaner chat + `MobileTakeover`; wire "Message office" / "Message about this cleaning" into `HomeownerCleaningDetail.tsx`. **REQUIRED (dominant risk):** segregate job threads out of the existing Office inbox/unread badge (`useConversations`, `useUnreadMessageCount`, legacy `MessagesPage`, the shipped `CleanerMessages`) by filtering `appointment_id IS NULL`; route job sends/replies through the PR1 route with a `clientMessageId` (client `useSendMessage` INSERT is RLS-blocked for the pair). Then PR3 (cleaner companion) + PR4 (operator read-only panel).
-3. **Then Slice 4 (Account).**
+1. **Job-messaging PR1 (backend) = PR #109 MERGED** (migration 098 on dev + prod): `conversations.appointment_id` + 2 partial uniques + org kill-switch + server-only `get_or_create_job_conversation`, guarded `POST /api/appointments/[id]/messages`, `job_message` notification.
+2. **Slice 3 = homeowner Messages tab = BUILT, in PR** (`feat/homeowner-messages-slice3`, plan `docs/superpowers/plans/2026-06-30-homeowner-messages-slice3.md`). Sectioned inbox (Office threads list + active job threads + Past read-only) + "Message office"/"Message about this cleaning" entry points. Segregation done via a `scope` param on `useConversations`/`useUnreadMessageCount` (default `'office'` = `appointment_id IS NULL`, so cleaner/operator/legacy office inbox + badge auto-segregated; homeowner job sections use `scope:'job'`, badge `scope:'all'`). Job sends route through the PR1 endpoint (`useSendJobMessage`). 5-lens adversarial review clean on segregation + send-path; 4 findings fixed. **Merge user-gated.**
+3. **Then PR3 (cleaner companion)** = active-job "Message homeowner" + cleaner inbox job-thread section + same segregation. **PR4 (operator read-only job-thread panel)** in `BookingDetailSheet`. **INTERIM GAP until PR3:** a cleaner cannot read a homeowner's job message in-app yet (they get the `job_message` notification).
+4. **Then Slice 4 (Account):** properties, cards, receipts, browse services, profile.
 
 User wants to plow through consecutively.
 
