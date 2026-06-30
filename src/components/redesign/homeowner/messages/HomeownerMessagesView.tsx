@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, MessageCircle, MessageSquare } from 'lucide-react';
+import { ChevronRight, MessageCircle, MessageSquare, PenSquare } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ export interface HomeownerMessagesViewProps {
   onOpenOffice: () => void;
   onOpenOfficeThread: (conversationId: string) => void;
   onOpenJob: (appointmentId: string) => void;
+  onNewConversation: () => void;
 }
 
 function initialsFromName(name: string): string {
@@ -185,6 +186,7 @@ export function HomeownerMessagesView({
   onOpenOffice,
   onOpenOfficeThread,
   onOpenJob,
+  onNewConversation,
 }: HomeownerMessagesViewProps) {
   if (loading) return <LoadingState />;
 
@@ -202,7 +204,18 @@ export function HomeownerMessagesView({
   return (
     <div className="space-y-6 pt-1">
       <header className="space-y-0.5">
-        <h1 className="text-xl font-bold">Messages</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold">Messages</h1>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="New conversation"
+            onClick={onNewConversation}
+          >
+            <PenSquare className="size-5" />
+          </Button>
+        </div>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </header>
 
