@@ -14,6 +14,7 @@ export interface Appointment {
   scheduled_time: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
   total_price: number;
+  special_requests?: string | null;
   property: {
     name: string;
     address: string;
@@ -113,6 +114,7 @@ export function useHomeownerAppointments() {
           scheduled_time,
           status,
           total_price,
+          special_requests,
           job_progress,
           started_at,
           completed_at,
