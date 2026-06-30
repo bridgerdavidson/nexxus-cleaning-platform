@@ -15,6 +15,7 @@ type CleanerPayDisplay = "full" | "payout_only";
 interface CleanerExperienceForm {
   cleaner_pay_display: CleanerPayDisplay;
   require_job_photos: boolean;
+  homeowner_cleaner_messaging_enabled: boolean;
 }
 
 export function CleanerExperienceSection() {
@@ -24,13 +25,14 @@ export function CleanerExperienceSection() {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
       .from("organizations")
-      .select("cleaner_pay_display, require_job_photos")
+      .select("cleaner_pay_display, require_job_photos, homeowner_cleaner_messaging_enabled")
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     return {
       cleaner_pay_display: (data?.cleaner_pay_display as CleanerPayDisplay) ?? "full",
       require_job_photos: data?.require_job_photos ?? true,
+      homeowner_cleaner_messaging_enabled: data?.homeowner_cleaner_messaging_enabled ?? true,
     };
   }, [currentOrganizationId]);
 
@@ -39,6 +41,7 @@ export function CleanerExperienceSection() {
     await updateOrgCleanerExperience(currentOrganizationId, {
       cleaner_pay_display: v.cleaner_pay_display,
       require_job_photos: v.require_job_photos,
+      homeowner_cleaner_messaging_enabled: v.homeowner_cleaner_messaging_enabled,
     });
   }, [currentOrganizationId]);
 
@@ -102,6 +105,19 @@ export function CleanerExperienceSection() {
           checked={value.require_job_photos}
           onCheckedChange={(checked) =>
             setValue({ ...value, require_job_photos: checked })
+          }
+        />
+      </SettingRow>
+      <SettingRow
+        label="Homeowner and cleaner messaging"
+        htmlFor="homeowner-cleaner-messaging"
+        helper="Let homeowners and the assigned cleaner message each other about an active cleaning. Office threads are unaffected."
+      >
+        <Switch
+          id="homeowner-cleaner-messaging"
+          checked={value.homeowner_cleaner_messaging_enabled}
+          onCheckedChange={(checked) =>
+            setValue({ ...value, homeowner_cleaner_messaging_enabled: checked })
           }
         />
       </SettingRow>

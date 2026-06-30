@@ -14,6 +14,7 @@ import {
   CreditCard,
   Bell,
   UserPlus,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react';
 import { formatTimeTo12h, formatDateShort } from '../formatTime';
@@ -213,6 +214,16 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: Sparkles,
       };
 
+    case 'job_message': {
+      const sender = str(payload, 'sender_name');
+      return {
+        title: sender ? `New message from ${sender}` : 'New message',
+        detail: str(payload, 'snippet'),
+        tone: 'info',
+        icon: MessageSquare,
+      };
+    }
+
     case 'dispute_opened': {
       const due = dueDateLabel(str(payload, 'evidence_due_by'));
       return {
@@ -368,6 +379,7 @@ const KNOWN_TYPES = new Set<string>([
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
+  'job_message',
   'member_joined',
 ]);
 

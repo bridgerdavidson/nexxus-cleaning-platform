@@ -32,6 +32,7 @@ export type NotificationEventType =
   | 'cancelled_job_refunded'        // recipient: admins (in-flight debit auto-refunded after cancel)
   | 'refund_failed'                 // recipient: admins (a refund failed/canceled at Stripe; payer not refunded)
   | 'clawback_blocked'              // recipient: admins (payout already bank_paid; recovery needs an ops decision)
+  | 'job_message'                   // recipient: counterparty (homeowner or cleaner) on a job thread
   | 'member_joined';                // recipient: admins + managers (someone accepted an invite and joined the org)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */

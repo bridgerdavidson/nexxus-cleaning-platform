@@ -72,4 +72,30 @@ describe('PATCH /api/organizations/:orgId/cleaner-experience', () => {
     });
     expect(status).toBe(400);
   });
+
+  it('an admin can turn homeowner_cleaner_messaging_enabled off, and it persists', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { homeowner_cleaner_messaging_enabled: false },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('organizations')
+      .select('homeowner_cleaner_messaging_enabled')
+      .eq('id', org.organizationId)
+      .single();
+    expect(data?.homeowner_cleaner_messaging_enabled).toBe(false);
+  });
+
+  it('a cleaner cannot change the messaging flag (403)', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { homeowner_cleaner_messaging_enabled: false },
+    });
+    expect(status).toBe(403);
+  });
 });
