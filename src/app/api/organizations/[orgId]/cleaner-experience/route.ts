@@ -8,8 +8,9 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
  * Owner/admin: sets org-wide cleaner experience controls.
  *   - cleaner_pay_display  ('full' | 'payout_only') — what cleaners see at job complete
  *   - require_job_photos   (boolean)                — enforce before+after photo gate
+ *   - homeowner_cleaner_messaging_enabled (boolean) — per-org job-messaging kill-switch
  *
- * Both columns already exist (migrations 095, 096). This route only updates them.
+ * The columns exist (migrations 095, 096, 098). This route only updates them.
  */
 export async function PATCH(
   request: NextRequest,
@@ -26,6 +27,7 @@ export async function PATCH(
     const body = (await request.json().catch(() => ({}))) as {
       cleaner_pay_display?: string;
       require_job_photos?: unknown;
+      homeowner_cleaner_messaging_enabled?: unknown;
     };
 
     const update: Record<string, unknown> = {};
@@ -42,6 +44,10 @@ export async function PATCH(
 
     if (body.require_job_photos !== undefined) {
       update.require_job_photos = Boolean(body.require_job_photos);
+    }
+
+    if (body.homeowner_cleaner_messaging_enabled !== undefined) {
+      update.homeowner_cleaner_messaging_enabled = Boolean(body.homeowner_cleaner_messaging_enabled);
     }
 
     if (Object.keys(update).length === 0) {
