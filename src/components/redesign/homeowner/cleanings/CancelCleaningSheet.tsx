@@ -37,6 +37,7 @@ export function CancelCleaningSheet({
   const { cancel, isPending } = useCancelMyCleaning();
   const [error, setError] = useState<string | null>(null);
   const [policyLoading, setPolicyLoading] = useState(true);
+  const [policyError, setPolicyError] = useState(false);
   const [policy, setPolicy] = useState<{ windowHours: number; feeType: FeeType; feeValue: number }>({
     windowHours: 24,
     feeType: 'none',
@@ -48,15 +49,23 @@ export function CancelCleaningSheet({
   useEffect(() => {
     if (!open || !currentOrganizationId) return;
     setError(null);
+    setPolicyError(false);
     let cancelled = false;
     (async () => {
       setPolicyLoading(true);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('organizations')
         .select('cancellation_window_hours, cancellation_fee_type, cancellation_fee_value')
         .eq('id', currentOrganizationId)
         .maybeSingle();
       if (cancelled) return;
+      if (error) {
+        // A failed policy read must not under-disclose the fee: don't fall back to a $0 policy with
+        // the confirm enabled. Surface an error and keep confirm disabled instead.
+        setPolicyError(true);
+        setPolicyLoading(false);
+        return;
+      }
       const row = (data ?? {}) as {
         cancellation_window_hours?: number;
         cancellation_fee_type?: FeeType;
@@ -107,16 +116,18 @@ export function CancelCleaningSheet({
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Cancel this cleaning?</DrawerTitle>
-          <DrawerDescription>
+          <DrawerDescription className={policyError ? 'text-critical-700' : undefined}>
             {policyLoading
               ? 'Checking your cancellation policy.'
-              : fee > 0
-                ? `Cancelling now is within ${policy.windowHours} hours of your appointment, so a ${formatUsd(fee)} cancellation fee applies. Your card on file will be charged ${formatUsd(fee)}.`
-                : 'You can cancel this cleaning at no charge.'}
+              : policyError
+                ? "We couldn't load your cancellation policy. Please try again."
+                : fee > 0
+                  ? `Cancelling now is within ${policy.windowHours} hours of your appointment, so a ${formatUsd(fee)} cancellation fee applies. We'll charge the ${formatUsd(fee)} fee to your card on file.`
+                  : 'You can cancel this cleaning at no charge.'}
           </DrawerDescription>
         </DrawerHeader>
 
-        {fee > 0 && !policyLoading && (
+        {fee > 0 && !policyLoading && !policyError && (
           <div className="mx-5 mb-1 flex items-center justify-between rounded-control bg-caution-50 px-4 py-3 text-sm">
             <span className="font-medium text-caution-700">Cancellation fee</span>
             <span className="font-bold tabular-nums text-caution-700">{formatUsd(fee)}</span>
@@ -126,7 +137,7 @@ export function CancelCleaningSheet({
         {error && <p className="px-5 text-sm text-critical-700">{error}</p>}
 
         <DrawerFooter>
-          <Button variant="destructive" loading={isPending} disabled={policyLoading} onClick={submit}>
+          <Button variant="destructive" loading={isPending} disabled={policyLoading || policyError} onClick={submit}>
             {fee > 0 ? `Cancel and pay ${formatUsd(fee)}` : 'Cancel cleaning'}
           </Button>
           <Button variant="ghost" disabled={isPending} onClick={() => onOpenChange(false)}>

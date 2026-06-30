@@ -22,8 +22,10 @@ export const maxDuration = 60;
  *     a bank-only payer, or a decline never blocks the cancellation.
  *   • Self-pay has no homeowner to charge, so it always cancels for $0.
  *
- * Org staff only. Body: { organization_id, party?: 'homeowner'|'cleaner'|'org',
- *                         no_show?: boolean, reason?: string }
+ * Permitted callers: org staff, or the owning homeowner of the appointment. For a homeowner caller
+ * the server forces party='homeowner' and no_show=false (any client-supplied party/no_show are
+ * ignored); org staff may set both. Body: { organization_id, party?: 'homeowner'|'cleaner'|'org',
+ *                                           no_show?: boolean, reason?: string }
  */
 export async function POST(
   request: NextRequest,
