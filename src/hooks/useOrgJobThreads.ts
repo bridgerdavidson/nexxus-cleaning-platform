@@ -81,8 +81,9 @@ export function useOrgJobThreads({ orgId, userId }: { orgId: string; userId: str
     },
   });
 
-  // Realtime: any org message change may add/reorder a job thread. Distinct
-  // channel name from 1b's org-office message channel (dedup hinges on the name).
+  // Realtime: any org message change may add/reorder a job thread. Kept on a
+  // distinct channel name from 1b's org-office message channel for clarity (the
+  // realtime helper also suffixes a per-instance id, so topics are unique anyway).
   useSupabaseRealtimeSync({
     channelName: `messages:org:${orgId}:job-threads`,
     table: 'messages',
