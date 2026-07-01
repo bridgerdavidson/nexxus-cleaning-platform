@@ -14,6 +14,7 @@ import {
   Camera,
   ChevronRight,
   Clock,
+  Home,
   ListChecks,
   MapPin,
   MessageSquare,
@@ -54,6 +55,9 @@ export interface CleanerActiveJobViewProps {
   onSkipPhotos: () => void;
   /** Open the office thread with this job armed (the office sees which job it's about). */
   onMessageOffice: () => void;
+  /** Open the homeowner<->cleaner thread for this job. Omitted when there is no
+   *  homeowner to message (self-pay / org-owned job). */
+  onMessageHomeowner?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +114,7 @@ export function CleanerActiveJobView({
   onComplete,
   onSkipPhotos,
   onMessageOffice,
+  onMessageHomeowner,
 }: CleanerActiveJobViewProps) {
   const addr = propertyAddress(appointment);
   const remainingHint = gate.remaining.join(', ');
@@ -144,18 +149,32 @@ export function CleanerActiveJobView({
               )}
             </div>
 
-            {/* Actions: Directions + Message office placeholder, side by side */}
-            <div className="mt-4 flex items-stretch gap-3">
-              <CleanerDirectionsButton address={addr ?? ''} className="flex-1" />
-              <Button
-                variant="outline"
-                size="default"
-                onClick={onMessageOffice}
-                className="flex-1 gap-2"
-              >
-                <MessageSquare className="size-4" aria-hidden />
-                Message office
-              </Button>
+            {/* Actions: Directions + Message office side by side; Message homeowner
+                on its own row below (only when there is a homeowner to message). */}
+            <div className="mt-4 space-y-3">
+              <div className="flex items-stretch gap-3">
+                <CleanerDirectionsButton address={addr ?? ''} className="flex-1" />
+                <Button
+                  variant="outline"
+                  size="default"
+                  onClick={onMessageOffice}
+                  className="flex-1 gap-2"
+                >
+                  <MessageSquare className="size-4" aria-hidden />
+                  Message office
+                </Button>
+              </div>
+              {onMessageHomeowner && (
+                <Button
+                  variant="outline"
+                  size="default"
+                  onClick={onMessageHomeowner}
+                  className="w-full gap-2"
+                >
+                  <Home className="size-4" aria-hidden />
+                  Message homeowner
+                </Button>
+              )}
             </div>
           </section>
 

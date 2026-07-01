@@ -38,7 +38,9 @@ import {
 } from '@/hooks/useCleanerData';
 import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
 import { useOpenOfficeThread } from '@/hooks/useOpenOfficeThread';
+import { useRouter } from 'next/navigation';
 import { filterOfficeContacts } from '../messages/office-contacts';
+import { canMessageHomeowner } from '../messages/canMessageHomeowner';
 import { CleanerOfficePicker } from '../messages/CleanerOfficePicker';
 import { deriveActiveJob } from './deriveActiveJob';
 import { checklistProgressLabel, photoStatusLabel } from './active-job-presenters';
@@ -234,6 +236,14 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   const [officePickerOpen, setOfficePickerOpen] = useState(false);
   const onMessageOffice = useCallback(() => setOfficePickerOpen(true), []);
 
+  // "Message homeowner": open the homeowner<->cleaner job thread for this job
+  // (?jobthread=), with a "Back to job" return via ?from=. router.push so a
+  // hardware/gesture back also returns to the active job.
+  const router = useRouter();
+  const onMessageHomeowner = useCallback(() => {
+    router.push(`/app/cleaner-dashboard/messages?jobthread=${appointmentId}&from=${appointmentId}`);
+  }, [router, appointmentId]);
+
   // First-open progress advance (best-effort, loose order, non-blocking).
   const firedRef = useRef<Set<string>>(new Set());
   const openScreen = useCallback(
@@ -367,6 +377,9 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
           onComplete={() => setScreen('complete')}
           onSkipPhotos={() => setSkipOpen(true)}
           onMessageOffice={onMessageOffice}
+          onMessageHomeowner={
+            canMessageHomeowner(appointment) ? onMessageHomeowner : undefined
+          }
         />
       )}
 
