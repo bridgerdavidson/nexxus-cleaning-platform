@@ -53,16 +53,16 @@ function JobThreadHostInner({
     : 'Homeowner';
   // CleanerAppointment.homeowner carries no avatar; the initials fallback shows instead.
   const avatarUrl = null;
-  // CleanerAppointment does not select completed_at/cancelled_at; default them to
-  // null. Correct for the active-job case (in_progress -> open); a completed thread
-  // opened this way is treated as closed/read-only, which is the safe default.
+  // The cleaner appointment select includes completed_at/cancelled_at, so the send
+  // window is accurate: a job still within the 24h post-completion grace stays
+  // writable, and a completed/cancelled thread past the window is read-only.
   const readOnly = appointment
     ? !isJobMessagingWindowOpen(
         {
           status: appointment.status,
           cleaner_confirmation_status: appointment.cleaner_confirmation_status,
-          completed_at: null,
-          cancelled_at: null,
+          completed_at: appointment.completed_at ?? null,
+          cancelled_at: appointment.cancelled_at ?? null,
         },
         new Date(),
       )
