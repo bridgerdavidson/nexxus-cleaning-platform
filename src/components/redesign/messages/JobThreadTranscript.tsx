@@ -20,6 +20,7 @@ export function JobThreadTranscript({
   onLoadMore,
   conversationKey = null,
   emptyText = 'No messages between the homeowner and cleaner yet.',
+  maxHeightClassName = 'max-h-80',
 }: {
   rows: JobTranscriptRowVM[];
   loading: boolean;
@@ -29,6 +30,8 @@ export function JobThreadTranscript({
   /** Changes when the underlying thread changes, to reset the initial scroll. */
   conversationKey?: string | null;
   emptyText?: string;
+  /** Scroll-area height cap. Default 'max-h-80' (booking panel); the console pane passes 'max-h-full'. */
+  maxHeightClassName?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -94,7 +97,7 @@ export function JobThreadTranscript({
   }
 
   return (
-    <div ref={scrollRef} className="max-h-80 space-y-2 overflow-y-auto pr-1">
+    <div ref={scrollRef} className={cn('space-y-2 overflow-y-auto pr-1', maxHeightClassName)}>
       <div ref={sentinelRef} aria-hidden className="h-px" />
       {isLoadingMore && (
         <div className="flex justify-center py-1">

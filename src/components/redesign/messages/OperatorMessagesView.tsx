@@ -4,11 +4,13 @@ import { cn } from '@/lib/utils'
 import { MobileTakeover } from '../shared/MobileTakeover'
 import { InboxList } from './InboxList'
 import { MessageThreadPanel } from './MessageThreadPanel'
+import { OperatorJobThreadPane } from './OperatorJobThreadPane'
 import { ContextPanel } from './ContextPanel'
 import type { OperatorMessagesViewProps } from './messages-types'
 
 export function OperatorMessagesView(props: OperatorMessagesViewProps) {
-  const hasSelection = !!props.selectedId
+  // Office thread (?c=) OR read-only job thread (?job=). Mutually exclusive.
+  const hasSelection = !!props.selectedId || !!props.selectedJob
 
   const composerProps = {
     draft: props.draft,
@@ -25,9 +27,18 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
     isMobile: props.isMobile,
   }
 
-  const renderThread = (onBack?: () => void) => (
+  const renderThread = (onBack?: () => void) =>
+    props.selectedJob ? (
+      <OperatorJobThreadPane
+        appointmentId={props.selectedJob.appointmentId}
+        title={props.selectedJob.title}
+        dateLabel={props.selectedJob.dateLabel}
+        cleanerId={props.selectedJob.cleanerId}
+        onBack={onBack}
+      />
+    ) : (
     <MessageThreadPanel
-      hasSelection={hasSelection}
+      hasSelection={!!props.selectedId}
       conversationKey={props.selectedId}
       title={props.threadTitle}
       role={props.threadRole}
@@ -86,6 +97,9 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
             onRoleFilterChange={props.onRoleFilterChange}
             selectedId={props.selectedId}
             onSelect={props.onSelect}
+            jobRows={props.jobRows}
+            selectedJobId={props.selectedJobId}
+            onSelectJob={props.onSelectJob}
             onRequestDelete={props.onRequestDelete}
             onNewMessage={props.onNewMessage}
             loading={props.inboxLoading}
@@ -95,8 +109,8 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
         {/* Desktop thread (no back button; lives beside the list) */}
         <div className="hidden min-w-0 flex-1 lg:block">{renderThread(undefined)}</div>
 
-        {/* Desktop About column */}
-        {!props.isMobile && props.detailsOpen && hasSelection && (
+        {/* Desktop About column (office threads only; job threads have no operator context) */}
+        {!props.isMobile && props.detailsOpen && !!props.selectedId && (
           <ContextPanel
             isMobile={false}
             open={props.detailsOpen}
@@ -114,7 +128,12 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
 
       {/* Mobile: full-screen thread takeover that slides in over the whole shell */}
       {props.isMobile && hasSelection && (
-        <MobileTakeover onClosed={() => props.onSelect('')} ariaLabel="Conversation" desktopHidden keyboardAware>
+        <MobileTakeover
+          onClosed={() => (props.selectedJob ? props.onSelectJob('') : props.onSelect(''))}
+          ariaLabel="Conversation"
+          desktopHidden
+          keyboardAware
+        >
           {(close) => renderThread(close)}
         </MobileTakeover>
       )}

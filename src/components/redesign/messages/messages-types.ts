@@ -1,4 +1,5 @@
 import type { UserRole } from '@/types'
+import type { JobThreadRowVM } from './jobThreadRow'
 
 export type RoleFilter = 'all' | UserRole
 export type BookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
@@ -94,6 +95,11 @@ export interface OperatorMessagesViewProps {
   onRequestDelete: (conversationId: string) => void
   onNewMessage: () => void
   inboxLoading: boolean
+  // read-only job-thread section (sub-project 2b)
+  jobRows: JobThreadRowVM[]
+  selectedJobId: string | null
+  onSelectJob: (appointmentId: string) => void
+  selectedJob: JobThreadRowVM | null
   // thread
   threadTitle: string
   threadRole: UserRole | null

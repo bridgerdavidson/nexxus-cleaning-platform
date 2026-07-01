@@ -64,6 +64,9 @@ export const keys = {
   notifications: {
     byUser: (userId: string) => ['notifications', 'user', userId] as const,
   },
+  jobThreads: {
+    byOrg: (orgId: string) => ['job-threads', 'org', orgId] as const,
+  },
   stats: {
     admin: (orgId: string) => ['stats', 'admin', orgId] as const,
     cleaner: (cleanerId: string) => ['stats', 'cleaner', cleanerId] as const,
