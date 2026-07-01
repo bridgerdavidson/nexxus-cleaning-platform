@@ -14,7 +14,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConversationRow } from './ConversationRow'
+import { JobThreadInboxRow } from './JobThreadInboxRow'
 import type { ConversationRowVM, RoleFilter } from './messages-types'
+import type { JobThreadRowVM } from './jobThreadRow'
 
 export function InboxList(props: {
   rows: ConversationRowVM[]
@@ -32,6 +34,10 @@ export function InboxList(props: {
   onRequestDelete: (id: string) => void
   onNewMessage: () => void
   loading: boolean
+  // Optional read-only job-thread section (sub-project 2b). Omitted -> office-only.
+  jobRows?: JobThreadRowVM[]
+  selectedJobId?: string | null
+  onSelectJob?: (appointmentId: string) => void
 }) {
   const filterOptions: { value: 'all' | 'unread'; label: string }[] = [
     { value: 'all', label: 'All' },
@@ -108,7 +114,7 @@ export function InboxList(props: {
               </div>
             ))}
           </div>
-        ) : props.rows.length === 0 ? (
+        ) : props.rows.length === 0 && (!props.jobRows || props.jobRows.length === 0) ? (
           <EmptyState
             icon={<MessageSquare />}
             title={
@@ -123,15 +129,37 @@ export function InboxList(props: {
             }
           />
         ) : (
-          props.rows.map((row) => (
-            <ConversationRow
-              key={row.id}
-              row={row}
-              active={row.id === props.selectedId}
-              onSelect={() => props.onSelect(row.id)}
-              onDelete={() => props.onRequestDelete(row.id)}
-            />
-          ))
+          <>
+            {props.rows.map((row) => (
+              <ConversationRow
+                key={row.id}
+                row={row}
+                active={row.id === props.selectedId}
+                onSelect={() => props.onSelect(row.id)}
+                onDelete={() => props.onRequestDelete(row.id)}
+              />
+            ))}
+            {props.jobRows && props.jobRows.length > 0 && (
+              <div className="mt-1 border-t border-border/60 pt-2">
+                <div className="flex items-center gap-2 px-4 pb-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                    Cleaning job threads
+                  </span>
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    Read only
+                  </span>
+                </div>
+                {props.jobRows.map((row) => (
+                  <JobThreadInboxRow
+                    key={row.appointmentId}
+                    row={row}
+                    active={row.appointmentId === props.selectedJobId}
+                    onSelect={() => props.onSelectJob?.(row.appointmentId)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

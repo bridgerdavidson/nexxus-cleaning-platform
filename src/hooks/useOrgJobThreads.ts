@@ -47,7 +47,6 @@ export function useOrgJobThreads({ orgId, userId }: { orgId: string; userId: str
       if (error) throw error;
       const rows = data ?? [];
       if (rows.length === MESSAGE_WINDOW) {
-        // eslint-disable-next-line no-console
         console.warn(
           `[useOrgJobThreads] hit the ${MESSAGE_WINDOW}-message window; older job threads may be omitted.`,
         );
