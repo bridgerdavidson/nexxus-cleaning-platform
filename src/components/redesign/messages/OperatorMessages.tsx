@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useConversations } from '@/hooks/useConversations'
+import { useOrgJobThreads } from '@/hooks/useOrgJobThreads'
 import { useMessages } from '@/hooks/useMessages'
 import { useSendMessage } from '@/hooks/useSendMessage'
 import { useStartConversation } from '@/hooks/useStartConversation'
@@ -20,6 +21,7 @@ import { NewMessageDialog } from './NewMessageDialog'
 import { deriveMessages, unreadTotal } from './deriveMessages'
 import { deriveContactBookings } from './deriveContactBookings'
 import { toConversationRowVM, toMessageVM, toInlineBookingVM, toContactContext } from './messages-presenters'
+import { toJobThreadRowVM } from './jobThreadRow'
 import type { ContactBookingVM, RoleFilter } from './messages-types'
 import type { UserRole, ConversationWithDetails } from '@/types'
 
@@ -45,8 +47,11 @@ function OperatorMessagesData() {
   const privileged = currentOrgRole === 'owner' || currentOrgRole === 'admin'
   const canViewPayments = privileged || !!permissions?.can_view_payments
 
-  // URL-driven selection
+  // URL-driven selection. Office threads select via ?c=<conversationId>
+  // (replyable); read-only job threads via ?job=<appointmentId>. The two are
+  // mutually exclusive: each setter clears the other.
   const selectedId = searchParams.get('c')
+  const jobParam = searchParams.get('job')
   const toParam = searchParams.get('to')
   const apptParam = searchParams.get('appointment')
 
@@ -55,6 +60,20 @@ function OperatorMessagesData() {
       const sp = new URLSearchParams(searchParams.toString())
       if (conversationId) sp.set('c', conversationId)
       else sp.delete('c')
+      sp.delete('to')
+      sp.delete('appointment')
+      sp.delete('job')
+      router.replace(`?${sp.toString()}`, { scroll: false })
+    },
+    [router, searchParams],
+  )
+
+  const setSelectedJob = useCallback(
+    (appointmentId: string) => {
+      const sp = new URLSearchParams(searchParams.toString())
+      if (appointmentId) sp.set('job', appointmentId)
+      else sp.delete('job')
+      sp.delete('c')
       sp.delete('to')
       sp.delete('appointment')
       router.replace(`?${sp.toString()}`, { scroll: false })
@@ -71,6 +90,9 @@ function OperatorMessagesData() {
     scope: 'org-office',
     orgId: currentOrganizationId ?? '',
   })
+  // Read-only homeowner<->cleaner job threads of the org (sub-project 2b). Listed
+  // as a distinct section; opened read-only (no composer).
+  const { jobThreads } = useOrgJobThreads({ orgId: currentOrganizationId ?? '', userId })
   // useMessages returns `loading` (maps to threadLoading)
   const {
     messages: rawMessages,
@@ -126,6 +148,15 @@ function OperatorMessagesData() {
     for (const a of appointments) m.set(a.id, a)
     return m
   }, [appointments])
+
+  const jobRows = useMemo(
+    () => jobThreads.map((s) => toJobThreadRowVM(s, apptById.get(s.appointmentId))),
+    [jobThreads, apptById],
+  )
+  const selectedJob = useMemo(
+    () => (jobParam ? jobRows.find((r) => r.appointmentId === jobParam) ?? null : null),
+    [jobParam, jobRows],
+  )
 
   const messages = useMemo(() => {
     return rawMessages.map((msg, i) =>
@@ -278,6 +309,10 @@ function OperatorMessagesData() {
         onRoleFilterChange={setRoleFilter}
         selectedId={selectedId}
         onSelect={setSelected}
+        jobRows={jobRows}
+        selectedJobId={jobParam}
+        onSelectJob={setSelectedJob}
+        selectedJob={selectedJob}
         onRequestDelete={setDeleteId}
         onNewMessage={() => setNewOpen(true)}
         inboxLoading={inboxLoading}

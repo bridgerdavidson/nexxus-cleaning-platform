@@ -47,6 +47,8 @@ export default function MessagesPreviewPage() {
         roleOptions={[{ value: 'all', label: 'All roles' }, { value: 'homeowner', label: 'Homeowners' }, { value: 'cleaner', label: 'Cleaners' }, { value: 'manager', label: 'Managers' }, { value: 'admin', label: 'Admins' }]}
         selectedId={selectedId} onSelect={(id) => setSelectedId(id || null)} onRequestDelete={() => {}} onNewMessage={() => {}}
         inboxLoading={false}
+        jobRows={[{ appointmentId: 'ap1', cleanerId: 'u2', title: 'Jordan Avery and Wanda Jacobs', dateLabel: 'Jun 27', preview: 'Gate code is 4821, park in the driveway', timeLabel: '1h', unreadCount: 0 }]}
+        selectedJobId={null} onSelectJob={() => {}} selectedJob={null}
         threadTitle="Jordan Avery" threadRole="homeowner" threadInitials="JA" threadAvatarUrl={null}
         messages={MESSAGES} threadLoading={false} hasMore={false} isLoadingMore={false} onLoadMore={() => {}} messagesEndRef={endRef}
         onOpenBooking={() => {}}
