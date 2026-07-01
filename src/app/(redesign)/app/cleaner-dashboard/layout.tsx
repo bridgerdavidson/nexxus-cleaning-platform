@@ -8,6 +8,7 @@ import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { CleanerShell } from "@/components/redesign/cleaner/shell/CleanerShell";
 import { CleanerJobDetailHost } from "@/components/redesign/cleaner/job/CleanerJobDetailHost";
 import { CleanerMessageThreadHost } from "@/components/redesign/cleaner/messages/CleanerMessageThreadHost";
+import { CleanerJobThreadHost } from "@/components/redesign/cleaner/messages/CleanerJobThreadHost";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 import { redesignUiEnabled } from "@/lib/redesign/flags";
 
@@ -51,6 +52,9 @@ export default function CleanerDashboardLayout({ children }: { children: ReactNo
       </Suspense>
       <Suspense fallback={null}>
         <CleanerMessageThreadHost />
+      </Suspense>
+      <Suspense fallback={null}>
+        <CleanerJobThreadHost />
       </Suspense>
     </>
   );
