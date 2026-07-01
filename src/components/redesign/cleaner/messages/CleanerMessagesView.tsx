@@ -181,18 +181,20 @@ export function CleanerMessagesView({
         </div>
       )}
 
-      <section>
-        <SectionHeader label="Office" count={model.office.length} />
-        <ListShell>
-          {model.office.length > 0 ? (
-            model.office.map((r) => (
-              <CleanerConversationRow key={r.id} row={r} onSelect={() => onOpenOfficeRow(r.id)} />
-            ))
-          ) : (
-            <StartOfficeRow onStart={onStartOffice} />
-          )}
-        </ListShell>
-      </section>
+      {(model.office.length > 0 || hasOfficeContacts) && (
+        <section>
+          <SectionHeader label="Office" count={model.office.length} />
+          <ListShell>
+            {model.office.length > 0 ? (
+              model.office.map((r) => (
+                <CleanerConversationRow key={r.id} row={r} onSelect={() => onOpenOfficeRow(r.id)} />
+              ))
+            ) : (
+              <StartOfficeRow onStart={onStartOffice} />
+            )}
+          </ListShell>
+        </section>
+      )}
 
       {model.active.length > 0 && (
         <section>

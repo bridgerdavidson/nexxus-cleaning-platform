@@ -53,6 +53,7 @@ export function CleanerMessages() {
   );
 
   const startOffice = () => {
+    if (officeContacts.length === 0) return;
     if (officeContacts.length === 1) openWith(officeContacts[0].id);
     else setPickerOpen(true);
   };
