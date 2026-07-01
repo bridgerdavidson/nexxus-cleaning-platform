@@ -15,7 +15,7 @@ interface UseMessagesOptions {
   onUnreadCountUpdate?: (conversationId: string, newCount: number) => void;
 }
 
-async function enrichMessages(
+export async function enrichMessages(
   messagesData: { id: string; sender_id: string; recipient_id: string; [key: string]: unknown }[]
 ): Promise<MessageWithDetails[]> {
   const senderIds = [...new Set(messagesData.map(m => m.sender_id))];

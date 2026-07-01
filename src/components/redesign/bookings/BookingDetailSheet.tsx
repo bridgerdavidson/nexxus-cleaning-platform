@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
+import { JobMessagesPanel } from "./JobMessagesPanel";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -157,6 +158,13 @@ export function BookingDetailSheet({
                     </Button>
                   ) : null}
                 </div>
+              ) : null}
+
+              {detail.customerId && detail.cleanerId ? (
+                <>
+                  <Separator />
+                  <JobMessagesPanel appointmentId={detail.id} cleanerId={detail.cleanerId} />
+                </>
               ) : null}
 
               {canViewPayments ? (
