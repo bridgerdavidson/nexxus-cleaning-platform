@@ -55,6 +55,10 @@ export interface CleanerAppointment {
     price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
+  /** Set when the job is marked complete (charge-at-completion). Drives the 24h job-message grace window. */
+  completed_at?: string | null;
+  /** Set when the appointment is cancelled. Closes the job thread. */
+  cancelled_at?: string | null;
 }
 
 export interface CleanerStats {
@@ -139,6 +143,8 @@ export function useCleanerAppointments() {
           scheduled_date,
           scheduled_time,
           status,
+          completed_at,
+          cancelled_at,
           job_progress,
           photos_skipped,
           total_price,
