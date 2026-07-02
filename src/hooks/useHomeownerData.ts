@@ -56,6 +56,8 @@ export interface Property {
   bathrooms?: number;
   square_feet?: number;
   photo_url?: string | null;
+  special_instructions?: string | null;
+  access_instructions?: string | null;
 }
 
 export interface HomeownerStats {
