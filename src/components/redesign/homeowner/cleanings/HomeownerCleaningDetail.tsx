@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarX, ChevronLeft, MessageCircle } from 'lucide-react';
+import { CalendarPlus, CalendarX, ChevronLeft, MessageCircle } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -12,6 +12,7 @@ import type { Appointment } from '@/hooks/useHomeownerData';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
 import { formatCleaningWhen } from '../home/home-presenters';
 import { CancelCleaningSheet } from './CancelCleaningSheet';
+import { useOpenBooking } from '../booking/useOpenBooking';
 import { useOpenMessageThread } from '../messages/useOpenMessageThread';
 import { useHomeownerOfficeContact } from '../messages/useHomeownerOfficeContact';
 import { useHomeownerOrgMessagingEnabled } from '../messages/useHomeownerOrgMessagingEnabled';
@@ -47,6 +48,7 @@ export function HomeownerCleaningDetail({
     stripeNewChargeFlowUiEnabled() &&
     (appointment.status === 'pending' || appointment.status === 'confirmed');
 
+  const openBooking = useOpenBooking();
   const { openOffice, openJob } = useOpenMessageThread();
   const { office } = useHomeownerOfficeContact();
   const messagingEnabled = useHomeownerOrgMessagingEnabled();
@@ -146,6 +148,22 @@ export function HomeownerCleaningDetail({
                   </div>
 
                   <div className="space-y-2">
+                    {appointment.status === 'completed' &&
+                      appointment.property_id &&
+                      appointment.service_type_id && (
+                        <Button
+                          className="w-full"
+                          onClick={() =>
+                            openBooking({
+                              propertyId: appointment.property_id,
+                              serviceTypeId: appointment.service_type_id,
+                            })
+                          }
+                        >
+                          <CalendarPlus className="size-4" aria-hidden />
+                          Book again
+                        </Button>
+                      )}
                     {canMessageJob && (
                       <Button
                         variant="outline"
