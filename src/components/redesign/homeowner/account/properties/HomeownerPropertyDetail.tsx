@@ -87,7 +87,11 @@ export function HomeownerPropertyDetail({
                     <div className="space-y-4">
                       <Field label="Address">
                         <div className="font-semibold">{property.address}</div>
-                        {loc && <div className="text-muted-foreground">{loc} {property.zip_code}</div>}
+                        {(loc || property.zip_code) && (
+                          <div className="text-muted-foreground">
+                            {[loc, property.zip_code].filter(Boolean).join(' ')}
+                          </div>
+                        )}
                       </Field>
                       {stats && (
                         <>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import {
@@ -22,6 +22,12 @@ export interface AddCardSheetProps {
 export function AddCardSheet({ open, onOpenChange, onSaved }: AddCardSheetProps) {
   const { user } = useAuth();
   const userId = user?.id;
+  // While a card save (incl. 3DS) is in flight, block swipe/overlay dismissal so the
+  // confirmSetup call is never unmounted mid-flight. Reset whenever the sheet closes.
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!open) setSaving(false);
+  }, [open]);
 
   // Self-scoped SetupIntent: pass only homeowner_id (no organization_id) so the route treats
   // the caller as acting on their own Customer.
@@ -41,7 +47,7 @@ export function AddCardSheet({ open, onOpenChange, onSaved }: AddCardSheetProps)
   }, [userId]);
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={(v) => !saving && onOpenChange(v)}>
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Add a card</DrawerTitle>
@@ -51,7 +57,13 @@ export function AddCardSheet({ open, onOpenChange, onSaved }: AddCardSheetProps)
         </DrawerHeader>
         <div className="px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
           {/* Mount the panel only while open so each open fetches a fresh SetupIntent. */}
-          {open && <AccountAddCardPanel createSetupIntent={createSetupIntent} onSaved={onSaved} />}
+          {open && (
+            <AccountAddCardPanel
+              createSetupIntent={createSetupIntent}
+              onSaved={onSaved}
+              onSavingChange={setSaving}
+            />
+          )}
         </div>
       </DrawerContent>
     </Drawer>

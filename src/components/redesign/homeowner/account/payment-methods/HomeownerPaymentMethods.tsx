@@ -53,11 +53,28 @@ export function HomeownerPaymentMethods() {
 
   async function handleRemoveConfirm() {
     if (!removeTarget) return;
+    // Capture BEFORE removal: was this the default, and what would remain?
+    const wasDefault = removeTarget.isDefault;
+    const remaining = cards.filter((c) => c.id !== removeTarget.id);
     setRemoving(true);
     try {
       await remove(removeTarget.id);
-      toast.success('Card removed');
       setRemoveTarget(null);
+      // Never leave the homeowner with no default: if we removed the default and
+      // other cards remain, promote the next one (completion charges read the default).
+      if (wasDefault && remaining.length > 0) {
+        try {
+          await setDefault(remaining[0].id);
+          toast.success('Card removed', {
+            description: `${paymentMethodTitle(remaining[0])} is now your default.`,
+          });
+        } catch {
+          // The removal itself succeeded; only the re-assignment failed.
+          toast.success('Card removed');
+        }
+      } else {
+        toast.success('Card removed');
+      }
     } catch (e) {
       toast.error('Could not remove this card', {
         description: e instanceof Error ? e.message : undefined,

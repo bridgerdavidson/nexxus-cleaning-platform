@@ -19,6 +19,8 @@ interface Props {
   createSetupIntent: () => Promise<string>;
   /** Called with the saved PaymentMethod id after confirmSetup succeeds. */
   onSaved: (paymentMethodId: string) => void | Promise<void>;
+  /** Reports the in-flight save state up so the parent sheet can lock dismissal during 3DS. */
+  onSavingChange?: (saving: boolean) => void;
 }
 
 /**
@@ -28,7 +30,7 @@ interface Props {
  * once at Elements init, so we hold behind a mounted gate until next-themes resolves (mirrors
  * PaymentsYourMoney) to avoid initializing in the wrong theme.
  */
-export function AccountAddCardPanel({ createSetupIntent, onSaved }: Props) {
+export function AccountAddCardPanel({ createSetupIntent, onSaved, onSavingChange }: Props) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
@@ -92,16 +94,27 @@ export function AccountAddCardPanel({ createSetupIntent, onSaved }: Props) {
       stripe={stripePromise}
       options={{ clientSecret: secret, appearance: getRedesignConnectAppearance(resolvedTheme === 'dark') }}
     >
-      <AddCardInner onSaved={onSaved} />
+      <AddCardInner onSaved={onSaved} onSavingChange={onSavingChange} />
     </Elements>
   );
 }
 
-function AddCardInner({ onSaved }: { onSaved: (paymentMethodId: string) => void | Promise<void> }) {
+function AddCardInner({
+  onSaved,
+  onSavingChange,
+}: {
+  onSaved: (paymentMethodId: string) => void | Promise<void>;
+  onSavingChange?: (saving: boolean) => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Surface the in-flight save state so the parent sheet can block dismissal mid-confirm.
+  useEffect(() => {
+    onSavingChange?.(saving);
+  }, [saving, onSavingChange]);
 
   const save = async () => {
     if (!stripe || !elements) return;
