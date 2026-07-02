@@ -65,6 +65,7 @@ export function HomeownerMessages() {
         onOpenChange={setNewOpen}
         hasOffice={!!office}
         cleanings={messageable}
+        messagingEnabled={messagingEnabled}
         onPickOffice={() => {
           if (office) openOffice(office.id);
         }}

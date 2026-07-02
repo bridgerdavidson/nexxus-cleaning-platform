@@ -15,6 +15,9 @@ export interface NewConversationSheetProps {
   onOpenChange: (v: boolean) => void;
   hasOffice: boolean;
   cleanings: MessageableCleaning[];
+  /** When false (org kill-switch off), the "message a cleaning" section is hidden
+   *  entirely, so only the office option shows. Defaults to true. */
+  messagingEnabled?: boolean;
   onPickOffice: () => void;
   onPickCleaning: (appointmentId: string) => void;
 }
@@ -34,6 +37,7 @@ export function NewConversationSheet({
   onOpenChange,
   hasOffice,
   cleanings,
+  messagingEnabled = true,
   onPickOffice,
   onPickCleaning,
 }: NewConversationSheetProps) {
@@ -65,39 +69,43 @@ export function NewConversationSheet({
             </button>
           )}
 
-          <p className="px-0.5 pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-            Message about a cleaning
-          </p>
+          {messagingEnabled && (
+            <>
+              <p className="px-0.5 pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Message about a cleaning
+              </p>
 
-          {cleanings.length === 0 ? (
-            <p className="px-0.5 text-sm text-muted-foreground">
-              You can message a cleaner once a cleaning is confirmed.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {cleanings.map((c) => (
-                <button
-                  key={c.appointmentId}
-                  type="button"
-                  aria-label={`Message ${c.cleanerName} about ${c.dateLabel} cleaning`}
-                  className={ROW}
-                  onClick={() => {
-                    onPickCleaning(c.appointmentId);
-                    onOpenChange(false);
-                  }}
-                >
-                  <Avatar className="size-11 shrink-0">
-                    <AvatarFallback>{initialsFromName(c.cleanerName)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{c.cleanerName}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {c.dateLabel}, {c.serviceLabel}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
+              {cleanings.length === 0 ? (
+                <p className="px-0.5 text-sm text-muted-foreground">
+                  You can message a cleaner once a cleaning is confirmed.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {cleanings.map((c) => (
+                    <button
+                      key={c.appointmentId}
+                      type="button"
+                      aria-label={`Message ${c.cleanerName} about ${c.dateLabel} cleaning`}
+                      className={ROW}
+                      onClick={() => {
+                        onPickCleaning(c.appointmentId);
+                        onOpenChange(false);
+                      }}
+                    >
+                      <Avatar className="size-11 shrink-0">
+                        <AvatarFallback>{initialsFromName(c.cleanerName)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold">{c.cleanerName}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {c.dateLabel}, {c.serviceLabel}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </DrawerContent>
