@@ -65,6 +65,33 @@ export function cleanerDisplayName(appt: Appointment): string | null {
   return last ? `${first} ${last.charAt(0)}.` : first;
 }
 
+/** Footer task summary for the recent-cleaning card ("All 9 tasks done" / "6 of 9
+ *  tasks done"), or null when the cleaning has no checklist. */
+export function recentCleaningTaskLabel(doneCount: number, totalCount: number): string | null {
+  if (totalCount <= 0) return null;
+  if (doneCount >= totalCount) return `All ${totalCount} tasks done`;
+  return `${doneCount} of ${totalCount} tasks done`;
+}
+
+/** Payment-status pill for the recent-cleaning card. Defaults to "Payment due" for any
+ *  not-yet-settled state so the homeowner always sees an unambiguous money signal. */
+export function recentCleaningPaymentBadge(
+  status: string | null | undefined,
+): { label: string; tone: HomeownerStatusTone } {
+  switch (status) {
+    case 'paid':
+      return { label: 'Paid', tone: 'positive' };
+    case 'refunded':
+      return { label: 'Refunded', tone: 'secondary' };
+    case 'processing':
+      return { label: 'Processing', tone: 'default' };
+    case 'failed':
+      return { label: 'Payment failed', tone: 'critical' };
+    default:
+      return { label: 'Payment due', tone: 'caution' };
+  }
+}
+
 export function formatCleaningWhen(dateStr: string, timeStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);

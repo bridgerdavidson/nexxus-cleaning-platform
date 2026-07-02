@@ -6,6 +6,8 @@ import {
   homeownerStatusLabel,
   cleanerDisplayName,
   formatCleaningWhen,
+  recentCleaningTaskLabel,
+  recentCleaningPaymentBadge,
 } from './home-presenters';
 
 const TODAY = '2026-06-25';
@@ -85,5 +87,30 @@ describe('formatCleaningWhen', () => {
   it('formats a friendly date and 12h time', () => {
     expect(formatCleaningWhen('2026-06-25', '10:30')).toContain('Jun 25');
     expect(formatCleaningWhen('2026-06-25', '10:30')).toMatch(/10:30\s?AM/i);
+  });
+});
+
+describe('recentCleaningTaskLabel', () => {
+  it('says all done when every task is complete', () => {
+    expect(recentCleaningTaskLabel(9, 9)).toBe('All 9 tasks done');
+  });
+  it('shows the fraction when partial', () => {
+    expect(recentCleaningTaskLabel(6, 9)).toBe('6 of 9 tasks done');
+  });
+  it('returns null when there is no checklist', () => {
+    expect(recentCleaningTaskLabel(0, 0)).toBeNull();
+  });
+});
+
+describe('recentCleaningPaymentBadge', () => {
+  it('marks a settled cleaning as Paid (positive)', () => {
+    expect(recentCleaningPaymentBadge('paid')).toEqual({ label: 'Paid', tone: 'positive' });
+  });
+  it('flags a failed charge (critical)', () => {
+    expect(recentCleaningPaymentBadge('failed')).toEqual({ label: 'Payment failed', tone: 'critical' });
+  });
+  it('defaults to Payment due for any unsettled or missing status', () => {
+    expect(recentCleaningPaymentBadge(null)).toEqual({ label: 'Payment due', tone: 'caution' });
+    expect(recentCleaningPaymentBadge('pending')).toEqual({ label: 'Payment due', tone: 'caution' });
   });
 });

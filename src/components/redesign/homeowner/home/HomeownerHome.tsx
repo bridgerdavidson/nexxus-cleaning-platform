@@ -7,6 +7,7 @@ import { useHomeownerRequests } from '@/hooks/useHomeownerRequests';
 import { pickHeroAppointment } from './home-presenters';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
 import { PendingRequestCard } from './PendingRequestCard';
+import { useOpenCleaning } from '../cleanings/useOpenCleaning';
 
 function todayStr(): string {
   const d = new Date();
@@ -18,6 +19,7 @@ function todayStr(): string {
 export function HomeownerHome() {
   const { appointments, loading } = useHomeownerAppointments();
   const { requests, cancelRequest, cancelling } = useHomeownerRequests();
+  const openCleaning = useOpenCleaning();
   const hero = useMemo(() => pickHeroAppointment(appointments, todayStr()), [appointments]);
 
   return (
@@ -25,7 +27,7 @@ export function HomeownerHome() {
       {loading ? (
         <div className="h-40 animate-pulse rounded-card bg-muted" aria-hidden />
       ) : (
-        <HomeownerCleaningHero appointment={hero} />
+        <HomeownerCleaningHero appointment={hero} onOpen={openCleaning} />
       )}
 
       <RequestAppointmentButton
