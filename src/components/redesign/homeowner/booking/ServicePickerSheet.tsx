@@ -25,10 +25,8 @@ export function serviceMetaLabel(basePrice: number, durationMinutes: number): st
     currency: 'USD',
     maximumFractionDigits: 0,
   }).format(basePrice);
-  const dur =
-    durationMinutes >= 60
-      ? `about ${Math.round(durationMinutes / 60)} hr${durationMinutes >= 120 ? 's' : ''}`
-      : `${durationMinutes} min`;
+  const hrs = Math.round(durationMinutes / 60);
+  const dur = durationMinutes >= 60 ? `about ${hrs} hr${hrs === 1 ? '' : 's'}` : `${durationMinutes} min`;
   return `${price} · ${dur}`;
 }
 

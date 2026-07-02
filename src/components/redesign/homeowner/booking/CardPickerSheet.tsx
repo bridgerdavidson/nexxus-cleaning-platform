@@ -32,9 +32,15 @@ export function CardPickerSheet({ open, onOpenChange, selectedId, onSelect }: Ca
   const { user } = useAuth();
   const { cards, loading, refetch } = useSavedPaymentMethods();
   const [adding, setAdding] = useState(false);
+  // Block swipe/scrim dismissal while a card save (incl. 3DS) is in flight so confirmSetup
+  // is never unmounted mid-confirm (mirrors AddCardSheet).
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) setAdding(false);
+    if (!open) {
+      setAdding(false);
+      setSaving(false);
+    }
   }, [open]);
 
   const createSetupIntent = useCallback(async (): Promise<string> => {
@@ -52,7 +58,7 @@ export function CardPickerSheet({ open, onOpenChange, selectedId, onSelect }: Ca
   const showAdd = adding || (!loading && cards.length === 0);
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={(v) => !saving && onOpenChange(v)}>
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Payment method</DrawerTitle>
@@ -95,6 +101,7 @@ export function CardPickerSheet({ open, onOpenChange, selectedId, onSelect }: Ca
             <div className="rounded-card border border-border p-4">
               <AccountAddCardPanel
                 createSetupIntent={createSetupIntent}
+                onSavingChange={setSaving}
                 onSaved={async (pmId) => {
                   await refetch();
                   onSelect(pmId, 'card');

@@ -43,13 +43,13 @@ export function BookingFlow({
   const [timeOpen, setTimeOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
 
-  const { properties } = useHomeownerProperties();
-  const { services } = useServices();
+  const { properties, loading: propertiesLoading } = useHomeownerProperties();
+  const { services, loading: servicesLoading } = useServices();
   const { cards } = useSavedPaymentMethods();
 
   const paymentRequired = homeownerCardPickerAvailable();
   const property = properties.find((p) => p.id === state.propertyId) ?? null;
-  const service = services.find((s) => s.id === state.serviceTypeId) ?? null;
+  const service = services.find((s) => s.id === state.serviceTypeId && s.is_active) ?? null;
   const card = cards.find((c) => c.id === state.paymentMethodId) ?? null;
 
   // Pre-select the only home so a single-property homeowner skips the picker.
@@ -58,6 +58,23 @@ export function BookingFlow({
       setState((s) => ({ ...s, propertyId: properties[0].id }));
     }
   }, [properties, state.propertyId]);
+
+  // Drop a stale prefill (e.g. Book again on a since-deactivated service or a deleted home)
+  // so the flow falls back to unselected instead of carrying an invalid id to submit.
+  useEffect(() => {
+    if (
+      !servicesLoading &&
+      state.serviceTypeId &&
+      !services.some((s) => s.id === state.serviceTypeId && s.is_active)
+    ) {
+      setState((s) => ({ ...s, serviceTypeId: null }));
+    }
+  }, [servicesLoading, services, state.serviceTypeId]);
+  useEffect(() => {
+    if (!propertiesLoading && state.propertyId && !properties.some((p) => p.id === state.propertyId)) {
+      setState((s) => ({ ...s, propertyId: null }));
+    }
+  }, [propertiesLoading, properties, state.propertyId]);
 
   const { submit, submitting } = useSubmitBookingRequest();
 
