@@ -15,7 +15,7 @@ export function CleanerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const activeId = deriveCleanerActive(pathname);
   const { user } = useAuth();
-  const messagesUnread = useUnreadMessageCount(user?.id);
+  const messagesUnread = useUnreadMessageCount(user?.id, 'all');
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-dvh bg-background text-foreground">

@@ -1,89 +1,79 @@
-"use client";
+'use client';
 
-import { useMemo, useRef, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
-import { useConversations } from "@/hooks/useConversations";
-import { useOrganizationMembers } from "@/hooks/useOrganizationMembers";
-import { useKeyboardInset } from "@/hooks/useKeyboardInset";
-import { useOpenOfficeThread } from "@/hooks/useOpenOfficeThread";
-import { toConversationRowVM } from "@/components/redesign/messages/messages-presenters";
-import { deriveOfficeInbox } from "./deriveOfficeInbox";
-import { filterOfficeContacts } from "./office-contacts";
-import { CleanerMessagesView } from "./CleanerMessagesView";
-import { CleanerOfficePicker } from "./CleanerOfficePicker";
-import { CleanerThread } from "./CleanerThread";
+import { useMemo, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { useConversations } from '@/hooks/useConversations';
+import { useCleanerAppointments } from '@/hooks/useCleanerData';
+import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
+import { useOpenOfficeThread } from '@/hooks/useOpenOfficeThread';
+import { deriveCleanerInbox } from './deriveCleanerInbox';
+import { filterOfficeContacts } from './office-contacts';
+import { useOpenCleanerJobThread } from './useOpenCleanerJobThread';
+import { CleanerMessagesView } from './CleanerMessagesView';
+import { CleanerOfficePicker } from './CleanerOfficePicker';
 
 /**
- * Cleaner Messages: a collapsing office inbox. One office contact -> the Office
- * thread inline (the tab itself). Several -> a list + a "New message" picker so a
- * specific admin/manager is always reachable. Thread opens (rows/picker) go through
- * the ?thread=/?to= host mounted in the cleaner layout. (Job-scoped messaging starts
- * from the active-job "Message office" sheet, not here.)
+ * Cleaner Messages: a sectioned inbox (mirror of the homeowner tab).
+ * - Office: threads with the org's admins/managers (open existing via ?thread=; the
+ *   "New" picker starts one with a specific person via ?to=).
+ * - Your cleanings: active homeowner<->cleaner job threads (send window open).
+ * - Past: closed job threads (read-only).
+ * Office threads render through the ?thread=/?to= host (CleanerMessageThreadHost); job
+ * threads through the ?jobthread= host (CleanerJobThreadHost). Both are mounted in the layout.
  */
 export function CleanerMessages() {
   const { user } = useAuth();
-  const userId = user?.id ?? "";
-  const { conversations, loading: convLoading } = useConversations({ userId });
-  const { members, loading: membersLoading } = useOrganizationMembers({ excludeCurrentUser: true });
+  const userId = user?.id ?? '';
+  const { conversations: officeRows, loading: lo } = useConversations({ userId, scope: 'office' });
+  const { conversations: jobRows, loading: lj } = useConversations({ userId, scope: 'job' });
+  const { appointments, loading: la } = useCleanerAppointments();
+  const { members, loading: lm } = useOrganizationMembers({ excludeCurrentUser: true });
 
-  const [search, setSearch] = useState("");
-  const [pickerOpen, setPickerOpen] = useState(false);
   const { openConversation, openWith } = useOpenOfficeThread();
-
-  // Single-mode inline thread keyboard handling (composer above the on-screen keyboard).
-  const kbdRef = useRef<HTMLDivElement>(null);
-  useKeyboardInset(kbdRef);
+  const openJob = useOpenCleanerJobThread();
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const officeContacts = useMemo(() => filterOfficeContacts(members), [members]);
-  const rowsAll = useMemo(
-    () => conversations.map((c) => toConversationRowVM(c, userId)),
-    [conversations, userId],
-  );
+  const appointmentsById = useMemo(() => {
+    const m = new Map<string, (typeof appointments)[number]>();
+    for (const a of appointments) m.set(a.id, a);
+    return m;
+  }, [appointments]);
+
   const model = useMemo(
     () =>
-      deriveOfficeInbox({
-        rows: rowsAll,
-        officeContacts,
-        search,
-        loading: convLoading || membersLoading,
+      deriveCleanerInbox({
+        officeRows,
+        jobRows,
+        appointmentsById,
+        now: new Date(),
+        currentUserId: userId,
       }),
-    [rowsAll, officeContacts, search, convLoading, membersLoading],
+    [officeRows, jobRows, appointmentsById, userId],
   );
 
-  // Single office contact: the Messages tab IS the Office thread. Render it as a
-  // fixed surface below the top bar (4rem) and above the bottom nav, so both stay
-  // visible/tappable; the composer lifts above the keyboard via --kbd.
-  if (model.mode === "single" && model.singleContact) {
-    return (
-      <div
-        ref={kbdRef}
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), var(--kbd, 0px))" }}
-        className="redesign-overlay fixed inset-x-0 top-16 bottom-[calc(56px+env(safe-area-inset-bottom))] z-20 mx-auto flex max-w-lg flex-col bg-card"
-      >
-        <CleanerThread
-          variant="inline"
-          conversationId={model.singleConversationId}
-          recipient={model.singleContact}
-        />
-      </div>
-    );
-  }
+  const startOffice = () => {
+    if (officeContacts.length === 0) return;
+    if (officeContacts.length === 1) openWith(officeContacts[0].id);
+    else setPickerOpen(true);
+  };
 
   return (
     <>
       <CleanerMessagesView
-        mode={model.mode}
-        rows={model.rows}
-        noOfficeContacts={model.noOfficeContacts}
-        search={search}
-        onSearch={setSearch}
-        onOpenRow={openConversation}
-        onCompose={() => setPickerOpen(true)}
+        model={model}
+        loading={lo || lj || la || lm}
+        hasOfficeContacts={officeContacts.length > 0}
+        onOpenOfficeRow={openConversation}
+        onStartOffice={startOffice}
+        onNew={() => setPickerOpen(true)}
+        onOpenJob={openJob}
       />
       <CleanerOfficePicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        contacts={model.officeContacts}
+        contacts={officeContacts}
+        loading={lm}
         onPick={(c) => {
           setPickerOpen(false);
           openWith(c.id);
