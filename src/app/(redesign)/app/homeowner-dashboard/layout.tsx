@@ -8,6 +8,7 @@ import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { HomeownerShell } from "@/components/redesign/homeowner/shell/HomeownerShell";
 import { HomeownerCleaningDetailHost } from "@/components/redesign/homeowner/cleanings/HomeownerCleaningDetailHost";
 import { HomeownerMessageThreadHost } from "@/components/redesign/homeowner/messages/HomeownerMessageThreadHost";
+import { BookingFlowHost } from "@/components/redesign/homeowner/booking/BookingFlowHost";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 import { redesignUiEnabled } from "@/lib/redesign/flags";
 
@@ -59,6 +60,9 @@ export default function HomeownerDashboardLayout({
       </Suspense>
       <Suspense fallback={null}>
         <HomeownerMessageThreadHost />
+      </Suspense>
+      <Suspense fallback={null}>
+        <BookingFlowHost />
       </Suspense>
     </>
   );

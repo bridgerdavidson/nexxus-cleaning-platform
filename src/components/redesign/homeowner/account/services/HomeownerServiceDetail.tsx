@@ -1,13 +1,13 @@
 'use client';
 
-import { Check, ChevronLeft, PackageOpen } from 'lucide-react';
+import { CalendarPlus, Check, ChevronLeft, PackageOpen } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useService } from '@/hooks/useServices';
 import { useChecklists } from '@/hooks/useChecklists';
 import { toCatalogDetail } from '@/components/redesign/cleaner/profile/deriveCatalog';
-import RequestAppointmentButton from '@/components/RequestAppointmentButton';
+import { useOpenBooking } from '../../booking/useOpenBooking';
 
 const REQUEST_CTA_CLASS =
   'flex w-full items-center justify-center gap-2 rounded-control bg-brand-600 py-3 text-sm font-bold text-white shadow-soft-sm transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -22,6 +22,7 @@ export function HomeownerServiceDetail({
   const { service, loading } = useService(serviceId);
   const { checklists, loading: checklistsLoading } = useChecklists(serviceId);
   const detail = service ? toCatalogDetail(service, checklists) : null;
+  const openBooking = useOpenBooking();
 
   return (
     <MobileTakeover ariaLabel="Service details" keyboardAware={false} onClosed={onClose}>
@@ -128,7 +129,14 @@ export function HomeownerServiceDetail({
                   )}
 
                   <div className="pt-1">
-                    <RequestAppointmentButton label="Request this cleaning" className={REQUEST_CTA_CLASS} />
+                    <button
+                      type="button"
+                      onClick={() => openBooking({ serviceTypeId: serviceId })}
+                      className={REQUEST_CTA_CLASS}
+                    >
+                      <CalendarPlus className="size-4" aria-hidden />
+                      Request this cleaning
+                    </button>
                   </div>
                 </>
               )}
