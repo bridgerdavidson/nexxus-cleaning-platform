@@ -51,6 +51,9 @@ export const keys = {
     byOrg: (orgId: string) => ['properties', 'org', orgId] as const,
     byHomeowner: (homeownerId: string) => ['properties', 'homeowner', homeownerId] as const,
   },
+  paymentMethods: {
+    byUser: (userId: string) => ['payment-methods', 'user', userId] as const,
+  },
   conversations: {
     byUser: (userId: string, scope: 'office' | 'job' | 'org-office' = 'office') =>
       ['conversations', 'user', userId, scope] as const,
