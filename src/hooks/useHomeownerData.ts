@@ -8,6 +8,7 @@ import { keys } from '../lib/queryKeys';
 
 export interface Appointment {
   id: string;
+  property_id?: string;
   service_type_id?: string;
   checklist_id?: string | null;
   scheduled_date: string;
@@ -114,6 +115,7 @@ export function useHomeownerAppointments() {
         .from('appointments')
         .select(`
           id,
+          property_id,
           service_type_id,
           checklist_id,
           scheduled_date,
