@@ -8,6 +8,7 @@ import { useConversations } from '@/hooks/useConversations';
 import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
 import { useStartConversation } from '@/hooks/useStartConversation';
 import { useHomeownerAppointments } from '@/hooks/useHomeownerData';
+import { useOrgMessagingEnabled } from '@/hooks/useOrgMessagingEnabled';
 import { filterOfficeContacts, type OfficeContact } from '@/components/redesign/cleaner/messages/office-contacts';
 import { isJobMessagingWindowOpen } from '@/lib/messaging/jobMessagingWindow';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
@@ -36,6 +37,7 @@ function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null;
   const { members } = useOrganizationMembers({ excludeCurrentUser: true });
   const { appointments } = useHomeownerAppointments();
   const { startConversation } = useStartConversation();
+  const messagingEnabled = useOrgMessagingEnabled();
 
   // ---- Office recipient resolution (?to / ?thread) ----
   const officeContacts = useMemo(() => filterOfficeContacts(members), [members]);
@@ -108,15 +110,20 @@ function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null;
                   `${jobAppt.cleaner_profile?.user_profile?.first_name ?? ''} ${jobAppt.cleaner_profile?.user_profile?.last_name ?? ''}`.trim() ||
                   'Your cleaner',
                 avatarUrl: jobAppt.cleaner_profile?.user_profile?.avatar_url ?? null,
-                readOnly: !isJobMessagingWindowOpen(
-                  {
-                    status: jobAppt.status,
-                    cleaner_confirmation_status: jobAppt.cleaner_confirmation_status ?? null,
-                    completed_at: jobAppt.completed_at ?? null,
-                    cancelled_at: jobAppt.cancelled_at ?? null,
-                  },
-                  new Date(),
-                ),
+                readOnly:
+                  !messagingEnabled ||
+                  !isJobMessagingWindowOpen(
+                    {
+                      status: jobAppt.status,
+                      cleaner_confirmation_status: jobAppt.cleaner_confirmation_status ?? null,
+                      completed_at: jobAppt.completed_at ?? null,
+                      cancelled_at: jobAppt.cancelled_at ?? null,
+                    },
+                    new Date(),
+                  ),
+                readOnlyNotice: messagingEnabled
+                  ? undefined
+                  : 'Messaging is turned off right now. You can still read this conversation.',
               }}
               conversationId={jobConvId}
               onBack={closeTakeover}

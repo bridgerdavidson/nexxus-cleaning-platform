@@ -38,6 +38,7 @@ import {
 } from '@/hooks/useCleanerData';
 import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
 import { useOpenOfficeThread } from '@/hooks/useOpenOfficeThread';
+import { useOrgMessagingEnabled } from '@/hooks/useOrgMessagingEnabled';
 import { useRouter } from 'next/navigation';
 import { filterOfficeContacts } from '../messages/office-contacts';
 import { canMessageHomeowner } from '../messages/canMessageHomeowner';
@@ -240,6 +241,7 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   // (?jobthread=), with a "Back to job" return via ?from=. router.push so a
   // hardware/gesture back also returns to the active job.
   const router = useRouter();
+  const messagingEnabled = useOrgMessagingEnabled();
   const onMessageHomeowner = useCallback(() => {
     router.push(`/app/cleaner-dashboard/messages?jobthread=${appointmentId}&from=${appointmentId}`);
   }, [router, appointmentId]);
@@ -378,7 +380,7 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
           onSkipPhotos={() => setSkipOpen(true)}
           onMessageOffice={onMessageOffice}
           onMessageHomeowner={
-            canMessageHomeowner(appointment) ? onMessageHomeowner : undefined
+            messagingEnabled && canMessageHomeowner(appointment) ? onMessageHomeowner : undefined
           }
         />
       )}

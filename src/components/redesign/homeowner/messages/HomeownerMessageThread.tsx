@@ -18,7 +18,7 @@ function initials(name: string): string {
 
 type ThreadConfig =
   | { kind: 'office'; recipient: OfficeContact }
-  | { kind: 'job'; appointment: Appointment; cleanerName: string; avatarUrl: string | null; readOnly: boolean };
+  | { kind: 'job'; appointment: Appointment; cleanerName: string; avatarUrl: string | null; readOnly: boolean; readOnlyNotice?: string };
 
 export function HomeownerMessageThread({
   config,
@@ -55,6 +55,10 @@ export function HomeownerMessageThread({
   const title = config.kind === 'office' ? 'Cleaning office' : config.cleanerName;
   const avatarUrl = config.kind === 'office' ? null : config.avatarUrl;
   const readOnly = config.kind === 'job' && config.readOnly;
+  const readOnlyNotice =
+    config.kind === 'job' && config.readOnlyNotice
+      ? config.readOnlyNotice
+      : 'This cleaning is finished. You can still read the conversation.';
   const sending = config.kind === 'office' ? sendingOffice : sendingJob;
 
   const onSend = useCallback(async () => {
@@ -100,7 +104,7 @@ export function HomeownerMessageThread({
       variant="takeover"
       onBack={onBack}
       readOnly={readOnly}
-      readOnlyNotice="This cleaning is finished. You can still read the conversation."
+      readOnlyNotice={readOnlyNotice}
       emptyTitle={config.kind === 'office' ? 'Message your office' : 'Message about this cleaning'}
       emptyBody={
         config.kind === 'office'

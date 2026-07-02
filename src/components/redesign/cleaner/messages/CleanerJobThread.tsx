@@ -24,6 +24,7 @@ export function CleanerJobThread({
   homeownerName,
   avatarUrl,
   readOnly,
+  readOnlyNotice,
   onBack,
   backLabel,
 }: {
@@ -32,6 +33,8 @@ export function CleanerJobThread({
   homeownerName: string;
   avatarUrl: string | null;
   readOnly: boolean;
+  /** Overrides the default read-only notice (e.g. when the org kill-switch is off). */
+  readOnlyNotice?: string;
   onBack: () => void;
   backLabel?: string;
 }) {
@@ -81,7 +84,7 @@ export function CleanerJobThread({
       onBack={onBack}
       backLabel={backLabel}
       readOnly={readOnly}
-      readOnlyNotice="This cleaning is finished. You can still read the conversation."
+      readOnlyNotice={readOnlyNotice ?? 'This cleaning is finished. You can still read the conversation.'}
       emptyTitle="Message the homeowner"
       emptyBody="Coordinate access and details with the homeowner. They will see it right away."
       composer={{
