@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
 import { useCleanerAppointments } from '@/hooks/useCleanerData';
+import { useOrgMessagingEnabled } from '@/hooks/useOrgMessagingEnabled';
 import { isJobMessagingWindowOpen } from '@/lib/messaging/jobMessagingWindow';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { CleanerJobThread } from './CleanerJobThread';
@@ -37,6 +38,7 @@ function JobThreadHostInner({
 
   const { appointments } = useCleanerAppointments();
   const { conversations } = useConversations({ userId, scope: 'job' });
+  const messagingEnabled = useOrgMessagingEnabled();
 
   const appointment = useMemo(
     () => appointments.find((a) => a.id === appointmentId) ?? null,
@@ -55,9 +57,10 @@ function JobThreadHostInner({
   const avatarUrl = null;
   // The cleaner appointment select includes completed_at/cancelled_at, so the send
   // window is accurate: a job still within the 24h post-completion grace stays
-  // writable, and a completed/cancelled thread past the window is read-only.
-  const readOnly = appointment
-    ? !isJobMessagingWindowOpen(
+  // writable, and a completed/cancelled thread past the window is read-only. The
+  // org kill-switch forces read-only for everyone when the company turns messaging off.
+  const windowOpen = appointment
+    ? isJobMessagingWindowOpen(
         {
           status: appointment.status,
           cleaner_confirmation_status: appointment.cleaner_confirmation_status,
@@ -66,7 +69,8 @@ function JobThreadHostInner({
         },
         new Date(),
       )
-    : false;
+    : true;
+  const readOnly = !messagingEnabled || !windowOpen;
 
   const clearAll = useCallback(() => {
     const sp = new URLSearchParams(searchParams.toString());
@@ -93,6 +97,9 @@ function JobThreadHostInner({
           homeownerName={homeownerName}
           avatarUrl={avatarUrl}
           readOnly={readOnly}
+          readOnlyNotice={
+            messagingEnabled ? undefined : 'Messaging is turned off right now. You can still read this conversation.'
+          }
           onBack={close}
           backLabel={fromParam ? 'Back to job' : undefined}
         />

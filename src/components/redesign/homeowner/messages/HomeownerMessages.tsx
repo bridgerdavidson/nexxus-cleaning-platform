@@ -7,6 +7,7 @@ import { useHomeownerAppointments } from '@/hooks/useHomeownerData';
 import { deriveHomeownerInbox } from './deriveHomeownerInbox';
 import { messageableCleanings } from './messageableCleanings';
 import { useHomeownerOfficeContact } from './useHomeownerOfficeContact';
+import { useOrgMessagingEnabled } from '@/hooks/useOrgMessagingEnabled';
 import { useOpenMessageThread } from './useOpenMessageThread';
 import { HomeownerMessagesView } from './HomeownerMessagesView';
 import { NewConversationSheet } from './NewConversationSheet';
@@ -18,6 +19,7 @@ export function HomeownerMessages() {
   const { conversations: jobRows, loading: lj } = useConversations({ userId, scope: 'job' });
   const { appointments, loading: la } = useHomeownerAppointments();
   const { office } = useHomeownerOfficeContact();
+  const messagingEnabled = useOrgMessagingEnabled();
   const { openOffice, openOfficeThread, openJob } = useOpenMessageThread();
   const [newOpen, setNewOpen] = useState(false);
 
@@ -39,7 +41,12 @@ export function HomeownerMessages() {
     [officeRows, jobRows, appointmentsById, userId],
   );
 
-  const messageable = useMemo(() => messageableCleanings(appointments, new Date()), [appointments]);
+  // With the org kill-switch off, the "New conversation" sheet offers only the
+  // office, never a cleaning (a job thread would open read-only anyway).
+  const messageable = useMemo(
+    () => (messagingEnabled ? messageableCleanings(appointments, new Date()) : []),
+    [appointments, messagingEnabled],
+  );
 
   return (
     <>
