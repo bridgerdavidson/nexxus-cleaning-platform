@@ -38,13 +38,13 @@ export function PaymentMethodRow({ pm, busy, onSetDefault, onRemove }: PaymentMe
         {busy && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
       </div>
 
-      <div className="mt-3 flex items-center gap-4 border-t border-border pt-3">
+      <div className="mt-1 flex items-center gap-2 border-t border-border">
         {!pm.isDefault && (
           <button
             type="button"
             onClick={onSetDefault}
             disabled={busy}
-            className="text-xs font-bold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            className="inline-flex min-h-[44px] items-center rounded-control px-1 text-xs font-bold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
             Set as default
           </button>
@@ -53,7 +53,7 @@ export function PaymentMethodRow({ pm, busy, onSetDefault, onRemove }: PaymentMe
           type="button"
           onClick={onRemove}
           disabled={busy}
-          className="ml-auto text-xs font-bold text-critical outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          className="ml-auto inline-flex min-h-[44px] items-center rounded-control px-1 text-xs font-bold text-critical outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           Remove
         </button>
