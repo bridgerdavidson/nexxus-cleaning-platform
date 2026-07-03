@@ -152,6 +152,16 @@ export function CleanerJobDetailOverlay({
                     <div className="font-semibold">{appointment.service_type?.name || "Cleaning"}</div>
                     {appointment.checklist?.name && <div className="text-muted-foreground">{appointment.checklist.name}</div>}
                   </Field>
+                  {appointment.series_id && (
+                    <>
+                      <Separator />
+                      <Field label="Repeating">
+                        <div className="text-muted-foreground">
+                          This is one date in a repeating cleaning. See all the dates under Needs your response on your Today tab.
+                        </div>
+                      </Field>
+                    </>
+                  )}
                   {appointment.special_requests && (<><Separator /><Field label="Special requests">{appointment.special_requests}</Field></>)}
                 </>
               )}
