@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
 import { OperatorMobileNav } from "./OperatorMobileNav";
 import { CommandPalette } from "@/components/redesign/command/CommandPalette";
+import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
+import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
 import { OPERATOR_NAV } from "./nav-items";
 
 function deriveActive(pathname: string | null): string | undefined {
@@ -33,16 +35,19 @@ function deriveActive(pathname: string | null): string | undefined {
  */
 export function OperatorShell({
   active,
-  onNewBooking,
   children,
 }: {
   active?: string;
+  /** @deprecated The shell now opens the redesigned booking sheet itself; this prop is ignored. */
   onNewBooking?: () => void;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const activeId = active ?? deriveActive(pathname);
   const [searchOpen, setSearchOpen] = useState(false);
+  // The shell owns the new-booking action: it opens the redesigned booking sheet (below)
+  // instead of routing to the legacy admin dashboard.
+  const openBooking = useOpenOperatorBooking();
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -50,11 +55,14 @@ export function OperatorShell({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} />
         <div className="lg:pl-16">
-          <OperatorTopBar onNewBooking={onNewBooking} onOpenSearch={() => setSearchOpen(true)} />
+          <OperatorTopBar onNewBooking={openBooking} onOpenSearch={() => setSearchOpen(true)} />
           <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
         </div>
-        <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} />
-        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />
+        <OperatorMobileNav activeId={activeId} onNewBooking={openBooking} />
+        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={openBooking} />
+        <Suspense fallback={null}>
+          <OperatorBookingHost />
+        </Suspense>
       </div>
     </TooltipProvider>
   );
