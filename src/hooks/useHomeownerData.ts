@@ -17,6 +17,8 @@ export interface Appointment {
   cleaner_id?: string | null;
   cancelled_at?: string | null;
   cleaner_confirmation_status?: string | null;
+  /** Non-null when this cleaning is one occurrence of a recurring series. */
+  series_id?: string | null;
   total_price: number;
   special_requests?: string | null;
   property: {
@@ -122,6 +124,7 @@ export function useHomeownerAppointments() {
           scheduled_time,
           status,
           cleaner_id,
+          series_id,
           total_price,
           special_requests,
           job_progress,
