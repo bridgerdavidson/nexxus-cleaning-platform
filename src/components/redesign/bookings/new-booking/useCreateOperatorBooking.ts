@@ -45,9 +45,12 @@ export function useCreateOperatorBooking() {
       if (error || !data) throw new Error(error?.message || 'Could not create the booking');
       const appointmentId = (data as { id: string }).id;
 
-      // Offered slots are non-fatal: the appointment already carries the primary time.
-      const slotRows = slots.map((sl) => ({ appointment_id: appointmentId, ...sl }));
-      await supabase.from('appointment_requested_slots').insert(slotRows);
+      // Offered slots (primary + alternates) are recorded only when the operator offered
+      // alternates; a lone primary is already the appointment's date/time. Non-fatal.
+      if (slots.length > 1) {
+        const slotRows = slots.map((sl) => ({ appointment_id: appointmentId, ...sl }));
+        await supabase.from('appointment_requested_slots').insert(slotRows);
+      }
 
       return appointmentId;
     },

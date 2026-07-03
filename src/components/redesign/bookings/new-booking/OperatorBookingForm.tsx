@@ -112,8 +112,12 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
   }
 
   const propertyName = properties.find((p) => p.id === state.propertyId)?.name ?? state.propertyId ?? '-';
-  const customerName =
-    customers.find((c) => c.id === state.customerId)?.first_name ?? (self ? 'Company (self-pay)' : '-');
+  const selectedCustomer = customers.find((c) => c.id === state.customerId);
+  const customerName = selectedCustomer
+    ? `${selectedCustomer.first_name ?? ''} ${selectedCustomer.last_name ?? ''}`.trim()
+    : self
+      ? 'Company (self-pay)'
+      : '-';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -130,7 +134,7 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
                 <button
                   key={b}
                   type="button"
-                  onClick={() => patch({ billTo: b, customerId: null, propertyId: null })}
+                  onClick={() => patch({ billTo: b, customerId: null, propertyId: null, cleanerId: null })}
                   className={
                     'flex-1 py-2 transition-colors ' +
                     (state.billTo === b ? 'bg-brand-600 text-white' : 'bg-card hover:bg-muted')
@@ -190,10 +194,13 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
                   <span className="text-muted-foreground">$</span>
                   <input
                     type="number"
+                    min={0}
                     className="ml-1 w-full bg-transparent tabular-nums outline-none"
                     value={state.priceOverride ?? service?.base_price ?? ''}
                     onChange={(e) =>
-                      patch({ priceOverride: e.target.value === '' ? null : Number(e.target.value) })
+                      patch({
+                        priceOverride: e.target.value === '' ? null : Math.max(0, Number(e.target.value)),
+                      })
                     }
                   />
                 </div>
