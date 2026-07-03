@@ -12,7 +12,7 @@ This is genuinely richer than the homeowner request flow: the operator books **o
 
 ## Structure (approved: Shape C , hybrid)
 
-The flow opens as a **right-side slide-over panel** over the operator dashboard (the desktop dashboard pattern; on a narrow viewport it is a full-screen takeover). It is **one panel** (not a multi-step wizard) with progressive disclosure and a final review:
+The flow opens as a **right-side slide-over panel** over the operator dashboard, reusing the operator's **existing** container pattern: the same right-anchored `Sheet` that `src/components/redesign/bookings/BookingDetailSheet.tsx` already uses (`<SheetContent side="right" className="w-full ... sm:max-w-*">`). One component, responsive by width , a **right-side slide-over on desktop** (the dashboard/bookings list stays visible and dimmed behind the scrim for context) and **full-screen on mobile** (`w-full`, no room for a side panel). No new container pattern is introduced. It is **one panel** (not a multi-step wizard) with progressive disclosure and a final review:
 
 - The common case (bill the customer, one-time, pay by card) stays compact and fast for a high-volume operator.
 - The less-common branches , **self-pay**, **recurrence**, and the **payment options** , reveal only when relevant, so the panel stays calm.
