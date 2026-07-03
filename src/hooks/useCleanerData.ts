@@ -1105,7 +1105,9 @@ export function useRespondToSeries() {
     mutationFn: (seriesId: string) => postSeries({ seriesId, action: 'accept' }),
     onSuccess: (r) => {
       invalidate();
-      if (r.failed === 0) {
+      if (r.total === 0) {
+        showToast('These cleanings were already handled.', { variant: 'info' });
+      } else if (r.failed === 0) {
         showToast(`Accepted ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'success' });
       } else if (r.succeeded === 0) {
         showToast('Could not accept these cleanings. Please try again.', { variant: 'error' });
@@ -1121,7 +1123,9 @@ export function useRespondToSeries() {
       postSeries({ seriesId: v.seriesId, action: 'decline', declineReason: v.reason, declineReasonOther: v.other }),
     onSuccess: (r) => {
       invalidate();
-      if (r.failed === 0) {
+      if (r.total === 0) {
+        showToast('These cleanings were already handled.', { variant: 'info' });
+      } else if (r.failed === 0) {
         showToast(`Declined ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'info' });
       } else {
         showToast(`Declined ${r.succeeded} of ${r.total}.`, { variant: 'info' });

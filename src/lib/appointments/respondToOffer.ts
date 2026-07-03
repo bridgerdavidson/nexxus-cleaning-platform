@@ -106,13 +106,19 @@ export async function commitDeclineOffer(
   const { error: rejErr } = await admin.from('appointments').update(rejectPayload).eq('id', appointment.id);
   if (rejErr) throw new Error(rejErr.message);
 
-  // Only the latest feedback should show.
+  // Only the latest feedback should show. Delete is best-effort (matches the confirm route).
   await admin.from('cleaner_availability_feedback').delete().eq('appointment_id', appointment.id);
-  await admin.from('cleaner_availability_feedback').insert({
+  const { error: feedbackError } = await admin.from('cleaner_availability_feedback').insert({
     appointment_id: appointment.id,
     cleaner_id: cleanerId,
     reason: reasonText,
   });
+  // Deliberately non-fatal here (the single confirm route 500s instead): the forensic
+  // feedback row is best-effort so one insert failure never strands the occurrence
+  // before routing. Log it so the failure is visible, then continue to re-route.
+  if (feedbackError) {
+    console.error(`commitDeclineOffer: feedback insert failed for ${appointment.id}:`, feedbackError.message);
+  }
 
   const nowIso = new Date().toISOString();
   const { data: pendingLog } = await admin

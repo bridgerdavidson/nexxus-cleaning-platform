@@ -82,7 +82,8 @@ export async function POST(request: NextRequest) {
       .eq('organization_id', organizationId)
       .eq('cleaner_id', cleanerId)
       .eq('cleaner_confirmation_status', 'awaiting')
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .order('scheduled_date', { ascending: true });
 
     if (occError) {
       console.error('Error loading series occurrences:', occError);
