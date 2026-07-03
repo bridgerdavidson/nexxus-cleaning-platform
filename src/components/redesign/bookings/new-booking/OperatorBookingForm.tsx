@@ -39,6 +39,15 @@ function serviceMeta(basePrice: number, minutes: number): string {
   return `${money(basePrice)} · ${dur}`;
 }
 
+function ReviewRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-4 py-2.5 text-sm">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="text-right font-semibold">{children}</span>
+    </div>
+  );
+}
+
 export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
   const { currentOrganizationId } = useAuth();
   const [state, setState] = useState<OperatorBookingState>(EMPTY_OPERATOR_BOOKING);
@@ -72,11 +81,27 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
     label: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.email,
     sublabel: c.email,
   }));
-  const propertyItems: PickerItem[] = properties.map((p) => ({
-    id: p.id,
-    label: p.name || p.address || 'Property',
-    sublabel: [p.address, p.city, p.state].filter(Boolean).join(', '),
-  }));
+  const propertyItems: PickerItem[] = properties.map((p) => {
+    const ownerName = p.owner ? `${p.owner.first_name ?? ''} ${p.owner.last_name ?? ''}`.trim() : '';
+    return {
+      id: p.id,
+      label: p.name || p.address || 'Property',
+      sublabel: [p.address, p.city, p.state].filter(Boolean).join(', '),
+      // In self-pay every org property is shown; label who owns it (a homeowner name,
+      // or "Company" for org-owned rows) so the operator can tell them apart.
+      badge: self ? (
+        p.owner_id && ownerName ? (
+          <span className="ml-2 shrink-0 rounded-pill bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+            {ownerName}
+          </span>
+        ) : (
+          <span className="ml-2 shrink-0 rounded-pill bg-brand-50 px-2 py-0.5 text-[11px] font-bold text-brand-700">
+            Company
+          </span>
+        )
+      ) : undefined,
+    };
+  });
   const serviceItems: PickerItem[] = services
     .filter((s) => s.is_active)
     .map((s) => ({ id: s.id, label: s.name, sublabel: serviceMeta(s.base_price, s.duration_minutes) }));
@@ -190,12 +215,12 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
             <div className="space-y-1.5">
               <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Price</p>
               <div className="flex items-center gap-2">
-                <div className="flex flex-1 items-center rounded-control border border-input bg-card px-3 py-2.5 text-sm">
+                <div className="flex flex-1 items-center rounded-control border border-input bg-card px-3 py-2.5 text-sm transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
                   <span className="text-muted-foreground">$</span>
                   <input
                     type="number"
                     min={0}
-                    className="ml-1 w-full bg-transparent tabular-nums outline-none"
+                    className="ml-1 w-full appearance-none border-0 bg-transparent tabular-nums outline-none [appearance:textfield] focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
                     value={state.priceOverride ?? service?.base_price ?? ''}
                     onChange={(e) =>
                       patch({
@@ -283,9 +308,9 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
             />
           </div>
 
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border p-4">
-            <span className="text-lg font-extrabold tabular-nums">{money(total)}</span>
-            <Button disabled={!canReview(state)} onClick={() => setPage('review')}>
+          <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">
+            <span className="shrink-0 text-lg font-extrabold tabular-nums">{money(total)}</span>
+            <Button className="flex-1" disabled={!canReview(state)} onClick={() => setPage('review')}>
               Review &amp; create
             </Button>
           </div>
@@ -293,28 +318,25 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
       ) : (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="divide-y divide-border rounded-card border border-border bg-card px-4">
-              {[
-                ['Bill to', self ? 'Company (self-pay)' : 'Customer'],
-                ['Customer', customerName],
-                ['Property', propertyName],
-                ['Service', service?.name ?? '-'],
-                ['Cleaner', cleanerName(cleaners.find((c) => c.id === state.cleanerId) ?? {})],
-                ['Total', money(total)],
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-4 py-2.5 text-sm">
-                  <span className="text-muted-foreground">{k}</span>
-                  <span className="text-right font-semibold">{v}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 space-y-1">
-              {state.slots.map((s, i) => (
-                <p key={i} className="text-sm">
-                  <span className="text-muted-foreground">{slotOrdinal(i)} </span>
-                  {formatSlotLabel(s)}
-                </p>
-              ))}
+            <div className="divide-y divide-border rounded-card border border-border bg-card px-4 shadow-soft-sm">
+              <ReviewRow label="Bill to">{self ? 'Company (self-pay)' : 'Customer'}</ReviewRow>
+              {!self && <ReviewRow label="Customer">{customerName}</ReviewRow>}
+              <ReviewRow label="Property">{propertyName}</ReviewRow>
+              <ReviewRow label="Service">{service?.name ?? '-'}</ReviewRow>
+              <ReviewRow label="Preferred times">
+                <span className="flex flex-col items-end gap-0.5">
+                  {state.slots.map((s, i) => (
+                    <span key={i}>
+                      <span className="text-muted-foreground">{slotOrdinal(i)} </span>
+                      {formatSlotLabel(s)}
+                    </span>
+                  ))}
+                </span>
+              </ReviewRow>
+              <ReviewRow label="Cleaner">
+                {cleanerName(cleaners.find((c) => c.id === state.cleanerId) ?? {})}
+              </ReviewRow>
+              <ReviewRow label="Total">{money(total)}</ReviewRow>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">
