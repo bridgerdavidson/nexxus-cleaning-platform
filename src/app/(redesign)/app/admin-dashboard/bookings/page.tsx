@@ -35,7 +35,7 @@ function OperatorBookingsInner() {
 
   return (
     <OperatorShell active="bookings" onNewBooking={goNewBooking}>
-      <OperatorBookings onNewBooking={goNewBooking} />
+      <OperatorBookings />
     </OperatorShell>
   );
 }

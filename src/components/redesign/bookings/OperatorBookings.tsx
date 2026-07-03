@@ -21,6 +21,7 @@ import { describeBulkAppointmentResult } from "@/lib/bulkAppointmentMessages";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { OperatorBookingsView } from "./OperatorBookingsView";
 import { BookingDetailSheet } from "./BookingDetailSheet";
+import { useOpenOperatorBooking } from "./new-booking/useOpenOperatorBooking";
 import { deriveBookingBadge, deriveBookings, localISODate, segmentCounts } from "./deriveBookings";
 import type {
   BookingDetailVM,
@@ -199,8 +200,9 @@ type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
  * Sheet, and confirm dialog. Reschedule and "new booking" fall back to the
  * legacy flow until those screens are redesigned.
  */
-export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }) {
+export function OperatorBookings() {
   const router = useRouter();
+  const openBooking = useOpenOperatorBooking();
   const { showToast } = useToast();
   const { currentOrgRole, currentOrganizationId, accessToken } = useAuth();
   const { appointments, loading, refetch } = useAdminAppointments();
@@ -467,7 +469,7 @@ export function OperatorBookings({ onNewBooking }: { onNewBooking?: () => void }
         onRowAction={handleRowAction}
         onBulkCancel={() => setConfirm({ kind: "bulkCancel", ids: [...selectedIds] })}
         onBulkDelete={() => setConfirm({ kind: "bulkDelete", ids: [...selectedIds] })}
-        onNewBooking={onNewBooking}
+        onNewBooking={openBooking}
       />
 
       <BookingDetailSheet
