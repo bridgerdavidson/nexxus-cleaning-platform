@@ -164,7 +164,7 @@ export function SeriesOfferSheet({
                 variant="outline"
                 onClick={() => setView({ kind: "declineAll" })}
                 disabled={remaining.length === 0 || bulkBusy}
-                className="flex-1 text-critical-700 hover:text-critical-700"
+                className="flex-1 border-critical/40 text-critical-700 hover:bg-critical-50 hover:text-critical-700"
               >
                 <X /> Decline all
               </Button>

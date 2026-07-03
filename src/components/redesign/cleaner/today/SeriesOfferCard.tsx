@@ -82,17 +82,17 @@ export function SeriesOfferCard({
         <Button onClick={acceptAllFromCard} loading={busy === "accept"} disabled={busy !== null} className="flex-1">
           <Check /> Accept all {series.count}
         </Button>
-        <Button variant="outline" onClick={openPickDates} disabled={busy !== null} className="flex-1">
-          <ListChecks /> Pick dates
+        <Button
+          variant="outline"
+          onClick={openDeclineAll}
+          disabled={busy !== null}
+          className="flex-1 border-critical/40 text-critical-700 hover:bg-critical-50 hover:text-critical-700"
+        >
+          <X /> Decline all
         </Button>
       </div>
-      <Button
-        variant="ghost"
-        onClick={openDeclineAll}
-        disabled={busy !== null}
-        className="mt-1 w-full text-critical-700 hover:text-critical-700"
-      >
-        <X /> Decline all
+      <Button variant="ghost" onClick={openPickDates} disabled={busy !== null} className="mt-1 w-full">
+        <ListChecks /> Pick dates
       </Button>
 
       <SeriesOfferSheet
