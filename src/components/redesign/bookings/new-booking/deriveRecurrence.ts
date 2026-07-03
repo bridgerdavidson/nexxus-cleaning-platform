@@ -1,3 +1,4 @@
+import { addMonths } from 'date-fns';
 import type { OccurrenceInput } from '@/lib/appointments/recurrence';
 import { formatTimeTo12h } from '@/lib/formatTime';
 import type { OperatorBookingState, OperatorRecurrence, CustomRecurrenceType } from './operator-booking-types';
@@ -87,17 +88,19 @@ function addDaysLocal(d: Date, n: number): Date {
 
 /**
  * TZ-safe client preview of the dates the server will generate. Deliberately mirrors the branch
- * logic of src/lib/appointments/recurrence.ts:generateOccurrences (same caps, same day-stepping)
- * but parses/steps at LOCAL noon so the produced YYYY-MM-DD strings equal the server's UTC output.
- * The shared generator is local-TZ-coupled (UTC-midnight parse + local format) and drifts a day in
- * the Americas, so it cannot be reused directly for a client preview.
+ * logic of src/lib/appointments/recurrence.ts:generateOccurrences (same caps, same day-stepping,
+ * same date-fns addMonths month-end clamping) but parses/steps at LOCAL noon so the produced
+ * YYYY-MM-DD strings equal the server's UTC output. The shared generator is local-TZ-coupled
+ * (UTC-midnight parse + local format), so it cannot be reused directly for a client preview; this
+ * scheme is correct for the production topology (server runs UTC on Vercel, browser runs local).
+ * Monthly stepping and the horizon cap use date-fns addMonths (which clamps Jan 31 + 1mo -> Feb 28)
+ * rather than native setMonth (which overflows to Mar 3), so month-end starts match the server.
  */
 export function previewOccurrences(input: OccurrenceInput): string[] {
   const { startDate, recurrenceType, interval, daysOfWeek, endDate, maxOccurrences } = input;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return [];
   const start = parseYmdLocalNoon(startDate);
-  const hardCap = new Date(start);
-  hardCap.setMonth(hardCap.getMonth() + MAX_HORIZON_MONTHS);
+  const hardCap = addMonths(start, MAX_HORIZON_MONTHS);
   const userEnd = endDate ? parseYmdLocalNoon(endDate) : null;
   const cutoff = userEnd && userEnd < hardCap ? userEnd : hardCap;
   const cap = maxOccurrences ? Math.min(maxOccurrences, MAX_OCCURRENCES_CAP) : MAX_OCCURRENCES_CAP;
@@ -113,9 +116,7 @@ export function previewOccurrences(input: OccurrenceInput): string[] {
     let cur = start;
     while (cur <= cutoff && out.length < cap) {
       out.push(fmtLocal(cur));
-      const x = new Date(cur);
-      x.setMonth(x.getMonth() + interval);
-      cur = x;
+      cur = addMonths(cur, interval);
     }
   } else {
     const active = daysOfWeek && daysOfWeek.length > 0 ? [...daysOfWeek].sort((a, b) => a - b) : [start.getDay()];

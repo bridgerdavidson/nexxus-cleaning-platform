@@ -94,7 +94,7 @@ describe('resolveEnd', () => {
   });
 });
 
-describe('previewOccurrences (TZ-safe, matches server UTC output)', () => {
+describe('previewOccurrences (TZ-safe; mirrors server date-fns stepping + caps)', () => {
   it('weekly, after 4, keeps the exact start date string', () => {
     const input = buildOccurrenceInput(withRec({ enabled: true, preset: 'weekly', end: 'after', count: 4 }), 120)!;
     expect(previewOccurrences(input)).toEqual(['2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10']);
@@ -123,6 +123,33 @@ describe('previewOccurrences (TZ-safe, matches server UTC output)', () => {
       120,
     )!;
     expect(previewOccurrences(input).length).toBe(50);
+  });
+  it('month-end monthly clamps to end-of-month like the server (date-fns addMonths, no setMonth overflow)', () => {
+    // Jan 31 must step to Feb 28 (clamp), not overflow to Mar 3. Once clamped, it sticks to the 28th,
+    // exactly mirroring the server generateOccurrences (which steps with date-fns addMonths in UTC).
+    const s: OperatorBookingState = {
+      ...EMPTY_OPERATOR_BOOKING,
+      customerId: 'cust-1',
+      slots: [{ date: '2026-01-31', time: '10:00' }],
+      recurrence: {
+        ...EMPTY_OPERATOR_BOOKING.recurrence,
+        enabled: true,
+        preset: 'custom',
+        customType: 'monthly',
+        customInterval: 1,
+        end: 'after',
+        count: 6,
+      },
+    };
+    const input = buildOccurrenceInput(s, 120)!;
+    expect(previewOccurrences(input)).toEqual([
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-28',
+      '2026-04-28',
+      '2026-05-28',
+      '2026-06-28',
+    ]);
   });
 });
 
