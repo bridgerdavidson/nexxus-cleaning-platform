@@ -1,11 +1,6 @@
 import type { ServiceType } from '@/hooks/useServices';
-import { effectiveTotalUsd, isSelfPay } from './deriveOperatorBooking';
+import { effectiveTotalUsd, isSelfPay, cardIdFromPaymentValue } from './deriveOperatorBooking';
 import type { OperatorBookingState } from './operator-booking-types';
-
-/** Whether a payment selection is a concrete Stripe PaymentMethod id (vs a send-link/defer sentinel). */
-function isCardId(v: string | null): v is string {
-  return !!v && v.startsWith('pm_');
-}
 
 export interface BookingInsert {
   appointment: {
@@ -60,7 +55,7 @@ export function buildBookingInsert(
       price_override_enabled: s.priceOverride != null,
       price_override_total: s.priceOverride,
       special_requests: s.notes.trim() ? s.notes.trim() : null,
-      payment_method_id: self ? null : isCardId(s.paymentValue) ? s.paymentValue : null,
+      payment_method_id: self ? null : cardIdFromPaymentValue(s.paymentValue),
       is_self_pay: self,
       status: 'pending',
       cleaner_confirmation_status: 'awaiting',
