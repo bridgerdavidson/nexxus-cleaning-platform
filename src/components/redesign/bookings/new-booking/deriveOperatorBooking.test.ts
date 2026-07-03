@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ServiceType } from '@/hooks/useServices';
 import {
-  isSelfPay,
   addSlot,
   removeSlotAt,
   effectiveTotalUsd,

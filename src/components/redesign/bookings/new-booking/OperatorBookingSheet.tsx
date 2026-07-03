@@ -1,11 +1,12 @@
 'use client';
 
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { OperatorBookingForm } from './OperatorBookingForm';
 
 /**
- * TEMPORARY SHELL (Slice 1, Task 1). Replaced by the full assembly in Task 9. Proves the
- * responsive container: a right-anchored Sheet that is a slide-over on desktop and full-screen
- * on mobile (the same pattern as BookingDetailSheet).
+ * The operator new-booking container: a right-anchored Sheet (slide-over on desktop, full-screen on
+ * mobile , the BookingDetailSheet pattern). The form is rendered as a child of SheetContent so it
+ * mounts fresh each open (fresh state) and its data hooks only run while the sheet is open.
  */
 export function OperatorBookingSheet({
   open,
@@ -16,11 +17,8 @@ export function OperatorBookingSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-lg">
-        <SheetHeader className="border-b border-border p-4">
-          <SheetTitle>New booking</SheetTitle>
-        </SheetHeader>
-        <div className="p-4 text-sm text-muted-foreground">Operator booking flow coming together.</div>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+        <OperatorBookingForm onDone={() => onOpenChange(false)} />
       </SheetContent>
     </Sheet>
   );
