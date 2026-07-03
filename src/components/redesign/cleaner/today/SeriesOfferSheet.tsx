@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, X, ChevronLeft } from "lucide-react";
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter,
@@ -20,34 +20,56 @@ const DECLINE_REASONS: { value: DeclineReason; label: string }[] = [
   { value: "other", label: "Other reason" },
 ];
 
+type SheetView =
+  | { kind: "list" }
+  | { kind: "declineAll" }
+  | { kind: "declineOne"; id: string; date: string };
+
 export function SeriesOfferSheet({
-  series, open, onOpenChange, onAcceptAll, onAcceptOne, onDeclineOne, accepting,
+  series, open, onOpenChange, initialMode,
+  onAcceptAll, onDeclineAll, onAcceptOne, onDeclineOne, accepting, declining,
 }: {
   series: SeriesOffer;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAcceptAll: (occurrences: { appointmentId: string; slotIndex: number }[]) => Promise<unknown> | void;
+  /** Which view to show on open: the date list, or straight to the decline-all reason step. */
+  initialMode: "list" | "declineAll";
+  onAcceptAll: (seriesId: string) => Promise<unknown> | void;
+  onDeclineAll: (seriesId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onAcceptOne: (appointmentId: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOne: (appointmentId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   accepting: boolean;
+  declining: boolean;
 }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [declining, setDeclining] = useState<{ id: string; date: string } | null>(null);
+  const [view, setView] = useState<SheetView>({ kind: "list" });
   const [reason, setReason] = useState<DeclineReason>("sick");
   const [other, setOther] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
   // Ids acted on locally so a row leaves the list immediately (the query refetch confirms).
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const remaining = series.occurrences.filter((o) => !resolved.has(o.id));
+  const bulkBusy = accepting || declining;
+
+  // Reset to the entry view every time the sheet (re)opens.
+  useEffect(() => {
+    if (open) {
+      setView(initialMode === "declineAll" ? { kind: "declineAll" } : { kind: "list" });
+      setReason("sick");
+      setOther("");
+      setResolved(new Set());
+      setBusyId(null);
+    }
+  }, [open, initialMode]);
 
   function markResolved(id: string) {
     setResolved((s) => new Set(s).add(id));
   }
-
-  function cancelDecline() {
-    setDeclining(null);
+  function backToList() {
+    setView({ kind: "list" });
     setReason("sick");
     setOther("");
   }
+  const otherText = () => (reason === "other" ? other.trim() || undefined : undefined);
 
   async function acceptOne(id: string, slotIndex: number) {
     setBusyId(id);
@@ -55,40 +77,43 @@ export function SeriesOfferSheet({
     catch { /* toast handled by hook */ }
     finally { setBusyId(null); }
   }
-
-  async function confirmDecline() {
-    if (!declining) return;
-    setBusyId(declining.id);
-    try {
-      await onDeclineOne(declining.id, reason, reason === "other" ? other.trim() || undefined : undefined);
-      markResolved(declining.id);
-      cancelDecline();
-    } catch { /* toast handled by hook */ }
+  async function confirmDeclineOne(id: string) {
+    setBusyId(id);
+    try { await onDeclineOne(id, reason, otherText()); markResolved(id); backToList(); }
+    catch { /* toast handled by hook */ }
     finally { setBusyId(null); }
   }
-
   async function acceptAll() {
-    // Only the dates the cleaner has not already actioned in this sheet.
-    const args = remaining.map((o) => ({ appointmentId: o.id, slotIndex: offeredSlots(o)[0].slot_index }));
-    if (args.length === 0) return;
-    try { await onAcceptAll(args); onOpenChange(false); }
+    try { await onAcceptAll(series.seriesId); onOpenChange(false); }
     catch { /* toast handled by hook */ }
   }
+  async function confirmDeclineAll() {
+    try { await onDeclineAll(series.seriesId, reason, otherText()); onOpenChange(false); }
+    catch { /* toast handled by hook */ }
+  }
+
+  const inReasonStep = view.kind === "declineAll" || view.kind === "declineOne";
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[90dvh]">
-        {declining ? (
+        {inReasonStep ? (
           <>
             <DrawerHeader>
               <button
-                onClick={cancelDecline}
+                onClick={backToList}
                 className="mb-1 inline-flex min-h-[44px] items-center gap-1 rounded-control text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <ChevronLeft className="size-4" /> Back
               </button>
-              <DrawerTitle>Decline {formatDateLong(declining.date)}?</DrawerTitle>
-              <DrawerDescription>Let the office know why so they can offer it to someone else.</DrawerDescription>
+              <DrawerTitle>
+                {view.kind === "declineAll"
+                  ? `Decline all ${remaining.length} ${remaining.length === 1 ? "cleaning" : "cleanings"}?`
+                  : `Decline ${formatDateLong(view.date)}?`}
+              </DrawerTitle>
+              <DrawerDescription>
+                Let the office know why so they can offer {view.kind === "declineAll" ? "them" : "it"} to someone else.
+              </DrawerDescription>
             </DrawerHeader>
             <div className="space-y-3 px-4">
               <RadioGroup value={reason} onValueChange={(v) => setReason(v as DeclineReason)}>
@@ -111,8 +136,16 @@ export function SeriesOfferSheet({
               )}
             </div>
             <DrawerFooter>
-              <Button variant="destructive" onClick={confirmDecline} loading={busyId === declining.id}>Decline this date</Button>
-              <Button variant="ghost" onClick={cancelDecline} disabled={busyId !== null}>Keep it</Button>
+              {view.kind === "declineAll" ? (
+                <Button variant="destructive" onClick={confirmDeclineAll} loading={declining}>
+                  Decline all {remaining.length}
+                </Button>
+              ) : (
+                <Button variant="destructive" onClick={() => confirmDeclineOne(view.id)} loading={busyId === view.id}>
+                  Decline this date
+                </Button>
+              )}
+              <Button variant="ghost" onClick={backToList} disabled={declining || busyId !== null}>Keep it</Button>
             </DrawerFooter>
           </>
         ) : (
@@ -120,12 +153,20 @@ export function SeriesOfferSheet({
             <DrawerHeader>
               <DrawerTitle>Pick your dates</DrawerTitle>
               <DrawerDescription>
-                Accept the whole series, or take just the dates that work. The office offers any you decline to someone else.
+                Accept the whole series, take just the dates that work, or decline them all. The office offers any you decline to someone else.
               </DrawerDescription>
             </DrawerHeader>
-            <div className="px-4">
-              <Button onClick={acceptAll} loading={accepting} disabled={remaining.length === 0} className="w-full" size="lg">
+            <div className="flex gap-2 px-4">
+              <Button onClick={acceptAll} loading={accepting} disabled={remaining.length === 0 || bulkBusy} className="flex-1">
                 <Check /> Accept all {remaining.length}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setView({ kind: "declineAll" })}
+                disabled={remaining.length === 0 || bulkBusy}
+                className="flex-1 text-critical-700 hover:text-critical-700"
+              >
+                <X /> Decline all
               </Button>
             </div>
             <div className="mt-3 max-h-[52dvh] space-y-2.5 overflow-y-auto overscroll-contain px-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
@@ -139,8 +180,8 @@ export function SeriesOfferSheet({
                     <div className="mt-2.5 flex gap-2">
                       <Button
                         variant="outline"
-                        onClick={() => setDeclining({ id: o.id, date: o.scheduled_date })}
-                        disabled={busyId !== null || accepting}
+                        onClick={() => setView({ kind: "declineOne", id: o.id, date: o.scheduled_date })}
+                        disabled={busyId !== null || bulkBusy}
                         className="flex-1"
                         aria-label={`Decline ${o.scheduled_date}`}
                       >
@@ -149,7 +190,7 @@ export function SeriesOfferSheet({
                       <Button
                         onClick={() => acceptOne(o.id, slot)}
                         loading={busyId === o.id}
-                        disabled={(busyId !== null && busyId !== o.id) || accepting}
+                        disabled={(busyId !== null && busyId !== o.id) || bulkBusy}
                         className="flex-1"
                         aria-label={`Accept ${o.scheduled_date}`}
                       >

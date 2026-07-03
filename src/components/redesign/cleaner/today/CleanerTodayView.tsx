@@ -29,6 +29,7 @@ export function CleanerTodayView({
   onAcceptOffer,
   onDeclineOffer,
   onAcceptSeries,
+  onDeclineSeries,
   onOpenJob,
   onSeeTomorrow,
   todayStr,
@@ -38,7 +39,8 @@ export function CleanerTodayView({
   onContinueActive: () => void;
   onAcceptOffer: (id: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
-  onAcceptSeries: (occurrences: { appointmentId: string; slotIndex: number }[]) => Promise<unknown> | void;
+  onAcceptSeries: (seriesId: string) => Promise<unknown> | void;
+  onDeclineSeries: (seriesId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onOpenJob: (id: string) => void;
   onSeeTomorrow: () => void;
   todayStr: string;
@@ -124,6 +126,7 @@ export function CleanerTodayView({
                 key={s.seriesId}
                 series={s}
                 onAcceptAll={onAcceptSeries}
+                onDeclineAll={onDeclineSeries}
                 onAcceptOne={(id, slot) => onAcceptOffer(id, slot)}
                 onDeclineOne={(id, reason, other) => onDeclineOffer(id, reason, other)}
               />

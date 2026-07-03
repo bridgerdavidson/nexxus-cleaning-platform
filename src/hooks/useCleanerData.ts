@@ -1058,25 +1058,18 @@ export function useRespondToOffer() {
   return { accept, decline };
 }
 
-export interface SeriesAcceptResult {
+export interface SeriesRespondResult {
   total: number;
-  accepted: number;
+  succeeded: number;
   failed: number;
 }
 
-/** Pure: fold per-occurrence accept results into a summary for the toast. */
-export function summarizeSeriesAccepts(results: { ok: boolean }[]): SeriesAcceptResult {
-  const accepted = results.filter((r) => r.ok).length;
-  return { total: results.length, accepted, failed: results.length - accepted };
-}
-
 /**
- * Accept every occurrence of a recurring offer by looping the existing
- * per-appointment confirm route SEQUENTIALLY. No bulk route (spec: no new route)
- * and deliberately sequential: a series can hold up to 50 occurrences, and firing
- * them concurrently would saturate the shared PostgREST pool (see the bulk-action
- * 504 postmortem). Tolerates partial failure (an occurrence that already timed out
- * and re-routed returns non-ok) and reports { total, accepted, failed }.
+ * Accept or decline EVERY occurrence of a recurring offer in one call, via the
+ * bulk route POST /api/appointments/confirm-series. The route is keyed by
+ * seriesId and acts on the cleaner's still-`awaiting` occurrences server-side, so
+ * it never re-processes a date already actioned via the single confirm route.
+ * Decline applies one shared reason and routes each date away independently.
  */
 export function useRespondToSeries() {
   const { user, currentOrganizationId } = useAuth();
@@ -1084,56 +1077,65 @@ export function useRespondToSeries() {
   const qc = useQueryClient();
   const userId = user?.id;
 
-  const mutation = useMutation({
-    mutationFn: async (
-      occurrences: { appointmentId: string; slotIndex: number }[],
-    ): Promise<SeriesAcceptResult> => {
-      const results: { ok: boolean }[] = [];
-      for (const occ of occurrences) {
-        let ok = false;
-        try {
-          const token = await getAccessToken();
-          const res = await fetch('/api/appointments/confirm', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              organizationId: currentOrganizationId,
-              appointmentId: occ.appointmentId,
-              action: 'accept',
-              slotIndex: occ.slotIndex,
-            }),
-          });
-          const data = await res.json().catch(() => ({} as Record<string, unknown>));
-          ok = res.ok && !!(data as { success?: boolean }).success;
-        } catch {
-          ok = false;
-        }
-        results.push({ ok });
-      }
-      return summarizeSeriesAccepts(results);
-    },
+  async function postSeries(body: Record<string, unknown>): Promise<SeriesRespondResult> {
+    const token = await getAccessToken();
+    const res = await fetch('/api/appointments/confirm-series', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ organizationId: currentOrganizationId, ...body }),
+    });
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !(data as { success?: boolean }).success) {
+      throw new Error((data as { error?: string }).error || 'Could not update the series');
+    }
+    const d = data as { total?: number; succeeded?: number; failed?: number };
+    return { total: d.total ?? 0, succeeded: d.succeeded ?? 0, failed: d.failed ?? 0 };
+  }
+
+  function invalidate() {
+    if (!userId) return;
+    qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+    qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+  }
+
+  const acceptAllM = useMutation({
+    mutationFn: (seriesId: string) => postSeries({ seriesId, action: 'accept' }),
     onSuccess: (r) => {
-      if (userId) {
-        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
-        qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
-      }
+      invalidate();
       if (r.failed === 0) {
-        showToast(`Accepted ${r.accepted} ${r.accepted === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'success' });
-      } else if (r.accepted === 0) {
+        showToast(`Accepted ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'success' });
+      } else if (r.succeeded === 0) {
         showToast('Could not accept these cleanings. Please try again.', { variant: 'error' });
       } else {
-        showToast(`Accepted ${r.accepted} of ${r.total}. ${r.failed} could not be accepted.`, { variant: 'info' });
+        showToast(`Accepted ${r.succeeded} of ${r.total}. ${r.failed} could not be accepted.`, { variant: 'info' });
       }
     },
     onError: (e: Error) => showToast(e.message || 'Could not accept the series', { variant: 'error' }),
   });
 
+  const declineAllM = useMutation({
+    mutationFn: (v: { seriesId: string; reason: DeclineReason; other?: string }) =>
+      postSeries({ seriesId: v.seriesId, action: 'decline', declineReason: v.reason, declineReasonOther: v.other }),
+    onSuccess: (r) => {
+      invalidate();
+      if (r.failed === 0) {
+        showToast(`Declined ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'info' });
+      } else {
+        showToast(`Declined ${r.succeeded} of ${r.total}.`, { variant: 'info' });
+      }
+    },
+    onError: (e: Error) => showToast(e.message || 'Could not decline the series', { variant: 'error' }),
+  });
+
   return {
-    acceptAll: mutation.mutateAsync,
-    accepting: mutation.isPending,
+    acceptAll: (seriesId: string) => acceptAllM.mutateAsync(seriesId),
+    declineAll: (seriesId: string, reason: DeclineReason, other?: string) =>
+      declineAllM.mutateAsync({ seriesId, reason, other }),
+    accepting: acceptAllM.isPending,
+    declining: declineAllM.isPending,
   };
 }
 

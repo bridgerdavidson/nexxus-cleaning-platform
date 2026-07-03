@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Check, Clock, ListChecks } from "lucide-react";
+import { CalendarClock, Check, Clock, ListChecks, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { SeriesOffer } from "./deriveSeriesOffers";
-import { propertyTitle, jobSubtitle, formatRespondBy, offeredSlots } from "../shared/job-presenters";
+import { propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
 import { SeriesOfferSheet } from "./SeriesOfferSheet";
 
 /** "Jul 20" from a YYYY-MM-DD string (local, month + day). */
@@ -22,26 +22,37 @@ function seriesRange(start: string, end: string): string {
 }
 
 export function SeriesOfferCard({
-  series, onAcceptAll, onAcceptOne, onDeclineOne,
+  series, onAcceptAll, onDeclineAll, onAcceptOne, onDeclineOne,
 }: {
   series: SeriesOffer;
-  onAcceptAll: (occurrences: { appointmentId: string; slotIndex: number }[]) => Promise<unknown> | void;
+  onAcceptAll: (seriesId: string) => Promise<unknown> | void;
+  onDeclineAll: (seriesId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onAcceptOne: (appointmentId: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOne: (appointmentId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  // Per-card busy so accepting one series never shows every series card as loading.
-  const [busyAll, setBusyAll] = useState(false);
+  const [sheetMode, setSheetMode] = useState<"list" | "declineAll">("list");
+  // One busy flag per bulk action so the sheet + card show the right spinner,
+  // whichever surface triggered it.
+  const [busy, setBusy] = useState<null | "accept" | "decline">(null);
   const respondBy = formatRespondBy(series.soonestDeadline);
 
-  const allOccurrenceArgs = () =>
-    series.occurrences.map((o) => ({ appointmentId: o.id, slotIndex: offeredSlots(o)[0].slot_index }));
+  async function wrappedAcceptAll(seriesId: string) {
+    setBusy("accept");
+    try { return await onAcceptAll(seriesId); }
+    finally { setBusy(null); }
+  }
+  async function wrappedDeclineAll(seriesId: string, reason: DeclineReason, other?: string) {
+    setBusy("decline");
+    try { return await onDeclineAll(seriesId, reason, other); }
+    finally { setBusy(null); }
+  }
+  function openPickDates() { setSheetMode("list"); setSheetOpen(true); }
+  function openDeclineAll() { setSheetMode("declineAll"); setSheetOpen(true); }
 
-  async function handleAcceptAll(occurrences: { appointmentId: string; slotIndex: number }[]) {
-    setBusyAll(true);
-    try { await onAcceptAll(occurrences); }
+  async function acceptAllFromCard() {
+    try { await wrappedAcceptAll(series.seriesId); }
     catch { /* toast handled by hook */ }
-    finally { setBusyAll(false); }
   }
 
   return (
@@ -64,26 +75,37 @@ export function SeriesOfferCard({
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        The office offered you this repeating cleaning. Take all of it, or just the dates that work.
+        The office offered you this repeating cleaning. Take all of it, just the dates that work, or decline them all.
       </p>
 
       <div className="mt-3 flex gap-2">
-        <Button onClick={() => handleAcceptAll(allOccurrenceArgs())} loading={busyAll} className="flex-1">
+        <Button onClick={acceptAllFromCard} loading={busy === "accept"} disabled={busy !== null} className="flex-1">
           <Check /> Accept all {series.count}
         </Button>
-        <Button variant="outline" onClick={() => setSheetOpen(true)} disabled={busyAll} className="flex-1">
+        <Button variant="outline" onClick={openPickDates} disabled={busy !== null} className="flex-1">
           <ListChecks /> Pick dates
         </Button>
       </div>
+      <Button
+        variant="ghost"
+        onClick={openDeclineAll}
+        disabled={busy !== null}
+        className="mt-1 w-full text-critical-700 hover:text-critical-700"
+      >
+        <X /> Decline all
+      </Button>
 
       <SeriesOfferSheet
         series={series}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        onAcceptAll={handleAcceptAll}
+        initialMode={sheetMode}
+        onAcceptAll={wrappedAcceptAll}
+        onDeclineAll={wrappedDeclineAll}
         onAcceptOne={onAcceptOne}
         onDeclineOne={onDeclineOne}
-        accepting={busyAll}
+        accepting={busy === "accept"}
+        declining={busy === "decline"}
       />
     </div>
   );
