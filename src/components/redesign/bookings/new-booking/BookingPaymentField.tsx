@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Check, CreditCard, Landmark, Clock, Plus } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
@@ -90,13 +90,19 @@ export function BookingPaymentField({
   const orgCards = useQuery({
     queryKey: ['operator-booking', 'org-cards', organizationId],
     enabled: selfPay && !!organizationId,
-    queryFn: async () => {
-      const cards = await fetchCards(`/api/stripe/org/saved-payment-methods?organization_id=${organizationId}`);
-      const def = cards.find((c) => c.isDefault) ?? cards[0] ?? null;
-      onSelfPayChange({ hasMethod: !!def, method: def?.type === 'us_bank_account' ? 'us_bank_account' : 'card' });
-      return cards;
-    },
+    queryFn: () => fetchCards(`/api/stripe/org/saved-payment-methods?organization_id=${organizationId}`),
   });
+
+  // Report the org's charged method up once the card list resolves (kept out of the queryFn so the
+  // fetch stays a pure data source). Gated on the derived primitives so it does not loop.
+  const orgDefault = orgCards.data?.find((c) => c.isDefault) ?? orgCards.data?.[0] ?? null;
+  const orgHasMethod = !!orgDefault;
+  const orgMethod: PaymentMethodKind = orgDefault?.type === 'us_bank_account' ? 'us_bank_account' : 'card';
+  useEffect(() => {
+    if (selfPay) onSelfPayChange({ hasMethod: orgHasMethod, method: orgMethod });
+    // onSelfPayChange is a fresh closure each render; depend on the derived values instead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selfPay, orgHasMethod, orgMethod]);
 
   const createSetupIntent = useCallback(async (): Promise<string> => {
     const token = await getAccessToken();
