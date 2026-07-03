@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
@@ -59,6 +59,9 @@ export interface CleanerAppointment {
   completed_at?: string | null;
   /** Set when the appointment is cancelled. Closes the job thread. */
   cancelled_at?: string | null;
+  /** Non-null when this appointment is one occurrence of a recurring series
+   *  (Slice 2). All occurrences of the same series share this id. */
+  series_id?: string | null;
 }
 
 export interface CleanerStats {
@@ -145,6 +148,7 @@ export function useCleanerAppointments() {
           status,
           completed_at,
           cancelled_at,
+          series_id,
           job_progress,
           photos_skipped,
           total_price,
@@ -1052,6 +1056,90 @@ export function useRespondToOffer() {
   });
 
   return { accept, decline };
+}
+
+export interface SeriesAcceptResult {
+  total: number;
+  accepted: number;
+  failed: number;
+}
+
+/** Pure: fold per-occurrence accept results into a summary for the toast. */
+export function summarizeSeriesAccepts(results: { ok: boolean }[]): SeriesAcceptResult {
+  const accepted = results.filter((r) => r.ok).length;
+  return { total: results.length, accepted, failed: results.length - accepted };
+}
+
+/**
+ * Accept every occurrence of a recurring offer by looping the existing
+ * per-appointment confirm route SEQUENTIALLY. No bulk route (spec: no new route)
+ * and deliberately sequential: a series can hold up to 50 occurrences, and firing
+ * them concurrently would saturate the shared PostgREST pool (see the bulk-action
+ * 504 postmortem). Tolerates partial failure (an occurrence that already timed out
+ * and re-routed returns non-ok) and reports { total, accepted, failed }.
+ */
+export function useRespondToSeries() {
+  const { user, currentOrganizationId } = useAuth();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const userId = user?.id;
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async (
+      occurrences: { appointmentId: string; slotIndex: number }[],
+    ): Promise<SeriesAcceptResult> => {
+      setProgress({ done: 0, total: occurrences.length });
+      const results: { ok: boolean }[] = [];
+      for (const occ of occurrences) {
+        let ok = false;
+        try {
+          const token = await getAccessToken();
+          const res = await fetch('/api/appointments/confirm', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              organizationId: currentOrganizationId,
+              appointmentId: occ.appointmentId,
+              action: 'accept',
+              slotIndex: occ.slotIndex,
+            }),
+          });
+          const data = await res.json().catch(() => ({} as Record<string, unknown>));
+          ok = res.ok && !!(data as { success?: boolean }).success;
+        } catch {
+          ok = false;
+        }
+        results.push({ ok });
+        setProgress((p) => (p ? { done: p.done + 1, total: p.total } : p));
+      }
+      return summarizeSeriesAccepts(results);
+    },
+    onSuccess: (r) => {
+      if (userId) {
+        qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+        qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+      }
+      if (r.failed === 0) {
+        showToast(`Accepted ${r.accepted} ${r.accepted === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'success' });
+      } else if (r.accepted === 0) {
+        showToast('Could not accept these cleanings. Please try again.', { variant: 'error' });
+      } else {
+        showToast(`Accepted ${r.accepted} of ${r.total}. ${r.failed} could not be accepted.`, { variant: 'info' });
+      }
+    },
+    onError: (e: Error) => showToast(e.message || 'Could not accept the series', { variant: 'error' }),
+    onSettled: () => setProgress(null),
+  });
+
+  return {
+    acceptAll: mutation.mutateAsync,
+    accepting: mutation.isPending,
+    progress,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
