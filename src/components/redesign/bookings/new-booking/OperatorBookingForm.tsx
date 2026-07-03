@@ -18,11 +18,13 @@ import {
   isSelfPay,
   effectiveTotalUsd,
   canReview,
-  canCreate,
+  canCreateBooking,
 } from './deriveOperatorBooking';
+import { isRecurring, buildOccurrenceInput, previewOccurrences, recurrenceRecap } from './deriveRecurrence';
 import { EntityPickerField, type PickerItem } from './EntityPickerField';
 import { TimePickerPopover } from './TimePickerPopover';
 import { BookingPaymentField } from './BookingPaymentField';
+import { RecurrenceSection } from './RecurrenceSection';
 import { usePropertiesByOwner } from './usePropertiesByOwner';
 import { useRankedCleaners } from './useRankedCleaners';
 import { useCreateOperatorBooking } from './useCreateOperatorBooking';
@@ -123,11 +125,23 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
 
   const total = effectiveTotalUsd(state, service);
 
+  const recurring = isRecurring(state);
+  const primarySlot = state.slots[0] ?? null;
+  const occurrences = useMemo(() => {
+    if (!recurring || !service) return [];
+    const input = buildOccurrenceInput(state, service.duration_minutes);
+    return input ? previewOccurrences(input) : [];
+  }, [recurring, state, service]);
+
   async function handleCreate() {
     if (!service) return;
     try {
-      await create({ state, service });
-      toast.success('Booking created', { description: 'The cleaner has been offered this job.' });
+      const result = await create({ state, service });
+      toast.success(result.recurring ? `${result.count} cleaning${result.count === 1 ? '' : 's'} scheduled` : 'Booking created', {
+        description: result.recurring
+          ? 'The cleaner has been offered the whole series.'
+          : 'The cleaner has been offered this job.',
+      });
       onDone();
     } catch (e) {
       toast.error('Could not create the booking', {
@@ -159,7 +173,15 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
                 <button
                   key={b}
                   type="button"
-                  onClick={() => patch({ billTo: b, customerId: null, propertyId: null, cleanerId: null })}
+                  onClick={() =>
+                    patch({
+                      billTo: b,
+                      customerId: null,
+                      propertyId: null,
+                      cleanerId: null,
+                      recurrence: EMPTY_OPERATOR_BOOKING.recurrence,
+                    })
+                  }
                   className={
                     'flex-1 py-2 transition-colors ' +
                     (state.billTo === b ? 'bg-brand-600 text-white' : 'bg-card hover:bg-muted')
@@ -259,13 +281,30 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
                   </button>
                 </div>
               ))}
-              {state.slots.length < 3 && (
+              {state.slots.length === 0 && (
                 <TimePickerPopover
-                  label={state.slots.length === 0 ? 'Add a time' : 'Add an alternate'}
+                  label="Add a time"
+                  onAdd={(slot) => patch({ slots: addSlot(state.slots, slot) })}
+                />
+              )}
+              {/* Alternates only apply to a one-time booking; a series uses the single start. */}
+              {state.slots.length >= 1 && state.slots.length < 3 && !recurring && (
+                <TimePickerPopover
+                  label="Add an alternate"
                   onAdd={(slot) => patch({ slots: addSlot(state.slots, slot) })}
                 />
               )}
             </div>
+
+            {/* Repeat (customer-billed only; the recurring route requires a homeowner) */}
+            {!self && (
+              <RecurrenceSection
+                value={state.recurrence}
+                startSlot={primarySlot}
+                occurrences={occurrences}
+                onChange={(p) => patch({ recurrence: { ...state.recurrence, ...p } })}
+              />
+            )}
 
             {/* Cleaner offer */}
             <div>
@@ -323,28 +362,47 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
               {!self && <ReviewRow label="Customer">{customerName}</ReviewRow>}
               <ReviewRow label="Property">{propertyName}</ReviewRow>
               <ReviewRow label="Service">{service?.name ?? '-'}</ReviewRow>
-              <ReviewRow label="Preferred times">
-                <span className="flex flex-col items-end gap-0.5">
-                  {state.slots.map((s, i) => (
-                    <span key={i}>
-                      <span className="text-muted-foreground">{slotOrdinal(i)} </span>
-                      {formatSlotLabel(s)}
+              {recurring ? (
+                <>
+                  <ReviewRow label="Starts">{primarySlot ? formatSlotLabel(primarySlot) : '-'}</ReviewRow>
+                  <ReviewRow label="Repeats">
+                    <span className="text-right">
+                      {primarySlot
+                        ? recurrenceRecap(state.recurrence, primarySlot.date, primarySlot.time, occurrences)
+                        : '-'}
                     </span>
-                  ))}
-                </span>
-              </ReviewRow>
+                  </ReviewRow>
+                  <ReviewRow label="Cleanings">{occurrences.length}</ReviewRow>
+                </>
+              ) : (
+                <ReviewRow label="Preferred times">
+                  <span className="flex flex-col items-end gap-0.5">
+                    {state.slots.map((s, i) => (
+                      <span key={i}>
+                        <span className="text-muted-foreground">{slotOrdinal(i)} </span>
+                        {formatSlotLabel(s)}
+                      </span>
+                    ))}
+                  </span>
+                </ReviewRow>
+              )}
               <ReviewRow label="Cleaner">
                 {cleanerName(cleaners.find((c) => c.id === state.cleanerId) ?? {})}
               </ReviewRow>
-              <ReviewRow label="Total">{money(total)}</ReviewRow>
+              <ReviewRow label={recurring ? 'Total each' : 'Total'}>{money(total)}</ReviewRow>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">
             <Button variant="outline" onClick={() => setPage('form')}>
               Back
             </Button>
-            <Button className="flex-1" loading={creating} disabled={!canCreate(state)} onClick={handleCreate}>
-              Create booking
+            <Button
+              className="flex-1"
+              loading={creating}
+              disabled={!canCreateBooking(state, occurrences.length)}
+              onClick={handleCreate}
+            >
+              {recurring ? `Create ${occurrences.length} cleaning${occurrences.length === 1 ? '' : 's'}` : 'Create booking'}
             </Button>
           </div>
         </>

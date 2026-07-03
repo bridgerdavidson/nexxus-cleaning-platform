@@ -40,3 +40,19 @@ export function canCreate(s: OperatorBookingState): boolean {
   // Self-pay needs an org method on file; customer-billed can defer (card/link/collect later).
   return isSelfPay(s) ? s.selfPayHasMethod : true;
 }
+
+/** The concrete saved-card id to charge, or null for a send-link / defer / no selection. */
+export function cardIdFromPaymentValue(v: string | null): string | null {
+  return v && v.startsWith('pm_') ? v : null;
+}
+
+/**
+ * Whether the booking can be created, recurrence-aware. A recurring (customer-billed) series also
+ * requires the current cadence + end to produce at least one occurrence.
+ */
+export function canCreateBooking(s: OperatorBookingState, occurrenceCount: number): boolean {
+  if (!canCreate(s)) return false;
+  if (isSelfPay(s)) return true;
+  if (!s.recurrence.enabled) return true;
+  return occurrenceCount >= 1;
+}
