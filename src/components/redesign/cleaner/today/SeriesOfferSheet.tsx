@@ -26,7 +26,7 @@ export function SeriesOfferSheet({
   series: SeriesOffer;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAcceptAll: () => Promise<unknown> | void;
+  onAcceptAll: (occurrences: { appointmentId: string; slotIndex: number }[]) => Promise<unknown> | void;
   onAcceptOne: (appointmentId: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOne: (appointmentId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   accepting: boolean;
@@ -43,6 +43,12 @@ export function SeriesOfferSheet({
     setResolved((s) => new Set(s).add(id));
   }
 
+  function cancelDecline() {
+    setDeclining(null);
+    setReason("sick");
+    setOther("");
+  }
+
   async function acceptOne(id: string, slotIndex: number) {
     setBusyId(id);
     try { await onAcceptOne(id, slotIndex); markResolved(id); }
@@ -56,15 +62,16 @@ export function SeriesOfferSheet({
     try {
       await onDeclineOne(declining.id, reason, reason === "other" ? other.trim() || undefined : undefined);
       markResolved(declining.id);
-      setDeclining(null);
-      setReason("sick");
-      setOther("");
+      cancelDecline();
     } catch { /* toast handled by hook */ }
     finally { setBusyId(null); }
   }
 
   async function acceptAll() {
-    try { await onAcceptAll(); onOpenChange(false); }
+    // Only the dates the cleaner has not already actioned in this sheet.
+    const args = remaining.map((o) => ({ appointmentId: o.id, slotIndex: offeredSlots(o)[0].slot_index }));
+    if (args.length === 0) return;
+    try { await onAcceptAll(args); onOpenChange(false); }
     catch { /* toast handled by hook */ }
   }
 
@@ -75,8 +82,8 @@ export function SeriesOfferSheet({
           <>
             <DrawerHeader>
               <button
-                onClick={() => setDeclining(null)}
-                className="mb-1 inline-flex items-center gap-1 rounded-control text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={cancelDecline}
+                className="mb-1 inline-flex min-h-[44px] items-center gap-1 rounded-control text-sm font-semibold text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <ChevronLeft className="size-4" /> Back
               </button>
@@ -105,7 +112,7 @@ export function SeriesOfferSheet({
             </div>
             <DrawerFooter>
               <Button variant="destructive" onClick={confirmDecline} loading={busyId === declining.id}>Decline this date</Button>
-              <Button variant="ghost" onClick={() => setDeclining(null)} disabled={busyId !== null}>Keep it</Button>
+              <Button variant="ghost" onClick={cancelDecline} disabled={busyId !== null}>Keep it</Button>
             </DrawerFooter>
           </>
         ) : (
@@ -117,7 +124,7 @@ export function SeriesOfferSheet({
               </DrawerDescription>
             </DrawerHeader>
             <div className="px-4">
-              <Button onClick={acceptAll} loading={accepting} className="w-full" size="lg">
+              <Button onClick={acceptAll} loading={accepting} disabled={remaining.length === 0} className="w-full" size="lg">
                 <Check /> Accept all {remaining.length}
               </Button>
             </div>

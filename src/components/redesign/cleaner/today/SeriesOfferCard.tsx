@@ -22,23 +22,26 @@ function seriesRange(start: string, end: string): string {
 }
 
 export function SeriesOfferCard({
-  series, onAcceptAll, onAcceptOne, onDeclineOne, accepting,
+  series, onAcceptAll, onAcceptOne, onDeclineOne,
 }: {
   series: SeriesOffer;
   onAcceptAll: (occurrences: { appointmentId: string; slotIndex: number }[]) => Promise<unknown> | void;
   onAcceptOne: (appointmentId: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOne: (appointmentId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
-  accepting: boolean;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Per-card busy so accepting one series never shows every series card as loading.
+  const [busyAll, setBusyAll] = useState(false);
   const respondBy = formatRespondBy(series.soonestDeadline);
 
   const allOccurrenceArgs = () =>
     series.occurrences.map((o) => ({ appointmentId: o.id, slotIndex: offeredSlots(o)[0].slot_index }));
 
-  async function acceptAll() {
-    try { await onAcceptAll(allOccurrenceArgs()); }
+  async function handleAcceptAll(occurrences: { appointmentId: string; slotIndex: number }[]) {
+    setBusyAll(true);
+    try { await onAcceptAll(occurrences); }
     catch { /* toast handled by hook */ }
+    finally { setBusyAll(false); }
   }
 
   return (
@@ -65,10 +68,10 @@ export function SeriesOfferCard({
       </p>
 
       <div className="mt-3 flex gap-2">
-        <Button onClick={acceptAll} loading={accepting} className="flex-1">
+        <Button onClick={() => handleAcceptAll(allOccurrenceArgs())} loading={busyAll} className="flex-1">
           <Check /> Accept all {series.count}
         </Button>
-        <Button variant="outline" onClick={() => setSheetOpen(true)} disabled={accepting} className="flex-1">
+        <Button variant="outline" onClick={() => setSheetOpen(true)} disabled={busyAll} className="flex-1">
           <ListChecks /> Pick dates
         </Button>
       </div>
@@ -77,10 +80,10 @@ export function SeriesOfferCard({
         series={series}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        onAcceptAll={acceptAll}
+        onAcceptAll={handleAcceptAll}
         onAcceptOne={onAcceptOne}
         onDeclineOne={onDeclineOne}
-        accepting={accepting}
+        accepting={busyAll}
       />
     </div>
   );

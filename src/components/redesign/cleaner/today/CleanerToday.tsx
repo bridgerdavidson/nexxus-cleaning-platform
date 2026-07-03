@@ -36,7 +36,6 @@ export function CleanerToday() {
       onAcceptOffer={(id, slotIndex) => respond.accept.mutateAsync({ appointmentId: id, slotIndex })}
       onDeclineOffer={(id, reason, other) => respond.decline.mutateAsync({ appointmentId: id, reason, other })}
       onAcceptSeries={(occurrences) => series.acceptAll(occurrences)}
-      acceptingSeries={series.accepting}
       onSeeTomorrow={() => router.push("/app/cleaner-dashboard/schedule")}
     />
   );

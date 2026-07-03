@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
@@ -1083,13 +1083,11 @@ export function useRespondToSeries() {
   const { showToast } = useToast();
   const qc = useQueryClient();
   const userId = user?.id;
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (
       occurrences: { appointmentId: string; slotIndex: number }[],
     ): Promise<SeriesAcceptResult> => {
-      setProgress({ done: 0, total: occurrences.length });
       const results: { ok: boolean }[] = [];
       for (const occ of occurrences) {
         let ok = false;
@@ -1114,7 +1112,6 @@ export function useRespondToSeries() {
           ok = false;
         }
         results.push({ ok });
-        setProgress((p) => (p ? { done: p.done + 1, total: p.total } : p));
       }
       return summarizeSeriesAccepts(results);
     },
@@ -1132,13 +1129,11 @@ export function useRespondToSeries() {
       }
     },
     onError: (e: Error) => showToast(e.message || 'Could not accept the series', { variant: 'error' }),
-    onSettled: () => setProgress(null),
   });
 
   return {
     acceptAll: mutation.mutateAsync,
     accepting: mutation.isPending,
-    progress,
   };
 }
 
