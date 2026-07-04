@@ -3,7 +3,8 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { Logo } from '@/components/ui/logo'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export type SystemStateAction = {
   label: string
@@ -34,10 +35,13 @@ export function SystemStatePage({
           <div className="mt-8 flex w-full flex-col gap-3">
             {actions.map((a, i) => {
               const variant = a.variant === 'outline' ? 'outline' : 'default'
+              // Render link actions as a styled <Link>, not <Button asChild>: the
+              // Button always emits a loading-slot child, so Slot sees two children
+              // and throws. buttonVariants gives the same look without Slot.
               return a.href ? (
-                <Button key={i} asChild variant={variant} size="lg" className="w-full">
-                  <Link href={a.href}>{a.label}</Link>
-                </Button>
+                <Link key={i} href={a.href} className={cn(buttonVariants({ variant, size: 'lg' }), 'w-full')}>
+                  {a.label}
+                </Link>
               ) : (
                 <Button key={i} variant={variant} size="lg" className="w-full" onClick={a.onClick}>
                   {a.label}
