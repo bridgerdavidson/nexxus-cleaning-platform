@@ -1,5 +1,6 @@
 // src/app/(redesign)/layout.tsx
 import { notFound } from "next/navigation";
+import { Toaster } from "@/components/ui/toast";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { redesignUiEnabled } from "@/lib/redesign/flags";
 
@@ -17,7 +18,10 @@ export default function RedesignLayout({ children }: { children: React.ReactNode
   if (!allowed) notFound();
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-      <div className="redesign font-jakarta min-h-screen">{children}</div>
+      <div className="redesign font-jakarta min-h-screen">
+        {children}
+        <Toaster position="top-right" />
+      </div>
     </ThemeProvider>
   );
 }
