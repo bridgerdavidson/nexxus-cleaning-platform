@@ -2,13 +2,15 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { Loader, Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import {
-  validatePassword,
-  PASSWORD_HELPER_TEXT,
-} from "../../lib/passwordValidation";
-import { AuthShell } from "../../components/auth/AuthShell";
+import { validatePassword, PASSWORD_HELPER_TEXT } from "../../lib/passwordValidation";
+import { checkPasswordNotBreached } from "@/lib/auth/breachedPassword";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthHeading, AuthError, TextField, PasswordField } from "@/components/auth/authPrimitives";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 
 type PageState = "loading" | "valid" | "expired" | "invalid";
 
@@ -19,6 +21,11 @@ interface InvitePreview {
   organizationId: string;
   organizationName: string | null;
 }
+
+const INVITE_PANEL = {
+  panelTitle: "Welcome to the team.",
+  panelSubtitle: "Set up your account and you're in.",
+};
 
 function getDashboardPath(role: string): string {
   switch (role) {
@@ -44,9 +51,7 @@ function AcceptInviteContent() {
 
   const [pageState, setPageState] = useState<PageState>("loading");
   const [pageError, setPageError] = useState("");
-  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(
-    null,
-  );
+  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [accessToken, setAccessToken] = useState("");
 
@@ -71,9 +76,7 @@ function AcceptInviteContent() {
     const hashErrorDesc = hashParams.get("error_description");
 
     // invite_id is preserved by Supabase on the error redirect because we
-    // included it in redirect_to when sending the invite. The id is also
-    // passed to the preview/accept endpoints so they can look the row up
-    // by id and inspect the actual current status.
+    // included it in redirect_to when sending the invite.
     const queryParams = new URLSearchParams(window.location.search);
     const inviteIdFromQuery = queryParams.get("invite_id");
 
@@ -85,11 +88,6 @@ function AcceptInviteContent() {
         );
         setPageState("expired");
         if (inviteIdFromQuery) {
-          // Fire-and-forget; failure here doesn't change the user-facing flow.
-          // The route's guard allows the flip when the recipient either
-          // hadn't loaded the form (opened_at IS NULL) or already closed
-          // it (form_closed_at set via pagehide beacon below). A re-fetch
-          // mid-fill remains a no-op so the active form session survives.
           fetch(`/api/invites/${inviteIdFromQuery}/mark-expired`, {
             method: "POST",
           }).catch(() => {});
@@ -161,9 +159,7 @@ function AcceptInviteContent() {
     }
 
     // Primary: listen for the SIGNED_IN event that detectSessionInUrl fires
-    // after exchanging the invite hash token — this handles the async timing gap.
-    // On TOKEN_REFRESHED, also keep the React accessToken state in sync so a
-    // long form-fill doesn't submit with a stale (expired) token.
+    // after exchanging the invite hash token.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -178,8 +174,7 @@ function AcceptInviteContent() {
       }
     });
 
-    // Fast-path: if the session is already present (e.g. page reload after exchange),
-    // we don't need to wait for the auth state change event.
+    // Fast-path: if the session is already present (e.g. page reload after exchange).
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         processSession(session);
@@ -191,14 +186,9 @@ function AcceptInviteContent() {
     };
   }, []);
 
-  // When the form is rendered (pageState === 'valid') and the page is being
-  // hidden/torn down, beacon the server so mark-expired knows the recipient
-  // closed the form. Without this, the server can't tell "user walked away"
-  // from "scanner re-fetched the URL while user is mid-fill" — the latter
-  // must NOT invalidate the row. pagehide is the right signal: it fires on
-  // tab close and navigation away, including iOS Safari, but does not fire
-  // on a routine visibility blur (app-switch / tab-switch) which we
-  // deliberately do not want to treat as abandonment.
+  // When the form is rendered and the page is being hidden/torn down, beacon the
+  // server so mark-expired knows the recipient closed the form. pagehide fires on
+  // tab close + navigation away (incl. iOS Safari) but not on a routine blur.
   useEffect(() => {
     if (pageState !== "valid" || !invitePreview?.id) return;
     const id = invitePreview.id;
@@ -228,6 +218,12 @@ function AcceptInviteContent() {
     }
     if (password !== confirmPassword) {
       setFormError("Passwords do not match.");
+      return;
+    }
+
+    const { breached } = await checkPasswordNotBreached(password);
+    if (breached) {
+      setFormError("This password showed up in a data breach. Please choose a different one.");
       return;
     }
 
@@ -263,9 +259,7 @@ function AcceptInviteContent() {
       });
 
       if (signInError) {
-        setFormError(
-          "Profile created, but sign-in failed: " + signInError.message,
-        );
+        setFormError("Profile created, but sign-in failed: " + signInError.message);
         return;
       }
 
@@ -280,12 +274,10 @@ function AcceptInviteContent() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (pageState === "loading") {
     return (
-      <AuthShell badge="Team Invitation">
+      <AuthShell {...INVITE_PANEL}>
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-          <p className="text-sm font-medium text-gray-500">
-            Verifying your invite…
-          </p>
+          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <p className="text-sm font-medium text-muted-foreground">Verifying your invite...</p>
         </div>
       </AuthShell>
     );
@@ -294,16 +286,16 @@ function AcceptInviteContent() {
   // ── Invalid / Expired state ────────────────────────────────────────────────
   if (pageState === "invalid" || pageState === "expired") {
     return (
-      <AuthShell badge="Team Invitation">
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="rounded-xl border border-red-100 bg-red-50 p-3 ring-1 ring-red-100/60">
-            <AlertCircle className="h-7 w-7 text-red-500" />
+      <AuthShell {...INVITE_PANEL}>
+        <div className="flex flex-col items-center gap-4 py-2 text-center">
+          <div className="grid size-12 place-items-center rounded-full bg-critical-50 text-critical-700">
+            <AlertCircle className="size-6" aria-hidden />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-gray-900">
-              {pageState === "expired" ? "Invite Expired" : "Invalid Invite"}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">{pageError}</p>
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground">
+              {pageState === "expired" ? "Invite expired" : "Invalid invite"}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">{pageError}</p>
           </div>
         </div>
       </AuthShell>
@@ -312,170 +304,72 @@ function AcceptInviteContent() {
 
   // ── Valid state — show form ────────────────────────────────────────────────
   return (
-    <AuthShell badge="Team Invitation">
-        {/* Card header */}
-        <div className="mb-6 text-center">
-          <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-            Welcome to {invitePreview?.organizationName ?? "the team"}
-          </h2>
-          <p className="mt-1.5 text-sm text-gray-500">
-            Complete your profile to access your dashboard.
-          </p>
+    <AuthShell {...INVITE_PANEL}>
+      <AuthHeading
+        title={`Welcome to ${invitePreview?.organizationName ?? "the team"}`}
+        subtitle="Complete your profile to access your dashboard."
+      />
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <AuthError message={formError} />
+        <TextField id="email" label="Email address" type="email" value={userEmail} disabled />
+        <div className="space-y-1.5">
+          <Label htmlFor="role">Role</Label>
+          <div>
+            <Badge variant="default">{formatRole(invitePreview?.role ?? "")}</Badge>
+          </div>
         </div>
-
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          {formError && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100/60">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              {formError}
-            </div>
-          )}
-
-          {/* Email — disabled */}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              Email address
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={userEmail}
-              disabled
-              className="input-field bg-gray-50 text-gray-500 cursor-not-allowed"
-            />
-          </div>
-
-          {/* Role — read-only badge */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Role
-            </label>
-            <span className="inline-flex items-center rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-sm font-semibold text-primary-700 ring-1 ring-primary-100/60">
-              {formatRole(invitePreview?.role ?? "")}
-            </span>
-          </div>
-
-          {/* First + Last name */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label
-                htmlFor="firstName"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                First name
-              </label>
-              <input
-                id="firstName"
-                type="text"
-                required
-                autoComplete="given-name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="input-field"
-                placeholder="Jane"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="lastName"
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-              >
-                Last name
-              </label>
-              <input
-                id="lastName"
-                type="text"
-                required
-                autoComplete="family-name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="input-field"
-                placeholder="Smith"
-              />
-            </div>
-          </div>
-
-          {/* Phone — optional */}
-          <div>
-            <label
-              htmlFor="phone"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              Phone number{" "}
-              <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <input
-              id="phone"
-              type="tel"
-              autoComplete="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="input-field"
-              placeholder="(555) 000-0000"
-            />
-          </div>
-
-          {/* Password */}
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              Create a password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
-              placeholder="At least 8 characters"
-            />
-            <p className="mt-1.5 text-xs text-gray-500">{PASSWORD_HELPER_TEXT}</p>
-          </div>
-
-          {/* Confirm password */}
-          <div>
-            <label
-              htmlFor="confirmPassword"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
-            >
-              Confirm password
-            </label>
-            <input
-              id="confirmPassword"
-              type="password"
-              required
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
-              placeholder="Re-enter your password"
-            />
-          </div>
-
-          <div className="pt-1">
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <Loader className="h-4 w-4 animate-spin" />
-                  <span>Setting up your account…</span>
-                </>
-              ) : (
-                <span>Complete Profile &amp; Go to Dashboard</span>
-              )}
-            </button>
-          </div>
-        </form>
+        <div className="grid grid-cols-2 gap-3">
+          <TextField
+            id="firstName"
+            label="First name"
+            required
+            autoComplete="given-name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Jane"
+          />
+          <TextField
+            id="lastName"
+            label="Last name"
+            required
+            autoComplete="family-name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Smith"
+          />
+        </div>
+        <TextField
+          id="phone"
+          label="Phone (optional)"
+          type="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="(555) 000-0000"
+        />
+        <PasswordField
+          id="password"
+          label="Create a password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="At least 8 characters"
+          helper={PASSWORD_HELPER_TEXT}
+        />
+        <PasswordField
+          id="confirmPassword"
+          label="Confirm password"
+          autoComplete="new-password"
+          required
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Re-enter your password"
+        />
+        <Button type="submit" size="lg" className="w-full" loading={isLoading}>
+          {isLoading ? "Setting up your account..." : "Create account"}
+        </Button>
+      </form>
     </AuthShell>
   );
 }
@@ -484,11 +378,8 @@ export default function AcceptInvitePage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-            <p className="text-sm font-medium text-gray-500">Loading…</p>
-          </div>
+        <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
+          <Loader2 className="size-8 animate-spin text-brand-600" />
         </div>
       }
     >
