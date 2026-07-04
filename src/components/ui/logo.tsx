@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 type LogoProps = {
   variant?: 'mark' | 'full'
   tone?: 'color' | 'mono' | 'auto'
+  /** Render an all-white lockup for dark/blue backgrounds. */
+  onDark?: boolean
   className?: string
   priority?: boolean
 }
@@ -21,14 +23,20 @@ const ASSET: Record<string, string> = {
   'full-color-dark': '/brand/logo-white.svg',
 }
 
-export function Logo({ variant = 'full', tone = 'auto', className, priority }: LogoProps) {
+export function Logo({ variant = 'full', tone = 'auto', onDark = false, className, priority }: LogoProps) {
   const { resolvedTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
   const appearance = mounted && resolvedTheme === 'dark' ? 'dark' : 'light'
 
   let src: string
-  if (variant === 'mark') {
+  let filterWhite = false
+  if (onDark) {
+    // logo-white.svg keeps a blue mark (invisible on blue); derive an all-white
+    // lockup from the black one via a filter. The standalone mark is already white.
+    src = variant === 'mark' ? '/brand/icon-mono-white.svg' : ASSET['full-color-light']
+    filterWhite = variant === 'full'
+  } else if (variant === 'mark') {
     src = tone === 'color' ? ASSET['mark-color'] : ASSET[`mark-mono-${appearance}`]
   } else {
     src = ASSET[`full-color-${appearance}`]
@@ -42,7 +50,7 @@ export function Logo({ variant = 'full', tone = 'auto', className, priority }: L
       {...dims}
       priority={priority}
       style={{ width: 'auto', height: 'auto' }}
-      className={cn('h-10 w-auto select-none', className)}
+      className={cn('h-10 w-auto select-none', filterWhite && '[filter:brightness(0)_invert(1)]', className)}
     />
   )
 }
