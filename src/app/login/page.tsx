@@ -56,6 +56,7 @@ function LoginContent() {
         <AuthError message={error} />
         <TextField
           id="email"
+          name="email"
           label="Email address"
           type="email"
           autoComplete="email"
@@ -66,6 +67,7 @@ function LoginContent() {
         />
         <PasswordField
           id="password"
+          name="password"
           label="Password"
           autoComplete="current-password"
           required

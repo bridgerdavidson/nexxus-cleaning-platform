@@ -10,7 +10,6 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthHeading, AuthError, TextField, PasswordField } from "@/components/auth/authPrimitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
 
 type PageState = "loading" | "valid" | "expired" | "invalid";
 
@@ -221,13 +220,14 @@ function AcceptInviteContent() {
       return;
     }
 
+    setIsLoading(true);
+
     const { breached } = await checkPasswordNotBreached(password);
     if (breached) {
       setFormError("This password showed up in a data breach. Please choose a different one.");
+      setIsLoading(false);
       return;
     }
-
-    setIsLoading(true);
 
     try {
       const response = await fetch("/api/accept-invite", {
@@ -313,7 +313,7 @@ function AcceptInviteContent() {
         <AuthError message={formError} />
         <TextField id="email" label="Email address" type="email" value={userEmail} disabled />
         <div className="space-y-1.5">
-          <Label htmlFor="role">Role</Label>
+          <span className="text-sm font-semibold text-foreground">Role</span>
           <div>
             <Badge variant="default">{formatRole(invitePreview?.role ?? "")}</Badge>
           </div>

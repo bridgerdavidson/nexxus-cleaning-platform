@@ -49,7 +49,10 @@ export function Logo({ variant = 'full', tone = 'auto', onDark = false, classNam
       alt="Nexxus"
       {...dims}
       priority={priority}
-      style={{ width: 'auto', height: 'auto' }}
+      // width auto keeps the aspect ratio; height is left to the `h-*` className
+      // (an inline `height:auto` here overrides that class and collapses to 0 in
+      // non-flex contexts, e.g. the auth mobile lockup).
+      style={{ width: 'auto' }}
       className={cn('h-10 w-auto select-none', filterWhite && '[filter:brightness(0)_invert(1)]', className)}
     />
   )

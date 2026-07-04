@@ -113,13 +113,14 @@ function ResetPasswordContent() {
       return;
     }
 
+    setIsSubmitting(true);
+
     const { breached } = await checkPasswordNotBreached(password);
     if (breached) {
       setFormError("This password showed up in a data breach. Please choose a different one.");
+      setIsSubmitting(false);
       return;
     }
-
-    setIsSubmitting(true);
 
     const { data, error } = await supabase.auth.updateUser({ password });
 
