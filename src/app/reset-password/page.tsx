@@ -3,13 +3,13 @@
 import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader, Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import { AuthShell } from "../../components/auth/AuthShell";
-import {
-  validatePassword,
-  PASSWORD_HELPER_TEXT,
-} from "../../lib/passwordValidation";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthHeading, AuthError, PasswordField } from "@/components/auth/authPrimitives";
+import { Button } from "@/components/ui/button";
+import { validatePassword, PASSWORD_HELPER_TEXT } from "../../lib/passwordValidation";
+import { checkPasswordNotBreached } from "@/lib/auth/breachedPassword";
 import { useToast } from "../../contexts/ToastContext";
 
 type PageState = "loading" | "expired" | "invalid" | "form" | "success";
@@ -55,9 +55,7 @@ function ResetPasswordContent() {
     if (hashError) {
       handled = true;
       if (hashErrorCode === "otp_expired") {
-        setPageError(
-          "This password reset link has expired. Please request a new one.",
-        );
+        setPageError("This password reset link has expired. Please request a new one.");
         setPageState("expired");
       } else {
         setPageError(
@@ -77,9 +75,7 @@ function ResetPasswordContent() {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (handled) return;
       if (
-        (event === "PASSWORD_RECOVERY" ||
-          event === "SIGNED_IN" ||
-          event === "TOKEN_REFRESHED") &&
+        (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED") &&
         session
       ) {
         handled = true;
@@ -114,6 +110,12 @@ function ResetPasswordContent() {
     }
     if (password !== confirmPassword) {
       setFormError("Passwords do not match.");
+      return;
+    }
+
+    const { breached } = await checkPasswordNotBreached(password);
+    if (breached) {
+      setFormError("This password showed up in a data breach. Please choose a different one.");
       return;
     }
 
@@ -158,12 +160,10 @@ function ResetPasswordContent() {
   // ── Loading state ──────────────────────────────────────────────────────────
   if (pageState === "loading") {
     return (
-      <AuthShell badge="Reset Password">
+      <AuthShell>
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-          <p className="text-sm font-medium text-gray-500">
-            Verifying your reset link…
-          </p>
+          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <p className="text-sm font-medium text-muted-foreground">Verifying your reset link...</p>
         </div>
       </AuthShell>
     );
@@ -172,27 +172,21 @@ function ResetPasswordContent() {
   // ── Expired / Invalid state ───────────────────────────────────────────────
   if (pageState === "expired" || pageState === "invalid") {
     return (
-      <AuthShell badge="Reset Password">
-        <div className="flex flex-col items-center gap-4 py-4 text-center">
-          <div className="rounded-xl border border-red-100 bg-red-50 p-3 ring-1 ring-red-100/60">
-            <AlertCircle className="h-7 w-7 text-red-500" />
+      <AuthShell>
+        <div className="flex flex-col items-center gap-4 py-2 text-center">
+          <div className="grid size-12 place-items-center rounded-full bg-critical-50 text-critical-700">
+            <AlertCircle className="size-6" aria-hidden />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-gray-900">
-              {pageState === "expired" ? "Link Expired" : "Invalid Link"}
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">{pageError}</p>
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground">
+              {pageState === "expired" ? "Link expired" : "Invalid link"}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">{pageError}</p>
           </div>
-          <Link
-            href="/forgot-password"
-            className="mt-2 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
-          >
-            Request a new link
-          </Link>
-          <Link
-            href="/login"
-            className="text-sm font-medium text-primary-600 hover:text-primary-500"
-          >
+          <Button asChild size="lg" className="w-full">
+            <Link href="/forgot-password">Request a new link</Link>
+          </Button>
+          <Link href="/login" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
             Back to sign in
           </Link>
         </div>
@@ -203,12 +197,10 @@ function ResetPasswordContent() {
   // ── Success state (transient — redirects in 250ms) ────────────────────────
   if (pageState === "success") {
     return (
-      <AuthShell badge="Reset Password">
+      <AuthShell>
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-          <p className="text-sm font-medium text-gray-500">
-            Password updated. Redirecting…
-          </p>
+          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <p className="text-sm font-medium text-muted-foreground">Password updated. Redirecting...</p>
         </div>
       </AuthShell>
     );
@@ -216,81 +208,34 @@ function ResetPasswordContent() {
 
   // ── Form state ─────────────────────────────────────────────────────────────
   return (
-    <AuthShell badge="Reset Password">
-      <div className="mb-6 text-center">
-        <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-          Set a new password
-        </h2>
-        <p className="mt-1.5 text-sm text-gray-500">
-          Choose a strong password for your account.
-        </p>
-      </div>
-
-      <form className="space-y-5" onSubmit={handleSubmit}>
-        {formError && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100/60">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {formError}
-          </div>
-        )}
-
-        <div>
-          <label
-            htmlFor="password"
-            className="block text-sm font-medium text-gray-700 mb-1.5"
-          >
-            New password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
-            placeholder="At least 8 characters"
-            disabled={isSubmitting}
-          />
-          <p className="mt-1.5 text-xs text-gray-500">{PASSWORD_HELPER_TEXT}</p>
-        </div>
-
-        <div>
-          <label
-            htmlFor="confirmPassword"
-            className="block text-sm font-medium text-gray-700 mb-1.5"
-          >
-            Confirm new password
-          </label>
-          <input
-            id="confirmPassword"
-            type="password"
-            required
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="input-field [&::-ms-reveal]:hidden [&::-ms-clear]:hidden"
-            placeholder="Re-enter your password"
-            disabled={isSubmitting}
-          />
-        </div>
-
-        <div className="pt-1">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader className="h-4 w-4 animate-spin" />
-                <span>Updating password…</span>
-              </>
-            ) : (
-              <span>Update password</span>
-            )}
-          </button>
-        </div>
+    <AuthShell>
+      <AuthHeading title="Set a new password" subtitle="Choose a new password for your account." />
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <AuthError message={formError} />
+        <PasswordField
+          id="password"
+          label="New password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="At least 8 characters"
+          helper={PASSWORD_HELPER_TEXT}
+          disabled={isSubmitting}
+        />
+        <PasswordField
+          id="confirmPassword"
+          label="Confirm password"
+          autoComplete="new-password"
+          required
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Re-enter your password"
+          disabled={isSubmitting}
+        />
+        <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+          {isSubmitting ? "Updating password..." : "Update password"}
+        </Button>
       </form>
     </AuthShell>
   );
@@ -300,11 +245,8 @@ export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-            <p className="text-sm font-medium text-gray-500">Loading…</p>
-          </div>
+        <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
+          <Loader2 className="size-8 animate-spin text-brand-600" />
         </div>
       }
     >
