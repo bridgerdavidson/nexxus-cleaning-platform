@@ -6,7 +6,7 @@
 
 ## Goal
 
-Rebuild the four auth screens , today all **legacy-styled** (yellow `#F7C41E` `primary-*` ramp, ad-hoc `.btn-primary` / `.input-field` classes, Inter font, gray palette) , on the redesign design system, so the first thing every pilot user sees is on-brand instead of jarringly off-brand next to the redesigned app. **Presentation only:** every existing auth behavior (sign-in, redirect, invite preview/accept, password validation, expiry/error handling, the invite `pagehide` beacon) is preserved unchanged.
+Rebuild the four auth screens , today all **legacy-styled** (yellow `#F7C41E` `primary-*` ramp, ad-hoc `.btn-primary` / `.input-field` classes, Inter font, gray palette) , on the redesign design system, so the first thing every pilot user sees is on-brand instead of jarringly off-brand next to the redesigned app. **Presentation-preserving:** every existing auth behavior (sign-in, redirect, invite preview/accept, password validation, expiry/error handling, the invite `pagehide` beacon) is preserved unchanged, with **one** deliberate behavior improvement folded in , a **password-policy hardening** (see below). The rest of the "make auth more official" ideas from the 2026-07-03 auth analysis (social/Google login + magic link, invite/email reliability, MFA, account lockout, httpOnly-cookie sessions, private storage buckets) are recorded in `docs/auth-improvements-backlog.md` for later , explicitly OUT of scope here.
 
 ## Locked decisions
 
@@ -44,6 +44,15 @@ The richest screen; it is the product's "sign up" for invited team members + cus
 - **Valid form:** heading "Welcome to {organizationName}", subline "Complete your profile to access your dashboard." Fields: **Email** (disabled, pre-filled), **Role** (read-only design-system badge), **First name** + **Last name** (two-up), **Phone** (optional), **Create a password** (+ helper text), **Confirm password**. Primary button **"Create account"** (shortened from the legacy "Complete Profile & Go to Dashboard") with the existing "Setting up your account..." loading state.
 - Preserve **all** invite logic: the `onAuthStateChange` / `getSession` token exchange, `preview` + `accept` route calls, password validation (`validatePassword`), the `pagehide` `form-closed` beacon, and the `mark-expired` fire-and-forget on `otp_expired`.
 
+## Password policy hardening (the one behavior change)
+
+The app already enforces a strong policy at the form layer (`validatePassword`: 8+ chars, upper + lower + number + symbol), but two gaps make it weaker than it looks:
+
+1. **Supabase's own floor is 6 with no rules** (`config.toml` `minimum_password_length = 6`, `password_requirements = ""`) , a mismatched backstop. **Raise the floor to 8** (and, if the Supabase version supports it, set a matching `password_requirements`) so the server enforces at least the app's minimum. Config change, applied to dev + prod projects.
+2. **No breached/common-password check** , "Qwerty123!" passes today. Add an **async breached-password check** on the two "create a password" surfaces (accept-invite + reset-password). **Recommended:** the Have I Been Pwned k-anonymity range API (send only the first 5 hex of the SHA-1, never the password) , privacy-preserving and catches real breaches. It runs on submit, **after** the sync `validatePassword` rules pass, and **fails open** (if HIBP is unreachable, do not block , this is an enhancement, not a gate). Surface a clear inline message ("This password showed up in a data breach. Please choose another.") on a hit. Keep the sync `validatePassword` unchanged; add a separate `checkPasswordNotBreached(password): Promise<{ breached: boolean }>` helper with its own unit test (mock the API) so the logic is covered without a network call in CI.
+
+Everything else in auth behavior is unchanged.
+
 ## Components
 
 - **`AuthShell` (rebuilt, shared).** The split-screen shell. Renders the brand panel (desktop only) + the form card, and accepts the form as `children`. Props for the panel copy so accept-invite can pass "Welcome to the team." while the others use the neutral default. Built entirely from design-system tokens (`bg-brand-600`, `text-*`, `rounded-card`, `shadow-soft-*`, warm canvas). Replaces the legacy `src/components/auth/AuthShell.tsx` (which uses `text-primary-600` + `bg-gray-100`).
@@ -73,5 +82,6 @@ The browser-companion mockups from this design are **UX/structure reference only
 ## Out of scope
 
 - The **onboarding wizard** (R4 sub-project C) and the other R4 **system states** (404, error boundary, toast plumbing, remaining empty/skeleton gaps , sub-project B).
-- A public **signup** page / social login (still invite-only).
+- **All the deferred auth-behavior ideas** from the 2026-07-03 analysis, captured in `docs/auth-improvements-backlog.md`: social/Google login + magic link (with the org-membership gate), invite/email reliability (expires-in-X, verify-on-click, extend-expiry, auto-retry), MFA (TOTP), account lockout, httpOnly-cookie sessions, and private storage buckets. The user liked all of these but chose to defer them; only the password-policy hardening above is in this project.
+- A public **signup** page (still invite-only). Note: `AuthContext.signUp` -> the non-existent `/api/auth/signup` is dead code and can be removed as a small cleanup (not required for this project).
 - Dark-mode auth. Exporting a dedicated all-white lockup asset (nicety; the derived white works).
