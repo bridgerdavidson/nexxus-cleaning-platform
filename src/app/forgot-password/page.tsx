@@ -2,8 +2,10 @@
 
 import React, { Suspense, useState } from "react";
 import Link from "next/link";
-import { Loader, Loader2, Mail, AlertCircle } from "lucide-react";
-import { AuthShell } from "../../components/auth/AuthShell";
+import { Loader2, Mail } from "lucide-react";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthHeading, AuthError, TextField } from "@/components/auth/authPrimitives";
+import { Button } from "@/components/ui/button";
 import { useToast } from "../../contexts/ToastContext";
 
 type Status = "idle" | "submitting" | "submitted";
@@ -49,26 +51,19 @@ function ForgotPasswordContent() {
   // ── Submitted (success / error — same UX) ────────────────────────────────
   if (status === "submitted") {
     return (
-      <AuthShell badge="Forgot Password">
+      <AuthShell>
         <div className="flex flex-col items-center gap-4 py-2 text-center">
-          <div className="rounded-xl border border-primary-100 bg-primary-50 p-3 ring-1 ring-primary-100/60">
-            <Mail className="h-7 w-7 text-primary-600" />
+          <div className="grid size-12 place-items-center rounded-full bg-brand-50 text-brand-600">
+            <Mail className="size-6" aria-hidden />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-gray-900">
-              Check your email
-            </h2>
-            <p className="mt-2 text-sm text-gray-500">
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground">Check your email</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
               If an account exists for{" "}
-              <span className="font-medium text-gray-700">{email.trim()}</span>,
-              we&apos;ve sent a password reset link. Please check your inbox
-              (and spam folder) — the link will expire in 1 hour.
+              <span className="font-semibold text-foreground">{email.trim()}</span>, we sent a password reset link. Check your inbox (and spam), it expires in 1 hour.
             </p>
           </div>
-          <Link
-            href="/login"
-            className="mt-2 text-sm font-semibold text-primary-600 hover:text-primary-500"
-          >
+          <Link href="/login" className="mt-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
             Back to sign in
           </Link>
         </div>
@@ -78,67 +73,26 @@ function ForgotPasswordContent() {
 
   // ── Idle / submitting ─────────────────────────────────────────────────────
   return (
-    <AuthShell badge="Forgot Password">
-      <div className="mb-6 text-center">
-        <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-          Reset your password
-        </h2>
-        <p className="mt-1.5 text-sm text-gray-500">
-          Enter the email associated with your account and we&apos;ll send you a
-          link to set a new password.
-        </p>
-      </div>
-
-      <form className="space-y-5" onSubmit={handleSubmit}>
-        {clientError && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100/60">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {clientError}
-          </div>
-        )}
-
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-gray-700 mb-1.5"
-          >
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
-            placeholder="you@example.com"
-            disabled={status === "submitting"}
-          />
-        </div>
-
-        <div className="pt-1">
-          <button
-            type="submit"
-            disabled={status === "submitting"}
-            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {status === "submitting" ? (
-              <>
-                <Loader className="h-4 w-4 animate-spin" />
-                <span>Sending…</span>
-              </>
-            ) : (
-              <span>Send reset link</span>
-            )}
-          </button>
-        </div>
-
+    <AuthShell>
+      <AuthHeading title="Reset your password" subtitle="Enter your email and we'll send you a link to set a new one." />
+      <form className="space-y-4" onSubmit={handleSubmit}>
+        <AuthError message={clientError} />
+        <TextField
+          id="email"
+          label="Email address"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@email.com"
+          disabled={status === "submitting"}
+        />
+        <Button type="submit" size="lg" className="w-full" loading={status === "submitting"}>
+          {status === "submitting" ? "Sending..." : "Send reset link"}
+        </Button>
         <div className="text-center">
-          <Link
-            href="/login"
-            className="text-sm font-medium text-primary-600 hover:text-primary-500"
-          >
+          <Link href="/login" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
             Back to sign in
           </Link>
         </div>
@@ -151,11 +105,8 @@ export default function ForgotPasswordPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-            <p className="text-sm font-medium text-gray-500">Loading…</p>
-          </div>
+        <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
+          <Loader2 className="size-8 animate-spin text-brand-600" />
         </div>
       }
     >
