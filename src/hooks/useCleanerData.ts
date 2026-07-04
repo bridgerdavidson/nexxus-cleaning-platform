@@ -59,6 +59,9 @@ export interface CleanerAppointment {
   completed_at?: string | null;
   /** Set when the appointment is cancelled. Closes the job thread. */
   cancelled_at?: string | null;
+  /** Non-null when this appointment is one occurrence of a recurring series
+   *  (Slice 2). All occurrences of the same series share this id. */
+  series_id?: string | null;
 }
 
 export interface CleanerStats {
@@ -145,6 +148,7 @@ export function useCleanerAppointments() {
           status,
           completed_at,
           cancelled_at,
+          series_id,
           job_progress,
           photos_skipped,
           total_price,
@@ -1052,6 +1056,91 @@ export function useRespondToOffer() {
   });
 
   return { accept, decline };
+}
+
+export interface SeriesRespondResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+/**
+ * Accept or decline EVERY occurrence of a recurring offer in one call, via the
+ * bulk route POST /api/appointments/confirm-series. The route is keyed by
+ * seriesId and acts on the cleaner's still-`awaiting` occurrences server-side, so
+ * it never re-processes a date already actioned via the single confirm route.
+ * Decline applies one shared reason and routes each date away independently.
+ */
+export function useRespondToSeries() {
+  const { user, currentOrganizationId } = useAuth();
+  const { showToast } = useToast();
+  const qc = useQueryClient();
+  const userId = user?.id;
+
+  async function postSeries(body: Record<string, unknown>): Promise<SeriesRespondResult> {
+    const token = await getAccessToken();
+    const res = await fetch('/api/appointments/confirm-series', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ organizationId: currentOrganizationId, ...body }),
+    });
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (!res.ok || !(data as { success?: boolean }).success) {
+      throw new Error((data as { error?: string }).error || 'Could not update the series');
+    }
+    const d = data as { total?: number; succeeded?: number; failed?: number };
+    return { total: d.total ?? 0, succeeded: d.succeeded ?? 0, failed: d.failed ?? 0 };
+  }
+
+  function invalidate() {
+    if (!userId) return;
+    qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
+    qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+  }
+
+  const acceptAllM = useMutation({
+    mutationFn: (seriesId: string) => postSeries({ seriesId, action: 'accept' }),
+    onSuccess: (r) => {
+      invalidate();
+      if (r.total === 0) {
+        showToast('These cleanings were already handled.', { variant: 'info' });
+      } else if (r.failed === 0) {
+        showToast(`Accepted ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'success' });
+      } else if (r.succeeded === 0) {
+        showToast('Could not accept these cleanings. Please try again.', { variant: 'error' });
+      } else {
+        showToast(`Accepted ${r.succeeded} of ${r.total}. ${r.failed} could not be accepted.`, { variant: 'info' });
+      }
+    },
+    onError: (e: Error) => showToast(e.message || 'Could not accept the series', { variant: 'error' }),
+  });
+
+  const declineAllM = useMutation({
+    mutationFn: (v: { seriesId: string; reason: DeclineReason; other?: string }) =>
+      postSeries({ seriesId: v.seriesId, action: 'decline', declineReason: v.reason, declineReasonOther: v.other }),
+    onSuccess: (r) => {
+      invalidate();
+      if (r.total === 0) {
+        showToast('These cleanings were already handled.', { variant: 'info' });
+      } else if (r.failed === 0) {
+        showToast(`Declined ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'info' });
+      } else {
+        showToast(`Declined ${r.succeeded} of ${r.total}.`, { variant: 'info' });
+      }
+    },
+    onError: (e: Error) => showToast(e.message || 'Could not decline the series', { variant: 'error' }),
+  });
+
+  return {
+    acceptAll: (seriesId: string) => acceptAllM.mutateAsync(seriesId),
+    declineAll: (seriesId: string, reason: DeclineReason, other?: string) =>
+      declineAllM.mutateAsync({ seriesId, reason, other }),
+    accepting: acceptAllM.isPending,
+    declining: declineAllM.isPending,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

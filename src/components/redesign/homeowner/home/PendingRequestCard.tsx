@@ -17,29 +17,31 @@ export function PendingRequestCard({
   cancelling: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const slots = request.requested_slots.length;
+  const location = request.property?.address ?? request.property?.name ?? 'Your home';
   return (
     <div className="rounded-card border border-border bg-card p-4 shadow-soft-sm">
-      <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-sm font-semibold">
-          {request.service_type?.name ?? 'Cleaning'} request
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">
+            {request.service_type?.name ?? 'Cleaning'} request
+          </p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {location} · {slots} preferred {slots === 1 ? 'time' : 'times'}
+          </p>
+        </div>
         <Badge variant="caution">Awaiting</Badge>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {request.property?.address ?? request.property?.name ?? 'Your home'}
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {request.requested_slots.length} preferred{' '}
-        {request.requested_slots.length === 1 ? 'time' : 'times'} sent
-      </p>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mt-2 min-h-[44px] text-critical-700 hover:text-critical-700"
-        onClick={() => setOpen(true)}
-      >
-        Cancel request
-      </Button>
+      <div className="mt-2 flex justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="min-h-[44px] text-critical-700 hover:text-critical-700"
+          onClick={() => setOpen(true)}
+        >
+          Cancel request
+        </Button>
+      </div>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}

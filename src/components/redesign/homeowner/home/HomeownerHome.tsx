@@ -5,7 +5,9 @@ import { CalendarPlus } from 'lucide-react';
 import { useHomeownerAppointments } from '@/hooks/useHomeownerData';
 import { useHomeownerRequests } from '@/hooks/useHomeownerRequests';
 import { pickHeroAppointment } from './home-presenters';
+import { deriveHomeownerSeries } from './derive-homeowner-series';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
+import { HomeownerRepeatingCard } from './HomeownerRepeatingCard';
 import { PendingRequestCard } from './PendingRequestCard';
 import { useOpenCleaning } from '../cleanings/useOpenCleaning';
 import { useOpenBooking } from '../booking/useOpenBooking';
@@ -22,7 +24,9 @@ export function HomeownerHome() {
   const { requests, cancelRequest, cancelling } = useHomeownerRequests();
   const openCleaning = useOpenCleaning();
   const openBooking = useOpenBooking();
-  const hero = useMemo(() => pickHeroAppointment(appointments, todayStr()), [appointments]);
+  const today = todayStr();
+  const hero = useMemo(() => pickHeroAppointment(appointments, today), [appointments, today]);
+  const seriesGroups = useMemo(() => deriveHomeownerSeries(appointments, today), [appointments, today]);
 
   return (
     <div className="flex flex-col gap-4 pb-8">
@@ -40,6 +44,17 @@ export function HomeownerHome() {
         <CalendarPlus className="size-4" aria-hidden />
         Request a cleaning
       </button>
+
+      {seriesGroups.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Repeating cleanings
+          </h2>
+          {seriesGroups.map((s) => (
+            <HomeownerRepeatingCard key={s.seriesId} series={s} onOpenCleaning={openCleaning} />
+          ))}
+        </section>
+      )}
 
       {requests.length > 0 && (
         <section className="flex flex-col gap-2">

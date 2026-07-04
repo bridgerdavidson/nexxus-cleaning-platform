@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { AlertTriangle, Building2, ChevronRight, Clock, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -10,6 +10,8 @@ import type { TodayData } from "./today-types";
 import { formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
 import { JobRow } from "../shared/JobRow";
 import { OfferActionsBar } from "../shared/OfferActionsBar";
+import { deriveSeriesOffers } from "./deriveSeriesOffers";
+import { SeriesOfferCard } from "./SeriesOfferCard";
 
 function SectionHeader({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
   return (
@@ -26,6 +28,8 @@ export function CleanerTodayView({
   onContinueActive,
   onAcceptOffer,
   onDeclineOffer,
+  onAcceptSeries,
+  onDeclineSeries,
   onOpenJob,
   onSeeTomorrow,
   todayStr,
@@ -35,10 +39,14 @@ export function CleanerTodayView({
   onContinueActive: () => void;
   onAcceptOffer: (id: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
+  onAcceptSeries: (seriesId: string) => Promise<unknown> | void;
+  onDeclineSeries: (seriesId: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onOpenJob: (id: string) => void;
   onSeeTomorrow: () => void;
   todayStr: string;
 }) {
+  const grouped = useMemo(() => deriveSeriesOffers(data.offers), [data.offers]);
+  const offerCount = grouped.singles.length + grouped.series.length;
   if (loading) {
     return (
       <div className="space-y-4 pt-2">
@@ -102,18 +110,28 @@ export function CleanerTodayView({
         </section>
       )}
 
-      {data.offers.length > 0 && (
+      {offerCount > 0 && (
         <section>
           <SectionHeader
             title="Needs your response"
             trailing={
               <span className="rounded-pill bg-brand-50 px-2 py-0.5 text-[11px] font-extrabold text-brand-700">
-                {data.offers.length}
+                {offerCount}
               </span>
             }
           />
           <div className="space-y-3">
-            {data.offers.map((o) => {
+            {grouped.series.map((s) => (
+              <SeriesOfferCard
+                key={s.seriesId}
+                series={s}
+                onAcceptAll={onAcceptSeries}
+                onDeclineAll={onDeclineSeries}
+                onAcceptOne={(id, slot) => onAcceptOffer(id, slot)}
+                onDeclineOne={(id, reason, other) => onDeclineOffer(id, reason, other)}
+              />
+            ))}
+            {grouped.singles.map((o) => {
               const t = formatTimeParts(o.scheduled_time);
               const respondBy = formatRespondBy(o.response_deadline);
               return (
