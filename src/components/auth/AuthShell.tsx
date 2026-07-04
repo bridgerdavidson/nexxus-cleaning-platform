@@ -1,34 +1,49 @@
-import React from "react";
+import React from 'react';
+import { Logo } from '@/components/ui/logo';
 
 interface AuthShellProps {
   children: React.ReactNode;
-  /** Optional pill text under the wordmark (e.g. "Team Invitation", "Reset Password"). */
-  badge?: string;
+  panelTitle?: string;
+  panelSubtitle?: string;
 }
 
 /**
- * Shared full-page chrome for auth flows (accept-invite, forgot-password, reset-password).
- * Renders the Nexxus wordmark + optional badge pill, wraps children in a glass card.
+ * Shared auth chrome (login / forgot / reset / accept-invite). Split-screen on
+ * desktop (blue brand panel + form card); on mobile the panel is hidden and the
+ * black lockup sits above the card. Wrapped in `.redesign font-jakarta` so the
+ * brand tokens + Plus Jakarta Sans apply outside the (redesign) route group.
+ * Light mode only (no ThemeProvider here).
  */
-export function AuthShell({ children, badge }: AuthShellProps) {
+export function AuthShell({
+  children,
+  panelTitle = 'Cleaning, handled.',
+  panelSubtitle = 'Booked, tracked, and paid in one place.',
+}: AuthShellProps) {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gray-100 flex items-center justify-center px-4 py-12">
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-primary-600">
-            Nexxus
-          </h1>
-          {badge && (
-            <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-white/80 px-3 py-1 text-xs font-semibold text-primary-700 shadow-sm">
-              {badge}
-            </div>
-          )}
+    <div className="redesign font-jakarta min-h-screen bg-background text-foreground md:grid md:grid-cols-[minmax(0,44%)_minmax(0,56%)]">
+      <aside className="relative hidden overflow-hidden bg-brand-600 p-10 text-white md:flex md:flex-col md:justify-between">
+        <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full border border-white/15" aria-hidden />
+        <div className="pointer-events-none absolute -left-16 bottom-24 size-44 rounded-full border border-white/15" aria-hidden />
+        {/* Wrapped so the image is not a direct flex child (align-items would
+            stretch it to the full column width and break its aspect ratio). */}
+        <div>
+          <Logo variant="full" onDark className="h-9 w-auto" priority />
         </div>
+        <div>
+          <h2 className="text-3xl font-extrabold tracking-tight">{panelTitle}</h2>
+          <p className="mt-2 text-lg font-medium text-white/90">{panelSubtitle}</p>
+        </div>
+        <p className="text-sm text-white/80">Cleaning Solutions</p>
+      </aside>
 
-        <div className="rounded-2xl border border-white/80 bg-white/80 px-8 py-8 shadow-sm ring-1 ring-primary-100/60 backdrop-blur">
+      <main className="flex min-h-screen flex-col items-center justify-center px-5 py-10">
+        <div className="mb-7 md:hidden">
+          <Logo variant="full" className="h-9 w-auto" priority />
+        </div>
+        <div className="w-full max-w-sm rounded-card border border-border bg-card p-6 shadow-soft-lg sm:max-w-md sm:p-7">
           {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
