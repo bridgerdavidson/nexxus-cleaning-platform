@@ -14,6 +14,7 @@ import {
 import { CleanersTable } from "./CleanersTable";
 import { CleanersCardList } from "./CleanersCardList";
 import { CleanersBulkBar } from "./CleanersBulkBar";
+import { ErrorState } from "@/components/ui/error-state";
 import { InviteStatusBadge } from "./cleaners-presenters";
 import { PeopleToolbar } from "./PeopleToolbar";
 import { CLEANER_SORTS } from "./cleaners-types";
@@ -112,6 +113,8 @@ export type OperatorCleanersViewProps = {
   onSegmentChange: (v: PeopleSegment) => void;
   showSegmentTabs: boolean;
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   rows: CleanerRowVM[];
   pendingInvites: PendingInviteRowVM[];
   totalActiveCount: number;
@@ -144,6 +147,8 @@ export function OperatorCleanersView({
   onSegmentChange,
   showSegmentTabs,
   loading,
+  error,
+  onRetry,
   rows,
   pendingInvites,
   totalActiveCount,
@@ -228,7 +233,9 @@ export function OperatorCleanersView({
         onInviteAction={onInviteAction}
       />
 
-      {loading ? (
+      {error ? (
+        <ErrorState title="Couldn't load cleaners" onRetry={onRetry} />
+      ) : loading ? (
         <CleanersSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState

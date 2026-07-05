@@ -130,7 +130,7 @@ export function OperatorStaffData({
   showSegmentTabs: boolean;
 }) {
   const { user, currentOrganizationId, accessToken } = useAuth();
-  const { staff, loading, refetch } = useAdminStaff();
+  const { staff, loading, error, refetch } = useAdminStaff();
   const { invites, resend, refetch: refetchInvites } = useInvites(
     currentOrganizationId,
     accessToken,
@@ -270,6 +270,8 @@ export function OperatorStaffData({
         onSegmentChange={onSegmentChange}
         showSegmentTabs={showSegmentTabs}
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         rows={rows}
         pendingInvites={pendingInvites}
         totalCount={staff.length}

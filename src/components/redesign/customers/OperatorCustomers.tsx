@@ -213,7 +213,7 @@ function OperatorCustomersData({
   canEdit: boolean;
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
-  const { customers, loading, refetch, updateCustomerInState } = useAdminCustomers();
+  const { customers, loading, error, refetch, updateCustomerInState } = useAdminCustomers();
   const { paramId: customerParam, setParam: setCustomerParam } = useDetailParam("customer");
 
   const [search, setSearch] = useState("");
@@ -425,6 +425,8 @@ function OperatorCustomersData({
     <>
       <OperatorCustomersView
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         rows={rows}
         totalCount={customers.length}
         canViewPayments={canViewPayments}

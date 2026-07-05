@@ -16,6 +16,7 @@ import {
 import { BookingsTable } from "./BookingsTable";
 import { BookingsCardList } from "./BookingsCardList";
 import { BookingsBulkBar } from "./BookingsBulkBar";
+import { ErrorState } from "@/components/ui/error-state";
 import { BOOKING_SEGMENTS } from "./bookings-types";
 import type {
   BookingRowAction,
@@ -55,6 +56,8 @@ function BookingsSkeleton() {
 
 export type OperatorBookingsViewProps = {
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   rows: BookingRowVM[];
   counts: Record<BookingSegment, number>;
   totalCount: number;
@@ -86,6 +89,8 @@ export type OperatorBookingsViewProps = {
 
 export function OperatorBookingsView({
   loading,
+  error,
+  onRetry,
   rows,
   counts,
   totalCount,
@@ -180,7 +185,9 @@ export function OperatorBookingsView({
         </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <ErrorState title="Couldn't load bookings" onRetry={onRetry} />
+      ) : loading ? (
         <BookingsSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState

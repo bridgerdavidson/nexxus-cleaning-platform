@@ -187,7 +187,7 @@ export function OperatorCleanersData({
   showSegmentTabs: boolean;
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
-  const { cleaners, loading, refetch } = useAdminCleanerScorecards();
+  const { cleaners, loading, error, refetch } = useAdminCleanerScorecards();
   const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
   const { invites, resend, refetch: refetchInvites } = useInvites(
     currentOrganizationId,
@@ -466,6 +466,8 @@ export function OperatorCleanersData({
         onSegmentChange={onSegmentChange}
         showSegmentTabs={showSegmentTabs}
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         rows={rows}
         pendingInvites={pendingInvites}
         totalActiveCount={totalActiveCount}
