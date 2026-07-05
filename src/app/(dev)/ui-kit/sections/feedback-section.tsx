@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
 import { Section, Specimen } from './section'
 
 export function FeedbackSection() {
@@ -60,6 +61,11 @@ export function FeedbackSection() {
           description="Once a homeowner schedules a cleaning, it will appear here."
           action={<Button>New booking</Button>}
         />
+      </Specimen>
+
+      {/* ErrorState */}
+      <Specimen label="Error State" className="block">
+        <ErrorState title="Couldn't load payments" description="Something went wrong loading this. Please try again." onRetry={() => {}} />
       </Specimen>
     </Section>
   )

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -129,7 +129,6 @@ export function OperatorStaffData({
   onSegmentChange: (v: PeopleSegment) => void;
   showSegmentTabs: boolean;
 }) {
-  const { showToast } = useToast();
   const { user, currentOrganizationId, accessToken } = useAuth();
   const { staff, loading, refetch } = useAdminStaff();
   const { invites, resend, refetch: refetchInvites } = useInvites(
@@ -184,16 +183,16 @@ export function OperatorStaffData({
         const r = await updateManagerPermissions(detailId, currentOrganizationId, permissions);
         if (r.success) {
           await refetch();
-          showToast("Permissions updated", { variant: "success" });
+          toast.success("Permissions updated");
           return true;
         }
-        showToast(r.error || "Could not update permissions", { variant: "error" });
+        toast.error(r.error || "Could not update permissions");
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [detailId, currentOrganizationId, refetch, showToast],
+    [detailId, currentOrganizationId, refetch],
   );
 
   const handleInvite = useCallback(
@@ -204,19 +203,16 @@ export function OperatorStaffData({
         const r = await inviteTeamMember({ email, role, organizationId: currentOrganizationId, accessToken });
         if (r.success) {
           await refetchInvites();
-          showToast("Invite sent", {
-            variant: "success",
-            description: `${email} will appear here once they accept.`,
-          });
+          toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        showToast(r.error || "Could not send the invite", { variant: "error" });
+        toast.error(r.error || "Could not send the invite");
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, refetchInvites, showToast],
+    [currentOrganizationId, accessToken, refetchInvites],
   );
 
   const handleInviteAction = useCallback(
@@ -228,21 +224,17 @@ export function OperatorStaffData({
           const inv = invites.find((i) => i.id === inviteId);
           if (!inv) return;
           const r = await resend(inv);
-          showToast(r.success ? "Invite resent" : r.error || "Could not resend the invite", {
-            variant: r.success ? "success" : "error",
-          });
+          if (r.success) { toast.success("Invite resent"); } else { toast.error(r.error || "Could not resend the invite"); }
         } else if (action === "cancel") {
           const r = await cancelInvite(inviteId, currentOrganizationId, accessToken);
           await refetchInvites();
-          showToast(r.success ? "Invite canceled" : r.error || "Could not cancel the invite", {
-            variant: r.success ? "success" : "error",
-          });
+          if (r.success) { toast.success("Invite canceled"); } else { toast.error(r.error || "Could not cancel the invite"); }
         }
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, invites, resend, refetchInvites, showToast],
+    [currentOrganizationId, accessToken, invites, resend, refetchInvites],
   );
 
   const handleRowAction = useCallback(
@@ -260,16 +252,16 @@ export function OperatorStaffData({
       const r = await deleteTeamMember(confirmId, currentOrganizationId);
       await refetch();
       if (r.success) {
-        showToast("Removed from team", { variant: "success" });
+        toast.success("Removed from team");
         if (detailId === confirmId) closeDetail();
       } else {
-        showToast(r.error || "Could not remove this member", { variant: "error" });
+        toast.error(r.error || "Could not remove this member");
       }
     } finally {
       setBusy(false);
       setConfirmId(null);
     }
-  }, [confirmId, currentOrganizationId, refetch, showToast, detailId, closeDetail]);
+  }, [confirmId, currentOrganizationId, refetch, detailId, closeDetail]);
 
   return (
     <>
