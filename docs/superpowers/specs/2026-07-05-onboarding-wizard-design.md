@@ -100,8 +100,8 @@ Operator (org-scoped). Required count Y = 4; business hours/policy is an extra o
 | Connect payments | Required | `organizations.stripe_connect_charges_enabled === true` | Settings `?section=payments` |
 | Add your services & pricing | Required | `service_types` count for org > 0 | Services screen |
 | Set cleaner pay | Required | `organizations.payout_configured_at` not null (new marker) | Settings `?section=payout` |
-| Invite your cleaners | Required | ≥1 `organization_members` role `cleaner` **or** ≥1 outstanding cleaner invite | Cleaners screen (invite) |
-| Business hours & cancellation policy | Optional | best-effort (customized hours/policy row) or omit done-state | Settings `?section=business-hours` |
+| Invite your cleaners | Required | **≥1 outstanding cleaner invite (sent)** or ≥1 `organization_members` role `cleaner`. Sending the invite completes the step; acceptance is not required. | Cleaners screen (invite) |
+| Business hours & cancellation policy | Optional | **Shows a done-state once configured**: derived from a customized business-hours row where distinguishable, otherwise an `organizations.hours_policy_configured_at` marker stamped when that section saves. | Settings `?section=business-hours` |
 
 Cleaner (per-user). Required count Y = 1.
 
@@ -115,10 +115,11 @@ Homeowner (per-user). Required count Y = 2.
 | Step | Req? | Completion signal | Routes to |
 |---|---|---|---|
 | Add your home | Required | `properties` count for the homeowner > 0 | Account -> Properties (add) |
-| Add a payment method | Required | ≥1 saved card / default payment method for the customer | Account -> Payment methods |
+| Add a payment method | Required | **≥1 saved card / default payment method** for the homeowner's customer | Account -> Payment methods |
 
-Exact column/param names for `payout_configured_at`, the saved-card source, and each route's query
-params are confirmed during plan-writing against current code; the signals above are the contract.
+Exact column/param names for `payout_configured_at`, `hours_policy_configured_at`, the saved-card
+source, and each route's query params are confirmed during plan-writing against current code; the
+signals above are the contract.
 
 ## Surface 3 — Empty-state nudges
 
@@ -146,9 +147,12 @@ New, additive columns and one marker. All nullable; no backfill required.
 - `organizations.payout_configured_at timestamptz` — set when the owner saves the payout-settings
   section (the "Set cleaner pay" completion marker; a default percent can't be distinguished from an
   intentional one, so this step needs an explicit signal).
+- `organizations.hours_policy_configured_at timestamptz` — the "business hours & cancellation policy"
+  done-state marker, stamped when that section saves. Only add this column if the plan confirms the
+  done-state cannot be derived from existing business-hours data; prefer derivation.
 
-One migration adds these. `payout_configured_at` is stamped by the existing payout-settings PATCH
-route (no new write path for it).
+One migration adds these. `payout_configured_at` (and `hours_policy_configured_at`, if used) are
+stamped by the existing settings PATCH routes (no new write path for them).
 
 ## Architecture and components
 
@@ -216,10 +220,16 @@ phase for design-system conformance.
 - **Slice 3 — Empty-state unification:** audit the redesign screens and fill onboarding-aware empty
   states from the `EmptyState` primitive.
 
-## Open questions / to confirm during planning
+## Resolved in review (2026-07-05)
 
-- Exact column for the saved-card completion signal (homeowner "Add a payment method").
-- Whether "Invite your cleaners" completes on invite-sent or only on cleaner-accepted (proposed:
-  either an accepted cleaner member or an outstanding cleaner invite counts).
-- Whether the optional "Business hours & cancellation policy" step shows a derived done-state or is a
-  pure nudge with no completion check.
+- **Homeowner "Add a payment method"** completes when the homeowner has ≥1 saved card / default
+  payment method.
+- **"Invite your cleaners"** completes on **invite sent** (an outstanding cleaner invite is enough;
+  cleaner acceptance is not required).
+- **"Business hours & cancellation policy"** shows a **done-state** once configured (not a pure nudge).
+
+## To confirm during planning (implementation detail only)
+
+- Exact source/column backing the saved-card signal (homeowner payment method).
+- Whether the business-hours done-state is derivable from existing data or needs the
+  `hours_policy_configured_at` marker (prefer derivation).
