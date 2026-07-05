@@ -108,14 +108,16 @@ Cleaner (per-user). Required count Y = 1.
 | Step | Req? | Completion signal | Routes to |
 |---|---|---|---|
 | Connect payouts | Required | `cleaner_profiles.stripe_connect_onboarding_complete === true` | Cleaner Earnings (Connect embed) |
-| Complete your profile | Optional | `avatar_url` set (and/or short bio) | Cleaner Profile |
+| Complete your profile | Optional | `user_profiles.avatar_url` set (photo). Bio is not editable in the redesign cleaner UI, so avatar is the signal. | Cleaner Profile |
 
 Homeowner (per-user). Required count Y = 2.
 
 | Step | Req? | Completion signal | Routes to |
 |---|---|---|---|
 | Add your home | Required | `properties` count for the homeowner > 0 | Account -> Properties (add) |
-| Add a payment method | Required | **≥1 saved card / default payment method** for the homeowner's customer | Account -> Payment methods |
+| Add a payment method | Required (when card UI enabled) | **≥1 saved card / default payment method** for the homeowner's customer | Account -> Payment methods |
+
+The "Add a payment method" step appears only when `stripeNewChargeFlowUiEnabled()` is on, because the add-card UI itself lives behind that flag. With the flag off, the homeowner checklist has one required step (Add your home); a step must never point to a destination that does not exist.
 
 Exact column/param names for `payout_configured_at`, `hours_policy_configured_at`, the saved-card
 source, and each route's query params are confirmed during plan-writing against current code; the

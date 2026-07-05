@@ -500,6 +500,7 @@ git commit -m "feat(onboarding): adaptive welcome copy"
 **Files:**
 - Create: `src/lib/onboarding/onboardingFlags.ts`
 - Create: `src/hooks/useOnboardingFlags.ts`
+- Create: `src/lib/onboarding/useJustCompleted.ts`
 - Modify: `src/lib/queryKeys.ts`
 
 **Interfaces:**
@@ -601,16 +602,40 @@ export function useOnboardingFlags() {
 }
 ```
 
+- [ ] **Step 3b: Write `useJustCompleted`**
+
+Powers the transient "You're all set" state without a DB flag. It returns true only after `complete` transitions false to true within this mount, so a user who lands already-complete (an existing/already-set-up user) never sees the success state, and it clears on the next load.
+
+```ts
+// src/lib/onboarding/useJustCompleted.ts
+'use client';
+import { useEffect, useRef, useState } from 'react';
+
+export function useJustCompleted(complete: boolean): boolean {
+  const wasIncomplete = useRef(false);
+  const [justCompleted, setJustCompleted] = useState(false);
+  useEffect(() => {
+    if (!complete) {
+      wasIncomplete.current = true;
+      setJustCompleted(false);
+    } else if (wasIncomplete.current) {
+      setJustCompleted(true);
+    }
+  }, [complete]);
+  return justCompleted;
+}
+```
+
 - [ ] **Step 4: Type-check + lint**
 
 Run: `npx tsc --noEmit` then `npm run lint`
-Expected: no new errors. (`useAuth()` exposes `user.id`; confirm the property in `src/hooks/useAuth.ts` / AuthContext — it is the auth user id.)
+Expected: no new errors. (`useAuth()` exposes `user.id`; confirmed in AuthContext.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/onboarding/onboardingFlags.ts src/hooks/useOnboardingFlags.ts src/lib/queryKeys.ts
-git commit -m "feat(onboarding): flag write helpers + useOnboardingFlags + query keys"
+git add src/lib/onboarding/onboardingFlags.ts src/hooks/useOnboardingFlags.ts src/lib/onboarding/useJustCompleted.ts src/lib/queryKeys.ts
+git commit -m "feat(onboarding): flag write helpers + useOnboardingFlags + useJustCompleted + keys"
 ```
 
 ---
@@ -622,35 +647,76 @@ git commit -m "feat(onboarding): flag write helpers + useOnboardingFlags + query
 - Test: `src/app/api/organizations/[orgId]/onboarding/route.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `requireOrgAuth` and the admin client, exactly as `src/app/api/organizations/[orgId]/business-hours/route.ts` does (open that file and mirror its imports, auth guard, param handling, and response shape).
+- Consumes: `requireOrgAuth` from `@/lib/auth/requireOrgAuth` and `supabaseAdmin` from `@/lib/supabase-admin`, exactly as `src/app/api/organizations/[orgId]/business-hours/route.ts` does. The real signature is `requireOrgAuth(request, orgId, supabaseAdmin, { allowedRoles })` and it returns `{ ok: boolean; response?: NextResponse }`; on failure `return auth.response`.
 - Produces: `PATCH` accepting `{ dismiss_setup_checklist: true }`, gated `['owner','admin']`, setting `organizations.setup_checklist_dismissed_at = now()`. Returns `{ success: true }`.
 
 - [ ] **Step 1: Write the failing integration test**
 
-Mirror an existing org-route integration test (e.g. `src/app/api/organizations/[orgId]/business-hours/route.integration.test.ts`) for helper usage (`withTestOrg`, auth token creation, `callRoute`/direct `PATCH` import). The test asserts:
+Test helpers live in `tests/helpers/*` (relative depth `../../../../../../tests/helpers/*` from this route). Full test:
 
 ```ts
 // src/app/api/organizations/[orgId]/onboarding/route.integration.test.ts
-// (mirror the setup/imports of the business-hours integration test)
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type { NextRequest } from 'next/server';
 import { PATCH } from './route';
-// ...withTestOrg + owner token helpers as in sibling tests...
+import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
+import { withTestOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
-describe('PATCH /api/organizations/[orgId]/onboarding', () => {
-  it('stamps setup_checklist_dismissed_at for an owner', async () => {
-    // arrange: withTestOrg -> { orgId, ownerToken, supabaseAdmin }
-    // act: call PATCH with { dismiss_setup_checklist: true } and Authorization: Bearer ownerToken
-    // assert: res.status 200, body.success true
-    // assert: organizations row now has setup_checklist_dismissed_at not null
+const handlerFor = (orgId: string) => (req: NextRequest) =>
+  PATCH(req, { params: Promise.resolve({ orgId }) });
+
+describe('PATCH /api/organizations/:orgId/onboarding', () => {
+  let org: TestOrgFixture;
+
+  beforeEach(async () => { org = await withTestOrg(); });
+  afterEach(async () => { await org.cleanup(); });
+
+  it('returns 401 with no Authorization header', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      body: { dismiss_setup_checklist: true },
+    });
+    expect(status).toBe(401);
   });
 
-  it('rejects a non-member with 401/403', async () => {
-    // act with a stranger token -> expect 401 or 403
+  it('rejects a cleaner (insufficient role)', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { dismiss_setup_checklist: true },
+    });
+    expect(status).toBe(403);
+  });
+
+  it('admin dismissal stamps setup_checklist_dismissed_at', async () => {
+    const { status, body } = await callRoute<{ success: boolean }>(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { dismiss_setup_checklist: true },
+    });
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('organizations')
+      .select('setup_checklist_dismissed_at')
+      .eq('id', org.organizationId)
+      .single();
+    expect((data as { setup_checklist_dismissed_at: string | null }).setup_checklist_dismissed_at).not.toBeNull();
+  });
+
+  it('returns 400 without dismiss_setup_checklist true', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      body: {},
+    });
+    expect(status).toBe(400);
   });
 });
 ```
-
-Fill the arrange/act/assert bodies by copying the exact helper calls from the business-hours integration test.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -659,37 +725,48 @@ Expected: FAIL (route module does not exist).
 
 - [ ] **Step 3: Write the route**
 
-Open `src/app/api/organizations/[orgId]/business-hours/route.ts` and mirror its structure. Body:
+Mirrors `business-hours/route.ts` verbatim for imports + auth. Body:
 
 ```ts
 // src/app/api/organizations/[orgId]/onboarding/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireOrgAuth } from '@/lib/requireOrgAuth'; // use the SAME import the business-hours route uses
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 
-export const runtime = 'nodejs';
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ orgId: string }> },
+) {
+  try {
+    const { orgId } = await params;
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ orgId: string }> }) {
-  const { orgId } = await ctx.params;
-  const auth = await requireOrgAuth(req, orgId, ['owner', 'admin']); // match the sibling route's call signature exactly
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const auth = await requireOrgAuth(request, orgId, supabaseAdmin, {
+      allowedRoles: ['owner', 'admin'],
+    });
+    if (!auth.ok) return auth.response;
 
-  const body = await req.json().catch(() => ({}));
-  if (body?.dismiss_setup_checklist !== true) {
-    return NextResponse.json({ error: 'dismiss_setup_checklist must be true' }, { status: 400 });
+    const body = (await request.json().catch(() => ({}))) as { dismiss_setup_checklist?: boolean };
+    if (body.dismiss_setup_checklist !== true) {
+      return NextResponse.json({ error: 'dismiss_setup_checklist must be true' }, { status: 400 });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('organizations')
+      .update({ setup_checklist_dismissed_at: new Date().toISOString() })
+      .eq('id', orgId);
+    if (error) {
+      return NextResponse.json({ error: 'Failed to dismiss checklist', details: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 },
+    );
   }
-
-  const { error } = await supabaseAdmin
-    .from('organizations')
-    .update({ setup_checklist_dismissed_at: new Date().toISOString() })
-    .eq('id', orgId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ success: true });
 }
 ```
-
-Adjust the `requireOrgAuth` import path and call shape to match the business-hours route verbatim (it may return a differently named result; copy its exact pattern).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -709,20 +786,58 @@ git commit -m "feat(onboarding): org checklist dismissal route"
 
 **Files:**
 - Modify: `src/app/api/organizations/[orgId]/cleaner-payouts/route.ts`
-- Modify: `src/app/api/organizations/[orgId]/cleaner-payouts/route.integration.test.ts`
+- Create: `src/app/api/organizations/[orgId]/cleaner-payouts/route.integration.test.ts` (the route currently has NO test).
 
 **Interfaces:**
 - Consumes: existing PATCH route body `{ default_cleaner_payout_percent: number }`.
-- Produces: on successful update, `organizations.payout_configured_at` is set (only if currently null, to preserve the first-configured moment; a plain set is also acceptable since the signal is null-vs-not).
+- Produces: on successful update, `organizations.payout_configured_at` is set. First open `cleaner-payouts/route.ts` and confirm its `allowedRoles` (owner-only vs owner/admin); use an allowed-role token in the test (the example below uses `org.admin.accessToken`; switch to the owner token if the route is owner-only).
 
-- [ ] **Step 1: Add a failing assertion to the existing integration test**
-
-In `cleaner-payouts/route.integration.test.ts`, add:
+- [ ] **Step 1: Write the failing integration test (new file)**
 
 ```ts
-it('stamps payout_configured_at on save', async () => {
-  // arrange org (payout_configured_at null), call PATCH with a valid percent
-  // assert: organizations.payout_configured_at is now NOT null
+// src/app/api/organizations/[orgId]/cleaner-payouts/route.integration.test.ts
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type { NextRequest } from 'next/server';
+import { PATCH } from './route';
+import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
+import { withTestOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
+
+const handlerFor = (orgId: string) => (req: NextRequest) =>
+  PATCH(req, { params: Promise.resolve({ orgId }) });
+
+describe('PATCH /api/organizations/:orgId/cleaner-payouts', () => {
+  let org: TestOrgFixture;
+  beforeEach(async () => { org = await withTestOrg(); });
+  afterEach(async () => { await org.cleanup(); });
+
+  it('stamps payout_configured_at on save', async () => {
+    const { status } = await callRoute<{ success: boolean }>(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { default_cleaner_payout_percent: 60 },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('organizations')
+      .select('default_cleaner_payout_percent, payout_configured_at')
+      .eq('id', org.organizationId)
+      .single();
+    const row = data as { default_cleaner_payout_percent: number; payout_configured_at: string | null };
+    expect(Number(row.default_cleaner_payout_percent)).toBe(60);
+    expect(row.payout_configured_at).not.toBeNull();
+  });
+
+  it('rejects a cleaner (insufficient role)', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { default_cleaner_payout_percent: 60 },
+    });
+    expect(status).toBe(403);
+  });
 });
 ```
 
@@ -760,17 +875,65 @@ git commit -m "feat(onboarding): stamp payout_configured_at on payout save"
 
 **Files:**
 - Modify: `src/app/api/organizations/[orgId]/business-hours/route.ts`
-- Modify: `src/app/api/organizations/[orgId]/business-hours/route.integration.test.ts`
+- Create: `src/app/api/organizations/[orgId]/business-hours/route.integration.test.ts` (the route currently has NO test). Route allows `['owner','admin']`.
 
 **Interfaces:**
 - Produces: on successful business-hours PATCH, `organizations.hours_policy_configured_at` is set.
 
-- [ ] **Step 1: Add a failing assertion**
+- [ ] **Step 1: Write the failing integration test (new file)**
 
 ```ts
-it('stamps hours_policy_configured_at on save', async () => {
-  // arrange org (hours_policy_configured_at null), PATCH with valid timezone + business_hours
-  // assert: organizations.hours_policy_configured_at is now NOT null
+// src/app/api/organizations/[orgId]/business-hours/route.integration.test.ts
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import type { NextRequest } from 'next/server';
+import { PATCH } from './route';
+import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
+import { withTestOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
+
+const HOURS = {
+  mon: { open: '08:00', close: '17:00', closed: false },
+  tue: { open: '08:00', close: '17:00', closed: false },
+  wed: { open: '08:00', close: '17:00', closed: false },
+  thu: { open: '08:00', close: '17:00', closed: false },
+  fri: { open: '08:00', close: '17:00', closed: false },
+  sat: { open: '09:00', close: '14:00', closed: true },
+  sun: { open: '09:00', close: '14:00', closed: true },
+};
+
+const handlerFor = (orgId: string) => (req: NextRequest) =>
+  PATCH(req, { params: Promise.resolve({ orgId }) });
+
+describe('PATCH /api/organizations/:orgId/business-hours', () => {
+  let org: TestOrgFixture;
+  beforeEach(async () => { org = await withTestOrg(); });
+  afterEach(async () => { await org.cleanup(); });
+
+  it('stamps hours_policy_configured_at on save', async () => {
+    const { status } = await callRoute<{ success: boolean }>(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { timezone: 'America/New_York', business_hours: HOURS },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('organizations')
+      .select('hours_policy_configured_at')
+      .eq('id', org.organizationId)
+      .single();
+    expect((data as { hours_policy_configured_at: string | null }).hours_policy_configured_at).not.toBeNull();
+  });
+
+  it('rejects a cleaner (insufficient role)', async () => {
+    const { status } = await callRoute(handlerFor(org.organizationId), {
+      method: 'PATCH',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: { timezone: 'America/New_York', business_hours: HOURS },
+    });
+    expect(status).toBe(403);
+  });
 });
 ```
 
@@ -806,12 +969,14 @@ git commit -m "feat(onboarding): stamp hours_policy_configured_at on hours save"
 **Files:**
 - Create: `src/components/redesign/onboarding/SetupChecklistCard.tsx`
 - Create: `src/components/redesign/onboarding/WelcomeContent.tsx`
+- Create: `src/components/redesign/onboarding/SetupCompleteCard.tsx`
 
 **Interfaces:**
 - Consumes: `ChecklistVM`/`ChecklistItem` (Task 3), `WelcomeCopy` (Task 4), primitives `Card`, `Progress`, `Button`, `buttonVariants`, `cn`.
 - Produces:
   - `function SetupChecklistCard({ title, subtitle, vm, onDismiss }: { title: string; subtitle: string; vm: ChecklistVM; onDismiss: () => void }): JSX.Element`
   - `function WelcomeContent({ copy, previewSteps, onPrimary, onSkip }: { copy: WelcomeCopy; previewSteps?: { title: string }[]; onPrimary: () => void; onSkip: () => void }): JSX.Element`
+  - `function SetupCompleteCard({ title?, description?, onDismiss }: { title?: string; description?: string; onDismiss: () => void }): JSX.Element`
 
 These are presentational only (no data). Build strictly from `src/components/ui/*` + tokens. Use lucide icons. No render harness exists, so verify via tsc/lint + Playwright visual (Task 11 mounts them live).
 
@@ -971,6 +1136,42 @@ export function WelcomeContent({
 
 Confirm `Logo` is exported from `@/components/ui/logo` with a `variant="full"` prop (it is used by `SystemStatePage.tsx`).
 
+- [ ] **Step 2b: Write `SetupCompleteCard`** (the transient "You're all set" state)
+
+```tsx
+// src/components/redesign/onboarding/SetupCompleteCard.tsx
+'use client';
+
+import { CheckCircle2 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+
+export function SetupCompleteCard({
+  title = "You're all set",
+  description = 'Your setup is complete. This hides on your next visit.',
+  onDismiss,
+}: {
+  title?: string;
+  description?: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <Card className="flex items-center gap-4 p-6">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-pill bg-positive text-white">
+        <CheckCircle2 className="h-6 w-6" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-lg font-extrabold tracking-tight text-foreground">{title}</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Button variant="outline" size="sm" className="shrink-0" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </Card>
+  );
+}
+```
+
 - [ ] **Step 3: Type-check + lint**
 
 Run: `npx tsc --noEmit` then `npm run lint`
@@ -979,8 +1180,8 @@ Expected: no new errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/components/redesign/onboarding/SetupChecklistCard.tsx src/components/redesign/onboarding/WelcomeContent.tsx
-git commit -m "feat(onboarding): SetupChecklistCard + WelcomeContent presentational"
+git add src/components/redesign/onboarding/SetupChecklistCard.tsx src/components/redesign/onboarding/WelcomeContent.tsx src/components/redesign/onboarding/SetupCompleteCard.tsx
+git commit -m "feat(onboarding): SetupChecklistCard + WelcomeContent + SetupCompleteCard"
 ```
 
 ---
@@ -1012,11 +1213,13 @@ import { getSetupSteps, type OrgModel } from '@/lib/onboarding/onboardingConfig'
 import { deriveChecklist, type ChecklistVM } from '@/lib/onboarding/deriveChecklist';
 import type { WelcomeVariant } from '@/lib/onboarding/welcomeCopy';
 import { markWelcomeSeen, dismissOrgChecklist } from '@/lib/onboarding/onboardingFlags';
+import { useJustCompleted } from '@/lib/onboarding/useJustCompleted';
 
 export interface OnboardingState {
   model: OrgModel;
   vm: ChecklistVM;
   showChecklist: boolean;
+  showSuccess: boolean;
   showWelcome: boolean;
   welcomeVariant: WelcomeVariant;
   firstName: string | null;
@@ -1080,9 +1283,11 @@ export function useOperatorOnboarding(): OnboardingState {
   };
 
   const vm = deriveChecklist(getSetupSteps('operator', model), signals);
+  const justCompleted = useJustCompleted(vm.allRequiredComplete);
 
   const loading = orgQuery.isLoading || flags.loading;
   const showChecklist = !loading && !data?.orgDismissed && !vm.allRequiredComplete;
+  const showSuccess = !loading && justCompleted && !data?.orgDismissed;
   const showWelcome = !loading && !flags.welcomeSeen;
   const welcomeVariant: WelcomeVariant = vm.allRequiredComplete ? 'reorientation' : 'setup';
 
@@ -1095,6 +1300,7 @@ export function useOperatorOnboarding(): OnboardingState {
     model,
     vm,
     showChecklist,
+    showSuccess,
     showWelcome,
     welcomeVariant,
     firstName: user?.profile?.firstName ?? null,
@@ -1158,6 +1364,7 @@ In `OperatorOverview.tsx`, call the hook and render the checklist + welcome dial
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useOperatorOnboarding } from '@/hooks/useOperatorOnboarding';
 import { SetupChecklistCard } from '@/components/redesign/onboarding/SetupChecklistCard';
+import { SetupCompleteCard } from '@/components/redesign/onboarding/SetupCompleteCard';
 import { WelcomeContent } from '@/components/redesign/onboarding/WelcomeContent';
 import { getWelcomeCopy } from '@/lib/onboarding/welcomeCopy';
 
@@ -1172,10 +1379,15 @@ const checklist = onboarding.showChecklist ? (
     vm={onboarding.vm}
     onDismiss={onboarding.onDismiss}
   />
+) : onboarding.showSuccess ? (
+  <SetupCompleteCard onDismiss={onboarding.onDismiss} />
 ) : null;
 
-// pass checklist to the View:
-// <OperatorOverviewView ... checklist={checklist} />
+// Pass the slot to the View (actual JSX, not a comment):
+<OperatorOverviewView
+  /* ...existing props unchanged... */
+  checklist={checklist}
+/>
 
 // render the welcome dialog alongside the View:
 {onboarding.showWelcome && (
@@ -1226,11 +1438,11 @@ git commit -m "feat(onboarding): operator checklist + welcome on Overview"
 - [ ] **Step 1: Write `useCleanerOnboarding`**
 
 Mirror `useOperatorOnboarding` with these differences:
-- Signals: `payouts_connected` = `useStripeConnect().connectStatus?.onboarding_complete === true`; `profile_complete` = `!!user?.profile?.avatarUrl`.
+- Signals: `payouts_connected` = `useStripeConnect().connectStatus?.onboarding_complete === true`; `profile_complete` = `!!user?.profile?.avatarUrl`. (Bio is not editable in the redesign cleaner UI, so avatar is the completion signal, matching the spec clarification. Do not fetch `cleaner_profiles.bio`.)
 - Steps: `getSetupSteps('cleaner', 'percentage_contractor')`.
-- `showChecklist = !loading && !flags.userChecklistDismissed && !vm.allRequiredComplete`.
+- `showChecklist = !loading && !flags.userChecklistDismissed && !vm.allRequiredComplete`; `showSuccess = !loading && justCompleted && !flags.userChecklistDismissed`.
 - `onDismiss = async () => { if (user?.id) { await dismissUserChecklist(user.id); invalidate(); } }`.
-- No org query needed; `loading = flags.loading || stripeConnectLoading`.
+- No org query needed; `loading = flags.loading || statusLoading`.
 
 ```ts
 // src/hooks/useCleanerOnboarding.ts
@@ -1239,6 +1451,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useStripeConnect } from '@/hooks/useStripeConnect';
 import { useOnboardingFlags } from '@/hooks/useOnboardingFlags';
+import { useJustCompleted } from '@/lib/onboarding/useJustCompleted';
 import { keys } from '@/lib/queryKeys';
 import { getSetupSteps } from '@/lib/onboarding/onboardingConfig';
 import { deriveChecklist } from '@/lib/onboarding/deriveChecklist';
@@ -1257,6 +1470,7 @@ export function useCleanerOnboarding(): OnboardingState {
     profile_complete: !!user?.profile?.avatarUrl,
   };
   const vm = deriveChecklist(getSetupSteps('cleaner', 'percentage_contractor'), signals);
+  const justCompleted = useJustCompleted(vm.allRequiredComplete);
 
   const loading = flags.loading || statusLoading;
   const invalidate = () => { if (user?.id) void qc.invalidateQueries({ queryKey: keys.onboarding.flags(user.id) }); };
@@ -1265,6 +1479,7 @@ export function useCleanerOnboarding(): OnboardingState {
     model: 'percentage_contractor',
     vm,
     showChecklist: !loading && !flags.userChecklistDismissed && !vm.allRequiredComplete,
+    showSuccess: !loading && justCompleted && !flags.userChecklistDismissed,
     showWelcome: !loading && !flags.welcomeSeen,
     welcomeVariant: (vm.allRequiredComplete ? 'reorientation' : 'setup') as WelcomeVariant,
     firstName: user?.profile?.firstName ?? null,
@@ -1283,7 +1498,7 @@ Add `checklist?: React.ReactNode` to the View props and render it before the `ne
 
 - [ ] **Step 3: Wire the `CleanerToday` container**
 
-Call `useCleanerOnboarding()`, build `<SetupChecklistCard title="Get set up" subtitle="Connect payouts so you can get paid" .../>` when `showChecklist`, pass it to the View, and render the welcome inside a `MobileTakeover` when `showWelcome`:
+Call `useCleanerOnboarding()`. Build the slot: when `showChecklist`, `<SetupChecklistCard title="Get set up" subtitle={\`${onboarding.vm.requiredRemaining} step${onboarding.vm.requiredRemaining === 1 ? '' : 's'} left to get set up\`} vm={onboarding.vm} onDismiss={onboarding.onDismiss} />`; else when `showSuccess`, `<SetupCompleteCard onDismiss={onboarding.onDismiss} />`. Pass the slot to the View, and render the welcome inside a `MobileTakeover` when `showWelcome`:
 
 ```tsx
 {onboarding.showWelcome && (
@@ -1347,6 +1562,7 @@ import { getSetupSteps } from '@/lib/onboarding/onboardingConfig';
 import { deriveChecklist } from '@/lib/onboarding/deriveChecklist';
 import type { WelcomeVariant } from '@/lib/onboarding/welcomeCopy';
 import { markWelcomeSeen, dismissUserChecklist } from '@/lib/onboarding/onboardingFlags';
+import { useJustCompleted } from '@/lib/onboarding/useJustCompleted';
 import type { OnboardingState } from '@/hooks/useOperatorOnboarding';
 
 export function useHomeownerOnboarding(): OnboardingState {
@@ -1365,6 +1581,7 @@ export function useHomeownerOnboarding(): OnboardingState {
     payment_method_added: (cards?.length ?? 0) > 0,
   };
   const vm = deriveChecklist(steps, signals);
+  const justCompleted = useJustCompleted(vm.allRequiredComplete);
 
   const loading = flags.loading || propsLoading || (cardsEnabled && cardsLoading);
   const invalidate = () => { if (user?.id) void qc.invalidateQueries({ queryKey: keys.onboarding.flags(user.id) }); };
@@ -1373,6 +1590,7 @@ export function useHomeownerOnboarding(): OnboardingState {
     model: 'percentage_contractor',
     vm,
     showChecklist: !loading && !flags.userChecklistDismissed && !vm.allRequiredComplete,
+    showSuccess: !loading && justCompleted && !flags.userChecklistDismissed,
     showWelcome: !loading && !flags.welcomeSeen,
     welcomeVariant: (vm.allRequiredComplete ? 'reorientation' : 'setup') as WelcomeVariant,
     firstName: user?.profile?.firstName ?? null,
@@ -1383,11 +1601,11 @@ export function useHomeownerOnboarding(): OnboardingState {
 }
 ```
 
-Confirm `useHomeownerProperties` returns `{ properties, loading }` and `useSavedPaymentMethods` returns `{ cards, loading }` (per recon).
+Confirm `useHomeownerProperties` returns `{ properties, loading }` and `useSavedPaymentMethods` returns `{ cards, loading }` (per recon). **Flag gating (intentional):** the `card` step is filtered out when `!stripeNewChargeFlowUiEnabled()` because the add-card UI itself lives behind that flag, so a homeowner could not complete a card step that has no destination. When the flag is off, the homeowner checklist has one required step (`home`); when on, two. This is the documented behavior (see the spec's homeowner section).
 
 - [ ] **Step 2: Wire `HomeownerHome`**
 
-In `HomeownerHome.tsx`, call `useHomeownerOnboarding()`, insert the `<SetupChecklistCard title="Get ready for your first cleaning" subtitle="A couple of quick things and you can book" .../>` as a section before the "Pending requests" section (recon: ~line 48-59), and render the welcome `MobileTakeover` when `showWelcome` (same pattern as cleaner, with `getWelcomeCopy('homeowner', ...)`).
+In `HomeownerHome.tsx`, call `useHomeownerOnboarding()`. Insert the slot as a section before the "Pending requests" section (recon: ~line 48-59): when `showChecklist`, `<SetupChecklistCard title="Get ready for your first cleaning" subtitle={\`${onboarding.vm.requiredRemaining} step${onboarding.vm.requiredRemaining === 1 ? '' : 's'} left to get set up\`} vm={onboarding.vm} onDismiss={onboarding.onDismiss} />`; else when `showSuccess`, `<SetupCompleteCard onDismiss={onboarding.onDismiss} />`. Render the welcome `MobileTakeover` when `showWelcome` (same pattern as cleaner, with `getWelcomeCopy('homeowner', ...)`).
 
 - [ ] **Step 3: Type-check + lint**
 
