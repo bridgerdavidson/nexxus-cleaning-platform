@@ -100,6 +100,7 @@ export function HomeownerPaymentMethods() {
         onAdd={() => setAddOpen(true)}
         onSetDefault={handleSetDefault}
         onRemove={(pm) => setRemoveTarget(pm)}
+        onRetry={() => refetch()}
       />
 
       <AddCardSheet open={addOpen} onOpenChange={setAddOpen} onSaved={handleAdded} />

@@ -56,7 +56,7 @@ export function useAnalyticsSummary(range: ResolvedRange) {
       return (data ?? null) as AnalyticsSummary | null;
     },
   });
-  return { summary: q.data ?? null, loading: q.isLoading };
+  return { summary: q.data ?? null, loading: q.isLoading, error: q.error?.message ?? null, refetch: q.refetch };
 }
 
 export function useAnalyticsRevenueSeries(range: ResolvedRange) {
@@ -82,7 +82,7 @@ export function useAnalyticsRevenueSeries(range: ResolvedRange) {
       );
     },
   });
-  return { series: q.data ?? [], loading: q.isLoading };
+  return { series: q.data ?? [], loading: q.isLoading, error: q.error?.message ?? null, refetch: q.refetch };
 }
 
 export function useAnalyticsServiceMix(range: ResolvedRange) {
@@ -108,7 +108,7 @@ export function useAnalyticsServiceMix(range: ResolvedRange) {
       );
     },
   });
-  return { rows: q.data ?? [], loading: q.isLoading };
+  return { rows: q.data ?? [], loading: q.isLoading, error: q.error?.message ?? null, refetch: q.refetch };
 }
 
 export function useAnalyticsLeaderboard(range: ResolvedRange) {
@@ -134,7 +134,7 @@ export function useAnalyticsLeaderboard(range: ResolvedRange) {
       );
     },
   });
-  return { rows: q.data ?? [], loading: q.isLoading };
+  return { rows: q.data ?? [], loading: q.isLoading, error: q.error?.message ?? null, refetch: q.refetch };
 }
 
 export function useAnalyticsDemand(range: ResolvedRange) {
@@ -158,7 +158,7 @@ export function useAnalyticsDemand(range: ResolvedRange) {
       );
     },
   });
-  return { cells: q.data ?? [], loading: q.isLoading };
+  return { cells: q.data ?? [], loading: q.isLoading, error: q.error?.message ?? null, refetch: q.refetch };
 }
 
 export function useAnalyticsCancellations(range: ResolvedRange) {
@@ -176,5 +176,5 @@ export function useAnalyticsCancellations(range: ResolvedRange) {
       return (data ?? null) as CancellationsData | null;
     },
   });
-  return { data: q.data ?? null, loading: q.isLoading };
+  return { data: q.data ?? null, loading: q.isLoading, error: q.error?.message ?? null, refetch: q.refetch };
 }

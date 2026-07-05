@@ -3,6 +3,7 @@ import { MotionConfig, motion } from "motion/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
+import { ErrorState } from "@/components/ui/error-state";
 import { AnalyticsRangeControl } from "./AnalyticsRangeControl";
 import { KpiRail } from "./KpiRail";
 import { RevenueComposedChart } from "./charts/RevenueComposedChart";
@@ -27,6 +28,8 @@ export type OperatorAnalyticsViewProps = {
   insightsSlot: ReactNode;
   animate: boolean;
   onExport?: () => void;
+  error?: boolean;
+  onRetry?: () => void;
 };
 
 const SECTION_MOTION = {
@@ -49,6 +52,14 @@ function Panel({ title, desc, children }: { title: string; desc?: string; childr
 }
 
 export function OperatorAnalyticsView(p: OperatorAnalyticsViewProps) {
+  if (p.error) {
+    return (
+      <div className="grid min-h-[40vh] place-items-center">
+        <ErrorState title="Couldn't load analytics" onRetry={p.onRetry} />
+      </div>
+    );
+  }
+
   return (
     <MotionConfig reducedMotion="user">
     <div className="max-w-[1700px] space-y-7">
