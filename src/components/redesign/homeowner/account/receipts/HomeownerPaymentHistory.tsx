@@ -8,7 +8,7 @@ import type { PaymentLike } from './derive-payments';
 
 /** Read-only payment history + a ?payment= receipt takeover. */
 export function HomeownerPaymentHistory() {
-  const { payments, loading } = useHomeownerPayments();
+  const { payments, loading, error, refetch } = useHomeownerPayments();
   const openPayment = useOpenPayment();
 
   return (
@@ -16,6 +16,8 @@ export function HomeownerPaymentHistory() {
       <HomeownerPaymentHistoryView
         payments={payments as PaymentLike[]}
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         onOpen={openPayment}
       />
       <PaymentReceiptHost />

@@ -16,7 +16,7 @@ export function CleanerToday() {
   const router = useRouter();
   const openJob = useOpenJob();
   const { currentOrganization } = useAuth();
-  const { appointments, loading } = useCleanerAppointments();
+  const { appointments, loading, error, refetch } = useCleanerAppointments();
   const respond = useRespondToOffer();
   const series = useRespondToSeries();
 
@@ -30,6 +30,8 @@ export function CleanerToday() {
     <CleanerTodayView
       data={data}
       loading={loading}
+      error={Boolean(error)}
+      onRetry={() => refetch()}
       onContinueActive={() => data.activeJob && openJob(data.activeJob.id)}
       onOpenJob={openJob}
       todayStr={todayStr}

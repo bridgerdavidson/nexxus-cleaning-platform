@@ -9,7 +9,7 @@ import { HomeownerServiceDetailHost } from './HomeownerServiceDetailHost';
 /** Read-only services catalog + a ?service= detail takeover. Reuses the
  *  cleaner catalog derive; active services only. */
 export function HomeownerServices() {
-  const { services, loading, maxChecklistAdderByServiceId } = useServices();
+  const { services, loading, error, refetch, maxChecklistAdderByServiceId } = useServices();
   const openService = useOpenService();
 
   const rows = services
@@ -18,7 +18,7 @@ export function HomeownerServices() {
 
   return (
     <>
-      <HomeownerServicesView rows={rows} loading={loading} onOpen={openService} />
+      <HomeownerServicesView rows={rows} loading={loading} error={Boolean(error)} onRetry={() => refetch()} onOpen={openService} />
       <HomeownerServiceDetailHost />
     </>
   );

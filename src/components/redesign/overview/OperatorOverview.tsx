@@ -57,9 +57,9 @@ function toQueueItem(a: AdminAppointment): QueueItem {
  */
 export function OperatorOverview() {
   const { user, currentOrgRole } = useAuth();
-  const { appointments, loading: aLoading } = useAdminAppointments();
-  const { stats, loading: sLoading } = useAdminStats();
-  const { stats: payStats, loading: pLoading } = usePaymentStats();
+  const { appointments, loading: aLoading, error: aError, refetch: aRefetch } = useAdminAppointments();
+  const { stats, loading: sLoading, error: sError, refetch: sRefetch } = useAdminStats();
+  const { stats: payStats, loading: pLoading, error: pError, refetch: pRefetch } = usePaymentStats();
   const { permissions } = useManagerPermissions();
 
   const now = new Date();
@@ -67,6 +67,11 @@ export function OperatorOverview() {
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
+  // Gate the payments error the same way as the loading prop below: a manager
+  // who cannot view payments must never see the dashboard error surfaced by a
+  // payments query.
+  const hasError = Boolean(aError || sError || (canViewPayments && pError));
+  const onRetry = () => { void aRefetch(); void sRefetch(); void pRefetch(); };
   const { greeting, dateLabel } = getGreeting(user?.profile?.firstName, now);
 
   const today: ScheduleItem[] = [...sections.today]
@@ -85,6 +90,8 @@ export function OperatorOverview() {
   return (
     <OperatorOverviewView
       loading={aLoading || sLoading || (canViewPayments && pLoading)}
+      error={hasError}
+      onRetry={onRetry}
       greeting={greeting}
       dateLabel={dateLabel}
       kpis={{

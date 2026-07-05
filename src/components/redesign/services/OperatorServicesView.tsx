@@ -10,6 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
+import { ErrorState } from "@/components/ui/error-state";
 import { ServicesList } from "./ServicesList";
 import { ServiceDetailPane, type ServiceDetailHandlers } from "./ServiceDetailPane";
 import { SERVICE_SORTS, SERVICE_STATUS_FILTERS } from "./services-types";
@@ -29,6 +30,8 @@ function ListSkeleton() {
 
 export type OperatorServicesViewProps = {
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   rows: ServiceRowVM[];
   totalCount: number;
   activeCount: number;
@@ -53,6 +56,8 @@ export type OperatorServicesViewProps = {
 
 export function OperatorServicesView({
   loading,
+  error,
+  onRetry,
   rows,
   totalCount,
   activeCount,
@@ -94,7 +99,9 @@ export function OperatorServicesView({
         ) : null}
       </header>
 
-      {totalCount === 0 && !loading ? (
+      {error ? (
+        <ErrorState title="Couldn't load services" onRetry={onRetry} />
+      ) : totalCount === 0 && !loading ? (
         <EmptyState
           icon={<Tag />}
           title="No services yet"

@@ -5,16 +5,19 @@ import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { JobRow } from "../shared/JobRow";
 import type { ScheduleData, ScheduleStatusFilter, ScheduleView } from "./schedule-types";
 import { scheduleStatusOptions } from "./schedule-types";
 
 export function CleanerScheduleView({
-  data, loading, isEmployee, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob, todayStr,
+  data, loading, error, onRetry, isEmployee, search, onSearchChange, view, onViewChange, statusFilter, onStatusFilterChange, onOpenJob, todayStr,
 }: {
   data: ScheduleData;
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   isEmployee: boolean;
   search: string;
   onSearchChange: (v: string) => void;
@@ -25,6 +28,9 @@ export function CleanerScheduleView({
   onOpenJob: (id: string) => void;
   todayStr: string;
 }) {
+  if (error) {
+    return <ErrorState title="Couldn't load your schedule" onRetry={onRetry} />;
+  }
   return (
     <div className="space-y-4 pt-1">
       <div className="relative">
@@ -49,7 +55,7 @@ export function CleanerScheduleView({
       {isEmployee && (
         <div className="flex items-start gap-2.5 rounded-card border border-border bg-muted/40 p-3.5 text-xs text-muted-foreground">
           <Building2 aria-hidden className="mt-0.5 size-4 shrink-0" />
-          <span>Your office assigns your jobs. You'll see your assignments here.</span>
+          <span>Your office assigns your jobs. You&apos;ll see your assignments here.</span>
         </div>
       )}
 

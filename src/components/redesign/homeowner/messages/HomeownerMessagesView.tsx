@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { homeownerStatusLabel } from '../home/home-presenters';
@@ -21,6 +22,8 @@ const TONE_TO_VARIANT = {
 export interface HomeownerMessagesViewProps {
   model: HomeownerInboxModel;
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onOpenOffice: () => void;
   onOpenOfficeThread: (conversationId: string) => void;
   onOpenJob: (appointmentId: string) => void;
@@ -183,11 +186,21 @@ function LoadingState() {
 export function HomeownerMessagesView({
   model,
   loading,
+  error,
+  onRetry,
   onOpenOffice,
   onOpenOfficeThread,
   onOpenJob,
   onNewConversation,
 }: HomeownerMessagesViewProps) {
+  if (error) {
+    return (
+      <div className="py-8">
+        <ErrorState title="Couldn't load messages" onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading) return <LoadingState />;
 
   const officeUnread = model.office.reduce((n, r) => n + r.unreadCount, 0);

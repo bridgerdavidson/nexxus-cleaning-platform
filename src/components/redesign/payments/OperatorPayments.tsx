@@ -140,6 +140,7 @@ function OperatorPaymentsData({
     isFetchingNextPage: txnLoadingMore,
     loading: paymentsLoading,
     refetch: refetchPayments,
+    error: paymentsError,
   } = useAdminPaymentsInfinite();
   const {
     rows: payouts,
@@ -149,8 +150,12 @@ function OperatorPaymentsData({
     isFetchingNextPage: payoutLoadingMore,
     loading: payoutsLoading,
     refetch: refetchPayouts,
+    error: payoutsError,
   } = useAdminPayoutsInfinite();
-  const { stats, loading: statsLoading } = usePaymentStats();
+  const { stats, loading: statsLoading, error: statsError, refetch: refetchStats } = usePaymentStats();
+
+  const hasError = Boolean(paymentsError || payoutsError || statsError);
+  const onRetry = () => { void refetchPayments(); void refetchPayouts(); void refetchStats(); };
 
   const orgName = currentOrganization?.name || "Your company";
   const ledger: PaymentLedger = searchParams.get("ledger") === "payouts" ? "payouts" : "transactions";
@@ -340,6 +345,8 @@ function OperatorPaymentsData({
     <>
       <OperatorPaymentsView
         loading={paymentsLoading || payoutsLoading}
+        error={hasError}
+        onRetry={onRetry}
         ledger={ledger}
         onLedgerChange={setLedger}
         txnRows={txnRows}

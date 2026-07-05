@@ -3,6 +3,7 @@
 import { CreditCard, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PaymentMethodRow } from './PaymentMethodRow';
 import type { SavedPaymentMethod } from './derive-payment-methods';
@@ -16,6 +17,7 @@ export interface HomeownerPaymentMethodsViewProps {
   onAdd: () => void;
   onSetDefault: (pm: SavedPaymentMethod) => void;
   onRemove: (pm: SavedPaymentMethod) => void;
+  onRetry?: () => void;
 }
 
 export function HomeownerPaymentMethodsView({
@@ -26,25 +28,22 @@ export function HomeownerPaymentMethodsView({
   onAdd,
   onSetDefault,
   onRemove,
+  onRetry,
 }: HomeownerPaymentMethodsViewProps) {
+  if (error) {
+    return (
+      <div className="py-8">
+        <ErrorState title="Couldn't load payment methods" onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-2.5 pt-1">
         {Array.from({ length: 2 }).map((_, i) => (
           <Skeleton key={i} className="h-[104px] w-full rounded-card" />
         ))}
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="py-8">
-        <EmptyState
-          icon={<CreditCard />}
-          title="Could not load your cards"
-          description="Please check your connection and try again."
-        />
       </div>
     );
   }

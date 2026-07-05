@@ -7,7 +7,7 @@ import { HomeownerCleaningsView } from './HomeownerCleaningsView';
 import { useOpenCleaning } from './useOpenCleaning';
 
 export function HomeownerCleanings() {
-  const { appointments, loading } = useHomeownerAppointments();
+  const { appointments, loading, error, refetch } = useHomeownerAppointments();
   const open = useOpenCleaning();
   const { sections, isEmpty } = useMemo(() => deriveCleanings(appointments), [appointments]);
 
@@ -16,6 +16,8 @@ export function HomeownerCleanings() {
       sections={sections}
       isEmpty={isEmpty}
       loading={loading}
+      error={Boolean(error)}
+      onRetry={() => refetch()}
       onOpen={open}
     />
   );

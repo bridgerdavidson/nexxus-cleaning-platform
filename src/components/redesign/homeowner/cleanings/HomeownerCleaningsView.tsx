@@ -2,6 +2,7 @@
 
 import { CalendarDays } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import type { CleaningSection } from './derive-cleanings';
@@ -11,13 +12,25 @@ export function HomeownerCleaningsView({
   sections,
   isEmpty,
   loading,
+  error,
+  onRetry,
   onOpen,
 }: {
   sections: CleaningSection[];
   isEmpty: boolean;
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onOpen: (id: string) => void;
 }) {
+  if (error) {
+    return (
+      <div className="py-8">
+        <ErrorState title="Couldn't load your cleanings" onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-3 pt-1">

@@ -2,16 +2,27 @@
 
 import { ChevronRight, Sparkles } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { CatalogRowVM } from '@/components/redesign/cleaner/profile/profile-types';
 
 export interface HomeownerServicesViewProps {
   rows: CatalogRowVM[];
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onOpen: (id: string) => void;
 }
 
-export function HomeownerServicesView({ rows, loading, onOpen }: HomeownerServicesViewProps) {
+export function HomeownerServicesView({ rows, loading, error, onRetry, onOpen }: HomeownerServicesViewProps) {
+  if (error) {
+    return (
+      <div className="py-8">
+        <ErrorState title="Couldn't load services" onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-2.5 pt-1">

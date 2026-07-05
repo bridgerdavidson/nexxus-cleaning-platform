@@ -204,7 +204,7 @@ export function OperatorBookings() {
   const router = useRouter();
   const openBooking = useOpenOperatorBooking();
   const { currentOrgRole, currentOrganizationId, accessToken } = useAuth();
-  const { appointments, loading, refetch } = useAdminAppointments();
+  const { appointments, loading, error, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
   const { permissions } = useManagerPermissions();
   const { paramId: bookingParam, setParam: setBookingParam } = useDetailParam("booking");
@@ -441,6 +441,8 @@ export function OperatorBookings() {
     <>
       <OperatorBookingsView
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         rows={rows}
         counts={counts}
         totalCount={appointments.length}

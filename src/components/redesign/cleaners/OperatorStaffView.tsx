@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { StaffTable } from "./StaffTable";
 import { StaffCardList } from "./StaffCardList";
+import { ErrorState } from "@/components/ui/error-state";
 import { InviteStatusBadge } from "./cleaners-presenters";
 import { PeopleToolbar } from "./PeopleToolbar";
 import { STAFF_SORTS } from "./staff-types";
@@ -107,6 +108,8 @@ export type OperatorStaffViewProps = {
   onSegmentChange: (v: PeopleSegment) => void;
   showSegmentTabs: boolean;
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   rows: StaffRowVM[];
   pendingInvites: StaffPendingInviteVM[];
   totalCount: number;
@@ -127,6 +130,8 @@ export function OperatorStaffView({
   onSegmentChange,
   showSegmentTabs,
   loading,
+  error,
+  onRetry,
   rows,
   pendingInvites,
   totalCount,
@@ -188,7 +193,9 @@ export function OperatorStaffView({
         onInviteAction={onInviteAction}
       />
 
-      {loading ? (
+      {error ? (
+        <ErrorState title="Couldn't load staff" onRetry={onRetry} />
+      ) : loading ? (
         <StaffSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState

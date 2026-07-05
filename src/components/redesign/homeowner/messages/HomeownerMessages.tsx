@@ -15,9 +15,9 @@ import { NewConversationSheet } from './NewConversationSheet';
 export function HomeownerMessages() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
-  const { conversations: officeRows, loading: lo } = useConversations({ userId, scope: 'office' });
-  const { conversations: jobRows, loading: lj } = useConversations({ userId, scope: 'job' });
-  const { appointments, loading: la } = useHomeownerAppointments();
+  const { conversations: officeRows, loading: lo, error: eo, refetch: refetchOffice } = useConversations({ userId, scope: 'office' });
+  const { conversations: jobRows, loading: lj, error: ej, refetch: refetchJob } = useConversations({ userId, scope: 'job' });
+  const { appointments, loading: la, error: ea, refetch: refetchAppts } = useHomeownerAppointments();
   const { office } = useHomeownerOfficeContact();
   const messagingEnabled = useOrgMessagingEnabled();
   const { openOffice, openOfficeThread, openJob } = useOpenMessageThread();
@@ -53,6 +53,8 @@ export function HomeownerMessages() {
       <HomeownerMessagesView
         model={model}
         loading={lo || lj || la}
+        error={Boolean(eo || ej || ea)}
+        onRetry={() => { void refetchOffice(); void refetchJob(); void refetchAppts(); }}
         onOpenOffice={() => {
           if (office) openOffice(office.id);
         }}

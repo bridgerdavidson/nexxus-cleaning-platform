@@ -2,6 +2,7 @@
 
 import { Receipt } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PaymentRow } from './PaymentRow';
 import type { PaymentLike } from './derive-payments';
@@ -9,14 +10,26 @@ import type { PaymentLike } from './derive-payments';
 export interface HomeownerPaymentHistoryViewProps {
   payments: PaymentLike[];
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onOpen: (id: string) => void;
 }
 
 export function HomeownerPaymentHistoryView({
   payments,
   loading,
+  error,
+  onRetry,
   onOpen,
 }: HomeownerPaymentHistoryViewProps) {
+  if (error) {
+    return (
+      <div className="py-8">
+        <ErrorState title="Couldn't load your receipts" onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-2.5 pt-1">

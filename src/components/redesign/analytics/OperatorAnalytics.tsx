@@ -57,12 +57,22 @@ export function OperatorAnalytics() {
 
 function OperatorAnalyticsData({ canMoney }: { canMoney: boolean }) {
   const { range, setPreset } = useAnalyticsRange();
-  const { summary } = useAnalyticsSummary(range);
-  const { series } = useAnalyticsRevenueSeries(range);
-  const { rows: serviceMix } = useAnalyticsServiceMix(range);
-  const { rows: leaderboard } = useAnalyticsLeaderboard(range);
-  const { cells: demand } = useAnalyticsDemand(range);
-  const { data: cancellations } = useAnalyticsCancellations(range);
+  const { summary, error: summaryError, refetch: refetchSummary } = useAnalyticsSummary(range);
+  const { series, error: seriesError, refetch: refetchSeries } = useAnalyticsRevenueSeries(range);
+  const { rows: serviceMix, error: serviceMixError, refetch: refetchServiceMix } = useAnalyticsServiceMix(range);
+  const { rows: leaderboard, error: leaderboardError, refetch: refetchLeaderboard } = useAnalyticsLeaderboard(range);
+  const { cells: demand, error: demandError, refetch: refetchDemand } = useAnalyticsDemand(range);
+  const { data: cancellations, error: cancellationsError, refetch: refetchCancellations } = useAnalyticsCancellations(range);
+
+  const error = Boolean(summaryError || seriesError || serviceMixError || leaderboardError || demandError || cancellationsError);
+  const onRetry = () => {
+    void refetchSummary();
+    void refetchSeries();
+    void refetchServiceMix();
+    void refetchLeaderboard();
+    void refetchDemand();
+    void refetchCancellations();
+  };
 
   // animate ONCE on first mount; realtime refetch must not redraw.
   const [animate, setAnimate] = useState(true);
@@ -116,6 +126,8 @@ function OperatorAnalyticsData({ canMoney }: { canMoney: boolean }) {
       insightsSlot={<InsightsPanel insights={insights} />}
       animate={animate}
       onExport={canMoney ? onExport : undefined}
+      error={error}
+      onRetry={onRetry}
     />
   );
 }

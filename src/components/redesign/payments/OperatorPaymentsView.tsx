@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   Select,
   SelectContent,
@@ -43,6 +44,8 @@ function LedgerSkeleton() {
 
 export type OperatorPaymentsViewProps = {
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   ledger: PaymentLedger;
   onLedgerChange: (l: PaymentLedger) => void;
   txnRows: TransactionRowVM[];
@@ -71,6 +74,8 @@ export type OperatorPaymentsViewProps = {
 
 export function OperatorPaymentsView({
   loading,
+  error,
+  onRetry,
   ledger,
   onLedgerChange,
   txnRows,
@@ -93,6 +98,9 @@ export function OperatorPaymentsView({
   kpis,
   yourMoney,
 }: OperatorPaymentsViewProps) {
+  if (error) {
+    return <ErrorState title="Couldn't load payments" onRetry={onRetry} />;
+  }
   const isTxn = ledger === "transactions";
   const rowsLen = isTxn ? txnRows.length : payoutRows.length;
   const activeTotal = isTxn ? txnTotal : payoutTotal;

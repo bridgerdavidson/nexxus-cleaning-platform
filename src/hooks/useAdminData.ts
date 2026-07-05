@@ -1056,6 +1056,8 @@ export function usePaymentStats() {
   return {
     stats: query.data ?? { totalRevenue: 0, pendingPayouts: 0, thisMonthRevenue: 0 },
     loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
 

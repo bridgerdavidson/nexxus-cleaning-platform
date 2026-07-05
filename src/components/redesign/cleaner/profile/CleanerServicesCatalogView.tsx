@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChevronRight, ClipboardList } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CleanerSubHeader } from "./CleanerSubHeader";
 import type { CatalogRowVM } from "./profile-types";
@@ -10,10 +11,17 @@ import type { CatalogRowVM } from "./profile-types";
 export function CleanerServicesCatalogView({
   rows,
   loading,
+  error,
+  onRetry,
 }: {
   rows: CatalogRowVM[];
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
 }) {
+  if (error) {
+    return <ErrorState title="Couldn't load services" onRetry={onRetry} />;
+  }
   return (
     <div className="space-y-4 pt-1">
       <CleanerSubHeader backHref="/app/cleaner-dashboard/profile" backLabel="Profile" title="Services" />

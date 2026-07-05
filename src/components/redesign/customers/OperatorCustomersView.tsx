@@ -16,6 +16,7 @@ import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
 import { CustomersTable } from "./CustomersTable";
 import { CustomersCardList } from "./CustomersCardList";
 import { CustomersBulkBar } from "./CustomersBulkBar";
+import { ErrorState } from "@/components/ui/error-state";
 import { CUSTOMER_SORTS } from "./customers-types";
 import type { CustomerRowAction, CustomerRowVM, CustomerSort } from "./customers-types";
 
@@ -39,6 +40,8 @@ function CustomersSkeleton() {
 
 export type OperatorCustomersViewProps = {
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   rows: CustomerRowVM[];
   totalCount: number;
   canViewPayments: boolean;
@@ -63,6 +66,8 @@ export type OperatorCustomersViewProps = {
 
 export function OperatorCustomersView({
   loading,
+  error,
+  onRetry,
   rows,
   totalCount,
   canViewPayments,
@@ -138,7 +143,9 @@ export function OperatorCustomersView({
         </Select>
       </ListFilterBar>
 
-      {loading ? (
+      {error ? (
+        <ErrorState title="Couldn't load customers" onRetry={onRetry} />
+      ) : loading ? (
         <CustomersSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState

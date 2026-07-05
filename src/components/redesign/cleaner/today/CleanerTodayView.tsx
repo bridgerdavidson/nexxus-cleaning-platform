@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { AlertTriangle, Building2, ChevronRight, Clock, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
@@ -25,6 +26,8 @@ function SectionHeader({ title, trailing }: { title: string; trailing?: React.Re
 export function CleanerTodayView({
   data,
   loading,
+  error,
+  onRetry,
   onContinueActive,
   onAcceptOffer,
   onDeclineOffer,
@@ -36,6 +39,8 @@ export function CleanerTodayView({
 }: {
   data: TodayData;
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onContinueActive: () => void;
   onAcceptOffer: (id: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
@@ -47,6 +52,9 @@ export function CleanerTodayView({
 }) {
   const grouped = useMemo(() => deriveSeriesOffers(data.offers), [data.offers]);
   const offerCount = grouped.singles.length + grouped.series.length;
+  if (error) {
+    return <ErrorState title="Couldn't load your day" onRetry={onRetry} />;
+  }
   if (loading) {
     return (
       <div className="space-y-4 pt-2">

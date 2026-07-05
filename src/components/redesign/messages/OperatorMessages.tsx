@@ -85,14 +85,14 @@ function OperatorMessagesData() {
   // org-office: the shared OFFICE inbox shows ALL of the org's office threads
   // (any admin/manager can read/answer any of them via the 099 RLS), not just
   // the logged-in operator's own. Each thread is labeled by its customer.
-  const { conversations, loading: inboxLoading, updateUnreadCount } = useConversations({
+  const { conversations, loading: inboxLoading, updateUnreadCount, error: convError, refetch: convRefetch } = useConversations({
     userId,
     scope: 'org-office',
     orgId: currentOrganizationId ?? '',
   })
   // Read-only homeowner<->cleaner job threads of the org (sub-project 2b). Listed
   // as a distinct section; opened read-only (no composer).
-  const { jobThreads } = useOrgJobThreads({ orgId: currentOrganizationId ?? '', userId })
+  const { jobThreads, error: jobError, refetch: jobRefetch } = useOrgJobThreads({ orgId: currentOrganizationId ?? '', userId })
   // useMessages returns `loading` (maps to threadLoading)
   const {
     messages: rawMessages,
@@ -102,7 +102,10 @@ function OperatorMessagesData() {
     loadMoreMessages,
     messagesEndRef,
   } = useMessages({ conversationId: selectedId, userId, onUnreadCountUpdate: updateUnreadCount })
-  const { appointments } = useAdminAppointments()
+  const { appointments, error: apptError, refetch: apptRefetch } = useAdminAppointments()
+
+  const hasError = Boolean(convError || jobError || apptError)
+  const onRetry = () => { void convRefetch(); void jobRefetch(); void apptRefetch(); }
   const { members } = useOrganizationMembers({ excludeCurrentUser: true })
   const { sendMessage, sending } = useSendMessage()
   const { startConversation } = useStartConversation()
@@ -297,6 +300,8 @@ function OperatorMessagesData() {
   return (
     <>
       <OperatorMessagesView
+        error={hasError}
+        onRetry={onRetry}
         rows={rows}
         totalConversations={rowsAll.length}
         unreadTotal={unreadTotal(rowsAll)}

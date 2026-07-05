@@ -79,6 +79,8 @@ export interface ContactContextVM {
 export type UserRoleLike = UserRole | string
 
 export interface OperatorMessagesViewProps {
+  error?: boolean
+  onRetry?: () => void
   // inbox
   rows: ConversationRowVM[]
   totalConversations: number

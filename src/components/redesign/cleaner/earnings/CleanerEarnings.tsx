@@ -28,8 +28,8 @@ export function CleanerEarnings() {
   const { currentOrganization } = useAuth();
   const { connectStatus, statusLoading, connectError, dashboardLoading, handleOpenStripeDashboard } =
     useStripeConnect();
-  const { awaitingPayments: awaiting } = useCleanerAwaitingPayments();
-  const { stats } = useCleanerStats();
+  const { awaitingPayments: awaiting, error: awaitingError, refetch: refetchAwaiting } = useCleanerAwaitingPayments();
+  const { stats, error: statsError, refetch: refetchStats } = useCleanerStats();
 
   const connectKind = cleanerStatusKind(connectStatus, statusLoading);
 
@@ -72,6 +72,8 @@ export function CleanerEarnings() {
       }}
       dashboardLoading={dashboardLoading}
       openStripeError={connectError}
+      error={Boolean(awaitingError || statsError)}
+      onRetry={() => { void refetchAwaiting(); void refetchStats(); }}
     />
   );
 }

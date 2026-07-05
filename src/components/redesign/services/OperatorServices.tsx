@@ -138,6 +138,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
   const {
     services,
     loading,
+    error,
     refetch,
     updateServiceInState,
     maxChecklistAdderByServiceId,
@@ -532,6 +533,8 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     <>
       <OperatorServicesView
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         rows={rows}
         totalCount={services.length}
         activeCount={activeCount}

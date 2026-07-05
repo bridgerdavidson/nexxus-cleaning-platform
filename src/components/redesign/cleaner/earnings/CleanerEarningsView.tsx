@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import PayoutTimingNotice from "@/components/PayoutTimingNotice";
 import { money2, TxnStatusBadge } from "@/components/redesign/payments/payments-presenters";
 import { formatCardDate } from "@/components/redesign/cleaner/shared/job-presenters";
+import { ErrorState } from "@/components/ui/error-state";
 import type { ClearingRow, ClearingSettleKind, ConnectKind, EarningsData } from "./earnings-types";
 
 export interface CleanerEarningsViewProps {
@@ -22,6 +23,8 @@ export interface CleanerEarningsViewProps {
   onOpenStripe: () => void;
   dashboardLoading: boolean;
   openStripeError: string | null;
+  error?: boolean;
+  onRetry?: () => void;
 }
 
 function settleCopy(kind: ClearingSettleKind): string {
@@ -40,7 +43,12 @@ export function CleanerEarningsView({
   onOpenStripe,
   dashboardLoading,
   openStripeError,
+  error,
+  onRetry,
 }: CleanerEarningsViewProps) {
+  if (error) {
+    return <ErrorState title="Couldn't load earnings" onRetry={onRetry} />;
+  }
   if (data.mode === "employee") {
     return (
       <div className="space-y-4 py-2">
