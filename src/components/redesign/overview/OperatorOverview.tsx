@@ -62,14 +62,16 @@ export function OperatorOverview() {
   const { stats: payStats, loading: pLoading, error: pError, refetch: pRefetch } = usePaymentStats();
   const { permissions } = useManagerPermissions();
 
-  const hasError = Boolean(aError || sError || pError);
-  const onRetry = () => { void aRefetch(); void sRefetch(); void pRefetch(); };
-
   const now = new Date();
   const sections = deriveOverviewSections(appointments, todayLocalISO(now));
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
+  // Gate the payments error the same way as the loading prop below: a manager
+  // who cannot view payments must never see the dashboard error surfaced by a
+  // payments query.
+  const hasError = Boolean(aError || sError || (canViewPayments && pError));
+  const onRetry = () => { void aRefetch(); void sRefetch(); void pRefetch(); };
   const { greeting, dateLabel } = getGreeting(user?.profile?.firstName, now);
 
   const today: ScheduleItem[] = [...sections.today]
