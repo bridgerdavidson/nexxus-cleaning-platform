@@ -41,7 +41,7 @@ export async function PATCH(
 
     const { error } = await supabaseAdmin
       .from('organizations')
-      .update({ default_cleaner_payout_percent: v })
+      .update({ default_cleaner_payout_percent: v, payout_configured_at: new Date().toISOString() })
       .eq('id', orgId);
     if (error) {
       return NextResponse.json(
