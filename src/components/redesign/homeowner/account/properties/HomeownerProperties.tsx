@@ -13,7 +13,7 @@ import { HomeownerPropertyDetailHost } from './HomeownerPropertyDetailHost';
  * invalidate the query so the list refreshes.
  */
 export function HomeownerProperties() {
-  const { properties, loading } = useHomeownerProperties();
+  const { properties, loading, error, refetch } = useHomeownerProperties();
   const openProperty = useOpenProperty();
   const [addOpen, setAddOpen] = useState(false);
 
@@ -22,6 +22,8 @@ export function HomeownerProperties() {
       <HomeownerPropertiesView
         properties={properties}
         loading={loading}
+        error={Boolean(error)}
+        onRetry={() => refetch()}
         onOpen={openProperty}
         onAdd={() => setAddOpen(true)}
       />

@@ -3,6 +3,7 @@
 import { Home, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Property } from '@/hooks/useHomeownerData';
 import { PropertyRow } from './PropertyRow';
@@ -10,6 +11,8 @@ import { PropertyRow } from './PropertyRow';
 export interface HomeownerPropertiesViewProps {
   properties: Property[];
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   onOpen: (id: string) => void;
   onAdd: () => void;
 }
@@ -17,9 +20,19 @@ export interface HomeownerPropertiesViewProps {
 export function HomeownerPropertiesView({
   properties,
   loading,
+  error,
+  onRetry,
   onOpen,
   onAdd,
 }: HomeownerPropertiesViewProps) {
+  if (error) {
+    return (
+      <div className="py-8">
+        <ErrorState title="Couldn't load your properties" onRetry={onRetry} />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-2.5 pt-1">
