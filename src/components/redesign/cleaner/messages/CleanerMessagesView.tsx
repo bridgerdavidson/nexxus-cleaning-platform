@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { CleanerConversationRow } from './CleanerConversationRow';
@@ -13,6 +14,8 @@ import type { CleanerInboxModel, CleanerJobRowVM } from './cleaner-inbox-types';
 export interface CleanerMessagesViewProps {
   model: CleanerInboxModel;
   loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   hasOfficeContacts: boolean;
   onOpenOfficeRow: (conversationId: string) => void;
   onStartOffice: () => void;
@@ -148,12 +151,17 @@ function LoadingState() {
 export function CleanerMessagesView({
   model,
   loading,
+  error,
+  onRetry,
   hasOfficeContacts,
   onOpenOfficeRow,
   onStartOffice,
   onNew,
   onOpenJob,
 }: CleanerMessagesViewProps) {
+  if (error) {
+    return <ErrorState title="Couldn't load messages" onRetry={onRetry} />;
+  }
   if (loading) return <LoadingState />;
 
   const hasOffice = model.office.length > 0 || hasOfficeContacts;

@@ -24,10 +24,10 @@ import { CleanerOfficePicker } from './CleanerOfficePicker';
 export function CleanerMessages() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
-  const { conversations: officeRows, loading: lo } = useConversations({ userId, scope: 'office' });
-  const { conversations: jobRows, loading: lj } = useConversations({ userId, scope: 'job' });
-  const { appointments, loading: la } = useCleanerAppointments();
-  const { members, loading: lm } = useOrganizationMembers({ excludeCurrentUser: true });
+  const { conversations: officeRows, loading: lo, error: eo, refetch: ro } = useConversations({ userId, scope: 'office' });
+  const { conversations: jobRows, loading: lj, error: ej, refetch: rj } = useConversations({ userId, scope: 'job' });
+  const { appointments, loading: la, error: ea, refetch: ra } = useCleanerAppointments();
+  const { members, loading: lm, error: em, refetch: rm } = useOrganizationMembers({ excludeCurrentUser: true });
 
   const { openConversation, openWith } = useOpenOfficeThread();
   const openJob = useOpenCleanerJobThread();
@@ -63,6 +63,8 @@ export function CleanerMessages() {
       <CleanerMessagesView
         model={model}
         loading={lo || lj || la || lm}
+        error={Boolean(eo || ej || ea || em)}
+        onRetry={() => { void ro(); void rj(); void ra(); void rm(); }}
         hasOfficeContacts={officeContacts.length > 0}
         onOpenOfficeRow={openConversation}
         onStartOffice={startOffice}

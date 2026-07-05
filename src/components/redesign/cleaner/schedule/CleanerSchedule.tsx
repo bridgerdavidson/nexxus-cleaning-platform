@@ -15,7 +15,7 @@ function ymd(d: Date): string {
 
 export function CleanerSchedule() {
   const { currentOrganization } = useAuth();
-  const { appointments, loading } = useCleanerAppointments();
+  const { appointments, loading, error, refetch } = useCleanerAppointments();
   const openJob = useOpenJob();
   const isEmployee = (currentOrganization?.default_payout_model ?? "percentage_contractor") !== "percentage_contractor";
   const [search, setSearch] = useState("");
@@ -46,7 +46,7 @@ export function CleanerSchedule() {
 
   return (
     <CleanerScheduleView
-      data={data} loading={loading} isEmployee={isEmployee}
+      data={data} loading={loading} error={Boolean(error)} onRetry={() => refetch()} isEmployee={isEmployee}
       search={search} onSearchChange={setSearch}
       view={view} onViewChange={(v) => { setView(v); setStatusFilter("all"); }}
       statusFilter={statusFilter} onStatusFilterChange={setStatusFilter}
