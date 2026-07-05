@@ -7,7 +7,7 @@ import { Loader2, ShieldAlert } from "lucide-react";
 import { keys } from "@/lib/queryKeys";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useStartConversation } from "@/hooks/useStartConversation";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -130,7 +130,6 @@ function OperatorPaymentsData({
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { currentOrganizationId, currentOrganization } = useAuth();
-  const { showToast } = useToast();
   const { startConversation } = useStartConversation();
 
   const {
@@ -265,18 +264,16 @@ function OperatorPaymentsData({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Refund failed");
-        showToast(data.fully_refunded ? "Payment refunded" : "Partial refund issued", {
-          variant: "success",
-        });
+        toast.success(data.fully_refunded ? "Payment refunded" : "Partial refund issued");
         await refetchPayments();
         setSelectedRowId(null);
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Refund failed", { variant: "error" });
+        toast.error(e instanceof Error ? e.message : "Refund failed");
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, authHeaders, showToast, refetchPayments],
+    [currentOrganizationId, authHeaders, refetchPayments],
   );
 
   const handleRetry = useCallback(
@@ -291,21 +288,20 @@ function OperatorPaymentsData({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Retry failed");
-        showToast(
+        toast.success(
           data.reason === "cleaner_slice_held"
             ? "Queued. It sends once the cleaner finishes payout setup."
             : "Payout retried",
-          { variant: "success" },
         );
         await refetchPayouts();
         setSelectedRowId(null);
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Retry failed", { variant: "error" });
+        toast.error(e instanceof Error ? e.message : "Retry failed");
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, authHeaders, showToast, refetchPayouts],
+    [currentOrganizationId, authHeaders, refetchPayouts],
   );
 
   const handleDismiss = useCallback(
@@ -320,16 +316,16 @@ function OperatorPaymentsData({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not dismiss");
-        showToast("Dismissed", { variant: "success" });
+        toast.success("Dismissed");
         await refetchPayouts();
         setSelectedRowId(null);
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Could not dismiss", { variant: "error" });
+        toast.error(e instanceof Error ? e.message : "Could not dismiss");
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, authHeaders, showToast, refetchPayouts],
+    [currentOrganizationId, authHeaders, refetchPayouts],
   );
 
   const handleMessage = useCallback(

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import {
@@ -203,7 +203,6 @@ type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
 export function OperatorBookings() {
   const router = useRouter();
   const openBooking = useOpenOperatorBooking();
-  const { showToast } = useToast();
   const { currentOrgRole, currentOrganizationId, accessToken } = useAuth();
   const { appointments, loading, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
@@ -323,18 +322,16 @@ export function OperatorBookings() {
         const r = await updateAppointmentStatus(id, status);
         await refetch();
         if (r.success) {
-          showToast(status === "completed" ? "Booking completed" : "Booking started", {
-            variant: "success",
-            ...(r.paymentError ? { description: `Payment: ${r.paymentError}` } : {}),
-          });
+          toast.success(status === "completed" ? "Booking completed" : "Booking started",
+            r.paymentError ? { description: `Payment: ${r.paymentError}` } : undefined);
         } else {
-          showToast(r.error || "Could not update the booking", { variant: "error" });
+          toast.error(r.error || "Could not update the booking");
         }
       } finally {
         setBusy(false);
       }
     },
-    [refetch, showToast],
+    [refetch],
   );
 
   const handleAssign = useCallback(
@@ -343,14 +340,16 @@ export function OperatorBookings() {
       try {
         const r = await assignCleanerToAppointment(id, cleanerId);
         await refetch();
-        showToast(r.success ? "Cleaner assigned" : r.error || "Could not assign cleaner", {
-          variant: r.success ? "success" : "error",
-        });
+        if (r.success) {
+          toast.success("Cleaner assigned");
+        } else {
+          toast.error(r.error || "Could not assign cleaner");
+        }
       } finally {
         setBusy(false);
       }
     },
-    [refetch, showToast],
+    [refetch],
   );
 
   const handleAcceptCounter = useCallback(
@@ -366,16 +365,16 @@ export function OperatorBookings() {
         });
         await refetch();
         if (r.success) {
-          showToast("Proposed time accepted", { variant: "success" });
+          toast.success("Proposed time accepted");
           closeDetail();
         } else {
-          showToast(r.error || "Could not accept the time", { variant: "error" });
+          toast.error(r.error || "Could not accept the time");
         }
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, refetch, showToast, closeDetail],
+    [currentOrganizationId, accessToken, refetch, closeDetail],
   );
 
   const handleReschedule = useCallback(() => {
@@ -391,35 +390,31 @@ export function OperatorBookings() {
       if (kind === "cancel") {
         const r = await cancelAppointment(ids[0]);
         await refetch();
-        showToast(r.success ? "Booking cancelled" : r.error || "Could not cancel", {
-          variant: r.success ? "success" : "error",
-        });
-        if (r.success) closeDetail();
+        if (r.success) { toast.success("Booking cancelled"); closeDetail(); }
+        else { toast.error(r.error || "Could not cancel"); }
       } else if (kind === "delete") {
         const r = await deleteAppointment(ids[0]);
         await refetch();
-        showToast(r.success ? "Booking deleted" : r.error || "Could not delete", {
-          variant: r.success ? "success" : "error",
-        });
-        if (r.success) closeDetail();
+        if (r.success) { toast.success("Booking deleted"); closeDetail(); }
+        else { toast.error(r.error || "Could not delete"); }
       } else if (kind === "bulkCancel") {
         const result = await cancelAppointments(ids);
         await refetch();
         const { message, variant } = describeBulkAppointmentResult("cancel", result);
-        showToast(message, { variant });
+        toast[variant](message);
         clearSelection();
       } else if (kind === "bulkDelete") {
         const result = await deleteAppointments(ids);
         await refetch();
         const { message, variant } = describeBulkAppointmentResult("delete", result);
-        showToast(message, { variant });
+        toast[variant](message);
         clearSelection();
       }
     } finally {
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, refetch, showToast, clearSelection, closeDetail]);
+  }, [confirm, refetch, clearSelection, closeDetail]);
 
   const handleRowAction = useCallback((id: string, action: BookingRowAction) => {
     if (action === "open" || action === "assign") openDetail(id);

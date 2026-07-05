@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -186,7 +186,6 @@ export function OperatorCleanersData({
   onSegmentChange: (v: PeopleSegment) => void;
   showSegmentTabs: boolean;
 }) {
-  const { showToast } = useToast();
   const { currentOrganizationId, accessToken } = useAuth();
   const { cleaners, loading, refetch } = useAdminCleanerScorecards();
   const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
@@ -318,16 +317,16 @@ export function OperatorCleanersData({
         });
         if (r.success) {
           await refetch();
-          showToast("Cleaner updated", { variant: "success" });
+          toast.success("Cleaner updated");
           return true;
         }
-        showToast(r.error || "Could not update the cleaner", { variant: "error" });
+        toast.error(r.error || "Could not update the cleaner");
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [detailId, refetch, showToast],
+    [detailId, refetch],
   );
 
   const handleInvite = useCallback(
@@ -343,19 +342,16 @@ export function OperatorCleanersData({
         });
         if (r.success) {
           await refetchInvites();
-          showToast("Invite sent", {
-            variant: "success",
-            description: `${email} will appear here once they accept.`,
-          });
+          toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        showToast(r.error || "Could not send the invite", { variant: "error" });
+        toast.error(r.error || "Could not send the invite");
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, refetchInvites, showToast],
+    [currentOrganizationId, accessToken, refetchInvites],
   );
 
   const handleInviteAction = useCallback(
@@ -367,21 +363,17 @@ export function OperatorCleanersData({
           const inv = invites.find((i) => i.id === inviteId);
           if (!inv) return;
           const r = await resend(inv);
-          showToast(r.success ? "Invite resent" : r.error || "Could not resend the invite", {
-            variant: r.success ? "success" : "error",
-          });
+          if (r.success) { toast.success("Invite resent"); } else { toast.error(r.error || "Could not resend the invite"); }
         } else if (action === "cancel") {
           const r = await cancelInvite(inviteId, currentOrganizationId, accessToken);
           await refetchInvites();
-          showToast(r.success ? "Invite canceled" : r.error || "Could not cancel the invite", {
-            variant: r.success ? "success" : "error",
-          });
+          if (r.success) { toast.success("Invite canceled"); } else { toast.error(r.error || "Could not cancel the invite"); }
         }
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, invites, resend, refetchInvites, showToast],
+    [currentOrganizationId, accessToken, invites, resend, refetchInvites],
   );
 
   const doDeactivate = useCallback(
@@ -391,15 +383,15 @@ export function OperatorCleanersData({
         const r = await updateCleaner({ cleanerId: id, deactivated });
         if (r.success) {
           await refetch();
-          showToast(deactivated ? "Cleaner deactivated" : "Cleaner reactivated", { variant: "success" });
+          toast.success(deactivated ? "Cleaner deactivated" : "Cleaner reactivated");
         } else {
-          showToast(r.error || "Could not update the cleaner", { variant: "error" });
+          toast.error(r.error || "Could not update the cleaner");
         }
       } finally {
         setBusy(false);
       }
     },
-    [refetch, showToast],
+    [refetch],
   );
 
   const runConfirm = useCallback(async () => {
@@ -411,10 +403,10 @@ export function OperatorCleanersData({
         const r = await deleteCleanerById(ids[0]);
         await refetch();
         if (r.success) {
-          showToast("Cleaner removed", { variant: "success" });
+          toast.success("Cleaner removed");
           closeDetail();
         } else {
-          showToast(r.error || "Could not remove the cleaner", { variant: "error" });
+          toast.error(r.error || "Could not remove the cleaner");
         }
       } else if (kind === "bulkDeactivate") {
         let ok = 0;
@@ -426,16 +418,14 @@ export function OperatorCleanersData({
         }
         await refetch();
         clearSelection();
-        showToast(
-          `Deactivated ${ok} cleaner${ok === 1 ? "" : "s"}${fail ? `, ${fail} failed` : ""}`,
-          { variant: fail && !ok ? "error" : "success" },
-        );
+        const msg = `Deactivated ${ok} cleaner${ok === 1 ? "" : "s"}${fail ? `, ${fail} failed` : ""}`;
+        if (fail && !ok) { toast.error(msg); } else { toast.success(msg); }
       }
     } finally {
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, refetch, clearSelection, showToast, closeDetail]);
+  }, [confirm, refetch, clearSelection, closeDetail]);
 
   const handleRowAction = useCallback(
     (id: string, action: CleanerRowAction) => {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -212,7 +212,6 @@ function OperatorCustomersData({
   canViewPayments: boolean;
   canEdit: boolean;
 }) {
-  const { showToast } = useToast();
   const { currentOrganizationId, accessToken } = useAuth();
   const { customers, loading, refetch, updateCustomerInState } = useAdminCustomers();
   const { paramId: customerParam, setParam: setCustomerParam } = useDetailParam("customer");
@@ -325,16 +324,16 @@ function OperatorCustomersData({
         const r = await updateCustomer(detailId, fields);
         if (r.success) {
           updateCustomerInState(detailId, fields);
-          showToast("Customer updated", { variant: "success" });
+          toast.success("Customer updated");
           return true;
         }
-        showToast(r.error || "Could not update the customer", { variant: "error" });
+        toast.error(r.error || "Could not update the customer");
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [detailId, updateCustomerInState, showToast],
+    [detailId, updateCustomerInState],
   );
 
   const handleInvite = useCallback(
@@ -349,19 +348,16 @@ function OperatorCustomersData({
           accessToken,
         });
         if (r.success) {
-          showToast("Invite sent", {
-            variant: "success",
-            description: `${email} will appear here once they accept.`,
-          });
+          toast.success("Invite sent", { description: `${email} will appear here once they accept.` });
           return true;
         }
-        showToast(r.error || "Could not send the invite", { variant: "error" });
+        toast.error(r.error || "Could not send the invite");
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [currentOrganizationId, accessToken, showToast],
+    [currentOrganizationId, accessToken],
   );
 
   const runConfirm = useCallback(async () => {
@@ -373,19 +369,19 @@ function OperatorCustomersData({
         const r = await deleteCustomer(ids[0], currentOrganizationId);
         await refetch();
         if (r.success) {
-          showToast("Customer deleted", { variant: "success" });
+          toast.success("Customer deleted");
           closeDetail();
         } else {
-          showToast(r.error || "Could not delete the customer", { variant: "error" });
+          toast.error(r.error || "Could not delete the customer");
         }
       } else if (kind === "bulkDelete") {
         const r = await deleteCustomers(ids, currentOrganizationId);
         await refetch();
         if (!r.success) {
-          showToast(r.error || "Could not delete the customers", { variant: "error" });
+          toast.error(r.error || "Could not delete the customers");
         } else {
           const summary = describeCustomerDelete(r.results ?? []);
-          showToast(summary.message, { variant: summary.variant });
+          if (summary.variant === "success") { toast.success(summary.message); } else { toast.error(summary.message); }
         }
         clearSelection();
       }
@@ -393,7 +389,7 @@ function OperatorCustomersData({
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, currentOrganizationId, refetch, showToast, clearSelection, closeDetail]);
+  }, [confirm, currentOrganizationId, refetch, clearSelection, closeDetail]);
 
   const handleRowAction = useCallback(
     (id: string, action: CustomerRowAction) => {

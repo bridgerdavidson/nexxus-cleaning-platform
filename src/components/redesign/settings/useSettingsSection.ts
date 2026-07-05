@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useRegisterSettingsGuard } from "./SettingsNavGuard";
 
 export function isFormDirty<T>(a: T, b: T): boolean {
@@ -18,7 +18,6 @@ export function useSettingsSection<T>(opts: {
   successMessage: string;
 }) {
   const { load, save, successMessage } = opts;
-  const { showToast } = useToast();
   const [value, setValue] = useState<T | null>(null);
   const [baseline, setBaseline] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,15 +41,15 @@ export function useSettingsSection<T>(opts: {
     try {
       await save(value);
       setBaseline(value);
-      showToast(successMessage, { variant: "success" });
+      toast.success(successMessage);
       return true;
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : "Could not save changes", { variant: "error" });
+      toast.error(e instanceof Error ? e.message : "Could not save changes");
       return false;
     } finally {
       setSaving(false);
     }
-  }, [value, save, successMessage, showToast]);
+  }, [value, save, successMessage]);
 
   const onDiscard = useCallback(() => setValue(baseline), [baseline]);
 

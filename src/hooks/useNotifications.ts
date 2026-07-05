@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useToast } from '../contexts/ToastContext';
+import { toast } from '../components/ui/toast';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { describeNotification, toastVariantForTone } from '../lib/notifications/labels';
@@ -52,8 +52,6 @@ export function useNotifications() {
   const { user, accessToken } = useAuth();
   const userId = user?.id ?? '';
   const queryClient = useQueryClient();
-  const { showToast } = useToast();
-
   const queryKey = keys.notifications.byUser(userId);
 
   const query = useQuery({
@@ -85,10 +83,7 @@ export function useNotifications() {
         // Toast once per row id, across all bell instances / redeliveries.
         if (row?.id && row.event_type && markToastedOnce(row.id)) {
           const d = describeNotification(row.event_type, row.payload);
-          showToast(d.title, {
-            variant: toastVariantForTone(d.tone),
-            description: d.detail,
-          });
+          toast[toastVariantForTone(d.tone)](d.title, { description: d.detail });
         }
       }
       return { type: 'invalidate', keys: [queryKey] };
@@ -180,12 +175,12 @@ export function useNotifications() {
       return res.json();
     },
     onSuccess: () => {
-      showToast('Time confirmed', { variant: 'success' });
+      toast.success('Time confirmed');
       queryClient.invalidateQueries({ queryKey: keys.appointments.all });
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      showToast(err.message, { variant: 'error' });
+      toast.error(err.message);
     },
   });
 

@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
-import { useToast } from '../contexts/ToastContext';
+import { toast } from '../components/ui/toast';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
@@ -988,7 +988,6 @@ export type DeclineReason = 'sick' | 'not_my_service' | 'too_far' | 'other';
  * notification inside updateAppointmentStatus). */
 export function useStartJob() {
   const { user } = useAuth();
-  const { showToast } = useToast();
   const qc = useQueryClient();
   const userId = user?.id;
   return useMutation({
@@ -1002,16 +1001,15 @@ export function useStartJob() {
         qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
         qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
       }
-      showToast('Job started', { variant: 'success' });
+      toast.success('Job started');
     },
-    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 
 /** Accept or decline a job offer via POST /api/appointments/confirm. */
 export function useRespondToOffer() {
   const { user, currentOrganizationId } = useAuth();
-  const { showToast } = useToast();
   const qc = useQueryClient();
   const userId = user?.id;
 
@@ -1044,15 +1042,15 @@ export function useRespondToOffer() {
   const accept = useMutation({
     mutationFn: (v: { appointmentId: string; slotIndex: number }) =>
       post({ appointmentId: v.appointmentId, action: 'accept', slotIndex: v.slotIndex }),
-    onSuccess: () => { invalidate(); showToast('Job accepted', { variant: 'success' }); },
-    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+    onSuccess: () => { invalidate(); toast.success('Job accepted'); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const decline = useMutation({
     mutationFn: (v: { appointmentId: string; reason: DeclineReason; other?: string }) =>
       post({ appointmentId: v.appointmentId, action: 'decline', declineReason: v.reason, declineReasonOther: v.other }),
-    onSuccess: () => { invalidate(); showToast('Offer declined', { variant: 'info' }); },
-    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+    onSuccess: () => { invalidate(); toast.info('Offer declined'); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return { accept, decline };
@@ -1073,7 +1071,6 @@ export interface SeriesRespondResult {
  */
 export function useRespondToSeries() {
   const { user, currentOrganizationId } = useAuth();
-  const { showToast } = useToast();
   const qc = useQueryClient();
   const userId = user?.id;
 
@@ -1106,16 +1103,16 @@ export function useRespondToSeries() {
     onSuccess: (r) => {
       invalidate();
       if (r.total === 0) {
-        showToast('These cleanings were already handled.', { variant: 'info' });
+        toast.info('These cleanings were already handled.');
       } else if (r.failed === 0) {
-        showToast(`Accepted ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'success' });
+        toast.success(`Accepted ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`);
       } else if (r.succeeded === 0) {
-        showToast('Could not accept these cleanings. Please try again.', { variant: 'error' });
+        toast.error('Could not accept these cleanings. Please try again.');
       } else {
-        showToast(`Accepted ${r.succeeded} of ${r.total}. ${r.failed} could not be accepted.`, { variant: 'info' });
+        toast.info(`Accepted ${r.succeeded} of ${r.total}. ${r.failed} could not be accepted.`);
       }
     },
-    onError: (e: Error) => showToast(e.message || 'Could not accept the series', { variant: 'error' }),
+    onError: (e: Error) => toast.error(e.message || 'Could not accept the series'),
   });
 
   const declineAllM = useMutation({
@@ -1124,14 +1121,14 @@ export function useRespondToSeries() {
     onSuccess: (r) => {
       invalidate();
       if (r.total === 0) {
-        showToast('These cleanings were already handled.', { variant: 'info' });
+        toast.info('These cleanings were already handled.');
       } else if (r.failed === 0) {
-        showToast(`Declined ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`, { variant: 'info' });
+        toast.info(`Declined ${r.succeeded} ${r.succeeded === 1 ? 'cleaning' : 'cleanings'}`);
       } else {
-        showToast(`Declined ${r.succeeded} of ${r.total}.`, { variant: 'info' });
+        toast.info(`Declined ${r.succeeded} of ${r.total}.`);
       }
     },
-    onError: (e: Error) => showToast(e.message || 'Could not decline the series', { variant: 'error' }),
+    onError: (e: Error) => toast.error(e.message || 'Could not decline the series'),
   });
 
   return {
@@ -1151,7 +1148,6 @@ export function useRespondToSeries() {
  * Returns { chargeOutcome } mapped from the completion charge paymentStatus. */
 export function useCompleteJob() {
   const { user } = useAuth();
-  const { showToast } = useToast();
   const qc = useQueryClient();
   const userId = user?.id;
   return useMutation({
@@ -1171,9 +1167,9 @@ export function useCompleteJob() {
         qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
         qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
       }
-      showToast('Job completed', { variant: 'success' });
+      toast.success('Job completed');
     },
-    onError: (e: Error) => showToast(e.message, { variant: 'error' }),
+    onError: (e: Error) => toast.error(e.message),
   });
 }
 

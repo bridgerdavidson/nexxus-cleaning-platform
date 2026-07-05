@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { supabase } from "@/lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 
@@ -48,8 +48,6 @@ export type RecordPaymentDialogProps = {
  */
 export function RecordPaymentDialog({ open, onOpenChange, onRecorded }: RecordPaymentDialogProps) {
   const { currentOrganizationId } = useAuth();
-  const { showToast } = useToast();
-
   const [homeowners, setHomeowners] = useState<Homeowner[]>([]);
   const [homeownerSearch, setHomeownerSearch] = useState("");
   const [homeownerId, setHomeownerId] = useState<string | null>(null);
@@ -162,7 +160,7 @@ export function RecordPaymentDialog({ open, onOpenChange, onRecorded }: RecordPa
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to record payment");
-      showToast("Payment recorded", { variant: "success" });
+      toast.success("Payment recorded");
       onRecorded();
       reset();
       onOpenChange(false);

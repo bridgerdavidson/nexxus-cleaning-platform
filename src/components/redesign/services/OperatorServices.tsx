@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/contexts/ToastContext";
+import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { keys } from "@/lib/queryKeys";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -126,7 +126,6 @@ export function OperatorServices() {
 }
 
 function OperatorServicesData({ canManage }: { canManage: boolean }) {
-  const { showToast } = useToast();
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? "";
   const queryClient = useQueryClient();
@@ -267,28 +266,28 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
         if (serviceDialog?.mode === "edit" && selectedService) {
           const r = await updateService(selectedService.id, v, orgId);
           if (r.success) {
-            showToast("Service updated", { variant: "success" });
+            toast.success("Service updated");
             setServiceDialog(null);
           } else {
-            showToast(r.error || "Could not update the service", { variant: "error" });
+            toast.error(r.error || "Could not update the service");
           }
         } else {
           const r = await createService(orgId, v);
           if (r.success && r.data) {
-            showToast("Service created", { variant: "success" });
+            toast.success("Service created");
             setServiceDialog(null);
             await refetch();
             refreshMaxChecklistAdders();
             onSelect(r.data.id);
           } else {
-            showToast(r.error || "Could not create the service", { variant: "error" });
+            toast.error(r.error || "Could not create the service");
           }
         }
       } finally {
         setBusy(false);
       }
     },
-    [serviceDialog, selectedService, orgId, showToast, refetch, refreshMaxChecklistAdders, onSelect],
+    [serviceDialog, selectedService, orgId, refetch, refreshMaxChecklistAdders, onSelect],
   );
 
   const handleDuplicateService = useCallback(async () => {
@@ -297,17 +296,17 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     try {
       const r = await duplicateService(orgId, selectedService.id);
       if (r.success && r.data) {
-        showToast("Service duplicated", { variant: "success" });
+        toast.success("Service duplicated");
         await refetch();
         refreshMaxChecklistAdders();
         onSelect(r.data.id);
       } else {
-        showToast(r.error || "Could not duplicate the service", { variant: "error" });
+        toast.error(r.error || "Could not duplicate the service");
       }
     } finally {
       setBusy(false);
     }
-  }, [selectedService, orgId, showToast, refetch, refreshMaxChecklistAdders, onSelect]);
+  }, [selectedService, orgId, refetch, refreshMaxChecklistAdders, onSelect]);
 
   const handleToggleActive = useCallback(
     async (next: boolean) => {
@@ -316,10 +315,10 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       const r = await toggleServiceActive(selectedService.id, next, orgId);
       if (!r.success) {
         updateServiceInState(selectedService.id, { is_active: !next });
-        showToast(r.error || "Could not update the service", { variant: "error" });
+        toast.error(r.error || "Could not update the service");
       }
     },
-    [selectedService, orgId, updateServiceInState, showToast],
+    [selectedService, orgId, updateServiceInState],
   );
 
   const handleDeleteServiceClick = useCallback(async () => {
@@ -334,18 +333,18 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     try {
       const r = await deleteService(deleteServiceState.id);
       if (r.success) {
-        showToast("Service deleted", { variant: "success" });
+        toast.success("Service deleted");
         setDeleteServiceState(null);
         clearSelection();
         await refetch();
         refreshMaxChecklistAdders();
       } else {
-        showToast(r.error || "Could not delete the service", { variant: "error" });
+        toast.error(r.error || "Could not delete the service");
       }
     } finally {
       setBusy(false);
     }
-  }, [deleteServiceState, showToast, clearSelection, refetch, refreshMaxChecklistAdders]);
+  }, [deleteServiceState, clearSelection, refetch, refreshMaxChecklistAdders]);
 
   // --- checklist mutations ---
   const checklistFormInitial = useMemo<{ name: string; price_adder: number } | null>(() => {
@@ -364,29 +363,29 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
         if (checklistDialog?.mode === "edit") {
           const r = await updateChecklist(checklistDialog.checklistId, v.name, v.price_adder);
           if (r.success) {
-            showToast("Checklist updated", { variant: "success" });
+            toast.success("Checklist updated");
             setChecklistDialog(null);
             await refetchChecklists();
             refreshMaxChecklistAdders();
           } else {
-            showToast(r.error || "Could not update the checklist", { variant: "error" });
+            toast.error(r.error || "Could not update the checklist");
           }
         } else {
           const r = await createChecklist(selectedId, v.name, v.price_adder);
           if (r.success) {
-            showToast("Checklist added", { variant: "success" });
+            toast.success("Checklist added");
             setChecklistDialog(null);
             await refetchChecklists();
             refreshMaxChecklistAdders();
           } else {
-            showToast(r.error || "Could not add the checklist", { variant: "error" });
+            toast.error(r.error || "Could not add the checklist");
           }
         }
       } finally {
         setBusy(false);
       }
     },
-    [selectedId, checklistDialog, showToast, refetchChecklists, refreshMaxChecklistAdders],
+    [selectedId, checklistDialog, refetchChecklists, refreshMaxChecklistAdders],
   );
 
   const handleDuplicateChecklist = useCallback(
@@ -395,12 +394,12 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       if (r.success) {
         await refetchChecklists();
         refreshMaxChecklistAdders();
-        showToast("Checklist duplicated", { variant: "success" });
+        toast.success("Checklist duplicated");
       } else {
-        showToast(r.error || "Could not duplicate the checklist", { variant: "error" });
+        toast.error(r.error || "Could not duplicate the checklist");
       }
     },
-    [refetchChecklists, refreshMaxChecklistAdders, showToast],
+    [refetchChecklists, refreshMaxChecklistAdders],
   );
 
   const handleDeleteChecklistClick = useCallback(
@@ -418,33 +417,33 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     try {
       const r = await deleteChecklist(deleteChecklistState.id);
       if (r.success) {
-        showToast("Checklist deleted", { variant: "success" });
+        toast.success("Checklist deleted");
         setDeleteChecklistState(null);
         await refetchChecklists();
         refreshMaxChecklistAdders();
       } else {
-        showToast(r.error || "Could not delete the checklist", { variant: "error" });
+        toast.error(r.error || "Could not delete the checklist");
       }
     } finally {
       setBusy(false);
     }
-  }, [deleteChecklistState, showToast, refetchChecklists, refreshMaxChecklistAdders]);
+  }, [deleteChecklistState, refetchChecklists, refreshMaxChecklistAdders]);
 
   // --- task mutations ---
   const handleAddTasks = useCallback(
     async (checklistId: string, raw: string) => {
       const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
       if (lines.length === 0) {
-        showToast("Enter at least one task", { variant: "error" });
+        toast.error("Enter at least one task");
         return;
       }
       const r = lines.length === 1
         ? await createLineItem(checklistId, lines[0])
         : await createLineItems(checklistId, lines);
       if (r.success) await refetchChecklists();
-      else showToast(r.error || "Could not add the task", { variant: "error" });
+      else toast.error(r.error || "Could not add the task");
     },
-    [refetchChecklists, showToast],
+    [refetchChecklists],
   );
 
   const handleSaveTask = useCallback(
@@ -453,10 +452,10 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       const r = await updateLineItem(taskId, task);
       if (!r.success) {
         await refetchChecklists();
-        showToast(r.error || "Could not update the task", { variant: "error" });
+        toast.error(r.error || "Could not update the task");
       }
     },
-    [applyLineItemUpdated, refetchChecklists, showToast],
+    [applyLineItemUpdated, refetchChecklists],
   );
 
   const handleDeleteTask = useCallback(
@@ -465,10 +464,10 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       const r = await deleteLineItem(taskId);
       if (!r.success) {
         await refetchChecklists();
-        showToast(r.error || "Could not delete the task", { variant: "error" });
+        toast.error(r.error || "Could not delete the task");
       }
     },
-    [applyLineItemRemoved, refetchChecklists, showToast],
+    [applyLineItemRemoved, refetchChecklists],
   );
 
   const handleReorderTasks = useCallback(
@@ -484,10 +483,10 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       const r = await reorderLineItems(checklistId, orderedIds);
       if (!r.success) {
         await refetchChecklists();
-        showToast(r.error || "Could not reorder tasks", { variant: "error" });
+        toast.error(r.error || "Could not reorder tasks");
       }
     },
-    [checklists, applyLineItemsReordered, refetchChecklists, showToast],
+    [checklists, applyLineItemsReordered, refetchChecklists],
   );
 
   const handleReorderChecklists = useCallback(
@@ -506,10 +505,10 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       const r = await reorderChecklists(selectedId, orderedIds);
       if (!r.success) {
         await refetchChecklists();
-        showToast(r.error || "Could not reorder checklists", { variant: "error" });
+        toast.error(r.error || "Could not reorder checklists");
       }
     },
-    [selectedId, queryClient, refetchChecklists, showToast],
+    [selectedId, queryClient, refetchChecklists],
   );
 
   const detailHandlers: ServiceDetailHandlers = {
