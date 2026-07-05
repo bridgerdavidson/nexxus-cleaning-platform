@@ -372,6 +372,7 @@ export function useCleanerStats() {
       },
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
 
@@ -605,6 +606,7 @@ export function useCleanerAwaitingPayments() {
     awaitingPayments: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
 

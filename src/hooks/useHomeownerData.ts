@@ -260,6 +260,7 @@ export function useHomeownerProperties() {
     properties: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
 
@@ -425,5 +426,6 @@ export function useHomeownerPayments() {
     payments: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
