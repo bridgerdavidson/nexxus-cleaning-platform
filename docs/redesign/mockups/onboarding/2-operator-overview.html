@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_style.css">
+<style>
+  body{display:flex;min-height:100vh}
+  /* light rail */
+  .rail{width:72px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+  .rail .m{width:40px;height:40px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:20px;margin-bottom:12px}
+  .navic{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;color:var(--warm500)}
+  .navic.active{background:var(--brand50);color:var(--brand)}
+  .rail .spacer{flex:1}
+  /* main column */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{height:64px;flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 22px}
+  .search{flex:1;max-width:420px;height:40px;border:1px solid var(--border);border-radius:14px;display:flex;align-items:center;gap:9px;padding:0 13px;color:var(--warm500);font-size:14px}
+  .search .kbd{margin-left:auto;font-size:11px;font-weight:700;color:var(--warm400);border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+  .tb-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tb-ic{width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:#fff;display:grid;place-items:center;color:var(--muted);position:relative}
+  .tb-ic .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:999px;background:var(--crit);border:2px solid #fff}
+  .avatar{width:40px;height:40px;border-radius:999px;background:var(--brand700);color:#fff;display:grid;place-items:center;font-weight:800;font-size:14px}
+  .content{padding:26px 30px;overflow:auto}
+  .content-inner{max-width:1120px}
+  .greet h1{font-size:25px;font-weight:800;letter-spacing:-.02em}
+  .greet p{color:var(--muted);font-size:14px;margin-top:3px}
+  /* dimmed context below the hero */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:22px;opacity:.5}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:18px;padding:16px 18px;box-shadow:var(--sh-sm)}
+  .kpi .k-l{font-size:12.5px;color:var(--muted);font-weight:600}
+  .kpi .k-v{font-size:26px;font-weight:800;margin-top:8px;letter-spacing:-.02em}
+  .ctxlabel{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--warm400);margin:26px 0 2px}
+</style></head>
+<body>
+  <nav class="rail">
+    <div class="m">N</div>
+    <div class="navic active" title="Overview"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></div>
+    <div class="navic" title="Bookings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></div>
+    <div class="navic" title="Customers"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
+    <div class="navic" title="Cleaners"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V9l6-4 6 4v12M10 21v-5h4v5"/></svg></div>
+    <div class="navic" title="Services"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.1 6.3L20.5 9.4l-5.2 4 2 6.3-5.3-3.9-5.3 3.9 2-6.3-5.2-4 6.4-.1z"/></svg></div>
+    <div class="navic" title="Payments"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></div>
+    <div class="spacer"></div>
+    <div class="navic" title="Settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Search bookings, customers, cleaners…<span class="kbd">⌘K</span></div>
+      <div class="tb-right">
+        <a class="btn btn-primary btn-sm"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New booking</a>
+        <div class="tb-ic"><span class="dot"></span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></div>
+        <div class="avatar">SM</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="content-inner">
+        <div class="greet">
+          <h1>Good morning, Sarah</h1>
+          <p>Tuesday, June 30 · Here's your day</p>
+        </div>
+
+        <!-- HERO: setup checklist pinned above everything -->
+        <div class="card checklist" style="margin-top:20px;box-shadow:var(--sh-lg)">
+          <div class="cl-head">
+            <div>
+              <div class="eyebrow">Get started</div>
+              <h3 class="cl-title">Finish setting up your business</h3>
+              <p class="cl-sub">3 steps left before you can take bookings</p>
+            </div>
+            <div class="cl-head-right">
+              <span class="cl-count">1<span>/4</span></span>
+              <button class="cl-x"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            </div>
+          </div>
+          <div class="progress"><div class="progress-fill" style="width:25%"></div></div>
+          <ul class="steps">
+            <li class="step done">
+              <span class="step-ic done"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+              <div class="step-main"><div class="step-t">Connect payments</div><div class="step-d">Card connected · you can get paid</div></div>
+              <span class="done-badge"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Done</span>
+            </li>
+            <li class="step next">
+              <span class="step-ic next"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.1 6.3L20.5 9.4l-5.2 4 2 6.3-5.3-3.9-5.3 3.9 2-6.3-5.2-4 6.4-.1z"/></svg></span>
+              <div class="step-main"><div class="step-t">Add your services & pricing</div><div class="step-d">Define what you offer and what it costs</div></div>
+              <a class="btn btn-primary btn-sm">Add service</a>
+            </li>
+            <li class="step">
+              <span class="step-ic todo"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span>
+              <div class="step-main"><div class="step-t">Set cleaner pay</div><div class="step-d">The percent each cleaner earns per job</div></div>
+              <span class="step-chev"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+            </li>
+            <li class="step">
+              <span class="step-ic todo"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>
+              <div class="step-main"><div class="step-t">Invite your cleaners</div><div class="step-d">Build your team so you can assign jobs</div></div>
+              <span class="step-chev"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+            </li>
+            <li class="step">
+              <span class="step-ic todo"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+              <div class="step-main"><div class="step-t">Set business hours & cancellation policy <span style="font-size:11px;font-weight:600;color:var(--muted);background:var(--warm100);padding:1px 8px;border-radius:999px;margin-left:4px;vertical-align:middle">Optional</span></div><div class="step-d">When you work and your terms (defaults are set)</div></div>
+              <span class="step-chev"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="ctxlabel">Your dashboard (below)</div>
+        <div class="kpis">
+          <div class="kpi"><div class="k-l">Today's jobs</div><div class="k-v">0</div></div>
+          <div class="kpi"><div class="k-l">In progress</div><div class="k-v">0</div></div>
+          <div class="kpi"><div class="k-l">Awaiting approval</div><div class="k-v">0</div></div>
+          <div class="kpi"><div class="k-l">Revenue this month</div><div class="k-v">$0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>

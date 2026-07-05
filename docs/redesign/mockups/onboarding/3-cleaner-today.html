@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_style.css">
+<style>
+  body{max-width:100%;}
+  .app{min-height:100vh;display:flex;flex-direction:column;padding-bottom:78px}
+  .mtop{position:sticky;top:0;background:rgba(247,246,243,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:14px 18px;z-index:5}
+  .mtop .h{font-size:20px;font-weight:800;letter-spacing:-.02em}
+  .mtop .r{display:flex;gap:10px;align-items:center}
+  .mtop .tb-ic{width:40px;height:40px;border-radius:12px;border:1px solid var(--border);background:#fff;display:grid;place-items:center;color:var(--muted);position:relative}
+  .mtop .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:999px;background:var(--crit);border:2px solid var(--bg)}
+  .body{padding:18px}
+  .daylabel{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:14px}
+  /* checklist card sits at top of Today */
+  .checklist{padding:18px}
+  .cl-title{font-size:17px}
+  .step-t{font-size:14.5px}
+  .jobsec{margin-top:22px}
+  .jobsec .lbl{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--warm500);margin-bottom:10px}
+  .emptyjobs{border:1.5px dashed var(--warm300);border-radius:20px;padding:30px 20px;text-align:center;background:rgba(255,255,255,.5)}
+  .emptyjobs .ei{width:48px;height:48px;border-radius:14px;background:var(--warm100);color:var(--warm500);display:grid;place-items:center;margin:0 auto 12px}
+  .emptyjobs .et{font-weight:700;font-size:15px}
+  .emptyjobs .ed{font-size:13px;color:var(--muted);margin-top:4px}
+  .tabbar{position:fixed;bottom:0;left:0;right:0;height:64px;background:#fff;border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--warm500);font-size:10.5px;font-weight:700}
+  .tab.active{color:var(--brand)}
+</style></head>
+<body>
+  <div class="app">
+    <div class="mtop">
+      <div class="h">Today</div>
+      <div class="r">
+        <div class="tb-ic"><span class="dot"></span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></div>
+        <div class="avatar" style="width:40px;height:40px;border-radius:999px;background:var(--brand700);color:#fff;display:grid;place-items:center;font-weight:800;font-size:13px">MJ</div>
+      </div>
+    </div>
+    <div class="body">
+      <div class="daylabel">Tuesday, June 30</div>
+
+      <div class="card checklist" style="box-shadow:var(--sh-md)">
+        <div class="cl-head">
+          <div>
+            <div class="eyebrow">Get set up</div>
+            <h3 class="cl-title">You're almost ready</h3>
+            <p class="cl-sub">Connect payouts so you can get paid</p>
+          </div>
+          <div class="cl-head-right"><span class="cl-count">0<span>/2</span></span></div>
+        </div>
+        <div class="progress"><div class="progress-fill" style="width:4%"></div></div>
+        <ul class="steps">
+          <li class="step next">
+            <span class="step-ic next"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
+            <div class="step-main"><div class="step-t">Connect payouts <span style="font-size:11px;font-weight:700;color:var(--brand700);background:var(--brand50);padding:1px 8px;border-radius:999px;margin-left:4px;vertical-align:middle">Required</span></div><div class="step-d">So you get paid to your bank</div></div>
+            <a class="btn btn-primary btn-sm">Connect</a>
+          </li>
+          <li class="step">
+            <span class="step-ic todo"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span>
+            <div class="step-main"><div class="step-t">Complete your profile <span style="font-size:11px;font-weight:600;color:var(--muted);background:var(--warm100);padding:1px 8px;border-radius:999px;margin-left:4px;vertical-align:middle">Optional</span></div><div class="step-d">Add a photo so homeowners know who's coming</div></div>
+            <span class="step-chev"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="jobsec">
+        <div class="lbl">Your jobs today</div>
+        <div class="emptyjobs">
+          <div class="ei"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></div>
+          <div class="et">No jobs yet</div>
+          <div class="ed">Once the office assigns you work, it shows up here.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>Today</div>
+      <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>Schedule</div>
+      <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 7l10-5 10 5M4 10v7M20 10v7"/></svg>Earnings</div>
+      <div class="tab"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Messages</div>
+    </div>
+  </div>
+</body></html>
