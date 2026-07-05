@@ -72,6 +72,8 @@ export interface UserProfile {
   stripe_customer_id: string | null;
   created_at: string;
   updated_at: string;
+  welcome_seen_at?: string | null;
+  setup_checklist_dismissed_at?: string | null;
 }
 
 // ORGANIZATIONS
@@ -106,6 +108,10 @@ export interface Organization {
   //   'full'        -> full breakdown (customer charge + cut).
   //   'payout_only' -> only the cleaner's cut (no customer charge, no percentage).
   cleaner_pay_display: 'full' | 'payout_only';
+  // Onboarding wizard (R4-C) — added in migration 101.
+  setup_checklist_dismissed_at?: string | null;
+  payout_configured_at?: string | null;
+  hours_policy_configured_at?: string | null;
 }
 
 // ORGANIZATION MEMBERS
