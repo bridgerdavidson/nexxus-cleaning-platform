@@ -95,5 +95,5 @@ export function useOrgJobThreads({ orgId, userId }: { orgId: string; userId: str
   useVisibilityRefetch({ keys: [queryKey], enabled: !!orgId });
 
   const jobThreads = useMemo(() => query.data ?? [], [query.data]);
-  return { jobThreads, loading: query.isLoading, error: query.error?.message ?? null };
+  return { jobThreads, loading: query.isLoading, error: query.error?.message ?? null, refetch: query.refetch };
 }

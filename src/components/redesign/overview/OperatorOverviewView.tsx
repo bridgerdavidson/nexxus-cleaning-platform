@@ -1,10 +1,13 @@
 import { KpiStrip } from "./KpiStrip";
 import { NeedsYouNowQueue } from "./NeedsYouNowQueue";
 import { TodayActivePanel } from "./TodayActivePanel";
+import { ErrorState } from "@/components/ui/error-state";
 import type { ActiveItem, OverviewKpis, QueueItem, ScheduleItem } from "./overview-types";
 
 export type OperatorOverviewViewProps = {
   loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
   /** Visible page header. When omitted, a screen-reader-only h1 is used instead. */
   greeting?: string;
   dateLabel?: string;
@@ -21,6 +24,8 @@ export type OperatorOverviewViewProps = {
  *  via OperatorOverview in the live page). */
 export function OperatorOverviewView({
   loading,
+  error,
+  onRetry,
   greeting,
   dateLabel,
   kpis,
@@ -30,6 +35,9 @@ export function OperatorOverviewView({
   today,
   activeNow,
 }: OperatorOverviewViewProps) {
+  if (error) {
+    return <ErrorState title="Couldn't load your dashboard" onRetry={onRetry} />;
+  }
   return (
     <div className="max-w-[1700px] space-y-5">
       {greeting ? (

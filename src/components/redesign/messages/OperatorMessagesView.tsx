@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
+import { ErrorState } from '@/components/ui/error-state'
 import { MobileTakeover } from '../shared/MobileTakeover'
 import { InboxList } from './InboxList'
 import { MessageThreadPanel } from './MessageThreadPanel'
@@ -9,6 +10,9 @@ import { ContextPanel } from './ContextPanel'
 import type { OperatorMessagesViewProps } from './messages-types'
 
 export function OperatorMessagesView(props: OperatorMessagesViewProps) {
+  if (props.error) {
+    return <ErrorState title="Couldn't load messages" onRetry={props.onRetry} />;
+  }
   // Office thread (?c=) OR read-only job thread (?job=). Mutually exclusive.
   const hasSelection = !!props.selectedId || !!props.selectedJob
 
