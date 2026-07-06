@@ -1,8 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { CalendarPlus, Sparkles } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
+import { CalendarPlus } from 'lucide-react';
 import { useHomeownerAppointments } from '@/hooks/useHomeownerData';
 import { useHomeownerRequests } from '@/hooks/useHomeownerRequests';
 import { pickHeroAppointment } from './home-presenters';
@@ -79,14 +78,6 @@ export function HomeownerHome() {
         <section>
           <SetupCompleteCard onDismiss={onboarding.onDismiss} />
         </section>
-      )}
-
-      {!loading && hero === null && seriesGroups.length === 0 && requests.length === 0 && (
-        <EmptyState
-          icon={<Sparkles />}
-          title="No cleanings booked yet"
-          description="Request a cleaning and you'll see it here with live updates."
-        />
       )}
 
       {requests.length > 0 && (

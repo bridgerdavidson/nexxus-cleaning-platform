@@ -104,7 +104,11 @@ export function useOperatorOnboarding(): OnboardingState {
     loading,
     onDismiss: async () => {
       if (!orgId || !accessToken) return;
-      await dismissOrgChecklist(orgId, accessToken);
+      try {
+        await dismissOrgChecklist(orgId, accessToken);
+      } catch {
+        // swallow — route may 403 for non-privileged roles; don't reject unhandled
+      }
       invalidate();
     },
     onWelcomeDone: async () => {

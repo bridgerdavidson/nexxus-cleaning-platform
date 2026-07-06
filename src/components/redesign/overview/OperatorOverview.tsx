@@ -95,14 +95,15 @@ export function OperatorOverview() {
     title: `${propertyLabel(a)} · ${cleanerLabel(a)}`,
   }));
 
-  const checklist = onboarding.showChecklist ? (
+  const showOnboarding = privileged;
+  const checklist = showOnboarding && onboarding.showChecklist ? (
     <SetupChecklistCard
       title="Finish setting up your business"
       subtitle={`${onboarding.vm.requiredRemaining} ${onboarding.vm.requiredRemaining === 1 ? "step" : "steps"} left before you can take bookings`}
       vm={onboarding.vm}
       onDismiss={onboarding.onDismiss}
     />
-  ) : onboarding.showSuccess ? (
+  ) : showOnboarding && onboarding.showSuccess ? (
     <SetupCompleteCard onDismiss={onboarding.onDismiss} />
   ) : null;
 
@@ -129,7 +130,7 @@ export function OperatorOverview() {
         activeNow={activeNow}
         checklist={checklist}
       />
-      {onboarding.showWelcome && (
+      {privileged && onboarding.showWelcome && (
         <Dialog open onOpenChange={(open) => { if (!open) onboarding.onWelcomeDone(); }}>
           <DialogContent className="max-w-lg p-8">
             <WelcomeContent
