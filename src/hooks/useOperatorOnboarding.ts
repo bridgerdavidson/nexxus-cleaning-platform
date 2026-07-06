@@ -80,9 +80,9 @@ export function useOperatorOnboarding(): OnboardingState {
   };
 
   const vm = deriveChecklist(getSetupSteps('operator', model), signals);
-  const justCompleted = useJustCompleted(vm.allRequiredComplete);
 
   const loading = orgQuery.isLoading || flags.loading;
+  const justCompleted = useJustCompleted(vm.allRequiredComplete, !loading);
   const showChecklist = !loading && !data?.orgDismissed && !vm.allRequiredComplete;
   const showSuccess = !loading && justCompleted && !data?.orgDismissed;
   const showWelcome = !loading && !flags.welcomeSeen;

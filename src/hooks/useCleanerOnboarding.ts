@@ -22,9 +22,9 @@ export function useCleanerOnboarding(): OnboardingState {
     profile_complete: !!user?.profile?.avatarUrl,
   };
   const vm = deriveChecklist(getSetupSteps('cleaner', 'percentage_contractor'), signals);
-  const justCompleted = useJustCompleted(vm.allRequiredComplete);
 
   const loading = flags.loading || statusLoading;
+  const justCompleted = useJustCompleted(vm.allRequiredComplete, !loading);
   const invalidate = () => { if (user?.id) void qc.invalidateQueries({ queryKey: keys.onboarding.flags(user.id) }); };
 
   return {

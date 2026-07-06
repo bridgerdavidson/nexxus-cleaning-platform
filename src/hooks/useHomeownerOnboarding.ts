@@ -29,9 +29,9 @@ export function useHomeownerOnboarding(): OnboardingState {
     payment_method_added: (cards?.length ?? 0) > 0,
   };
   const vm = deriveChecklist(steps, signals);
-  const justCompleted = useJustCompleted(vm.allRequiredComplete);
 
   const loading = flags.loading || propsLoading || (cardsEnabled && cardsLoading);
+  const justCompleted = useJustCompleted(vm.allRequiredComplete, !loading);
   const invalidate = () => { if (user?.id) void qc.invalidateQueries({ queryKey: keys.onboarding.flags(user.id) }); };
 
   return {
