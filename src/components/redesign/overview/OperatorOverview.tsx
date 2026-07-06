@@ -95,7 +95,11 @@ export function OperatorOverview() {
     title: `${propertyLabel(a)} · ${cleanerLabel(a)}`,
   }));
 
-  const showOnboarding = privileged;
+  // Onboarding is owner-only: the required "Set cleaner pay" step routes to the
+  // owner-only Payout settings section, so an admin could not complete it (and the
+  // legacy OwnerSetupChecklist was owner-only too). Admins/managers run day-to-day;
+  // initial business setup (payout %, org profile, hours/policy) is the owner's.
+  const showOnboarding = currentOrgRole === "owner";
   const checklist = showOnboarding && onboarding.showChecklist ? (
     <SetupChecklistCard
       title="Finish setting up your business"
@@ -130,7 +134,7 @@ export function OperatorOverview() {
         activeNow={activeNow}
         checklist={checklist}
       />
-      {privileged && onboarding.showWelcome && (
+      {showOnboarding && onboarding.showWelcome && (
         <Dialog open onOpenChange={(open) => { if (!open) onboarding.onWelcomeDone(); }}>
           <DialogContent className="max-w-lg p-8">
             <WelcomeContent
