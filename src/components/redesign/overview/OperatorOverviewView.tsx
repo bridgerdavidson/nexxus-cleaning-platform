@@ -2,6 +2,7 @@ import { KpiStrip } from "./KpiStrip";
 import { NeedsYouNowQueue } from "./NeedsYouNowQueue";
 import { TodayActivePanel } from "./TodayActivePanel";
 import { ErrorState } from "@/components/ui/error-state";
+import type React from "react";
 import type { ActiveItem, OverviewKpis, QueueItem, ScheduleItem } from "./overview-types";
 
 export type OperatorOverviewViewProps = {
@@ -17,6 +18,8 @@ export type OperatorOverviewViewProps = {
   counterProposed: QueueItem[];
   today: ScheduleItem[];
   activeNow: ActiveItem[];
+  /** Optional onboarding checklist or completion card rendered above the page header. */
+  checklist?: React.ReactNode;
 };
 
 /** Pure presentational Overview: KPI strip + "Needs you now" centerpiece +
@@ -34,12 +37,14 @@ export function OperatorOverviewView({
   counterProposed,
   today,
   activeNow,
+  checklist,
 }: OperatorOverviewViewProps) {
   if (error) {
     return <ErrorState title="Couldn't load your dashboard" onRetry={onRetry} />;
   }
   return (
     <div className="max-w-[1700px] space-y-5">
+      {checklist}
       {greeting ? (
         <header>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">{greeting}</h1>
