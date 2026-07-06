@@ -1,0 +1,49 @@
+'use client';
+
+import { Logo } from '@/components/ui/logo';
+import { Button } from '@/components/ui/button';
+import type { WelcomeCopy } from '@/lib/onboarding/welcomeCopy';
+
+export function WelcomeContent({
+  copy,
+  previewSteps,
+  onPrimary,
+  onSkip,
+}: {
+  copy: WelcomeCopy;
+  previewSteps?: { title: string }[];
+  onPrimary: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-2 py-2 text-center">
+      <Logo variant="full" className="h-8 w-auto" />
+      <h1 className="mt-10 text-3xl font-extrabold tracking-tight text-foreground">{copy.title}</h1>
+      <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{copy.lede}</p>
+
+      {previewSteps && previewSteps.length > 0 && (
+        <ul className="mt-7 w-full space-y-1.5 text-left">
+          {previewSteps.map((s, i) => (
+            <li key={i} className="flex items-center gap-3 rounded-control bg-muted/60 px-4 py-2.5 text-sm font-semibold text-foreground">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-pill bg-brand-50 text-xs font-extrabold text-primary">
+                {i + 1}
+              </span>
+              {s.title}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-8 flex w-full flex-col items-center gap-3">
+        <Button size="lg" className="w-full" onClick={onPrimary}>
+          {copy.ctaLabel}
+        </Button>
+        {copy.skipLabel && (
+          <Button variant="ghost" onClick={onSkip}>
+            {copy.skipLabel}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
