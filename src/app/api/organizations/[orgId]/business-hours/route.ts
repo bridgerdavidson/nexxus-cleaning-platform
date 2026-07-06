@@ -103,6 +103,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
+    update.hours_policy_configured_at = new Date().toISOString(); // NEW: onboarding completion marker
+
     const { error } = await supabaseAdmin.from('organizations').update(update).eq('id', orgId);
     if (error) {
       return NextResponse.json(
