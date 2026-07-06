@@ -124,4 +124,10 @@ export const keys = {
       detail: (id: string) => ['platform', 'organizations', 'detail', id] as const,
     },
   },
+  onboarding: {
+    all: ['onboarding'] as const,
+    flags: (userId: string) => ['onboarding', 'flags', userId] as const,
+    operator: (orgId: string) => ['onboarding', 'operator', orgId] as const,
+    homeowner: (userId: string) => ['onboarding', 'homeowner', userId] as const,
+  },
 };

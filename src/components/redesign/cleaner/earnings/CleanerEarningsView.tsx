@@ -2,7 +2,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Landmark } from "lucide-react";
+import { Landmark, Wallet } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,9 +85,15 @@ export function CleanerEarningsView({
         hasWaiting={data.clearing.length > 0}
       />
 
-      {data.clearing.length > 0 && (
+      {data.clearing.length > 0 ? (
         <ClearingSection rows={data.clearing} todayStr={todayStr} setUp={setUp} />
-      )}
+      ) : setUp ? (
+        <EmptyState
+          icon={<Wallet />}
+          title="No earnings yet"
+          description="Once you complete a job, your pay shows up here."
+        />
+      ) : null}
 
       <ActivityTiles counts={data.counts} />
     </div>

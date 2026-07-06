@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_style.css">
+<style>
+  body{padding:34px 30px}
+  .wrap{max-width:1160px;margin:0 auto}
+  .board-title{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .board-sub{color:var(--muted);font-size:14px;margin-top:4px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:26px}
+  .panel .plabel{font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--warm500);margin-bottom:10px}
+  /* existing-user welcome (compact modal style) */
+  .welcome-mini{padding:26px 24px;text-align:center}
+  .welcome-mini .m{width:44px;height:44px;border-radius:13px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:22px;margin:0 auto 16px}
+  .welcome-mini h3{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  .welcome-mini p{color:var(--muted);font-size:14px;line-height:1.5;margin:9px auto 0;max-width:340px}
+  .wm-hi{display:flex;gap:10px;margin:18px 0 20px;text-align:left}
+  .wm-hi .h{flex:1;background:var(--brand50);border-radius:14px;padding:12px}
+  .wm-hi .h .t{font-size:12.5px;font-weight:700;color:var(--brand700)}
+  .wm-hi .h .d{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .welcome-mini .btn-primary{width:100%}
+  /* all-complete state */
+  .complete{padding:24px}
+  .complete-top{display:flex;align-items:center;gap:14px}
+  .complete-top .ring{width:46px;height:46px;border-radius:999px;background:var(--pos);color:#fff;display:grid;place-items:center;flex-shrink:0}
+  .complete-top h3{font-size:18px;font-weight:800}
+  .complete-top p{font-size:13px;color:var(--muted);margin-top:2px}
+  .progress-done{height:7px;border-radius:999px;background:var(--pos);margin:16px 0}
+  .complete-foot{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+  .mini-note{font-size:12.5px;color:var(--muted)}
+  /* empty state (on-system) */
+  .empty{border:1.5px dashed var(--warm300);border-radius:22px;padding:40px 24px;text-align:center;background:rgba(255,255,255,.5)}
+  .empty .ei{width:54px;height:54px;border-radius:16px;background:var(--warm100);color:var(--warm500);display:grid;place-items:center;margin:0 auto 14px}
+  .empty .et{font-weight:800;font-size:16px}
+  .empty .ed{font-size:13.5px;color:var(--muted);margin:6px auto 16px;max-width:300px;line-height:1.5}
+</style></head>
+<body>
+  <div class="wrap">
+    <div class="board-title">Behavior & adaptive states</div>
+    <div class="board-sub">How the same machinery serves already-set-up users and how it clears itself when done.</div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="plabel">Existing / already-set-up user (adaptive copy)</div>
+        <div class="card welcome-mini">
+          <div class="m">N</div>
+          <h3>Welcome to the new Nexxus</h3>
+          <p>Same tools, a faster and cleaner look. Nothing you set up has changed.</p>
+          <div class="wm-hi">
+            <div class="h"><div class="t">Everything, quicker</div><div class="d">Search anywhere with ⌘K</div></div>
+            <div class="h"><div class="t">Same data</div><div class="d">Your bookings & team are all here</div></div>
+          </div>
+          <a class="btn btn-primary">Take a look</a>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="plabel">Checklist finished → clears itself</div>
+        <div class="card complete">
+          <div class="complete-top">
+            <div class="ring"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <div><h3>You're all set</h3><p>Your business is ready to take bookings.</p></div>
+          </div>
+          <div class="progress-done"></div>
+          <div class="complete-foot">
+            <span class="mini-note">Auto-hides on your next visit</span>
+            <button class="btn btn-outline btn-sm">Dismiss</button>
+          </div>
+        </div>
+        <div style="margin-top:16px" class="plabel">…and for a set-up user, it never appears (derived complete)</div>
+      </div>
+    </div>
+
+    <div style="margin-top:24px" class="panel">
+      <div class="plabel">Empty-state nudge, built from the design system (EmptyState primitive)</div>
+      <div class="empty">
+        <div class="ei"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></div>
+        <div class="et">No bookings yet</div>
+        <div class="ed">When you or a customer books a cleaning, it'll show up here.</div>
+        <a class="btn btn-primary btn-sm"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New booking</a>
+      </div>
+    </div>
+  </div>
+</body></html>

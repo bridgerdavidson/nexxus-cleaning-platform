@@ -11,6 +11,12 @@ import { HomeownerRepeatingCard } from './HomeownerRepeatingCard';
 import { PendingRequestCard } from './PendingRequestCard';
 import { useOpenCleaning } from '../cleanings/useOpenCleaning';
 import { useOpenBooking } from '../booking/useOpenBooking';
+import { useHomeownerOnboarding } from '@/hooks/useHomeownerOnboarding';
+import { SetupChecklistCard } from '@/components/redesign/onboarding/SetupChecklistCard';
+import { SetupCompleteCard } from '@/components/redesign/onboarding/SetupCompleteCard';
+import { WelcomeContent } from '@/components/redesign/onboarding/WelcomeContent';
+import { getWelcomeCopy } from '@/lib/onboarding/welcomeCopy';
+import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 
 function todayStr(): string {
   const d = new Date();
@@ -24,11 +30,13 @@ export function HomeownerHome() {
   const { requests, cancelRequest, cancelling } = useHomeownerRequests();
   const openCleaning = useOpenCleaning();
   const openBooking = useOpenBooking();
+  const onboarding = useHomeownerOnboarding();
   const today = todayStr();
   const hero = useMemo(() => pickHeroAppointment(appointments, today), [appointments, today]);
   const seriesGroups = useMemo(() => deriveHomeownerSeries(appointments, today), [appointments, today]);
 
   return (
+    <>
     <div className="flex flex-col gap-4 pb-8">
       {loading ? (
         <div className="h-40 animate-pulse rounded-card bg-muted" aria-hidden />
@@ -53,6 +61,22 @@ export function HomeownerHome() {
           {seriesGroups.map((s) => (
             <HomeownerRepeatingCard key={s.seriesId} series={s} onOpenCleaning={openCleaning} />
           ))}
+        </section>
+      )}
+
+      {onboarding.showChecklist && (
+        <section>
+          <SetupChecklistCard
+            title="Get ready for your first cleaning"
+            subtitle={`${onboarding.vm.requiredRemaining} step${onboarding.vm.requiredRemaining === 1 ? '' : 's'} left to get set up`}
+            vm={onboarding.vm}
+            onDismiss={onboarding.onDismiss}
+          />
+        </section>
+      )}
+      {!onboarding.showChecklist && onboarding.showSuccess && (
+        <section>
+          <SetupCompleteCard onDismiss={onboarding.onDismiss} />
         </section>
       )}
 
@@ -86,5 +110,19 @@ export function HomeownerHome() {
         </div>
       </div>
     </div>
+      {onboarding.showWelcome && (
+        <MobileTakeover ariaLabel="Welcome" onClosed={onboarding.onWelcomeDone}>
+          {(close) => (
+            <div className="flex min-h-full items-center justify-center bg-background px-6 py-16">
+              <WelcomeContent
+                copy={getWelcomeCopy('homeowner', onboarding.welcomeVariant, onboarding.firstName)}
+                onPrimary={close}
+                onSkip={close}
+              />
+            </div>
+          )}
+        </MobileTakeover>
+      )}
+    </>
   );
 }

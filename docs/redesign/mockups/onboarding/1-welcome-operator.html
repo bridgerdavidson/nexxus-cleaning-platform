@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_style.css">
+<style>
+  body{min-height:100vh;display:grid;place-items:center;padding:40px 24px;
+    background:
+      radial-gradient(900px 500px at 50% -8%, rgba(1,80,252,.06), transparent 70%),
+      var(--bg);}
+  .welcome{width:100%;max-width:560px;text-align:center}
+  .brandmark{display:inline-flex;align-items:center;gap:11px;margin-bottom:36px}
+  .brandmark .m{width:38px;height:38px;border-radius:11px;background:var(--brand);color:#fff;display:grid;place-items:center;font-weight:800;font-size:20px;box-shadow:0 4px 12px rgb(1 80 252 / .3)}
+  .brandmark .w{font-size:22px;font-weight:800;letter-spacing:-.02em}
+  h1{font-size:34px;font-weight:800;letter-spacing:-.025em;line-height:1.12}
+  .lede{font-size:16.5px;line-height:1.55;color:var(--muted);margin:14px auto 0;max-width:440px}
+  .preview{margin-top:30px;text-align:left;padding:8px 6px}
+  .preview .lbl{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--warm500);padding:0 14px 10px}
+  .prow{display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:16px}
+  .prow+.prow{margin-top:2px}
+  .prow .pic{width:38px;height:38px;border-radius:11px;background:var(--brand50);color:var(--brand);display:grid;place-items:center;flex-shrink:0}
+  .prow .pt{font-size:14.5px;font-weight:700}
+  .prow .pd{font-size:12.5px;color:var(--muted);margin-top:1px}
+  .cta{margin-top:32px;display:flex;flex-direction:column;align-items:center;gap:14px}
+  .cta .btn-primary{width:100%;max-width:340px;height:50px;font-size:16px}
+  .est{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:13.5px;margin-top:22px}
+</style></head>
+<body>
+  <div class="welcome">
+    <div class="brandmark"><div class="m">N</div><div class="w">Nexxus</div></div>
+    <h1>Welcome to Nexxus, Sarah</h1>
+    <p class="lede">Let's get your cleaning business ready to take bookings. A few quick steps and you're live. You can stop and pick up right where you left off anytime.</p>
+
+    <div class="preview card" style="box-shadow:var(--sh-sm);border-radius:20px;padding:14px 8px;margin-top:30px">
+      <div class="lbl">Here's what we'll set up</div>
+      <div class="prow"><div class="pic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></div><div><div class="pt">Connect payments</div><div class="pd">So you get paid for completed jobs</div></div></div>
+      <div class="prow"><div class="pic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.1 6.3L20.5 9.4l-5.2 4 2 6.3-5.3-3.9-5.3 3.9 2-6.3-5.2-4 6.4-.1z"/></svg></div><div><div class="pt">Add your services</div><div class="pd">What you offer and your pricing</div></div></div>
+      <div class="prow"><div class="pic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="pt">Invite your cleaners</div><div class="pd">Build your team so you can assign jobs</div></div></div>
+      <div class="prow"><div class="pic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="pt">Set hours & cancellation policy</div><div class="pd">When you work and your terms</div></div></div>
+    </div>
+
+    <div class="cta">
+      <a class="btn btn-primary">Let's get started</a>
+      <a class="btn btn-ghost" style="height:auto">I'll do this later</a>
+    </div>
+    <div class="est"><svg class="ic-18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>About 5 minutes</div>
+  </div>
+</body></html>

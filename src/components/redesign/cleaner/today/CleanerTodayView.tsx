@@ -36,6 +36,7 @@ export function CleanerTodayView({
   onOpenJob,
   onSeeTomorrow,
   todayStr,
+  checklist,
 }: {
   data: TodayData;
   loading: boolean;
@@ -49,6 +50,7 @@ export function CleanerTodayView({
   onOpenJob: (id: string) => void;
   onSeeTomorrow: () => void;
   todayStr: string;
+  checklist?: React.ReactNode;
 }) {
   const grouped = useMemo(() => deriveSeriesOffers(data.offers), [data.offers]);
   const offerCount = grouped.singles.length + grouped.series.length;
@@ -98,6 +100,8 @@ export function CleanerTodayView({
           </div>
         </section>
       )}
+
+      {checklist}
 
       {data.needsAttention.length > 0 && (
         <section>
