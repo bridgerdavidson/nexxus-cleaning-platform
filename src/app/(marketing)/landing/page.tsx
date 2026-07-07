@@ -1,8 +1,9 @@
 import { MarketingNav } from '@/components/marketing/MarketingNav'
 import { HeroSection } from '@/components/marketing/HeroSection'
-import { StorySection } from '@/components/marketing/StorySection'
-import { LiveDemoSection } from '@/components/marketing/LiveDemoSection'
-import { FeatureCardsSection } from '@/components/marketing/FeatureCardsSection'
+import { LiveTrackingSection } from '@/components/marketing/LiveTrackingSection'
+import { CapabilityExplorer } from '@/components/marketing/CapabilityExplorer'
+import { PayModelsSection } from '@/components/marketing/PayModelsSection'
+import { FlexibilitySection } from '@/components/marketing/FlexibilitySection'
 import { PricingSection } from '@/components/marketing/PricingSection'
 import { FaqSection } from '@/components/marketing/FaqSection'
 import { WaitlistSection } from '@/components/marketing/WaitlistSection'
@@ -14,9 +15,10 @@ export default function LandingPage() {
       <MarketingNav />
       <main>
         <HeroSection />
-        <StorySection />
-        <LiveDemoSection />
-        <FeatureCardsSection />
+        <CapabilityExplorer />
+        <LiveTrackingSection />
+        <PayModelsSection />
+        <FlexibilitySection />
         <PricingSection />
         <FaqSection />
         <WaitlistSection />
