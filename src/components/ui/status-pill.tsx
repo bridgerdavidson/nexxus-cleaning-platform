@@ -15,11 +15,13 @@ interface StatusConfig {
   variant: BadgeProps['variant']
   Icon: React.ComponentType<{ className?: string }>
   label: string
+  /** Spin the icon (mirrors bookings-presenters' in-progress treatment). */
+  spin?: boolean
 }
 
 const STATUS_MAP: Record<AppointmentStatus, StatusConfig> = {
   scheduled:   { variant: 'info',      Icon: CalendarClock,  label: 'Scheduled' },
-  in_progress: { variant: 'default',   Icon: Loader2,        label: 'In Progress' },
+  in_progress: { variant: 'default',   Icon: Loader2,        label: 'In Progress', spin: true },
   completed:   { variant: 'positive',  Icon: CheckCircle2,   label: 'Completed' },
   cancelled:   { variant: 'critical',  Icon: XCircle,        label: 'Cancelled' },
   pending:     { variant: 'caution',   Icon: Clock,          label: 'Pending' },
@@ -35,10 +37,10 @@ export interface StatusPillProps {
 function StatusPill({ status, label, className }: StatusPillProps) {
   const config = STATUS_MAP[status]
   if (!config) return null
-  const { variant, Icon, label: defaultLabel } = config
+  const { variant, Icon, label: defaultLabel, spin } = config
   return (
     <Badge variant={variant} className={className}>
-      <Icon />
+      <Icon className={spin ? 'motion-safe:animate-spin' : undefined} />
       {label ?? defaultLabel}
     </Badge>
   )

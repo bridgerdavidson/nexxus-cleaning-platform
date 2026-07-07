@@ -8,6 +8,7 @@ import {
   CreditCard,
   ListChecks,
   Camera,
+  Inbox,
   MousePointer2,
   Sparkles,
 } from 'lucide-react'
@@ -20,46 +21,60 @@ import { cn } from '@/lib/utils'
 import { BrowserFrame, MiniRail, PhoneFrame } from './frames'
 
 // ---------------------------------------------------------------------------
-// One booking travels through Nexxus as a single continuous ~21s loop:
-// request (homeowner) -> needs-you-now queue -> assign (cursor) -> cleaner's
-// day -> work montage -> complete -> charge + split. Fixed stage coordinates
-// make the flights, connector paths, and cursor deterministic; a camera pans
-// across the stage on narrow viewports instead of shrinking the UI.
+// One booking travels through Nexxus as a single continuous ~24s loop. The
+// request collapses into an appointment card, glides along a drawn path into
+// the Needs-you-now queue (drop-target glow, landing settle), a cursor assigns
+// Maria, the job glides to her phone, the work montage ticks by, and on
+// completion the camera pans back for the money beat: the pill flips to
+// Completed, revenue rolls up, and Maria's payout counts in.
+// Fixed stage coordinates; a spring camera pans on narrow viewports.
 // See specs/landing-flow-animation.md.
 // ---------------------------------------------------------------------------
 
 const EASE = [0.22, 1, 0.36, 1] as const
+const GLIDE: [number, number, number, number] = [0.45, 0.05, 0.25, 1]
 
 const STAGE_W = 1060
 const STAGE_H = 420
 
-// Surface origins (stage px)
 const HOME = { x: 0, y: 56, w: 252 }
 const DASH = { x: 306, y: 12, w: 460 }
 const CLEAN = { x: 812, y: 56, w: 248 }
 
-// The timeline. Each cue is a named moment; everything derives from the
-// current cue, and motion's own transitions carry the in-betweens.
+// Card centers, used by the motion paths (offset-path follows these curves).
+const PATH_A = 'M 126 252 C 240 165, 400 148, 556 212'
+const PATH_B = 'M 556 212 C 700 148, 830 162, 936 246'
+const PATH_PAY = 'M 690 118 C 850 102, 906 204, 936 310'
+
+const FLIGHT_A_MS = 1450
+const FLIGHT_B_MS = 1350
+
 const CUES = [
   { at: 0, name: 'request' },
-  { at: 1700, name: 'sendPress' },
-  { at: 2400, name: 'flightA' },
-  { at: 3300, name: 'inbox' },
-  { at: 4800, name: 'cursorIn' },
-  { at: 5700, name: 'pickerOpen' },
-  { at: 6500, name: 'pickMaria' },
-  { at: 7100, name: 'assigned' },
-  { at: 7900, name: 'flightB' },
-  { at: 8800, name: 'cleanerNew' },
-  { at: 10200, name: 'started' },
-  { at: 12000, name: 'photos' },
-  { at: 13400, name: 'checklist' },
-  { at: 14800, name: 'completePress' },
-  { at: 15800, name: 'charge' },
-  { at: 17000, name: 'split' },
-  { at: 18800, name: 'settle' },
+  { at: 1600, name: 'sendPress' },
+  { at: 2200, name: 'collapse' },
+  { at: 3100, name: 'lift' },
+  { at: 4600, name: 'drop' },
+  { at: 5900, name: 'cursorIn' },
+  { at: 6700, name: 'pickerOpen' },
+  { at: 7500, name: 'pickMaria' },
+  { at: 8100, name: 'assigned' },
+  { at: 9000, name: 'liftB' },
+  { at: 10400, name: 'dropB' },
+  { at: 11600, name: 'started' },
+  { at: 12800, name: 'photo1' },
+  { at: 13300, name: 'photo2' },
+  { at: 13800, name: 'photo3' },
+  { at: 14500, name: 'check1' },
+  { at: 15100, name: 'check2' },
+  { at: 15800, name: 'checkDone' },
+  { at: 16700, name: 'completePress' },
+  { at: 17600, name: 'panBack' },
+  { at: 18500, name: 'revenue' },
+  { at: 19800, name: 'payout' },
+  { at: 21300, name: 'settle' },
 ] as const
-const DURATION = 21500
+const DURATION = 23800
 
 type CueName = (typeof CUES)[number]['name']
 const CUE_INDEX: Record<CueName, number> = Object.fromEntries(
@@ -68,11 +83,12 @@ const CUE_INDEX: Record<CueName, number> = Object.fromEntries(
 
 const CAPTIONS: Array<{ from: CueName; text: string }> = [
   { from: 'request', text: 'Sarah requests a deep clean from her phone. Her card is saved, nothing is charged.' },
-  { from: 'inbox', text: 'The request lands in your Needs-you-now queue.' },
+  { from: 'lift', text: 'The request lands in your Needs-you-now queue.' },
   { from: 'pickerOpen', text: 'One click assigns Maria.' },
-  { from: 'cleanerNew', text: 'Maria gets the job on her phone and starts her day.' },
-  { from: 'photos', text: 'Photos and checklist, done as she works.' },
-  { from: 'charge', text: 'Job complete: the saved card is charged and the split pays everyone at once.' },
+  { from: 'liftB', text: 'Maria gets the job on her phone and starts her day.' },
+  { from: 'photo1', text: 'Photos and checklist, done as she works.' },
+  { from: 'panBack', text: 'Job complete: the saved card is charged and revenue rolls up.' },
+  { from: 'payout', text: 'Maria’s $144 payout is on its way, automatically.' },
   { from: 'settle', text: 'Booked to paid, with nobody chasing anybody.' },
 ]
 
@@ -80,14 +96,14 @@ const MARKERS: Array<{ label: string; cue: CueName }> = [
   { label: 'Booked', cue: 'request' },
   { label: 'Assigned', cue: 'cursorIn' },
   { label: 'Done', cue: 'started' },
-  { label: 'Paid', cue: 'charge' },
+  { label: 'Paid', cue: 'panBack' },
 ]
 
-// Camera focus (stage x of the point of interest) per stretch of the story.
 function focusFor(cue: number): number {
-  if (cue < CUE_INDEX.flightA) return HOME.x + HOME.w / 2
-  if (cue < CUE_INDEX.flightB) return DASH.x + DASH.w / 2
-  if (cue < CUE_INDEX.charge) return CLEAN.x + CLEAN.w / 2
+  if (cue < CUE_INDEX.lift) return HOME.x + HOME.w / 2
+  if (cue < CUE_INDEX.liftB) return DASH.x + DASH.w / 2
+  if (cue < CUE_INDEX.panBack) return CLEAN.x + CLEAN.w / 2
+  if (cue < CUE_INDEX.settle) return 740 // dashboard right half + Maria's phone
   return DASH.x + DASH.w / 2
 }
 
@@ -97,22 +113,31 @@ function useFlowClock(reduced: boolean) {
   const tRef = React.useRef(0)
   const cueRef = React.useRef(cue)
   const pausedRef = React.useRef(false)
-  const [userPaused, setUserPaused] = React.useState(false)
-  const inViewRef = React.useRef(true)
+  const inViewRef = React.useRef(false)
   const rootRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     if (reduced) return
     const node = rootRef.current
-    let io: IntersectionObserver | undefined
-    if (node) {
-      io = new IntersectionObserver(([e]) => { inViewRef.current = e.isIntersecting }, { threshold: 0.25 })
-      io.observe(node)
-    }
+    if (!node) return
+    // Hysteresis: start once the stage reaches the middle band of the
+    // viewport; keep playing until it leaves the viewport entirely. This
+    // avoids the flappy start/stop right at a threshold edge.
+    const enter = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) inViewRef.current = true },
+      { rootMargin: '-18% 0px -18% 0px', threshold: 0 },
+    )
+    const exit = new IntersectionObserver(
+      ([e]) => { if (!e.isIntersecting) inViewRef.current = false },
+      { threshold: 0 },
+    )
+    enter.observe(node)
+    exit.observe(node)
+
     let raf = 0
     let last = performance.now()
     const tick = (now: number) => {
-      const dt = now - last
+      const dt = Math.min(now - last, 100)
       last = now
       if (!pausedRef.current && inViewRef.current && !document.hidden) {
         tRef.current = (tRef.current + dt) % DURATION
@@ -129,7 +154,8 @@ function useFlowClock(reduced: boolean) {
     raf = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(raf)
-      io?.disconnect()
+      enter.disconnect()
+      exit.disconnect()
     }
   }, [reduced, progress])
 
@@ -142,13 +168,12 @@ function useFlowClock(reduced: boolean) {
 
   const setPaused = React.useCallback((p: boolean) => {
     pausedRef.current = p
-    setUserPaused(p)
   }, [])
 
-  return { cue, progress, seek, setPaused, userPaused, rootRef }
+  return { cue, progress, seek, setPaused, rootRef }
 }
 
-// --- tiny building blocks --------------------------------------------------
+// --- small building blocks ---------------------------------------------------
 
 function Pop({ show, children, delay = 0, className }: { show: boolean; children: React.ReactNode; delay?: number; className?: string }) {
   return (
@@ -168,12 +193,57 @@ function Pop({ show, children, delay = 0, className }: { show: boolean; children
   )
 }
 
-function MiniKpi({ label, children }: { label: string; children: React.ReactNode }) {
+/** Landing settle: drops in with a soft overshoot, like something set down. */
+function Land({ show, children, className }: { show: boolean; children: React.ReactNode; className?: string }) {
   return (
-    <div className="rounded-control border border-border bg-card px-2.5 py-2">
+    <AnimatePresence>
+      {show ? (
+        <m.div
+          initial={{ opacity: 0, y: -6, scale: 1.04 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0.2 } }}
+          transition={{ type: 'spring', stiffness: 320, damping: 17 }}
+          className={className}
+        >
+          {children}
+        </m.div>
+      ) : null}
+    </AnimatePresence>
+  )
+}
+
+/** Expanding tap ring for simulated touches on the phones. */
+function TapRipple({ fire }: { fire: boolean }) {
+  return (
+    <AnimatePresence>
+      {fire ? (
+        <m.span
+          key="ripple"
+          className="pointer-events-none absolute inset-0 z-10 m-auto size-8 rounded-pill bg-primary/25"
+          initial={{ scale: 0.2, opacity: 0.8 }}
+          animate={{ scale: 2.6, opacity: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.65, ease: 'easeOut' }}
+          aria-hidden
+        />
+      ) : null}
+    </AnimatePresence>
+  )
+}
+
+function MiniKpi({ label, emphasized, children }: { label: string; emphasized?: boolean; children: React.ReactNode }) {
+  return (
+    <m.div
+      animate={emphasized ? { scale: [1, 1.07, 1] } : { scale: 1 }}
+      transition={{ duration: 0.7, ease: EASE }}
+      className={cn(
+        'rounded-control border bg-card px-2.5 py-2 transition-shadow duration-slow',
+        emphasized ? 'border-brand-300 shadow-soft-md ring-2 ring-brand-200' : 'border-border',
+      )}
+    >
       <p className="text-[9px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</p>
       <p className="text-base font-extrabold text-foreground tnum">{children}</p>
-    </div>
+    </m.div>
   )
 }
 
@@ -186,19 +256,60 @@ function LiveDot({ live }: { live: boolean }) {
   )
 }
 
-// --- surfaces ---------------------------------------------------------------
+/** The appointment as a physical object: what collapses out of the request
+ *  form, flies path A, and sits in the queue. */
+function ApptCard() {
+  return (
+    <div className="w-[190px] rounded-control border border-border bg-card px-3 py-2 shadow-soft-lg">
+      <p className="flex items-center justify-between text-[11px] font-bold text-foreground">
+        <span className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-accent-foreground" aria-hidden />Deep clean</span>
+        <span className="tnum">$180</span>
+      </p>
+      <p className="mt-0.5 text-[9px] text-muted-foreground">Thu · 9:00 AM · Sarah K. · 8 Cedar Ct</p>
+    </div>
+  )
+}
+
+/** A card gliding along an SVG motion path. */
+function GlideAlong({ path, duration, children }: { path: string; duration: number; children: React.ReactNode }) {
+  return (
+    <m.div
+      className="absolute z-30"
+      style={{ offsetPath: `path("${path}")`, offsetRotate: '0deg' }}
+      initial={{ offsetDistance: '0%', scale: 1, opacity: 0 }}
+      animate={{ offsetDistance: '100%', scale: [1, 1.12, 1.02], opacity: 1 }}
+      exit={{ opacity: 0, transition: { duration: 0.18 } }}
+      transition={{
+        offsetDistance: { duration, ease: GLIDE },
+        scale: { duration, times: [0, 0.45, 1], ease: 'easeInOut' },
+        opacity: { duration: 0.25 },
+      }}
+      aria-hidden
+    >
+      {children}
+    </m.div>
+  )
+}
+
+// --- surfaces ----------------------------------------------------------------
 
 function HomeownerSurface({ cue }: { cue: number }) {
-  const sent = cue >= CUE_INDEX.flightA
+  const collapsed = cue >= CUE_INDEX.collapse
+  const lifted = cue >= CUE_INDEX.lift
   const scheduled = cue >= CUE_INDEX.assigned
   const inProgress = cue >= CUE_INDEX.started
-  const paid = cue >= CUE_INDEX.charge
-  const pressed = cue === CUE_INDEX.sendPress
+  const complete = cue >= CUE_INDEX.panBack
+  const paid = cue >= CUE_INDEX.revenue
   return (
-    <div className="grid grid-cols-1 gap-2 text-left">
+    <div className="grid min-h-[290px] grid-cols-1 content-start gap-2 text-left">
       <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Sarah · customer</Badge>
-      {!sent ? (
-        <>
+      <AnimatePresence mode="popLayout" initial={false}>
+      {!collapsed ? (
+        <m.div
+          key="form"
+          exit={{ opacity: 0, scale: 0.9, y: 20, transition: { duration: 0.35, ease: 'easeIn' } }}
+          className="grid grid-cols-1 gap-2"
+        >
           <p className="text-[13px] font-bold text-foreground">Request a cleaning</p>
           <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
             <span className="flex items-center gap-1.5 font-semibold text-foreground"><Sparkles className="size-3.5 text-accent-foreground" aria-hidden />Deep clean</span>
@@ -212,58 +323,99 @@ function HomeownerSurface({ cue }: { cue: number }) {
             <span className="flex items-center gap-1.5 font-semibold text-foreground"><CreditCard className="size-3.5 text-muted-foreground" aria-hidden />Visa ·· 4242</span>
             <span className="text-[10px] text-muted-foreground">at completion</span>
           </div>
-          <m.div animate={{ scale: pressed ? 0.95 : 1 }} transition={{ duration: 0.18 }}>
+          <m.div
+            className="relative"
+            animate={{ scale: cue === CUE_INDEX.sendPress ? 0.94 : 1 }}
+            transition={{ duration: 0.18 }}
+          >
+            <TapRipple fire={cue === CUE_INDEX.sendPress} />
             <Button size="sm" className="h-8 w-full text-xs" tabIndex={-1}>Send request</Button>
           </m.div>
           <Badge variant="positive" className="justify-self-start px-2 py-0.5 text-[10px]">No upfront hold</Badge>
-        </>
+        </m.div>
+      ) : !scheduled ? (
+        // The form has collapsed into one appointment card: the emphasis beat,
+        // then it lifts off toward the dashboard.
+        <m.div
+          key="appt"
+          initial={{ opacity: 0, scale: 0.8, y: 16 }}
+          animate={{ opacity: lifted ? 0 : 1, scale: lifted ? 0.9 : [0.8, 1.1, 1.06], y: 0 }}
+          transition={{ duration: lifted ? 0.25 : 0.7, times: lifted ? undefined : [0, 0.6, 1], ease: EASE }}
+          className="justify-self-center pt-8"
+        >
+          <ApptCard />
+        </m.div>
       ) : (
-        <>
-          {!scheduled ? (
-            <Pop show className="grid gap-2">
-              <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2.5 text-[11px]">
-                <CheckCircle2 className="size-4 shrink-0 text-positive-700" aria-hidden />
-                <span className="font-semibold text-foreground">Request sent. The office will confirm your time.</span>
-              </div>
-            </Pop>
-          ) : (
-            <Pop show className="grid gap-2">
-              <div className={cn(
-                'rounded-card p-3 text-primary-foreground shadow-soft-md',
-                'bg-gradient-to-br from-brand-600 to-brand-500',
-              )}>
-                <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-brand-100">
-                  {paid ? 'Cleaning complete' : inProgress ? 'Cleaning in progress' : 'Your next cleaning'}
-                </p>
-                <p className="mt-1 text-sm font-extrabold tnum">Thu · 9:00 AM</p>
-                <p className="text-[10px] text-brand-100">8 Cedar Ct · Deep clean</p>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <Avatar className="size-5 text-[8px]"><AvatarFallback className="bg-card/25 text-primary-foreground">MR</AvatarFallback></Avatar>
-                  <span className="text-[10px] font-semibold">Maria R. · your cleaner</span>
-                  {inProgress && !paid ? <span className="ml-auto"><LiveDot live /></span> : null}
-                </div>
-              </div>
-            </Pop>
-          )}
+        <m.div
+          key="hero"
+          initial={{ opacity: 0, y: 8, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: EASE }}
+          className="grid grid-cols-1 gap-2"
+        >
+          <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-3 text-primary-foreground shadow-soft-md">
+            <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-brand-100">
+              {complete ? 'Cleaning complete' : inProgress ? 'Cleaning in progress' : 'Your next cleaning'}
+            </p>
+            <p className="mt-1 text-sm font-extrabold tnum">Thu · 9:00 AM</p>
+            <p className="text-[10px] text-brand-100">8 Cedar Ct · Deep clean</p>
+            <div className="mt-2 flex items-center gap-1.5">
+              <Avatar className="size-5 text-[8px]"><AvatarFallback className="bg-card/25 text-primary-foreground">MR</AvatarFallback></Avatar>
+              <span className="text-[10px] font-semibold">Maria R. · your cleaner</span>
+              {inProgress && !complete ? <span className="ml-auto"><LiveDot live /></span> : null}
+            </div>
+          </div>
           <Pop show={paid}>
             <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
               <span className="flex items-center gap-1.5 font-semibold text-foreground"><CreditCard className="size-3.5 text-muted-foreground" aria-hidden />Visa ·· 4242</span>
               <Badge variant="positive" className="px-2 py-0.5 text-[10px]">Paid $180</Badge>
             </div>
           </Pop>
-        </>
+        </m.div>
       )}
+      </AnimatePresence>
+      {lifted && !scheduled ? (
+        <Pop show delay={0.35}>
+          <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2.5 text-[11px]">
+            <CheckCircle2 className="size-4 shrink-0 text-positive-700" aria-hidden />
+            <span className="font-semibold text-foreground">Request sent. The office will confirm your time.</span>
+          </div>
+        </Pop>
+      ) : null}
     </div>
   )
 }
 
+/** Status pill that flips when its state changes. */
+function FlipPill({ children, flipKey }: { children: React.ReactNode; flipKey: string }) {
+  return (
+    <AnimatePresence mode="popLayout" initial={false}>
+      <m.span
+        key={flipKey}
+        initial={{ rotateX: 90, opacity: 0 }}
+        animate={{ rotateX: 0, opacity: 1 }}
+        exit={{ rotateX: -90, opacity: 0 }}
+        transition={{ duration: 0.35, ease: EASE }}
+        className="inline-flex"
+      >
+        {children}
+      </m.span>
+    </AnimatePresence>
+  )
+}
+
 function OperatorSurface({ cue }: { cue: number }) {
-  const hasRequest = cue >= CUE_INDEX.inbox
+  const incoming = cue === CUE_INDEX.lift
+  const hasRequest = cue >= CUE_INDEX.drop
   const assigned = cue >= CUE_INDEX.assigned
   const started = cue >= CUE_INDEX.started
-  const completed = cue >= CUE_INDEX.charge
+  const completed = cue >= CUE_INDEX.panBack
+  const revenueBeat = cue >= CUE_INDEX.revenue
   const needsYou = hasRequest && !assigned ? 1 : 0
-  const revenue = completed ? 12657 : 12477
+  const revenue = revenueBeat ? 12657 : 12477
+
+  const pillKey = completed ? 'completed' : started ? 'in_progress' : 'confirmed'
+
   return (
     <div className="flex">
       <MiniRail />
@@ -275,10 +427,17 @@ function OperatorSurface({ cue }: { cue: number }) {
         <div className="mb-2 grid grid-cols-3 gap-1.5">
           <MiniKpi label="Today's jobs">6</MiniKpi>
           <MiniKpi label="Needs you"><AnimatedNumber value={needsYou} /></MiniKpi>
-          <MiniKpi label="Revenue this month"><AnimatedNumber value={revenue} prefix="$" /></MiniKpi>
+          <MiniKpi label="Revenue this month" emphasized={revenueBeat && cue < CUE_INDEX.settle}>
+            <AnimatedNumber value={revenue} prefix="$" />
+          </MiniKpi>
         </div>
 
-        <div className="rounded-control border border-border bg-card p-2">
+        <div
+          className={cn(
+            'rounded-control border bg-card p-2 transition-all duration-slow',
+            incoming ? 'border-brand-300 ring-2 ring-brand-200' : 'border-border',
+          )}
+        >
           <div className="flex items-center justify-between px-1 pb-1.5">
             <p className="text-[11px] font-bold text-foreground">Needs you now</p>
             <AnimatePresence mode="popLayout">
@@ -290,12 +449,21 @@ function OperatorSurface({ cue }: { cue: number }) {
             </AnimatePresence>
           </div>
           {!hasRequest ? (
-            <div className="flex items-center gap-1.5 rounded-chip bg-background px-2 py-2 text-[10px] font-medium text-muted-foreground">
-              <CheckCircle2 className="size-3.5 text-positive-700" aria-hidden />
-              You&apos;re all caught up
+            <div className={cn(
+              'flex items-center gap-1.5 rounded-chip px-2 py-2 text-[10px] font-medium transition-colors duration-slow',
+              incoming
+                ? 'border border-dashed border-brand-300 bg-accent/50 text-accent-foreground'
+                : 'bg-background text-muted-foreground',
+            )}>
+              {incoming ? (
+                <Inbox className="size-3.5" aria-hidden />
+              ) : (
+                <CheckCircle2 className="size-3.5 text-positive-700" aria-hidden />
+              )}
+              {incoming ? 'Incoming request…' : 'You’re all caught up'}
             </div>
           ) : (
-            <Pop show className="relative">
+            <Land show className="relative">
               <div
                 id="flow-queue-row"
                 className={cn(
@@ -312,13 +480,18 @@ function OperatorSurface({ cue }: { cue: number }) {
                     Assign
                   </span>
                 ) : (
-                  <span className="flex shrink-0 items-center gap-1">
+                  <span className="flex shrink-0 items-center gap-1" style={{ perspective: 300 }}>
                     <Avatar className="size-4 text-[7px]"><AvatarFallback>MR</AvatarFallback></Avatar>
-                    <StatusPill status={completed ? 'completed' : started ? 'in_progress' : 'scheduled'} label={completed ? 'Completed' : started ? 'In progress' : 'Confirmed'} className="px-1.5 py-0 text-[9px]" />
+                    <FlipPill flipKey={pillKey}>
+                      <StatusPill
+                        status={completed ? 'completed' : started ? 'in_progress' : 'scheduled'}
+                        label={completed ? 'Completed' : started ? 'In progress' : 'Confirmed'}
+                        className="px-2 py-0.5 text-[9px]"
+                      />
+                    </FlipPill>
                   </span>
                 )}
               </div>
-              {/* assign picker */}
               <AnimatePresence>
                 {cue >= CUE_INDEX.pickerOpen && !assigned ? (
                   <m.div
@@ -328,7 +501,7 @@ function OperatorSurface({ cue }: { cue: number }) {
                     transition={{ duration: 0.25, ease: EASE }}
                     className="absolute right-0 top-full z-20 mt-1 w-36 rounded-control border border-border bg-card p-1 shadow-soft-lg"
                   >
-                    <div className={cn('flex items-center gap-1.5 rounded-chip px-2 py-1.5 text-[10px] font-semibold text-foreground', cue >= CUE_INDEX.pickMaria && 'bg-accent text-accent-foreground')}>
+                    <div className={cn('flex items-center gap-1.5 rounded-chip px-2 py-1.5 text-[10px] font-semibold text-foreground transition-colors duration-base', cue >= CUE_INDEX.pickMaria && 'bg-accent text-accent-foreground')}>
                       <Avatar className="size-4 text-[7px]"><AvatarFallback>MR</AvatarFallback></Avatar>
                       Maria R.
                     </div>
@@ -339,7 +512,7 @@ function OperatorSurface({ cue }: { cue: number }) {
                   </m.div>
                 ) : null}
               </AnimatePresence>
-            </Pop>
+            </Land>
           )}
         </div>
 
@@ -351,7 +524,7 @@ function OperatorSurface({ cue }: { cue: number }) {
               <div className="flex gap-2 px-1"><span className="w-9 font-bold text-accent-foreground tnum">1:30</span><span className="truncate text-muted-foreground">Harbor View · James T.</span></div>
               <AnimatePresence>
                 {assigned ? (
-                  <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2 px-1">
+                  <m.div initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, ease: EASE }} className="flex gap-2 px-1">
                     <span className="w-9 font-bold text-accent-foreground tnum">9:00</span>
                     <span className="truncate text-muted-foreground">8 Cedar Ct · Maria R.</span>
                   </m.div>
@@ -377,14 +550,16 @@ function OperatorSurface({ cue }: { cue: number }) {
 }
 
 function CleanerSurface({ cue }: { cue: number }) {
-  const hasJob = cue >= CUE_INDEX.cleanerNew
+  const incoming = cue === CUE_INDEX.liftB
+  const hasJob = cue >= CUE_INDEX.dropB
   const started = cue >= CUE_INDEX.started
-  const photosDone = cue >= CUE_INDEX.photos
-  const checklistDone = cue >= CUE_INDEX.checklist
-  const pressed = cue === CUE_INDEX.completePress
-  const paidOut = cue >= CUE_INDEX.split
+  const complete = cue >= CUE_INDEX.panBack
+  const paidOut = cue >= CUE_INDEX.payout
+  const photos = cue >= CUE_INDEX.photo3 ? 3 : cue >= CUE_INDEX.photo2 ? 2 : cue >= CUE_INDEX.photo1 ? 1 : 0
+  const checks = cue >= CUE_INDEX.checkDone ? 8 : cue >= CUE_INDEX.check2 ? 5 : cue >= CUE_INDEX.check1 ? 3 : 2
+
   return (
-    <div className="grid grid-cols-1 gap-2 text-left">
+    <div className="grid min-h-[290px] grid-cols-1 content-start gap-2 text-left">
       <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Maria · cleaner</Badge>
       {!started ? (
         <>
@@ -393,9 +568,14 @@ function CleanerSurface({ cue }: { cue: number }) {
             <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">8:00</span>
             <span className="h-6 w-px bg-border" aria-hidden />
             <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Chen home</span>
-            <StatusPill status="completed" label="Done" className="px-1.5 py-0 text-[9px]" />
+            <StatusPill status="completed" label="Done" className="px-2 py-0.5 text-[9px]" />
           </div>
-          <Pop show={hasJob}>
+          {incoming ? (
+            <div className="rounded-control border border-dashed border-brand-300 bg-accent/50 px-2.5 py-3 text-center text-[10px] font-medium text-accent-foreground">
+              New job incoming&hellip;
+            </div>
+          ) : null}
+          <Land show={hasJob}>
             <div className="flex items-center gap-2 rounded-control border border-brand-200 bg-accent px-2.5 py-2 text-[11px]">
               <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">9:00</span>
               <span className="h-6 w-px bg-brand-200" aria-hidden />
@@ -403,138 +583,142 @@ function CleanerSurface({ cue }: { cue: number }) {
                 <span className="block truncate font-semibold text-foreground">Sarah K. · Deep clean</span>
                 <span className="block text-[9px] text-muted-foreground">8 Cedar Ct</span>
               </span>
-              <Badge className="px-1.5 py-0 text-[9px]">New</Badge>
+              <Badge className="px-1.5 py-0.5 text-[9px]">New</Badge>
             </div>
-          </Pop>
+          </Land>
           {hasJob ? (
-            <Pop show delay={0.5}>
-              <Button size="sm" className="h-8 w-full text-xs" tabIndex={-1}>Start job · directions</Button>
+            <Pop show delay={0.45}>
+              <div className="relative">
+                <TapRipple fire={cue === CUE_INDEX.started} />
+                <Button size="sm" className="h-8 w-full text-xs" tabIndex={-1}>Start job · directions</Button>
+              </div>
             </Pop>
           ) : null}
         </>
       ) : (
-        <Pop show className="grid gap-2">
+        <Pop show className="grid grid-cols-1 gap-2">
           <div className="rounded-card bg-brand-600 p-3 text-primary-foreground shadow-soft-md">
             <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-brand-100">Active job</p>
             <p className="mt-0.5 text-sm font-extrabold">8 Cedar Ct</p>
             <p className="text-[10px] text-brand-100">Deep clean · Sarah K.</p>
           </div>
-          <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
-            <span className="flex items-center gap-1.5 font-semibold text-foreground"><Camera className="size-3.5 text-muted-foreground" aria-hidden />Photos</span>
-            {photosDone ? (
-              <Badge variant="positive" className="px-1.5 py-0 text-[9px]">3 added</Badge>
-            ) : (
-              <span className="text-[10px] text-muted-foreground">before + after</span>
-            )}
+
+          <div className="rounded-control border border-border bg-card px-2.5 py-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="flex items-center gap-1.5 font-semibold text-foreground"><Camera className="size-3.5 text-muted-foreground" aria-hidden />Photos</span>
+              <span className="text-[10px] text-muted-foreground tnum">{photos > 0 ? `${photos} added` : 'before + after'}</span>
+            </div>
+            <div className="mt-1.5 flex gap-1.5" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <span key={i} className="grid size-7 place-items-center overflow-hidden rounded-chip bg-secondary">
+                  <AnimatePresence>
+                    {photos > i ? (
+                      <m.span
+                        initial={{ scale: 0.3, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ type: 'spring', stiffness: 380, damping: 18 }}
+                        className="grid size-full place-items-center bg-accent"
+                      >
+                        <Camera className="size-3.5 text-accent-foreground" />
+                      </m.span>
+                    ) : null}
+                  </AnimatePresence>
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
-            <span className="flex items-center gap-1.5 font-semibold text-foreground"><ListChecks className="size-3.5 text-muted-foreground" aria-hidden />Checklist</span>
-            {checklistDone ? (
-              <Badge variant="positive" className="px-1.5 py-0 text-[9px]">8 of 8 done</Badge>
-            ) : (
-              <span className="text-[10px] text-muted-foreground tnum">{photosDone ? '5 of 8' : '2 of 8'}</span>
-            )}
+
+          <div className="rounded-control border border-border bg-card px-2.5 py-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="flex items-center gap-1.5 font-semibold text-foreground"><ListChecks className="size-3.5 text-muted-foreground" aria-hidden />Checklist</span>
+              {cue >= CUE_INDEX.checkDone ? (
+                <Badge variant="positive" className="px-1.5 py-0.5 text-[9px]">8 of 8 done</Badge>
+              ) : (
+                <span className="text-[10px] text-muted-foreground tnum">{checks} of 8</span>
+              )}
+            </div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-pill bg-secondary" aria-hidden>
+              <m.div
+                className="h-full rounded-pill bg-primary"
+                animate={{ width: `${(checks / 8) * 100}%` }}
+                transition={{ duration: 0.5, ease: EASE }}
+              />
+            </div>
           </div>
-          {!paidOut ? (
-            <m.div animate={{ scale: pressed ? 0.95 : 1 }} transition={{ duration: 0.18 }}>
-              <Button size="sm" className="h-8 w-full text-xs" disabled={!checklistDone} tabIndex={-1}>
+
+          {!complete ? (
+            <m.div
+              className="relative"
+              animate={{ scale: cue === CUE_INDEX.completePress ? 0.93 : 1 }}
+              transition={{ duration: 0.18 }}
+            >
+              <TapRipple fire={cue === CUE_INDEX.completePress} />
+              <Button size="sm" className="h-8 w-full text-xs" disabled={cue < CUE_INDEX.checkDone} tabIndex={-1}>
                 Complete job
               </Button>
             </m.div>
           ) : (
-            <Pop show>
-              <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
-                <CheckCircle2 className="size-4 shrink-0 text-positive-700" aria-hidden />
-                <span className="font-semibold text-foreground">Your cut of <span className="tnum">$144</span> is on its way.</span>
+            <Land show>
+              <div className="flex h-8 items-center justify-center gap-1.5 rounded-pill bg-positive-50 text-xs font-bold text-positive-700">
+                <CheckCircle2 className="size-4" aria-hidden />
+                Job complete
               </div>
-            </Pop>
+            </Land>
           )}
+
+          <Land show={paidOut}>
+            <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
+              <span className="font-semibold text-foreground">Your cut, on its way</span>
+              <span className="font-extrabold text-positive-700 tnum">
+                <AnimatedNumber value={paidOut ? 144 : 0} prefix="+$" />
+              </span>
+            </div>
+          </Land>
         </Pop>
       )}
     </div>
   )
 }
 
-// --- stage-level actors ------------------------------------------------------
+// --- stage layers -------------------------------------------------------------
 
-/** The booking artifact in flight, plus the money chips. Explicit coordinate
- *  keyframes in stage space: deterministic, transform-only. */
-function FlightLayer({ cue }: { cue: number }) {
-  const flights: React.ReactNode[] = []
-
-  if (cue === CUE_INDEX.flightA) {
-    flights.push(
-      <m.div
-        key="flightA"
-        initial={{ x: HOME.x + 126, y: 330, opacity: 0, scale: 0.8 }}
-        animate={{ x: [HOME.x + 126, HOME.x + 250, DASH.x + 150], y: [330, 220, 208], opacity: [0, 1, 1], scale: [0.8, 1, 0.95] }}
-        transition={{ duration: 0.85, ease: EASE, times: [0, 0.35, 1] }}
-        className="absolute left-0 top-0 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-card px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-soft-lg"
-      >
-        <Sparkles className="size-3.5 text-accent-foreground" aria-hidden />
-        Deep clean · Thu 9:00
-      </m.div>,
-    )
-  }
-  if (cue === CUE_INDEX.flightB) {
-    flights.push(
-      <m.div
-        key="flightB"
-        initial={{ x: DASH.x + 300, y: 210, opacity: 0, scale: 0.9 }}
-        animate={{ x: [DASH.x + 300, DASH.x + 470, CLEAN.x + 40], y: [210, 160, 200], opacity: [0, 1, 1], scale: [0.9, 1, 0.95] }}
-        transition={{ duration: 0.85, ease: EASE, times: [0, 0.4, 1] }}
-        className="absolute left-0 top-0 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-card px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-soft-lg"
-      >
-        <Avatar className="size-4 text-[7px]"><AvatarFallback>MR</AvatarFallback></Avatar>
-        Thu 9:00 · Sarah K.
-      </m.div>,
-    )
-  }
-  if (cue === CUE_INDEX.charge) {
-    flights.push(
-      <m.div
-        key="charge"
-        initial={{ x: HOME.x + 130, y: 330, opacity: 0 }}
-        animate={{ x: [HOME.x + 130, DASH.x + 40, DASH.x + 210], y: [330, 315, 115], opacity: [0, 1, 1] }}
-        transition={{ duration: 1.0, ease: EASE, times: [0, 0.5, 1] }}
-        className="absolute left-0 top-0 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-card px-3 py-1.5 text-[11px] font-bold text-foreground shadow-soft-lg tnum"
-      >
-        <CreditCard className="size-3.5 text-accent-foreground" aria-hidden />
-        $180 charged
-      </m.div>,
-    )
-  }
-  if (cue === CUE_INDEX.split) {
-    flights.push(
-      <m.div
-        key="splitCleaner"
-        initial={{ x: DASH.x + 250, y: 130, opacity: 0 }}
-        animate={{ x: [DASH.x + 250, DASH.x + 480, CLEAN.x + 30], y: [130, 100, 330], opacity: [0, 1, 1] }}
-        transition={{ duration: 1.0, ease: EASE, times: [0, 0.45, 1] }}
-        className="absolute left-0 top-0 z-30 rounded-pill bg-positive-50 px-3 py-1.5 text-[11px] font-bold text-positive-700 shadow-soft-md tnum"
-      >
-        $144 to Maria
-      </m.div>,
-      <m.div
-        key="splitCompany"
-        initial={{ x: DASH.x + 250, y: 130, opacity: 0, scale: 0.9 }}
-        animate={{ x: DASH.x + 318, y: 102, opacity: [0, 1], scale: 1 }}
-        transition={{ duration: 0.8, ease: EASE }}
-        className="absolute left-0 top-0 z-30 rounded-pill bg-positive-50 px-3 py-1.5 text-[11px] font-bold text-positive-700 shadow-soft-md tnum"
-      >
-        $36 to Brightside
-      </m.div>,
-    )
-  }
-  return <AnimatePresence>{flights}</AnimatePresence>
+function TravelLayer({ cue }: { cue: number }) {
+  return (
+    <AnimatePresence>
+      {cue === CUE_INDEX.lift ? (
+        <GlideAlong key="a" path={PATH_A} duration={FLIGHT_A_MS / 1000}>
+          <ApptCard />
+        </GlideAlong>
+      ) : null}
+      {cue === CUE_INDEX.liftB ? (
+        <GlideAlong key="b" path={PATH_B} duration={FLIGHT_B_MS / 1000}>
+          <div className="flex items-center gap-1.5 rounded-pill border border-border bg-card px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-soft-lg">
+            <Avatar className="size-4 text-[7px]"><AvatarFallback>MR</AvatarFallback></Avatar>
+            Thu 9:00 · Sarah K.
+          </div>
+        </GlideAlong>
+      ) : null}
+      {cue === CUE_INDEX.payout ? (
+        <m.div
+          key="pay"
+          className="absolute z-30 size-2.5 rounded-pill bg-positive shadow-soft-sm"
+          style={{ offsetPath: `path("${PATH_PAY}")`, offsetRotate: '0deg' }}
+          initial={{ offsetDistance: '0%', opacity: 0 }}
+          animate={{ offsetDistance: '100%', opacity: [0, 1, 1, 0.4] }}
+          exit={{ opacity: 0 }}
+          transition={{ offsetDistance: { duration: 1.1, ease: GLIDE }, opacity: { duration: 1.1, times: [0, 0.15, 0.85, 1] } }}
+          aria-hidden
+        />
+      ) : null}
+    </AnimatePresence>
+  )
 }
 
-/** Curved connectors that draw themselves under a flight, then fade. */
 function ConnectorLayer({ cue }: { cue: number }) {
-  const aActive = cue >= CUE_INDEX.flightA && cue < CUE_INDEX.cursorIn
-  const bActive = cue >= CUE_INDEX.flightB && cue < CUE_INDEX.started
-  const moneyActive = cue >= CUE_INDEX.charge && cue < CUE_INDEX.settle
-  const seg = (d: string, active: boolean, key: string) => (
+  const aActive = cue >= CUE_INDEX.lift && cue < CUE_INDEX.cursorIn
+  const bActive = cue >= CUE_INDEX.liftB && cue < CUE_INDEX.started
+  const payActive = cue >= CUE_INDEX.payout && cue < CUE_INDEX.settle
+  const seg = (d: string, active: boolean, key: string, duration: number) => (
     <m.path
       key={key}
       d={d}
@@ -546,39 +730,34 @@ function ConnectorLayer({ cue }: { cue: number }) {
       pathLength={1}
       initial={{ pathLength: 0, opacity: 0 }}
       animate={{ pathLength: active ? 1 : 0, opacity: active ? 0.9 : 0 }}
-      transition={{ pathLength: { duration: 0.85, ease: EASE }, opacity: { duration: 0.4 } }}
+      transition={{ pathLength: { duration, ease: GLIDE }, opacity: { duration: 0.4 } }}
     />
   )
   return (
     <svg className="absolute inset-0 z-0" width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} aria-hidden>
-      {seg(`M ${HOME.x + 200} 330 C ${HOME.x + 300} 320, ${DASH.x - 20} 240, ${DASH.x + 140} 215`, aActive, 'a')}
-      {seg(`M ${DASH.x + 380} 205 C ${DASH.x + 480} 170, ${CLEAN.x - 30} 180, ${CLEAN.x + 60} 215`, bActive, 'b')}
-      {seg(`M ${HOME.x + 180} 335 C ${DASH.x - 40} 335, ${DASH.x + 60} 310, ${DASH.x + 210} 125`, moneyActive, 'm1')}
-      {seg(`M ${DASH.x + 260} 120 C ${DASH.x + 500} 85, ${CLEAN.x - 20} 190, ${CLEAN.x + 50} 330`, moneyActive, 'm2')}
+      {seg(PATH_A, aActive, 'a', FLIGHT_A_MS / 1000)}
+      {seg(PATH_B, bActive, 'b', FLIGHT_B_MS / 1000)}
+      {seg(PATH_PAY, payActive, 'pay', 1.1)}
     </svg>
   )
 }
 
-/** Simulated operator cursor for the one human action: assigning Maria. */
 function CursorLayer({ cue }: { cue: number }) {
-  const visible = cue >= CUE_INDEX.cursorIn && cue < CUE_INDEX.flightB
-  // Stage coordinates: the queue row's Assign chip, then the Maria option.
+  const visible = cue >= CUE_INDEX.cursorIn && cue < CUE_INDEX.liftB
   const target =
     cue >= CUE_INDEX.pickMaria
       ? { x: DASH.x + 330, y: 262 }
-      : cue >= CUE_INDEX.cursorIn
-        ? { x: DASH.x + 395, y: 212 }
-        : { x: DASH.x + 460, y: 420 }
+      : { x: DASH.x + 395, y: 212 }
   const clicking = cue === CUE_INDEX.pickerOpen || cue === CUE_INDEX.assigned
   return (
     <AnimatePresence>
       {visible ? (
         <m.div
           key="cursor"
-          initial={{ x: DASH.x + 460, y: 420, opacity: 0 }}
+          initial={{ x: DASH.x + 460, y: 400, opacity: 0 }}
           animate={{ x: target.x, y: target.y, opacity: 1, scale: clicking ? 0.82 : 1 }}
           exit={{ opacity: 0, transition: { duration: 0.3 } }}
-          transition={{ x: { type: 'spring', stiffness: 120, damping: 20 }, y: { type: 'spring', stiffness: 120, damping: 20 }, scale: { duration: 0.15 } }}
+          transition={{ x: { type: 'spring', stiffness: 110, damping: 19 }, y: { type: 'spring', stiffness: 110, damping: 19 }, scale: { duration: 0.15 } }}
           className="absolute left-0 top-0 z-40"
           aria-hidden
         >
@@ -589,7 +768,7 @@ function CursorLayer({ cue }: { cue: number }) {
   )
 }
 
-// --- the showcase ------------------------------------------------------------
+// --- the showcase --------------------------------------------------------------
 
 export function FlowShowcase() {
   const reduced = useReducedMotion() ?? false
@@ -632,7 +811,7 @@ export function FlowShowcase() {
           className="absolute left-0 top-0"
           style={{ width: STAGE_W, height: STAGE_H, transformOrigin: '0 0' }}
           animate={{ x: camX, scale }}
-          transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 60, damping: 20 }}
+          transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 55, damping: 20 }}
         >
           <ConnectorLayer cue={cue} />
           <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w }}>
@@ -652,7 +831,7 @@ export function FlowShowcase() {
           </div>
           {!reduced ? (
             <>
-              <FlightLayer cue={cue} />
+              <TravelLayer cue={cue} />
               <CursorLayer cue={cue} />
             </>
           ) : null}
