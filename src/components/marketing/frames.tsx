@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { CalendarDays, CreditCard, Home, SprayCan } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /** Browser-chrome wrapper for desktop app vignettes. */
@@ -44,15 +45,24 @@ export function PhoneFrame({
   )
 }
 
-/** Slim brand rail used inside dashboard vignettes to echo the real operator shell. */
+/** Slim rail echoing the real OperatorRail: light card surface, brand-blue
+ *  active item, muted inactive icons. */
 export function MiniRail() {
   return (
-    <div className="hidden w-12 shrink-0 flex-col items-center gap-4 bg-brand-950 py-4 sm:flex" aria-hidden>
-      <span className="size-7 rounded-chip bg-brand-600" />
-      <span className="size-5 rounded-chip bg-card/90" />
-      <span className="size-5 rounded-chip bg-card/25" />
-      <span className="size-5 rounded-chip bg-card/25" />
-      <span className="size-5 rounded-chip bg-card/25" />
+    <div className="hidden w-12 shrink-0 flex-col items-center gap-2.5 border-r border-border bg-card py-3.5 sm:flex" aria-hidden>
+      <span className="mb-1 size-6 rounded-chip bg-brand-600" />
+      <span className="grid size-8 place-items-center rounded-control bg-brand-600 text-primary-foreground">
+        <Home className="size-4" />
+      </span>
+      <span className="grid size-8 place-items-center rounded-control text-muted-foreground">
+        <CalendarDays className="size-4" />
+      </span>
+      <span className="grid size-8 place-items-center rounded-control text-muted-foreground">
+        <SprayCan className="size-4" />
+      </span>
+      <span className="grid size-8 place-items-center rounded-control text-muted-foreground">
+        <CreditCard className="size-4" />
+      </span>
     </div>
   )
 }

@@ -44,7 +44,6 @@ const CLEAN = { x: 812, y: 56, w: 248 }
 // Card centers, used by the motion paths (offset-path follows these curves).
 const PATH_A = 'M 126 252 C 240 165, 400 148, 556 212'
 const PATH_B = 'M 556 212 C 700 148, 830 162, 936 246'
-const PATH_PAY = 'M 690 118 C 850 102, 906 204, 936 310'
 
 const FLIGHT_A_MS = 1450
 const FLIGHT_B_MS = 1350
@@ -71,10 +70,9 @@ const CUES = [
   { at: 16700, name: 'completePress' },
   { at: 17600, name: 'panBack' },
   { at: 18500, name: 'revenue' },
-  { at: 19800, name: 'payout' },
-  { at: 21300, name: 'settle' },
+  { at: 20600, name: 'settle' },
 ] as const
-const DURATION = 23800
+const DURATION = 23000
 
 type CueName = (typeof CUES)[number]['name']
 const CUE_INDEX: Record<CueName, number> = Object.fromEntries(
@@ -88,7 +86,6 @@ const CAPTIONS: Array<{ from: CueName; text: string }> = [
   { from: 'liftB', text: 'Maria gets the job on her phone and starts her day.' },
   { from: 'photo1', text: 'Photos and checklist, done as she works.' },
   { from: 'panBack', text: 'Job complete: the saved card is charged and revenue rolls up.' },
-  { from: 'payout', text: 'Maria’s $144 payout is on its way, automatically.' },
   { from: 'settle', text: 'Booked to paid, with nobody chasing anybody.' },
 ]
 
@@ -103,7 +100,6 @@ function focusFor(cue: number): number {
   if (cue < CUE_INDEX.lift) return HOME.x + HOME.w / 2
   if (cue < CUE_INDEX.liftB) return DASH.x + DASH.w / 2
   if (cue < CUE_INDEX.panBack) return CLEAN.x + CLEAN.w / 2
-  if (cue < CUE_INDEX.settle) return 740 // dashboard right half + Maria's phone
   return DASH.x + DASH.w / 2
 }
 
@@ -333,19 +329,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
           </m.div>
           <Badge variant="positive" className="justify-self-start px-2 py-0.5 text-[10px]">No upfront hold</Badge>
         </m.div>
-      ) : !scheduled ? (
-        // The form has collapsed into one appointment card: the emphasis beat,
-        // then it lifts off toward the dashboard.
-        <m.div
-          key="appt"
-          initial={{ opacity: 0, scale: 0.8, y: 16 }}
-          animate={{ opacity: lifted ? 0 : 1, scale: lifted ? 0.9 : [0.8, 1.1, 1.06], y: 0 }}
-          transition={{ duration: lifted ? 0.25 : 0.7, times: lifted ? undefined : [0, 0.6, 1], ease: EASE }}
-          className="justify-self-center pt-8"
-        >
-          <ApptCard />
-        </m.div>
-      ) : (
+      ) : !scheduled ? null : (
         <m.div
           key="hero"
           initial={{ opacity: 0, y: 8, scale: 0.97 }}
@@ -554,7 +538,6 @@ function CleanerSurface({ cue }: { cue: number }) {
   const hasJob = cue >= CUE_INDEX.dropB
   const started = cue >= CUE_INDEX.started
   const complete = cue >= CUE_INDEX.panBack
-  const paidOut = cue >= CUE_INDEX.payout
   const photos = cue >= CUE_INDEX.photo3 ? 3 : cue >= CUE_INDEX.photo2 ? 2 : cue >= CUE_INDEX.photo1 ? 1 : 0
   const checks = cue >= CUE_INDEX.checkDone ? 8 : cue >= CUE_INDEX.check2 ? 5 : cue >= CUE_INDEX.check1 ? 3 : 2
 
@@ -666,14 +649,6 @@ function CleanerSurface({ cue }: { cue: number }) {
             </Land>
           )}
 
-          <Land show={paidOut}>
-            <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
-              <span className="font-semibold text-foreground">Your cut, on its way</span>
-              <span className="font-extrabold text-positive-700 tnum">
-                <AnimatedNumber value={paidOut ? 144 : 0} prefix="+$" />
-              </span>
-            </div>
-          </Land>
         </Pop>
       )}
     </div>
@@ -683,12 +658,36 @@ function CleanerSurface({ cue }: { cue: number }) {
 // --- stage layers -------------------------------------------------------------
 
 function TravelLayer({ cue }: { cue: number }) {
+  const lifting = cue >= CUE_INDEX.lift
   return (
     <AnimatePresence>
-      {cue === CUE_INDEX.lift ? (
-        <GlideAlong key="a" path={PATH_A} duration={FLIGHT_A_MS / 1000}>
+      {cue >= CUE_INDEX.collapse && cue < CUE_INDEX.drop ? (
+        // One persistent card: it condenses out of the form over the phone,
+        // holds its emphasis beat, then glides the path. No handoff, no
+        // flicker.
+        <m.div
+          key="appt-travel"
+          className="absolute z-30"
+          style={{ offsetPath: `path("${PATH_A}")`, offsetRotate: '0deg' }}
+          initial={{ offsetDistance: '0%', opacity: 0, scale: 0.65, y: 22 }}
+          animate={
+            lifting
+              ? { offsetDistance: '100%', opacity: 1, scale: 1.02, y: 0 }
+              : { offsetDistance: '0%', opacity: 1, scale: [0.65, 1.12, 1.05], y: 0 }
+          }
+          exit={{ opacity: 0, transition: { duration: 0.18 } }}
+          transition={
+            lifting
+              ? {
+                  offsetDistance: { duration: FLIGHT_A_MS / 1000, ease: GLIDE },
+                  scale: { duration: FLIGHT_A_MS / 1000, ease: 'easeInOut' },
+                }
+              : { duration: 0.65, ease: EASE, scale: { duration: 0.65, times: [0, 0.65, 1] } }
+          }
+          aria-hidden
+        >
           <ApptCard />
-        </GlideAlong>
+        </m.div>
       ) : null}
       {cue === CUE_INDEX.liftB ? (
         <GlideAlong key="b" path={PATH_B} duration={FLIGHT_B_MS / 1000}>
@@ -698,47 +697,8 @@ function TravelLayer({ cue }: { cue: number }) {
           </div>
         </GlideAlong>
       ) : null}
-      {cue === CUE_INDEX.payout ? (
-        <m.div
-          key="pay"
-          className="absolute z-30 size-2.5 rounded-pill bg-positive shadow-soft-sm"
-          style={{ offsetPath: `path("${PATH_PAY}")`, offsetRotate: '0deg' }}
-          initial={{ offsetDistance: '0%', opacity: 0 }}
-          animate={{ offsetDistance: '100%', opacity: [0, 1, 1, 0.4] }}
-          exit={{ opacity: 0 }}
-          transition={{ offsetDistance: { duration: 1.1, ease: GLIDE }, opacity: { duration: 1.1, times: [0, 0.15, 0.85, 1] } }}
-          aria-hidden
-        />
-      ) : null}
-    </AnimatePresence>
-  )
-}
 
-function ConnectorLayer({ cue }: { cue: number }) {
-  const aActive = cue >= CUE_INDEX.lift && cue < CUE_INDEX.cursorIn
-  const bActive = cue >= CUE_INDEX.liftB && cue < CUE_INDEX.started
-  const payActive = cue >= CUE_INDEX.payout && cue < CUE_INDEX.settle
-  const seg = (d: string, active: boolean, key: string, duration: number) => (
-    <m.path
-      key={key}
-      d={d}
-      fill="none"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeDasharray="1 1"
-      className="stroke-brand-300"
-      pathLength={1}
-      initial={{ pathLength: 0, opacity: 0 }}
-      animate={{ pathLength: active ? 1 : 0, opacity: active ? 0.9 : 0 }}
-      transition={{ pathLength: { duration, ease: GLIDE }, opacity: { duration: 0.4 } }}
-    />
-  )
-  return (
-    <svg className="absolute inset-0 z-0" width={STAGE_W} height={STAGE_H} viewBox={`0 0 ${STAGE_W} ${STAGE_H}`} aria-hidden>
-      {seg(PATH_A, aActive, 'a', FLIGHT_A_MS / 1000)}
-      {seg(PATH_B, bActive, 'b', FLIGHT_B_MS / 1000)}
-      {seg(PATH_PAY, payActive, 'pay', 1.1)}
-    </svg>
+    </AnimatePresence>
   )
 }
 
@@ -813,7 +773,6 @@ export function FlowShowcase() {
           animate={{ x: camX, scale }}
           transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 55, damping: 20 }}
         >
-          <ConnectorLayer cue={cue} />
           <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w }}>
             <PhoneFrame>
               <HomeownerSurface cue={cue} />
