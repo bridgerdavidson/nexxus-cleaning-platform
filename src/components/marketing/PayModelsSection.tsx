@@ -25,10 +25,10 @@ interface Model {
 
 const MODELS: Model[] = [
   {
-    id: 'percentage',
+    id: 'contractor',
     icon: Percent,
-    name: 'Percentage of each job',
-    tagline: 'Cleaners earn a set cut of every job they complete. Set one default, override per person.',
+    name: 'Percentage or flat rate',
+    tagline: 'The contractor model. Pay a set cut of each job or a fixed amount per job. Set one default, override per person.',
     setting: 'Default cleaner payout',
     settingValue: '80%',
     cleanerLine: 'Your cut of a $180 job',
@@ -38,13 +38,13 @@ const MODELS: Model[] = [
   {
     id: 'hourly',
     icon: Clock,
-    name: 'Hourly or flat rate',
-    tagline: 'Pay employees by the hour or a fixed amount per job, tracked against the schedule.',
+    name: 'Hourly with set availability',
+    tagline: 'Pay employees by the hour and let each cleaner set the days and times they are available to work.',
     setting: 'Rate for this cleaner',
     settingValue: '$28 / hr',
     cleanerLine: 'Earned on a 2 hour job',
     cleanerAmount: '$56',
-    note: 'Great for W-2 crews and salaried staff.',
+    note: 'Availability feeds the schedule, so you only assign who is free.',
   },
   {
     id: 'cleaner-set',
@@ -144,10 +144,10 @@ export function PayModelsSection() {
                     <span className="h-px flex-1 bg-border" aria-hidden />
                   </div>
 
-                  <div className="rounded-control bg-brand-950 px-4 py-3.5 text-primary-foreground">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-brand-100">{model.cleanerLine}</p>
+                  <div className="rounded-control bg-gradient-to-br from-brand-600 to-brand-500 px-4 py-3.5 text-white shadow-soft-md">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">{model.cleanerLine}</p>
                     <p className="mt-0.5 text-3xl font-extrabold tnum">{model.cleanerAmount}</p>
-                    <p className="mt-1 text-[11px] text-brand-100">Paid to their bank after the job, automatically.</p>
+                    <p className="mt-1 text-[11px] text-white/85">Paid to their bank after the job, automatically.</p>
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">{model.note}</p>
                 </m.div>

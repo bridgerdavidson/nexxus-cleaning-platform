@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
 import { AnimatedNumber } from '@/components/ui/animated-number'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { BrowserFrame, MiniRail } from './frames'
 import { DEMO_CLEANERS, DEMO_JOBS, cleanerById, type DemoJob } from './demo-data'
@@ -207,15 +208,20 @@ function CrewTab() {
       </div>
       <div className="rounded-control border border-border bg-card p-3.5">
         <p className="flex items-center gap-1.5 text-[11px] font-bold text-foreground"><ShieldCheck className="size-3.5 text-accent-foreground" aria-hidden />Manager permissions</p>
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-          {['View payments', 'Manage cleaners', 'Edit bookings', 'Send invites'].map((p, i) => (
-            <span key={p} className="flex items-center justify-between rounded-chip bg-background px-2.5 py-1.5 text-[11px] font-medium text-foreground">
-              {p}
-              <span className={cn('size-3.5 rounded-pill', i < 3 ? 'bg-positive' : 'bg-warm-300')} aria-hidden />
-            </span>
+        <div className="mt-2.5 grid gap-2">
+          {[
+            { label: 'View payments', on: true },
+            { label: 'Manage cleaners', on: true },
+            { label: 'Edit bookings', on: true },
+            { label: 'Send invites', on: false },
+          ].map((p) => (
+            <div key={p.label} className="flex items-center justify-between">
+              <span className="text-xs font-medium text-foreground">{p.label}</span>
+              <Switch checked={p.on} tabIndex={-1} aria-readonly className="pointer-events-none h-5 w-9 [&>span]:size-4 [&>span]:data-[state=checked]:translate-x-4" />
+            </div>
           ))}
         </div>
-        <p className="mt-2 text-[10px] text-muted-foreground">Give each manager exactly the access they need, nothing more.</p>
+        <p className="mt-2.5 text-[10px] text-muted-foreground">Give each manager exactly the access they need, nothing more.</p>
       </div>
     </div>
   )
@@ -226,33 +232,45 @@ function CrewTab() {
 function PaymentsTab() {
   return (
     <div className="grid gap-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-control bg-brand-950 p-3.5 text-primary-foreground">
-          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-brand-100">Your money</p>
-          <p className="mt-0.5 text-2xl font-extrabold tnum"><AnimatedNumber value={3860} prefix="$" /></p>
-          <p className="text-[10px] text-brand-100">collected this week</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-control border border-border bg-card p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">Collected this week</p>
+          <p className="mt-0.5 text-lg font-extrabold text-foreground tnum"><AnimatedNumber value={3860} prefix="$" /></p>
         </div>
-        <div className="rounded-control border border-border bg-card p-3.5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">In transit to cleaners</p>
-          <p className="mt-0.5 text-2xl font-extrabold text-foreground tnum">$1,204</p>
-          <p className="text-[10px] text-muted-foreground">3 payouts on the way</p>
+        <div className="rounded-control border border-border bg-card p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">In transit</p>
+          <p className="mt-0.5 text-lg font-extrabold text-foreground tnum">$1,204</p>
+        </div>
+        <div className="rounded-control border border-border bg-card p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">Next payout</p>
+          <p className="mt-0.5 text-lg font-extrabold text-foreground tnum">Fri</p>
         </div>
       </div>
-      <div className="rounded-control border border-caution/40 bg-caution-50 p-3">
-        <p className="flex items-center gap-1.5 text-[11px] font-bold text-caution-700"><AlertTriangle className="size-3.5" aria-hidden />Needs attention</p>
-        <div className="mt-2 flex items-center justify-between rounded-chip bg-card px-3 py-2 text-xs">
-          <span className="font-semibold text-foreground">Chen home · card declined</span>
-          <span className="flex items-center gap-1.5">
-            <Button size="sm" variant="outline" className="h-7 px-2.5 text-[11px]"><RefreshCw className="size-3" aria-hidden />Retry</Button>
-            <Button size="sm" variant="ghost" className="h-7 px-2.5 text-[11px]">Send link</Button>
+      {/* failure queue mirrors PaymentsTriageBand: plain card, critical badge */}
+      <div className="rounded-control border border-border bg-card p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <Badge variant="critical" className="px-2 py-0.5 text-[10px]">Failed charges</Badge>
+          <Badge variant="secondary" className="px-2 py-0.5 text-[10px]">1</Badge>
+        </div>
+        <div className="flex items-center justify-between rounded-chip border border-border bg-background px-3 py-2 text-xs">
+          <span className="min-w-0">
+            <span className="block truncate font-semibold text-foreground">Chen home · $140</span>
+            <span className="block text-[10px] text-muted-foreground">Card charge failed</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <Button size="sm" className="h-7 px-2.5 text-[11px]">Fix card</Button>
+            <Button size="sm" variant="secondary" className="h-7 px-2.5 text-[11px]">Copy card link</Button>
           </span>
         </div>
-        <p className="mt-1.5 text-[10px] text-caution-700">Failed charges surface here automatically. A nightly sweep re-tries them for you.</p>
+        <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <RefreshCw className="size-3" aria-hidden />
+          A nightly sweep re-tries failed charges for you.
+        </p>
       </div>
       <div className="grid gap-1.5">
         {[
           { who: 'Harbor View · Move-out', amt: '$220', state: 'Paid', variant: 'positive' as const },
-          { who: 'Cedar Ct · Deep clean', amt: '$180', state: 'Charges at completion', variant: 'secondary' as const },
+          { who: 'Cedar Ct · Deep clean', amt: '$180', state: 'Awaiting completion', variant: 'caution' as const },
         ].map((r) => (
           <div key={r.who} className="flex items-center justify-between rounded-control border border-border bg-card px-3.5 py-2.5 text-xs">
             <span className="font-semibold text-foreground">{r.who}</span>
