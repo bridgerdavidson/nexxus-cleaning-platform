@@ -1,7 +1,6 @@
 'use client'
 
 import { motion as m } from 'motion/react'
-import { Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FlowShowcase } from './FlowShowcase'
@@ -17,9 +16,8 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: EASE }}
         >
-          <Badge className="mb-5">
-            <Sparkles />
-            Early access · Built for cleaning companies
+          <Badge variant="secondary" className="mb-5">
+            Built for cleaning companies
           </Badge>
           <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-foreground sm:text-6xl">
             Every job, from &ldquo;booked&rdquo; to &ldquo;paid,&rdquo; without the chaos.
