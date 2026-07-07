@@ -5,14 +5,12 @@ import { motion as m, useReducedMotion } from 'motion/react'
 import { Camera, CheckCircle2 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { PhoneFrame } from './frames'
 
-// Mirrors the real homeowner LiveCleaningProgress: everything lives inside the
-// brand gradient "Cleaning in progress" hero (white text, white progress bar,
-// before-photo thumbnails). No stepper dots.
-const STAGES = ['Getting started', 'Before photos', 'Cleaning', 'Wrapping up', 'Complete'] as const
-const TASKS = [0, 2, 9, 14, 14]
+// Mirrors the real homeowner "Cleaning in progress" hero (brand gradient,
+// white text, before-photo thumbnails). The live stage label carries the
+// story; no progress bar. No stepper dots.
+const STAGES = ['Getting started', 'Before photos', 'Cleaning the kitchen', 'Wrapping up', 'Complete'] as const
 const ELAPSED = ['2m', '9m', '38m', '52m', '54m']
 
 function useTicker(len: number, ms: number, reduced: boolean) {
@@ -39,8 +37,6 @@ function useTicker(len: number, ms: number, reduced: boolean) {
 export function LiveTrackingSection() {
   const reduced = useReducedMotion() ?? false
   const { i, ref } = useTicker(STAGES.length, 2600, reduced)
-  const done = TASKS[i]
-  const pct = Math.round((done / 14) * 100)
   const complete = i === STAGES.length - 1
   const photosShown = i >= 3 ? 3 : i >= 1 ? Math.min(i, 2) : 0
 
@@ -62,7 +58,6 @@ export function LiveTrackingSection() {
           <ul className="mx-auto mt-6 grid max-w-sm gap-3 text-left lg:mx-0">
             {[
               'A live status, right on their home screen',
-              'A checklist bar that fills as work gets done',
               'Before and after photos, sent automatically',
               'The same live view for your admins and managers, from any dashboard',
             ].map((t) => (
@@ -92,19 +87,25 @@ export function LiveTrackingSection() {
                   <span className="ml-auto text-[10px] font-semibold text-white/75">Your cleaner</span>
                 </div>
 
-                {/* LiveCleaningProgress, mirrored */}
+                {/* the live stage carries the story now, not a bar */}
                 <div className="mt-3 border-t border-white/20 pt-3">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span aria-live="polite">{STAGES[i]}</span>
-                    <span className="tabular-nums text-white/85">{ELAPSED[i]}</span>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
+                      {complete ? 'Finished' : 'Right now'}
+                    </p>
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold text-white/85">
+                      {!complete ? (
+                        <span className="relative inline-flex size-2" aria-hidden>
+                          <span className="absolute inline-flex size-full animate-ping rounded-pill bg-white opacity-70" />
+                          <span className="relative inline-flex size-2 rounded-pill bg-white" />
+                        </span>
+                      ) : null}
+                      <span className="tabular-nums">{ELAPSED[i]} elapsed</span>
+                    </span>
                   </div>
-                  <Progress
-                    value={pct}
-                    aria-label={`${done} of 14 tasks done`}
-                    className="mt-2 bg-white/25"
-                    barClassName="bg-white"
-                  />
-                  <p className="mt-1 text-[11px] tabular-nums text-white/85">{done} of 14 tasks done</p>
+                  <p className="mt-1 min-h-7 text-lg font-extrabold leading-tight" aria-live="polite">
+                    {STAGES[i]}
+                  </p>
 
                   <div className="mt-3 flex gap-2" aria-hidden>
                     {[0, 1, 2].map((idx) => (
