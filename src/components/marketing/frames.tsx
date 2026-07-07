@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { CalendarDays, CreditCard, Home, SprayCan } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /** Browser-chrome wrapper for desktop app vignettes. */
@@ -45,24 +44,16 @@ export function PhoneFrame({
   )
 }
 
-/** Slim rail echoing the real OperatorRail: light card surface, brand-blue
- *  active item, muted inactive icons. */
+/** Slim rail echoing the real OperatorRail at sketch fidelity: light card
+ *  surface, one brand-blue active block, muted placeholders. */
 export function MiniRail() {
   return (
-    <div className="hidden w-12 shrink-0 flex-col items-center gap-2.5 border-r border-border bg-card py-3.5 sm:flex" aria-hidden>
-      <span className="mb-1 size-6 rounded-chip bg-brand-600" />
-      <span className="grid size-8 place-items-center rounded-control bg-brand-600 text-primary-foreground">
-        <Home className="size-4" />
-      </span>
-      <span className="grid size-8 place-items-center rounded-control text-muted-foreground">
-        <CalendarDays className="size-4" />
-      </span>
-      <span className="grid size-8 place-items-center rounded-control text-muted-foreground">
-        <SprayCan className="size-4" />
-      </span>
-      <span className="grid size-8 place-items-center rounded-control text-muted-foreground">
-        <CreditCard className="size-4" />
-      </span>
+    <div className="hidden w-11 shrink-0 flex-col items-center gap-2.5 border-r border-border bg-card py-3.5 sm:flex" aria-hidden>
+      <span className="mb-1.5 size-6 rounded-chip bg-brand-600" />
+      <span className="size-6 rounded-chip bg-accent ring-1 ring-brand-200" />
+      <span className="size-6 rounded-chip bg-muted" />
+      <span className="size-6 rounded-chip bg-muted" />
+      <span className="size-6 rounded-chip bg-muted" />
     </div>
   )
 }

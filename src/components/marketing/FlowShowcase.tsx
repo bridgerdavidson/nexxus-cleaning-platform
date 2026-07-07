@@ -108,7 +108,6 @@ function useFlowClock(reduced: boolean) {
   const progress = useMotionValue(reduced ? 1 : 0)
   const tRef = React.useRef(0)
   const cueRef = React.useRef(cue)
-  const pausedRef = React.useRef(false)
   const inViewRef = React.useRef(false)
   const rootRef = React.useRef<HTMLDivElement>(null)
 
@@ -135,7 +134,7 @@ function useFlowClock(reduced: boolean) {
     const tick = (now: number) => {
       const dt = Math.min(now - last, 100)
       last = now
-      if (!pausedRef.current && inViewRef.current && !document.hidden) {
+      if (inViewRef.current && !document.hidden) {
         tRef.current = (tRef.current + dt) % DURATION
         progress.set(tRef.current / DURATION)
         let idx = 0
@@ -162,11 +161,7 @@ function useFlowClock(reduced: boolean) {
     setCue(CUE_INDEX[cueName])
   }, [progress])
 
-  const setPaused = React.useCallback((p: boolean) => {
-    pausedRef.current = p
-  }, [])
-
-  return { cue, progress, seek, setPaused, rootRef }
+  return { cue, progress, seek, rootRef }
 }
 
 // --- small building blocks ---------------------------------------------------
@@ -460,7 +455,7 @@ function OperatorSurface({ cue }: { cue: number }) {
                   <span className="block text-[9px] text-muted-foreground">Thu · 9:00 AM · Sarah K.</span>
                 </span>
                 {!assigned ? (
-                  <span className="inline-flex shrink-0 items-center rounded-pill bg-primary px-2.5 py-1 text-[10px] font-bold text-primary-foreground shadow-soft-sm">
+                  <span id="flow-assign-chip" className="inline-flex shrink-0 items-center rounded-pill bg-primary px-2.5 py-1 text-[10px] font-bold text-primary-foreground shadow-soft-sm">
                     Assign
                   </span>
                 ) : (
@@ -485,7 +480,7 @@ function OperatorSurface({ cue }: { cue: number }) {
                     transition={{ duration: 0.25, ease: EASE }}
                     className="absolute right-0 top-full z-20 mt-1 w-36 rounded-control border border-border bg-card p-1 shadow-soft-lg"
                   >
-                    <div className={cn('flex items-center gap-1.5 rounded-chip px-2 py-1.5 text-[10px] font-semibold text-foreground transition-colors duration-base', cue >= CUE_INDEX.pickMaria && 'bg-accent text-accent-foreground')}>
+                    <div id="flow-maria-option" className={cn('flex items-center gap-1.5 rounded-chip px-2 py-1.5 text-[10px] font-semibold text-foreground transition-colors duration-base', cue >= CUE_INDEX.pickMaria && 'bg-accent text-accent-foreground')}>
                       <Avatar className="size-4 text-[7px]"><AvatarFallback>MR</AvatarFallback></Avatar>
                       Maria R.
                     </div>
@@ -702,12 +697,23 @@ function TravelLayer({ cue }: { cue: number }) {
   )
 }
 
-function CursorLayer({ cue }: { cue: number }) {
+interface Pt { x: number; y: number }
+
+/** Measure an element's center in stage coordinates (the stage is uniformly
+ *  scaled, so dividing by the rendered scale undoes the camera transform). */
+function stageCenter(id: string, stageEl: HTMLElement | null): Pt | null {
+  const el = document.getElementById(id)
+  if (!el || !stageEl) return null
+  const er = el.getBoundingClientRect()
+  const sr = stageEl.getBoundingClientRect()
+  if (sr.width === 0) return null
+  const sc = sr.width / STAGE_W
+  return { x: (er.left + er.width / 2 - sr.left) / sc, y: (er.top + er.height / 2 - sr.top) / sc }
+}
+
+function CursorLayer({ cue, targets }: { cue: number; targets: { assign: Pt; maria: Pt } }) {
   const visible = cue >= CUE_INDEX.cursorIn && cue < CUE_INDEX.liftB
-  const target =
-    cue >= CUE_INDEX.pickMaria
-      ? { x: DASH.x + 330, y: 262 }
-      : { x: DASH.x + 395, y: 212 }
+  const target = cue >= CUE_INDEX.pickMaria ? targets.maria : targets.assign
   const clicking = cue === CUE_INDEX.pickerOpen || cue === CUE_INDEX.assigned
   return (
     <AnimatePresence>
@@ -717,7 +723,7 @@ function CursorLayer({ cue }: { cue: number }) {
           initial={{ x: DASH.x + 460, y: 400, opacity: 0 }}
           animate={{ x: target.x, y: target.y, opacity: 1, scale: clicking ? 0.82 : 1 }}
           exit={{ opacity: 0, transition: { duration: 0.3 } }}
-          transition={{ x: { type: 'spring', stiffness: 110, damping: 19 }, y: { type: 'spring', stiffness: 110, damping: 19 }, scale: { duration: 0.15 } }}
+          transition={{ x: { type: 'spring', stiffness: 180, damping: 24 }, y: { type: 'spring', stiffness: 180, damping: 24 }, scale: { duration: 0.15 } }}
           className="absolute left-0 top-0 z-40"
           aria-hidden
         >
@@ -732,9 +738,27 @@ function CursorLayer({ cue }: { cue: number }) {
 
 export function FlowShowcase() {
   const reduced = useReducedMotion() ?? false
-  const { cue, progress, seek, setPaused, rootRef } = useFlowClock(reduced)
+  const { cue, progress, seek, rootRef } = useFlowClock(reduced)
   const [containerW, setContainerW] = React.useState<number | null>(null)
   const viewportRef = React.useRef<HTMLDivElement>(null)
+  const stageRef = React.useRef<HTMLDivElement>(null)
+  const [cursorTargets, setCursorTargets] = React.useState<{ assign: Pt; maria: Pt }>({
+    assign: { x: DASH.x + 340, y: 212 },
+    maria: { x: DASH.x + 306, y: 256 },
+  })
+
+  // Aim the cursor at where the Assign chip and the Maria option actually
+  // render (hardcoded coordinates drift as copy and layout evolve).
+  React.useEffect(() => {
+    if (reduced) return
+    if (cue === CUE_INDEX.cursorIn) {
+      const pt = stageCenter('flow-assign-chip', stageRef.current)
+      if (pt) setCursorTargets((t) => ({ ...t, assign: pt }))
+    } else if (cue === CUE_INDEX.pickMaria) {
+      const pt = stageCenter('flow-maria-option', stageRef.current)
+      if (pt) setCursorTargets((t) => ({ ...t, maria: pt }))
+    }
+  }, [cue, reduced])
 
   React.useEffect(() => {
     const node = viewportRef.current
@@ -763,11 +787,10 @@ export function FlowShowcase() {
         ref={viewportRef}
         className="relative overflow-hidden"
         style={{ height: STAGE_H * scale }}
-        onPointerEnter={() => setPaused(true)}
-        onPointerLeave={() => setPaused(false)}
         aria-hidden
       >
         <m.div
+          ref={stageRef}
           className="absolute left-0 top-0"
           style={{ width: STAGE_W, height: STAGE_H, transformOrigin: '0 0' }}
           animate={{ x: camX, scale }}
@@ -791,7 +814,7 @@ export function FlowShowcase() {
           {!reduced ? (
             <>
               <TravelLayer cue={cue} />
-              <CursorLayer cue={cue} />
+              <CursorLayer cue={cue} targets={cursorTargets} />
             </>
           ) : null}
         </m.div>
