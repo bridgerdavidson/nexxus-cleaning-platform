@@ -244,7 +244,7 @@ export function HeroSection() {
             Early access · Built for cleaning companies
           </Badge>
           <h1 className="text-4xl font-extrabold leading-[1.06] tracking-tight text-foreground sm:text-6xl">
-            Run your cleaning company from one calm screen.
+            Every job, from &ldquo;booked&rdquo; to &ldquo;paid,&rdquo; without the chaos.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg font-medium leading-relaxed text-muted-foreground">
             Bookings, crews, and payments in one place. Your office, your cleaners, and your

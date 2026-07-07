@@ -154,7 +154,7 @@ export function StorySection() {
         <div className="mx-auto max-w-2xl text-center">
           <Badge variant="secondary">How it works</Badge>
           <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            Follow one job from booked to paid
+            Watch one job travel through Nexxus
           </h2>
           <p className="mt-3 text-base font-medium text-muted-foreground">
             The whole hand-off, with nobody chasing anybody.
