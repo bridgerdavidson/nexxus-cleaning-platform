@@ -48,20 +48,23 @@ export function LiveTrackingSection() {
     <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
       <div className="grid items-center gap-10 lg:grid-cols-2">
         <div className="text-center lg:text-left">
-          <Badge variant="secondary">Your customers stay in the loop</Badge>
+          <Badge variant="secondary">Everyone stays in the loop</Badge>
           <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
             They watch the clean happen, live
           </h2>
           <p className="mt-3 text-base font-medium leading-relaxed text-muted-foreground">
             No more &ldquo;are they done yet?&rdquo; texts. Your customer sees the crew arrive,
             watches the checklist tick off room by room, and gets the before photos the moment work
-            starts. It makes a two-person operation look like a national brand.
+            starts. Your admins and managers see the exact same live progress from their dashboard,
+            so everyone knows where a job is at and what is getting done. It makes a two-person
+            operation look like a national brand.
           </p>
           <ul className="mx-auto mt-6 grid max-w-sm gap-3 text-left lg:mx-0">
             {[
               'A live status, right on their home screen',
               'A checklist bar that fills as work gets done',
               'Before and after photos, sent automatically',
+              'The same live view for your admins and managers, from any dashboard',
             ].map((t) => (
               <li key={t} className="flex items-start gap-2 text-sm font-medium text-foreground">
                 <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-positive-700" aria-hidden />

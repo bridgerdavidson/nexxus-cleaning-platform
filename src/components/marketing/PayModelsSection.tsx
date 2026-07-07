@@ -20,6 +20,8 @@ interface Model {
   // the resulting cleaner earnings line for a $180 job
   cleanerLine: string
   cleanerAmount: string
+  // how and when that money actually reaches the cleaner
+  payoutLine: string
   note: string
 }
 
@@ -33,6 +35,7 @@ const MODELS: Model[] = [
     settingValue: '80%',
     cleanerLine: 'Your cut of a $180 job',
     cleanerAmount: '$144',
+    payoutLine: 'Paid to their bank after the job, automatically.',
     note: 'Overrides let your best cleaners earn more.',
   },
   {
@@ -44,6 +47,7 @@ const MODELS: Model[] = [
     settingValue: '$28 / hr',
     cleanerLine: 'Earned on a 2 hour job',
     cleanerAmount: '$56',
+    payoutLine: 'Paid out through your own payroll, not per job. Nexxus pays your company and you pay your team on your normal schedule.',
     note: 'Availability feeds the schedule, so you only assign who is free.',
   },
   {
@@ -55,6 +59,7 @@ const MODELS: Model[] = [
     settingValue: '$95',
     cleanerLine: 'Maria keeps',
     cleanerAmount: '$95',
+    payoutLine: 'Paid to their bank after the job, automatically.',
     note: 'For marketplaces and independent contractor networks.',
   },
 ]
@@ -147,7 +152,7 @@ export function PayModelsSection() {
                   <div className="rounded-control bg-gradient-to-br from-brand-600 to-brand-500 px-4 py-3.5 text-white shadow-soft-md">
                     <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">{model.cleanerLine}</p>
                     <p className="mt-0.5 text-3xl font-extrabold tnum">{model.cleanerAmount}</p>
-                    <p className="mt-1 text-[11px] text-white/85">Paid to their bank after the job, automatically.</p>
+                    <p className="mt-1 text-[11px] text-white/85">{model.payoutLine}</p>
                   </div>
                   <p className="text-xs font-medium text-muted-foreground">{model.note}</p>
                 </m.div>
