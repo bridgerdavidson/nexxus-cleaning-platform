@@ -10,6 +10,9 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
+  // `next lint` used to ignore build output automatically; the plain `eslint .`
+  // script does not, so a local `.next/` from `npm run dev` floods the report.
+  { ignores: [".next/**", "node_modules/**", "playwright-report/**", "test-results/**"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 
