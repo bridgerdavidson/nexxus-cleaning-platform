@@ -89,13 +89,6 @@ const CAPTIONS: Array<{ from: CueName; text: string }> = [
   { from: 'settle', text: 'Booked to paid, with nobody chasing anybody.' },
 ]
 
-const MARKERS: Array<{ label: string; cue: CueName }> = [
-  { label: 'Booked', cue: 'request' },
-  { label: 'Assigned', cue: 'cursorIn' },
-  { label: 'Done', cue: 'started' },
-  { label: 'Paid', cue: 'panBack' },
-]
-
 function focusFor(cue: number): number {
   if (cue < CUE_INDEX.lift) return HOME.x + HOME.w / 2
   if (cue < CUE_INDEX.liftB) return DASH.x + DASH.w / 2
@@ -738,7 +731,7 @@ function CursorLayer({ cue, targets }: { cue: number; targets: { assign: Pt; mar
 
 export function FlowShowcase() {
   const reduced = useReducedMotion() ?? false
-  const { cue, seek, rootRef } = useFlowClock(reduced)
+  const { cue, rootRef } = useFlowClock(reduced)
   const [containerW, setContainerW] = React.useState<number | null>(null)
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const stageRef = React.useRef<HTMLDivElement>(null)
@@ -820,58 +813,7 @@ export function FlowShowcase() {
         </m.div>
       </div>
 
-      {/* progress stepper: discrete stages. The connector between stages
-          snaps forward when its stage is reached, so the indicator jumps
-          instead of crawling. Labels double as chapter seek. */}
-      <div className="mx-auto mt-6 w-full max-w-md px-2">
-        <div className="flex items-start">
-          {MARKERS.map((mk, i) => {
-            const reached = cue >= CUE_INDEX[mk.cue]
-            const current = cue === CUE_INDEX[mk.cue]
-            const nextReached = i < MARKERS.length - 1 && cue >= CUE_INDEX[MARKERS[i + 1].cue]
-            return (
-              <React.Fragment key={mk.label}>
-                <button
-                  type="button"
-                  onClick={() => seek(mk.cue)}
-                  className="flex shrink-0 flex-col items-center gap-1.5 rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <m.span
-                    className={cn(
-                      'size-2.5 rounded-pill transition-colors duration-base',
-                      reached ? 'bg-primary' : 'bg-warm-200',
-                      current ? 'ring-2 ring-brand-200' : '',
-                    )}
-                    animate={{ scale: current ? [1, 1.55, 1] : 1 }}
-                    transition={{ duration: 0.5, ease: EASE }}
-                    aria-hidden
-                  />
-                  <span
-                    className={cn(
-                      'text-xs font-semibold transition-colors duration-base',
-                      reached ? 'text-accent-foreground' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {mk.label}
-                  </span>
-                </button>
-                {i < MARKERS.length - 1 ? (
-                  <span className="mx-1 mt-[4px] h-0.5 flex-1 overflow-hidden rounded-pill bg-warm-200" aria-hidden>
-                    <m.span
-                      className="block h-full rounded-pill bg-primary"
-                      initial={false}
-                      animate={{ width: nextReached ? '100%' : '0%' }}
-                      transition={{ type: 'spring', stiffness: 210, damping: 26 }}
-                    />
-                  </span>
-                ) : null}
-              </React.Fragment>
-            )
-          })}
-        </div>
-      </div>
-
-      <p className="mx-auto mt-3 min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground" aria-live="polite">
+      <p className="mx-auto mt-6 min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground" aria-live="polite">
         {caption}
       </p>
     </div>
