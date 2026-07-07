@@ -17,7 +17,7 @@ export function BrowserFrame({
         <span className="size-2.5 rounded-pill bg-warm-300" aria-hidden />
         <span className="size-2.5 rounded-pill bg-warm-300" aria-hidden />
         <span className="size-2.5 rounded-pill bg-warm-300" aria-hidden />
-        <span className="ml-2 rounded-pill border border-border bg-card px-3.5 py-0.5 text-xs text-muted-foreground">
+        <span className="ml-2 min-w-0 truncate rounded-pill border border-border bg-card px-3.5 py-0.5 text-xs text-muted-foreground">
           {label}
         </span>
       </div>

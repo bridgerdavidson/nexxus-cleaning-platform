@@ -29,12 +29,7 @@ function JobRow({
   const cleaner = cleanerById(job.cleanerId)
   const needsAssign = job.status === 'pending'
   return (
-    <div
-      className={cn(
-        'rounded-control border bg-card transition-colors duration-base',
-        needsAssign ? 'border-caution/50 bg-caution-50' : 'border-border',
-      )}
-    >
+    <div className="rounded-control border border-border bg-card transition-colors duration-base">
       <button
         type="button"
         onClick={onToggle}
@@ -56,7 +51,7 @@ function JobRow({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {needsAssign ? (
-            <Badge variant="caution" className="px-2.5 py-0.5">Assign</Badge>
+            <StatusPill status="pending" label="Needs you" className="px-2.5 py-0.5 text-[11px]" />
           ) : (
             <StatusPill status={job.status} className="px-2.5 py-0.5 text-[11px]" />
           )}
@@ -112,7 +107,7 @@ function TodayTab({
   const needsYou = jobs.filter((j) => j.status === 'pending').length
   const inProgress = jobs.filter((j) => j.status === 'in_progress').length
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-1 gap-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           { label: 'Jobs today', value: <AnimatedNumber value={jobs.length} /> },
@@ -126,7 +121,7 @@ function TodayTab({
           </div>
         ))}
       </div>
-      <div className="grid gap-2">
+      <div className="grid grid-cols-1 gap-2">
         <AnimatePresence initial={false}>
           {jobs.map((job) => (
             <m.div
@@ -194,7 +189,7 @@ function CalendarTab({ jobs }: { jobs: DemoJob[] }) {
 
 function PaymentsTab() {
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-1 gap-2">
       <div className="rounded-control border border-border bg-card p-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">Collected this week</p>
         <p className="mt-0.5 text-2xl font-extrabold text-foreground tnum">

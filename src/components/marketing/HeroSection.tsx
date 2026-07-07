@@ -29,7 +29,11 @@ function useHeroLoop() {
     const id = setInterval(() => setPhase((p) => (p + 1) % 4), 3200)
     return () => clearInterval(id)
   }, [reduced, paused])
-  return { phase, setPaused, reduced }
+  const jumpTo = (p: number) => {
+    setPhase(p)
+    setPaused(true)
+  }
+  return { phase, jumpTo, setPaused, reduced }
 }
 
 function Enter({ show, children, delay = 0 }: { show: boolean; children: React.ReactNode; delay?: number }) {
@@ -51,12 +55,12 @@ function Enter({ show, children, delay = 0 }: { show: boolean; children: React.R
 
 function HomeownerScreen({ phase }: { phase: number }) {
   return (
-    <div className="grid gap-2 text-left">
+    <div className="grid grid-cols-1 gap-2 text-left">
       <Badge variant="secondary" className="justify-self-start">Customer view</Badge>
       <p className="text-sm font-bold text-foreground">Book your cleaning</p>
-      <div className="rounded-control border border-border bg-card p-2.5 text-xs text-muted-foreground">
-        Deep clean · 3 bd 2 ba
-        <span className="ml-1 font-bold text-foreground tnum">$180</span>
+      <div className="flex items-center justify-between gap-2 rounded-control border border-border bg-card p-2.5 text-xs">
+        <span className="text-muted-foreground">Deep clean · 3 bd 2 ba</span>
+        <span className="font-bold text-foreground tnum">$180</span>
       </div>
       <div className="rounded-control border border-border bg-card p-2.5 text-xs text-muted-foreground">Thursday · 9:00 AM</div>
       <Enter show={phase >= 0}>
@@ -74,7 +78,7 @@ function HomeownerScreen({ phase }: { phase: number }) {
 
 function CleanerScreen({ phase }: { phase: number }) {
   return (
-    <div className="grid gap-2 text-left">
+    <div className="grid grid-cols-1 gap-2 text-left">
       <Badge variant="secondary" className="justify-self-start">Cleaner view</Badge>
       <p className="text-sm font-bold text-foreground">Your Thursday</p>
       <div className="flex items-center justify-between rounded-control border border-border bg-card p-2.5 text-xs">
@@ -121,18 +125,18 @@ function OperatorScreen({ phase }: { phase: number }) {
             </p>
           </div>
         </div>
-        <div className="grid gap-2 text-xs">
+        <div className="grid grid-cols-1 gap-2 text-xs">
           <div className="flex items-center justify-between rounded-control border border-border bg-card p-2.5">
             <span className="font-semibold text-foreground">Maria R. · 114 Birch Ln</span>
             <StatusPill status="in_progress" className="px-2 py-0.5 text-[10px]" />
           </div>
           <Enter show={phase >= 1}>
-            <div className="flex items-center justify-between rounded-control border border-caution/50 bg-caution-50 p-2.5">
+            <div className="flex items-center justify-between rounded-control border border-border bg-card p-2.5">
               <span className="font-semibold text-foreground">New · Sarah K. · Thu 9:00</span>
               {phase >= 2 ? (
                 <StatusPill status="scheduled" label="Maria R." className="px-2 py-0.5 text-[10px]" />
               ) : (
-                <span className="font-bold text-caution-700">Assign</span>
+                <StatusPill status="pending" label="Needs you" className="px-2 py-0.5 text-[10px]" />
               )}
             </div>
           </Enter>
@@ -146,44 +150,76 @@ function OperatorScreen({ phase }: { phase: number }) {
   )
 }
 
+// Which single screen carries each beat on small viewports.
+const MOBILE_SCREEN: Array<'customer' | 'owner' | 'cleaner'> = ['customer', 'owner', 'cleaner', 'owner']
+
 function HeroTriptych() {
-  const { phase, setPaused, reduced } = useHeroLoop()
+  const { phase, jumpTo, setPaused, reduced } = useHeroLoop()
+  const mobileScreen = MOBILE_SCREEN[phase]
   return (
     <div
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
       className="relative"
     >
-      <div className="flex flex-col items-center gap-5 lg:flex-row lg:items-stretch lg:justify-center lg:gap-6">
-        <PhoneFrame className="hidden w-56 shrink-0 self-center lg:block lg:-rotate-2">
+      {/* Desktop: all three surfaces on stage at once. */}
+      <div className="hidden lg:flex lg:items-stretch lg:justify-center lg:gap-6">
+        <PhoneFrame className="w-56 shrink-0 self-center lg:-rotate-2">
           <CleanerScreen phase={phase} />
         </PhoneFrame>
         <BrowserFrame label="app.nexxus · demo data" className="w-full max-w-xl lg:z-10">
           <OperatorScreen phase={phase} />
         </BrowserFrame>
-        <PhoneFrame className="hidden w-56 shrink-0 self-center lg:block lg:rotate-2">
+        <PhoneFrame className="w-56 shrink-0 self-center lg:rotate-2">
           <HomeownerScreen phase={phase} />
         </PhoneFrame>
-        <div className="grid w-full max-w-xl grid-cols-2 gap-4 lg:hidden">
-          <PhoneFrame>
-            <CleanerScreen phase={phase} />
-          </PhoneFrame>
-          <PhoneFrame>
-            <HomeownerScreen phase={phase} />
-          </PhoneFrame>
-        </div>
+      </div>
+      {/* Mobile: one legible screen at a time, synced to the beat. */}
+      <div className="flex min-h-[380px] items-center justify-center lg:hidden">
+        <AnimatePresence mode="wait">
+          <m.div
+            key={mobileScreen}
+            initial={reduced ? false : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduced ? undefined : { opacity: 0, y: -10 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="flex w-full justify-center"
+          >
+            {mobileScreen === 'owner' ? (
+              <BrowserFrame label="app.nexxus · demo data" className="w-full max-w-xl">
+                <OperatorScreen phase={phase} />
+              </BrowserFrame>
+            ) : mobileScreen === 'cleaner' ? (
+              <PhoneFrame className="w-full max-w-[290px]">
+                <CleanerScreen phase={phase} />
+              </PhoneFrame>
+            ) : (
+              <PhoneFrame className="w-full max-w-[290px]">
+                <HomeownerScreen phase={phase} />
+              </PhoneFrame>
+            )}
+          </m.div>
+        </AnimatePresence>
       </div>
       <div className="mt-6 flex flex-col items-center gap-2" aria-live="polite">
-        <div className="flex gap-1.5" aria-hidden>
-          {BEATS.map((_, i) => (
-            <span
+        <div className="flex items-center gap-2">
+          {BEATS.map((beat, i) => (
+            <button
               key={i}
-              className={
-                i === phase
-                  ? 'h-1.5 w-6 rounded-pill bg-primary transition-all duration-slow'
-                  : 'h-1.5 w-1.5 rounded-pill bg-warm-300 transition-all duration-slow'
-              }
-            />
+              type="button"
+              onClick={() => jumpTo(i)}
+              aria-label={`Step ${i + 1}: ${beat}`}
+              aria-current={i === phase || undefined}
+              className="grid h-6 place-items-center px-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-pill"
+            >
+              <span
+                className={
+                  i === phase
+                    ? 'h-1.5 w-6 rounded-pill bg-primary transition-all duration-slow'
+                    : 'h-1.5 w-1.5 rounded-pill bg-warm-300 transition-all duration-slow'
+                }
+              />
+            </button>
           ))}
         </div>
         <p className="min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground">

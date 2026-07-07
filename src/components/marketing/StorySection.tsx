@@ -41,7 +41,7 @@ function StepVignette({ step }: { step: number }) {
   if (step === 0) {
     return (
       <BrowserFrame label="book.brightside.com · your branded booking page" className="w-full max-w-md">
-        <div className="grid gap-2.5 bg-background p-5 text-left">
+        <div className="grid grid-cols-1 gap-2.5 bg-background p-5 text-left">
           <p className="text-sm font-bold text-foreground">Book your cleaning</p>
           <div className="flex items-center justify-between rounded-control border border-border bg-card p-3 text-xs">
             <span className="font-semibold text-foreground">Deep clean · 3 bd 2 ba</span>
@@ -60,7 +60,7 @@ function StepVignette({ step }: { step: number }) {
   if (step === 1) {
     return (
       <PhoneFrame className="w-64">
-        <div className="grid gap-2 text-left">
+        <div className="grid grid-cols-1 gap-2 text-left">
           <p className="text-sm font-bold text-foreground">Your Thursday · 3 jobs</p>
           <div className="rounded-control border border-brand-200 bg-accent p-3 text-xs">
             <p className="font-semibold text-foreground">9:00 · Sarah K. · Deep clean</p>
@@ -78,7 +78,7 @@ function StepVignette({ step }: { step: number }) {
   if (step === 2) {
     return (
       <PhoneFrame className="w-64">
-        <div className="grid gap-2 text-left">
+        <div className="grid grid-cols-1 gap-2 text-left">
           <div className="flex items-center justify-between">
             <p className="text-sm font-bold text-foreground">Sarah K. · Deep clean</p>
             <StatusPill status="completed" className="px-2 py-0.5 text-[10px]" />
@@ -96,7 +96,7 @@ function StepVignette({ step }: { step: number }) {
   }
   return (
     <BrowserFrame label="app.nexxus · payments" className="w-full max-w-md">
-      <div className="grid gap-2.5 bg-background p-5 text-left">
+      <div className="grid grid-cols-1 gap-2.5 bg-background p-5 text-left">
         <div className="flex items-center justify-between rounded-control border border-border bg-card p-3 text-xs">
           <span className="font-semibold text-foreground">Sarah K. · Deep clean</span>
           <Badge variant="positive" className="px-2 py-0.5 text-[10px]">Paid $180</Badge>
