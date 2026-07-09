@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
 import { homeownerBelongsToOrg } from '@/lib/payments/orgHomeowner';
 
 // Generate invoice number in format: INV-YYYYMMDD-XXXX
@@ -30,9 +30,8 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // ── Auth first: only org staff may create invoices, and only for their own org.
-    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
-    });
+    // Invoices are a payment-spending action, so a manager additionally needs can_manage_payments.
+    const auth = await requireOrgPaymentsAuth(request, organization_id, supabaseAdmin);
     if (!auth.ok) return auth.response;
 
     // Validate required fields

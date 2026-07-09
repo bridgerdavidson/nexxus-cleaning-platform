@@ -3,14 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { OPERATOR_NAV } from "./nav-items";
+import type { NavItem } from "./nav-items";
 
 /**
  * Desktop-only full-height brand rail. Collapsed to 64px showing the Nexxus
  * mark + icons; expands to 248px on hover to reveal the wordmark + labels.
  * One clean surface (no divider between brand and nav). Settings pinned bottom.
+ * `nav` is the viewer's permission-filtered item list (see useOperatorNav).
  */
-export function OperatorRail({ activeId }: { activeId?: string }) {
+export function OperatorRail({ activeId, nav }: { activeId?: string; nav: NavItem[] }) {
   return (
     <aside
       className={cn(
@@ -50,7 +51,7 @@ export function OperatorRail({ activeId }: { activeId?: string }) {
 
       {/* nav */}
       <nav className="flex flex-1 flex-col gap-1 px-3 pb-3">
-        {OPERATOR_NAV.map((item) => {
+        {nav.map((item) => {
           const Icon = item.icon;
           const active = item.id === activeId;
           return (

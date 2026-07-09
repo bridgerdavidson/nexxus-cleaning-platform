@@ -13,27 +13,33 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import {
-  OPERATOR_NAV,
-  OPERATOR_PRIMARY_NAV,
-  OPERATOR_SECONDARY_NAV,
-} from "./nav-items";
+import { OPERATOR_NAV, type NavItem } from "./nav-items";
 
 const SETTINGS = OPERATOR_NAV.find((i) => i.id === "settings")!;
 
-/** Mobile (<lg) bottom tab bar (4 primary + Menu drawer) + New-booking FAB. */
+/**
+ * Mobile (<lg) bottom tab bar (4 primary + Menu drawer) + New-booking FAB.
+ * `primary`/`secondary` are the viewer's permission-filtered item lists (see
+ * useOperatorNav); settings is never gated so it stays a module-level const.
+ */
 export function OperatorMobileNav({
   activeId,
   onNewBooking,
+  primary,
+  secondary,
 }: {
   activeId?: string;
   onNewBooking?: () => void;
+  primary: NavItem[];
+  secondary: NavItem[];
 }) {
   return (
     <>
       {/* New-booking FAB (labeled, the one persistent global action), above the
-          bar. Hidden on Settings, where a booking action is out of context. */}
-      {activeId !== "settings" && (
+          bar. Hidden on Settings, where a booking action is out of context, and
+          hidden (not just disabled) for a manager without can_edit_bookings: see
+          OperatorShell, which only passes onNewBooking when the viewer is allowed. */}
+      {activeId !== "settings" && onNewBooking && (
         <Button
           onClick={onNewBooking}
           aria-label="New booking"
@@ -45,7 +51,7 @@ export function OperatorMobileNav({
       )}
 
       <nav className="fixed inset-x-0 bottom-0 z-40 flex h-[60px] items-stretch border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden">
-        {OPERATOR_PRIMARY_NAV.map((item) => {
+        {primary.map((item) => {
           const Icon = item.icon;
           const active = item.id === activeId;
           return (
@@ -99,11 +105,11 @@ export function OperatorMobileNav({
 
             <div className="flex flex-col gap-1 px-3 pb-4">
               <DrawerGroupLabel>Primary</DrawerGroupLabel>
-              {OPERATOR_PRIMARY_NAV.map((item) => (
+              {primary.map((item) => (
                 <DrawerLink key={item.id} item={item} activeId={activeId} />
               ))}
               <DrawerGroupLabel>More</DrawerGroupLabel>
-              {OPERATOR_SECONDARY_NAV.map((item) => (
+              {secondary.map((item) => (
                 <DrawerLink key={item.id} item={item} activeId={activeId} />
               ))}
               <div className="mt-2 border-t border-border pt-2">

@@ -100,6 +100,19 @@ export function OperatorOverview() {
   // legacy OwnerSetupChecklist was owner-only too). Admins/managers run day-to-day;
   // initial business setup (payout %, org profile, hours/policy) is the owner's.
   const showOnboarding = currentOrgRole === "owner";
+
+  // Manager hero is "stripped down" by construction, not by a separate variant:
+  // the greeting header below (OperatorOverviewView) is role-agnostic and never
+  // carries a company-wide revenue figure or owner-only chrome of its own. The
+  // only two hero-adjacent elements that need gating are handled already: the
+  // setup checklist above (owner-only via showOnboarding) and the Revenue KPI
+  // tile (gated on canViewPayments, dropped-not-swapped by KpiStrip below). A
+  // non-privileged manager therefore already sees: compact greeting + today's
+  // summary (KPI strip + Needs-you-now + Today/Active panels), with no revenue
+  // banner and no owner setup prompt. The primary "New booking" action is a
+  // global Operator affordance owned by OperatorShell/OperatorTopBar (outside
+  // this file); gating it on can_edit_bookings is tracked under the Task 5
+  // component-level gating audit, not duplicated here.
   const checklist = showOnboarding && onboarding.showChecklist ? (
     <SetupChecklistCard
       title="Finish setting up your business"
@@ -124,7 +137,6 @@ export function OperatorOverview() {
           inProgress: sections.activeNow.length,
           awaitingApproval: stats.pendingApprovals,
           revenueThisMonth: canViewPayments ? payStats.thisMonthRevenue : null,
-          unassignedCount: sections.unassigned.length,
           canViewPayments,
         }}
         unassigned={sections.unassigned.map(toQueueItem)}

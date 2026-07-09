@@ -12,6 +12,9 @@ import { useFormDraft } from "../hooks/useFormDraft";
 import { createDraftStore } from "@/lib/formDraft";
 import DiscardChangesDialog from "./DiscardChangesDialog";
 import { useToast } from "../contexts/ToastContext";
+import { Accordion, AccordionItem } from "@/components/ui/accordion";
+import { ManagerPermissionEditor } from "@/components/settings/ManagerPermissionEditor";
+import { STANDARD_MANAGER_PRESET, type ManagerPermissions } from "@/lib/permissions/managerFlags";
 
 // Reload-restore: the in-progress invite (email + role) is persisted to sessionStorage so a
 // full page reload survives. A 6h TTL + org check (in the store) keep a stale or cross-tenant
@@ -88,6 +91,7 @@ export default function AddTeamMemberModal({
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InviteRole>("cleaner");
+  const [perms, setPerms] = useState<ManagerPermissions>(STANDARD_MANAGER_PRESET);
 
   // Keep `role` valid for this caller. Resets to the first available role when
   // the current selection isn't permitted, e.g. after a saved draft hydrates a
@@ -154,6 +158,7 @@ export default function AddTeamMemberModal({
         role,
         organizationId: currentOrganizationId,
         accessToken,
+        permissions: role === "manager" ? perms : undefined,
       });
 
       if (result.success) {
@@ -168,6 +173,7 @@ export default function AddTeamMemberModal({
         // Reset form
         setEmail("");
         setRole(defaultRole);
+        setPerms(STANDARD_MANAGER_PRESET);
         setEmailError("");
         setEmailTouched(false);
         setSubmitError("");
@@ -197,6 +203,7 @@ export default function AddTeamMemberModal({
     teamMemberDraftStore.clear();
     setEmail("");
     setRole(defaultRole);
+    setPerms(STANDARD_MANAGER_PRESET);
     setEmailError("");
     setEmailTouched(false);
     setSubmitError("");
@@ -309,6 +316,15 @@ export default function AddTeamMemberModal({
                 </div>
               )}
             </div>
+
+            {/* Manager permission editor: collapsed by default behind the Standard preset */}
+            {role === "manager" && (
+              <Accordion>
+                <AccordionItem value="manager-permissions" title="Using the Standard manager preset. Customize">
+                  <ManagerPermissionEditor value={perms} onChange={setPerms} />
+                </AccordionItem>
+              </Accordion>
+            )}
 
             {/* Email Field */}
             <div>

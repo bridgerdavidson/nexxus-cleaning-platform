@@ -18,7 +18,6 @@ export default function OperatorPreviewPage() {
           inProgress: 2,
           awaitingApproval: 4,
           revenueThisMonth: 12845,
-          unassignedCount: 2,
           canViewPayments: true,
         }}
         unassigned={[

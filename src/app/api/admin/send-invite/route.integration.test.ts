@@ -14,6 +14,7 @@ import {
 } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { STANDARD_MANAGER_PRESET } from '@/lib/permissions/managerFlags';
 
 /**
  * Regression: an org OWNER (organization_members.role = 'owner') must be able to
@@ -286,5 +287,132 @@ describe('POST /api/admin/send-invite (homeowner role)', () => {
     expect(status).toBe(403);
     expect(body.error).toMatch(/managers can only invite cleaners or homeowners/i);
     expect(inviteSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Invite-carried permissions (manager permission model overhaul, task 7): a manager
+ * invite's chosen `permissions` must be sanitized and persisted on the invite row as
+ * `manager_permissions` jsonb, so accept-invite can seed exactly that set later
+ * instead of the old hardcoded all-true seed. Non-manager invites must store NULL.
+ */
+describe('POST /api/admin/send-invite (invite-carried manager permissions)', () => {
+  let org: TestOrgFixture | null = null;
+  let owner: OwnerMemberHandle | null = null;
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await owner?.cleanup();
+    await org?.cleanup();
+    owner = null;
+    org = null;
+  });
+
+  it('stores the chosen permissions jsonb on a manager invite', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+
+    vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+
+    const email = `mgr-${randomUUID().slice(0, 8)}@test.local`;
+    const chosenPermissions = { ...STANDARD_MANAGER_PRESET, can_manage_payments: true };
+    const { status, body } = await callRoute<{ success: boolean; invite: { id: string } }>(
+      POST,
+      {
+        method: 'POST',
+        headers: bearerHeader(owner.accessToken),
+        body: {
+          email,
+          role: 'manager',
+          organizationId: org.organizationId,
+          permissions: chosenPermissions,
+        },
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const db = createTestSupabaseClient();
+    const { data: invite } = await db
+      .from('invites')
+      .select('manager_permissions')
+      .eq('id', body.invite.id)
+      .single();
+    const stored = (invite as { manager_permissions: Record<string, boolean> }).manager_permissions;
+    expect(stored.can_manage_payments).toBe(true);
+    expect(stored.can_view_bookings).toBe(true);
+  });
+
+  it('stores manager_permissions = null for a non-manager invite', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+
+    vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+
+    const email = `cln-${randomUUID().slice(0, 8)}@test.local`;
+    const { status, body } = await callRoute<{ success: boolean; invite: { id: string } }>(
+      POST,
+      {
+        method: 'POST',
+        headers: bearerHeader(owner.accessToken),
+        body: { email, role: 'cleaner', organizationId: org.organizationId },
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const db = createTestSupabaseClient();
+    const { data: invite } = await db
+      .from('invites')
+      .select('manager_permissions')
+      .eq('id', body.invite.id)
+      .single();
+    expect((invite as { manager_permissions: unknown }).manager_permissions).toBeNull();
+  });
+
+  /**
+   * Regression: no current UI caller passes `permissions` on a manager invite (the
+   * invite-time editor is a future task). Before the fix, the route unconditionally
+   * called coerceManagerPermissions(permissions), which for `undefined` returns an
+   * ALL-FALSE 14-key object (not null) — a truthy value that accept-invite's
+   * `invite.manager_permissions ? coerce(...) : STANDARD_MANAGER_PRESET` then reads
+   * as "explicit permissions", seeding the manager with ZERO permissions instead of
+   * falling back to the preset. A manager invite with no `permissions` field must
+   * store NULL so accept-invite reaches the preset fallback.
+   */
+  it('stores manager_permissions = null for a manager invite with no permissions chosen', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+
+    vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({ data: { user: { id: 'usr_mock' } }, error: null } as any);
+
+    const email = `mgr-nopermissions-${randomUUID().slice(0, 8)}@test.local`;
+    const { status, body } = await callRoute<{ success: boolean; invite: { id: string } }>(
+      POST,
+      {
+        method: 'POST',
+        headers: bearerHeader(owner.accessToken),
+        body: { email, role: 'manager', organizationId: org.organizationId },
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const db = createTestSupabaseClient();
+    const { data: invite } = await db
+      .from('invites')
+      .select('manager_permissions')
+      .eq('id', body.invite.id)
+      .single();
+    expect((invite as { manager_permissions: unknown }).manager_permissions).toBeNull();
   });
 });

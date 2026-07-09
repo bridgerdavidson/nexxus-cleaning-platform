@@ -69,10 +69,14 @@ export function OperatorTopBar({
       </Button>
 
       <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
-        <Button onClick={onNewBooking} className="hidden sm:inline-flex">
-          <Plus className="h-4 w-4" aria-hidden />
-          New booking
-        </Button>
+        {/* Hidden (not just disabled) for a manager without can_edit_bookings: see
+            OperatorShell, which only passes onNewBooking when the viewer is allowed. */}
+        {onNewBooking ? (
+          <Button onClick={onNewBooking} className="hidden sm:inline-flex">
+            <Plus className="h-4 w-4" aria-hidden />
+            New booking
+          </Button>
+        ) : null}
 
         <NotificationBell />
 

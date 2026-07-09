@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 
 describe('POST /api/payments/record', () => {
   let org: TestOrgFixture;
@@ -77,5 +77,39 @@ describe('POST /api/payments/record', () => {
       },
     });
     expect(status).toBe(403);
+  });
+});
+
+describe('POST /api/payments/record manager gate (can_manage_payments)', () => {
+  let mgrOrg: TestOrgFixture | null = null;
+  let mgr: Awaited<ReturnType<typeof addManagerToOrg>> | null = null;
+
+  afterEach(async () => {
+    if (mgr) { await mgr.cleanup(); mgr = null; }
+    if (mgrOrg) { await mgrOrg.cleanup(); mgrOrg = null; }
+  });
+
+  it('403 for a manager without can_manage_payments', async () => {
+    mgrOrg = await withTestOrg();
+    mgr = await addManagerToOrg(mgrOrg.organizationId, { can_manage_payments: false });
+    const res = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { organization_id: mgrOrg.organizationId, appointment_id: crypto.randomUUID(), amount: 100, payment_method: 'card' },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('lets a manager WITH can_manage_payments past the auth gate', async () => {
+    mgrOrg = await withTestOrg();
+    mgr = await addManagerToOrg(mgrOrg.organizationId, { can_manage_payments: true });
+    const res = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { organization_id: mgrOrg.organizationId, appointment_id: crypto.randomUUID(), amount: 100, payment_method: 'card' },
+    });
+    // Past auth: not a 401/403. (May 400/404/500 on the fake appointment id — that's fine, we only assert the gate.)
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
   });
 });

@@ -62,6 +62,8 @@ export type OperatorBookingsViewProps = {
   counts: Record<BookingSegment, number>;
   totalCount: number;
   canViewPayments: boolean;
+  canEdit: boolean;
+  canHandleRequests: boolean;
   canDelete: boolean;
   bulkBusy?: boolean;
 
@@ -95,6 +97,8 @@ export function OperatorBookingsView({
   counts,
   totalCount,
   canViewPayments,
+  canEdit,
+  canHandleRequests,
   canDelete,
   bulkBusy,
   segment,
@@ -231,6 +235,8 @@ export function OperatorBookingsView({
             <BookingsTable
               rows={rows}
               canViewPayments={canViewPayments}
+              canEdit={canEdit}
+              canHandleRequests={canHandleRequests}
               canDelete={canDelete}
               selectedIds={selectedIds}
               allSelected={allSelected}
@@ -244,6 +250,8 @@ export function OperatorBookingsView({
             <BookingsCardList
               rows={rows}
               canViewPayments={canViewPayments}
+              canEdit={canEdit}
+              canHandleRequests={canHandleRequests}
               canDelete={canDelete}
               selectedIds={selectedIds}
               onToggleRow={onToggleRow}
@@ -256,6 +264,7 @@ export function OperatorBookingsView({
 
       <BookingsBulkBar
         count={selectedIds.size}
+        canEdit={canEdit}
         canDelete={canDelete}
         busy={bulkBusy}
         onCancel={onBulkCancel}

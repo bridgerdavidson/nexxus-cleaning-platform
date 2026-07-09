@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateOccurrences, validateRecurrenceInput } from '@/lib/appointments/recurrence';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
@@ -68,10 +68,11 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Auth first: only owner/admin/manager of the target org may create a series.
-    // requireOrgAuth verifies the caller is a member of `organizationId`, so a
-    // caller cannot write into an org they don't belong to.
-    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+    // requireManagerPermission verifies the caller is a member of `organizationId`
+    // (a caller cannot write into an org they don't belong to) and, for a manager,
+    // requires the Edit Bookings permission.
+    const auth = await requireManagerPermission(request, organizationId, supabaseAdmin, 'can_edit_bookings', {
+      errorMessage: 'Requires the Edit Bookings permission',
     });
     if (!auth.ok) return auth.response;
 
@@ -252,8 +253,8 @@ export async function GET(request: NextRequest) {
     }
 
     // This endpoint returns homeowner PII + property addresses; gate to org staff.
-    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+    const auth = await requireManagerPermission(request, organizationId, supabaseAdmin, 'can_view_bookings', {
+      errorMessage: 'Requires the View Bookings permission',
     });
     if (!auth.ok) return auth.response;
 

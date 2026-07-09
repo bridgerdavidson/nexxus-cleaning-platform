@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
 import { OperatorBookings } from "@/components/redesign/bookings/OperatorBookings";
+import { useRequireManagerFlag } from "@/lib/redesign/useRequireManagerFlag";
 
 function Spinner() {
   return (
@@ -22,6 +23,7 @@ function Spinner() {
 function OperatorBookingsInner() {
   const router = useRouter();
   const { user, loading, orgStatus, reloadOrganization } = useAuth();
+  const flagState = useRequireManagerFlag("can_view_bookings");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -29,6 +31,7 @@ function OperatorBookingsInner() {
 
   if (loading || !user || orgStatus === "idle" || orgStatus === "loading") return <Spinner />;
   if (orgStatus === "error") return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
+  if (flagState === "checking") return <Spinner />;
 
   // "New booking" isn't redesigned yet, so hand off to the legacy flow.
   const goNewBooking = () => router.push("/admin-dashboard?tab=bookings");

@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { POST, GET } from './route';
 import { callRoute, bearerHeader } from '../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../tests/helpers/fixtures';
+import {
+  withTestOrg,
+  createTestAppointment,
+  addManagerToOrg,
+  type TestOrgFixture,
+  type ManagerMemberHandle,
+} from '../../../../tests/helpers/fixtures';
 
 /**
  * Security audit C3/F-CORE-2: both POST and GET were fully unauthenticated. POST mass-
@@ -104,5 +110,64 @@ describe('/api/recurring-appointments (auth)', () => {
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
+  });
+
+  // Manager permission gating (Task 5): POST needs can_edit_bookings, GET needs can_view_bookings.
+  describe('manager permission gating', () => {
+    let mgr: ManagerMemberHandle;
+
+    afterEach(async () => {
+      if (mgr) await mgr.cleanup();
+    });
+
+    it('POST 403s for a manager without can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: false });
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organizationId: org.organizationId, homeownerId: org.homeowner.userId, propertyId: 'x', serviceTypeId: 'y' },
+      });
+      expect(status).toBe(403);
+    });
+
+    it('POST passes auth for a manager WITH can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: true });
+      const { propertyId, serviceTypeId } = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+      const { status } = await callRoute<{ success: boolean; data: { appointmentsCreated: number } }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: baseBody(org.organizationId, org.homeowner.userId, propertyId, serviceTypeId),
+      });
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
+
+    it('GET 403s for a manager without can_view_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_view_bookings: false });
+      const { status } = await callRoute(GET, {
+        method: 'GET',
+        headers: bearerHeader(mgr.accessToken),
+        url: `http://localhost/api/recurring-appointments?organizationId=${org.organizationId}`,
+      });
+      expect(status).toBe(403);
+    });
+
+    it('GET passes auth for a manager WITH can_view_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_view_bookings: true });
+      const { status, body } = await callRoute<{ success: boolean }>(GET, {
+        method: 'GET',
+        headers: bearerHeader(mgr.accessToken),
+        url: `http://localhost/api/recurring-appointments?organizationId=${org.organizationId}`,
+      });
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+      expect(body.success).toBe(true);
+    });
   });
 });

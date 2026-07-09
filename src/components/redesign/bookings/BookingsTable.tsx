@@ -44,10 +44,14 @@ function CleanerCell({ row }: { row: BookingRowVM }) {
 
 function RowMenu({
   row,
+  canEdit,
+  canHandleRequests,
   canDelete,
   onAction,
 }: {
   row: BookingRowVM;
+  canEdit: boolean;
+  canHandleRequests: boolean;
   canDelete: boolean;
   onAction: (id: string, action: BookingRowAction) => void;
 }) {
@@ -63,10 +67,12 @@ function RowMenu({
         <DropdownMenuItem onSelect={() => onAction(row.id, "open")}>
           <Eye /> Open details
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onAction(row.id, "assign")}>
-          <UserPlus /> {row.isUnassigned ? "Assign cleaner" : "Reassign cleaner"}
-        </DropdownMenuItem>
-        {cancellable ? (
+        {canHandleRequests ? (
+          <DropdownMenuItem onSelect={() => onAction(row.id, "assign")}>
+            <UserPlus /> {row.isUnassigned ? "Assign cleaner" : "Reassign cleaner"}
+          </DropdownMenuItem>
+        ) : null}
+        {cancellable && canEdit ? (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => onAction(row.id, "cancel")}>
@@ -87,6 +93,8 @@ function RowMenu({
 export type BookingsTableProps = {
   rows: BookingRowVM[];
   canViewPayments: boolean;
+  canEdit: boolean;
+  canHandleRequests: boolean;
   canDelete: boolean;
   selectedIds: Set<string>;
   allSelected: boolean;
@@ -99,6 +107,8 @@ export type BookingsTableProps = {
 export function BookingsTable({
   rows,
   canViewPayments,
+  canEdit,
+  canHandleRequests,
   canDelete,
   selectedIds,
   allSelected,
@@ -173,7 +183,13 @@ export function BookingsTable({
                   </TableCell>
                 ) : null}
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                  <RowMenu row={row} canDelete={canDelete} onAction={onRowAction} />
+                  <RowMenu
+                    row={row}
+                    canEdit={canEdit}
+                    canHandleRequests={canHandleRequests}
+                    canDelete={canDelete}
+                    onAction={onRowAction}
+                  />
                 </TableCell>
               </TableRow>
             );

@@ -767,7 +767,7 @@ function ManagerDashboardInner() {
         actionCount={needsResponseCount}
         onGoToActionCenter={() => setActiveTab("home")}
         role="manager"
-        canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
+        canApproveDecline={permissions?.can_handle_requests ?? false}
         initialStatusFilter={initialFilter}
         cleaners={cleaners.map((c) => ({
           id: c.id,
@@ -1122,7 +1122,7 @@ function ManagerDashboardInner() {
         isOpen={isAppointmentPanelOpen}
         onClose={closeAppointment}
         role="manager"
-        canApproveDecline={permissions?.can_approve_decline_bookings ?? false}
+        canApproveDecline={permissions?.can_handle_requests ?? false}
         onCancelAppointment={handleCancelAppointment}
         onDeleteAppointment={handleDeleteAppointment}
         onMarkComplete={handleMarkComplete}

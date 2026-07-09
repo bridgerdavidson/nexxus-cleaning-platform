@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 
@@ -29,8 +29,9 @@ export async function POST(
     };
 
     // Auth first (401/403 win over body validation).
-    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
+    const auth = await requireManagerPermission(request, organizationId, supabaseAdmin, 'can_edit_bookings', {
       allowedRoles: ['cleaner', 'admin', 'owner', 'manager'],
+      errorMessage: 'Requires the Edit Bookings permission',
     });
     if (!auth.ok) return auth.response;
 

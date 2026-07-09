@@ -46,6 +46,7 @@ function OperatorMessagesData() {
   const { permissions } = useManagerPermissions()
   const privileged = currentOrgRole === 'owner' || currentOrgRole === 'admin'
   const canViewPayments = privileged || !!permissions?.can_view_payments
+  const canEditBookings = privileged || !!permissions?.can_edit_bookings
 
   // URL-driven selection. Office threads select via ?c=<conversationId>
   // (replyable); read-only job threads via ?job=<appointmentId>. The two are
@@ -347,7 +348,7 @@ function OperatorMessagesData() {
         onToggleDetails={() => setDetailsOpen((v) => !v)}
         context={context}
         onViewProfile={viewProfile}
-        onNewBooking={newBooking}
+        onNewBooking={canEditBookings ? newBooking : undefined}
         onCopy={onCopy}
         isMobile={isMobile}
       />

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,10 +15,9 @@ export async function POST(request: NextRequest) {
       reference,
     } = body;
 
-    // ── Auth first: don't leak validation details to unauthenticated callers
-    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
-    });
+    // ── Auth first: don't leak validation details to unauthenticated callers. Recording a
+    // payment is a payment-spending action, so a manager additionally needs can_manage_payments.
+    const auth = await requireOrgPaymentsAuth(request, organization_id, supabaseAdmin);
     if (!auth.ok) return auth.response;
 
     if (!appointment_id || !amount || !payment_method) {

@@ -131,7 +131,7 @@ export interface OperatorMessagesViewProps {
   onToggleDetails: () => void
   context: ContactContextVM | null
   onViewProfile: () => void
-  onNewBooking: () => void
+  onNewBooking?: () => void
   onCopy: (text: string, label: string) => void
   // layout
   isMobile: boolean

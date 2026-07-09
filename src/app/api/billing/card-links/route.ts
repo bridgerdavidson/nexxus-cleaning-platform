@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { getOrCreateStripeCustomer } from '@/lib/stripe/customers/homeowner';
 import { createCardSetupIntent } from '@/lib/stripe/setup-intents';
@@ -28,9 +28,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { organization_id, homeowner_id } = body as { organization_id?: string; homeowner_id?: string };
 
-    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
-    });
+    // Creating a card-collection link precedes a payment-spending action, so a manager
+    // additionally needs can_manage_payments.
+    const auth = await requireOrgPaymentsAuth(request, organization_id, supabaseAdmin);
     if (!auth.ok) return auth.response;
 
     if (!homeowner_id) {

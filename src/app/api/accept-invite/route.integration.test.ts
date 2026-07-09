@@ -4,12 +4,21 @@ import { POST } from './route';
 import { callRoute } from '../../../../tests/helpers/auth';
 import { createAuthUser } from '../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../tests/helpers/supabase';
+import {
+  STANDARD_MANAGER_PRESET,
+  type ManagerPermissions,
+} from '../../../lib/permissions/managerFlags';
 
 /**
  * Sets up a fresh invitee (auth user + access token) and a pending invite of the
- * given org role, then returns what's needed to call accept-invite.
+ * given org role, then returns what's needed to call accept-invite. `managerPermissions`
+ * carries the invite's `manager_permissions` jsonb (defaults to NULL, matching a
+ * legacy/non-manager invite); only meaningful when `role === 'manager'`.
  */
-async function seedInvite(role: 'owner' | 'cleaner') {
+async function seedInvite(
+  role: 'owner' | 'cleaner' | 'manager',
+  managerPermissions: ManagerPermissions | null = null,
+) {
   const db = createTestSupabaseClient();
   const uniq = randomUUID().slice(0, 8);
 
@@ -42,6 +51,7 @@ async function seedInvite(role: 'owner' | 'cleaner') {
       status: 'pending',
       accepted_at: null,
       invited_by: invitee.id, // FK -> user_profiles(id), satisfied by the upsert above
+      manager_permissions: managerPermissions,
     })
     .select('id')
     .single();
@@ -145,5 +155,91 @@ describe('POST /api/accept-invite (owner role mapping)', () => {
       .eq('id', seed.userId)
       .maybeSingle();
     expect(cleanerProfile).not.toBeNull();
+  });
+});
+
+/**
+ * Invite-carried permissions (manager permission model overhaul, task 7): accepting a
+ * manager invite must seed `manager_permissions` from the invite's chosen set when
+ * present, and fall back to STANDARD_MANAGER_PRESET (NOT all-true) when the invite's
+ * `manager_permissions` is NULL (legacy/no explicit choice). This replaces the old
+ * hardcoded seed that set 13 of 14 flags true and omitted `can_handle_requests`.
+ */
+describe('POST /api/accept-invite (manager permissions seeding)', () => {
+  let cleanup: (() => Promise<void>) | null = null;
+
+  afterEach(async () => {
+    await cleanup?.();
+    cleanup = null;
+  });
+
+  it('seeds manager_permissions from the invite-chosen set when present', async () => {
+    const chosen = { ...STANDARD_MANAGER_PRESET, can_manage_payments: true, can_view_bookings: false };
+    const seed = await seedInvite('manager', chosen);
+    cleanup = seed.cleanup;
+
+    const { status, body } = await callRoute<{ success: boolean; role: string }>(POST, {
+      method: 'POST',
+      body: {
+        accessToken: seed.accessToken,
+        inviteId: seed.inviteId,
+        firstName: 'Mara',
+        lastName: 'Manager',
+        password: 'ManagerPass123!',
+      },
+    });
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.role).toBe('manager');
+
+    const db = createTestSupabaseClient();
+    const { data: perms } = await db
+      .from('manager_permissions')
+      .select('*')
+      .eq('organization_id', seed.organizationId)
+      .eq('manager_id', seed.userId)
+      .single();
+
+    for (const key of Object.keys(chosen) as (keyof ManagerPermissions)[]) {
+      expect((perms as Record<string, boolean>)[key]).toBe(chosen[key]);
+    }
+  });
+
+  it('falls back to STANDARD_MANAGER_PRESET (not all-true) when the invite has no chosen permissions', async () => {
+    const seed = await seedInvite('manager', null);
+    cleanup = seed.cleanup;
+
+    const { status, body } = await callRoute<{ success: boolean; role: string }>(POST, {
+      method: 'POST',
+      body: {
+        accessToken: seed.accessToken,
+        inviteId: seed.inviteId,
+        firstName: 'Presetta',
+        lastName: 'Manager',
+        password: 'ManagerPass123!',
+      },
+    });
+
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const db = createTestSupabaseClient();
+    const { data: perms } = await db
+      .from('manager_permissions')
+      .select('*')
+      .eq('organization_id', seed.organizationId)
+      .eq('manager_id', seed.userId)
+      .single();
+    const row = perms as Record<string, boolean>;
+
+    for (const key of Object.keys(STANDARD_MANAGER_PRESET) as (keyof ManagerPermissions)[]) {
+      expect(row[key]).toBe(STANDARD_MANAGER_PRESET[key]);
+    }
+    // Explicitly assert the two flags called out by the brief.
+    expect(row.can_handle_requests).toBe(true);
+    expect(row.can_manage_payments).toBe(false);
+    // Importantly, NOT the old all-true seed: at least one flag must be off.
+    expect(Object.values(row).some((v) => v === false)).toBe(true);
   });
 });

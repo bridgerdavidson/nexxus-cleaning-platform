@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
 import OperatorMessages from "@/components/redesign/messages/OperatorMessages";
+import { useRequireManagerFlag } from "@/lib/redesign/useRequireManagerFlag";
 
 function Spinner() {
   return (
@@ -22,6 +23,7 @@ function Spinner() {
 function OperatorMessagesInner() {
   const router = useRouter();
   const { user, loading, orgStatus, reloadOrganization } = useAuth();
+  const flagState = useRequireManagerFlag("can_view_messages");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -31,6 +33,7 @@ function OperatorMessagesInner() {
     return <Spinner />;
   if (orgStatus === "error")
     return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
+  if (flagState === "checking") return <Spinner />;
 
   const goNewBooking = () => router.push("/admin-dashboard?tab=bookings");
 

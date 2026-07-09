@@ -16,6 +16,8 @@ import type { BookingRowAction, BookingRowVM } from "./bookings-types";
 export type BookingsCardListProps = {
   rows: BookingRowVM[];
   canViewPayments: boolean;
+  canEdit: boolean;
+  canHandleRequests: boolean;
   canDelete: boolean;
   selectedIds: Set<string>;
   onToggleRow: (id: string) => void;
@@ -26,6 +28,8 @@ export type BookingsCardListProps = {
 export function BookingsCardList({
   rows,
   canViewPayments,
+  canEdit,
+  canHandleRequests,
   canDelete,
   selectedIds,
   onToggleRow,
@@ -80,10 +84,12 @@ export function BookingsCardList({
                     <DropdownMenuItem onSelect={() => onRowAction(row.id, "open")}>
                       <Eye /> Open details
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onRowAction(row.id, "assign")}>
-                      <UserPlus /> {row.isUnassigned ? "Assign cleaner" : "Reassign cleaner"}
-                    </DropdownMenuItem>
-                    {cancellable ? (
+                    {canHandleRequests ? (
+                      <DropdownMenuItem onSelect={() => onRowAction(row.id, "assign")}>
+                        <UserPlus /> {row.isUnassigned ? "Assign cleaner" : "Reassign cleaner"}
+                      </DropdownMenuItem>
+                    ) : null}
+                    {cancellable && canEdit ? (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onSelect={() => onRowAction(row.id, "cancel")}>

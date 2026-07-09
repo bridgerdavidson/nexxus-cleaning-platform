@@ -13,7 +13,9 @@ import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createTestAppointment,
+  addManagerToOrg,
   type TestOrgFixture,
+  type ManagerMemberHandle,
 } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
@@ -174,5 +176,46 @@ describe('POST /api/appointments/:appointmentId/payment-method', () => {
       body: { organization_id: org.organizationId, payment_method_id: 'pm_test_card' },
     });
     expect(status).toBe(200);
+  });
+
+  describe('manager gating (can_manage_payments)', () => {
+    let mgr: ManagerMemberHandle;
+
+    afterEach(async () => {
+      await mgr?.cleanup();
+    });
+
+    it('rejects a manager WITHOUT can_manage_payments', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: false });
+      const appt = await makeAppt();
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organization_id: org.organizationId, payment_method_id: 'pm_test_card' },
+      });
+      expect(status).toBe(403);
+    });
+
+    it('passes a manager WITH can_manage_payments', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: true });
+      const appt = await makeAppt();
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organization_id: org.organizationId, payment_method_id: 'pm_test_card' },
+      });
+      expect(status).toBe(200);
+    });
+
+    it('does NOT block a homeowner setting their own card', async () => {
+      const appt = await makeAppt();
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.homeowner.accessToken),
+        body: { organization_id: org.organizationId, payment_method_id: 'pm_test_card' },
+      });
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
   });
 });

@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
 import { OperatorAnalytics } from "@/components/redesign/analytics/OperatorAnalytics";
+import { useRequireManagerFlag } from "@/lib/redesign/useRequireManagerFlag";
 
 function Spinner() {
   return (
@@ -22,6 +23,7 @@ function Spinner() {
 function OperatorAnalyticsInner() {
   const router = useRouter();
   const { user, loading, orgStatus, reloadOrganization } = useAuth();
+  const flagState = useRequireManagerFlag("can_view_analytics");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -30,6 +32,7 @@ function OperatorAnalyticsInner() {
   if (loading || !user || orgStatus === "idle" || orgStatus === "loading") return <Spinner />;
   if (orgStatus === "error")
     return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
+  if (flagState === "checking") return <Spinner />;
 
   // The "New booking" quick-action isn't redesigned yet, so hand off to legacy.
   const goNewBooking = () => router.push("/admin-dashboard?tab=bookings");

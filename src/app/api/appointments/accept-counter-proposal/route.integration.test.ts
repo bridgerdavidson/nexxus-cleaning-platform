@@ -4,7 +4,9 @@ import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createTestAppointment,
+  addManagerToOrg,
   type TestOrgFixture,
+  type ManagerMemberHandle,
 } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
@@ -246,5 +248,44 @@ describe('POST /api/appointments/accept-counter-proposal', () => {
       },
     });
     expect(status).toBe(409);
+  });
+
+  // Manager permission gating (Task 5): this route requires can_handle_requests for a manager.
+  describe('manager permission gating', () => {
+    let mgr: ManagerMemberHandle;
+
+    afterEach(async () => {
+      if (mgr) await mgr.cleanup();
+    });
+
+    it('403s for a manager without can_handle_requests', async () => {
+      mgr = await addManagerToOrg(seeded.org.organizationId, { can_handle_requests: false });
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: {
+          appointmentId: seeded.appointmentId,
+          organizationId: seeded.org.organizationId,
+          suggestedTimeId: seeded.suggestedTimeId,
+        },
+      });
+      expect(status).toBe(403);
+    });
+
+    it('passes auth for a manager WITH can_handle_requests', async () => {
+      mgr = await addManagerToOrg(seeded.org.organizationId, { can_handle_requests: true });
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: {
+          appointmentId: seeded.appointmentId,
+          organizationId: seeded.org.organizationId,
+          suggestedTimeId: seeded.suggestedTimeId,
+        },
+      });
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
   });
 });

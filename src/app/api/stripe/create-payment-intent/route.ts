@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createPaymentIntent, getDefaultPaymentMethod } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
@@ -25,10 +25,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Auth: caller must be in this org with billing-capable role ─────────
-    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
-    });
+    // ── Auth: caller must be in this org with billing-capable role. Creating a PaymentIntent
+    // is a payment-spending action, so a manager additionally needs can_manage_payments. ──────
+    const auth = await requireOrgPaymentsAuth(request, organization_id, supabaseAdmin);
     if (!auth.ok) return auth.response;
 
     // ── Scope: appointment must live in caller's org ───────────────────────

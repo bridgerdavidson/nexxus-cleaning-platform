@@ -23,7 +23,7 @@ import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
@@ -178,6 +178,40 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     });
     expect(status).toBe(403);
     expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('403 when a manager WITHOUT can_manage_payments charges a NON-self-pay appointment', async () => {
+    const apptId = await completedApptWithCard();
+    const mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: false });
+    try {
+      const { status, body } = await callRoute<{ error: string }>(handlerFor(apptId), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(403);
+      expect(body.error).toBe('Requires the Manage Payments permission');
+      expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+    } finally {
+      await mgr.cleanup();
+    }
+  });
+
+  it('lets a manager WITH can_manage_payments charge a NON-self-pay appointment', async () => {
+    const apptId = await completedApptWithCard();
+    const mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: true });
+    try {
+      const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(apptId), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(200);
+      expect(body.code).toBe('charged');
+      expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+    } finally {
+      await mgr.cleanup();
+    }
   });
 });
 

@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { createTestSupabaseClient } from './supabase';
+import {
+  emptyManagerPermissions,
+  type ManagerPermissionKey,
+} from '../../src/lib/permissions/managerFlags';
 
 export interface TestUserHandle {
   userId: string;
@@ -188,24 +192,6 @@ export interface ManagerMemberHandle extends TestUserHandle {
   cleanup(): Promise<void>;
 }
 
-const MANAGER_PERMISSION_KEYS = [
-  'can_view_customers',
-  'can_edit_customers',
-  'can_view_bookings',
-  'can_edit_bookings',
-  'can_approve_decline_bookings',
-  'can_manage_cleaners',
-  'can_view_properties',
-  'can_edit_properties',
-  'can_view_analytics',
-  'can_view_payments',
-  'can_manage_payments',
-  'can_view_messages',
-  'can_view_services',
-  'can_manage_services',
-  'can_handle_requests',
-] as const;
-
 /**
  * Adds an OrgRole 'manager' member (UserRole 'manager') to an existing org plus a
  * `manager_permissions` row. All flags default false; pass the ones you want true.
@@ -214,7 +200,7 @@ const MANAGER_PERMISSION_KEYS = [
  */
 export async function addManagerToOrg(
   organizationId: string,
-  permissions: Partial<Record<(typeof MANAGER_PERMISSION_KEYS)[number], boolean>> = {},
+  permissions: Partial<Record<ManagerPermissionKey, boolean>> = {},
 ): Promise<ManagerMemberHandle> {
   const db = createTestSupabaseClient();
   const uniq = randomUUID().slice(0, 8);
@@ -232,10 +218,14 @@ export async function addManagerToOrg(
     .insert({ user_id: manager.id, organization_id: organizationId, role: 'manager' });
   if (memErr) throw new Error(`seed manager member failed: ${memErr.message}`);
 
-  const flags = Object.fromEntries(MANAGER_PERMISSION_KEYS.map((k) => [k, false]));
   const { error: permErr } = await db
     .from('manager_permissions')
-    .insert({ manager_id: manager.id, organization_id: organizationId, ...flags, ...permissions });
+    .insert({
+      manager_id: manager.id,
+      organization_id: organizationId,
+      ...emptyManagerPermissions(),
+      ...permissions,
+    });
   if (permErr) throw new Error(`seed manager_permissions failed: ${permErr.message}`);
 
   return {

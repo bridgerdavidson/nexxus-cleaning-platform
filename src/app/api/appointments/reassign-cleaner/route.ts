@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth, type OrgRole } from '@/lib/auth/requireOrgAuth';
+import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
@@ -42,15 +42,15 @@ export async function POST(request: NextRequest) {
     });
     if (!auth.ok) return auth.response;
 
-    // Managers need can_approve_decline_bookings or can_handle_requests (mirrors assign-cleaner).
-    if (auth.role === ('manager' satisfies OrgRole)) {
-      const { data: perms } = await supabaseAdmin
+    // Managers need can_handle_requests (mirrors assign-cleaner).
+    if (auth.role === 'manager') {
+      const { data: perm } = await supabaseAdmin
         .from('manager_permissions')
-        .select('can_handle_requests, can_approve_decline_bookings')
+        .select('can_handle_requests')
         .eq('manager_id', auth.userId)
         .eq('organization_id', organizationId)
         .maybeSingle();
-      if (!perms?.can_handle_requests && !perms?.can_approve_decline_bookings) {
+      if (!(perm as { can_handle_requests: boolean } | null)?.can_handle_requests) {
         return NextResponse.json(
           { success: false, error: 'Manager lacks permission to reassign bookings' },
           { status: 403 },

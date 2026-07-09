@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { verifyAccessToken } from '@/lib/auth/verifyToken';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { STANDARD_MANAGER_PRESET, coerceManagerPermissions } from '@/lib/permissions/managerFlags';
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     // inspect the actual current status and return a specific error per state.
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from('invites')
-      .select('id, email, role, organization_id, status, expiration_date')
+      .select('id, email, role, organization_id, status, expiration_date, manager_permissions')
       .eq('id', inviteId)
       .maybeSingle();
 
@@ -200,28 +201,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If the invited user is a manager, grant full default manager permissions
+    // If the invited user is a manager, seed manager_permissions from whatever the
+    // inviter chose on the invite (invite.manager_permissions), falling back to the
+    // Standard manager preset for legacy/NULL invites. Do NOT default to all-true —
+    // the preset intentionally leaves 5 flags off.
     if (role === 'manager') {
+      const seededPerms = invite.manager_permissions
+        ? coerceManagerPermissions(invite.manager_permissions as Record<string, unknown>)
+        : STANDARD_MANAGER_PRESET;
+
       const { error: managerPermissionsError } = await supabaseAdmin
         .from('manager_permissions')
         .upsert(
           {
             manager_id: verified.userId,
             organization_id: organizationId,
-            can_view_customers: true,
-            can_edit_customers: true,
-            can_view_bookings: true,
-            can_edit_bookings: true,
-            can_approve_decline_bookings: true,
-            can_manage_cleaners: true,
-            can_view_properties: true,
-            can_edit_properties: true,
-            can_view_analytics: true,
-            can_view_payments: true,
-            can_manage_payments: true,
-            can_view_messages: true,
-            can_view_services: true,
-            can_manage_services: true,
+            ...seededPerms,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'manager_id,organization_id' }

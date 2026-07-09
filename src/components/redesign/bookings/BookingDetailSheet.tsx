@@ -44,6 +44,8 @@ export type BookingDetailSheetProps = {
   cleanerOptions: CleanerOption[];
   canViewPayments: boolean;
   canManagePayments: boolean;
+  canEdit: boolean;
+  canHandleRequests: boolean;
   canDelete: boolean;
   busy?: boolean;
   onAssign: (cleanerId: string) => void;
@@ -64,6 +66,8 @@ export function BookingDetailSheet({
   cleanerOptions,
   canViewPayments,
   canManagePayments,
+  canEdit,
+  canHandleRequests,
   canDelete,
   busy,
   onAssign,
@@ -78,10 +82,12 @@ export function BookingDetailSheet({
 }: BookingDetailSheetProps) {
   // Only a confirmed (cleaner-accepted) booking can be started. A pending one is
   // still awaiting the cleaner's acceptance / counter-proposal, so starting it
-  // would bypass that workflow.
-  const canStart = detail ? detail.status === "confirmed" && !!detail.cleanerId : false;
-  const canComplete = detail ? detail.status === "in_progress" && canManagePayments : false;
-  const cancellable = detail ? detail.status !== "cancelled" && detail.status !== "completed" : false;
+  // would bypass that workflow. Starting/completing/rescheduling/cancelling all
+  // edit the booking, so each also requires can_edit_bookings (mirrors the
+  // server-side lifecycle/cancel/notify-reschedule routes).
+  const canStart = detail ? detail.status === "confirmed" && !!detail.cleanerId && canEdit : false;
+  const canComplete = detail ? detail.status === "in_progress" && canManagePayments && canEdit : false;
+  const cancellable = detail ? detail.status !== "cancelled" && detail.status !== "completed" && canEdit : false;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -130,7 +136,7 @@ export function BookingDetailSheet({
                 <Select
                   value={detail.cleanerId ?? ""}
                   onValueChange={(v) => onAssign(v)}
-                  disabled={busy}
+                  disabled={busy || !canHandleRequests}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Choose a cleaner" />
@@ -199,7 +205,13 @@ export function BookingDetailSheet({
                         className="flex items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2"
                       >
                         <span className="text-sm text-foreground">{cp.label}</span>
-                        <Button size="sm" variant="secondary" onClick={() => onAcceptCounter(cp.id)} loading={busy}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => onAcceptCounter(cp.id)}
+                          loading={busy}
+                          disabled={!canHandleRequests}
+                        >
                           Accept
                         </Button>
                       </div>

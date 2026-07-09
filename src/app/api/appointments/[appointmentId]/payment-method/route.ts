@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { paymentMethodBelongsToCustomer } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from '@/lib/payments/events';
@@ -36,8 +36,9 @@ export async function POST(
 
     // Org staff may set the card on any appointment in their org; a homeowner may set it ONLY on
     // their own appointment (checked against the bearer-verified user id below).
-    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
+    const auth = await requireManagerPermission(request, organization_id, supabaseAdmin, 'can_manage_payments', {
       allowedRoles: ['owner', 'admin', 'manager', 'homeowner'],
+      errorMessage: 'Requires the Manage Payments permission',
     });
     if (!auth.ok) return auth.response;
 
