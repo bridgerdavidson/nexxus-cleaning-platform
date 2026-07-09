@@ -255,25 +255,37 @@ function OperatorMessagesData() {
       .catch(() => {})
   }, [])
 
-  // "Open booking" -> legacy appointment drawer on admin-dashboard
+  // "Open booking" -> the redesign booking detail sheet on the Bookings screen
   const openBooking = useCallback(
     (id: string) => {
-      router.push(`/admin-dashboard?appointment=${id}`)
+      router.push(`/app/admin-dashboard/bookings?booking=${id}`)
     },
     [router],
   )
 
+  // Customer and cleaner detail params are both keyed by the person's user id
+  // (cleaner_profiles.id = user id; org_customers_with_counts returns user ids),
+  // so the participant's id deep-links straight to their detail sheet.
   const viewProfile = useCallback(() => {
     if (!participant) return
     const role = participant.role as UserRole
-    const path =
-      role === 'cleaner' ? '/app/admin-dashboard/cleaners' : '/app/admin-dashboard/customers'
-    router.push(path)
+    if (role === 'cleaner') {
+      router.push(`/app/admin-dashboard/cleaners?cleaner=${participant.id}`)
+    } else if (role === 'homeowner') {
+      router.push(`/app/admin-dashboard/customers?customer=${participant.id}`)
+    } else {
+      router.push('/app/admin-dashboard/customers')
+    }
   }, [participant, router])
 
+  // Opens the in-shell new-booking sheet (?newbooking=1, hosted by OperatorShell).
+  // Sets the param in place (unlike useOpenOperatorBooking) so the open thread's
+  // ?c= selection survives behind the sheet.
   const newBooking = useCallback(() => {
-    router.push('/admin-dashboard?tab=bookings&new=1')
-  }, [router])
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('newbooking', '1')
+    router.replace(`?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
 
   const onPickNew = useCallback(
     async (memberId: string) => {

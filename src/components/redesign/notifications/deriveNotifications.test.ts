@@ -45,19 +45,19 @@ describe('relativeTime', () => {
 });
 
 describe('operatorNotificationHref', () => {
-  it('deep-links appointment events to the legacy drawer host, tab by type', () => {
-    // cleaner_accepted -> bookings tab
+  it('deep-links appointment events into the redesign shell, payments events to the payments screen', () => {
+    // cleaner_accepted -> redesign booking detail
     expect(
       operatorNotificationHref({ event_type: 'cleaner_accepted', appointment_id: 'a1' }),
-    ).toBe('/admin-dashboard?tab=bookings&appointment=a1');
-    // charge_failed (with appointment) -> payments tab
+    ).toBe('/app/admin-dashboard/bookings?booking=a1');
+    // charge_failed (with appointment) -> redesign payments (triage band surfaces it)
     expect(
       operatorNotificationHref({ event_type: 'charge_failed', appointment_id: 'a2' }),
-    ).toBe('/admin-dashboard?tab=payments&appointment=a2');
-    // homeowner_request_submitted -> home tab (Overview)
+    ).toBe('/app/admin-dashboard/payments');
+    // homeowner_request_submitted -> redesign booking detail
     expect(
       operatorNotificationHref({ event_type: 'homeowner_request_submitted', appointment_id: 'a3' }),
-    ).toBe('/admin-dashboard?tab=home&appointment=a3');
+    ).toBe('/app/admin-dashboard/bookings?booking=a3');
   });
 
   it('routes appointment-less member_joined to redesign customers', () => {
@@ -154,7 +154,7 @@ describe('deriveNotificationGroups', () => {
     );
     expect(g.latest.descriptor.title).toBe('New booking request from Sarah');
     expect(g.latest.relative).toBe('just now');
-    expect(g.latest.href).toBe('/admin-dashboard?tab=home&appointment=appt-1');
+    expect(g.latest.href).toBe('/app/admin-dashboard/bookings?booking=appt-1');
   });
 
   it('exposes an accept action for counter-proposals with a suggested time id', () => {

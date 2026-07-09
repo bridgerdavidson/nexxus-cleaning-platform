@@ -379,9 +379,14 @@ export function OperatorBookings() {
     [currentOrganizationId, accessToken, refetch, closeDetail],
   );
 
-  const handleReschedule = useCallback(() => {
-    router.push("/admin-dashboard?tab=bookings");
-  }, [router]);
+  // Interim: reschedule still lives on the legacy dashboard (no redesign flow yet).
+  // Carrying ?appointment= auto-opens the legacy side panel on the right booking.
+  const handleReschedule = useCallback(
+    (id: string) => {
+      router.push(`/admin-dashboard?tab=bookings&appointment=${id}`);
+    },
+    [router],
+  );
 
   // --- confirm dialog (single + bulk cancel/delete) ---
   const runConfirm = useCallback(async () => {
@@ -490,7 +495,7 @@ export function OperatorBookings() {
         onAcceptCounter={(stid) => detail && handleAcceptCounter(detail.id, stid)}
         onStart={() => detail && runStatus(detail.id, "in_progress")}
         onComplete={() => detail && runStatus(detail.id, "completed")}
-        onReschedule={handleReschedule}
+        onReschedule={() => detail && handleReschedule(detail.id)}
         onCancel={() => detail && setConfirm({ kind: "cancel", ids: [detail.id] })}
         onDelete={() => detail && setConfirm({ kind: "delete", ids: [detail.id] })}
         onMessageCustomer={() => {
