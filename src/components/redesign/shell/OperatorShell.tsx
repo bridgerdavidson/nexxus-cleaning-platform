@@ -10,6 +10,7 @@ import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
 import { OPERATOR_NAV } from "./nav-items";
+import { useOperatorNav } from "./useOperatorNav";
 
 function deriveActive(pathname: string | null): string | undefined {
   if (!pathname) return undefined;
@@ -48,17 +49,18 @@ export function OperatorShell({
   // The shell owns the new-booking action: it opens the redesigned booking sheet (below)
   // instead of routing to the legacy admin dashboard.
   const openBooking = useOpenOperatorBooking();
+  const { nav, primary, secondary } = useOperatorNav();
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background text-foreground">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
-        <OperatorRail activeId={activeId} />
+        <OperatorRail activeId={activeId} nav={nav} />
         <div className="lg:pl-16">
           <OperatorTopBar onNewBooking={openBooking} onOpenSearch={() => setSearchOpen(true)} />
           <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
         </div>
-        <OperatorMobileNav activeId={activeId} onNewBooking={openBooking} />
+        <OperatorMobileNav activeId={activeId} onNewBooking={openBooking} primary={primary} secondary={secondary} />
         <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={openBooking} />
         <Suspense fallback={null}>
           <OperatorBookingHost />

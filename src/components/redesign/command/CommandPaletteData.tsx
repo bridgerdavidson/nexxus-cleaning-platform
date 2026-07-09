@@ -8,7 +8,7 @@ import { useManagerPermissions } from '@/hooks/useManagerPermissions';
 import { useAdminAppointments, useAdminCustomers, useAdminCleaners } from '@/hooks/useAdminData';
 import { useServices } from '@/hooks/useServices';
 import { formatDateShort } from '@/lib/formatTime';
-import { OPERATOR_NAV } from '@/components/redesign/shell/nav-items';
+import { useOperatorNav } from '@/components/redesign/shell/useOperatorNav';
 import {
   CommandInput,
   CommandList,
@@ -116,6 +116,7 @@ export function CommandPaletteData({
   const router = useRouter();
   const { currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
+  const { nav } = useOperatorNav();
 
   const [query, setQuery] = useState('');
   const [bookings, setBookings] = useState<PaletteBooking[]>([]);
@@ -146,12 +147,12 @@ export function CommandPaletteData({
         cleaners,
         services,
         permissions: can,
-        nav: OPERATOR_NAV.map((n) => ({ id: n.id, label: n.label, href: n.href, icon: n.icon })),
+        nav: nav.map((n) => ({ id: n.id, label: n.label, href: n.href, icon: n.icon })),
         actions: onNewBooking
           ? [{ id: 'new-booking', label: 'New booking', keywords: 'create add appointment', icon: Plus }]
           : [],
       }),
-    [query, bookings, customers, cleaners, services, can, onNewBooking],
+    [query, bookings, customers, cleaners, services, can, nav, onNewBooking],
   );
 
   const onSelect = useCallback(
