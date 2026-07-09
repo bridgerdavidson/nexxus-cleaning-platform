@@ -6,6 +6,7 @@ import { IconButton } from "@/components/ui/icon-button";
 
 export type BookingsBulkBarProps = {
   count: number;
+  canEdit: boolean;
   canDelete: boolean;
   busy?: boolean;
   onCancel: () => void;
@@ -17,6 +18,7 @@ export type BookingsBulkBarProps = {
  *  above the mobile bottom nav and clears the desktop rail. */
 export function BookingsBulkBar({
   count,
+  canEdit,
   canDelete,
   busy,
   onCancel,
@@ -30,9 +32,11 @@ export function BookingsBulkBar({
         <span className="px-2 text-sm font-semibold text-foreground">
           {count} selected
         </span>
-        <Button variant="secondary" size="sm" onClick={onCancel} loading={busy}>
-          <CalendarX2 /> Cancel
-        </Button>
+        {canEdit ? (
+          <Button variant="secondary" size="sm" onClick={onCancel} loading={busy}>
+            <CalendarX2 /> Cancel
+          </Button>
+        ) : null}
         {canDelete ? (
           <Button variant="destructive" size="sm" onClick={onDelete} loading={busy}>
             <Trash2 /> Delete

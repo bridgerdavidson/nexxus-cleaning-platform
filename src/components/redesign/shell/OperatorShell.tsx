@@ -3,6 +3,8 @@
 import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuth } from "@/hooks/useAuth";
+import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
 import { OperatorMobileNav } from "./OperatorMobileNav";
@@ -51,20 +53,32 @@ export function OperatorShell({
   const openBooking = useOpenOperatorBooking();
   const { nav, primary, secondary } = useOperatorNav();
 
+  // The "New booking" trigger (top-bar button, mobile FAB, command-palette action) is a
+  // global affordance every Operator surface shares, so it is gated once here rather than
+  // in each consumer. A manager without can_edit_bookings gets `undefined`, which each
+  // consumer already treats as "hide the trigger" (see OperatorTopBar/OperatorMobileNav).
+  const { currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
+  const canCreateBooking = privileged || !!permissions?.can_edit_bookings;
+  const onNewBooking = canCreateBooking ? openBooking : undefined;
+
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background text-foreground">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} nav={nav} />
         <div className="lg:pl-16">
-          <OperatorTopBar onNewBooking={openBooking} onOpenSearch={() => setSearchOpen(true)} />
+          <OperatorTopBar onNewBooking={onNewBooking} onOpenSearch={() => setSearchOpen(true)} />
           <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
         </div>
-        <OperatorMobileNav activeId={activeId} onNewBooking={openBooking} primary={primary} secondary={secondary} />
-        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={openBooking} />
-        <Suspense fallback={null}>
-          <OperatorBookingHost />
-        </Suspense>
+        <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} />
+        <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />
+        {canCreateBooking ? (
+          <Suspense fallback={null}>
+            <OperatorBookingHost />
+          </Suspense>
+        ) : null}
       </div>
     </TooltipProvider>
   );

@@ -140,6 +140,8 @@ export default function BookingsPreviewPage() {
         counts={counts}
         totalCount={ROWS.length}
         canViewPayments
+        canEdit
+        canHandleRequests
         canDelete
         segment={segment}
         onSegmentChange={setSegment}
@@ -175,6 +177,8 @@ export default function BookingsPreviewPage() {
         cleanerOptions={CLEANERS}
         canViewPayments
         canManagePayments
+        canEdit
+        canHandleRequests
         canDelete
         onAssign={() => {}}
         onAcceptCounter={() => {}}

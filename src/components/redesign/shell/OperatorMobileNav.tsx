@@ -36,8 +36,10 @@ export function OperatorMobileNav({
   return (
     <>
       {/* New-booking FAB (labeled, the one persistent global action), above the
-          bar. Hidden on Settings, where a booking action is out of context. */}
-      {activeId !== "settings" && (
+          bar. Hidden on Settings, where a booking action is out of context, and
+          hidden (not just disabled) for a manager without can_edit_bookings: see
+          OperatorShell, which only passes onNewBooking when the viewer is allowed. */}
+      {activeId !== "settings" && onNewBooking && (
         <Button
           onClick={onNewBooking}
           aria-label="New booking"

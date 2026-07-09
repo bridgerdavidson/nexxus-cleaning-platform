@@ -32,7 +32,7 @@ export function ContextPanelBody({
   context: ContactContextVM
   onOpenBooking: (id: string) => void
   onViewProfile: () => void
-  onNewBooking: () => void
+  onNewBooking?: () => void
   onCopy: (text: string, label: string) => void
   onClose?: () => void
 }) {
@@ -69,7 +69,7 @@ export function ContextPanelBody({
 
         <div className="mt-3.5 flex gap-2">
           <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={onViewProfile}><UserCircle2 className="size-4" />Profile</Button>
-          {context.role === 'homeowner' && (
+          {context.role === 'homeowner' && onNewBooking && (
             <Button size="sm" className="flex-1 gap-1.5" onClick={onNewBooking}><Plus className="size-4" />New booking</Button>
           )}
         </div>
@@ -124,7 +124,7 @@ export function ContextPanel(props: {
   onOpenChange: (open: boolean) => void
   onOpenBooking: (id: string) => void
   onViewProfile: () => void
-  onNewBooking: () => void
+  onNewBooking?: () => void
   onCopy: (text: string, label: string) => void
 }) {
   if (!props.context) return null

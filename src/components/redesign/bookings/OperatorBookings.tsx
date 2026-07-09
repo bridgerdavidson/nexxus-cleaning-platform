@@ -212,6 +212,8 @@ export function OperatorBookings() {
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
   const canManagePayments = privileged || !!permissions?.can_manage_payments;
+  const canEdit = privileged || !!permissions?.can_edit_bookings;
+  const canHandleRequests = privileged || !!permissions?.can_handle_requests;
   const canDelete = privileged;
 
   const [segment, setSegment] = useState<BookingSegment>("upcoming");
@@ -447,6 +449,8 @@ export function OperatorBookings() {
         counts={counts}
         totalCount={appointments.length}
         canViewPayments={canViewPayments}
+        canEdit={canEdit}
+        canHandleRequests={canHandleRequests}
         canDelete={canDelete}
         bulkBusy={busy}
         segment={segment}
@@ -466,7 +470,7 @@ export function OperatorBookings() {
         onRowAction={handleRowAction}
         onBulkCancel={() => setConfirm({ kind: "bulkCancel", ids: [...selectedIds] })}
         onBulkDelete={() => setConfirm({ kind: "bulkDelete", ids: [...selectedIds] })}
-        onNewBooking={openBooking}
+        onNewBooking={canEdit ? openBooking : undefined}
       />
 
       <BookingDetailSheet
@@ -478,6 +482,8 @@ export function OperatorBookings() {
         cleanerOptions={cleanerOptions}
         canViewPayments={canViewPayments}
         canManagePayments={canManagePayments}
+        canEdit={canEdit}
+        canHandleRequests={canHandleRequests}
         canDelete={canDelete}
         busy={busy}
         onAssign={(cleanerId) => detail && handleAssign(detail.id, cleanerId)}
