@@ -42,7 +42,7 @@ export const MANAGER_FLAGS: readonly ManagerFlag[] = [
   { key: 'can_handle_requests', label: 'Handle requests', description: 'Approve or decline pending requests and assign cleaners.', group: 'Bookings', enforce: 'route' },
   { key: 'can_view_customers', label: 'View customers', description: 'See customer profiles and history.', group: 'Customers', enforce: 'ui' },
   { key: 'can_edit_customers', label: 'Edit customers', description: 'Edit customer details and invite homeowners.', group: 'Customers', enforce: 'route' },
-  { key: 'can_view_properties', label: 'View properties', description: 'See property details and access notes.', group: 'Properties', enforce: 'rls' },
+  { key: 'can_view_properties', label: 'View properties', description: 'See property details and access notes.', group: 'Properties', enforce: 'ui' },
   { key: 'can_edit_properties', label: 'Edit properties', description: 'Create and update property records.', group: 'Properties', enforce: 'rls' },
   { key: 'can_view_services', label: 'View services', description: 'See the service catalog.', group: 'Services', enforce: 'ui' },
   { key: 'can_manage_services', label: 'Manage services', description: 'Edit pricing and service types.', group: 'Services', enforce: 'rls' },

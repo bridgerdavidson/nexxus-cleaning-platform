@@ -44,9 +44,6 @@ export const OPERATOR_NAV: NavItem[] = [
   { id: "settings", label: "Settings", href: "/app/admin-dashboard/settings", icon: Settings, activeFor: ["/settings"] },
 ];
 
-export const OPERATOR_PRIMARY_NAV = OPERATOR_NAV.filter((i) => i.primary);
-export const OPERATOR_SECONDARY_NAV = OPERATOR_NAV.filter((i) => !i.primary && i.id !== "settings");
-
 /**
  * Pure permission filter for the Operator nav. Owners/admins (`privileged`)
  * bypass gating entirely and see every item. A manager sees an item only if
