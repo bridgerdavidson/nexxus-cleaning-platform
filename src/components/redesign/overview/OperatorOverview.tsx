@@ -89,6 +89,10 @@ export function OperatorOverview() {
     (id: string) => router.push(`/app/admin-dashboard/bookings?booking=${id}`),
     [router],
   );
+  // Mirror the destination's route gate (useRequireManagerFlag on the bookings
+  // page): a manager without can_view_bookings would be bounced straight back,
+  // so withhold the handler and the queue renders informational-only.
+  const canViewBookings = privileged || !!permissions?.can_view_bookings;
 
   const today: ScheduleItem[] = [...sections.today]
     .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? ""))
@@ -150,7 +154,7 @@ export function OperatorOverview() {
         unassigned={sections.unassigned.map(toQueueItem)}
         declined={sections.declined.map(toQueueItem)}
         counterProposed={sections.counterProposed.map(toQueueItem)}
-        onOpenBooking={openBooking}
+        onOpenBooking={canViewBookings ? openBooking : undefined}
         today={today}
         activeNow={activeNow}
         checklist={checklist}

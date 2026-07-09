@@ -37,19 +37,30 @@ type TabId = (typeof TABS)[number]['id']
 
 // --- Overview: the hands-on assign demo (absorbed from the old Try-it) -------
 
+/** Shared demo-toast state: one visible message, re-arming clears the previous
+ * timer (so a second click can't truncate the new toast) and unmount cancels it. */
+function useDemoToast(): [string | null, (msg: string) => void] {
+  const [toast, setToast] = React.useState<string | null>(null)
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+  const say = React.useCallback((msg: string) => {
+    if (timer.current) clearTimeout(timer.current)
+    setToast(msg)
+    timer.current = setTimeout(() => setToast(null), 3500)
+  }, [])
+  return [toast, say]
+}
+
 function OverviewTab() {
   const [jobs, setJobs] = React.useState<DemoJob[]>(DEMO_JOBS)
   const [expanded, setExpanded] = React.useState<string | null>(null)
-  const [toast, setToast] = React.useState<string | null>(null)
+  const [toast, say] = useDemoToast()
   const needsYou = jobs.filter((j) => j.status === 'pending').length
 
   const assign = (jobId: string, cleanerId: string) => {
     setJobs((cur) => cur.map((j) => (j.id === jobId ? { ...j, cleanerId, status: 'scheduled' } : j)))
     const c = cleanerById(cleanerId)
-    if (c) {
-      setToast(`${c.name} got a text with the job details.`)
-      setTimeout(() => setToast(null), 3500)
-    }
+    if (c) say(`${c.name} got a text with the job details.`)
   }
 
   return (
@@ -231,11 +242,7 @@ function CrewTab() {
 
 function PaymentsTab() {
   const [cardFixed, setCardFixed] = React.useState(false)
-  const [toast, setToast] = React.useState<string | null>(null)
-  const say = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 3500)
-  }
+  const [toast, say] = useDemoToast()
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-3 gap-2">
