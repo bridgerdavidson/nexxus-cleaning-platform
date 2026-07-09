@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { computeCancellationFee } from '@/lib/payments/cancellationFee';
@@ -50,8 +50,9 @@ export async function POST(
       reason?: string;
     };
 
-    const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
+    const auth = await requireManagerPermission(request, organization_id, supabaseAdmin, 'can_edit_bookings', {
       allowedRoles: ['owner', 'admin', 'manager', 'homeowner'],
+      errorMessage: 'Requires the Edit Bookings permission',
     });
     if (!auth.ok) return auth.response;
 

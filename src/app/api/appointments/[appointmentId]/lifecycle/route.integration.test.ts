@@ -5,7 +5,9 @@ import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createTestAppointment,
+  addManagerToOrg,
   type TestOrgFixture,
+  type ManagerMemberHandle,
 } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
@@ -218,5 +220,65 @@ describe('POST /api/appointments/:appointmentId/lifecycle', () => {
     const recipients = rows.map((r) => r.recipient_user_id);
     expect(recipients).toContain(org.admin.userId);
     expect(recipients).not.toContain(org.homeowner.userId);
+  });
+
+  // ── Manager permission gating (Task 5) ────────────────────────────────────────
+  // requireManagerPermission preserves the existing allowedRoles (cleaner/admin/owner/
+  // manager) and only gates the 'manager' branch on can_edit_bookings; the cleaner
+  // ownership branch above is untouched.
+
+  describe('manager permission gating', () => {
+    let mgr: ManagerMemberHandle;
+
+    afterEach(async () => {
+      if (mgr) await mgr.cleanup();
+    });
+
+    it('403s for a manager without can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: false });
+      const appt = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organizationId: org.organizationId, event: 'started' },
+      });
+      expect(status).toBe(403);
+    });
+
+    it('passes auth for a manager WITH can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: true });
+      const appt = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organizationId: org.organizationId, event: 'started' },
+      });
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
+
+    it('does NOT block the assigned cleaner (they use their own branch)', async () => {
+      const appt = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.cleaner.accessToken),
+        body: { organizationId: org.organizationId, event: 'started' },
+      });
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
   });
 });

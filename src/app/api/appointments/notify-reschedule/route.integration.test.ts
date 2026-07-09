@@ -5,7 +5,9 @@ import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createTestAppointment,
+  addManagerToOrg,
   type TestOrgFixture,
+  type ManagerMemberHandle,
 } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
@@ -96,5 +98,43 @@ describe('POST /api/appointments/notify-reschedule', () => {
     expect(status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.notified).toBe(false);
+  });
+
+  // Manager permission gating (Task 5): staff-only route requires can_edit_bookings for a manager.
+  describe('manager permission gating', () => {
+    let mgr: ManagerMemberHandle;
+
+    afterEach(async () => {
+      if (mgr) await mgr.cleanup();
+    });
+
+    it('403s for a manager without can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: false });
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { appointmentId: randomUUID(), organizationId: org.organizationId },
+      });
+      expect(status).toBe(403);
+    });
+
+    it('passes auth for a manager WITH can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: true });
+      const appt = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+        status: 'pending',
+      });
+      const { status, body } = await callRoute<{ success: boolean; notified: boolean }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { appointmentId: appt.id, organizationId: org.organizationId },
+      });
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+      expect(body.success).toBe(true);
+    });
   });
 });

@@ -15,7 +15,14 @@ import { POST } from './route';
 import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, addHomeownerToOrg, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import {
+  withTestOrg,
+  createTestAppointment,
+  addHomeownerToOrg,
+  addManagerToOrg,
+  type TestOrgFixture,
+  type ManagerMemberHandle,
+} from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
@@ -498,5 +505,53 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
     const db = createTestSupabaseClient();
     const { data: a } = await db.from('appointments').select('status').eq('id', appt.id).single();
     expect((a as { status: string }).status).toBe('cancelled');
+  });
+
+  // ── Manager permission gating (Task 5) ────────────────────────────────────────
+  // requireManagerPermission preserves the existing allowedRoles (owner/admin/manager/
+  // homeowner) and only gates the 'manager' branch on can_edit_bookings; the homeowner
+  // ownership branch above is untouched.
+
+  describe('manager permission gating', () => {
+    let mgr: ManagerMemberHandle;
+
+    afterEach(async () => {
+      if (mgr) await mgr.cleanup();
+    });
+
+    it('403s for a manager without can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: false });
+      const appt = await seedAppointment();
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organization_id: org.organizationId, party: 'org' },
+      });
+      expect(status).toBe(403);
+    });
+
+    it('passes auth for a manager WITH can_edit_bookings', async () => {
+      mgr = await addManagerToOrg(org.organizationId, { can_edit_bookings: true });
+      const appt = await seedAppointment();
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(mgr.accessToken),
+        body: { organization_id: org.organizationId, party: 'org' },
+      });
+      expect(status).not.toBe(401);
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
+
+    it('does NOT block a homeowner cancelling their own appointment (they use their own branch)', async () => {
+      const appt = await seedAppointment({ scheduledDate: today(), scheduledTime: '12:00:00' });
+      const { status } = await callRoute(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.homeowner.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).not.toBe(403);
+      expect(status).toBe(200);
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
+import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 
@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Admin/manager/owner only. Cleaners cannot self-accept their own counter-proposal.
-    const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager'],
+    const auth = await requireManagerPermission(request, organizationId, supabaseAdmin, 'can_handle_requests', {
+      errorMessage: 'Requires the Handle Requests permission',
     });
     if (!auth.ok) return auth.response;
 
