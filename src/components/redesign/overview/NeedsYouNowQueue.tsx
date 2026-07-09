@@ -19,11 +19,14 @@ export function NeedsYouNowQueue({
   declined,
   counterProposed,
   loading,
+  onOpenBooking,
 }: {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
   loading?: boolean;
+  /** Opens a booking's detail (deep-links to the Bookings screen). */
+  onOpenBooking?: (appointmentId: string) => void;
 }) {
   const groups: Group[] = [
     { kind: "unassigned", label: "Unassigned", actionLabel: "Assign", tone: "caution", items: unassigned },
@@ -65,13 +68,29 @@ export function NeedsYouNowQueue({
                   {g.items.map((it) => (
                     <div
                       key={it.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onOpenBooking?.(it.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onOpenBooking?.(it.id);
+                        }
+                      }}
                       className="group flex cursor-pointer items-center gap-3 rounded-control border border-border bg-card p-3 transition-colors duration-200 hover:border-brand-600/40 hover:bg-muted/40 focus-within:ring-2 focus-within:ring-ring"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{it.title}</p>
                         <p className="truncate text-xs text-muted-foreground">{it.subtitle}</p>
                       </div>
-                      <Button size="sm" variant={g.kind === "counter" ? "secondary" : "default"}>
+                      <Button
+                        size="sm"
+                        variant={g.kind === "counter" ? "secondary" : "default"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenBooking?.(it.id);
+                        }}
+                      >
                         {g.actionLabel}
                       </Button>
                     </div>

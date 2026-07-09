@@ -16,6 +16,8 @@ export type OperatorOverviewViewProps = {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
+  /** Opens a booking's detail (deep-links to the Bookings screen). */
+  onOpenBooking?: (appointmentId: string) => void;
   today: ScheduleItem[];
   activeNow: ActiveItem[];
   /** Optional onboarding checklist or completion card rendered above the page header. */
@@ -35,6 +37,7 @@ export function OperatorOverviewView({
   unassigned,
   declined,
   counterProposed,
+  onOpenBooking,
   today,
   activeNow,
   checklist,
@@ -61,6 +64,7 @@ export function OperatorOverviewView({
             declined={declined}
             counterProposed={counterProposed}
             loading={loading}
+            onOpenBooking={onOpenBooking}
           />
         </div>
         <div className="lg:col-span-1">
