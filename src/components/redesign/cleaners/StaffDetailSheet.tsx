@@ -10,72 +10,13 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { ManagerPermissions } from "@/hooks/useAdminData";
+import { MANAGER_FLAG_KEYS } from "@/lib/permissions/managerFlags";
+import { ManagerPermissionEditor } from "@/components/settings/ManagerPermissionEditor";
 import { RoleBadge } from "./staff-presenters";
 import type { StaffDetailVM } from "./staff-types";
-
-// The 14 manager-permission flags, grouped + labeled. Mirrors the legacy
-// settings/team permission editor so the meaning stays identical; rendered here
-// with the redesign primitives inside the Staff Sheet.
-const PERMISSION_GROUPS: {
-  title: string;
-  permissions: { key: keyof ManagerPermissions; label: string; description: string }[];
-}[] = [
-  {
-    title: "Customers",
-    permissions: [
-      { key: "can_view_customers", label: "View customers", description: "See customer profiles and information" },
-      { key: "can_edit_customers", label: "Edit customers", description: "Edit customer information and profiles" },
-    ],
-  },
-  {
-    title: "Bookings",
-    permissions: [
-      { key: "can_view_bookings", label: "View bookings", description: "See all appointments and bookings" },
-      { key: "can_edit_bookings", label: "Edit bookings", description: "Create, update, and manage appointments" },
-      { key: "can_handle_requests", label: "Handle requests", description: "Approve or decline pending requests and assign cleaners" },
-    ],
-  },
-  {
-    title: "Cleaners",
-    permissions: [
-      { key: "can_manage_cleaners", label: "Manage cleaners", description: "View and manage cleaner profiles" },
-    ],
-  },
-  {
-    title: "Properties",
-    permissions: [
-      { key: "can_view_properties", label: "View properties", description: "See property information" },
-      { key: "can_edit_properties", label: "Edit properties", description: "Edit property details" },
-    ],
-  },
-  {
-    title: "Payments",
-    permissions: [
-      { key: "can_view_payments", label: "View payments", description: "See payment information and history" },
-      { key: "can_manage_payments", label: "Manage payments", description: "Process and manage payments" },
-    ],
-  },
-  {
-    title: "Services",
-    permissions: [
-      { key: "can_view_services", label: "View services", description: "See service types and offerings" },
-      { key: "can_manage_services", label: "Manage services", description: "Create, edit, and delete services" },
-    ],
-  },
-  {
-    title: "Other",
-    permissions: [
-      { key: "can_view_analytics", label: "View analytics", description: "Access analytics and reporting" },
-      { key: "can_view_messages", label: "View messages", description: "Access the messaging system" },
-    ],
-  },
-];
-
-const ALL_KEYS = PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => p.key));
 
 export type StaffDetailSheetProps = {
   open: boolean;
@@ -106,10 +47,10 @@ export function StaffDetailSheet({
   }, [detail?.id, detail?.permissions]);
 
   const isManager = detail?.role === "manager";
-  const enabledCount = perms ? ALL_KEYS.filter((k) => perms[k]).length : 0;
+  const enabledCount = perms ? MANAGER_FLAG_KEYS.filter((k) => perms[k]).length : 0;
 
-  const toggle = (key: keyof ManagerPermissions) => {
-    setPerms((prev) => (prev ? { ...prev, [key]: !prev[key] } : prev));
+  const handlePermissionsChange = (next: ManagerPermissions) => {
+    setPerms(next);
     setDirty(true);
   };
 
@@ -162,32 +103,15 @@ export function StaffDetailSheet({
                       <ShieldCheck className="size-3.5" /> Permissions
                     </h3>
                     <span className="text-xs text-muted-foreground">
-                      {enabledCount} of {ALL_KEYS.length}
+                      {enabledCount} of {MANAGER_FLAG_KEYS.length}
                     </span>
                   </div>
 
-                  {PERMISSION_GROUPS.map((group) => (
-                    <div key={group.title} className="space-y-2">
-                      <h4 className="text-xs font-semibold text-foreground">{group.title}</h4>
-                      {group.permissions.map((p) => (
-                        <label
-                          key={p.key}
-                          className="flex cursor-pointer items-start justify-between gap-3 rounded-control px-1 py-1.5"
-                        >
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium text-foreground">{p.label}</span>
-                            <span className="block text-xs text-muted-foreground">{p.description}</span>
-                          </span>
-                          <Switch
-                            checked={!!perms[p.key]}
-                            onCheckedChange={() => toggle(p.key)}
-                            disabled={!canManage || busy}
-                            aria-label={p.label}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  ))}
+                  <ManagerPermissionEditor
+                    value={perms}
+                    onChange={handlePermissionsChange}
+                    disabled={!canManage || busy}
+                  />
 
                   {canManage ? (
                     <Button onClick={() => void save()} loading={busy} disabled={!dirty} className="w-full">
@@ -224,4 +148,4 @@ export function StaffDetailSheet({
   );
 }
 
-export { PERMISSION_GROUPS, ALL_KEYS as PERMISSION_KEYS };
+export { MANAGER_FLAG_KEYS as PERMISSION_KEYS } from '@/lib/permissions/managerFlags';
