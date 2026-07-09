@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
 import { OperatorCustomers } from "@/components/redesign/customers/OperatorCustomers";
+import { useRequireManagerFlag } from "@/lib/redesign/useRequireManagerFlag";
 
 function Spinner() {
   return (
@@ -22,6 +23,7 @@ function Spinner() {
 function OperatorCustomersInner() {
   const router = useRouter();
   const { user, loading, orgStatus, reloadOrganization } = useAuth();
+  const flagState = useRequireManagerFlag("can_view_customers");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -29,6 +31,7 @@ function OperatorCustomersInner() {
 
   if (loading || !user || orgStatus === "idle" || orgStatus === "loading") return <Spinner />;
   if (orgStatus === "error") return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
+  if (flagState === "checking") return <Spinner />;
 
   // The "New booking" quick-action and FAB aren't redesigned yet, so hand off
   // to the legacy flow. (Adding a customer is handled in-screen by the invite
