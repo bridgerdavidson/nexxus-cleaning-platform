@@ -29,14 +29,12 @@ export function useManagerPermissions() {
         .select(MANAGER_FLAG_SELECT)
         .eq('manager_id', userId)
         .eq('organization_id', orgId)
-        .single();
+        .maybeSingle();
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return ALL_FALSE;
-        }
-        throw error;
-      }
+      if (error) throw error;
+      // No row: owner/admin (privileged callers bypass flags) or a manager
+      // whose permissions row hasn't been created yet.
+      if (!data) return ALL_FALSE;
 
       // The dynamic (non-literal) select string above defeats postgrest-js's
       // type-level column parser, so cast through `unknown` before reading fields.
