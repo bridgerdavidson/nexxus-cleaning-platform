@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-admin';
 import { verifyAccessToken } from '../../../../lib/auth/verifyToken';
+import { coerceManagerPermissions } from '@/lib/permissions/managerFlags';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, role, organizationId } = body;
+    const { email, role, organizationId, permissions } = body;
 
     // ── Auth: validate caller session ────────────────────────────────────────
     const authHeader = request.headers.get('Authorization');
@@ -244,6 +245,7 @@ export async function POST(request: NextRequest) {
         status: 'creating',
         accepted_at: null,
         invited_by: verified.userId,
+        manager_permissions: role === 'manager' ? coerceManagerPermissions(permissions) : null,
       })
       .select()
       .single();

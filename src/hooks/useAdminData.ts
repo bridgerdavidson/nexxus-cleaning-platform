@@ -2196,6 +2196,7 @@ export async function inviteTeamMember(data: {
   role: 'cleaner' | 'manager' | 'admin' | 'homeowner';
   organizationId: string;
   accessToken: string | null | undefined;
+  permissions?: ManagerPermissions;
 }) {
   try {
 
