@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
         status: 'creating',
         accepted_at: null,
         invited_by: verified.userId,
-        manager_permissions: role === 'manager' ? coerceManagerPermissions(permissions) : null,
+        manager_permissions: role === 'manager' && permissions ? coerceManagerPermissions(permissions) : null,
       })
       .select()
       .single();
