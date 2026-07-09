@@ -26,11 +26,15 @@ export interface OnboardingState {
 }
 
 export function useOperatorOnboarding(): OnboardingState {
-  const { user, currentOrganizationId, accessToken } = useAuth();
+  const { user, currentOrganizationId, accessToken, currentOrgRole } = useAuth();
   const orgId = currentOrganizationId ?? null;
   const qc = useQueryClient();
   const flags = useOnboardingFlags();
-  const { invites } = useInvites(orgId, accessToken);
+  // Invites only feed the owner-only setup checklist; /api/invites 403s for
+  // managers without can_manage_cleaners, so don't fetch for non-owners.
+  const { invites } = useInvites(orgId, accessToken, {
+    enabled: currentOrgRole === 'owner',
+  });
 
   const orgQuery = useQuery({
     queryKey: keys.onboarding.operator(orgId ?? 'none'),
