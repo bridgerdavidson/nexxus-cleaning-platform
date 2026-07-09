@@ -30,24 +30,27 @@ function CardRow({
 }: {
   pm: SavedPaymentMethod;
   selected: boolean;
-  onSelect: () => void;
+  /** When omitted the row is display-only (no button semantics, no hover affordance). */
+  onSelect?: () => void;
 }) {
   const Icon = pm.type === 'us_bank_account' ? Landmark : CreditCard;
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={
-        'flex w-full items-center gap-3 rounded-control border p-3 text-left transition-colors ' +
-        (selected ? 'border-brand-600 bg-brand-50' : 'border-border bg-card hover:bg-muted')
-      }
-    >
+  const baseClass =
+    'flex w-full items-center gap-3 rounded-control border p-3 text-left transition-colors ' +
+    (selected ? 'border-brand-600 bg-brand-50' : 'border-border bg-card');
+  const inner = (
+    <>
       <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{paymentMethodTitle(pm)}</div>
         <div className="truncate text-xs text-muted-foreground">{paymentMethodSubtitle(pm)}</div>
       </div>
       {selected && <Check className="size-4 shrink-0 text-brand-600" aria-hidden />}
+    </>
+  );
+  if (!onSelect) return <div className={baseClass}>{inner}</div>;
+  return (
+    <button type="button" onClick={onSelect} className={`${baseClass}${selected ? '' : ' hover:bg-muted'}`}>
+      {inner}
     </button>
   );
 }
@@ -130,7 +133,9 @@ export function BookingPaymentField({
             No company card on file. Add one in Settings, Payments to book a self-pay cleaning.
           </p>
         ) : (
-          cards.map((pm) => <CardRow key={pm.id} pm={pm} selected={pm.isDefault} onSelect={() => {}} />)
+          // Display-only: self-pay always charges the org default (or first) card server-side,
+          // so the rows mirror that choice instead of offering a selection.
+          cards.map((pm) => <CardRow key={pm.id} pm={pm} selected={pm.id === orgDefault?.id} />)
         )}
         <p className="px-0.5 text-xs text-muted-foreground">The company card is charged when the job is completed.</p>
       </div>
