@@ -23,15 +23,19 @@ export function useSettingsSection<T>(opts: {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setLoadError(null);
     load()
       .then((v) => { if (alive) { setValue(v); setBaseline(v); setLoading(false); } })
       .catch((e: unknown) => { if (alive) { setLoadError(e instanceof Error ? e.message : "Failed to load"); setLoading(false); } });
     return () => { alive = false; };
-  }, [load]);
+  }, [load, reloadKey]);
+
+  const retry = useCallback(() => setReloadKey((k) => k + 1), []);
 
   const isDirty = value != null && baseline != null && isFormDirty(value, baseline);
 
@@ -55,5 +59,5 @@ export function useSettingsSection<T>(opts: {
 
   useRegisterSettingsGuard({ isDirty, save: onSave });
 
-  return { value, setValue, baseline, loading, saving, isDirty, loadError, onSave, onDiscard };
+  return { value, setValue, baseline, loading, saving, isDirty, loadError, retry, onSave, onDiscard };
 }

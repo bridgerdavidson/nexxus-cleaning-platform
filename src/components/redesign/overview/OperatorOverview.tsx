@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminAppointments, useAdminStats, usePaymentStats, type AdminAppointment } from "@/hooks/useAdminData";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
@@ -62,6 +64,7 @@ function toQueueItem(a: AdminAppointment): QueueItem {
  * Admin/owner see payments; managers are gated by can_view_payments.
  */
 export function OperatorOverview() {
+  const router = useRouter();
   const { user, currentOrgRole } = useAuth();
   const { appointments, loading: aLoading, error: aError, refetch: aRefetch } = useAdminAppointments();
   const { stats, loading: sLoading, error: sError, refetch: sRefetch } = useAdminStats();
@@ -81,6 +84,15 @@ export function OperatorOverview() {
   const hasError = Boolean(aError || sError || (canViewPayments && pError));
   const onRetry = () => { void aRefetch(); void sRefetch(); void pRefetch(); };
   const { greeting, dateLabel } = getGreeting(user?.profile?.firstName, now);
+
+  const openBooking = useCallback(
+    (id: string) => router.push(`/app/admin-dashboard/bookings?booking=${id}`),
+    [router],
+  );
+  // Mirror the destination's route gate (useRequireManagerFlag on the bookings
+  // page): a manager without can_view_bookings would be bounced straight back,
+  // so withhold the handler and the queue renders informational-only.
+  const canViewBookings = privileged || !!permissions?.can_view_bookings;
 
   const today: ScheduleItem[] = [...sections.today]
     .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? ""))
@@ -142,6 +154,7 @@ export function OperatorOverview() {
         unassigned={sections.unassigned.map(toQueueItem)}
         declined={sections.declined.map(toQueueItem)}
         counterProposed={sections.counterProposed.map(toQueueItem)}
+        onOpenBooking={canViewBookings ? openBooking : undefined}
         today={today}
         activeNow={activeNow}
         checklist={checklist}
