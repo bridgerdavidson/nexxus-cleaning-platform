@@ -19,11 +19,14 @@ export function NeedsYouNowQueue({
   declined,
   counterProposed,
   loading,
+  onOpenBooking,
 }: {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
   loading?: boolean;
+  /** Opens a booking's detail (deep-links to the Bookings screen). */
+  onOpenBooking?: (appointmentId: string) => void;
 }) {
   const groups: Group[] = [
     { kind: "unassigned", label: "Unassigned", actionLabel: "Assign", tone: "caution", items: unassigned },
@@ -63,17 +66,35 @@ export function NeedsYouNowQueue({
                 </div>
                 <div className="space-y-2">
                   {g.items.map((it) => (
+                    // The inner Button is the sole keyboard/AT control (a focusable
+                    // button inside a role="button" row would be a nested-interactive
+                    // violation); the row onClick is pointer-only target enlargement.
                     <div
                       key={it.id}
-                      className="group flex cursor-pointer items-center gap-3 rounded-control border border-border bg-card p-3 transition-colors duration-200 hover:border-brand-600/40 hover:bg-muted/40 focus-within:ring-2 focus-within:ring-ring"
+                      onClick={onOpenBooking ? () => onOpenBooking(it.id) : undefined}
+                      className={
+                        "group flex items-center gap-3 rounded-control border border-border bg-card p-3 transition-colors duration-200" +
+                        (onOpenBooking
+                          ? " cursor-pointer hover:border-brand-600/40 hover:bg-muted/40 focus-within:ring-2 focus-within:ring-ring"
+                          : "")
+                      }
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{it.title}</p>
                         <p className="truncate text-xs text-muted-foreground">{it.subtitle}</p>
                       </div>
-                      <Button size="sm" variant={g.kind === "counter" ? "secondary" : "default"}>
-                        {g.actionLabel}
-                      </Button>
+                      {onOpenBooking && (
+                        <Button
+                          size="sm"
+                          variant={g.kind === "counter" ? "secondary" : "default"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenBooking(it.id);
+                          }}
+                        >
+                          {g.actionLabel}
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>

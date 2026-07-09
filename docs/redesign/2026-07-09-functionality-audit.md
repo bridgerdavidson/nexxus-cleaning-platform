@@ -1,0 +1,81 @@
+# Redesign functionality audit — dead buttons + legacy gaps
+
+> Produced 2026-07-09 by a 45-agent audit workflow (15 per-surface dead-button finders + 5 legacy-vs-redesign gap analysts, every finding adversarially verified, plus a completeness critic and a follow-up round on the areas it flagged). Trigger: the "Needs you now" Assign buttons were discovered to be non-functional; this sweep found everything else in that class before cutover.
+>
+> Verdicts: 24 button findings verified (9 CONFIRMED dead/stub, 6 refuted as actually wired, rest PARTIAL = works but degraded); 62 legacy-parity gaps verified (60 confirmed). REFUTED findings are excluded below.
+
+---
+
+## 1. Genuinely dead or stubbed controls (fix these — a user clicks and nothing happens)
+
+| # | Where | What | Severity |
+|---|---|---|---|
+| 1 | `src/components/redesign/overview/NeedsYouNowQueue.tsx:74` | **Assign / Force-assign / Review** buttons on every queue row render with no `onClick`, no link, no form. Prop chain carries only `{id,title,subtitle}` — no callback or href exists anywhere up through `OperatorOverview`. Clicking silently does nothing. | major |
+| 2 | `src/components/redesign/overview/NeedsYouNowQueue.tsx:66` | The queue **row cards** are styled clickable (`cursor-pointer`, hover border/bg, focus ring) but have zero interactivity. Fix together with #1: row opens booking detail, button performs the action. | major |
+| 3 | `src/components/redesign/homeowner/messages/HomeownerMessageThread.tsx:118` | Homeowner office-thread composer **"+ Add image"**: opens the OS file picker, then silently discards the selection — `onAddFiles` is `() => {}`, `pendingFiles` hardcoded `[]`. Backend already supports attachments (`useSendMessage` uploads to the `message-attachments` bucket); mirror the wiring in `CleanerThread.tsx:61,123-124`. | major |
+| 4 | `src/components/redesign/bookings/new-booking/BookingPaymentField.tsx:133` | Self-pay **company saved-card rows** render as real buttons with hover + selected states but `onSelect={() => {}}`. Server also ignores any selection (charges default-else-first, `chargeCompletedAppointment.ts:361`). Either make rows display-only or wire per-booking company-card choice end to end. Wart: with no default card set, the UI highlights nothing while the server will still charge `methods[0]`. | minor |
+| 5 | `src/components/redesign/settings/useSettingsSection.ts:25` | All 6 settings sections (Profile, Organization, Cancellation, Payout, Cleaner experience, Business hours) **swallow load failures**: `loadError` is set but never rendered by any consumer, so a real failure shows a skeleton forever with no retry. (Transient "no org yet" self-heals; genuine failures don't.) | minor |
+| 6 | `src/components/marketing/CapabilityExplorer.tsx:261-262` | Marketing demo Payments tab: **"Fix card"** and **"Copy card link"** buttons are inert (the Overview demo tab's Assign buttons simulate a toast; these do nothing). Give them a simulated interaction or make them display-only like the CrewTab switches. | minor |
+
+Honest placeholders verified as fine (no action needed): the "Hourly (coming soon)" payout radio (`PayoutSettingsSection.tsx:58`, deliberately disabled + server rejects the value) and the cleaner Availability "Coming soon" card (employee-model orgs, clearly labeled).
+
+## 2. The systemic class: redesign controls that escape into the legacy shell
+
+These all "work" today because the legacy dashboard still exists, but every one **breaks at cutover** and several drop their context on the way. This is the load-bearing follow-up theme; the shared root cause is that the redesign shell has **no appointment-panel host** (the cleaner shell's `?job=` host is the model) and handlers route to `/admin-dashboard?tab=...` instead.
+
+| Where | Control | Degradation |
+|---|---|---|
+| `src/components/redesign/bookings/OperatorBookings.tsx:382-384` (JSX `BookingDetailSheet.tsx:267`) | **Reschedule** | `router.push("/admin-dashboard?tab=bookings")` — leaves the shell AND drops the appointment id (legacy supports `?appointment=<id>` deep link; passing it is a one-line interim fix). The counter-proposal window copy points users at this button, so window resolution depends on it. No redesign reschedule exists at all (see gap R2). |
+| `src/components/redesign/messages/OperatorMessages.tsx:275` (JSX `ContextPanel.tsx:73`) | **New booking** (conversation About panel) | Navigates to legacy with a phantom `new=1` param nothing reads — the labeled action never happens. One-line fix: in-shell `?newbooking=1` via `useOpenOperatorBooking`. |
+| `src/components/redesign/notifications/deriveNotifications.ts:84` | **All appointment-scoped notification clicks** incl. the "Assign cleaner" chip | Deliberate documented interim: pushes to the legacy drawer. Works, but ejects the operator from the shell; the "Assign cleaner" chip lands on a drawer that can't assign. Switch to an `/app` URL once the shell gets a panel host. |
+| `src/components/redesign/payments/usePaymentsTriage.ts:282` | **Fix card** (failed-charge triage) | Opens the legacy side panel because the redesign has no per-booking payment-method UI (gap R6). |
+| `src/components/redesign/payments/usePaymentsTriage.ts:292` + `OperatorPayments.tsx:339` | **Message {cleaner}** (triage band + payout detail sheet) | Creates the conversation, then dumps into legacy messages WITHOUT opening the thread (id thrown away). The redesign Messages screen already supports `?to=` — point it there instead. |
+| `src/components/redesign/messages/OperatorMessages.tsx:261` (+ `MessageBubble.tsx:27`, `InlineBookingCard.tsx:15`) | **Open booking** chips/rows across Messages | Opens the legacy drawer; redesign Bookings already supports a booking deep link. |
+| `src/components/redesign/messages/ContextPanel.tsx:71` | **Profile** (About panel) | Stays in the redesign but only reaches the customers/cleaners LIST — never opens the person, though both destinations support person deep links via `useDetailParam`. Trivial fix. |
+| `src/app/reset-password/page.tsx:157`, `src/app/accept-invite/page.tsx:266` | Post-success redirects | Both pages have LOCAL `getDashboardPath` copies that ignore `redesignUiEnabled()` — with the flag on, a user finishing password reset / invite acceptance lands on the LEGACY dashboard. Use `src/lib/redesign/dashboardPath.ts`. |
+
+## 3. Legacy features with no redesign home (must-haves)
+
+Deduped across the admin + manager analyses (managers share the operator console):
+
+| # | Gap | Status | Notes |
+|---|---|---|---|
+| R1 | **Calendar / scheduling cockpit** (month/week/day/agenda, per-cleaner dispatch lanes, drag-to-reschedule w/ conflict detection, slot-click-to-create) | missing | Zero calendar components under `src/components/redesign/**`. The single biggest missing surface. |
+| R2 | **Reschedule flow** (new date/time + conflict detection + cleaner swap + fresh response deadline + `notifyReschedule` + adopt counter-windows) | missing | The redesign button punts to legacy (§2). After cutover there is no reschedule at all. |
+| R3 | **Edit booking after creation** (date/time, service+checklist swap w/ reprice, price override, special requests, notes) | missing | `BookingDetailSheet` is read-only apart from assign/status/cancel; the redesign booking sheet is create-only. |
+| R4 | **Operator Properties workspace** (create/edit/delete, photos, special instructions, assign homeowner, book-from-property) | missing | No Properties nav destination; properties are read-only inside `CustomerDetailSheet`. An operator taking a phone booking for a new address is stuck — also blocks booking for customers with zero properties. |
+| R5 | **Org company payment methods** (self-pay cards/banks: add/remove/set default) | missing | Redesign settings Payments only mounts Stripe Connect. The booking form's empty state literally says "Add one in Settings, Payments" — a dead end. A redesign-only org can never make a self-pay booking. |
+| R6 | **Per-appointment payment method view/change + failed-charge recovery (operator)** | partial | Triage band surfaces failures and "Send card link" works, but nothing in the redesign re-runs the failed charge and `BookingDetailSheet` has no payment-method section; the end-to-end fix depends on the legacy panel. |
+| R7 | **Homeowner failed-payment self-recovery** (see card on an appointment, change it, retry banners) | missing | `HomeownerCleaningDetail` has no payment-method section; the only signal is a "Payment failed" badge with no fix path. Under charge-at-completion this is the homeowner's only self-service unblock. |
+| R8 | **Operator cancel with cancellation-fee handling** | partial | Redesign operator cancel is a bare `status='cancelled'` update bypassing the Stripe-aware cancel route. The homeowner side HAS the fee-aware `CancelCleaningSheet`; only the operator side lost it. |
+| R9 | **Job photos (before/during/after) visible to operator** | missing | No photos section in `BookingDetailSheet`; evidence trail for disputes/fee decisions is gone. |
+| R10 | **Action Center completeness**: SLA-overdue bucket + per-attempt routing/decline history | partial | `deriveOverview.ts` has no overdue bucket; overdue bookings appear in NO queue. Routing-attempt log not ported. (Plus the dead buttons in §1.) |
+| R11 | **Cleaner multi-slot offer chips show time only** | partial | Legacy showed "Thu, Mar 5 · 10:00 AM" per slot; redesign chips are time-only so alternate slots on different days are indistinguishable at accept time. Small but a correctness bug. |
+| R12 | **Legacy deep-link repointing** (the full §2 list) | partial | Every escape hatch needs a redesign target before the legacy tree can be deleted. |
+
+## 4. Nice-to-haves (pilot could launch without, decide deliberately)
+
+- **Invoices tab** (Finance) — not ported.
+- **Analytics**: custom date range, property/cleaner filters, PDF export.
+- **Live job checklist progress** visible to the operator.
+- **Bookings time-window filter** (next 7/30 days etc.).
+- **Cleaner**: calendar view of own jobs; before/after photo review on in-progress/completed jobs; conversation search + role filter.
+- **Homeowner**: photo attachments in messages (the §1 #3 stub is the entry point); full job-photo gallery w/ lightbox; past-cleanings search + load-more.
+- **Operator**: bulk cleaner payout-% editor; staff profile edit (name/email/phone); all-invites view incl. homeowner invites + resend; "availability/conflict-aware" cleaner assignment hints.
+- **Manager visibility into business settings** (read-only cancellation policy etc.).
+- **Platform-owner impersonation awareness** in the redesign shell (ImpersonationBanner is legacy-chrome only).
+
+## 5. Platform-owner back-office (known-deferred, now enumerated)
+
+The `/owner` surface was never in redesign scope; the audit enumerated what it does so cutover doesn't strand it: tenant roster + KPIs + tenant detail, provision tenant (+ founder owner-invite email), "View as this company" impersonation (verified working), tenant/per-cleaner Stripe Connect reset actions, delete organization (cascading), platform fee display, tenant Stripe Express login link. `getDashboardPath` has no case for the platform-owner role (falls through to `/`). Decision needed: redesign it, or keep the legacy `/owner` page alive past cutover.
+
+## 6. Deliberate skips (confirmed legacy-only, do not port)
+
+Security settings (password/2FA page), notification preferences (both already deferred on the record), delete-conversation, homeowner conversation search/role filter, homeowner property search, cleaner counter-propose windows (product decision was operator-driven windows), manager access to staff management + booking delete (now owner/admin-only by design, PR #132).
+
+## 7. Suggested sequencing
+
+1. **Quick wires (no design needed):** §1 #1-#5 fixes, ContextPanel Profile deep link, Message-cleaner `?to=` repoint, New-booking `?newbooking=1` repoint, auth redirect flag fix, cleaner slot date labels (R11).
+2. **One structural piece unlocks most of §2:** a booking-detail host in the operator shell (`?booking=` param, model: cleaner shell's `?job=` host) so notifications/messages/payments all deep-link in-shell.
+3. **Bigger UI builds (browser-companion candidates):** calendar cockpit (R1), reschedule + edit-booking (R2/R3 — likely one booking-edit surface), Properties workspace (R4), org payment methods in settings (R5), operator payment-method + photos sections in BookingDetailSheet (R6/R9), homeowner payment recovery (R7), overview action-center completion (R10 + §1).
+4. **Decide:** platform-owner back-office (§5) and which §4 nice-to-haves make the cutover bar.
