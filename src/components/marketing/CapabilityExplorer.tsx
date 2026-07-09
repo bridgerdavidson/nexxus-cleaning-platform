@@ -230,6 +230,12 @@ function CrewTab() {
 // --- Payments ----------------------------------------------------------------
 
 function PaymentsTab() {
+  const [cardFixed, setCardFixed] = React.useState(false)
+  const [toast, setToast] = React.useState<string | null>(null)
+  const say = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3500)
+  }
   return (
     <div className="grid gap-3">
       <div className="grid grid-cols-3 gap-2">
@@ -250,18 +256,54 @@ function PaymentsTab() {
       <div className="rounded-control border border-border bg-card p-3">
         <div className="mb-2 flex items-center gap-2">
           <Badge variant="critical" className="px-2 py-0.5 text-[10px]">Failed charges</Badge>
-          <Badge variant="secondary" className="px-2 py-0.5 text-[10px]">1</Badge>
+          <Badge variant="secondary" className="px-2 py-0.5 text-[10px]">{cardFixed ? 0 : 1}</Badge>
         </div>
         <div className="flex items-center justify-between rounded-chip border border-border bg-background px-3 py-2 text-xs">
           <span className="min-w-0">
-            <span className="block truncate font-semibold text-foreground">Chen home · $140</span>
-            <span className="block text-[10px] text-muted-foreground">Card charge failed</span>
+            {cardFixed ? (
+              <>
+                <span className="block truncate font-semibold text-positive-700">Chen home · $140 collected</span>
+                <span className="block text-[10px] text-muted-foreground">New card on file</span>
+              </>
+            ) : (
+              <>
+                <span className="block truncate font-semibold text-foreground">Chen home · $140</span>
+                <span className="block text-[10px] text-muted-foreground">Card charge failed</span>
+              </>
+            )}
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
-            <Button size="sm" className="h-7 px-2.5 text-[11px]">Fix card</Button>
-            <Button size="sm" variant="secondary" className="h-7 px-2.5 text-[11px]">Copy card link</Button>
+            <Button
+              size="sm"
+              className="h-7 px-2.5 text-[11px]"
+              disabled={cardFixed}
+              onClick={() => {
+                setCardFixed(true)
+                say('New card saved. Charge collected.')
+              }}
+            >
+              Fix card
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-7 px-2.5 text-[11px]"
+              onClick={() => {
+                navigator.clipboard?.writeText('https://demo.nexxus.app/card-link').catch(() => {})
+                say('Card update link copied. Text it to the customer.')
+              }}
+            >
+              Copy card link
+            </Button>
           </span>
         </div>
+        <AnimatePresence>
+          {toast ? (
+            <m.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} role="status" className="mt-2 text-xs font-semibold text-positive-700">
+              {toast}
+            </m.p>
+          ) : null}
+        </AnimatePresence>
         <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <RefreshCw className="size-3" aria-hidden />
           A nightly sweep re-tries failed charges for you.
