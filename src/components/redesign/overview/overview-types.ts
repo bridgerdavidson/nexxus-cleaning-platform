@@ -6,9 +6,9 @@ export type OverviewKpis = {
   inProgress: number;
   awaitingApproval: number;
   /** Dollars (the payment_stats RPC returns whole-dollar amounts, like the legacy UI).
-   *  null when the viewer lacks can_view_payments (manager); then the 4th tile shows Unassigned. */
+   *  null when the viewer lacks can_view_payments (manager); then the 4th KPI
+   *  tile is dropped entirely (the strip reflows to 3 tiles, no substitute). */
   revenueThisMonth: number | null;
-  unassignedCount: number;
   canViewPayments: boolean;
 };
 
