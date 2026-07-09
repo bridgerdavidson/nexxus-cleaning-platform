@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 /**
@@ -82,5 +82,40 @@ describe('POST /api/invoices/create (auth)', () => {
       .single();
     expect(data?.organization_id).toBe(org.organizationId);
     expect(data?.homeowner_id).toBe(org.homeowner.userId);
+  });
+});
+
+describe('POST /api/invoices/create manager gate (can_manage_payments)', () => {
+  let org: TestOrgFixture;
+  let mgr: Awaited<ReturnType<typeof addManagerToOrg>> | null = null;
+
+  beforeEach(async () => {
+    org = await withTestOrg();
+  });
+
+  afterEach(async () => {
+    if (mgr) { await mgr.cleanup(); mgr = null; }
+    await org.cleanup();
+  });
+
+  it('403 for a manager without can_manage_payments', async () => {
+    mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: false });
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { organization_id: org.organizationId, homeowner_id: org.homeowner.userId, amount: 100 },
+    });
+    expect(status).toBe(403);
+  });
+
+  it('lets a manager WITH can_manage_payments past the auth gate', async () => {
+    mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: true });
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { organization_id: org.organizationId, homeowner_id: org.homeowner.userId, amount: 100 },
+    });
+    expect(status).not.toBe(401);
+    expect(status).not.toBe(403);
   });
 });

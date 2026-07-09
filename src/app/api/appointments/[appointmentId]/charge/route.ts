@@ -67,9 +67,10 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
     }
 
-    // Self-pay charges the org's company card — require Manage Payments for managers (owner/admin
-    // always pass), same gate as the authorize route.
-    if ((appt as { is_self_pay: boolean }).is_self_pay === true && auth.role === 'manager') {
+    // Any manager-triggered charge requires Manage Payments (owner/admin always pass; the assigned
+    // cleaner charging their own completed job is unaffected). Not limited to self-pay: a manager
+    // charging a homeowner's saved card is still a payment-spending action.
+    if (auth.role === 'manager') {
       const { data: perms } = await supabaseAdmin
         .from('manager_permissions')
         .select('can_manage_payments')

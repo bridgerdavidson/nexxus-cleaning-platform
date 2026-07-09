@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 describe('POST /api/stripe/create-payment-intent', () => {
@@ -105,5 +105,39 @@ describe('POST /api/stripe/create-payment-intent', () => {
       body: { appointment_id: appointmentInOrg1.id, organization_id: org.organizationId },
     });
     expect(status).toBe(401);
+  });
+});
+
+describe('POST /api/stripe/create-payment-intent manager gate (can_manage_payments)', () => {
+  let mgrOrg: TestOrgFixture | null = null;
+  let mgr: Awaited<ReturnType<typeof addManagerToOrg>> | null = null;
+
+  afterEach(async () => {
+    if (mgr) { await mgr.cleanup(); mgr = null; }
+    if (mgrOrg) { await mgrOrg.cleanup(); mgrOrg = null; }
+  });
+
+  it('403 for a manager without can_manage_payments', async () => {
+    mgrOrg = await withTestOrg();
+    mgr = await addManagerToOrg(mgrOrg.organizationId, { can_manage_payments: false });
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { appointment_id: crypto.randomUUID(), organization_id: mgrOrg.organizationId },
+    });
+    expect(status).toBe(403);
+  });
+
+  it('lets a manager WITH can_manage_payments past the auth gate', async () => {
+    mgrOrg = await withTestOrg();
+    mgr = await addManagerToOrg(mgrOrg.organizationId, { can_manage_payments: true });
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { appointment_id: crypto.randomUUID(), organization_id: mgrOrg.organizationId },
+    });
+    // Past auth: not a 401/403. (Fake appointment id -> 404 from the scope lookup, which is fine.)
+    expect(status).not.toBe(401);
+    expect(status).not.toBe(403);
   });
 });

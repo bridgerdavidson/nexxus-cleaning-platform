@@ -9,7 +9,7 @@ vi.mock('@/lib/stripe/setup-intents', () => ({
 
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 describe('POST /api/billing/card-links', () => {
@@ -90,5 +90,46 @@ describe('POST /api/billing/card-links', () => {
       .eq('id', org.homeowner.userId)
       .single();
     expect((ho as { stripe_customer_id: string }).stripe_customer_id).toBe('cus_link');
+  });
+});
+
+describe('POST /api/billing/card-links manager gate (can_manage_payments)', () => {
+  let mgrOrg: TestOrgFixture | null = null;
+  let mgr: Awaited<ReturnType<typeof addManagerToOrg>> | null = null;
+  let originalFlag: string | undefined;
+
+  beforeEach(() => {
+    originalFlag = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalFlag;
+    if (mgr) { await mgr.cleanup(); mgr = null; }
+    if (mgrOrg) { await mgrOrg.cleanup(); mgrOrg = null; }
+  });
+
+  it('403 for a manager without can_manage_payments', async () => {
+    mgrOrg = await withTestOrg();
+    mgr = await addManagerToOrg(mgrOrg.organizationId, { can_manage_payments: false });
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { organization_id: mgrOrg.organizationId, homeowner_id: mgrOrg.homeowner.userId },
+    });
+    expect(status).toBe(403);
+  });
+
+  it('lets a manager WITH can_manage_payments past the auth gate', async () => {
+    mgrOrg = await withTestOrg();
+    mgr = await addManagerToOrg(mgrOrg.organizationId, { can_manage_payments: true });
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(mgr.accessToken),
+      body: { organization_id: mgrOrg.organizationId, homeowner_id: mgrOrg.homeowner.userId },
+    });
+    expect(status).not.toBe(401);
+    expect(status).not.toBe(403);
   });
 });
