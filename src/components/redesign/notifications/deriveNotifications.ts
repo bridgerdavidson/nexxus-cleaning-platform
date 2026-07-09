@@ -70,18 +70,19 @@ export function relativeTime(iso: string, now: number): string {
 /**
  * Click destination for an operator notification.
  *
- * Appointment-scoped rows deep-link to the legacy dashboard, whose page-level
- * appointment drawer opens regardless of tab (the redesign shell has no
- * appointment panel host yet; same convention as the redesign Messages "Open
- * booking"). `notificationTab` picks the best background tab. Appointment-less
- * rows route to the most relevant redesign screen.
+ * Appointment-scoped rows deep-link to the redesign booking detail
+ * (`?booking=<id>` on the Bookings screen), except payment events, which land
+ * on the Payments screen where the triage band surfaces them (Payments has no
+ * per-appointment deep link). Appointment-less rows route to the most relevant
+ * redesign screen.
  */
 export function operatorNotificationHref(
   item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
 ): string {
   if (item.appointment_id) {
     const tab = notificationTab(item.event_type, 'admin');
-    return `/admin-dashboard?tab=${tab}&appointment=${item.appointment_id}`;
+    if (tab === 'payments') return '/app/admin-dashboard/payments';
+    return `/app/admin-dashboard/bookings?booking=${item.appointment_id}`;
   }
   switch (item.event_type) {
     case 'member_joined':

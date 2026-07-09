@@ -8,7 +8,6 @@ import { keys } from "@/lib/queryKeys";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { toast } from "@/components/ui/toast";
-import { useStartConversation } from "@/hooks/useStartConversation";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -130,7 +129,6 @@ function OperatorPaymentsData({
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { currentOrganizationId, currentOrganization } = useAuth();
-  const { startConversation } = useStartConversation();
 
   const {
     rows: payments,
@@ -333,12 +331,16 @@ function OperatorPaymentsData({
     [currentOrganizationId, authHeaders, refetchPayouts],
   );
 
+  // The redesign Messages screen creates/opens the thread itself from ?to=.
   const handleMessage = useCallback(
     async (cleanerId: string | null) => {
-      if (cleanerId) await startConversation(cleanerId);
-      router.push("/admin-dashboard?tab=messages");
+      router.push(
+        cleanerId
+          ? `/app/admin-dashboard/messages?to=${cleanerId}`
+          : "/app/admin-dashboard/messages",
+      );
     },
-    [router, startConversation],
+    [router],
   );
 
   return (
