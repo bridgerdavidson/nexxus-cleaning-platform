@@ -10,6 +10,8 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthHeading, AuthError, TextField, PasswordField } from "@/components/auth/authPrimitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getDashboardPath } from "@/lib/redesign/dashboardPath";
+import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 type PageState = "loading" | "valid" | "expired" | "invalid";
 
@@ -25,21 +27,6 @@ const INVITE_PANEL = {
   panelTitle: "Welcome to the team.",
   panelSubtitle: "Set up your account and you're in.",
 };
-
-function getDashboardPath(role: string): string {
-  switch (role) {
-    case "cleaner":
-      return "/cleaner-dashboard";
-    case "manager":
-      return "/manager-dashboard";
-    case "admin":
-      return "/admin-dashboard";
-    case "homeowner":
-      return "/homeowner-dashboard";
-    default:
-      return "/";
-  }
-}
 
 function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
@@ -263,7 +250,7 @@ function AcceptInviteContent() {
         return;
       }
 
-      router.push(getDashboardPath(result.role));
+      router.push(getDashboardPath(result.role, { redesign: redesignUiEnabled() }));
     } catch {
       setFormError("An unexpected error occurred. Please try again.");
     } finally {

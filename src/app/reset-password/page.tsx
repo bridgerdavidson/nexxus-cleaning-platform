@@ -11,23 +11,10 @@ import { Button } from "@/components/ui/button";
 import { validatePassword, PASSWORD_HELPER_TEXT } from "../../lib/passwordValidation";
 import { checkPasswordNotBreached } from "@/lib/auth/breachedPassword";
 import { useToast } from "../../contexts/ToastContext";
+import { getDashboardPath } from "@/lib/redesign/dashboardPath";
+import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 type PageState = "loading" | "expired" | "invalid" | "form" | "success";
-
-function getDashboardPath(role: string): string {
-  switch (role) {
-    case "homeowner":
-      return "/homeowner-dashboard";
-    case "cleaner":
-      return "/cleaner-dashboard";
-    case "manager":
-      return "/manager-dashboard";
-    case "admin":
-      return "/admin-dashboard";
-    default:
-      return "/";
-  }
-}
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -154,7 +141,7 @@ function ResetPasswordContent() {
     showToast("Password updated. Welcome back.", { variant: "success" });
 
     setTimeout(() => {
-      router.push(role ? getDashboardPath(role) : "/");
+      router.push(role ? getDashboardPath(role, { redesign: redesignUiEnabled() }) : "/");
     }, 250);
   };
 
