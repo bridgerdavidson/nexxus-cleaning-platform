@@ -9,6 +9,25 @@ export const MANAGER_FLAG_GROUPS = [
 ] as const;
 export type ManagerFlagGroup = (typeof MANAGER_FLAG_GROUPS)[number];
 
+export const MANAGER_FLAG_KEYS = [
+  'can_view_bookings',
+  'can_edit_bookings',
+  'can_handle_requests',
+  'can_view_customers',
+  'can_edit_customers',
+  'can_view_properties',
+  'can_edit_properties',
+  'can_view_services',
+  'can_manage_services',
+  'can_view_payments',
+  'can_manage_payments',
+  'can_view_analytics',
+  'can_view_messages',
+  'can_manage_cleaners',
+] as const;
+export type ManagerPermissionKey = (typeof MANAGER_FLAG_KEYS)[number];
+export type ManagerPermissions = Record<ManagerPermissionKey, boolean>;
+
 export interface ManagerFlag {
   key: ManagerPermissionKey;
   label: string;
@@ -17,7 +36,7 @@ export interface ManagerFlag {
   enforce: 'route' | 'rls' | 'rpc' | 'ui';
 }
 
-export const MANAGER_FLAGS = [
+export const MANAGER_FLAGS: readonly ManagerFlag[] = [
   { key: 'can_view_bookings', label: 'View bookings', description: 'See the bookings calendar and lists.', group: 'Bookings', enforce: 'route' },
   { key: 'can_edit_bookings', label: 'Create & edit bookings', description: 'Create, update, cancel and reschedule appointments.', group: 'Bookings', enforce: 'route' },
   { key: 'can_handle_requests', label: 'Handle requests', description: 'Approve or decline pending requests and assign cleaners.', group: 'Bookings', enforce: 'route' },
@@ -32,12 +51,7 @@ export const MANAGER_FLAGS = [
   { key: 'can_view_analytics', label: 'View analytics', description: 'See analytics and reports (money figures hidden unless View payments is on).', group: 'Insight & comms', enforce: 'rpc' },
   { key: 'can_view_messages', label: 'View messages', description: 'See and use the messaging inbox.', group: 'Insight & comms', enforce: 'ui' },
   { key: 'can_manage_cleaners', label: 'Manage cleaners', description: 'Invite, edit and remove cleaners.', group: 'Cleaners & team', enforce: 'route' },
-] as const satisfies readonly ManagerFlag[];
-
-export type ManagerPermissionKey = (typeof MANAGER_FLAGS)[number]['key'];
-export type ManagerPermissions = Record<ManagerPermissionKey, boolean>;
-
-export const MANAGER_FLAG_KEYS = MANAGER_FLAGS.map((f) => f.key) as ManagerPermissionKey[];
+];
 
 export function emptyManagerPermissions(): ManagerPermissions {
   return MANAGER_FLAG_KEYS.reduce((acc, k) => {
