@@ -7,7 +7,6 @@ import { supabase } from "@/lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { useSupabaseRealtimeSync } from "@/lib/useSupabaseRealtimeSync";
 import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
-import { useStartConversation } from "@/hooks/useStartConversation";
 import { money2, longDate } from "./payments-presenters";
 import type { TriageChargeVM, TriagePayoutVM, TriageHeldVM } from "./payments-types";
 
@@ -61,7 +60,6 @@ export type PaymentsTriage = {
 export function usePaymentsTriage(): PaymentsTriage {
   const { currentOrganizationId, currentOrganization } = useAuth();
   const router = useRouter();
-  const { startConversation } = useStartConversation();
 
   const [loading, setLoading] = useState(true);
   const [charges, setCharges] = useState<TriageChargeVM[]>([]);
@@ -284,14 +282,17 @@ export function usePaymentsTriage(): PaymentsTriage {
     [router],
   );
 
+  // The redesign Messages screen creates/opens the thread itself from ?to=,
+  // so navigation is all this needs to do.
   const messageCleaner = useCallback(
     async (cleanerId: string | null) => {
-      if (cleanerId) {
-        await startConversation(cleanerId);
-      }
-      router.push("/admin-dashboard?tab=messages");
+      router.push(
+        cleanerId
+          ? `/app/admin-dashboard/messages?to=${cleanerId}`
+          : "/app/admin-dashboard/messages",
+      );
     },
-    [router, startConversation],
+    [router],
   );
 
   const isEmpty = charges.length === 0 && failedPayouts.length === 0 && heldPayouts.length === 0;
