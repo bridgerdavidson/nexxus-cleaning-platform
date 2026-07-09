@@ -13,8 +13,8 @@ describe("getDashboardPath", () => {
   it("routes admin and cleaner to redesign screens when on", () => {
     expect(getDashboardPath("admin", { redesign: true })).toBe("/app/admin-dashboard");
     expect(getDashboardPath("cleaner", { redesign: true })).toBe("/app/cleaner-dashboard");
-    // not-yet-built redesign screens still go to legacy to avoid dead-ends
-    expect(getDashboardPath("manager", { redesign: true })).toBe("/manager-dashboard");
+    expect(getDashboardPath("manager")).toBe("/manager-dashboard");
+    expect(getDashboardPath("manager", { redesign: true })).toBe("/app/admin-dashboard");
     expect(getDashboardPath("homeowner", { redesign: true })).toBe("/app/homeowner-dashboard");
   });
 });

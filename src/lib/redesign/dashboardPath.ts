@@ -8,7 +8,7 @@ export function getDashboardPath(role: string, opts?: { redesign?: boolean }): s
     case "cleaner":
       return redesign ? "/app/cleaner-dashboard" : "/cleaner-dashboard";
     case "manager":
-      return "/manager-dashboard";
+      return redesign ? "/app/admin-dashboard" : "/manager-dashboard";
     case "admin":
       return redesign ? "/app/admin-dashboard" : "/admin-dashboard";
     default:
