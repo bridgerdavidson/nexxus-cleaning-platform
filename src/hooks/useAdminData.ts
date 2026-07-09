@@ -10,6 +10,13 @@ import { keys } from '../lib/queryKeys';
 import { pageRange, nextPageParam, PAYMENTS_PAGE_SIZE } from '../lib/pagination';
 import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
+import {
+  MANAGER_FLAG_SELECT,
+  coerceManagerPermissions,
+  type ManagerPermissions,
+} from '../lib/permissions/managerFlags';
+
+export type { ManagerPermissions } from '../lib/permissions/managerFlags';
 
 export interface AdminAppointment {
   id: string;
@@ -1970,24 +1977,6 @@ export interface TeamMember {
   permissions?: ManagerPermissions | null;
 }
 
-export interface ManagerPermissions {
-  can_view_customers: boolean;
-  can_edit_customers: boolean;
-  can_view_bookings: boolean;
-  can_edit_bookings: boolean;
-  can_approve_decline_bookings: boolean;
-  can_manage_cleaners: boolean;
-  can_view_properties: boolean;
-  can_edit_properties: boolean;
-  can_view_analytics: boolean;
-  can_view_payments: boolean;
-  can_manage_payments: boolean;
-  can_view_messages: boolean;
-  can_view_services: boolean;
-  can_manage_services: boolean;
-  can_handle_requests: boolean;
-}
-
 export function useAdminTeamMembers() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2037,22 +2026,27 @@ export function useAdminTeamMembers() {
       if (cleanerError) throw cleanerError;
 
       // Get manager permissions
-      const { data: managerPermissions, error: permissionsError } = await supabase
+      const { data: managerPermissionsRaw, error: permissionsError } = await supabase
         .from('manager_permissions')
-        .select('manager_id, can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages, can_view_services, can_manage_services, can_handle_requests')
+        .select(`manager_id, ${MANAGER_FLAG_SELECT}`)
         .in('manager_id', managerIds)
         .eq('organization_id', currentOrganizationId);
 
       if (permissionsError) throw permissionsError;
 
+      // The dynamic (non-literal) select string above defeats postgrest-js's
+      // type-level column parser, so cast through `unknown` before touching
+      // any fields (same idiom as useAdminStaff below).
+      const managerPermissions = (managerPermissionsRaw as unknown as Array<Record<string, unknown>> | null) ?? [];
+
       // Combine all data
       const teamMembersData: TeamMember[] = orgMembers.map(member => {
         const profile = profiles?.find(p => p.id === member.user_id);
-        const cleanerProfile = member.role === 'cleaner' 
+        const cleanerProfile = member.role === 'cleaner'
           ? cleanerProfiles?.find(cp => cp.id === member.user_id)
           : null;
         const permissions = member.role === 'manager'
-          ? managerPermissions?.find(mp => mp.manager_id === member.user_id)
+          ? managerPermissions.find(mp => mp.manager_id === member.user_id)
           : null;
 
         return {
@@ -2070,23 +2064,7 @@ export function useAdminTeamMembers() {
             total_jobs: cleanerProfile.total_jobs || 0,
             is_available: cleanerProfile.is_available || false,
           } : null,
-          permissions: permissions ? {
-            can_view_customers: permissions.can_view_customers || false,
-            can_edit_customers: permissions.can_edit_customers || false,
-            can_view_bookings: permissions.can_view_bookings || false,
-            can_edit_bookings: permissions.can_edit_bookings || false,
-            can_approve_decline_bookings: permissions.can_approve_decline_bookings || false,
-            can_manage_cleaners: permissions.can_manage_cleaners || false,
-            can_view_properties: permissions.can_view_properties || false,
-            can_edit_properties: permissions.can_edit_properties || false,
-            can_view_analytics: permissions.can_view_analytics || false,
-            can_view_payments: permissions.can_view_payments || false,
-            can_manage_payments: permissions.can_manage_payments || false,
-            can_view_messages: permissions.can_view_messages || false,
-            can_view_services: permissions.can_view_services || false,
-            can_manage_services: permissions.can_manage_services || false,
-            can_handle_requests: permissions.can_handle_requests || false,
-          } : null,
+          permissions: permissions ? coerceManagerPermissions(permissions) : null,
         };
       });
 
@@ -2567,24 +2545,6 @@ export interface AdminStaffMember {
   permissions: ManagerPermissions | null;
 }
 
-const STAFF_PERMISSION_KEYS: (keyof ManagerPermissions)[] = [
-  'can_view_customers',
-  'can_edit_customers',
-  'can_view_bookings',
-  'can_edit_bookings',
-  'can_approve_decline_bookings',
-  'can_manage_cleaners',
-  'can_view_properties',
-  'can_edit_properties',
-  'can_view_analytics',
-  'can_view_payments',
-  'can_manage_payments',
-  'can_view_messages',
-  'can_view_services',
-  'can_manage_services',
-  'can_handle_requests',
-];
-
 export function useAdminStaff() {
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? '';
@@ -2616,7 +2576,7 @@ export function useAdminStaff() {
         const { data: permData, error: permErr } = await supabase
           .from('manager_permissions')
           .select(
-            `manager_id, ${STAFF_PERMISSION_KEYS.join(', ')}`,
+            `manager_id, ${MANAGER_FLAG_SELECT}`,
           )
           .eq('organization_id', orgId)
           .in('manager_id', managerIds);
@@ -2630,13 +2590,7 @@ export function useAdminStaff() {
           const profile = profiles?.find((p) => p.id === m.user_id);
           const role = m.role as 'owner' | 'admin' | 'manager';
           const raw = role === 'manager' ? perms.find((x) => x.manager_id === m.user_id) : null;
-          let permissions: ManagerPermissions | null = null;
-          if (raw) {
-            permissions = STAFF_PERMISSION_KEYS.reduce((acc, k) => {
-              acc[k] = !!raw[k];
-              return acc;
-            }, {} as ManagerPermissions);
-          }
+          const permissions: ManagerPermissions | null = raw ? coerceManagerPermissions(raw) : null;
           return {
             id: m.user_id,
             first_name: profile?.first_name ?? null,

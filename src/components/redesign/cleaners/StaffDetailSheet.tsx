@@ -17,7 +17,7 @@ import type { ManagerPermissions } from "@/hooks/useAdminData";
 import { RoleBadge } from "./staff-presenters";
 import type { StaffDetailVM } from "./staff-types";
 
-// The 15 manager-permission flags, grouped + labeled. Mirrors the legacy
+// The 14 manager-permission flags, grouped + labeled. Mirrors the legacy
 // settings/team permission editor so the meaning stays identical; rendered here
 // with the redesign primitives inside the Staff Sheet.
 const PERMISSION_GROUPS: {
@@ -36,8 +36,7 @@ const PERMISSION_GROUPS: {
     permissions: [
       { key: "can_view_bookings", label: "View bookings", description: "See all appointments and bookings" },
       { key: "can_edit_bookings", label: "Edit bookings", description: "Create, update, and manage appointments" },
-      { key: "can_approve_decline_bookings", label: "Approve or decline", description: "Approve or decline pending requests" },
-      { key: "can_handle_requests", label: "Handle requests", description: "Assign cleaners and force-assign on escalation" },
+      { key: "can_handle_requests", label: "Handle requests", description: "Approve or decline pending requests and assign cleaners" },
     ],
   },
   {

@@ -14,7 +14,6 @@ const ALL_FALSE: ManagerPermissions = {
   can_edit_customers: false,
   can_view_bookings: false,
   can_edit_bookings: false,
-  can_approve_decline_bookings: false,
   can_manage_cleaners: false,
   can_view_properties: false,
   can_edit_properties: false,
@@ -43,7 +42,6 @@ const PERMISSION_GROUPS: {
     permissions: [
       { key: 'can_view_bookings', label: 'View Bookings', description: 'View all appointments and bookings' },
       { key: 'can_edit_bookings', label: 'Edit Bookings', description: 'Create, update, and manage appointments' },
-      { key: 'can_approve_decline_bookings', label: 'Approve/Decline Bookings', description: 'Approve or decline pending appointment requests' },
     ],
   },
   {
@@ -100,7 +98,7 @@ interface ManagerPermissionsFormProps {
 
 /**
  * Manager-permissions editor. Lives at /settings/team/[managerId] (replacement
- * for the legacy modal). Mirrors the modal's 15 toggles + Save behavior but
+ * for the legacy modal). Mirrors the modal's 14 toggles + Save behavior but
  * renders inline on the page rather than in an overlay.
  */
 export default function ManagerPermissionsForm({ manager, onSaved }: ManagerPermissionsFormProps) {

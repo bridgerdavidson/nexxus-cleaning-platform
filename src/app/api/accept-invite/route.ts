@@ -212,7 +212,6 @@ export async function POST(request: NextRequest) {
             can_edit_customers: true,
             can_view_bookings: true,
             can_edit_bookings: true,
-            can_approve_decline_bookings: true,
             can_manage_cleaners: true,
             can_view_properties: true,
             can_edit_properties: true,

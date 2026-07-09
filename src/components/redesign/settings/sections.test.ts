@@ -5,7 +5,7 @@ import { deriveSettingsSections, isVisibleSection, REDESIGN_SETTINGS_SECTIONS } 
 
 const NONE: ManagerPermissions = {
   can_view_customers: false, can_edit_customers: false, can_view_bookings: false,
-  can_edit_bookings: false, can_approve_decline_bookings: false, can_manage_cleaners: false,
+  can_edit_bookings: false, can_manage_cleaners: false,
   can_view_properties: false, can_edit_properties: false, can_view_analytics: false,
   can_view_payments: false, can_manage_payments: false, can_view_messages: false,
   can_view_services: false, can_manage_services: false, can_handle_requests: false,

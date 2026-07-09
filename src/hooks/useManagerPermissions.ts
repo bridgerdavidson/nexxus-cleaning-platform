@@ -5,25 +5,14 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
-import { ManagerPermissions } from './useAdminData';
+import {
+  MANAGER_FLAG_SELECT,
+  coerceManagerPermissions,
+  emptyManagerPermissions,
+  type ManagerPermissions,
+} from '../lib/permissions/managerFlags';
 
-const ALL_FALSE: ManagerPermissions = {
-  can_view_customers: false,
-  can_edit_customers: false,
-  can_view_bookings: false,
-  can_edit_bookings: false,
-  can_approve_decline_bookings: false,
-  can_manage_cleaners: false,
-  can_view_properties: false,
-  can_edit_properties: false,
-  can_view_analytics: false,
-  can_view_payments: false,
-  can_manage_payments: false,
-  can_view_messages: false,
-  can_view_services: false,
-  can_manage_services: false,
-  can_handle_requests: false,
-};
+const ALL_FALSE: ManagerPermissions = emptyManagerPermissions();
 
 export function useManagerPermissions() {
   const { user, currentOrganizationId } = useAuth();
@@ -37,7 +26,7 @@ export function useManagerPermissions() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('manager_permissions')
-        .select('can_view_customers, can_edit_customers, can_view_bookings, can_edit_bookings, can_approve_decline_bookings, can_manage_cleaners, can_view_properties, can_edit_properties, can_view_analytics, can_view_payments, can_manage_payments, can_view_messages, can_view_services, can_manage_services, can_handle_requests')
+        .select(MANAGER_FLAG_SELECT)
         .eq('manager_id', userId)
         .eq('organization_id', orgId)
         .single();
@@ -49,23 +38,9 @@ export function useManagerPermissions() {
         throw error;
       }
 
-      return {
-        can_view_customers: Boolean(data.can_view_customers),
-        can_edit_customers: Boolean(data.can_edit_customers),
-        can_view_bookings: Boolean(data.can_view_bookings),
-        can_edit_bookings: Boolean(data.can_edit_bookings),
-        can_approve_decline_bookings: Boolean(data.can_approve_decline_bookings),
-        can_manage_cleaners: Boolean(data.can_manage_cleaners),
-        can_view_properties: Boolean(data.can_view_properties),
-        can_edit_properties: Boolean(data.can_edit_properties),
-        can_view_analytics: Boolean(data.can_view_analytics),
-        can_view_payments: Boolean(data.can_view_payments),
-        can_manage_payments: Boolean(data.can_manage_payments),
-        can_view_messages: Boolean(data.can_view_messages),
-        can_view_services: Boolean(data.can_view_services),
-        can_manage_services: Boolean(data.can_manage_services),
-        can_handle_requests: Boolean(data.can_handle_requests),
-      } as ManagerPermissions;
+      // The dynamic (non-literal) select string above defeats postgrest-js's
+      // type-level column parser, so cast through `unknown` before reading fields.
+      return coerceManagerPermissions(data as unknown as Record<string, unknown>);
     },
   });
 
