@@ -7,18 +7,22 @@ import type { ManagerPermissionKey } from '@/lib/permissions/managerFlags';
 
 export function useRequireManagerFlag(flag: ManagerPermissionKey): 'checking' | 'allowed' {
   const router = useRouter();
-  const { currentOrgRole } = useAuth();
-  const { permissions, loading } = useManagerPermissions();
+  const { user, loading: authLoading, currentOrgRole, currentOrganizationId } = useAuth();
+  const { permissions } = useManagerPermissions();
+
   const privileged = currentOrgRole === 'owner' || currentOrgRole === 'admin';
-  const allowed = privileged || !!permissions?.[flag];
+  // Auth/org not yet resolved -> we do not know the role/org yet.
+  const authResolved = !authLoading && !!user && !!currentOrganizationId && currentOrgRole != null;
+  // For a manager, permissions are unknown until the query returns a non-null object.
+  const resolving = !authResolved || (!privileged && permissions == null);
 
   useEffect(() => {
-    if (privileged) return;
-    if (loading) return; // wait for the permission row
+    if (resolving) return;            // wait for auth + (managers) permissions
+    if (privileged) return;           // owner/admin bypass
     if (!permissions?.[flag]) router.replace('/app/admin-dashboard');
-  }, [privileged, loading, permissions, flag, router]);
+  }, [resolving, privileged, permissions, flag, router]);
 
+  if (resolving) return 'checking';
   if (privileged) return 'allowed';
-  if (loading) return 'checking';
-  return allowed ? 'allowed' : 'checking';
+  return permissions?.[flag] ? 'allowed' : 'checking';
 }
