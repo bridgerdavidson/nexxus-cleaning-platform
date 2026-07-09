@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { updateOrgPaymentSettings } from "../settings-api";
 import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
+import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
 type FeeType = "none" | "flat" | "percent";
@@ -55,10 +56,12 @@ export function CancellationSection() {
     });
   }, [currentOrganizationId]);
 
-  const { value, setValue, loading, saving, isDirty, onSave, onDiscard } =
+  const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
     useSettingsSection<PolicyForm>({ load, save, successMessage: "Cancellation policy updated" });
 
-  if (loading || !value) return <SectionSkeleton />;
+  if (loading) return <SectionSkeleton />;
+  if (loadError || !value)
+    return <ErrorState title="Couldn't load this section" onRetry={retry} />;
 
   return (
     <div>

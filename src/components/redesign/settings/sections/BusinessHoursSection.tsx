@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { updateOrgBusinessHours } from "../settings-api";
 import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
+import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
 type DayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
@@ -61,10 +62,12 @@ export function BusinessHoursSection() {
     await updateOrgBusinessHours(currentOrganizationId, { timezone: v.timezone, business_hours: v.hours });
   }, [currentOrganizationId]);
 
-  const { value, setValue, loading, saving, isDirty, onSave, onDiscard } =
+  const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
     useSettingsSection<HoursForm>({ load, save, successMessage: "Business hours updated" });
 
-  if (loading || !value) return <SectionSkeleton />;
+  if (loading) return <SectionSkeleton />;
+  if (loadError || !value)
+    return <ErrorState title="Couldn't load this section" onRetry={retry} />;
 
   const tzOptions = timezones.includes(value.timezone) ? timezones : [value.timezone, ...timezones];
   const setDay = (key: DayKey, patch: Partial<DayHours>) =>
