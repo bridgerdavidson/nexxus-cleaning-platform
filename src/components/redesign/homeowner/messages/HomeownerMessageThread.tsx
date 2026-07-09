@@ -42,6 +42,7 @@ export function HomeownerMessageThread({
   const { sendJobMessage, sending: sendingJob } = useSendJobMessage();
 
   const [draft, setDraft] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   // Job threads reference one appointment for every message; suppress inline booking cards.
   const messages = useMemo(
@@ -63,21 +64,24 @@ export function HomeownerMessageThread({
 
   const onSend = useCallback(async () => {
     const content = draft.trim();
-    if (!content) return;
     if (config.kind === 'office') {
+      if (!content && pendingFiles.length === 0) return;
       const res = await sendMessage({
         conversationId: activeConvId ?? undefined,
         senderId: userId,
         recipientId: config.recipient.id,
         content,
+        attachments: pendingFiles,
       });
       if (res.success) {
         setDraft('');
+        setPendingFiles([]);
         if (!activeConvId && res.conversationId) setActiveConvId(res.conversationId);
       } else {
         toast.error(isMessagingForbiddenError(res) ? MESSAGING_FORBIDDEN_TEXT : res.error || 'Could not send the message.');
       }
     } else {
+      if (!content) return;
       const res = await sendJobMessage({ appointmentId: config.appointment.id, content });
       if (res.success) {
         setDraft('');
@@ -86,7 +90,7 @@ export function HomeownerMessageThread({
         toast.error(res.error || 'Could not send the message.');
       }
     }
-  }, [draft, config, sendMessage, sendJobMessage, activeConvId, userId]);
+  }, [draft, pendingFiles, config, sendMessage, sendJobMessage, activeConvId, userId]);
 
   return (
     <MessageThreadTakeoverView
@@ -114,9 +118,9 @@ export function HomeownerMessageThread({
       composer={{
         draft,
         onDraftChange: setDraft,
-        pendingFiles: [],
-        onAddFiles: () => {},
-        onRemoveFile: () => {},
+        pendingFiles,
+        onAddFiles: (f) => setPendingFiles((p) => [...p, ...f].slice(0, 5)),
+        onRemoveFile: (i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i)),
         stagedBooking: null,
         attachableBookings: [],
         onStageBooking: () => {},

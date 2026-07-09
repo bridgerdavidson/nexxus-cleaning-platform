@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { updateOrgProfile } from "../settings-api";
 import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
+import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
 interface OrgForm { name: string; logoUrl: string; billingEmail: string }
@@ -37,10 +38,12 @@ export function OrganizationSection() {
     });
   }, [currentOrganizationId]);
 
-  const { value, setValue, loading, saving, isDirty, onSave, onDiscard } =
+  const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
     useSettingsSection<OrgForm>({ load, save, successMessage: "Organization updated" });
 
-  if (loading || !value) return <SectionSkeleton />;
+  if (loading) return <SectionSkeleton />;
+  if (loadError || !value)
+    return <ErrorState title="Couldn't load this section" onRetry={retry} />;
 
   return (
     <div>

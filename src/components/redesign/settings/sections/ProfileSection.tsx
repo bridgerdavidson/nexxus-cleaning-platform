@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { formatPhoneDisplay, normalizePhoneToDigits } from "@/lib/phone";
 import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
+import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
 interface ProfileForm { firstName: string; lastName: string; phone: string }
@@ -25,10 +26,12 @@ export function ProfileSection() {
     if (res.error) throw new Error(res.error);
   }, [updateProfile]);
 
-  const { value, setValue, loading, saving, isDirty, onSave, onDiscard } =
+  const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
     useSettingsSection<ProfileForm>({ load, save, successMessage: "Profile updated" });
 
-  if (loading || !value) return <SectionSkeleton />;
+  if (loading) return <SectionSkeleton />;
+  if (loadError || !value)
+    return <ErrorState title="Couldn't load this section" onRetry={retry} />;
 
   const avatarInitials =
     personInitials(value.firstName, value.lastName) ||
