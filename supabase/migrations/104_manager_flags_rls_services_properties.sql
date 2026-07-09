@@ -43,6 +43,27 @@ CREATE POLICY "properties_insert" ON public.properties
     OR EXISTS (SELECT 1 FROM public.organization_members om_viewer WHERE om_viewer.user_id = (select auth.uid()) AND om_viewer.role = ANY (ARRAY['owner'::public.org_role, 'admin'::public.org_role]) AND EXISTS (SELECT 1 FROM public.organization_members om_target WHERE om_target.user_id = properties.owner_id AND om_target.role = 'homeowner'::public.org_role AND om_target.organization_id = om_viewer.organization_id))
     OR EXISTS (SELECT 1 FROM public.organization_members om_viewer JOIN public.manager_permissions mp ON mp.manager_id = om_viewer.user_id AND mp.organization_id = om_viewer.organization_id WHERE om_viewer.user_id = (select auth.uid()) AND om_viewer.role = 'manager'::public.org_role AND mp.can_edit_properties = true AND EXISTS (SELECT 1 FROM public.organization_members om_target WHERE om_target.user_id = properties.owner_id AND om_target.role = 'homeowner'::public.org_role AND om_target.organization_id = om_viewer.organization_id))
     OR EXISTS (SELECT 1 FROM public.user_profiles up WHERE up.id = (select auth.uid()) AND up.role = 'admin'::public.user_role)
+    OR (
+      properties.owner_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM public.organization_members om_self
+        WHERE om_self.user_id = (select auth.uid())
+          AND om_self.organization_id = properties.organization_id
+          AND (om_self.role = 'owner'::public.org_role OR om_self.role = 'admin'::public.org_role)
+      )
+    )
+    OR (
+      properties.owner_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM public.organization_members om_self
+        JOIN public.manager_permissions mp_self
+          ON mp_self.manager_id = om_self.user_id AND mp_self.organization_id = om_self.organization_id
+        WHERE om_self.user_id = (select auth.uid())
+          AND om_self.organization_id = properties.organization_id
+          AND om_self.role = 'manager'::public.org_role
+          AND mp_self.can_edit_properties = true
+      )
+    )
   );
 CREATE POLICY "properties_update" ON public.properties
   FOR UPDATE TO authenticated
@@ -53,6 +74,27 @@ CREATE POLICY "properties_update" ON public.properties
     OR EXISTS (SELECT 1 FROM public.user_profiles up WHERE up.id = (select auth.uid()) AND up.role = 'admin'::public.user_role)
     OR EXISTS (SELECT 1 FROM public.organization_members om_owner JOIN public.organization_members om_actor ON om_actor.organization_id = om_owner.organization_id WHERE om_owner.user_id = properties.owner_id AND om_actor.user_id = (select auth.uid()) AND om_actor.role = ANY (ARRAY['owner'::public.org_role, 'admin'::public.org_role]))
     OR EXISTS (SELECT 1 FROM public.organization_members om_owner JOIN public.organization_members om_actor ON om_actor.organization_id = om_owner.organization_id JOIN public.manager_permissions mp ON mp.manager_id = om_actor.user_id AND mp.organization_id = om_actor.organization_id WHERE om_owner.user_id = properties.owner_id AND om_actor.user_id = (select auth.uid()) AND om_actor.role = 'manager'::public.org_role AND mp.can_edit_properties = true)
+    OR (
+      properties.owner_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM public.organization_members om_self
+        WHERE om_self.user_id = (select auth.uid())
+          AND om_self.organization_id = properties.organization_id
+          AND (om_self.role = 'owner'::public.org_role OR om_self.role = 'admin'::public.org_role)
+      )
+    )
+    OR (
+      properties.owner_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM public.organization_members om_self
+        JOIN public.manager_permissions mp_self
+          ON mp_self.manager_id = om_self.user_id AND mp_self.organization_id = om_self.organization_id
+        WHERE om_self.user_id = (select auth.uid())
+          AND om_self.organization_id = properties.organization_id
+          AND om_self.role = 'manager'::public.org_role
+          AND mp_self.can_edit_properties = true
+      )
+    )
   );
 CREATE POLICY "properties_delete" ON public.properties
   FOR DELETE TO authenticated
@@ -61,4 +103,25 @@ CREATE POLICY "properties_delete" ON public.properties
     OR EXISTS (SELECT 1 FROM public.organization_members om_viewer WHERE om_viewer.user_id = (select auth.uid()) AND om_viewer.role = ANY (ARRAY['owner'::public.org_role, 'admin'::public.org_role]) AND EXISTS (SELECT 1 FROM public.organization_members om_target WHERE om_target.user_id = properties.owner_id AND om_target.role = 'homeowner'::public.org_role AND om_target.organization_id = om_viewer.organization_id))
     OR EXISTS (SELECT 1 FROM public.organization_members om_viewer JOIN public.manager_permissions mp ON mp.manager_id = om_viewer.user_id AND mp.organization_id = om_viewer.organization_id WHERE om_viewer.user_id = (select auth.uid()) AND om_viewer.role = 'manager'::public.org_role AND mp.can_edit_properties = true AND EXISTS (SELECT 1 FROM public.organization_members om_target WHERE om_target.user_id = properties.owner_id AND om_target.role = 'homeowner'::public.org_role AND om_target.organization_id = om_viewer.organization_id))
     OR EXISTS (SELECT 1 FROM public.user_profiles up WHERE up.id = (select auth.uid()) AND up.role = 'admin'::public.user_role)
+    OR (
+      properties.owner_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM public.organization_members om_self
+        WHERE om_self.user_id = (select auth.uid())
+          AND om_self.organization_id = properties.organization_id
+          AND (om_self.role = 'owner'::public.org_role OR om_self.role = 'admin'::public.org_role)
+      )
+    )
+    OR (
+      properties.owner_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM public.organization_members om_self
+        JOIN public.manager_permissions mp_self
+          ON mp_self.manager_id = om_self.user_id AND mp_self.organization_id = om_self.organization_id
+        WHERE om_self.user_id = (select auth.uid())
+          AND om_self.organization_id = properties.organization_id
+          AND om_self.role = 'manager'::public.org_role
+          AND mp_self.can_edit_properties = true
+      )
+    )
   );
