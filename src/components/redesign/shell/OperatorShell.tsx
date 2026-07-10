@@ -11,6 +11,7 @@ import { OperatorMobileNav } from "./OperatorMobileNav";
 import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
+import { OperatorBookingDetailHost } from "@/components/redesign/bookings/OperatorBookingDetailHost";
 import { OPERATOR_NAV } from "./nav-items";
 import { useOperatorNav } from "./useOperatorNav";
 
@@ -62,6 +63,11 @@ export function OperatorShell({
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canCreateBooking = privileged || !!permissions?.can_edit_bookings;
   const onNewBooking = canCreateBooking ? openBooking : undefined;
+  // The booking-detail sheet is a global surface too: notifications, message
+  // chips, and the overview queue all open it in place via ?booking=<id>.
+  // Mirror the bookings route's gate (useRequireManagerFlag can_view_bookings)
+  // so a restricted manager can never open it anywhere.
+  const canViewBookings = privileged || !!permissions?.can_view_bookings;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -77,6 +83,11 @@ export function OperatorShell({
         {canCreateBooking ? (
           <Suspense fallback={null}>
             <OperatorBookingHost />
+          </Suspense>
+        ) : null}
+        {canViewBookings ? (
+          <Suspense fallback={null}>
+            <OperatorBookingDetailHost />
           </Suspense>
         ) : null}
       </div>

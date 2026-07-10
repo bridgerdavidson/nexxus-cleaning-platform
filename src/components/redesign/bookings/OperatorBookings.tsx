@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
@@ -9,20 +8,16 @@ import { useDetailParam } from "@/hooks/useDetailParam";
 import {
   useAdminAppointments,
   useAdminCleaners,
-  assignCleanerToAppointment,
   cancelAppointment,
   deleteAppointment,
-  updateAppointmentStatus,
-  acceptCounterProposal,
 } from "@/hooks/useAdminData";
 import { cancelAppointments, deleteAppointments } from "@/lib/bulkAppointments";
 import { describeBulkAppointmentResult } from "@/lib/bulkAppointmentMessages";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { OperatorBookingsView } from "./OperatorBookingsView";
-import { BookingDetailSheet } from "./BookingDetailSheet";
 import { useOpenOperatorBooking } from "./new-booking/useOpenOperatorBooking";
 import { deriveBookings, localISODate, segmentCounts } from "./deriveBookings";
-import { toDetailVM, toRowVM } from "./booking-vm";
+import { toRowVM } from "./booking-vm";
 import type {
   BookingRowAction,
   BookingRowVM,
@@ -36,22 +31,22 @@ type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
 /**
  * Hook-backed Operator Bookings. Consumes the existing headless admin hooks and
  * mutation helpers unchanged (so realtime + cache invalidation come for free),
- * derives the filtered/sorted list, and drives the presentational View, detail
- * Sheet, and confirm dialog. Reschedule and "new booking" fall back to the
- * legacy flow until those screens are redesigned.
+ * derives the filtered/sorted list, and drives the presentational View plus the
+ * row/bulk confirm dialog. The booking detail sheet itself lives in the
+ * shell-level OperatorBookingDetailHost, which owns the `?booking=<id>` param;
+ * opening a row just sets that param. Reschedule and "new booking" fall back to
+ * the legacy flow until those screens are redesigned.
  */
 export function OperatorBookings() {
-  const router = useRouter();
   const openBooking = useOpenOperatorBooking();
-  const { currentOrgRole, currentOrganizationId, accessToken } = useAuth();
+  const { currentOrgRole } = useAuth();
   const { appointments, loading, error, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
   const { permissions } = useManagerPermissions();
-  const { paramId: bookingParam, setParam: setBookingParam } = useDetailParam("booking");
+  const { setParam: setBookingParam } = useDetailParam("booking");
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
-  const canManagePayments = privileged || !!permissions?.can_manage_payments;
   const canEdit = privileged || !!permissions?.can_edit_bookings;
   const canHandleRequests = privileged || !!permissions?.can_handle_requests;
   const canDelete = privileged;
@@ -61,30 +56,14 @@ export function OperatorBookings() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [cleanerFilter, setCleanerFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [detailId, setDetailId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [busy, setBusy] = useState(false);
 
   const today = useMemo(() => localISODate(new Date()), []);
 
-  // --- detail open/close (URL-synced for deep links) ---
-  const openDetail = useCallback(
-    (id: string) => {
-      setDetailId(id);
-      setBookingParam(id);
-    },
-    [setBookingParam],
-  );
-  const closeDetail = useCallback(() => {
-    setDetailId(null);
-    setBookingParam(null);
-  }, [setBookingParam]);
-
-  // Keep the detail in sync with the `?booking=<id>` deep link: open it when the
-  // param is present and close it when the param is removed (e.g. browser Back).
-  useEffect(() => {
-    setDetailId(bookingParam);
-  }, [bookingParam]);
+  // Row click just sets ?booking=<id>; the shell-level OperatorBookingDetailHost
+  // owns the param and renders the sheet.
+  const openDetail = useCallback((id: string) => setBookingParam(id), [setBookingParam]);
 
   const avatarById = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -130,12 +109,6 @@ export function OperatorBookings() {
     });
   }, [rows]);
 
-  const detail = useMemo(() => {
-    if (!detailId) return null;
-    const a = appointments.find((x) => x.id === detailId);
-    return a ? toDetailVM(a, canViewPayments) : null;
-  }, [detailId, appointments, canViewPayments]);
-
   // --- selection ---
   const toggleRow = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -156,78 +129,6 @@ export function OperatorBookings() {
   }, [rows]);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  // --- single-row + detail actions ---
-  const runStatus = useCallback(
-    async (id: string, status: "in_progress" | "completed") => {
-      setBusy(true);
-      try {
-        const r = await updateAppointmentStatus(id, status);
-        await refetch();
-        if (r.success) {
-          toast.success(status === "completed" ? "Booking completed" : "Booking started",
-            r.paymentError ? { description: `Payment: ${r.paymentError}` } : undefined);
-        } else {
-          toast.error(r.error || "Could not update the booking");
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [refetch],
-  );
-
-  const handleAssign = useCallback(
-    async (id: string, cleanerId: string) => {
-      setBusy(true);
-      try {
-        const r = await assignCleanerToAppointment(id, cleanerId);
-        await refetch();
-        if (r.success) {
-          toast.success("Cleaner assigned");
-        } else {
-          toast.error(r.error || "Could not assign cleaner");
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [refetch],
-  );
-
-  const handleAcceptCounter = useCallback(
-    async (id: string, suggestedTimeId: string) => {
-      if (!currentOrganizationId) return;
-      setBusy(true);
-      try {
-        const r = await acceptCounterProposal({
-          appointmentId: id,
-          suggestedTimeId,
-          organizationId: currentOrganizationId,
-          accessToken,
-        });
-        await refetch();
-        if (r.success) {
-          toast.success("Proposed time accepted");
-          closeDetail();
-        } else {
-          toast.error(r.error || "Could not accept the time");
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [currentOrganizationId, accessToken, refetch, closeDetail],
-  );
-
-  // Interim: reschedule still lives on the legacy dashboard (no redesign flow yet).
-  // Carrying ?appointment= auto-opens the legacy side panel on the right booking.
-  const handleReschedule = useCallback(
-    (id: string) => {
-      router.push(`/admin-dashboard?tab=bookings&appointment=${id}`);
-    },
-    [router],
-  );
-
   // --- confirm dialog (single + bulk cancel/delete) ---
   const runConfirm = useCallback(async () => {
     if (!confirm) return;
@@ -237,12 +138,12 @@ export function OperatorBookings() {
       if (kind === "cancel") {
         const r = await cancelAppointment(ids[0]);
         await refetch();
-        if (r.success) { toast.success("Booking cancelled"); closeDetail(); }
+        if (r.success) { toast.success("Booking cancelled"); }
         else { toast.error(r.error || "Could not cancel"); }
       } else if (kind === "delete") {
         const r = await deleteAppointment(ids[0]);
         await refetch();
-        if (r.success) { toast.success("Booking deleted"); closeDetail(); }
+        if (r.success) { toast.success("Booking deleted"); }
         else { toast.error(r.error || "Could not delete"); }
       } else if (kind === "bulkCancel") {
         const result = await cancelAppointments(ids);
@@ -261,7 +162,7 @@ export function OperatorBookings() {
       setBusy(false);
       setConfirm(null);
     }
-  }, [confirm, refetch, clearSelection, closeDetail]);
+  }, [confirm, refetch, clearSelection]);
 
   const handleRowAction = useCallback((id: string, action: BookingRowAction) => {
     if (action === "open" || action === "assign") openDetail(id);
@@ -316,36 +217,6 @@ export function OperatorBookings() {
         onBulkCancel={() => setConfirm({ kind: "bulkCancel", ids: [...selectedIds] })}
         onBulkDelete={() => setConfirm({ kind: "bulkDelete", ids: [...selectedIds] })}
         onNewBooking={canEdit ? openBooking : undefined}
-      />
-
-      <BookingDetailSheet
-        open={!!detail}
-        onOpenChange={(o) => {
-          if (!o) closeDetail();
-        }}
-        detail={detail}
-        cleanerOptions={cleanerOptions}
-        canViewPayments={canViewPayments}
-        canManagePayments={canManagePayments}
-        canEdit={canEdit}
-        canHandleRequests={canHandleRequests}
-        canDelete={canDelete}
-        busy={busy}
-        onAssign={(cleanerId) => detail && handleAssign(detail.id, cleanerId)}
-        onAcceptCounter={(stid) => detail && handleAcceptCounter(detail.id, stid)}
-        onStart={() => detail && runStatus(detail.id, "in_progress")}
-        onComplete={() => detail && runStatus(detail.id, "completed")}
-        onReschedule={() => detail && handleReschedule(detail.id)}
-        onCancel={() => detail && setConfirm({ kind: "cancel", ids: [detail.id] })}
-        onDelete={() => detail && setConfirm({ kind: "delete", ids: [detail.id] })}
-        onMessageCustomer={() => {
-          if (detail?.customerId)
-            router.push(`/app/admin-dashboard/messages?to=${detail.customerId}&appointment=${detail.id}`);
-        }}
-        onMessageCleaner={() => {
-          if (detail?.cleanerId)
-            router.push(`/app/admin-dashboard/messages?to=${detail.cleanerId}&appointment=${detail.id}`);
-        }}
       />
 
       <ConfirmDialog
