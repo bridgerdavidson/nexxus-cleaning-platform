@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   CalendarCog,
   CalendarX2,
+  Pencil,
   Trash2,
   Sparkles,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import { JobMessagesPanel } from "./JobMessagesPanel";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
+import type { RescheduleInit } from "./reschedule/RescheduleDialog";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -52,7 +54,8 @@ export type BookingDetailSheetProps = {
   onAcceptCounter: (suggestedTimeId: string) => void;
   onStart: () => void;
   onComplete: () => void;
-  onReschedule: () => void;
+  onOpenReschedule: (init?: RescheduleInit) => void;
+  onEditDetails: () => void;
   onCancel: () => void;
   onDelete: () => void;
   onMessageCustomer: () => void;
@@ -74,7 +77,8 @@ export function BookingDetailSheet({
   onAcceptCounter,
   onStart,
   onComplete,
-  onReschedule,
+  onOpenReschedule,
+  onEditDetails,
   onCancel,
   onDelete,
   onMessageCustomer,
@@ -88,6 +92,9 @@ export function BookingDetailSheet({
   const canStart = detail ? detail.status === "confirmed" && !!detail.cleanerId && canEdit : false;
   const canComplete = detail ? detail.status === "in_progress" && canManagePayments && canEdit : false;
   const cancellable = detail ? detail.status !== "cancelled" && detail.status !== "completed" && canEdit : false;
+  // Pending/confirmed only (tighter than Cancel's gate): in-progress, completed,
+  // and cancelled bookings are read-only for Reschedule and Edit details.
+  const editable = detail ? (detail.status === "pending" || detail.status === "confirmed") && canEdit : false;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -199,23 +206,46 @@ export function BookingDetailSheet({
                     <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
                       <Sparkles className="size-3.5" /> Cleaner proposed times
                     </div>
-                    {detail.counterProposals.map((cp) => (
-                      <div
-                        key={cp.id}
-                        className="flex items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2"
-                      >
-                        <span className="text-sm text-foreground">{cp.label}</span>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => onAcceptCounter(cp.id)}
-                          loading={busy}
-                          disabled={!canHandleRequests}
+                    {detail.counterProposals.map((cp) =>
+                      editable ? (
+                        <button
+                          key={cp.id}
+                          type="button"
+                          onClick={() => onOpenReschedule({ date: cp.date, time: cp.time })}
+                          className="flex w-full items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          Accept
-                        </Button>
-                      </div>
-                    ))}
+                          <span className="text-sm text-foreground">{cp.label}</span>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAcceptCounter(cp.id);
+                            }}
+                            loading={busy}
+                            disabled={!canHandleRequests}
+                          >
+                            Accept
+                          </Button>
+                        </button>
+                      ) : (
+                        <div
+                          key={cp.id}
+                          className="flex items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2"
+                        >
+                          <span className="text-sm text-foreground">{cp.label}</span>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => onAcceptCounter(cp.id)}
+                            loading={busy}
+                            disabled={!canHandleRequests}
+                          >
+                            Accept
+                          </Button>
+                        </div>
+                      ),
+                    )}
                   </div>
                 </>
               ) : null}
@@ -230,14 +260,20 @@ export function BookingDetailSheet({
                     {detail.counterWindows.map((w) => (
                       <div
                         key={w.id}
-                        className="rounded-control border border-border bg-muted/30 px-3 py-2 text-sm text-foreground"
+                        className="flex items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2"
                       >
-                        {w.label}
+                        <span className="text-sm text-foreground">{w.label}</span>
+                        {editable ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => onOpenReschedule({ windowId: w.id })}
+                          >
+                            Pick a time
+                          </Button>
+                        ) : null}
                       </div>
                     ))}
-                    <p className="text-xs text-muted-foreground">
-                      Use Reschedule to pick a time inside one of these windows.
-                    </p>
                   </div>
                 </>
               ) : null}
@@ -263,9 +299,14 @@ export function BookingDetailSheet({
                     <CheckCircle2 /> Mark complete
                   </Button>
                 ) : null}
-                {cancellable ? (
-                  <Button variant="outline" onClick={onReschedule}>
+                {editable ? (
+                  <Button variant="outline" onClick={() => onOpenReschedule()}>
                     <CalendarCog /> Reschedule
+                  </Button>
+                ) : null}
+                {editable ? (
+                  <Button variant="outline" onClick={onEditDetails}>
+                    <Pencil /> Edit details
                   </Button>
                 ) : null}
                 {cancellable ? (

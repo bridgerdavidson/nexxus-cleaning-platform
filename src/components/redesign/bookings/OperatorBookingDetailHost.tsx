@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
@@ -9,15 +9,17 @@ import { useDetailParam } from "@/hooks/useDetailParam";
 import {
   useAdminAppointments,
   useAdminCleaners,
-  assignCleanerToAppointment,
   cancelAppointment,
   deleteAppointment,
   updateAppointmentStatus,
   acceptCounterProposal,
 } from "@/hooks/useAdminData";
+import { normalizeTimeHHMM } from "@/lib/appointments/rescheduleOutcome";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BookingDetailSheet } from "./BookingDetailSheet";
 import { toDetailVM } from "./booking-vm";
+import { RescheduleDialog, type RescheduleInit } from "./reschedule/RescheduleDialog";
+import { useRescheduleBooking } from "./reschedule/useRescheduleBooking";
 
 /**
  * Shell-level `?booking=<id>` host: opens the booking detail sheet in place on
@@ -70,11 +72,20 @@ function HostInner({
 
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reschedInit, setReschedInit] = useState<RescheduleInit | null>(null);
 
-  const detail = useMemo(() => {
-    const a = appointments.find((x) => x.id === appointmentId);
-    return a ? toDetailVM(a, canViewPayments) : null;
-  }, [appointments, appointmentId, canViewPayments]);
+  const raw = useMemo(() => appointments.find((x) => x.id === appointmentId) ?? null, [appointments, appointmentId]);
+  const detail = useMemo(() => (raw ? toDetailVM(raw, canViewPayments) : null), [raw, canViewPayments]);
+
+  // The dialog's own open state derives from reschedInit (init !== null), so
+  // reset it whenever the sheet's open prop goes false: otherwise browser
+  // back / navigation clearing ?booking= would leave the dialog orphaned
+  // over an unrelated page while HostInner stays mounted.
+  useEffect(() => {
+    if (!open) setReschedInit(null);
+  }, [open]);
+
+  const { reschedule: rescheduleForAssign } = useRescheduleBooking(appointmentId);
 
   const cleanerOptions = useMemo(
     () =>
@@ -106,17 +117,31 @@ function HostInner({
 
   const handleAssign = useCallback(
     async (cleanerId: string) => {
+      if (!raw) return;
       setBusy(true);
       try {
-        const r = await assignCleanerToAppointment(appointmentId, cleanerId);
+        await rescheduleForAssign({
+          scheduledDate: raw.scheduled_date,
+          scheduledTime: normalizeTimeHHMM(raw.scheduled_time)!,
+          cleanerId,
+        });
         await refetch();
-        if (r.success) toast.success("Cleaner assigned");
-        else toast.error(r.error || "Could not assign cleaner");
+        toast.success("Cleaner assigned");
+      } catch (e) {
+        await refetch();
+        const err = e as Error & { conflict?: boolean; stale?: boolean };
+        if (err.conflict) {
+          toast.error("That cleaner has a conflicting job at that time. Use Reschedule to override.");
+        } else if (err.stale) {
+          toast.error("This booking changed. Refresh and try again.");
+        } else {
+          toast.error(err.message || "Could not assign cleaner");
+        }
       } finally {
         setBusy(false);
       }
     },
-    [appointmentId, refetch],
+    [raw, rescheduleForAssign, refetch],
   );
 
   const handleAcceptCounter = useCallback(
@@ -135,7 +160,13 @@ function HostInner({
           toast.success("Proposed time accepted");
           onClose();
         } else {
-          toast.error(r.error || "Could not accept the time");
+          // A concurrent reschedule can delete the feedback row behind a stale
+          // bell/action-center Accept button: the route then 404s ("Suggested
+          // time not found") or 409s ("...not awaiting counter-proposal
+          // acceptance"). Map both to the friendly stale-state toast instead
+          // of the raw server message.
+          const stale = !!r.error && (r.error.includes("Suggested time") || r.error.includes("not awaiting"));
+          toast.error(stale ? "This booking changed. Refresh and try again." : r.error || "Could not accept the time");
         }
       } finally {
         setBusy(false);
@@ -143,12 +174,6 @@ function HostInner({
     },
     [appointmentId, currentOrganizationId, accessToken, refetch, onClose],
   );
-
-  // Interim: reschedule still lives on the legacy dashboard (no redesign flow yet).
-  // Carrying ?appointment= auto-opens the legacy side panel on the right booking.
-  const handleReschedule = useCallback(() => {
-    router.push(`/admin-dashboard?tab=bookings&appointment=${appointmentId}`);
-  }, [router, appointmentId]);
 
   const runConfirm = useCallback(async () => {
     if (!confirm) return;
@@ -195,7 +220,10 @@ function HostInner({
         onAcceptCounter={handleAcceptCounter}
         onStart={() => runStatus("in_progress")}
         onComplete={() => runStatus("completed")}
-        onReschedule={handleReschedule}
+        onOpenReschedule={(init) => setReschedInit(init ?? {})}
+        // Edit details is a Task 12 surface (body-swap form in the sheet); the
+        // button renders now but is inert until that task wires real state.
+        onEditDetails={() => {}}
         onCancel={() => setConfirm("cancel")}
         onDelete={() => setConfirm("delete")}
         onMessageCustomer={() => {
@@ -207,6 +235,22 @@ function HostInner({
             router.push(`/app/admin-dashboard/messages?to=${detail.cleanerId}&appointment=${detail.id}`);
         }}
       />
+      {raw ? (
+        <RescheduleDialog
+          appointment={raw}
+          appointments={appointments}
+          cleaners={cleanerOptions}
+          canHandleRequests={canHandleRequests}
+          init={reschedInit}
+          onOpenChange={(o) => {
+            if (!o) setReschedInit(null);
+          }}
+          onDone={() => {
+            setReschedInit(null);
+            void refetch();
+          }}
+        />
+      ) : null}
       <ConfirmDialog
         open={!!confirm}
         onOpenChange={(o) => {

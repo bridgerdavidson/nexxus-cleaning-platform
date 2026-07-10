@@ -192,7 +192,8 @@ export default function BookingsPreviewPage() {
         onAcceptCounter={() => {}}
         onStart={() => {}}
         onComplete={() => {}}
-        onReschedule={() => {}}
+        onOpenReschedule={() => {}}
+        onEditDetails={() => {}}
         onCancel={() => {}}
         onDelete={() => {}}
         onMessageCustomer={() => {}}
