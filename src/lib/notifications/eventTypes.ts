@@ -14,7 +14,7 @@ export type NotificationEventType =
   | 'cleaner_assigned'              // recipient: cleaner
   | 'cleaner_force_assigned'        // recipient: cleaner (no confirmation needed)
   | 'cleaner_counter_accepted'      // recipient: cleaner (admin accepted their proposed time)
-  | 'appointment_rescheduled'       // recipient: cleaner (moved to a new time; must re-confirm)
+  | 'appointment_rescheduled'       // recipient: cleaner (moved to a new time; payload.requires_confirmation: re-confirm ask vs FYI)
   | 'cleaner_accepted'              // recipient: homeowner + admins
   | 'cleaner_declined'              // recipient: admins
   | 'cleaner_counter_proposed'      // recipient: admins (one-click accept available)
@@ -33,6 +33,7 @@ export type NotificationEventType =
   | 'refund_failed'                 // recipient: admins (a refund failed/canceled at Stripe; payer not refunded)
   | 'clawback_blocked'              // recipient: admins (payout already bank_paid; recovery needs an ops decision)
   | 'job_message'                   // recipient: counterparty (homeowner or cleaner) on a job thread
+  | 'appointment_time_changed'      // recipient: homeowner (operator moved the time and it is settled)
   | 'member_joined';                // recipient: admins + managers (someone accepted an invite and joined the org)
 
 /** Which audience a row is worded for (the row itself doesn't store the role). */
