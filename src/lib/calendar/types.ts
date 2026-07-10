@@ -50,6 +50,8 @@ export interface CalendarEvent {
   paymentStatus?: PillPaymentStatus;
   seriesId?: string | null;
   totalPrice?: number;
+  /** ISO deadline the asked cleaner must respond by; drives the Overdue badge. Null once answered. */
+  responseDeadline?: string | null;
 }
 
 export type LaidOutEvent = CalendarEvent & LaidOut;
