@@ -218,6 +218,10 @@ export function BookingDetailSheet({
                           tabIndex={0}
                           onClick={() => onOpenReschedule({ date: cp.date, time: cp.time })}
                           onKeyDown={(e) => {
+                            // Only act on keys pressed on the row itself: keydown
+                            // from the inner Accept button bubbles here, and
+                            // preventDefault would cancel its native click.
+                            if (e.target !== e.currentTarget) return;
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
                               onOpenReschedule({ date: cp.date, time: cp.time });
