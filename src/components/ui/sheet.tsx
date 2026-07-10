@@ -5,6 +5,7 @@ import * as React from 'react'
 import * as SheetPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { guardStackedDismiss } from './overlay-dismiss'
 
 const Sheet = SheetPrimitive.Root
 const SheetTrigger = SheetPrimitive.Trigger
@@ -55,11 +56,12 @@ export interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, ...props }, ref) => (
+>(({ side = 'right', className, children, onPointerDownOutside, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
+      onPointerDownOutside={guardStackedDismiss(onPointerDownOutside)}
       className={cn(
         'redesign-overlay',
         'fixed z-50 flex flex-col',
