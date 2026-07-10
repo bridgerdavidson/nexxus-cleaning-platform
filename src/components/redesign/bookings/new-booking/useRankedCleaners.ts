@@ -21,13 +21,14 @@ export interface RankCandidate {
 export function useRankedCleaners<C extends CleanerLike>(
   cleaners: C[],
   candidate: RankCandidate | null,
+  excludeAppointmentId?: string | null,
 ): CleanerAvailability<C>[] {
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? null;
   const date = candidate?.date ?? null;
 
   const { data: schedulesByCleaner } = useQuery({
-    queryKey: ['operator-booking', 'cleaner-schedules', orgId ?? 'none', date ?? 'none'],
+    queryKey: ['operator-booking', 'cleaner-schedules', orgId ?? 'none', date ?? 'none', excludeAppointmentId ?? 'none'],
     enabled: !!orgId && !!date,
     queryFn: async (): Promise<Record<string, ScheduleAppointment[]>> => {
       const { data, error } = await supabase
@@ -39,7 +40,7 @@ export function useRankedCleaners<C extends CleanerLike>(
       if (error) throw error;
       const grouped: Record<string, ScheduleAppointment[]> = {};
       for (const row of (data ?? []) as Array<ScheduleAppointment & { cleaner_id: string | null }>) {
-        if (!row.cleaner_id) continue;
+        if (!row.cleaner_id || row.id === excludeAppointmentId) continue;
         (grouped[row.cleaner_id] ??= []).push(row);
       }
       return grouped;

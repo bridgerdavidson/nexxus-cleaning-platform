@@ -72,7 +72,10 @@ export type CleanerOption = { id: string; name: string };
 export type BookingRowAction = "open" | "assign" | "cancel" | "delete";
 
 /** A cleaner-suggested alternate time for a counter-proposed booking. */
-export type CounterProposal = { id: string; label: string };
+export type CounterProposal = { id: string; label: string; date?: string; time?: string };
+
+/** A cleaner-suggested availability window for a counter-proposed booking. */
+export type CounterWindow = { id: string; label: string; date?: string; startTime?: string; endTime?: string };
 
 /** Full detail surface (slide-over Sheet). */
 export type BookingDetailVM = {
@@ -99,6 +102,6 @@ export type BookingDetailVM = {
   /** Cleaner-suggested exact times that can be accepted in-place. */
   counterProposals: CounterProposal[];
   /** Cleaner-suggested availability windows (resolve via Reschedule, not Accept). */
-  counterWindows: CounterProposal[];
+  counterWindows: CounterWindow[];
   declinedReason: string | null;
 };
