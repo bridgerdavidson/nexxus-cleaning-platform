@@ -94,6 +94,7 @@ export interface AdminAppointment {
    */
   cleaner_availability_feedback?: Array<{
     id: string;
+    cleaner_id: string;
     reason: string | null;
     cleaner_suggested_times?: Array<{
       id: string;
@@ -249,6 +250,7 @@ export function useAdminAppointments() {
           ),
           cleaner_availability_feedback (
             id,
+            cleaner_id,
             reason,
             cleaner_suggested_times ( id, suggested_date, suggested_time ),
             cleaner_suggested_windows ( id, window_date, start_time, end_time )

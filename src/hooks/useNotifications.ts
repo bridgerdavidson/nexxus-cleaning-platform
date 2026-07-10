@@ -9,6 +9,7 @@ import { toast } from '../components/ui/toast';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { describeNotification, toastVariantForTone } from '../lib/notifications/labels';
+import { STALE_BOOKING_MESSAGE, isStaleAcceptError } from '../lib/appointments/staleBookingError';
 
 export interface NotificationItem {
   id: string;
@@ -180,7 +181,7 @@ export function useNotifications() {
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(isStaleAcceptError(err.message) ? STALE_BOOKING_MESSAGE : err.message);
     },
   });
 

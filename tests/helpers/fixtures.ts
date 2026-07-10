@@ -62,6 +62,8 @@ export interface WithTestOrgOptions {
   payoutPercent?: number;
   stripeConnectOnboardingComplete?: boolean;
   stripeConnectAccountId?: string;
+  /** organizations.default_payout_model (default 'percentage_contractor'). */
+  defaultPayoutModel?: 'percentage_contractor' | 'hourly_external';
 }
 
 /**
@@ -78,7 +80,10 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
 
   const { data: org, error: orgError } = await admin
     .from('organizations')
-    .insert({ name: orgName })
+    .insert({
+      name: orgName,
+      ...(opts.defaultPayoutModel ? { default_payout_model: opts.defaultPayoutModel } : {}),
+    })
     .select('id')
     .single();
   if (orgError || !org) {
@@ -336,7 +341,7 @@ export async function withPlatformAdmin(): Promise<PlatformAdminFixture> {
  */
 export async function createTestAppointment(args: {
   organizationId: string;
-  cleanerId: string;
+  cleanerId: string | null;
   homeownerId: string;
   totalPrice?: number;
   status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';

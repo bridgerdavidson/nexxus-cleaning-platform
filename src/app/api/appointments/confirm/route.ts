@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org AND this cleaner.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state, payment_method_id, is_self_pay')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, service_type_id, status, homeowner_initiated, flow_type, request_state, payment_method_id, is_self_pay, updated_at')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -118,6 +118,18 @@ export async function POST(request: NextRequest) {
         scheduled_date: string;
         scheduled_time: string;
       }>;
+      // The redesign shell always sends slotIndex; for a booking with no slot
+      // rows offeredSlots() synthesizes a single slot_index 0, so 0 (or no
+      // slotIndex) with zero rows means "accept the appointment row as-is".
+      // Anything else points at an offered slot that no longer exists (e.g. an
+      // operator reschedule deleted the rows) — reject instead of silently
+      // confirming the cleaner onto a time they never saw.
+      if (slots.length === 0 && body.slotIndex !== undefined && body.slotIndex !== 0) {
+        return NextResponse.json(
+          { success: false, stale: true, error: 'This job changed while you were responding. Refresh and try again.' },
+          { status: 409 },
+        );
+      }
       if (slots.length > 1) {
         if (body.slotIndex === undefined) {
           return NextResponse.json(
@@ -128,8 +140,8 @@ export async function POST(request: NextRequest) {
         const chosen = slots.find((s) => s.slot_index === body.slotIndex);
         if (!chosen) {
           return NextResponse.json(
-            { success: false, error: 'slotIndex does not match an offered slot' },
-            { status: 400 },
+            { success: false, stale: true, error: 'This job changed while you were responding. Refresh and try again.' },
+            { status: 409 },
           );
         }
         acceptedDate = chosen.scheduled_date;
@@ -160,16 +172,28 @@ export async function POST(request: NextRequest) {
         baseUpdate.request_state = 'completed';
       }
 
-      const { error: updateError } = await supabaseAdmin
+      // Conditional on the updated_at read above so a stale accept can't clobber
+      // an operator reschedule that landed on this appointment in the meantime
+      // (the reschedule route always bumps updated_at). Zero rows updated means
+      // someone else changed the row first.
+      const { data: updatedRows, error: updateError } = await supabaseAdmin
         .from('appointments')
         .update(baseUpdate)
-        .eq('id', appointmentId);
+        .eq('id', appointmentId)
+        .eq('updated_at', appointment.updated_at as string)
+        .select('id');
 
       if (updateError) {
         console.error('Error confirming appointment:', updateError);
         return NextResponse.json(
           { success: false, error: 'Failed to confirm appointment' },
           { status: 500 }
+        );
+      }
+      if (!updatedRows || updatedRows.length === 0) {
+        return NextResponse.json(
+          { success: false, stale: true, error: 'This job changed while you were responding. Refresh and try again.' },
+          { status: 409 },
         );
       }
 
@@ -301,16 +325,27 @@ export async function POST(request: NextRequest) {
       rejectPayload.cleaner_confirmation_status = 'rejected';
     }
 
-    const { error: rejectError } = await supabaseAdmin
+    // Same updated_at guard as the accept branch: without it a stale
+    // counter-propose/decline could land after (and flip back) an operator
+    // reschedule or an already-processed auto-approve on this appointment.
+    const { data: rejectedRows, error: rejectError } = await supabaseAdmin
       .from('appointments')
       .update(rejectPayload)
-      .eq('id', appointmentId);
+      .eq('id', appointmentId)
+      .eq('updated_at', appointment.updated_at as string)
+      .select('id');
 
     if (rejectError) {
       console.error('Error rejecting appointment:', rejectError);
       return NextResponse.json(
         { success: false, error: 'Failed to update appointment status' },
         { status: 500 }
+      );
+    }
+    if (!rejectedRows || rejectedRows.length === 0) {
+      return NextResponse.json(
+        { success: false, stale: true, error: 'This job changed while you were responding. Refresh and try again.' },
+        { status: 409 },
       );
     }
 

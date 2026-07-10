@@ -6,13 +6,14 @@ import type {
   BookingRowVM,
   BookingStatusKey,
   CounterProposal,
+  CounterWindow,
 } from "./bookings-types";
 
 // --- formatting helpers (AdminAppointment -> view-model) ---
 // Moved verbatim from OperatorBookings.tsx so the shell-level booking-detail
 // host and the bookings screen share one VM builder.
 
-function fmtTime(t: string | undefined): string {
+export function fmtTime(t: string | undefined): string {
   const [hh, mm] = (t ?? "").split(":");
   let h = parseInt(hh ?? "0", 10);
   if (Number.isNaN(h)) return t ?? "";
@@ -22,7 +23,7 @@ function fmtTime(t: string | undefined): string {
   if (h === 0) h = 12;
   return `${h}:${m}${ap}`;
 }
-function monthDay(s: string): string {
+export function monthDay(s: string): string {
   const d = new Date(`${s}T00:00:00`);
   if (Number.isNaN(d.getTime())) return s;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -91,19 +92,27 @@ function counterProposals(a: AdminAppointment): CounterProposal[] {
   const out: CounterProposal[] = [];
   for (const f of a.cleaner_availability_feedback ?? []) {
     for (const t of f.cleaner_suggested_times ?? []) {
-      out.push({ id: t.id, label: `${monthDay(t.suggested_date)} at ${fmtTime(t.suggested_time)}` });
+      out.push({
+        id: t.id,
+        label: `${monthDay(t.suggested_date)} at ${fmtTime(t.suggested_time)}`,
+        date: t.suggested_date,
+        time: t.suggested_time,
+      });
     }
   }
   return out;
 }
 
-function counterWindows(a: AdminAppointment): CounterProposal[] {
-  const out: CounterProposal[] = [];
+function counterWindows(a: AdminAppointment): CounterWindow[] {
+  const out: CounterWindow[] = [];
   for (const f of a.cleaner_availability_feedback ?? []) {
     for (const w of f.cleaner_suggested_windows ?? []) {
       out.push({
         id: w.id,
         label: `${monthDay(w.window_date)}, ${fmtTime(w.start_time)} to ${fmtTime(w.end_time)}`,
+        date: w.window_date,
+        startTime: w.start_time,
+        endTime: w.end_time,
       });
     }
   }

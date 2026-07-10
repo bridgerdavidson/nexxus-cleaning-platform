@@ -250,6 +250,25 @@ describe('POST /api/appointments/accept-counter-proposal', () => {
     expect(status).toBe(409);
   });
 
+  it('notifies the homeowner that the time is settled', async () => {
+    const { org, appointmentId, suggestedTimeId } = seeded;
+    await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: {
+        appointmentId,
+        organizationId: org.organizationId,
+        suggestedTimeId,
+      },
+    });
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('notification_events')
+      .select('event_type, recipient_user_id')
+      .eq('appointment_id', appointmentId);
+    expect((data ?? []).some((e) => e.event_type === 'appointment_time_changed' && e.recipient_user_id === org.homeowner.userId)).toBe(true);
+  });
+
   // Manager permission gating (Task 5): this route requires can_handle_requests for a manager.
   describe('manager permission gating', () => {
     let mgr: ManagerMemberHandle;

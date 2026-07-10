@@ -273,6 +273,41 @@ describe('POST /api/appointments/confirm', () => {
     expect(status).toBe(400);
   });
 
+  it('409s an accept whose slotIndex no longer matches any offered slot', async () => {
+    // appointmentInOrg1 has zero appointment_requested_slots rows (admin-direct,
+    // single scheduled time). Models an operator reschedule that deleted the
+    // slot rows mid-flight while the cleaner's stale accept was in transit.
+    const { status, body } = await callRoute<{ stale: boolean }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: {
+        appointmentId: appointmentInOrg1.id,
+        action: 'accept',
+        organizationId: org.organizationId,
+        slotIndex: 2,
+      },
+    });
+    expect(status).toBe(409);
+    expect(body).toMatchObject({ stale: true });
+  });
+
+  it('still accepts a synthesized single-slot offer with slotIndex 0 and no slot rows', async () => {
+    // The redesign cleaner client always sends slotIndex; for a booking with
+    // zero appointment_requested_slots rows it synthesizes index 0. That must
+    // still accept using the appointment's own scheduled date/time.
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.cleaner.accessToken),
+      body: {
+        appointmentId: appointmentInOrg1.id,
+        action: 'accept',
+        organizationId: org.organizationId,
+        slotIndex: 0,
+      },
+    });
+    expect(status).toBe(200);
+  });
+
   describe('homeowner-initiated requests', () => {
     it('accept with slotIndex copies the chosen slot into the appointment row', async () => {
       const appointmentId = await createHomeownerRequestAndAssign(org, [

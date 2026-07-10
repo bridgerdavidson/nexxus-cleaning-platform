@@ -158,11 +158,22 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: CheckCircle,
       };
 
-    case 'appointment_rescheduled':
+    case 'appointment_rescheduled': {
+      // Historical rows have no flag; treat missing as the old re-confirm meaning.
+      const requiresConfirmation = payload?.['requires_confirmation'] !== false;
       return {
         title: 'A job was rescheduled',
-        detail: joinDetail(when, property),
-        tone: 'warning',
+        detail: requiresConfirmation ? joinDetail(when, 'Please re-confirm') : joinDetail(when, property),
+        tone: requiresConfirmation ? 'warning' : 'info',
+        icon: CalendarClock,
+      };
+    }
+
+    case 'appointment_time_changed':
+      return {
+        title: when ? `Your cleaning moved to ${when}` : 'Your cleaning was moved',
+        detail: property,
+        tone: 'info',
         icon: CalendarClock,
       };
 
@@ -380,6 +391,7 @@ const KNOWN_TYPES = new Set<string>([
   'refund_failed',
   'clawback_blocked',
   'job_message',
+  'appointment_time_changed',
   'member_joined',
 ]);
 

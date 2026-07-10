@@ -27,7 +27,7 @@ These all "work" today because the legacy dashboard still exists, but every one 
 
 | Where | Control | Degradation |
 |---|---|---|
-| `src/components/redesign/bookings/OperatorBookings.tsx:382-384` (JSX `BookingDetailSheet.tsx:267`) | **Reschedule** | ⏳ Interim shipped (PR #135): now carries `?appointment=<id>` so the legacy panel opens on the right booking (handler lives in `OperatorBookingDetailHost` since the host landed). Still ESCAPES to legacy until the redesign reschedule flow exists (gap R2). |
+| `src/components/redesign/bookings/OperatorBookings.tsx:382-384` (JSX `BookingDetailSheet.tsx:267`) | **Reschedule** | ✅ Fixed (R2/R3 build, 2026-07-10): opens the native `RescheduleDialog` stacked over the sheet; the legacy `/admin-dashboard?tab=bookings&appointment=` escape is deleted from `OperatorBookingDetailHost`. |
 | `src/components/redesign/messages/OperatorMessages.tsx:275` (JSX `ContextPanel.tsx:73`) | **New booking** (conversation About panel) | ✅ Fixed (PR #135): opens the in-shell `?newbooking=1` sheet, set in place so the thread's `?c=` survives. |
 | `src/components/redesign/notifications/deriveNotifications.ts:84` | **All appointment-scoped notification clicks** incl. the "Assign cleaner" chip | ✅ Fixed: hrefs repointed into the redesign shell (PR #135); booking-targeted rows now open the detail sheet in place via the shell host (`NotificationItemVM.bookingId` + bell `onOpenBooking`). |
 | `src/components/redesign/payments/usePaymentsTriage.ts:282` | **Fix card** (failed-charge triage) | Opens the legacy side panel because the redesign has no per-booking payment-method UI (gap R6). |
@@ -43,8 +43,8 @@ Deduped across the admin + manager analyses (managers share the operator console
 | # | Gap | Status | Notes |
 |---|---|---|---|
 | R1 | **Calendar / scheduling cockpit** (month/week/day/agenda, per-cleaner dispatch lanes, drag-to-reschedule w/ conflict detection, slot-click-to-create) | missing | Zero calendar components under `src/components/redesign/**`. The single biggest missing surface. |
-| R2 | **Reschedule flow** (new date/time + conflict detection + cleaner swap + fresh response deadline + `notifyReschedule` + adopt counter-windows) | missing | The redesign button punts to legacy (§2). After cutover there is no reschedule at all. |
-| R3 | **Edit booking after creation** (date/time, service+checklist swap w/ reprice, price override, special requests, notes) | missing | `BookingDetailSheet` is read-only apart from assign/status/cancel; the redesign booking sheet is create-only. |
+| R2 | **Reschedule flow** (new date/time + conflict detection + cleaner swap + fresh response deadline + `notifyReschedule` + adopt counter-windows) | ✅ done | R2/R3 build (2026-07-10): native `RescheduleDialog` (suggestion chips + window time pills, conflict warn with force override, outcome preview from the shared `rescheduleOutcome` module, tiered re-ask deadlines) backed by `POST /api/appointments/[id]/reschedule` (atomic status gate, routing-log closure, request_state handling, smart-skip re-ask policy). |
+| R3 | **Edit booking after creation** (date/time, service+checklist swap w/ reprice, price override, special requests, notes) | ✅ done | R2/R3 build (2026-07-10): Edit-details body swap inside `BookingDetailSheet` (service/checklist swap with change-driven reprice, price override, special requests, notes; dirty-close guard on every exit path) backed by `PATCH /api/appointments/[id]/details` with the paid-charge guard. Date/time edits go through the Reschedule dialog (R2). |
 | R4 | **Operator Properties workspace** (create/edit/delete, photos, special instructions, assign homeowner, book-from-property) | missing | No Properties nav destination; properties are read-only inside `CustomerDetailSheet`. An operator taking a phone booking for a new address is stuck — also blocks booking for customers with zero properties. |
 | R5 | **Org company payment methods** (self-pay cards/banks: add/remove/set default) | missing | Redesign settings Payments only mounts Stripe Connect. The booking form's empty state literally says "Add one in Settings, Payments" — a dead end. A redesign-only org can never make a self-pay booking. |
 | R6 | **Per-appointment payment method view/change + failed-charge recovery (operator)** | partial | Triage band surfaces failures and "Send card link" works, but nothing in the redesign re-runs the failed charge and `BookingDetailSheet` has no payment-method section; the end-to-end fix depends on the legacy panel. |
@@ -53,7 +53,7 @@ Deduped across the admin + manager analyses (managers share the operator console
 | R9 | **Job photos (before/during/after) visible to operator** | missing | No photos section in `BookingDetailSheet`; evidence trail for disputes/fee decisions is gone. |
 | R10 | **Action Center completeness**: SLA-overdue bucket + per-attempt routing/decline history | partial | `deriveOverview.ts` has no overdue bucket; overdue bookings appear in NO queue. Routing-attempt log not ported. (Plus the dead buttons in §1.) |
 | R11 | **Cleaner multi-slot offer chips show time only** | ✅ done | Fixed in PR #137 (`offerSlotChipLabels` presenter: date-aware labels when slots span days). |
-| R12 | **Legacy deep-link repointing** (the full §2 list) | mostly done | PRs #135 + the booking-detail host resolved every §2 escape except Reschedule (R2) and Fix card (R6), which stay legacy until those surfaces exist. |
+| R12 | **Legacy deep-link repointing** (the full §2 list) | mostly done | PRs #135 + the booking-detail host + the R2/R3 build resolved every §2 escape except the Fix card (R6), which stays legacy until that surface exists. Reschedule is now native (R2). |
 
 ## 4. Nice-to-haves (pilot could launch without, decide deliberately)
 

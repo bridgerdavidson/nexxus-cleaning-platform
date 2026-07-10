@@ -25,6 +25,7 @@ const EVENT_TYPES: NotificationEventType[] = [
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
+  'appointment_time_changed',
   'member_joined',
 ];
 
@@ -211,6 +212,40 @@ describe('describeNotification', () => {
     const rescheduled = describeNotification('appointment_rescheduled', FULL_PAYLOAD);
     expect(rescheduled.title).toBe('A job was rescheduled');
     expect(rescheduled.tone).toBe('warning');
+  });
+});
+
+describe('appointment_time_changed', () => {
+  it('tells the homeowner the new time', () => {
+    const d = describeNotification('appointment_time_changed', {
+      audience: 'homeowner',
+      scheduled_date: '2026-03-06',
+      scheduled_time: '09:00',
+      property_label: '124 Elm St',
+    });
+    expect(d.title).toContain('Your cleaning moved to');
+    expect(d.tone).toBe('info');
+  });
+  it('falls back gracefully with no payload', () => {
+    const d = describeNotification('appointment_time_changed');
+    expect(d.title).toBe('Your cleaning was moved');
+  });
+});
+
+describe('appointment_rescheduled variants', () => {
+  it('asks for re-confirmation when requires_confirmation is true', () => {
+    const d = describeNotification('appointment_rescheduled', { requires_confirmation: true, scheduled_date: '2026-03-06', scheduled_time: '09:00' });
+    expect(d.detail).toContain('Please re-confirm');
+    expect(d.tone).toBe('warning');
+  });
+  it('is a neutral FYI otherwise', () => {
+    const d = describeNotification('appointment_rescheduled', { requires_confirmation: false, scheduled_date: '2026-03-06', scheduled_time: '09:00' });
+    expect(d.detail ?? '').not.toContain('Please re-confirm');
+    expect(d.tone).toBe('info');
+  });
+  it('keeps warning tone for historical rows without the flag', () => {
+    const d = describeNotification('appointment_rescheduled', { scheduled_date: '2026-03-06', scheduled_time: '09:00' });
+    expect(d.tone).toBe('warning');
   });
 });
 

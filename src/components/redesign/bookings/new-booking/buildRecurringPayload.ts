@@ -36,6 +36,7 @@ export function buildRecurringPayload(
   organizationId: string,
   s: OperatorBookingState,
   service: ServiceType,
+  checklist?: { price_adder: number } | null,
 ): CreateRecurringPayload {
   const primary = s.slots[0];
   const { recurrenceType, interval, daysOfWeek } = resolveCadence(s.recurrence, primary.date);
@@ -50,7 +51,7 @@ export function buildRecurringPayload(
     startDate: primary.date,
     startTime: primary.time,
     durationMinutes: service.duration_minutes,
-    totalPrice: effectiveTotalUsd(s, service),
+    totalPrice: effectiveTotalUsd(s, service, checklist),
     priceOverrideEnabled: s.priceOverride != null,
     priceOverrideTotal: s.priceOverride,
     recurrenceType,

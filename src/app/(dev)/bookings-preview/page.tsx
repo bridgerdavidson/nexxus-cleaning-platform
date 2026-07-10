@@ -87,10 +87,18 @@ const DETAIL: BookingDetailVM = {
   specialRequests: "Please use the side gate and watch for the dog.", notes: null,
   isUnassigned: false,
   counterProposals: [
-    { id: "p1", label: "Jun 27 at 9:00am" },
-    { id: "p2", label: "Jun 28 at 1:00pm" },
+    { id: "p1", label: "Jun 27 at 9:00am", date: "2026-06-27", time: "09:00:00" },
+    { id: "p2", label: "Jun 28 at 1:00pm", date: "2026-06-28", time: "13:00:00" },
   ],
-  counterWindows: [{ id: "w1", label: "Jun 29, 8:00am to 12:00pm" }],
+  counterWindows: [
+    {
+      id: "w1",
+      label: "Jun 29, 8:00am to 12:00pm",
+      date: "2026-06-29",
+      startTime: "08:00:00",
+      endTime: "12:00:00",
+    },
+  ],
   declinedReason: null,
 };
 
@@ -174,6 +182,7 @@ export default function BookingsPreviewPage() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         detail={DETAIL}
+        appointment={null}
         cleanerOptions={CLEANERS}
         canViewPayments
         canManagePayments
@@ -184,7 +193,7 @@ export default function BookingsPreviewPage() {
         onAcceptCounter={() => {}}
         onStart={() => {}}
         onComplete={() => {}}
-        onReschedule={() => {}}
+        onOpenReschedule={() => {}}
         onCancel={() => {}}
         onDelete={() => {}}
         onMessageCustomer={() => {}}
