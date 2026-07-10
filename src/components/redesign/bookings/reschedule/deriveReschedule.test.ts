@@ -4,6 +4,7 @@ import {
   ownedChips,
   timePillOptions,
   conflictFor,
+  outcomeFor,
   outcomeLine,
   primaryLabel,
   seriesLine,
@@ -121,10 +122,61 @@ describe('deriveReschedule', () => {
       expect(options.length).toBeGreaterThan(0);
       expect(options[0].value).toBe('08:00');
     });
+
+    it('yields only the injected start pill when the window has no grid pill inside it', () => {
+      // 13:15-13:45 straddles no hourly grid point (13:00 < start, 14:00 > end).
+      const options = timePillOptions({ startTime: '13:15', endTime: '13:45' });
+      expect(options).toHaveLength(1);
+      expect(options[0].value).toBe('13:15');
+    });
+  });
+
+  describe('outcomeFor', () => {
+    it('auto-approves when the selection matches the current cleaner\'s own suggestion', () => {
+      const appt = mkAppt({
+        cleaner_id: 'cleaner-1',
+        cleaner_availability_feedback: [
+          {
+            id: 'fb-1',
+            cleaner_id: 'cleaner-1',
+            reason: null,
+            cleaner_suggested_times: [
+              { id: 'time-1', suggested_date: '2026-03-07', suggested_time: '14:00' },
+            ],
+            cleaner_suggested_windows: [],
+          },
+        ],
+      });
+      const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: 'cleaner-1' };
+      const outcome = outcomeFor(appt, sel, 'percentage_contractor');
+      expect(outcome.kind).toBe('auto_approve');
+    });
+
+    it('returns unassigned when the selection has no cleaner', () => {
+      const appt = mkAppt({ cleaner_id: 'cleaner-1' });
+      const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: null };
+      const outcome = outcomeFor(appt, sel, 'percentage_contractor');
+      expect(outcome.kind).toBe('unassigned');
+    });
+
+    it('returns reask for a contractor-model org when no suggestion matches', () => {
+      const appt = mkAppt({ cleaner_id: 'cleaner-1', cleaner_availability_feedback: [] });
+      const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: 'cleaner-1' };
+      const outcome = outcomeFor(appt, sel, 'percentage_contractor');
+      expect(outcome.kind).toBe('reask');
+    });
+
+    it('returns employee_settled for non-contractor payout models regardless of a match', () => {
+      const appt = mkAppt({ cleaner_id: 'cleaner-1', cleaner_availability_feedback: [] });
+      const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: 'cleaner-1' };
+      const outcome = outcomeFor(appt, sel, 'hourly_external');
+      expect(outcome.kind).toBe('employee_settled');
+    });
   });
 
   describe('outcomeLine', () => {
-    it('returns proper text for settled auto-approve (no cleaner change)', () => {
+    // Exact literal spec strings from docs/superpowers/specs/2026-07-09-reschedule-edit-booking-design.md (lines 53-58).
+    it('auto-approve: matches the target cleaner\'s own suggestion', () => {
       const outcome: RescheduleOutcome = {
         kind: 'auto_approve',
         settled: true,
@@ -134,17 +186,15 @@ describe('deriveReschedule', () => {
       };
       const line = outcomeLine({
         outcome,
-        cleanerName: null,
+        cleanerName: 'Maria',
         cleanerChanged: false,
         escalatedUnassigned: false,
         tier: null,
       });
-      expect(line).toBeTruthy();
-      // Should not contain em dashes
-      expect(line).not.toContain('—');
+      expect(line).toBe("Matches Maria's suggestion. Confirms instantly, no re-confirmation needed.");
     });
 
-    it('returns proper text for reask with 24-hour tier', () => {
+    it('reask, same cleaner, 24-hour tier', () => {
       const outcome: RescheduleOutcome = {
         kind: 'reask',
         settled: false,
@@ -159,12 +209,10 @@ describe('deriveReschedule', () => {
         escalatedUnassigned: false,
         tier: 24,
       });
-      expect(line).toContain('Maria');
-      expect(line).toContain('24 hours');
-      expect(line).not.toContain('—');
+      expect(line).toBe('Maria will be asked to re-confirm this time. They will have 24 hours to respond.');
     });
 
-    it('returns proper text for reask with 4-hour tier', () => {
+    it('reask, same cleaner, 4-hour tier (slot under 48h away)', () => {
       const outcome: RescheduleOutcome = {
         kind: 'reask',
         settled: false,
@@ -174,17 +222,34 @@ describe('deriveReschedule', () => {
       };
       const line = outcomeLine({
         outcome,
-        cleanerName: 'Alice',
+        cleanerName: 'Maria',
         cleanerChanged: false,
         escalatedUnassigned: false,
         tier: 4,
       });
-      expect(line).toContain('Alice');
-      expect(line).toContain('4 hours');
-      expect(line).not.toContain('—');
+      expect(line).toBe('Maria will be asked to re-confirm this time. They will have 4 hours to respond.');
     });
 
-    it('returns proper text for employee settled outcome', () => {
+    it('reask, cleaner changed: the new cleaner is asked to confirm, not re-confirm', () => {
+      const outcome: RescheduleOutcome = {
+        kind: 'reask',
+        settled: false,
+        status: 'pending',
+        cleanerConfirmationStatus: 'awaiting',
+        recomputeDeadline: true,
+      };
+      const line = outcomeLine({
+        outcome,
+        cleanerName: 'James',
+        cleanerChanged: true,
+        escalatedUnassigned: false,
+        tier: 24,
+      });
+      expect(line).toBe('James will be asked to confirm this time. They will have 24 hours to respond.');
+      expect(line).not.toContain('re-confirm');
+    });
+
+    it('employee org settled', () => {
       const outcome: RescheduleOutcome = {
         kind: 'employee_settled',
         settled: true,
@@ -194,16 +259,15 @@ describe('deriveReschedule', () => {
       };
       const line = outcomeLine({
         outcome,
-        cleanerName: 'Bob',
+        cleanerName: 'Maria',
         cleanerChanged: false,
         escalatedUnassigned: false,
         tier: null,
       });
-      expect(line).toBeTruthy();
-      expect(line).not.toContain('—');
+      expect(line).toBe('Maria will be notified of the new time.');
     });
 
-    it('returns proper text for unassigned outcome', () => {
+    it('unassigned, fresh (booking had no cleaner)', () => {
       const outcome: RescheduleOutcome = {
         kind: 'unassigned',
         settled: true,
@@ -218,11 +282,28 @@ describe('deriveReschedule', () => {
         escalatedUnassigned: false,
         tier: null,
       });
-      expect(line).toBeTruthy();
-      expect(line).not.toContain('—');
+      expect(line).toBe('No cleaner is assigned yet. The new time takes effect right away.');
     });
 
-    it('returns proper text for cleaner changed', () => {
+    it('unassigned, escalated (operator cleared the cleaner)', () => {
+      const outcome: RescheduleOutcome = {
+        kind: 'unassigned',
+        settled: true,
+        status: null,
+        cleanerConfirmationStatus: null,
+        recomputeDeadline: false,
+      };
+      const line = outcomeLine({
+        outcome,
+        cleanerName: null,
+        cleanerChanged: false,
+        escalatedUnassigned: true,
+        tier: null,
+      });
+      expect(line).toBe('The new time is saved. This booking still needs a cleaner.');
+    });
+
+    it('never contains an em dash', () => {
       const outcome: RescheduleOutcome = {
         kind: 'reask',
         settled: false,
@@ -232,12 +313,11 @@ describe('deriveReschedule', () => {
       };
       const line = outcomeLine({
         outcome,
-        cleanerName: 'Charlie',
-        cleanerChanged: true,
+        cleanerName: 'Maria',
+        cleanerChanged: false,
         escalatedUnassigned: false,
         tier: 24,
       });
-      expect(line).toBeTruthy();
       expect(line).not.toContain('—');
     });
   });
@@ -370,6 +450,40 @@ describe('deriveReschedule', () => {
       const sel: RescheduleSelection = { date: '2026-03-06', time: '11:00', cleanerId: null };
       const result = conflictFor(appointments, sel, 'apt-1');
       expect(result).toBeNull();
+    });
+
+    it('derives the candidate duration from the appointment being rescheduled: a 120-minute candidate does not reach the next booking', () => {
+      const appointments: AdminAppointment[] = [
+        // The appointment being rescheduled; its duration_minutes drives the candidate size.
+        mkAppt({ id: 'apt-1', cleaner_id: 'cleaner-1', scheduled_date: '2026-03-06', scheduled_time: '09:00', duration_minutes: 120 }),
+        // Occupies 13:00-14:00.
+        mkAppt({ id: 'apt-2', cleaner_id: 'cleaner-1', scheduled_date: '2026-03-06', scheduled_time: '13:00', duration_minutes: 60 }),
+      ];
+      const sel: RescheduleSelection = { date: '2026-03-06', time: '11:00', cleanerId: 'cleaner-1' };
+      // 11:00 + 120min = ends exactly at 13:00; back-to-back is not a conflict.
+      const result = conflictFor(appointments, sel, 'apt-1');
+      expect(result).toBeNull();
+    });
+
+    it('derives the candidate duration from the appointment being rescheduled: a 240-minute candidate detects a conflict the 120-minute one misses', () => {
+      const appointments: AdminAppointment[] = [
+        // Same target appointment, but now with a 240-minute duration.
+        mkAppt({ id: 'apt-1', cleaner_id: 'cleaner-1', scheduled_date: '2026-03-06', scheduled_time: '09:00', duration_minutes: 240 }),
+        // Occupies 13:00-14:00.
+        mkAppt({
+          id: 'apt-2',
+          cleaner_id: 'cleaner-1',
+          scheduled_date: '2026-03-06',
+          scheduled_time: '13:00',
+          duration_minutes: 60,
+          homeowner: { first_name: 'Jane', last_name: 'Roe', email: 'jane@example.com' },
+        }),
+      ];
+      const sel: RescheduleSelection = { date: '2026-03-06', time: '11:00', cleanerId: 'cleaner-1' };
+      // 11:00 + 240min = 15:00, which overlaps 13:00-14:00.
+      const result = conflictFor(appointments, sel, 'apt-1');
+      expect(result).not.toBeNull();
+      expect(result?.label).toContain('Jane Roe');
     });
   });
 });

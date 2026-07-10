@@ -4,7 +4,12 @@
  * button labels from AdminAppointment + user selection.
  */
 import { type AdminAppointment } from '@/hooks/useAdminData';
-import { type SuggestionInputs, type RescheduleOutcome, normalizeTimeHHMM } from '@/lib/appointments/rescheduleOutcome';
+import {
+  type SuggestionInputs,
+  type RescheduleOutcome,
+  decideRescheduleOutcome,
+  normalizeTimeHHMM,
+} from '@/lib/appointments/rescheduleOutcome';
 import { bookableTimeOptions } from '@/components/redesign/homeowner/booking/time-options';
 import { fmtTime, monthDay } from '../booking-vm';
 import { findConflicts, type ScheduleAppointment } from '@/lib/appointmentConflicts';
@@ -128,6 +133,11 @@ export function conflictFor(
 ): { label: string } | null {
   if (!sel.cleanerId || !sel.date || !sel.time) return null;
 
+  // The candidate's real duration comes from the appointment being rescheduled
+  // (it's the appointment shrinking/growing, not the conflicting one). 120 is
+  // only a fallback for the (unexpected) case where it's not in the list.
+  const durationMinutes = appointments.find((a) => a.id === excludeId)?.duration_minutes ?? 120;
+
   // Build ScheduleAppointment[] for the target cleaner.
   const schedule: ScheduleAppointment[] = appointments
     .filter((a) => a.cleaner_id === sel.cleanerId)
@@ -144,7 +154,7 @@ export function conflictFor(
 
   const conflicts = findConflicts(
     schedule,
-    { date: sel.date, time: sel.time, durationMinutes: 120 }, // 120 is a default; caller provides actual duration
+    { date: sel.date, time: sel.time, durationMinutes },
     { excludeAppointmentId: excludeId },
   );
 
@@ -157,8 +167,34 @@ export function conflictFor(
 }
 
 /**
- * Derive the outcome line shown in the Reschedule dialog. Covers six spec
- * variants + series line. No em dashes; uses periods and commas.
+ * Derive the reschedule outcome for a pending selection, wrapping the SAME
+ * shared decision logic the server route uses (decideRescheduleOutcome) over
+ * this appointment's own suggestions. No reimplementation.
+ */
+export function outcomeFor(
+  a: AdminAppointment,
+  sel: RescheduleSelection,
+  payoutModel: string | null | undefined,
+): RescheduleOutcome {
+  return decideRescheduleOutcome({
+    scheduledDate: sel.date ?? a.scheduled_date,
+    scheduledTime: sel.time ?? a.scheduled_time,
+    targetCleanerId: sel.cleanerId,
+    currentCleanerId: a.cleaner_id ?? null,
+    orgDefaultPayoutModel: payoutModel,
+    suggestions: suggestionInputsFor(a),
+  });
+}
+
+/**
+ * Derive the outcome line shown in the Reschedule dialog. Covers the six
+ * spec variants (docs/superpowers/specs/2026-07-09-reschedule-edit-booking-design.md,
+ * lines 53-58); the series line is separate (see seriesLine). No em dashes;
+ * uses periods and commas.
+ *
+ * decideRescheduleOutcome only returns 'auto_approve' when the target cleaner
+ * IS the current cleaner (see rescheduleOutcome.ts), so auto_approve is
+ * never paired with cleanerChanged; this function does not branch on it.
  */
 export function outcomeLine(args: {
   outcome: RescheduleOutcome;
@@ -167,33 +203,29 @@ export function outcomeLine(args: {
   escalatedUnassigned: boolean;
   tier: 4 | 24 | null;
 }): string {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { outcome, cleanerName, cleanerChanged, escalatedUnassigned, tier } = args;
 
   if (outcome.kind === 'unassigned') {
-    return 'This cleaning is now unassigned.';
+    return escalatedUnassigned
+      ? 'The new time is saved. This booking still needs a cleaner.'
+      : 'No cleaner is assigned yet. The new time takes effect right away.';
   }
 
+  const name = cleanerName || 'The cleaner';
+
   if (outcome.kind === 'auto_approve') {
-    if (cleanerChanged) {
-      return `${cleanerName || 'The cleaner'} is assigned.`;
-    }
-    return 'Confirmed.';
+    return `Matches ${name}'s suggestion. Confirms instantly, no re-confirmation needed.`;
   }
 
   if (outcome.kind === 'employee_settled') {
-    if (cleanerChanged) {
-      return `${cleanerName || 'The cleaner'} is assigned.`;
-    }
-    return 'Confirmed.';
+    return `${name} will be notified of the new time.`;
   }
 
   // outcome.kind === 'reask'
-  if (!cleanerName) {
-    return tier ? `The cleaner will be asked to re-confirm this time. They will have ${tier} hours to respond.` : 'The cleaner will be asked to re-confirm this time.';
-  }
-
-  return tier ? `${cleanerName} will be asked to re-confirm this time. They will have ${tier} hours to respond.` : `${cleanerName} will be asked to re-confirm this time.`;
+  const respondBy = tier ? ` They will have ${tier} hours to respond.` : '';
+  return cleanerChanged
+    ? `${name} will be asked to confirm this time.${respondBy}`
+    : `${name} will be asked to re-confirm this time.${respondBy}`;
 }
 
 /**
