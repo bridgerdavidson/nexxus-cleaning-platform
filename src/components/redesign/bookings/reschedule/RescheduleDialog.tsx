@@ -91,7 +91,13 @@ export function RescheduleDialog({
     if (init) {
       const w = init.windowId ? ownedChips(a).find((c) => c.kind === 'window' && c.id === init.windowId) : null;
       setDate(init.date ?? w?.date ?? a.scheduled_date);
-      setTime(init.time ?? (w ? normalizeTimeHHMM(w.startTime!) : normalizeTimeHHMM(a.scheduled_time)));
+      setTime(
+        init.time
+          ? normalizeTimeHHMM(init.time)
+          : w
+            ? normalizeTimeHHMM(w.startTime!)
+            : normalizeTimeHHMM(a.scheduled_time),
+      );
       setWindowId(init.windowId ?? null);
       setCleanerId(a.cleaner_id ?? null);
     }
@@ -300,7 +306,7 @@ export function RescheduleDialog({
             </Button>
             <Button
               loading={saving}
-              disabled={!date || !time}
+              disabled={!date || !time || !dirty || saving}
               onClick={submit}
             >
               {outcome ? primaryLabel(outcome, !!conflict, cleanerFirstName) : 'Confirm reschedule'}

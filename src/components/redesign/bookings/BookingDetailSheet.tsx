@@ -396,7 +396,7 @@ function DetailBody({
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => onOpenReschedule({ windowId: w.id })}
+                      onClick={() => onOpenReschedule({ date: w.date, time: w.startTime, windowId: w.id })}
                     >
                       Pick a time
                     </Button>
