@@ -209,6 +209,7 @@ function HostInner({
           if (!o) onClose();
         }}
         detail={detail}
+        appointment={raw}
         cleanerOptions={cleanerOptions}
         canViewPayments={canViewPayments}
         canManagePayments={canManagePayments}
@@ -221,9 +222,6 @@ function HostInner({
         onStart={() => runStatus("in_progress")}
         onComplete={() => runStatus("completed")}
         onOpenReschedule={(init) => setReschedInit(init ?? {})}
-        // Edit details is a Task 12 surface (body-swap form in the sheet); the
-        // button renders now but is inert until that task wires real state.
-        onEditDetails={() => {}}
         onCancel={() => setConfirm("cancel")}
         onDelete={() => setConfirm("delete")}
         onMessageCustomer={() => {

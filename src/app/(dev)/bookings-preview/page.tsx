@@ -182,6 +182,7 @@ export default function BookingsPreviewPage() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         detail={DETAIL}
+        appointment={null}
         cleanerOptions={CLEANERS}
         canViewPayments
         canManagePayments
@@ -193,7 +194,6 @@ export default function BookingsPreviewPage() {
         onStart={() => {}}
         onComplete={() => {}}
         onOpenReschedule={() => {}}
-        onEditDetails={() => {}}
         onCancel={() => {}}
         onDelete={() => {}}
         onMessageCustomer={() => {}}
