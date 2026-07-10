@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { CleanerAppointment, DeclineReason } from "@/hooks/useCleanerData";
-import { formatTimeParts, offeredSlots } from "./job-presenters";
+import { offeredSlots, offerSlotChipLabels } from "./job-presenters";
 
 const DECLINE_REASONS: { value: DeclineReason; label: string }[] = [
   { value: "sick", label: "I'm not available" },
@@ -30,6 +30,7 @@ export function OfferActionsBar({
   layout?: "inline" | "stacked";
 }) {
   const slots = offeredSlots(appointment);
+  const slotLabels = offerSlotChipLabels(slots);
   const multi = slots.length > 1;
   const [slotIndex, setSlotIndex] = useState(slots[0].slot_index);
   const [busy, setBusy] = useState<null | "accept" | "decline">(null);
@@ -54,8 +55,7 @@ export function OfferActionsBar({
     <div className={cn(layout === "inline" ? "mt-3" : "")}>
       {multi && (
         <div className="mb-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Choose a time">
-          {slots.map((s) => {
-            const t = formatTimeParts(s.scheduled_time);
+          {slots.map((s, i) => {
             const active = s.slot_index === slotIndex;
             return (
               <button
@@ -68,7 +68,7 @@ export function OfferActionsBar({
                   active ? "border-brand-600 bg-brand-50 text-brand-700" : "border-border bg-card text-muted-foreground",
                 )}
               >
-                {t.h} {t.ap}
+                {slotLabels[i]}
               </button>
             );
           })}

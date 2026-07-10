@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy,
   customerLabel, propertyAddress, mapsUrl, googleMapsUrl, appleMapsUrl,
-  formatDateLong, formatDuration, formatCardDate, formatJobWhen,
+  formatDateLong, formatDuration, formatCardDate, formatJobWhen, offerSlotChipLabels,
 } from "./job-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
@@ -113,6 +113,32 @@ describe("formatJobWhen", () => {
     const d = String(today.getDate()).padStart(2, "0");
     const result = formatJobWhen(`${y}-${m}-${d}`, "09:00:00");
     expect(result).toMatch(/^[A-Z][a-z]{2},/); // starts with "Mon,", "Tue,", etc.
+  });
+});
+
+describe("offerSlotChipLabels", () => {
+  it("shows time only when all slots share a date", () => {
+    expect(
+      offerSlotChipLabels([
+        { slot_index: 0, scheduled_date: "2026-03-05", scheduled_time: "10:00:00" },
+        { slot_index: 1, scheduled_date: "2026-03-05", scheduled_time: "14:00:00" },
+      ]),
+    ).toEqual(["10:00 AM", "2:00 PM"]);
+  });
+  it("shows date and time when slots span days", () => {
+    expect(
+      offerSlotChipLabels([
+        { slot_index: 0, scheduled_date: "2026-03-05", scheduled_time: "10:00:00" },
+        { slot_index: 1, scheduled_date: "2026-03-06", scheduled_time: "10:00:00" },
+      ]),
+    ).toEqual(["Thu, Mar 5 · 10:00 AM", "Fri, Mar 6 · 10:00 AM"]);
+  });
+  it("single slot is time only", () => {
+    expect(
+      offerSlotChipLabels([
+        { slot_index: 0, scheduled_date: "2026-03-05", scheduled_time: "09:30:00" },
+      ]),
+    ).toEqual(["9:30 AM"]);
   });
 });
 

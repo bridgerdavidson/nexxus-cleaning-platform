@@ -8,7 +8,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
-import { formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
+import { formatTimeParts, formatJobWhen, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
 import { JobRow } from "../shared/JobRow";
 import { OfferActionsBar } from "../shared/OfferActionsBar";
 import { deriveSeriesOffers } from "./deriveSeriesOffers";
@@ -144,7 +144,6 @@ export function CleanerTodayView({
               />
             ))}
             {grouped.singles.map((o) => {
-              const t = formatTimeParts(o.scheduled_time);
               const respondBy = formatRespondBy(o.response_deadline);
               return (
                 <div
@@ -157,7 +156,7 @@ export function CleanerTodayView({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-extrabold">
-                        {t.h} {t.ap}
+                        {formatJobWhen(o.scheduled_date, o.scheduled_time)}
                       </div>
                       {respondBy && (
                         <Badge variant="caution"><Clock />{respondBy}</Badge>
