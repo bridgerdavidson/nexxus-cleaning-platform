@@ -9,6 +9,7 @@ import { toast } from '../components/ui/toast';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { describeNotification, toastVariantForTone } from '../lib/notifications/labels';
+import { STALE_BOOKING_MESSAGE, isStaleAcceptError } from '../lib/appointments/staleBookingError';
 
 export interface NotificationItem {
   id: string;
@@ -180,15 +181,7 @@ export function useNotifications() {
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      // A concurrent reschedule can delete/change the suggestion behind a
-      // stale bell Accept button: the route then 404s ("Suggested time not
-      // found") or 409s ("...does not belong to this appointment" / "...not
-      // awaiting counter-proposal acceptance"). Map both to the friendly
-      // stale-state toast instead of the raw server message, mirroring
-      // handleAcceptCounter in OperatorBookingDetailHost.
-      const stale =
-        err.message.includes('Suggested time') || err.message.includes('not awaiting');
-      toast.error(stale ? 'This booking changed. Refresh and try again.' : err.message);
+      toast.error(isStaleAcceptError(err.message) ? STALE_BOOKING_MESSAGE : err.message);
     },
   });
 

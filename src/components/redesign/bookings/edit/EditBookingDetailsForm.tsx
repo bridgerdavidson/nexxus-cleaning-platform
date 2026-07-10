@@ -12,6 +12,7 @@ import { useServices } from '@/hooks/useServices';
 import { useChecklists } from '@/hooks/useChecklists';
 import { EntityPickerField, type PickerItem } from '../new-booking/EntityPickerField';
 import { fmtTime, monthDay } from '../booking-vm';
+import { STALE_BOOKING_MESSAGE } from '@/lib/appointments/staleBookingError';
 import { seedEditDetails, type EditDetailsState } from './seedEditDetails';
 import { buildDetailsPatch } from './buildDetailsPatch';
 import { useEditBookingDetails } from './useEditBookingDetails';
@@ -145,7 +146,7 @@ export function EditBookingDetailsForm({
       if (err.paidGuard) {
         toast.error('A payment already exists for this booking, so its price cannot change.');
       } else if (err.stale) {
-        toast.error('This booking changed. Refresh and try again.');
+        toast.error(STALE_BOOKING_MESSAGE);
       } else {
         toast.error(err.message || 'Could not save changes');
       }

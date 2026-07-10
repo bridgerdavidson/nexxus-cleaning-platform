@@ -15,6 +15,7 @@ import {
   acceptCounterProposal,
 } from "@/hooks/useAdminData";
 import { normalizeTimeHHMM } from "@/lib/appointments/rescheduleOutcome";
+import { STALE_BOOKING_MESSAGE, isStaleAcceptError } from "@/lib/appointments/staleBookingError";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BookingDetailSheet } from "./BookingDetailSheet";
 import { toDetailVM } from "./booking-vm";
@@ -133,7 +134,7 @@ function HostInner({
         if (err.conflict) {
           toast.error("That cleaner has a conflicting job at that time. Use Reschedule to override.");
         } else if (err.stale) {
-          toast.error("This booking changed. Refresh and try again.");
+          toast.error(STALE_BOOKING_MESSAGE);
         } else {
           toast.error(err.message || "Could not assign cleaner");
         }
@@ -160,13 +161,7 @@ function HostInner({
           toast.success("Proposed time accepted");
           onClose();
         } else {
-          // A concurrent reschedule can delete the feedback row behind a stale
-          // bell/action-center Accept button: the route then 404s ("Suggested
-          // time not found") or 409s ("...not awaiting counter-proposal
-          // acceptance"). Map both to the friendly stale-state toast instead
-          // of the raw server message.
-          const stale = !!r.error && (r.error.includes("Suggested time") || r.error.includes("not awaiting"));
-          toast.error(stale ? "This booking changed. Refresh and try again." : r.error || "Could not accept the time");
+          toast.error(isStaleAcceptError(r.error) ? STALE_BOOKING_MESSAGE : r.error || "Could not accept the time");
         }
       } finally {
         setBusy(false);

@@ -12,6 +12,7 @@ import { toast } from '@/components/ui/toast';
 import { useAuth } from '@/hooks/useAuth';
 import { type AdminAppointment } from '@/hooks/useAdminData';
 import { normalizeTimeHHMM, reaskTierHours } from '@/lib/appointments/rescheduleOutcome';
+import { STALE_BOOKING_MESSAGE } from '@/lib/appointments/staleBookingError';
 import { toYMD } from '@/components/redesign/homeowner/booking/time-options';
 import { fmtTime, monthDay } from '../booking-vm';
 import type { CleanerOption } from '../bookings-types';
@@ -158,7 +159,7 @@ export function RescheduleDialog({
     } catch (e) {
       const err = e as Error & { conflict?: boolean; stale?: boolean };
       if (err.stale) {
-        toast.error('This booking changed. Refresh and try again.');
+        toast.error(STALE_BOOKING_MESSAGE);
         onDone();
       } else if (err.conflict) {
         // The server's race backstop: dialog stays open, the warning row
