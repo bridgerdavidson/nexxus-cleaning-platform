@@ -91,7 +91,13 @@ export async function PATCH(
 
     const serviceChanged = serviceTypeId !== appt.service_type_id;
     const checklistChanged = (checklistId ?? null) !== ((appt.checklist_id as string | null) ?? null);
-    const storedOverrideEnabled = !!appt.price_override_enabled;
+    // The legacy pair (enabled: true, total: null) predates this feature and
+    // is not a real override; seedEditDetails seeds it as OFF, so treat it as
+    // OFF here too. Otherwise a notes-only save (the form submits override
+    // off) would read as "override removed" and reprice a booking nobody
+    // meant to touch. The inert pair stays on the row until a real
+    // price-affecting edit rewrites both columns.
+    const storedOverrideEnabled = !!appt.price_override_enabled && appt.price_override_total != null;
     const storedOverrideTotal = appt.price_override_total == null ? null : Number(appt.price_override_total);
     const overrideChanged =
       body.priceOverrideEnabled !== storedOverrideEnabled ||

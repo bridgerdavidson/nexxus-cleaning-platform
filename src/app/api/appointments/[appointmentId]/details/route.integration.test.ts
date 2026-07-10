@@ -137,6 +137,25 @@ describe('PATCH /api/appointments/[appointmentId]/details', () => {
     expect(row.total_price).toBe(100);
   });
 
+  it('a legacy override pair (enabled, null total) does not reprice on a notes-only save', async () => {
+    const org = await seedOrg();
+    const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId, totalPrice: 77 });
+    // Inconsistent pair left behind by pre-feature writes: enabled with no total.
+    await admin.from('appointments').update({ price_override_enabled: true, price_override_total: null }).eq('id', appt.id);
+
+    // The edit form seeds this pair as override OFF, so a notes-only save
+    // submits enabled: false. That must not read as "override removed" and
+    // trigger a reprice; the inert pair stays until a real price edit.
+    const res = await call(appt.id, org.admin.accessToken, {
+      organizationId: org.organizationId, serviceTypeId: appt.serviceTypeId, checklistId: null,
+      priceOverrideEnabled: false, priceOverrideTotal: null, specialRequests: null, notes: 'legacy pair untouched',
+    });
+    expect(res.status).toBe(200);
+    const row = await getRow(appt.id);
+    expect(row).toMatchObject({ total_price: 77, notes: 'legacy pair untouched', price_override_enabled: true });
+    expect(row.price_override_total).toBeNull();
+  });
+
   it('paid guard blocks price-affecting edits (legacy NULL charge_kind counts; cancellation_fee does not)', async () => {
     const org = await seedOrg();
     const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId });

@@ -78,4 +78,9 @@ describe('seedEditDetails', () => {
     );
     expect(s).toMatchObject({ checklistId: null, specialRequests: '', notes: '' });
   });
+
+  it('defaults a missing service_type_id to null (Save disabled until one is picked)', () => {
+    const s = seedEditDetails(mkAppt({ service_type_id: undefined }));
+    expect(s.serviceTypeId).toBeNull();
+  });
 });
