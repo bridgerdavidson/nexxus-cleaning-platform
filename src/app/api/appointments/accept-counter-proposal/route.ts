@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // Verify the appointment belongs to this org.
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from('appointments')
-      .select('id, cleaner_id, scheduled_date, scheduled_time, organization_id, status, cleaner_confirmation_status')
+      .select('id, cleaner_id, homeowner_id, scheduled_date, scheduled_time, organization_id, status, cleaner_confirmation_status')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .single();
@@ -204,6 +204,22 @@ export async function POST(request: NextRequest) {
         scheduled_time: pickedTime,
       },
     });
+
+    // Decision 4 (spec): both settle paths tell the homeowner the final time.
+    if ((appointment as { homeowner_id: string | null }).homeowner_id) {
+      await recordNotificationEvent(supabaseAdmin, {
+        event_type: 'appointment_time_changed',
+        appointment_id: appointmentId,
+        organization_id: organizationId,
+        recipient_user_id: (appointment as { homeowner_id: string }).homeowner_id,
+        payload: {
+          ...cleanerCtx,
+          audience: 'homeowner',
+          scheduled_date: pickedDate,
+          scheduled_time: pickedTime,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
