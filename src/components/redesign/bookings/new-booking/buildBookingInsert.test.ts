@@ -70,4 +70,14 @@ describe('buildBookingInsert', () => {
     expect(appointment.payment_method_id).toBeNull();
     expect(appointment.is_self_pay).toBe(true);
   });
+
+  it('includes the checklist price adder in total_price', () => {
+    const { appointment } = buildBookingInsert('org1', base(), svc, null, { price_adder: 20 });
+    expect(appointment.total_price).toBe(170);
+  });
+
+  it('a price override still wins over the checklist adder', () => {
+    const { appointment } = buildBookingInsert('org1', base({ priceOverride: 175 }), svc, null, { price_adder: 20 });
+    expect(appointment.total_price).toBe(175);
+  });
 });

@@ -94,4 +94,22 @@ describe('buildRecurringPayload', () => {
     const p = buildRecurringPayload('org-1', baseState({}, { notes: '   ' }), service);
     expect(p.specialRequests).toBeNull();
   });
+  it('includes the checklist price adder in totalPrice', () => {
+    const p = buildRecurringPayload(
+      'org-1',
+      baseState({ preset: 'weekly', end: 'after', count: 6 }),
+      service,
+      { price_adder: 20 },
+    );
+    expect(p.totalPrice).toBe(170);
+  });
+  it('a price override still wins over the checklist adder', () => {
+    const p = buildRecurringPayload(
+      'org-1',
+      baseState({ preset: 'weekly', end: 'after', count: 4 }, { priceOverride: 199 }),
+      service,
+      { price_adder: 20 },
+    );
+    expect(p.totalPrice).toBe(199);
+  });
 });

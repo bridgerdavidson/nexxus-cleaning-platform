@@ -31,15 +31,17 @@ export function useCreateOperatorBooking() {
     mutationFn: async ({
       state,
       service,
+      checklist,
     }: {
       state: OperatorBookingState;
       service: ServiceType;
+      checklist: { price_adder: number } | null;
     }): Promise<CreateBookingResult> => {
       if (!currentOrganizationId) throw new Error('No organization');
 
       if (isRecurring(state)) {
         if (!accessToken) throw new Error('Not authenticated');
-        const payload = buildRecurringPayload(currentOrganizationId, state, service);
+        const payload = buildRecurringPayload(currentOrganizationId, state, service, checklist);
         const res = await fetch('/api/recurring-appointments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
@@ -54,7 +56,7 @@ export function useCreateOperatorBooking() {
 
       const primary = state.slots[0];
       const deadline = computeResponseDeadlineISO(primary.date, primary.time);
-      const { appointment, slots } = buildBookingInsert(currentOrganizationId, state, service, deadline);
+      const { appointment, slots } = buildBookingInsert(currentOrganizationId, state, service, deadline, checklist);
 
       const { data, error } = await supabase
         .from('appointments')

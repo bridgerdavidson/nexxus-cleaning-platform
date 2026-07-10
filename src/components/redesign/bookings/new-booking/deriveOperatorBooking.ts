@@ -17,10 +17,14 @@ export function removeSlotAt(slots: OperatorBookingSlot[], idx: number): Operato
   return slots.filter((_, i) => i !== idx);
 }
 
-/** The price charged: an operator override if set, else the service base price (dollars). */
-export function effectiveTotalUsd(s: OperatorBookingState, service: ServiceType | null): number {
+/** The price charged: an operator override if set, else service base + checklist adder (dollars). */
+export function effectiveTotalUsd(
+  s: OperatorBookingState,
+  service: ServiceType | null,
+  checklist?: { price_adder: number } | null,
+): number {
   if (s.priceOverride != null) return s.priceOverride;
-  return service?.base_price ?? 0;
+  return (service?.base_price ?? 0) + (checklist?.price_adder ?? 0);
 }
 
 export function canReview(s: OperatorBookingState): boolean {

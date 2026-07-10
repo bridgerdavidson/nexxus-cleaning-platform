@@ -44,6 +44,12 @@ describe('effectiveTotalUsd', () => {
   it('uses the override when set', () => {
     expect(effectiveTotalUsd(filled({ priceOverride: 175 }), svc)).toBe(175);
   });
+  it('adds the checklist price adder when no override', () => {
+    expect(effectiveTotalUsd(filled(), svc, { price_adder: 20 })).toBe(170);
+  });
+  it('ignores the checklist adder when an override is set', () => {
+    expect(effectiveTotalUsd(filled({ priceOverride: 175 }), svc, { price_adder: 20 })).toBe(175);
+  });
 });
 
 describe('canReview', () => {

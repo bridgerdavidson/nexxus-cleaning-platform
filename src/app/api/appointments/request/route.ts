@@ -99,10 +99,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let checklistAdder = 0;
     if (checklistId) {
       const { data: checklist } = await supabaseAdmin
         .from('checklists')
-        .select('id, service_type_id')
+        .select('id, service_type_id, price_adder')
         .eq('id', checklistId)
         .maybeSingle();
       if (!checklist || checklist.service_type_id !== serviceTypeId) {
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
           { status: 400 },
         );
       }
+      checklistAdder = Number(checklist.price_adder) || 0;
     }
 
     // Insert the appointment row with the primary slot as the placeholder
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest) {
         scheduled_date: primary.scheduled_date,
         scheduled_time: primary.scheduled_time,
         duration_minutes: serviceType.duration_minutes,
-        total_price: serviceType.base_price,
+        total_price: serviceType.base_price + checklistAdder,
         special_requests: specialRequests ?? null,
         payment_method_id: paymentMethodId ?? null,
         status: 'pending',

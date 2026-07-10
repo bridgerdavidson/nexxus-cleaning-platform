@@ -88,6 +88,35 @@ describe('POST /api/appointments/request', () => {
     expect((slots as Array<{ slot_index: number }>)[1].slot_index).toBe(1);
   });
 
+  it('includes the checklist price adder in total_price', async () => {
+    const admin = createTestSupabaseClient();
+    const { data: cl } = await admin
+      .from('checklists')
+      .insert({ service_type_id: serviceTypeId, name: 'Standard', price_adder: 20 })
+      .select('id')
+      .single();
+    const { status, body } = await callRoute<{ success: boolean; appointmentId: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: {
+        organizationId: org.organizationId,
+        propertyId,
+        serviceTypeId,
+        checklistId: (cl as { id: string }).id,
+        slots: [{ scheduled_date: '2026-07-01', scheduled_time: '09:00' }],
+      },
+    });
+    expect(status).toBe(200);
+    const { data: appt } = await admin
+      .from('appointments')
+      .select('total_price, checklist_id')
+      .eq('id', body.appointmentId)
+      .single();
+    // base_price 200 + adder 20
+    expect((appt as { total_price: number }).total_price).toBe(220);
+    expect((appt as { checklist_id: string }).checklist_id).toBe((cl as { id: string }).id);
+  });
+
   it('rejects a property that does not belong to the homeowner', async () => {
     const otherOrg = await withTestOrg();
     const other = await seedPropertyAndService(otherOrg.organizationId, otherOrg.homeowner.userId);

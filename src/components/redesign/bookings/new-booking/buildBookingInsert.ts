@@ -37,6 +37,7 @@ export function buildBookingInsert(
   s: OperatorBookingState,
   service: ServiceType,
   responseDeadline: string | null,
+  checklist?: { price_adder: number } | null,
 ): BookingInsert {
   const self = isSelfPay(s);
   const primary = s.slots[0];
@@ -51,7 +52,7 @@ export function buildBookingInsert(
       scheduled_date: primary.date,
       scheduled_time: primary.time,
       duration_minutes: service.duration_minutes,
-      total_price: effectiveTotalUsd(s, service),
+      total_price: effectiveTotalUsd(s, service, checklist),
       price_override_enabled: s.priceOverride != null,
       price_override_total: s.priceOverride,
       special_requests: s.notes.trim() ? s.notes.trim() : null,

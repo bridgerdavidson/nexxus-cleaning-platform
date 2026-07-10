@@ -63,6 +63,7 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
   const { properties } = usePropertiesByOwner(self ? null : state.customerId);
 
   const service = services.find((s) => s.id === state.serviceTypeId) ?? null;
+  const checklist = checklists.find((c) => c.id === state.checklistId) ?? null;
 
   const candidate = useMemo(() => {
     const primary = state.slots[0];
@@ -123,7 +124,7 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
     };
   });
 
-  const total = effectiveTotalUsd(state, service);
+  const total = effectiveTotalUsd(state, service, checklist);
 
   const recurring = isRecurring(state);
   const primarySlot = state.slots[0] ?? null;
@@ -136,7 +137,7 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
   async function handleCreate() {
     if (!service) return;
     try {
-      const result = await create({ state, service });
+      const result = await create({ state, service, checklist });
       toast.success(result.recurring ? `${result.count} cleaning${result.count === 1 ? '' : 's'} scheduled` : 'Booking created', {
         description: result.recurring
           ? 'The cleaner has been offered the whole series.'
@@ -243,7 +244,7 @@ export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
                     type="number"
                     min={0}
                     className="ml-1 w-full appearance-none border-0 bg-transparent tabular-nums outline-none [appearance:textfield] focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
-                    value={state.priceOverride ?? service?.base_price ?? ''}
+                    value={state.priceOverride ?? (service ? service.base_price + (checklist?.price_adder ?? 0) : '')}
                     onChange={(e) =>
                       patch({
                         priceOverride: e.target.value === '' ? null : Math.max(0, Number(e.target.value)),
