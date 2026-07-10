@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   CalendarClock,
   Clock,
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import { JobMessagesPanel } from "./JobMessagesPanel";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
@@ -91,38 +92,74 @@ export function BookingDetailSheet({
   onMessageCustomer,
   onMessageCleaner,
 }: BookingDetailSheetProps) {
+  // Whether the edit form (when mounted) has unsaved changes. A ref, not
+  // state: only close-time behavior reads it, and holding it here (outside
+  // SheetContent) does not carry any page state across close/reopen, so the
+  // unmount-on-close freshness guarantee is untouched. The form keeps it
+  // current and resets it to false on unmount; view mode never writes it.
+  const dirtyRef = useRef(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
-        {detail ? (
-          <DetailBody
-            detail={detail}
-            appointment={appointment}
-            cleanerOptions={cleanerOptions}
-            canViewPayments={canViewPayments}
-            canManagePayments={canManagePayments}
-            canEdit={canEdit}
-            canHandleRequests={canHandleRequests}
-            canDelete={canDelete}
-            busy={busy}
-            onAssign={onAssign}
-            onAcceptCounter={onAcceptCounter}
-            onStart={onStart}
-            onComplete={onComplete}
-            onOpenReschedule={onOpenReschedule}
-            onCancel={onCancel}
-            onDelete={onDelete}
-            onMessageCustomer={onMessageCustomer}
-            onMessageCleaner={onMessageCleaner}
-          />
-        ) : null}
-      </SheetContent>
-    </Sheet>
+    <>
+      <Sheet
+        open={open}
+        onOpenChange={(o) => {
+          // Escape / overlay click / the X button all land here. `open` is
+          // controlled, so swallowing the close keeps the sheet up while the
+          // discard confirm (same copy as the in-form Cancel) takes over.
+          if (!o && dirtyRef.current) {
+            setConfirmClose(true);
+            return;
+          }
+          onOpenChange(o);
+        }}
+      >
+        <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
+          {detail ? (
+            <DetailBody
+              detail={detail}
+              appointment={appointment}
+              dirtyRef={dirtyRef}
+              cleanerOptions={cleanerOptions}
+              canViewPayments={canViewPayments}
+              canManagePayments={canManagePayments}
+              canEdit={canEdit}
+              canHandleRequests={canHandleRequests}
+              canDelete={canDelete}
+              busy={busy}
+              onAssign={onAssign}
+              onAcceptCounter={onAcceptCounter}
+              onStart={onStart}
+              onComplete={onComplete}
+              onOpenReschedule={onOpenReschedule}
+              onCancel={onCancel}
+              onDelete={onDelete}
+              onMessageCustomer={onMessageCustomer}
+              onMessageCleaner={onMessageCleaner}
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
+      <ConfirmDialog
+        open={confirmClose}
+        onOpenChange={setConfirmClose}
+        title="Discard changes?"
+        description="This booking's details have unsaved changes."
+        confirmLabel="Discard"
+        onConfirm={() => {
+          setConfirmClose(false);
+          dirtyRef.current = false;
+          onOpenChange(false);
+        }}
+      />
+    </>
   );
 }
 
 type DetailBodyProps = Omit<BookingDetailSheetProps, "open" | "onOpenChange" | "detail"> & {
   detail: BookingDetailVM;
+  dirtyRef: React.MutableRefObject<boolean>;
 };
 
 /**
@@ -134,6 +171,7 @@ type DetailBodyProps = Omit<BookingDetailSheetProps, "open" | "onOpenChange" | "
 function DetailBody({
   detail,
   appointment,
+  dirtyRef,
   cleanerOptions,
   canViewPayments,
   canManagePayments,
@@ -166,7 +204,13 @@ function DetailBody({
   const editable = (detail.status === "pending" || detail.status === "confirmed") && canEdit;
 
   if (page === "edit" && appointment) {
-    return <EditBookingDetailsForm appointment={appointment} onDone={() => setPage("view")} />;
+    return (
+      <EditBookingDetailsForm
+        appointment={appointment}
+        dirtyRef={dirtyRef}
+        onDone={() => setPage("view")}
+      />
+    );
   }
 
   return (

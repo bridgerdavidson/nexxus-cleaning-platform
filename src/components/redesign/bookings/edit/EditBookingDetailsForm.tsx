@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock } from 'lucide-react';
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -47,9 +47,16 @@ function isDirty(a: EditDetailsState, b: EditDetailsState): boolean {
  */
 export function EditBookingDetailsForm({
   appointment,
+  dirtyRef,
   onDone,
 }: {
   appointment: AdminAppointment;
+  /** Owned by BookingDetailSheet: mirrors this form's dirty flag so the
+   *  sheet's own close paths (Escape, overlay click, the X button) can route
+   *  a dirty edit through the discard confirm instead of silently dropping
+   *  it. Only a boolean crosses the boundary; the page state stays inside
+   *  SheetContent so the unmount-on-close freshness guarantee holds. */
+  dirtyRef: React.MutableRefObject<boolean>;
   onDone: () => void;
 }) {
   // Frozen at mount so a realtime refetch mid-edit can't shift the dirty
@@ -64,6 +71,18 @@ export function EditBookingDetailsForm({
 
   const patch = (p: Partial<EditDetailsState>) => setState((s) => ({ ...s, ...p }));
   const dirty = isDirty(state, initial);
+
+  // Keep the sheet-level flag current. The unmount cleanup covers every exit
+  // from edit mode (successful save, in-form cancel confirm, sheet close):
+  // each unmounts this form, so view mode is always left at false.
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty, dirtyRef]);
+  useEffect(() => {
+    return () => {
+      dirtyRef.current = false;
+    };
+  }, [dirtyRef]);
 
   // The general list only offers active services (matching the create
   // flow); the booking's original service is always selectable too, even
