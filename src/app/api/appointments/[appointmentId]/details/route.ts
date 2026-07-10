@@ -45,13 +45,15 @@ export async function PATCH(
     });
     if (!auth.ok) return auth.response;
 
-    const { data: appt } = await supabaseAdmin
+    const { data: appt, error: apptErr } = await supabaseAdmin
       .from('appointments')
       .select('id, organization_id, status, service_type_id, checklist_id, price_override_enabled, price_override_total, total_price')
       .eq('id', appointmentId)
       .eq('organization_id', organizationId)
       .maybeSingle();
-    if (!appt) return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
+    if (apptErr || !appt) {
+      return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
+    }
     if (appt.status !== 'pending' && appt.status !== 'confirmed') {
       return NextResponse.json(
         { success: false, stale: true, error: 'This booking can no longer be edited' },
@@ -101,12 +103,21 @@ export async function PATCH(
       // the money fields. NULL charge_kind must block (legacy Stripe charges and
       // manual recorded payments carry no charge_kind); only cancellation_fee
       // rows are exempt.
-      const { data: paidRows } = await supabaseAdmin
+      const { data: paidRows, error: paidErr } = await supabaseAdmin
         .from('payments')
         .select('id, status, payment_type, charge_kind')
         .eq('appointment_id', appointmentId)
         .eq('payment_type', 'revenue')
         .in('status', ['paid', 'processing']);
+      if (paidErr) {
+        // Financial guard: fail closed. A read error must never let a
+        // price-affecting edit through on a possibly-paid booking.
+        console.error('details PATCH: paid-guard query failed:', paidErr);
+        return NextResponse.json(
+          { success: false, error: 'Could not verify payment state. Try again.' },
+          { status: 500 },
+        );
+      }
       const blocking = ((paidRows ?? []) as Array<{ charge_kind: string | null }>).filter(
         (p) => p.charge_kind !== 'cancellation_fee',
       );

@@ -63,6 +63,28 @@ describe('PATCH /api/appointments/[appointmentId]/details', () => {
     expect(await getRow(appt.id)).toMatchObject({ total_price: 180, duration_minutes: 120, checklist_id: (cl as { id: string }).id });
   });
 
+  it('override wins during a service change (override total, new duration)', async () => {
+    const org = await seedOrg();
+    const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId, totalPrice: 100 });
+    const { data: svc } = await admin.from('service_types').insert({
+      organization_id: org.organizationId, name: 'Deep', base_price: 160, duration_minutes: 120, service_type: 'deep',
+    }).select('id').single();
+    const { data: cl } = await admin.from('checklists').insert({
+      service_type_id: (svc as { id: string }).id, name: 'Standard deep', price_adder: 20,
+    }).select('id').single();
+
+    const res = await call(appt.id, org.admin.accessToken, {
+      organizationId: org.organizationId, serviceTypeId: (svc as { id: string }).id, checklistId: (cl as { id: string }).id,
+      priceOverrideEnabled: true, priceOverrideTotal: 333, specialRequests: null, notes: null,
+    });
+    expect(res.status).toBe(200);
+    // Override beats base+adder (160+20=180); duration follows the NEW service.
+    expect(await getRow(appt.id)).toMatchObject({
+      total_price: 333, price_override_enabled: true, price_override_total: 333,
+      duration_minutes: 120, service_type_id: (svc as { id: string }).id, checklist_id: (cl as { id: string }).id,
+    });
+  });
+
   it('rejects a checklist that belongs to a different service', async () => {
     const org = await seedOrg();
     const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId });
