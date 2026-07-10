@@ -139,6 +139,52 @@ describe('POST /api/appointments/[appointmentId]/reschedule', () => {
     expect(events.some((e) => e.event_type === 'appointment_time_changed')).toBe(true);
   });
 
+  it('employee-settled + cleaner change fires cleaner_force_assigned', async () => {
+    const org = await seedOrg({ defaultPayoutModel: 'hourly_external' });
+    // Second cleaner (B) in the same org: any org member with a cleaner_profiles row.
+    const b = await addManagerToOrg(org.organizationId);
+    cleanups.push(() => b.cleanup());
+    await admin.from('cleaner_profiles').insert({ id: b.userId, organization_id: org.organizationId, is_available: true });
+
+    const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId, status: 'confirmed' });
+
+    const res = await call(appt.id, org.admin.accessToken, {
+      organizationId: org.organizationId, scheduledDate: '2026-06-12', scheduledTime: '09:00', cleanerId: b.userId,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ outcome: 'settled' });
+    expect(await getAppt(appt.id)).toMatchObject({ cleaner_id: b.userId, status: 'confirmed' });
+
+    const events = await eventsFor(appt.id);
+    expect(events.some((e) => e.event_type === 'cleaner_force_assigned' && e.recipient_user_id === b.userId)).toBe(true);
+    expect(events.some((e) => e.event_type === 'appointment_time_changed' && e.recipient_user_id === org.homeowner.userId)).toBe(true);
+  });
+
+  it('cleans up sibling state (feedback, slots, pending routing rows) on a SETTLED outcome', async () => {
+    const org = await seedOrg({ defaultPayoutModel: 'hourly_external' });
+    const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId, status: 'confirmed' });
+    await seedFeedback(appt.id, org.cleaner.userId, { time: { date: '2026-06-08', time: '11:00' } });
+    await admin.from('appointment_requested_slots').insert([
+      { appointment_id: appt.id, slot_index: 0, scheduled_date: '2026-06-01', scheduled_time: '10:00' },
+    ]);
+    await admin.from('appointment_routing_log').insert({ appointment_id: appt.id, cleaner_id: org.cleaner.userId, attempt_index: 1, deadline_at: new Date().toISOString() });
+
+    const res = await call(appt.id, org.admin.accessToken, {
+      organizationId: org.organizationId, scheduledDate: '2026-06-12', scheduledTime: '09:00', cleanerId: org.cleaner.userId,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ outcome: 'settled' });
+
+    const { data: fb } = await admin.from('cleaner_availability_feedback').select('id').eq('appointment_id', appt.id);
+    expect(fb).toHaveLength(0);
+    const { data: slots } = await admin.from('appointment_requested_slots').select('slot_index').eq('appointment_id', appt.id);
+    expect(slots).toHaveLength(0);
+    const { data: log } = await admin.from('appointment_routing_log').select('response, responded_at').eq('appointment_id', appt.id);
+    expect(log).toHaveLength(1);
+    expect((log ?? [])[0]).toMatchObject({ response: 'expired' });
+    expect(((log ?? [])[0] as { responded_at: string | null }).responded_at).not.toBeNull();
+  });
+
   it('cleaner change requires can_handle_requests and emits cleaner_assigned', async () => {
     const org = await seedOrg();
     const editOnly = await addManagerToOrg(org.organizationId, { can_edit_bookings: true });
