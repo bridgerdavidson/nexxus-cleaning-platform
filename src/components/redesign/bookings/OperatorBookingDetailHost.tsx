@@ -17,10 +17,12 @@ import {
 import { normalizeTimeHHMM } from "@/lib/appointments/rescheduleOutcome";
 import { STALE_BOOKING_MESSAGE, isStaleAcceptError } from "@/lib/appointments/staleBookingError";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 import { BookingDetailSheet } from "./BookingDetailSheet";
 import { toDetailVM } from "./booking-vm";
 import { RescheduleDialog, type RescheduleInit } from "./reschedule/RescheduleDialog";
 import { useRescheduleBooking } from "./reschedule/useRescheduleBooking";
+import { CancelBookingDialog } from "./cancel/CancelBookingDialog";
 
 /**
  * Shell-level `?booking=<id>` host: opens the booking detail sheet in place on
@@ -70,10 +72,15 @@ function HostInner({
   const canEdit = privileged || !!permissions?.can_edit_bookings;
   const canHandleRequests = privileged || !!permissions?.can_handle_requests;
   const canDelete = privileged;
+  // Cancel-with-fee can CAPTURE money, so it's gated like other payment
+  // actions (mirrors the legacy AppointmentPanelHost): owners/admins always,
+  // managers only with can_manage_payments. Others keep the soft-cancel.
+  const feeCancel = stripeNewChargeFlowUiEnabled() && (privileged || !!permissions?.can_manage_payments);
 
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   const [busy, setBusy] = useState(false);
   const [reschedInit, setReschedInit] = useState<RescheduleInit | null>(null);
+  const [feeCancelOpen, setFeeCancelOpen] = useState(false);
 
   const raw = useMemo(() => appointments.find((x) => x.id === appointmentId) ?? null, [appointments, appointmentId]);
   const detail = useMemo(() => (raw ? toDetailVM(raw, canViewPayments) : null), [raw, canViewPayments]);
@@ -83,7 +90,10 @@ function HostInner({
   // back / navigation clearing ?booking= would leave the dialog orphaned
   // over an unrelated page while HostInner stays mounted.
   useEffect(() => {
-    if (!open) setReschedInit(null);
+    if (!open) {
+      setReschedInit(null);
+      setFeeCancelOpen(false);
+    }
   }, [open]);
 
   const { reschedule: rescheduleForAssign } = useRescheduleBooking(appointmentId);
@@ -217,7 +227,7 @@ function HostInner({
         onStart={() => runStatus("in_progress")}
         onComplete={() => runStatus("completed")}
         onOpenReschedule={(init) => setReschedInit(init ?? {})}
-        onCancel={() => setConfirm("cancel")}
+        onCancel={() => (feeCancel && raw ? setFeeCancelOpen(true) : setConfirm("cancel"))}
         onDelete={() => setConfirm("delete")}
         onMessageCustomer={() => {
           if (detail?.customerId)
@@ -241,6 +251,18 @@ function HostInner({
           onDone={() => {
             setReschedInit(null);
             void refetch();
+          }}
+        />
+      ) : null}
+      {raw ? (
+        <CancelBookingDialog
+          open={feeCancelOpen}
+          onOpenChange={setFeeCancelOpen}
+          appointment={raw}
+          onCancelled={async () => {
+            setFeeCancelOpen(false);
+            await refetch();
+            onClose();
           }}
         />
       ) : null}
