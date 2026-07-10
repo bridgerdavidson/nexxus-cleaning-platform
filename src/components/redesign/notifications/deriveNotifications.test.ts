@@ -79,6 +79,47 @@ describe('operatorNotificationHref', () => {
   });
 });
 
+describe('bookingId (in-place booking open)', () => {
+  it('sets bookingId for operator appointment events that target the booking detail', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: 'a1', event_type: 'cleaner_accepted' })],
+      NOW,
+      'admin',
+    );
+    expect(g.latest.bookingId).toBe('a1');
+  });
+
+  it('leaves bookingId null for payment-routed and appointment-less events', () => {
+    const [pay] = deriveNotificationGroups(
+      [item({ appointment_id: 'a2', event_type: 'charge_failed' })],
+      NOW,
+      'admin',
+    );
+    expect(pay.latest.bookingId).toBeNull();
+    const [solo] = deriveNotificationGroups(
+      [item({ appointment_id: null, event_type: 'member_joined' })],
+      NOW,
+      'admin',
+    );
+    expect(solo.latest.bookingId).toBeNull();
+  });
+
+  it('leaves bookingId null for cleaner and homeowner roles', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: 'a3', event_type: 'job_completed' })],
+      NOW,
+      'cleaner',
+    );
+    expect(g.latest.bookingId).toBeNull();
+    const [h] = deriveNotificationGroups(
+      [item({ appointment_id: 'a4', event_type: 'job_started' })],
+      NOW,
+      'homeowner',
+    );
+    expect(h.latest.bookingId).toBeNull();
+  });
+});
+
 describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")', () => {
   it('routes appointment notifications to the in-redesign job detail', () => {
     const [g] = deriveNotificationGroups(

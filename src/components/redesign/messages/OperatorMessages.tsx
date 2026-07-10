@@ -255,12 +255,16 @@ function OperatorMessagesData() {
       .catch(() => {})
   }, [])
 
-  // "Open booking" -> the redesign booking detail sheet on the Bookings screen
+  // "Open booking" -> the booking detail sheet in place via the shell host.
+  // Sets ?booking= in place (not the write-only opener) so the open thread's
+  // ?c= selection survives behind the sheet.
   const openBooking = useCallback(
     (id: string) => {
-      router.push(`/app/admin-dashboard/bookings?booking=${id}`)
+      const sp = new URLSearchParams(searchParams.toString())
+      sp.set('booking', id)
+      router.replace(`?${sp.toString()}`, { scroll: false })
     },
-    [router],
+    [router, searchParams],
   )
 
   // Customer and cleaner detail params are both keyed by the person's user id
