@@ -18,7 +18,15 @@ import type { NotificationRole } from '@/lib/notifications/navigation';
  * redesign panel: a Popover on desktop, a vaul Drawer (bottom sheet) on mobile.
  * Lives in the operator top bar.
  */
-export function NotificationBell({ role = 'admin' }: { role?: NotificationRole } = {}) {
+export function NotificationBell({
+  role = 'admin',
+  onOpenBooking,
+}: {
+  role?: NotificationRole;
+  /** When set, booking-targeted rows open the detail sheet in place (via the
+   * shell-level host) instead of navigating to their href. */
+  onOpenBooking?: (id: string) => void;
+} = {}) {
   const {
     notifications,
     unreadCount,
@@ -51,9 +59,15 @@ export function NotificationBell({ role = 'admin' }: { role?: NotificationRole }
     (item: NotificationItemVM, unreadIds: string[]) => {
       if (unreadIds.length > 0) markManyRead(unreadIds);
       setOpen(false);
+      // Booking-targeted rows open the detail sheet in place via the shell
+      // host when the viewer may see bookings; otherwise fall back to the href.
+      if (item.bookingId && onOpenBooking) {
+        onOpenBooking(item.bookingId);
+        return;
+      }
       router.push(item.href);
     },
-    [markManyRead, router],
+    [markManyRead, router, onOpenBooking],
   );
 
   const handleAccept = useCallback(

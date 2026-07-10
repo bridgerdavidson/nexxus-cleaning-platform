@@ -31,9 +31,13 @@ function initials(p?: Profile) {
 export function OperatorTopBar({
   onNewBooking,
   onOpenSearch,
+  onOpenBooking,
 }: {
   onNewBooking?: () => void;
   onOpenSearch?: () => void;
+  /** Opens the booking detail sheet in place (shell host); passed through to
+   * the notification bell so booking rows don't navigate away. */
+  onOpenBooking?: (id: string) => void;
 }) {
   const { user, signOut } = useAuth() as { user: { profile?: Profile } | null; signOut: () => void };
   const profile = user?.profile;
@@ -78,7 +82,7 @@ export function OperatorTopBar({
           </Button>
         ) : null}
 
-        <NotificationBell />
+        <NotificationBell onOpenBooking={onOpenBooking} />
 
         <DropdownMenu>
           <DropdownMenuTrigger

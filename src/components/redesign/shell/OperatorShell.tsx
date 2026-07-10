@@ -11,6 +11,8 @@ import { OperatorMobileNav } from "./OperatorMobileNav";
 import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
+import { OperatorBookingDetailHost } from "@/components/redesign/bookings/OperatorBookingDetailHost";
+import { useOpenBookingDetail } from "@/components/redesign/bookings/useOpenBookingDetail";
 import { OPERATOR_NAV } from "./nav-items";
 import { useOperatorNav } from "./useOperatorNav";
 
@@ -62,6 +64,12 @@ export function OperatorShell({
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canCreateBooking = privileged || !!permissions?.can_edit_bookings;
   const onNewBooking = canCreateBooking ? openBooking : undefined;
+  // The booking-detail sheet is a global surface too: notifications, message
+  // chips, and the overview queue all open it in place via ?booking=<id>.
+  // Mirror the bookings route's gate (useRequireManagerFlag can_view_bookings)
+  // so a restricted manager can never open it anywhere.
+  const canViewBookings = privileged || !!permissions?.can_view_bookings;
+  const openBookingDetail = useOpenBookingDetail();
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -69,7 +77,11 @@ export function OperatorShell({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} nav={nav} />
         <div className="lg:pl-16">
-          <OperatorTopBar onNewBooking={onNewBooking} onOpenSearch={() => setSearchOpen(true)} />
+          <OperatorTopBar
+            onNewBooking={onNewBooking}
+            onOpenSearch={() => setSearchOpen(true)}
+            onOpenBooking={canViewBookings ? openBookingDetail : undefined}
+          />
           <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
         </div>
         <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} />
@@ -77,6 +89,11 @@ export function OperatorShell({
         {canCreateBooking ? (
           <Suspense fallback={null}>
             <OperatorBookingHost />
+          </Suspense>
+        ) : null}
+        {canViewBookings ? (
+          <Suspense fallback={null}>
+            <OperatorBookingDetailHost />
           </Suspense>
         ) : null}
       </div>

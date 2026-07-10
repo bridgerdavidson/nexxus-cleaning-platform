@@ -42,7 +42,7 @@ export function MessageThreadPanel(props: {
   isLoadingMore: boolean
   onLoadMore: () => void
   messagesEndRef: React.RefObject<HTMLDivElement>
-  onOpenBooking: (id: string) => void
+  onOpenBooking?: (id: string) => void
   // composer
   composer: React.ComponentProps<typeof MessageComposer>
 }) {

@@ -33,6 +33,10 @@ export interface NotificationItemVM {
   organizationId: string;
   /** Where a click on this row should navigate. */
   href: string;
+  /** For operator roles: the booking the row targets, when the destination is
+   * the booking detail. The bell opens the sheet in place via the shell host
+   * instead of navigating to `href`. Null when the row routes elsewhere. */
+  bookingId: string | null;
   action?: NotificationAction;
 }
 
@@ -150,6 +154,18 @@ function notificationHref(
   return operatorNotificationHref(item);
 }
 
+/** The booking a click should open in place (operator roles only): the same
+ * appointment-scoped rows operatorNotificationHref sends to the booking
+ * detail; payment-routed and appointment-less rows return null. */
+function operatorBookingId(
+  item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
+  role: NotificationRole,
+): string | null {
+  if (role === 'cleaner' || role === 'homeowner') return null;
+  if (!item.appointment_id) return null;
+  return notificationTab(item.event_type, 'admin') === 'payments' ? null : item.appointment_id;
+}
+
 function deriveAction(item: NotificationItem): NotificationAction | undefined {
   if (item.event_type === 'cleaner_counter_proposed') {
     const suggestedTimeId = payloadString(item.payload, 'suggested_time_id');
@@ -177,6 +193,7 @@ function toItemVM(item: NotificationItem, now: number, role: NotificationRole): 
     appointmentId: item.appointment_id,
     organizationId: item.organization_id,
     href: notificationHref(item, role),
+    bookingId: operatorBookingId(item, role),
     action: deriveAction(item),
   };
 }
