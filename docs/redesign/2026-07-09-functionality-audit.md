@@ -8,6 +8,8 @@
 
 ## 1. Genuinely dead or stubbed controls (fix these — a user clicks and nothing happens)
 
+> ✅ **All six fixed in PR #134** (merged 2026-07-09): queue rows + buttons wired to open the booking detail (gated on `can_view_bookings`; since the host landed they open the sheet in place), homeowner Add image sends attachments, settings sections render an ErrorState with retry, self-pay card rows are display-only mirroring the server's default-else-first choice, marketing demo buttons simulate.
+
 | # | Where | What | Severity |
 |---|---|---|---|
 | 1 | `src/components/redesign/overview/NeedsYouNowQueue.tsx:74` | **Assign / Force-assign / Review** buttons on every queue row render with no `onClick`, no link, no form. Prop chain carries only `{id,title,subtitle}` — no callback or href exists anywhere up through `OperatorOverview`. Clicking silently does nothing. | major |
@@ -25,14 +27,14 @@ These all "work" today because the legacy dashboard still exists, but every one 
 
 | Where | Control | Degradation |
 |---|---|---|
-| `src/components/redesign/bookings/OperatorBookings.tsx:382-384` (JSX `BookingDetailSheet.tsx:267`) | **Reschedule** | `router.push("/admin-dashboard?tab=bookings")` — leaves the shell AND drops the appointment id (legacy supports `?appointment=<id>` deep link; passing it is a one-line interim fix). The counter-proposal window copy points users at this button, so window resolution depends on it. No redesign reschedule exists at all (see gap R2). |
-| `src/components/redesign/messages/OperatorMessages.tsx:275` (JSX `ContextPanel.tsx:73`) | **New booking** (conversation About panel) | Navigates to legacy with a phantom `new=1` param nothing reads — the labeled action never happens. One-line fix: in-shell `?newbooking=1` via `useOpenOperatorBooking`. |
-| `src/components/redesign/notifications/deriveNotifications.ts:84` | **All appointment-scoped notification clicks** incl. the "Assign cleaner" chip | Deliberate documented interim: pushes to the legacy drawer. Works, but ejects the operator from the shell; the "Assign cleaner" chip lands on a drawer that can't assign. Switch to an `/app` URL once the shell gets a panel host. |
+| `src/components/redesign/bookings/OperatorBookings.tsx:382-384` (JSX `BookingDetailSheet.tsx:267`) | **Reschedule** | ⏳ Interim shipped (PR #135): now carries `?appointment=<id>` so the legacy panel opens on the right booking (handler lives in `OperatorBookingDetailHost` since the host landed). Still ESCAPES to legacy until the redesign reschedule flow exists (gap R2). |
+| `src/components/redesign/messages/OperatorMessages.tsx:275` (JSX `ContextPanel.tsx:73`) | **New booking** (conversation About panel) | ✅ Fixed (PR #135): opens the in-shell `?newbooking=1` sheet, set in place so the thread's `?c=` survives. |
+| `src/components/redesign/notifications/deriveNotifications.ts:84` | **All appointment-scoped notification clicks** incl. the "Assign cleaner" chip | ✅ Fixed: hrefs repointed into the redesign shell (PR #135); booking-targeted rows now open the detail sheet in place via the shell host (`NotificationItemVM.bookingId` + bell `onOpenBooking`). |
 | `src/components/redesign/payments/usePaymentsTriage.ts:282` | **Fix card** (failed-charge triage) | Opens the legacy side panel because the redesign has no per-booking payment-method UI (gap R6). |
-| `src/components/redesign/payments/usePaymentsTriage.ts:292` + `OperatorPayments.tsx:339` | **Message {cleaner}** (triage band + payout detail sheet) | Creates the conversation, then dumps into legacy messages WITHOUT opening the thread (id thrown away). The redesign Messages screen already supports `?to=` — point it there instead. |
-| `src/components/redesign/messages/OperatorMessages.tsx:261` (+ `MessageBubble.tsx:27`, `InlineBookingCard.tsx:15`) | **Open booking** chips/rows across Messages | Opens the legacy drawer; redesign Bookings already supports a booking deep link. |
-| `src/components/redesign/messages/ContextPanel.tsx:71` | **Profile** (About panel) | Stays in the redesign but only reaches the customers/cleaners LIST — never opens the person, though both destinations support person deep links via `useDetailParam`. Trivial fix. |
-| `src/app/reset-password/page.tsx:157`, `src/app/accept-invite/page.tsx:266` | Post-success redirects | Both pages have LOCAL `getDashboardPath` copies that ignore `redesignUiEnabled()` — with the flag on, a user finishing password reset / invite acceptance lands on the LEGACY dashboard. Use `src/lib/redesign/dashboardPath.ts`. |
+| `src/components/redesign/payments/usePaymentsTriage.ts:292` + `OperatorPayments.tsx:339` | **Message {cleaner}** (triage band + payout detail sheet) | ✅ Fixed (PR #135): routes to redesign Messages `?to=<cleanerId>`, which creates/opens the thread itself. |
+| `src/components/redesign/messages/OperatorMessages.tsx:261` (+ `MessageBubble.tsx:27`, `InlineBookingCard.tsx:15`) | **Open booking** chips/rows across Messages | ✅ Fixed: repointed to the redesign booking deep link (PR #135), now opens the sheet in place via the shell host, preserving the open thread's `?c=`. |
+| `src/components/redesign/messages/ContextPanel.tsx:71` | **Profile** (About panel) | ✅ Fixed (PR #135): deep-links the person (`?cleaner=` / `?customer=`). |
+| `src/app/reset-password/page.tsx:157`, `src/app/accept-invite/page.tsx:266` | Post-success redirects | ✅ Fixed (PR #136): both use the shared flag-aware `getDashboardPath`. |
 
 ## 3. Legacy features with no redesign home (must-haves)
 
@@ -50,8 +52,8 @@ Deduped across the admin + manager analyses (managers share the operator console
 | R8 | **Operator cancel with cancellation-fee handling** | partial | Redesign operator cancel is a bare `status='cancelled'` update bypassing the Stripe-aware cancel route. The homeowner side HAS the fee-aware `CancelCleaningSheet`; only the operator side lost it. |
 | R9 | **Job photos (before/during/after) visible to operator** | missing | No photos section in `BookingDetailSheet`; evidence trail for disputes/fee decisions is gone. |
 | R10 | **Action Center completeness**: SLA-overdue bucket + per-attempt routing/decline history | partial | `deriveOverview.ts` has no overdue bucket; overdue bookings appear in NO queue. Routing-attempt log not ported. (Plus the dead buttons in §1.) |
-| R11 | **Cleaner multi-slot offer chips show time only** | partial | Legacy showed "Thu, Mar 5 · 10:00 AM" per slot; redesign chips are time-only so alternate slots on different days are indistinguishable at accept time. Small but a correctness bug. |
-| R12 | **Legacy deep-link repointing** (the full §2 list) | partial | Every escape hatch needs a redesign target before the legacy tree can be deleted. |
+| R11 | **Cleaner multi-slot offer chips show time only** | ✅ done | Fixed in PR #137 (`offerSlotChipLabels` presenter: date-aware labels when slots span days). |
+| R12 | **Legacy deep-link repointing** (the full §2 list) | mostly done | PRs #135 + the booking-detail host resolved every §2 escape except Reschedule (R2) and Fix card (R6), which stay legacy until those surfaces exist. |
 
 ## 4. Nice-to-haves (pilot could launch without, decide deliberately)
 
@@ -75,7 +77,7 @@ Security settings (password/2FA page), notification preferences (both already de
 
 ## 7. Suggested sequencing
 
-1. **Quick wires (no design needed):** §1 #1-#5 fixes, ContextPanel Profile deep link, Message-cleaner `?to=` repoint, New-booking `?newbooking=1` repoint, auth redirect flag fix, cleaner slot date labels (R11).
-2. **One structural piece unlocks most of §2:** a booking-detail host in the operator shell (`?booking=` param, model: cleaner shell's `?job=` host) so notifications/messages/payments all deep-link in-shell.
+1. **Quick wires (no design needed):** §1 #1-#5 fixes, ContextPanel Profile deep link, Message-cleaner `?to=` repoint, New-booking `?newbooking=1` repoint, auth redirect flag fix, cleaner slot date labels (R11). ✅ **DONE** (PRs #134-#137, merged 2026-07-09).
+2. **One structural piece unlocks most of §2:** a booking-detail host in the operator shell (`?booking=` param, model: cleaner shell's `?job=` host) so notifications/messages/payments all deep-link in-shell. ✅ **DONE** (`OperatorBookingDetailHost` mounted in `OperatorShell` behind `can_view_bookings`; owns `?booking=` on every operator page; overview queue, message booking chips, and booking-targeted notifications open the sheet in place. Reschedule and Fix card still hand off to legacy pending R2/R3 and R6).
 3. **Bigger UI builds (browser-companion candidates):** calendar cockpit (R1), reschedule + edit-booking (R2/R3 — likely one booking-edit surface), Properties workspace (R4), org payment methods in settings (R5), operator payment-method + photos sections in BookingDetailSheet (R6/R9), homeowner payment recovery (R7), overview action-center completion (R10 + §1).
 4. **Decide:** platform-owner back-office (§5) and which §4 nice-to-haves make the cutover bar.
