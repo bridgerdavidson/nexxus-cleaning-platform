@@ -131,7 +131,7 @@ export function RescheduleDialog({
   const cleanerItems: PickerItem[] = ranked.map((r) => ({
     id: r.cleaner.id,
     label: r.cleaner.name,
-    sublabel: r.isAvailable ? 'Free' : `Busy (${r.conflicts.length})`,
+    sublabel: r.isAvailable ? 'Available' : `Busy (${r.conflicts.length})`,
     badge: (
       <Badge variant={r.isAvailable ? 'positive' : 'caution'} className="ml-2">
         {r.isAvailable ? 'Free' : 'Busy'}
@@ -154,7 +154,11 @@ export function RescheduleDialog({
     if (!date || !time) return;
     try {
       const r = await reschedule({ scheduledDate: date, scheduledTime: time, cleanerId, force: !!conflict });
-      toast.success(r.outcome === 'settled' ? 'Booking rescheduled' : 'Sent to the cleaner to confirm');
+      toast.success(
+        r.outcome === 'settled'
+          ? 'Booking rescheduled'
+          : `Sent to ${cleanerFirstName ?? 'the cleaner'} to confirm`,
+      );
       onDone();
     } catch (e) {
       const err = e as Error & { conflict?: boolean; stale?: boolean };
