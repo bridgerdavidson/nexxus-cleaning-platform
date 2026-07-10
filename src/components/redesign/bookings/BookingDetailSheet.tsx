@@ -24,24 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
+import { Field, DiscardChangesDialog } from "./detail-atoms";
 import { JobMessagesPanel } from "./JobMessagesPanel";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 import type { RescheduleInit } from "./reschedule/RescheduleDialog";
 import { EditBookingDetailsForm } from "./edit/EditBookingDetailsForm";
 import type { AdminAppointment } from "@/hooks/useAdminData";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-        {label}
-      </div>
-      <div className="text-sm text-foreground">{children}</div>
-    </div>
-  );
-}
 
 export type BookingDetailSheetProps = {
   open: boolean;
@@ -141,12 +130,10 @@ export function BookingDetailSheet({
           ) : null}
         </SheetContent>
       </Sheet>
-      <ConfirmDialog
+      <DiscardChangesDialog
         open={confirmClose}
         onOpenChange={setConfirmClose}
-        title="Discard changes?"
         description="This booking's details have unsaved changes."
-        confirmLabel="Discard"
         onConfirm={() => {
           setConfirmClose(false);
           dirtyRef.current = false;

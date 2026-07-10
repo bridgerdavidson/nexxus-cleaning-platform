@@ -7,7 +7,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/components/ui/toast';
 import { useAuth } from '@/hooks/useAuth';
 import { type AdminAppointment } from '@/hooks/useAdminData';
@@ -15,6 +14,7 @@ import { normalizeTimeHHMM, reaskTierHours } from '@/lib/appointments/reschedule
 import { STALE_BOOKING_MESSAGE } from '@/lib/appointments/staleBookingError';
 import { toYMD } from '@/components/redesign/homeowner/booking/time-options';
 import { fmtTime, monthDay } from '../booking-vm';
+import { Field, DiscardChangesDialog } from '../detail-atoms';
 import type { CleanerOption } from '../bookings-types';
 import { EntityPickerField, type PickerItem } from '../new-booking/EntityPickerField';
 import { useRankedCleaners } from '../new-booking/useRankedCleaners';
@@ -36,15 +36,6 @@ export interface RescheduleInit {
   date?: string;
   time?: string;
   windowId?: string;
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
-      <div className="text-sm text-foreground">{children}</div>
-    </div>
-  );
 }
 
 function pillClass(selected: boolean): string {
@@ -320,12 +311,10 @@ export function RescheduleDialog({
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
+      <DiscardChangesDialog
         open={confirmDiscard}
         onOpenChange={setConfirmDiscard}
-        title="Discard changes?"
         description="This booking's schedule has unsaved changes."
-        confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
           onDone();

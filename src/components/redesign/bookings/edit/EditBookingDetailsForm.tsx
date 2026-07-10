@@ -5,7 +5,7 @@ import { CalendarClock } from 'lucide-react';
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DiscardChangesDialog } from '../detail-atoms';
 import { toast } from '@/components/ui/toast';
 import { type AdminAppointment } from '@/hooks/useAdminData';
 import { useServices } from '@/hooks/useServices';
@@ -254,12 +254,10 @@ export function EditBookingDetailsForm({
         </Button>
       </div>
 
-      <ConfirmDialog
+      <DiscardChangesDialog
         open={confirmDiscard}
         onOpenChange={setConfirmDiscard}
-        title="Discard changes?"
         description="This booking's details have unsaved changes."
-        confirmLabel="Discard"
         onConfirm={() => {
           setConfirmDiscard(false);
           onDone();
