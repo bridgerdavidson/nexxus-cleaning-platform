@@ -18,22 +18,26 @@ export function NeedsYouNowQueue({
   unassigned,
   declined,
   counterProposed,
+  overdue,
   loading,
   onOpenBooking,
 }: {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
+  /** Cleaner response deadline passed with no answer (SLA blown). */
+  overdue: QueueItem[];
   loading?: boolean;
   /** Opens a booking's detail (deep-links to the Bookings screen). */
   onOpenBooking?: (appointmentId: string) => void;
 }) {
   const groups: Group[] = [
+    { kind: "overdue", label: "Response overdue", actionLabel: "Review", tone: "critical", items: overdue },
     { kind: "unassigned", label: "Unassigned", actionLabel: "Assign", tone: "caution", items: unassigned },
     { kind: "declined", label: "All cleaners declined", actionLabel: "Force-assign", tone: "critical", items: declined },
     { kind: "counter", label: "Counter-proposed", actionLabel: "Review", tone: "info", items: counterProposed },
   ];
-  const total = unassigned.length + declined.length + counterProposed.length;
+  const total = unassigned.length + declined.length + counterProposed.length + overdue.length;
 
   return (
     <Card>
@@ -86,7 +90,7 @@ export function NeedsYouNowQueue({
                       {onOpenBooking && (
                         <Button
                           size="sm"
-                          variant={g.kind === "counter" ? "secondary" : "default"}
+                          variant={g.kind === "counter" || g.kind === "overdue" ? "secondary" : "default"}
                           onClick={(e) => {
                             e.stopPropagation();
                             onOpenBooking(it.id);
