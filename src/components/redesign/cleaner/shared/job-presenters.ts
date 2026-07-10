@@ -130,3 +130,16 @@ export function offeredSlots(a: CleanerAppointment): OfferSlot[] {
   if (slots && slots.length > 0) return [...slots].sort((x, y) => x.slot_index - y.slot_index);
   return [{ slot_index: 0, scheduled_date: a.scheduled_date, scheduled_time: a.scheduled_time }];
 }
+
+/** Chip labels for the offered slots, aligned with the input order. Time-only
+ * when every slot is on the same day; date + time ("Thu, Mar 5 · 10:00 AM")
+ * when the slots span days, so same-time-different-day offers stay tellable
+ * apart at accept time. */
+export function offerSlotChipLabels(slots: OfferSlot[]): string[] {
+  const multiDay = new Set(slots.map((s) => s.scheduled_date)).size > 1;
+  return slots.map((s) => {
+    if (multiDay) return formatJobWhen(s.scheduled_date, s.scheduled_time);
+    const { h, ap } = formatTimeParts(s.scheduled_time);
+    return `${h} ${ap}`;
+  });
+}
