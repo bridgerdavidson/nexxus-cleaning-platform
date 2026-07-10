@@ -72,7 +72,7 @@ export function OperatorOverview() {
   const welcomeCopy = getWelcomeCopy("operator", onboarding.welcomeVariant, onboarding.firstName);
 
   const now = new Date();
-  const sections = deriveOverviewSections(appointments, todayLocalISO(now));
+  const sections = deriveOverviewSections(appointments, todayLocalISO(now), now.getTime());
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canViewPayments = privileged || !!permissions?.can_view_payments;
@@ -150,6 +150,10 @@ export function OperatorOverview() {
         unassigned={sections.unassigned.map(toQueueItem)}
         declined={sections.declined.map(toQueueItem)}
         counterProposed={sections.counterProposed.map(toQueueItem)}
+        overdue={sections.overdue.map((a) => ({
+          ...toQueueItem(a),
+          subtitle: `${fmtShortDate(a.scheduled_date)} · ${fmtTime(a.scheduled_time)} · ${cleanerLabel(a)} has not responded`,
+        }))}
         onOpenBooking={canViewBookings ? openBooking : undefined}
         today={today}
         activeNow={activeNow}

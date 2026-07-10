@@ -16,6 +16,8 @@ export type OperatorOverviewViewProps = {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
+  /** Cleaner response deadline passed with no answer (SLA blown). */
+  overdue: QueueItem[];
   /** Opens a booking's detail (deep-links to the Bookings screen). */
   onOpenBooking?: (appointmentId: string) => void;
   today: ScheduleItem[];
@@ -37,6 +39,7 @@ export function OperatorOverviewView({
   unassigned,
   declined,
   counterProposed,
+  overdue,
   onOpenBooking,
   today,
   activeNow,
@@ -63,6 +66,7 @@ export function OperatorOverviewView({
             unassigned={unassigned}
             declined={declined}
             counterProposed={counterProposed}
+            overdue={overdue}
             loading={loading}
             onOpenBooking={onOpenBooking}
           />
