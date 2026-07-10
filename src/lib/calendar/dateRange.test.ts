@@ -38,4 +38,16 @@ describe('dateRange', () => {
       '2026-03-14',
     ]);
   });
+
+  it('weekDays with weekStartsOn=1 starts on Monday', () => {
+    // 2026-07-10 is a Friday; the Monday-start week begins 2026-07-06.
+    const days = weekDays(new Date(2026, 6, 10), 1);
+    expect(toDateKey(days[0])).toBe('2026-07-06');
+    expect(toDateKey(days[6])).toBe('2026-07-12');
+  });
+  it('monthMatrix with weekStartsOn=1 begins on a Monday', () => {
+    const cells = monthMatrix(new Date(2026, 6, 10), 1);
+    expect(cells[0].getDay()).toBe(1); // Monday
+    expect(cells).toHaveLength(42);
+  });
 });

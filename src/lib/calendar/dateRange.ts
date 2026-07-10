@@ -6,7 +6,7 @@
 import { startOfWeek, startOfMonth, addDays, format } from 'date-fns';
 import type { ViewMode } from './types';
 
-const WEEK_OPTS = { weekStartsOn: 0 as const };
+type WeekStart = 0 | 1;
 
 /** Local `yyyy-MM-dd` for a Date. */
 export function toDateKey(d: Date): string {
@@ -19,27 +19,26 @@ export function fromDateKey(key: string): Date {
   return new Date(y, (m ?? 1) - 1, d ?? 1);
 }
 
-/** The 7 days of the week containing `date`, Sunday first. */
-export function weekDays(date: Date): Date[] {
-  const start = startOfWeek(date, WEEK_OPTS);
+/** The 7 days of the week containing `date` (weekStartsOn: 0 = Sunday, 1 = Monday). */
+export function weekDays(date: Date, weekStartsOn: WeekStart = 0): Date[] {
+  const start = startOfWeek(date, { weekStartsOn });
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
-/** A fixed 6-week (42-cell) month grid containing `date`, Sunday first. */
-export function monthMatrix(date: Date): Date[] {
-  const gridStart = startOfWeek(startOfMonth(date), WEEK_OPTS);
+/** A fixed 6-week (42-cell) month grid containing `date`. */
+export function monthMatrix(date: Date, weekStartsOn: WeekStart = 0): Date[] {
+  const gridStart = startOfWeek(startOfMonth(date), { weekStartsOn });
   return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
 }
 
-/** The day list a given view renders for `date` (day -> single day; week/month -> grids). */
-export function gridDaysFor(view: ViewMode, date: Date): Date[] {
+/** The day list a given view renders for `date`. */
+export function gridDaysFor(view: ViewMode, date: Date, weekStartsOn: WeekStart = 0): Date[] {
   switch (view) {
     case 'month':
-      return monthMatrix(date);
+      return monthMatrix(date, weekStartsOn);
     case 'week':
-      return weekDays(date);
+      return weekDays(date, weekStartsOn);
     case 'day':
-      return [date];
     case 'agenda':
     default:
       return [date];
