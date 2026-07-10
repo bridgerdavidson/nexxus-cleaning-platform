@@ -113,7 +113,9 @@ export interface OperatorMessagesViewProps {
   isLoadingMore: boolean
   onLoadMore: () => void
   messagesEndRef: React.RefObject<HTMLDivElement>
-  onOpenBooking: (appointmentId: string) => void
+  /** Withheld (undefined) when the viewer lacks can_view_bookings: booking
+   * chips render informational-only because the detail sheet is unavailable. */
+  onOpenBooking?: (appointmentId: string) => void
   // composer
   draft: string
   onDraftChange: (v: string) => void

@@ -12,7 +12,7 @@ export function MessageBubble({
   onOpenBooking,
 }: {
   message: MessageVM
-  onOpenBooking: (id: string) => void
+  onOpenBooking?: (id: string) => void
 }) {
   const [lightbox, setLightbox] = useState<number | null>(null)
   const mine = message.isMine
@@ -24,7 +24,7 @@ export function MessageBubble({
         <div className={cn('max-w-[80%]', mine ? 'self-end' : 'self-start')}>
           <InlineBookingCard
             booking={message.booking}
-            onOpen={() => onOpenBooking(message.booking!.appointmentId)}
+            onOpen={onOpenBooking ? () => onOpenBooking(message.booking!.appointmentId) : undefined}
           />
         </div>
       )}

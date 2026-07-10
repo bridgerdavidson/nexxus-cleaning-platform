@@ -17,6 +17,7 @@ import { toast } from '@/components/ui/toast'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { OperatorMessagesView } from './OperatorMessagesView'
+import { useOpenBookingDetail } from '@/components/redesign/bookings/useOpenBookingDetail'
 import { NewMessageDialog } from './NewMessageDialog'
 import { deriveMessages, unreadTotal } from './deriveMessages'
 import { deriveContactBookings } from './deriveContactBookings'
@@ -256,16 +257,11 @@ function OperatorMessagesData() {
   }, [])
 
   // "Open booking" -> the booking detail sheet in place via the shell host.
-  // Sets ?booking= in place (not the write-only opener) so the open thread's
-  // ?c= selection survives behind the sheet.
-  const openBooking = useCallback(
-    (id: string) => {
-      const sp = new URLSearchParams(searchParams.toString())
-      sp.set('booking', id)
-      router.replace(`?${sp.toString()}`, { scroll: false })
-    },
-    [router, searchParams],
-  )
+  // The opener preserves sibling params, so the open thread's ?c= survives
+  // behind the sheet. Withheld below for a manager without can_view_bookings
+  // (the host isn't mounted for them), so chips render informational-only.
+  const openBooking = useOpenBookingDetail()
+  const canViewBookings = privileged || !!permissions?.can_view_bookings
 
   // Customer and cleaner detail params are both keyed by the person's user id
   // (cleaner_profiles.id = user id; org_customers_with_counts returns user ids),
@@ -348,7 +344,7 @@ function OperatorMessagesData() {
         isLoadingMore={isLoadingMore}
         onLoadMore={loadMoreMessages}
         messagesEndRef={messagesEndRef as RefObject<HTMLDivElement>}
-        onOpenBooking={openBooking}
+        onOpenBooking={canViewBookings ? openBooking : undefined}
         draft={draft}
         onDraftChange={setDraft}
         pendingFiles={pendingFiles}

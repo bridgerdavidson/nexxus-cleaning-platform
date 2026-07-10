@@ -10,9 +10,18 @@ import type { ContactBookingVM, ContactContextVM } from './messages-types'
 
 const ROLE_LABEL: Record<string, string> = { homeowner: 'Homeowner', cleaner: 'Cleaner', manager: 'Manager', admin: 'Admin' }
 
-function BookingMini({ b, onOpen }: { b: ContactBookingVM; onOpen: () => void }) {
+/** Without `onOpen` (viewer lacks can_view_bookings) the row renders as an
+ * informational card instead of a button. */
+function BookingMini({ b, onOpen }: { b: ContactBookingVM; onOpen?: () => void }) {
+  const Tag = onOpen ? 'button' : 'div'
   return (
-    <button type="button" onClick={onOpen} className="mb-2 flex w-full items-center gap-3 rounded-control border border-border bg-card px-2.5 py-2.5 text-left hover:border-primary/30 hover:shadow-soft-sm">
+    <Tag
+      {...(onOpen ? { type: 'button' as const, onClick: onOpen } : {})}
+      className={
+        'mb-2 flex w-full items-center gap-3 rounded-control border border-border bg-card px-2.5 py-2.5 text-left' +
+        (onOpen ? ' hover:border-primary/30 hover:shadow-soft-sm' : '')
+      }
+    >
       <span className="w-10 shrink-0 text-center">
         <span className="block text-base font-extrabold leading-none">{b.dayNum}</span>
         <span className="block text-[10px] font-bold uppercase text-muted-foreground">{b.monthLabel}</span>
@@ -22,7 +31,7 @@ function BookingMini({ b, onOpen }: { b: ContactBookingVM; onOpen: () => void })
         <span className="block truncate text-[11px] text-muted-foreground">{b.timeLabel}{b.address ? ` · ${b.address}` : ''}</span>
       </span>
       <BookingBadge status={b.status} />
-    </button>
+    </Tag>
   )
 }
 
@@ -30,7 +39,7 @@ export function ContextPanelBody({
   context, onOpenBooking, onViewProfile, onNewBooking, onCopy, onClose,
 }: {
   context: ContactContextVM
-  onOpenBooking: (id: string) => void
+  onOpenBooking?: (id: string) => void
   onViewProfile: () => void
   onNewBooking?: () => void
   onCopy: (text: string, label: string) => void
@@ -85,13 +94,13 @@ export function ContextPanelBody({
         {context.upcoming.length > 0 && (
           <>
             <SectionLabel>Upcoming</SectionLabel>
-            {context.upcoming.map((b) => <BookingMini key={b.appointmentId} b={b} onOpen={() => onOpenBooking(b.appointmentId)} />)}
+            {context.upcoming.map((b) => <BookingMini key={b.appointmentId} b={b} onOpen={onOpenBooking ? () => onOpenBooking(b.appointmentId) : undefined} />)}
           </>
         )}
         {context.recent.length > 0 && (
           <>
             <SectionLabel>Recent</SectionLabel>
-            {context.recent.map((b) => <BookingMini key={b.appointmentId} b={b} onOpen={() => onOpenBooking(b.appointmentId)} />)}
+            {context.recent.map((b) => <BookingMini key={b.appointmentId} b={b} onOpen={onOpenBooking ? () => onOpenBooking(b.appointmentId) : undefined} />)}
           </>
         )}
         {context.upcoming.length === 0 && context.recent.length === 0 && (
@@ -122,7 +131,7 @@ export function ContextPanel(props: {
   isMobile: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
-  onOpenBooking: (id: string) => void
+  onOpenBooking?: (id: string) => void
   onViewProfile: () => void
   onNewBooking?: () => void
   onCopy: (text: string, label: string) => void
