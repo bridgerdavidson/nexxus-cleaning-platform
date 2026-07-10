@@ -72,10 +72,10 @@ export type CleanerOption = { id: string; name: string };
 export type BookingRowAction = "open" | "assign" | "cancel" | "delete";
 
 /** A cleaner-suggested alternate time for a counter-proposed booking. */
-export type CounterProposal = { id: string; label: string; date?: string; time?: string };
+export type CounterProposal = { id: string; label: string; date: string; time: string };
 
 /** A cleaner-suggested availability window for a counter-proposed booking. */
-export type CounterWindow = { id: string; label: string; date?: string; startTime?: string; endTime?: string };
+export type CounterWindow = { id: string; label: string; date: string; startTime: string; endTime: string };
 
 /** Full detail surface (slide-over Sheet). */
 export type BookingDetailVM = {
