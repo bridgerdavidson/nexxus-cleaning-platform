@@ -254,10 +254,13 @@ function DetailBody({
         </Field>
 
         <Field label={detail.isUnassigned ? "Assign cleaner" : "Cleaner"}>
+          {/* Assigning goes through the reschedule route: can_edit_bookings
+              plus the cleaner-change escalation to can_handle_requests, so
+              the select needs BOTH flags or the server would 403. */}
           <Select
             value={detail.cleanerId ?? ""}
             onValueChange={(v) => onAssign(v)}
-            disabled={busy || !canHandleRequests}
+            disabled={busy || !canHandleRequests || !canEdit}
           >
             <SelectTrigger className="mt-1">
               <SelectValue placeholder="Choose a cleaner" />
