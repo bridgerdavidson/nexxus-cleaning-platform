@@ -79,10 +79,15 @@ export function RescheduleDialog({
   const [windowId, setWindowId] = useState<string | null>(null);
   const [dateOpen, setDateOpen] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // A conflict 409 the SERVER detected on submit (another operator filled the
+  // slot; the local appointments cache was stale). Keeps the dialog open with
+  // the warning + "Reschedule anyway", mirroring the client-derived conflict.
+  const [serverConflict, setServerConflict] = useState<{ label: string } | null>(null);
   const { reschedule, saving } = useRescheduleBooking(a.id);
 
   // Seed from init each time the dialog opens (init identity changes per open).
   useEffect(() => {
+    setServerConflict(null);
     if (init) {
       const w = init.windowId ? ownedChips(a).find((c) => c.kind === 'window' && c.id === init.windowId) : null;
       setDate(init.date ?? w?.date ?? a.scheduled_date);
@@ -93,12 +98,19 @@ export function RescheduleDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [init]);
 
+  // A server-detected conflict describes ONE specific selection; picking a
+  // different date, time, or cleaner invalidates it.
+  useEffect(() => {
+    setServerConflict(null);
+  }, [date, time, cleanerId]);
+
   const chips = ownedChips(a);
   const constraint = windowId ? (chips.find((c) => c.kind === 'window' && c.id === windowId) ?? null) : null;
   const pills = timePillOptions(constraint ? { startTime: constraint.startTime!, endTime: constraint.endTime! } : null);
   const offGridPill = time && !pills.some((p) => p.value === time) ? { value: time, label: fmtTime(time) } : null;
   const ranked = useRankedCleaners(cleaners, date && time ? { date, time, durationMinutes: a.duration_minutes || 60 } : null, a.id);
-  const conflict = date && time && cleanerId ? conflictFor(appointments, { date, time, cleanerId }, a.id) : null;
+  const clientConflict = date && time && cleanerId ? conflictFor(appointments, { date, time, cleanerId }, a.id) : null;
+  const conflict = clientConflict ?? serverConflict;
   const outcome = date && time ? outcomeFor(a, { date, time, cleanerId }, payoutModel) : null;
   const dirty = !!date && (date !== a.scheduled_date || time !== normalizeTimeHHMM(a.scheduled_time) || cleanerId !== (a.cleaner_id ?? null));
 
@@ -142,6 +154,12 @@ export function RescheduleDialog({
       if (err.stale) {
         toast.error('This booking changed. Refresh and try again.');
         onDone();
+      } else if (err.conflict) {
+        // The server's race backstop: dialog stays open, the warning row
+        // appears, and the primary button flips to "Reschedule anyway"
+        // (the resubmit then carries force). The hook only tags a boolean,
+        // so the label describes the selection rather than the other job.
+        setServerConflict({ label: `Has a conflicting job at ${fmtTime(time)}` });
       } else {
         toast.error(err.message);
       }
@@ -234,9 +252,12 @@ export function RescheduleDialog({
                   </button>
                 ))}
                 {offGridPill ? (
-                  <button key={`${offGridPill.value}-current`} type="button" className={pillClass(true)}>
+                  // Non-interactive: it only displays the already-selected
+                  // off-grid time (chip/window prefill), so it must not be
+                  // a focusable button with no action.
+                  <span key={`${offGridPill.value}-current`} className={pillClass(true)}>
                     {offGridPill.label}
-                  </button>
+                  </span>
                 ) : null}
               </div>
             </div>

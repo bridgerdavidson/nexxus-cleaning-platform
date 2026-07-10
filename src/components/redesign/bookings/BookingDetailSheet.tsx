@@ -208,11 +208,22 @@ export function BookingDetailSheet({
                     </div>
                     {detail.counterProposals.map((cp) =>
                       editable ? (
-                        <button
+                        // A div with button semantics, NOT a <button>: the row
+                        // contains the interactive Accept <Button>, and nesting
+                        // interactive elements is invalid HTML (same class of
+                        // bug as PR #134's nested-interactive rows).
+                        <div
                           key={cp.id}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           onClick={() => onOpenReschedule({ date: cp.date, time: cp.time })}
-                          className="flex w-full items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onOpenReschedule({ date: cp.date, time: cp.time });
+                            }
+                          }}
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-control border border-border bg-muted/30 px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <span className="text-sm text-foreground">{cp.label}</span>
                           <Button
@@ -227,7 +238,7 @@ export function BookingDetailSheet({
                           >
                             Accept
                           </Button>
-                        </button>
+                        </div>
                       ) : (
                         <div
                           key={cp.id}
