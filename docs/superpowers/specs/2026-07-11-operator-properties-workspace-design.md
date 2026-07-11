@@ -145,6 +145,7 @@ No em dashes in any user-facing copy (use periods/commas/parens). Warning-card a
 - **Multi-photo gallery** (needs a new table/bucket-listing + a `PhotoGalleryGrid` primitive).
 - **Homeowner/operator property-stack unification** (R4 lifts shared logic but does not merge the two UIs).
 - **`bathrooms` half-values** (schema is integer).
+- **Reject archived `property_id` at booking creation (all by-id paths).** R4 filters archived properties out of every picker/list, but by-id booking-prefill deep-links (`AddAppointmentModal.tsx:484/:541`) and `api/appointments/request/route.ts:67` still resolve an archived property by id, so a stale deep-link could book an archived property. Add an `archived_at IS NULL` guard at the booking-creation paths (not just the reads) as defense-in-depth. (Surfaced by the Task 3 review, 2026-07-11.)
 
 ## 13. File-by-file change map (for the plan)
 **New:** migration `1xx_properties_archive_and_realtime.sql`; `properties/OperatorProperties.tsx`, `PropertyDetailSheet.tsx`, `OperatorPropertyDetailHost.tsx`, `PropertyDeleteDialog.tsx`, `useOpenProperty` (operator `?property=`), shared `properties/` logic module; unit tests.
