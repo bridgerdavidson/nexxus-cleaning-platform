@@ -719,40 +719,19 @@ git commit -m "feat(calendar): navigation, drop-id, now-line, and Monday-start h
   - `<EventBlock event nowMs top height widthPct leftPct draggable onOpen />`
   - `<NowIndicator y />`
 
-- [ ] **Step 1: Write the failing test (pure threshold + label render)**
+**No render test** — the repo has no DOM test environment (`@testing-library/react`/`jsdom` are NOT installed, and the plan forbids new dependencies). Test only the pure `isCompactHeight` threshold in a Node-env `.test.ts`; `EventBlock`/`NowIndicator` rendering is verified in the Task 12 browser smoke.
 
-```tsx
-// src/components/redesign/calendar/eventBlock.test.tsx
+- [ ] **Step 1: Write the failing test (pure threshold only)**
+
+```ts
+// src/components/redesign/calendar/eventBlock.test.ts
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { DndContext } from '@dnd-kit/core';
-import type { CalendarEvent } from '@/lib/calendar/types';
-import { EventBlock, isCompactHeight } from './EventBlock';
-
-const NOW = Date.parse('2026-07-10T12:00:00Z');
-const ev: CalendarEvent = {
-  id: 'a1', date: '2026-07-10', startMin: 780, durationMin: 90, endMin: 870,
-  start: new Date(2026, 6, 10, 13, 0), status: 'in_progress',
-  cleanerConfirmationStatus: 'approved', customerLabel: '12 Maple St',
-  serviceLabel: 'Deep clean', cleanerId: 'cl1', cleanerName: 'Cleo C.', responseDeadline: null,
-};
+import { isCompactHeight } from './EventBlock';
 
 describe('isCompactHeight', () => {
   it('is compact below 64px, full at or above', () => {
     expect(isCompactHeight(44)).toBe(true);
     expect(isCompactHeight(64)).toBe(false);
-  });
-});
-
-describe('EventBlock', () => {
-  it('renders the customer label and status badge', () => {
-    render(
-      <DndContext>
-        <EventBlock event={ev} nowMs={NOW} top={0} height={90} widthPct={100} leftPct={0} draggable onOpen={() => {}} />
-      </DndContext>,
-    );
-    expect(screen.getByText('12 Maple St')).toBeTruthy();
-    expect(screen.getByText('In progress')).toBeTruthy();
   });
 });
 ```
@@ -887,13 +866,13 @@ export function EventBlock({
 
 - [ ] **Step 5: Run the test and make sure it passes**
 
-Run: `npx vitest run src/components/redesign/calendar/eventBlock.test.tsx`
-Expected: PASS.
+Run: `npx vitest run src/components/redesign/calendar/eventBlock.test.ts`
+Expected: PASS. Also confirm no dependency changes: `git diff --stat -- package.json package-lock.json` prints nothing.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/components/redesign/calendar/EventBlock.tsx src/components/redesign/calendar/NowIndicator.tsx src/components/redesign/calendar/eventBlock.test.tsx
+git add src/components/redesign/calendar/EventBlock.tsx src/components/redesign/calendar/NowIndicator.tsx src/components/redesign/calendar/eventBlock.test.ts
 git commit -m "feat(calendar): EventBlock (full+compact) and brand-blue NowIndicator"
 ```
 
