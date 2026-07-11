@@ -50,9 +50,30 @@ function ReviewRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-export function OperatorBookingForm({ onDone }: { onDone: () => void }) {
+export function OperatorBookingForm({
+  prefill,
+  onDone,
+}: {
+  prefill?: { date?: string; time?: string };
+  onDone: () => void;
+}) {
   const { currentOrganizationId } = useAuth();
-  const [state, setState] = useState<OperatorBookingState>(EMPTY_OPERATOR_BOOKING);
+  const [state, setState] = useState<OperatorBookingState>(() =>
+    prefill?.date || prefill?.time
+      ? {
+          ...EMPTY_OPERATOR_BOOKING,
+          slots: [
+            {
+              date: prefill.date ?? EMPTY_OPERATOR_BOOKING.slots[0]?.date ?? '',
+              // A date-only prefill (month-view day click) has no time; default to
+              // 09:00 so the seeded slot is complete and editable rather than an
+              // empty-time slot that reads as filled but has no time.
+              time: prefill.time ?? '09:00',
+            },
+          ],
+        }
+      : EMPTY_OPERATOR_BOOKING,
+  );
   const [page, setPage] = useState<'form' | 'review'>('form');
   const self = isSelfPay(state);
 

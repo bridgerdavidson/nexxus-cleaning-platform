@@ -11,14 +11,16 @@ import { OperatorBookingForm } from './OperatorBookingForm';
 export function OperatorBookingSheet({
   open,
   onOpenChange,
+  prefill,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  prefill?: { date?: string; time?: string };
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
-        <OperatorBookingForm onDone={() => onOpenChange(false)} />
+        <OperatorBookingForm prefill={prefill} onDone={() => onOpenChange(false)} />
       </SheetContent>
     </Sheet>
   );
