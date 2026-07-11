@@ -15,6 +15,7 @@ import {
   coerceManagerPermissions,
   type ManagerPermissions,
 } from '../lib/permissions/managerFlags';
+import { planPropertyDeletion, LIVE_APPT_STATUSES } from '@/lib/properties/deletePlan';
 
 export type { ManagerPermissions } from '../lib/permissions/managerFlags';
 
@@ -1916,6 +1917,56 @@ export async function deleteProperty(propertyId: string, organizationId: string)
 
     if (error) throw error;
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete property' };
+  }
+}
+
+export async function countPropertyAppointments(propertyId: string) {
+  const [{ count: live }, { count: history }] = await Promise.all([
+    supabase.from('appointments').select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]),
+    supabase.from('appointments').select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId).in('status', ['completed', 'cancelled']),
+  ]);
+  return { liveCount: live ?? 0, historyCount: history ?? 0 };
+}
+
+/**
+ * Delete a property safely (R4). Never-booked → hard delete. Any history →
+ * cancel live cleanings + stop active recurring series, then archive (soft-delete)
+ * so completed/cancelled records still resolve. Returns the action taken.
+ */
+export async function archiveOrDeleteProperty(propertyId: string, organizationId: string) {
+  try {
+    const { data: property, error: checkError } = await supabase
+      .from('properties').select('organization_id').eq('id', propertyId).single();
+    if (checkError) throw checkError;
+    if (!property || property.organization_id !== organizationId) {
+      return { success: false, error: 'Property not found or does not belong to this organization' };
+    }
+    const { liveCount, historyCount } = await countPropertyAppointments(propertyId);
+    const plan = planPropertyDeletion({ liveCount, historyCount });
+
+    if (plan.action === 'hard-delete') {
+      const { error } = await supabase.from('properties').delete().eq('id', propertyId);
+      if (error) throw error;
+      return { success: true, action: plan.action };
+    }
+    if (plan.action === 'cancel-and-archive') {
+      const { error: cancelErr } = await supabase.from('appointments')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]);
+      if (cancelErr) throw cancelErr;
+      const { error: seriesErr } = await supabase.from('recurring_appointment_series')
+        .update({ is_active: false }).eq('property_id', propertyId).eq('is_active', true);
+      if (seriesErr) throw seriesErr;
+    }
+    const { error: archiveErr } = await supabase.from('properties')
+      .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', propertyId);
+    if (archiveErr) throw archiveErr;
+    return { success: true, action: plan.action };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to delete property' };
   }
