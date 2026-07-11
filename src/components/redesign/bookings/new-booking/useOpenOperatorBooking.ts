@@ -3,8 +3,11 @@
 import { useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
-export function operatorBookingParams(): Record<string, string> {
-  return { newbooking: '1' };
+export function operatorBookingParams(prefill?: { date?: string; time?: string }): Record<string, string> {
+  const params: Record<string, string> = { newbooking: '1' };
+  if (prefill?.date) params.date = prefill.date;
+  if (prefill?.time) params.time = prefill.time;
+  return params;
 }
 
 /**

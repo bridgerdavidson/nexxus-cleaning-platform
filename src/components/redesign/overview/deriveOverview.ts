@@ -1,3 +1,5 @@
+import { isResponseOverdue } from '@/lib/appointments/isResponseOverdue';
+
 // Minimal shape deriveOverviewSections needs from an appointment. The real
 // AdminAppointment (from useAdminAppointments) structurally satisfies this, so
 // the wrapper can pass real rows and keep their full type via the generic.
@@ -42,14 +44,7 @@ export function deriveOverviewSections<T extends OverviewAppointment>(
     // booking is stalled and the operator is the backstop. Only 'pending'
     // qualifies (a confirmed/in-progress row has already resolved) and only
     // with a cleaner attached (a null cleaner is the unassigned bucket's job).
-    overdue: appts.filter(
-      (a) =>
-        a.status === "pending" &&
-        a.cleaner_id != null &&
-        a.cleaner_confirmation_status === "awaiting" &&
-        !!a.response_deadline &&
-        Date.parse(a.response_deadline) < nowMs
-    ),
+    overdue: appts.filter((a) => isResponseOverdue(a, nowMs)),
     today: appts.filter((a) => live(a) && a.scheduled_date === todayISO),
     activeNow: appts.filter((a) => a.status === "in_progress"),
   };
