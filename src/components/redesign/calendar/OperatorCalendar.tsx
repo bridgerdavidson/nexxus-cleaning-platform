@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { useAdminAppointments, useAdminCleaners, type AdminAppointment } from '@/hooks/useAdminData';
 import { useAuth } from '@/hooks/useAuth';
 import { useManagerPermissions } from '@/hooks/useManagerPermissions';
@@ -88,7 +88,7 @@ export function OperatorCalendar() {
     router.replace(`${pathname}?${qs}`, { scroll: false });
   };
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const onDragEnd = (e: DragEndEvent) => {
     const decoded = decodeDropId(e.over?.id as string | undefined);

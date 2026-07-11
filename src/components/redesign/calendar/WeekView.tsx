@@ -38,11 +38,15 @@ export function WeekView({
   onCreate: (date: string, time: string) => void;
 }) {
   const days = weekDays(focusedDate, 1);
-  const hours = deriveBusinessHours(events);
+  const byDate = groupEventsByDate(events);
+  // Derive the visible time window from THIS week's events only (not the whole
+  // org history useAdminAppointments returns), so a stray early/late job in
+  // another week cannot widen every week's grid.
+  const weekEvents = days.flatMap((d) => byDate.get(toDateKey(d)) ?? []);
+  const hours = deriveBusinessHours(weekEvents);
   const ticks = buildHourTicks(hours);
   const slots = buildSlots(hours);
   const gridHeight = minutesToY(hours.endMin, hours.startMin);
-  const byDate = groupEventsByDate(events);
 
   return (
     <div className="overflow-hidden rounded-card border border-border bg-card">

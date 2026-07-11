@@ -43,7 +43,7 @@ export function EventBlock({
 }) {
   const status = calendarStatus(event, nowMs);
   const compact = isCompactHeight(height);
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { listeners, setNodeRef, isDragging } = useDraggable({
     id: `event:${event.id}`,
     disabled: !draggable || status.terminal,
     data: { eventId: event.id },
@@ -54,7 +54,8 @@ export function EventBlock({
   return (
     <div
       ref={setNodeRef}
-      {...(draggable && !status.terminal ? { ...listeners, ...attributes } : {})}
+      // pointer-drag only: keyboard Enter/Space opens the event (onKeyDown below); keyboard reschedule is via the detail sheet's Reschedule dialog
+      {...(draggable && !status.terminal ? listeners : {})}
       role="button"
       tabIndex={0}
       aria-label={`${status.label}. ${event.customerLabel}. ${timeLabel}${event.serviceLabel ? '. ' + event.serviceLabel : ''}`}
