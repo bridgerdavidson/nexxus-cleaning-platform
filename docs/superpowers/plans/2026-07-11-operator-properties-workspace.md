@@ -10,17 +10,20 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-11-operator-properties-workspace-design.md` (read it first — this plan implements it).
 
+**Build order (dependency-correct):** infra/logic (T1-4) → sheet host + read (T5) → sheet edit/create (T6) → homeowner assign (T7) → nav+list (T8) → delete (T9) → book-from-property (T10) → inline add (T11) → customer deep-link (T12) → verify (T13). Each task typechecks and ships only functional UI; footer/row actions are added by the task that implements them, so no dead buttons or forward references at any commit.
+
 ## Global Constraints
 
 Every task's requirements implicitly include these:
 
-- **Branch:** `feat/operator-properties-workspace` (already created; spec committed as `08726cf`). Never commit to `master`.
+- **Branch:** `feat/operator-properties-workspace` (already created; spec `08726cf`, plan committed). Never commit to `master`.
 - **Ship from the design system.** Implement every screen from `src/components/ui/*` + tokens (`tailwind.config.js`, `src/app/globals.css`): brand `#0150FC`, Plus Jakarta Sans, warm canvas, `rounded-card`/`rounded-control`, `shadow-soft-*`, semantic tokens (`bg-critical-50`, `text-critical-700`, `text-muted-foreground`, etc.). The browser-companion mockups under `.superpowers/brainstorm/` are UX/structure reference ONLY — never copy their inline hex/beige/blue styling. Status uses the badge/pill vocabulary, not decorative accent bars.
 - **No em dashes** in any user-facing copy (labels, buttons, toasts, empty states, dialog text). Use periods, commas, parentheses, or "to".
 - **Writes are client-direct + RLS.** Do NOT add a service-role property-write route or import `supabase-admin` in client code. RLS (migration 104) is the boundary.
 - **No new deps.** Reuse existing primitives and hooks.
 - **Commit trailer** on every commit: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
-- **Gates before "done" on any task:** `npx tsc --noEmit` shows no NEW errors (12 pre-existing baseline is OK), `npm run lint` is clean on changed files, and `npm run test` stays green. Pure-logic tasks add Vitest unit tests; UI/query tasks verify via tsc/lint + a described browser check.
+- **Gates before "done" on any task:** `npx tsc --noEmit` shows no NEW errors (12 pre-existing baseline is OK), `npm run lint` clean on changed files, `npm run test:unit` green (the full `npm run test` hits a local GoTrue rate-limit; run targeted unit tests, CI is the source of truth). Pure-logic tasks add Vitest unit tests; UI tasks verify via tsc/lint + the report notes what the controller should browser-check.
+- **No dead buttons.** Only render an action once its handler exists. Footer/row actions are added by the task that implements them.
 - **Column facts (verbatim):** `properties(id, owner_id NULLABLE [NULL=org-owned], name, address, city, state, zip_code, bedrooms int, bathrooms int, square_feet int, special_instructions, access_instructions, photo_url, organization_id, created_at, updated_at)` + new `archived_at timestamptz`. `AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'`. `recurring_appointment_series` has `property_id` + `is_active boolean`.
 
 ---
@@ -31,14 +34,14 @@ Every task's requirements implicitly include these:
 - Create: `supabase/migrations/107_properties_archive_and_realtime.sql`
 
 **Interfaces:**
-- Produces: a nullable `properties.archived_at timestamptz` column (NULL = active); `properties` added to the `supabase_realtime` publication.
+- Produces: nullable `properties.archived_at timestamptz` (NULL = active); `properties` in the `supabase_realtime` publication.
 
-- [ ] **Step 1: Write the migration.** Copy the publication guard shape from `supabase/migrations/081_realtime_enable.sql:31-58`.
+- [ ] **Step 1: Write the migration.** Copy the publication-guard shape from `supabase/migrations/081_realtime_enable.sql`.
 
 ```sql
 -- 107: Properties workspace (R4) — soft-delete/archive flag + realtime publication.
 
--- 1. Archive flag. NULL = active; non-null timestamp = archived (hidden everywhere).
+-- 1. Archive flag. NULL = active; a non-null timestamp = archived (hidden everywhere).
 --    A property with any appointment history is archived instead of hard-deleted so
 --    completed/cancelled records still resolve their property.
 ALTER TABLE "public"."properties" ADD COLUMN IF NOT EXISTS "archived_at" timestamptz;
@@ -52,27 +55,16 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_publication_tables
-    WHERE pubname = 'supabase_realtime'
-      AND schemaname = 'public'
-      AND tablename = 'properties'
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'properties'
   ) THEN
     EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.properties';
   END IF;
 END $$;
 ```
 
-- [ ] **Step 2: Rebuild the schema locally.**
+- [ ] **Step 2: Rebuild + verify.** Run `npx supabase db reset`; expected: all migrations apply, no error. Then confirm the column exists and `properties` is in the publication (Studio at :54323, or `psql \d public.properties` + a `pg_publication_tables` query). A clean `db reset` plus the column/publication check is sufficient.
 
-Run: `npx supabase db reset`
-Expected: completes with no error; all migrations apply.
-
-- [ ] **Step 3: Verify the column and publication.**
-
-Run: `npx supabase db reset && psql "$(npx supabase status --output json | python3 -c "import sys,json;print(json.load(sys.stdin)['DB_URL'])")" -c "\d public.properties" -c "SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime' AND tablename='properties';"`
-Expected: `archived_at | timestamp with time zone` present; one row `properties` in the publication query.
-(If `psql` is unavailable, open Studio at :54323 and confirm the column + `supabase db reset` succeeding is sufficient.)
-
-- [ ] **Step 4: Commit.**
+- [ ] **Step 3: Commit.**
 
 ```bash
 git add supabase/migrations/107_properties_archive_and_realtime.sql
@@ -87,34 +79,16 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 **Files:**
 - Move: `src/components/redesign/homeowner/account/properties/validateProperty.ts` → `src/lib/properties/validateProperty.ts`
-- Move: `src/components/redesign/homeowner/account/properties/validateProperty.test.ts` → `src/lib/properties/validateProperty.test.ts`
-- Move: `src/components/redesign/homeowner/account/properties/PropertyPhotoField.tsx` → `src/components/redesign/properties/PropertyPhotoField.tsx`
-- Modify: every importer of the three moved files (find via grep).
+- Move: `.../validateProperty.test.ts` → `src/lib/properties/validateProperty.test.ts`
+- Move: `.../PropertyPhotoField.tsx` → `src/components/redesign/properties/PropertyPhotoField.tsx`
+- Modify: every importer of the three moved files.
 
 **Interfaces:**
-- Produces: `@/lib/properties/validateProperty` exporting `PropertyFormValues`, `EMPTY_PROPERTY_FORM`, `validateProperty`, `toNumberOrNull`; `@/components/redesign/properties/PropertyPhotoField` exporting `PropertyPhotoField`.
+- Produces: `@/lib/properties/validateProperty` (`PropertyFormValues`, `EMPTY_PROPERTY_FORM`, `validateProperty`, `toNumberOrNull`); `@/components/redesign/properties/PropertyPhotoField` (`PropertyPhotoField`).
 
-- [ ] **Step 1: Find all importers.**
-
-Run: `grep -rln "account/properties/validateProperty\|account/properties/PropertyPhotoField\|from './validateProperty'\|from './PropertyPhotoField'" src/`
-Expected: at least `PropertyFormSheet.tsx` (imports both) and the two test/`derive` files; note every hit.
-
-- [ ] **Step 2: Move the files with `git mv`** (preserves history), then re-point imports.
-
-```bash
-mkdir -p src/lib/properties src/components/redesign/properties
-git mv src/components/redesign/homeowner/account/properties/validateProperty.ts src/lib/properties/validateProperty.ts
-git mv src/components/redesign/homeowner/account/properties/validateProperty.test.ts src/lib/properties/validateProperty.test.ts
-git mv src/components/redesign/homeowner/account/properties/PropertyPhotoField.tsx src/components/redesign/properties/PropertyPhotoField.tsx
-```
-
-Update each importer found in Step 1 to the new paths: `@/lib/properties/validateProperty` and `@/components/redesign/properties/PropertyPhotoField`. In `PropertyFormSheet.tsx` change `import { PropertyPhotoField } from './PropertyPhotoField'` and `from './validateProperty'` accordingly.
-
-- [ ] **Step 3: Run the moved unit test + typecheck.**
-
-Run: `npm run test:unit -- validateProperty && npx tsc --noEmit`
-Expected: validateProperty tests pass; no NEW tsc errors.
-
+- [ ] **Step 1: Find importers.** Run `grep -rln "properties/validateProperty\|properties/PropertyPhotoField\|from './validateProperty'\|from './PropertyPhotoField'" src/`. Note every hit (at least `PropertyFormSheet.tsx`).
+- [ ] **Step 2: Move with `git mv`** (preserves history) into `src/lib/properties/` and `src/components/redesign/properties/` (mkdir first), then re-point each importer to `@/lib/properties/validateProperty` and `@/components/redesign/properties/PropertyPhotoField`.
+- [ ] **Step 3: Verify.** Run `npm run test:unit -- validateProperty && npx tsc --noEmit`. Expected: validateProperty tests pass; no NEW tsc errors.
 - [ ] **Step 4: Commit.**
 
 ```bash
@@ -129,30 +103,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task 3: `Property` type extension + archived read filter across all property reads
 
 **Files:**
-- Modify: `src/types/index.ts` (Property type; add `photo_url: string | null`, `archived_at: string | null`)
-- Modify: `src/hooks/useAdminData.ts` (`useAdminProperties` select + the `AdminProperty` type; add `.is('archived_at', null)`)
-- Modify: `src/hooks/useAdminData.ts` `useCustomerDetails` property select (add archived filter)
-- Modify: `src/components/redesign/bookings/new-booking/usePropertiesByOwner.ts` (add archived filter)
-- Modify: homeowner property reads — the query behind `keys.properties.byHomeowner` (find in `useHomeownerData.ts` / homeowner properties hook) — add archived filter.
+- Modify: `src/types/index.ts` (Property type: add `photo_url: string | null`, `archived_at: string | null`)
+- Modify: `src/hooks/useAdminData.ts` (`useAdminProperties` select + `AdminProperty` type; add `.is('archived_at', null)`); `useCustomerDetails` property select (archived filter)
+- Modify: `src/components/redesign/bookings/new-booking/usePropertiesByOwner.ts` (archived filter)
+- Modify: the homeowner property read behind `keys.properties.byHomeowner` (in `useHomeownerData.ts` / homeowner properties hook) — archived filter
 
 **Interfaces:**
 - Produces: no archived property is ever returned by any list/detail/picker query (operator or homeowner).
 
-- [ ] **Step 1: Extend the type.** In `src/types/index.ts` Property interface (near line 146), add `photo_url: string | null;` and `archived_at: string | null;`. If `AdminProperty` in `useAdminData.ts` is a distinct interface, add the same two fields there.
-
-- [ ] **Step 2: Add `.is('archived_at', null)` to every property read.** For each Supabase query listed in Files, add `.is('archived_at', null)` in the query chain (alongside the existing `.eq('organization_id', ...)` / owner filter). Grep to be exhaustive:
-
-Run: `grep -rn "from('properties')" src/ | grep -i "select\|from('properties')"`
-Expected: audit each read site; every SELECT that lists properties for display gets the archived filter. (Write helpers like `updateProperty`/`archiveOrDeleteProperty` do NOT filter — they operate by id.)
-
-- [ ] **Step 3: Typecheck.**
-
-Run: `npx tsc --noEmit`
-Expected: no NEW errors.
-
-- [ ] **Step 4: Browser check.** With `npm run dev` + local Supabase, manually set one property's `archived_at` via Studio and confirm it disappears from the admin Customers property list and the booking picker (full workspace verification happens in later tasks; this confirms the filter).
-
-- [ ] **Step 5: Commit.**
+- [ ] **Step 1: Extend the type(s).** Add `photo_url: string | null;` and `archived_at: string | null;` to the Property interface in `src/types/index.ts` (near line 146) and to `AdminProperty` in `useAdminData.ts` if distinct.
+- [ ] **Step 2: Add `.is('archived_at', null)` to every property READ.** Grep `grep -rn "from('properties')" src/` and add the filter to each SELECT that lists properties for display (list, customer detail, booking picker, homeowner). Do NOT filter in the id-scoped write helpers (`updateProperty`, delete/archive).
+- [ ] **Step 3: Verify.** `npx tsc --noEmit` clean. Report the exact read sites changed so the controller can browser-confirm an archived row disappears.
+- [ ] **Step 4: Commit.**
 
 ```bash
 git add -A
@@ -166,18 +128,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task 4: Delete-plan pure logic + `archiveOrDeleteProperty` executor (TDD)
 
 **Files:**
-- Create: `src/lib/properties/deletePlan.ts`
-- Create: `src/lib/properties/deletePlan.test.ts`
-- Modify: `src/hooks/useAdminData.ts` (add `archiveOrDeleteProperty`)
+- Create: `src/lib/properties/deletePlan.ts` + `src/lib/properties/deletePlan.test.ts`
+- Modify: `src/hooks/useAdminData.ts` (add `archiveOrDeleteProperty` + `countPropertyAppointments`)
 
 **Interfaces:**
-- Produces:
-  - `type PropertyDeletePlan = { action: 'hard-delete' | 'cancel-and-archive' | 'archive-only'; liveCount: number; historyCount: number; needsBookingEdit: boolean }`
-  - `planPropertyDeletion(counts: { liveCount: number; historyCount: number }): PropertyDeletePlan`
-  - `async function archiveOrDeleteProperty(propertyId: string, organizationId: string): Promise<{ success: boolean; action?: PropertyDeletePlan['action']; error?: string }>`
-- Consumes: `AppointmentStatus` live set = `('pending','confirmed','in_progress')`; history set = `('completed','cancelled')`.
+- Produces: `type PropertyDeleteAction = 'hard-delete' | 'cancel-and-archive' | 'archive-only'`; `planPropertyDeletion(counts) → PropertyDeletePlan`; `archiveOrDeleteProperty(propertyId, orgId) → { success, action?, error? }`; `countPropertyAppointments(propertyId) → { liveCount, historyCount }`.
+- Live statuses = `('pending','confirmed','in_progress')`; history = `('completed','cancelled')`.
 
-- [ ] **Step 1: Write failing tests for the pure planner.**
+- [ ] **Step 1: Failing tests for the planner.**
 
 ```ts
 // src/lib/properties/deletePlan.test.ts
@@ -187,71 +145,56 @@ import { planPropertyDeletion } from './deletePlan';
 describe('planPropertyDeletion', () => {
   it('hard-deletes a never-booked property', () => {
     expect(planPropertyDeletion({ liveCount: 0, historyCount: 0 })).toEqual({
-      action: 'hard-delete', liveCount: 0, historyCount: 0, needsBookingEdit: false,
-    });
+      action: 'hard-delete', liveCount: 0, historyCount: 0, needsBookingEdit: false });
   });
   it('archives (no cancel) when only history exists', () => {
     expect(planPropertyDeletion({ liveCount: 0, historyCount: 3 })).toEqual({
-      action: 'archive-only', liveCount: 0, historyCount: 3, needsBookingEdit: false,
-    });
+      action: 'archive-only', liveCount: 0, historyCount: 3, needsBookingEdit: false });
   });
   it('cancels live cleanings then archives when live exist; needs booking-edit', () => {
     expect(planPropertyDeletion({ liveCount: 2, historyCount: 5 })).toEqual({
-      action: 'cancel-and-archive', liveCount: 2, historyCount: 5, needsBookingEdit: true,
-    });
+      action: 'cancel-and-archive', liveCount: 2, historyCount: 5, needsBookingEdit: true });
   });
   it('cancel-and-archive even with zero history when live exist', () => {
     expect(planPropertyDeletion({ liveCount: 1, historyCount: 0 })).toEqual({
-      action: 'cancel-and-archive', liveCount: 1, historyCount: 0, needsBookingEdit: true,
-    });
+      action: 'cancel-and-archive', liveCount: 1, historyCount: 0, needsBookingEdit: true });
   });
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails.**
-
-Run: `npm run test:unit -- deletePlan`
-Expected: FAIL ("planPropertyDeletion is not a function").
-
+- [ ] **Step 2: Run to verify fail.** `npm run test:unit -- deletePlan` → FAIL ("planPropertyDeletion is not a function").
 - [ ] **Step 3: Implement the planner.**
 
 ```ts
 // src/lib/properties/deletePlan.ts
 export type PropertyDeleteAction = 'hard-delete' | 'cancel-and-archive' | 'archive-only';
-
-export interface PropertyDeletePlan {
-  action: PropertyDeleteAction;
-  liveCount: number;
-  historyCount: number;
-  needsBookingEdit: boolean;
-}
-
-/** Live (blocking) appointment statuses that get cancelled on property delete. */
+export interface PropertyDeletePlan { action: PropertyDeleteAction; liveCount: number; historyCount: number; needsBookingEdit: boolean; }
 export const LIVE_APPT_STATUSES = ['pending', 'confirmed', 'in_progress'] as const;
-/** Terminal statuses preserved as history. */
 export const HISTORY_APPT_STATUSES = ['completed', 'cancelled'] as const;
 
 export function planPropertyDeletion(counts: { liveCount: number; historyCount: number }): PropertyDeletePlan {
   const { liveCount, historyCount } = counts;
-  if (liveCount === 0 && historyCount === 0) {
-    return { action: 'hard-delete', liveCount, historyCount, needsBookingEdit: false };
-  }
-  if (liveCount === 0) {
-    return { action: 'archive-only', liveCount, historyCount, needsBookingEdit: false };
-  }
+  if (liveCount === 0 && historyCount === 0) return { action: 'hard-delete', liveCount, historyCount, needsBookingEdit: false };
+  if (liveCount === 0) return { action: 'archive-only', liveCount, historyCount, needsBookingEdit: false };
   return { action: 'cancel-and-archive', liveCount, historyCount, needsBookingEdit: true };
 }
 ```
 
-- [ ] **Step 4: Run to verify pass.**
-
-Run: `npm run test:unit -- deletePlan`
-Expected: PASS.
-
-- [ ] **Step 5: Implement the executor in `useAdminData.ts`.** Add below `deleteProperty`. It counts, plans, and executes. All via the anon client so RLS applies (property UPDATE/DELETE → `can_edit_properties`; appointment UPDATE → `can_edit_bookings`).
+- [ ] **Step 4: Run to verify pass.** `npm run test:unit -- deletePlan` → PASS.
+- [ ] **Step 5: Implement the executor + counter in `useAdminData.ts`** (below `deleteProperty`). All via the anon client so RLS applies (property UPDATE/DELETE → `can_edit_properties`; appointment UPDATE → `can_edit_bookings`).
 
 ```ts
 import { planPropertyDeletion, LIVE_APPT_STATUSES } from '@/lib/properties/deletePlan';
+
+export async function countPropertyAppointments(propertyId: string) {
+  const [{ count: live }, { count: history }] = await Promise.all([
+    supabase.from('appointments').select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]),
+    supabase.from('appointments').select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId).in('status', ['completed', 'cancelled']),
+  ]);
+  return { liveCount: live ?? 0, historyCount: history ?? 0 };
+}
 
 /**
  * Delete a property safely (R4). Never-booked → hard delete. Any history →
@@ -260,43 +203,29 @@ import { planPropertyDeletion, LIVE_APPT_STATUSES } from '@/lib/properties/delet
  */
 export async function archiveOrDeleteProperty(propertyId: string, organizationId: string) {
   try {
-    // Org-scope guard (RLS enforces the real permission).
     const { data: property, error: checkError } = await supabase
       .from('properties').select('organization_id').eq('id', propertyId).single();
     if (checkError) throw checkError;
     if (!property || property.organization_id !== organizationId) {
       return { success: false, error: 'Property not found or does not belong to this organization' };
     }
-
-    const [{ count: liveCount, error: liveErr }, { count: historyCount, error: histErr }] = await Promise.all([
-      supabase.from('appointments').select('id', { count: 'exact', head: true })
-        .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]),
-      supabase.from('appointments').select('id', { count: 'exact', head: true })
-        .eq('property_id', propertyId).in('status', ['completed', 'cancelled']),
-    ]);
-    if (liveErr) throw liveErr;
-    if (histErr) throw histErr;
-
-    const plan = planPropertyDeletion({ liveCount: liveCount ?? 0, historyCount: historyCount ?? 0 });
+    const { liveCount, historyCount } = await countPropertyAppointments(propertyId);
+    const plan = planPropertyDeletion({ liveCount, historyCount });
 
     if (plan.action === 'hard-delete') {
       const { error } = await supabase.from('properties').delete().eq('id', propertyId);
       if (error) throw error;
       return { success: true, action: plan.action };
     }
-
     if (plan.action === 'cancel-and-archive') {
       const { error: cancelErr } = await supabase.from('appointments')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]);
       if (cancelErr) throw cancelErr;
-      // Stop any active recurring series so no new appointments generate for an archived property.
       const { error: seriesErr } = await supabase.from('recurring_appointment_series')
         .update({ is_active: false }).eq('property_id', propertyId).eq('is_active', true);
       if (seriesErr) throw seriesErr;
     }
-
-    // archive-only and cancel-and-archive both end by soft-deleting the property.
     const { error: archiveErr } = await supabase.from('properties')
       .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', propertyId);
@@ -308,25 +237,7 @@ export async function archiveOrDeleteProperty(propertyId: string, organizationId
 }
 ```
 
-Also export a lightweight counter for the dialog to render copy before the user confirms:
-
-```ts
-export async function countPropertyAppointments(propertyId: string) {
-  const [{ count: live }, { count: history }] = await Promise.all([
-    supabase.from('appointments').select('id', { count: 'exact', head: true })
-      .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]),
-    supabase.from('appointments').select('id', { count: 'exact', head: true })
-      .eq('property_id', propertyId).in('status', ['completed', 'cancelled']),
-  ]);
-  return { liveCount: live ?? 0, historyCount: history ?? 0 };
-}
-```
-
-- [ ] **Step 6: Typecheck + unit.**
-
-Run: `npx tsc --noEmit && npm run test:unit -- deletePlan`
-Expected: no NEW errors; tests pass.
-
+- [ ] **Step 6: Verify.** `npx tsc --noEmit && npm run test:unit -- deletePlan` → clean + pass.
 - [ ] **Step 7: Commit.**
 
 ```bash
@@ -338,158 +249,48 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: Properties nav item + route + page guard
+### Task 5: `OperatorPropertyDetailHost` (`?property=`) + read-only detail sheet
 
 **Files:**
-- Modify: `src/components/redesign/shell/nav-items.ts` (add the item + `Building2` import)
-- Modify: `src/components/redesign/shell/nav-items.test.ts` (snapshot/expectations)
-- Create: `src/app/(redesign)/app/admin-dashboard/properties/page.tsx`
-
-**Interfaces:**
-- Consumes: `useRequireManagerFlag` (`src/lib/redesign/useRequireManagerFlag.ts`), `OperatorProperties` (Task 6 — for now render a placeholder that Task 6 replaces).
-- Produces: nav item `id:'properties'` gated on `can_view_properties`; route `/app/admin-dashboard/properties`.
-
-- [ ] **Step 1: Add the nav item.** In `nav-items.ts`, import `Building2` from `lucide-react` and add after the Calendar item (`:39`):
-
-```ts
-{ id: "properties", label: "Properties", href: "/app/admin-dashboard/properties", icon: Building2, requires: "can_view_properties" },
-```
-
-- [ ] **Step 2: Update the nav test.** Adjust `nav-items.test.ts` for the new item (expected count / snapshot). Run `npm run test:unit -- nav-items` and update expectations to match.
-
-- [ ] **Step 3: Create the page.** Copy `src/app/(redesign)/app/admin-dashboard/calendar/page.tsx` structure exactly, swapping the guard flag, active id, and child:
-
-```tsx
-'use client';
-import { useRequireManagerFlag } from '@/lib/redesign/useRequireManagerFlag';
-import { OperatorShell } from '@/components/redesign/shell/OperatorShell';
-import { OperatorProperties } from '@/components/redesign/properties/OperatorProperties';
-
-export default function PropertiesPage() {
-  const allowed = useRequireManagerFlag('can_view_properties');
-  if (!allowed) return null;
-  return (
-    <OperatorShell active="properties">
-      <OperatorProperties />
-    </OperatorShell>
-  );
-}
-```
-
-(Match the ACTUAL shape of `calendar/page.tsx` — if it wraps differently, mirror that. Until Task 6 lands, stub `OperatorProperties` as `export function OperatorProperties(){ return null }` so this compiles.)
-
-- [ ] **Step 4: Typecheck + nav test + lint.**
-
-Run: `npx tsc --noEmit && npm run test:unit -- nav-items && npm run lint`
-Expected: clean.
-
-- [ ] **Step 5: Browser check.** As an owner, the `Properties` tab appears in the rail/More; as a manager without `can_view_properties`, it's hidden and hard-loading `/app/admin-dashboard/properties` redirects. (Seed users exist: `owner-verify@test.local` / `manager-verify@test.local`, `TestPass123!`.)
-
-- [ ] **Step 6: Commit.**
-
-```bash
-git add -A
-git commit -m "feat(operator): Properties nav destination + guarded route (R4)
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
-```
-
----
-
-### Task 6: `OperatorProperties` list (table + filter + row menu)
-
-**Files:**
-- Create: `src/components/redesign/properties/OperatorProperties.tsx`
-- Create: `src/components/redesign/properties/propertyRowVM.ts` (+ `.test.ts`)
-
-**Interfaces:**
-- Consumes: `useAdminProperties()` (returns `{ properties: AdminProperty[], loading, error, refetch }`), `ListFilterBar`, `Skeleton`, `EmptyState`, `ErrorState`, `Badge`, the shell `?property=` opener from Task 7 (`useOpenProperty().open(id)` — until Task 7 lands, set `?property=` via `router`/URLSearchParams directly and Task 7 swaps in the hook).
-- Produces: the list surface; row click / "Book" / "Edit" / "Delete" actions.
-
-- [ ] **Step 1: Write the row view-model (pure) + failing test.** Encapsulate the display mapping so it's testable (owner label vs Org-owned, details string).
-
-```ts
-// propertyRowVM.ts
-import type { AdminProperty } from '@/hooks/useAdminData';
-export interface PropertyRowVM { id: string; name: string; addressLine: string; ownerLabel: string; isOrgOwned: boolean; detailsLabel: string; photoUrl: string | null; }
-export function toPropertyRowVM(p: AdminProperty): PropertyRowVM {
-  const isOrgOwned = !p.owner_id;
-  const ownerLabel = isOrgOwned ? 'Org-owned'
-    : [p.homeowner?.first_name, p.homeowner?.last_name].filter(Boolean).join(' ') || 'Unknown';
-  const details = [p.bedrooms != null ? `${p.bedrooms} bd` : null, p.bathrooms != null ? `${p.bathrooms} ba` : null, p.square_feet != null ? `${p.square_feet.toLocaleString()} sf` : null].filter(Boolean).join(' · ');
-  return { id: p.id, name: p.name, addressLine: [p.address, p.city, p.state].filter(Boolean).join(', '), ownerLabel, isOrgOwned, detailsLabel: details || 'No details', photoUrl: p.photo_url ?? null };
-}
-```
-
-Test both branches (homeowner-owned and `owner_id: null`) and the null-details fallback. Run `npm run test:unit -- propertyRowVM`, verify fail then pass.
-
-- [ ] **Step 2: Build the list component.** Mirror `src/components/redesign/customers/OperatorCustomers.tsx` structure (list ↔ sheet, `ListFilterBar`, states). Table columns per spec §7.1: thumbnail+name / address / homeowner-or-Org-owned badge / details / row `DropdownMenu` (Book, Edit, Delete). Search filters name+address; segmented filter All/Homeowner/Org-owned. Thumbnail uses `photo_url` with a `Building2`/placeholder fallback. Below the mobile breakpoint, render stacked cards instead of the table (do not horizontally scroll a 5-column table). Use `Skeleton` while `loading`, `ErrorState` (with `refetch`) on `error`, `EmptyState` ("No properties yet." + an "Add property" button) when empty. Gate the "Add property"/Edit/Delete affordances on `useManagerPermissions().permissions.can_edit_properties`.
-
-- [ ] **Step 3: Wire actions.** Row click and the "Edit" menu set `?property=<id>` (Task 7 host renders it; Task 8 handles edit mode). "Delete" opens the delete dialog (Task 10). "Book" triggers the Task 11 seeding. "Add property" opens the create sheet (Task 8). Until those land, wire the URL param and leave TODO-free stubs that call the (about-to-exist) openers.
-
-- [ ] **Step 4: Typecheck + lint + browser.**
-
-Run: `npx tsc --noEmit && npm run lint`
-Then browser-verify the list renders with seeded data, filters work, empty/loading/error states render.
-
-- [ ] **Step 5: Commit.**
-
-```bash
-git add -A
-git commit -m "feat(operator): Properties list with filter, states and row menu (R4)
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
-```
-
----
-
-### Task 7: `OperatorPropertyDetailHost` (`?property=`) + read-mode sheet shell
-
-**Files:**
+- Create: `src/components/redesign/properties/useOpenProperty.ts` (operator `?property=` opener; model on `useOpenBookingDetail`/`useOpenOperatorBooking`)
 - Create: `src/components/redesign/properties/OperatorPropertyDetailHost.tsx`
-- Create: `src/components/redesign/properties/useOpenProperty.ts` (operator opener; model on `useOpenBookingDetail` / `useOpenOperatorBooking`)
-- Create: `src/components/redesign/properties/PropertyDetailSheet.tsx` (read mode this task; edit/create added in Task 9)
+- Create: `src/components/redesign/properties/PropertyDetailSheet.tsx` (READ mode only this task)
 - Modify: `src/components/redesign/shell/OperatorShell.tsx` (mount the host, gated `can_view_properties`, exactly like the `?booking=` host)
 
 **Interfaces:**
-- Consumes: `useAdminProperties()` (to resolve the `?property=` id to an `AdminProperty`; or a `useProperty(id)` selector over the same cache), `Sheet`/`SheetContent side="right"`, shared `Field` from `@/components/redesign/bookings/detail-atoms`.
-- Produces: `useOpenProperty()` → `{ open(id): void; close(): void }` (merges `window.location.search` at call time like `useOpenBookingDetail`, so it preserves other params); the host that renders `PropertyDetailSheet` when `?property=` is present.
+- Consumes: `useAdminProperties()` (resolve `?property=` id to an `AdminProperty`), `Sheet`/`SheetContent side="right"`, shared `Field` from `@/components/redesign/bookings/detail-atoms`, `useManagerPermissions`.
+- Produces: `useOpenProperty()` → `{ open(id): void; close(): void }` (merges `window.location.search` at call time, like `useOpenBookingDetail`, preserving other params); the host that renders `PropertyDetailSheet` when `?property=` is present; `PropertyDetailSheet` read mode.
 
-- [ ] **Step 1: Study the booking host.** Read `OperatorBookingDetailHost.tsx` + `useOpenBookingDetail`/`useOpenOperatorBooking` to copy the param-owner pattern (single owner of the param; opener merges existing search params; host reads the param and renders the sheet; close removes the param).
-
-- [ ] **Step 2: Implement `useOpenProperty`** as the `?property=` analog (open sets `?property=<id>` preserving other params; close deletes it).
-
-- [ ] **Step 3: Implement the read-mode sheet.** `Sheet` + `SheetContent side="right" className="... sm:max-w-md"`. Sections per spec §7.2: hero photo (or placeholder) → name + address → Homeowner (avatar+name+email, or `Org-owned` badge) → Details (bd/ba/sqft) → Special instructions → Access instructions (each read row via the shared `Field`). Footer: `Book cleaning` (primary), `Edit` (secondary), `Delete` (quiet, `text-critical-*`, separated). Wire `Edit`/`Delete`/`Book` to callbacks the host passes (host owns edit/delete state; Task 8 = edit, Task 10 = delete, Task 11 = book implement these).
-
-- [ ] **Step 4: Mount the host in `OperatorShell`.** Add `{canViewProperties && <OperatorPropertyDetailHost/>}` next to the booking host, gated the same way (`useManagerPermissions`).
-
-- [ ] **Step 5: Typecheck + lint + browser.** Clicking a Properties row (Task 6) opens the read sheet in place; opening `?property=` from the URL works on other operator pages too.
-
+- [ ] **Step 1: Study the booking host.** Read `OperatorBookingDetailHost.tsx` + `useOpenBookingDetail`/`useOpenOperatorBooking` to copy the single-param-owner pattern (opener merges existing search params; host reads the param + renders the sheet; close removes it).
+- [ ] **Step 2: Implement `useOpenProperty`** as the `?property=` analog.
+- [ ] **Step 3: Implement the read-mode sheet.** `Sheet` + `SheetContent side="right" className="… sm:max-w-md"`. Sections (spec §7.2): hero photo (or a `Building2` placeholder) → name + full address → Homeowner (avatar+name+email, or an `Org-owned` badge when `owner_id` null) → Details (bd/ba/sqft) → Special instructions → Access instructions. Read rows via the shared `Field`. **No footer action buttons this task** (Edit/Book/Delete are added by Tasks 6/9/10). Include only the standard sheet close affordance.
+- [ ] **Step 4: Mount the host in `OperatorShell`** next to the booking host, gated `can_view_properties` via `useManagerPermissions`.
+- [ ] **Step 5: Verify.** `npx tsc --noEmit && npm run lint`. Report: opening `?property=<id>` (append to any operator page URL, e.g. `/app/admin-dashboard/customers?property=<id>`) renders the read sheet for the controller to browser-check.
 - [ ] **Step 6: Commit.**
 
 ```bash
 git add -A
-git commit -m "feat(operator): shell-level ?property= host + read-mode detail sheet (R4)
+git commit -m "feat(operator): shell-level ?property= host + read-mode property sheet (R4)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 8: `PropertyDetailSheet` edit + create modes
+### Task 6: `PropertyDetailSheet` edit + create modes (Edit button, save-when-dirty, photo-after-save)
 
 **Files:**
-- Modify: `src/components/redesign/properties/PropertyDetailSheet.tsx` (add edit/create)
+- Modify: `src/components/redesign/properties/PropertyDetailSheet.tsx`
 - Reference (lift logic, do NOT re-fork): `src/components/redesign/homeowner/account/properties/PropertyFormSheet.tsx`
 
 **Interfaces:**
-- Consumes: `validateProperty`, `EMPTY_PROPERTY_FORM`, `toNumberOrNull`, `PropertyFormValues` from `@/lib/properties/validateProperty`; `updateProperty` from `@/hooks/useAdminData`; `PropertyPhotoField` from `@/components/redesign/properties/PropertyPhotoField`; `FormField`, `Input`, `Textarea`, `DiscardChangesDialog` (`bookings/detail-atoms`).
-- Produces: `onSave(): Promise<boolean>` following the `CustomerDetailSheet` `canEdit/editing/onEditingChange/onSave` contract; a create entry point `PropertyDetailSheet` can open with no property.
+- Consumes: `validateProperty`, `EMPTY_PROPERTY_FORM`, `toNumberOrNull`, `PropertyFormValues` (`@/lib/properties/validateProperty`); `updateProperty` (`@/hooks/useAdminData`); `PropertyPhotoField` (`@/components/redesign/properties/PropertyPhotoField`); `FormField`, `Input`, `Textarea`, `DiscardChangesDialog` (`bookings/detail-atoms`), `toast`, `keys` (`@/lib/queryKeys`).
+- Produces: an in-sheet edit mode (Edit button in the footer) + a create entry point (`PropertyDetailSheet` opened with no property, e.g. `mode="create"` with an optional pre-set `owner_id`); `onSaved` callback. The create opener is wired by Tasks 8/11.
 
-- [ ] **Step 1: Add edit mode.** Toggle read↔edit like `CustomerDetailSheet`. Fields (lift the `fromProperty` mapping + payload build from `PropertyFormSheet.tsx:29-42,107-118`): name*, address*, city*, state*, zip_code* (required via `validateProperty`), bedrooms/bathrooms/square_feet (`inputMode="numeric"`, parsed with `toNumberOrNull`), special_instructions, access_instructions (`Textarea`). Label special instructions "Special instructions" (operator wording), not "Special requests".
-- [ ] **Step 2: Save = disabled-until-dirty.** Track a dirty flag (compare form to the loaded property); disable Save when not dirty. On save call `updateProperty(id, { ...payload, photo_url })`; on success `toast.success('Property updated')`, invalidate `keys.properties.byOrg(orgId)` (+ `keys.customers.byOrg`), return `true`. On failure surface the error, return `false`. Dirty-close → `DiscardChangesDialog`.
-- [ ] **Step 3: Add create mode.** Empty form; insert via `supabase.from('properties').insert({ ...payload, owner_id: <selectedOwnerOrNull>, organization_id })` (lift from `PropertyFormSheet.tsx:125-131` but set `owner_id` from the create context, not `user.id`). **Photo control only after first save** — render `PropertyPhotoField` only when a property id exists (edit), and in create show the "Save this property first to add a photo." affordance. On create success, invalidate the org properties key and open the new property in edit mode (so the photo field appears).
-- [ ] **Step 4: Typecheck + lint + browser.** Create a property (name/address/details), save, reopen, add a photo, edit instructions, discard-guard fires on dirty close.
+- [ ] **Step 1: Add edit mode.** Toggle read↔edit like `CustomerDetailSheet` (`canEdit/editing/onEditingChange`). Add the **Edit** button to the footer (this is where the footer's first action appears). Fields (lift `fromProperty` + payload from `PropertyFormSheet.tsx:29-42,107-118`): name*, address*, city*, state*, zip_code* (required via `validateProperty`), bedrooms/bathrooms/square_feet (`inputMode="numeric"`, `toNumberOrNull`), special_instructions, access_instructions (`Textarea`). Label special instructions "Special instructions" (operator wording).
+- [ ] **Step 2: Save = disabled-until-dirty.** Track dirty (form vs loaded property); disable Save when clean. Save calls `updateProperty(id, { ...payload, photo_url })`; success → `toast.success('Property updated')`, invalidate `keys.properties.byOrg(orgId)` + `keys.customers.byOrg(orgId)`, exit edit. Failure → surface error. Dirty-close → `DiscardChangesDialog`.
+- [ ] **Step 3: Add create mode.** Empty form; insert via `supabase.from('properties').insert({ ...payload, owner_id: <ownerOrNull>, organization_id })` (lift from `PropertyFormSheet.tsx:125-131` but set `owner_id` from the create context, not `user.id`). **Photo control only after first save** — render `PropertyPhotoField` only when a property id exists; in create show the affordance "Save this property first to add a photo." On create success, invalidate the org properties key and open the new property in edit mode so the photo field appears.
+- [ ] **Step 4: Verify.** `npx tsc --noEmit && npm run lint`. Report the create/edit/save/photo/dirty-guard behavior for the controller to browser-check (create reachable via a temporary `?property=new` or by the Task 8 list button once it lands).
 - [ ] **Step 5: Commit.**
 
 ```bash
@@ -501,20 +302,20 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Homeowner assign / change / remove block
+### Task 7: Homeowner assign / change / remove block
 
 **Files:**
 - Modify: `src/components/redesign/properties/PropertyDetailSheet.tsx` (assignment block in edit mode)
 - Create (if no reusable picker exists): `src/components/redesign/properties/HomeownerAssignField.tsx`
 
 **Interfaces:**
-- Consumes: a query of org members with `organization_members.role='homeowner'` (reuse the customers hook if one exposes the list, else a small query keyed `keys.customers.byOrg`); `stripeSelfPayUiEnabled()` (find the existing flag helper); `updateProperty` for the `owner_id` write.
+- Consumes: a query of org members with `organization_members.role='homeowner'` (reuse the customers list hook if one exposes it, else a small query keyed `keys.customers.byOrg`); `stripeSelfPayUiEnabled()` (find the existing flag helper); `updateProperty` for the `owner_id` write (extend its signature to accept `owner_id?: string | null`).
 - Produces: setting/clearing `owner_id` on the property.
 
-- [ ] **Step 1: Gate the block.** Render the assignment controls only when `stripeSelfPayUiEnabled()` AND `can_edit_properties` (mirror legacy `PropertySidePanel` gating).
-- [ ] **Step 2: Assigned state.** Show homeowner avatar/name/email with `Change` and `Remove`. `Remove` sets `owner_id = null` (property becomes Org-owned) via `updateProperty(id, { owner_id: null })` — note `updateProperty`'s current signature omits `owner_id`; extend it to accept `owner_id?: string | null`.
-- [ ] **Step 3: Unassigned state.** Show `Org-owned` + an `Assign homeowner` picker searching org homeowners; selecting one writes `owner_id`.
-- [ ] **Step 4: Typecheck + lint + browser.** Assign, change, and remove a homeowner; verify the list badge flips to `Org-owned` after remove (realtime invalidation refreshes it).
+- [ ] **Step 1: Gate the block** on `stripeSelfPayUiEnabled()` AND `can_edit_properties` (mirror legacy `PropertySidePanel`).
+- [ ] **Step 2: Assigned state.** Homeowner avatar/name/email + `Change` and `Remove`. `Remove` → `updateProperty(id, { owner_id: null })` (property becomes Org-owned).
+- [ ] **Step 3: Unassigned state.** `Org-owned` + `Assign homeowner` picker (search org homeowners); selecting writes `owner_id`.
+- [ ] **Step 4: Verify.** `npx tsc --noEmit && npm run lint`. Report assign/change/remove for the controller to browser-check (badge flips to Org-owned on remove via realtime invalidation).
 - [ ] **Step 5: Commit.**
 
 ```bash
@@ -526,23 +327,66 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 10: `PropertyDeleteDialog` — warning card, override, permission gate
+### Task 8: Properties nav item + route + list
+
+**Files:**
+- Modify: `src/components/redesign/shell/nav-items.ts` (add item + `Building2` import) + `nav-items.test.ts` (expectations)
+- Create: `src/app/(redesign)/app/admin-dashboard/properties/page.tsx`
+- Create: `src/components/redesign/properties/OperatorProperties.tsx`
+- Create: `src/components/redesign/properties/propertyRowVM.ts` + `.test.ts`
+
+**Interfaces:**
+- Consumes: `useAdminProperties()`, `useOpenProperty()` (Task 5), the create-mode `PropertyDetailSheet` (Task 6), `useRequireManagerFlag`, `useManagerPermissions`, `ListFilterBar`, `Skeleton`, `EmptyState`, `ErrorState`, `Badge`, `DropdownMenu`.
+- Produces: the Properties destination + list; row-click opens the read sheet; row menu "Edit" opens edit mode; "Add property" opens create mode. (Book/Delete row items are added by Tasks 9/10.)
+
+- [ ] **Step 1: Nav item + test.** In `nav-items.ts`, import `Building2` and add after the Calendar item: `{ id: "properties", label: "Properties", href: "/app/admin-dashboard/properties", icon: Building2, requires: "can_view_properties" }`. Update `nav-items.test.ts` for the new item (`npm run test:unit -- nav-items`, adjust expectations).
+- [ ] **Step 2: Page.** Copy the exact shape of `src/app/(redesign)/app/admin-dashboard/calendar/page.tsx`, swapping guard to `useRequireManagerFlag('can_view_properties')`, `active="properties"`, child `<OperatorProperties/>`.
+- [ ] **Step 3: Row VM (pure) + failing test.**
+
+```ts
+// propertyRowVM.ts
+import type { AdminProperty } from '@/hooks/useAdminData';
+export interface PropertyRowVM { id: string; name: string; addressLine: string; ownerLabel: string; isOrgOwned: boolean; detailsLabel: string; photoUrl: string | null; }
+export function toPropertyRowVM(p: AdminProperty): PropertyRowVM {
+  const isOrgOwned = !p.owner_id;
+  const ownerLabel = isOrgOwned ? 'Org-owned' : [p.homeowner?.first_name, p.homeowner?.last_name].filter(Boolean).join(' ') || 'Unknown';
+  const details = [p.bedrooms != null ? `${p.bedrooms} bd` : null, p.bathrooms != null ? `${p.bathrooms} ba` : null, p.square_feet != null ? `${p.square_feet.toLocaleString()} sf` : null].filter(Boolean).join(' · ');
+  return { id: p.id, name: p.name, addressLine: [p.address, p.city, p.state].filter(Boolean).join(', '), ownerLabel, isOrgOwned, detailsLabel: details || 'No details', photoUrl: p.photo_url ?? null };
+}
+```
+
+Test both owner branches + null-details fallback; run `npm run test:unit -- propertyRowVM` (fail → pass).
+
+- [ ] **Step 4: List component.** Mirror `OperatorCustomers.tsx` (list↔sheet, `ListFilterBar`, states). Table columns (spec §7.1): thumbnail(`photo_url` w/ `Building2` fallback)+name / address / homeowner-or-`Org-owned` badge / details / row `DropdownMenu`. Search filters name+address; segmented filter All/Homeowner/Org-owned. `Skeleton` while loading, `ErrorState`(retry) on error, `EmptyState` ("No properties yet." + "Add property") when empty. Below the mobile breakpoint render stacked cards, not a horizontally-scrolled table. Gate "Add property" and the row "Edit" on `can_edit_properties`. Row click → `useOpenProperty().open(id)`; row menu "Edit" → open in edit mode; "Add property" → open create mode. Row menu contains ONLY Edit for now (Book/Delete added in Tasks 9/10).
+- [ ] **Step 5: Verify.** `npx tsc --noEmit && npm run test:unit -- nav-items propertyRowVM && npm run lint`. Report for the controller to browser-check (list renders, filters, states, row-open, add-property).
+- [ ] **Step 6: Commit.**
+
+```bash
+git add -A
+git commit -m "feat(operator): Properties nav destination + list (filter, states, open + add) (R4)
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 9: `PropertyDeleteDialog` + Delete affordance
 
 **Files:**
 - Create: `src/components/redesign/properties/PropertyDeleteDialog.tsx`
-- Modify: `src/components/redesign/properties/PropertyDetailSheet.tsx` / host (open the dialog from `Delete`)
+- Modify: `PropertyDetailSheet.tsx` (add the Delete footer button, opens the dialog) + `OperatorProperties.tsx` (add "Delete" to the row menu)
 
 **Interfaces:**
-- Consumes: `countPropertyAppointments`, `archiveOrDeleteProperty`, `planPropertyDeletion` (Task 4); `useManagerPermissions().permissions.can_edit_bookings`; `Dialog`/`ConfirmDialog`, `toast`.
-- Produces: the delete flow per spec §7.4.
+- Consumes: `countPropertyAppointments`, `archiveOrDeleteProperty`, `planPropertyDeletion` (Task 4); `useManagerPermissions().permissions.can_edit_bookings` + `can_edit_properties`; `Dialog`/`ConfirmDialog`, `toast`, `keys`.
+- Produces: the delete flow (spec §7.4).
 
-- [ ] **Step 1: On open, fetch counts.** Call `countPropertyAppointments(propertyId)`; derive `plan = planPropertyDeletion(counts)`.
-- [ ] **Step 2: Render by action.**
-  - `hard-delete`: standard confirm ("Delete <name>? No cleanings on record. This is permanent and can't be undone."). Confirm → `archiveOrDeleteProperty`.
-  - `archive-only`: "Delete <name>? Past cleanings stay on record. The property is archived so history still resolves." Confirm → `archiveOrDeleteProperty`.
-  - `cancel-and-archive`: the big warning card — "This property has N upcoming cleanings that will be cancelled. Past and cancelled cleanings stay on record. The property is archived." **If `!can_edit_bookings`**, disable the confirm and show "Removing the upcoming cleanings needs booking-edit permission. Ask an admin, or cancel those cleanings first." Confirm → `archiveOrDeleteProperty`.
-- [ ] **Step 3: On success.** `toast.success` (message per action), close the sheet, invalidate `keys.properties.byOrg` (+ `keys.customers.byOrg`, `keys.appointments.all` when live cleanings were cancelled). On failure `toast.error` with the message. No em dashes in any copy.
-- [ ] **Step 4: Typecheck + lint + browser.** Seed a property with an upcoming appointment → warning card, override cancels it + archives; a never-booked property → hard delete; a manager lacking `can_edit_bookings` sees the disabled override.
+- [ ] **Step 1: On open, fetch counts + plan.** Call `countPropertyAppointments(propertyId)`; `plan = planPropertyDeletion(counts)`.
+- [ ] **Step 2: Render by action** (no em dashes):
+  - `hard-delete`: "Delete <name>? No cleanings on record. This is permanent and can't be undone." → `archiveOrDeleteProperty`.
+  - `archive-only`: "Delete <name>? Past cleanings stay on record. The property is archived so history still resolves." → `archiveOrDeleteProperty`.
+  - `cancel-and-archive`: warning card — "This property has N upcoming cleanings that will be cancelled. Past and cancelled cleanings stay on record. The property is archived." **If `!can_edit_bookings`**, disable confirm + show "Removing the upcoming cleanings needs booking-edit permission. Ask an admin, or cancel those cleanings first." → `archiveOrDeleteProperty`.
+- [ ] **Step 3: On success** `toast.success` (per action), close the sheet, invalidate `keys.properties.byOrg` + `keys.customers.byOrg` (+ `keys.appointments.all` when live cleanings were cancelled). Failure → `toast.error`. Gate the Delete affordances on `can_edit_properties`.
+- [ ] **Step 4: Verify.** `npx tsc --noEmit && npm run lint`. Report for controller browser-check: seed a property with an upcoming appointment (warning card, override cancels + archives), a never-booked property (hard delete), a manager without `can_edit_bookings` (disabled override).
 - [ ] **Step 5: Commit.**
 
 ```bash
@@ -554,20 +398,19 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 11: Book-from-property seeding
+### Task 10: Book-from-property seeding + Book affordance
 
 **Files:**
-- Modify: the operator new-booking param contract (`operatorBookingParams` + `useOpenOperatorBooking.ts`), `OperatorBookingHost.tsx`, `OperatorBookingForm.tsx` (initializer ~`:61-76`, billTo reset ~`:194-214`)
-- Create: `src/components/redesign/bookings/new-booking/seedFromProperty.ts` (+ `.test.ts`) — pure builder
+- Create: `src/components/redesign/bookings/new-booking/seedFromProperty.ts` + `.test.ts`
+- Modify: operator new-booking param contract (`operatorBookingParams` + `useOpenOperatorBooking.ts`), `OperatorBookingHost.tsx`, `OperatorBookingForm.tsx` (initializer ~`:61-76`, billTo reset ~`:194-214`); `PropertyDetailSheet.tsx` (Book footer button) + `OperatorProperties.tsx` (row "Book")
 
 **Interfaces:**
-- Consumes: an `AdminProperty` (or `{ id, owner_id }`) to build seed params.
-- Produces: `buildPropertySeed(p): { customerId?: string; propertyId: string; billTo: 'customer' | 'company' }` and extended `?newbooking=` params carrying `customerId`/`propertyId`/`billTo`.
+- Produces: `buildPropertySeed(p) → { customerId?: string; propertyId: string; billTo }`; extended `?newbooking=` params carrying `customerId`/`propertyId`/`billTo`; Book affordance in the sheet footer + list row.
 
-- [ ] **Step 1: TDD the seed builder.** Homeowner-owned property → `{ customerId: owner_id, propertyId, billTo: 'customer' }`; org-owned (null owner) → `{ propertyId, billTo: 'company' }` (no customerId). Write `seedFromProperty.test.ts`, verify fail, implement `buildPropertySeed`, verify pass. (Confirm the real billTo values used by `OperatorBookingForm` and match them exactly.)
-- [ ] **Step 2: Extend the param contract.** Add `customerId`, `propertyId`, `billTo` to `operatorBookingParams` + the opener; read them in `OperatorBookingHost`; in the form initializer, seed `state` from these params. **Set `billTo` before `customerId`/`propertyId`** (or guard the reset effect) so the billTo-flip reset (`:194-214`) doesn't clobber the seeded customer/property.
-- [ ] **Step 3: Wire the sheet's "Book cleaning".** `PropertyDetailSheet` footer + the list row "Book" call `useOpenOperatorBooking().open(buildPropertySeed(property))`.
-- [ ] **Step 4: Typecheck + lint + unit + browser.** Book from a homeowner property → customer+property pre-filled; from an org-owned property → company bill-to, property pre-filled.
+- [ ] **Step 1: TDD the seed builder.** Homeowner-owned → `{ customerId: owner_id, propertyId, billTo: 'customer' }`; org-owned (null owner) → `{ propertyId, billTo: 'company' }`. Confirm the real billTo values `OperatorBookingForm` uses and match them exactly. Write `seedFromProperty.test.ts` (fail → implement `buildPropertySeed` → pass).
+- [ ] **Step 2: Extend the param contract.** Add `customerId`, `propertyId`, `billTo` to `operatorBookingParams` + opener; read them in `OperatorBookingHost`; seed `state` in the form initializer. **Set `billTo` before `customerId`/`propertyId`** (or guard the reset effect) so the billTo-flip reset doesn't clobber the seed.
+- [ ] **Step 3: Add the Book affordance.** `PropertyDetailSheet` footer "Book cleaning" (primary) + list row "Book" → `useOpenOperatorBooking().open(buildPropertySeed(property))`.
+- [ ] **Step 4: Verify.** `npx tsc --noEmit && npm run test:unit -- seedFromProperty && npm run lint`. Report for browser-check: book from a homeowner property (customer+property prefilled), from an org-owned property (company bill-to).
 - [ ] **Step 5: Commit.**
 
 ```bash
@@ -579,18 +422,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 12: Inline add-property for zero-property customers
+### Task 11: Inline add-property for zero-property customers
 
 **Files:**
 - Modify: `src/components/redesign/bookings/new-booking/OperatorBookingForm.tsx` (property picker empty state ~`:228-237`), `usePropertiesByOwner.ts`
 
 **Interfaces:**
-- Consumes: the create-mode `PropertyDetailSheet` (Task 8), `usePropertiesByOwner`.
+- Consumes: the create-mode `PropertyDetailSheet` (Task 6), `usePropertiesByOwner`.
 - Produces: inline create + auto-select in the picker.
 
-- [ ] **Step 1: Add the empty-state action.** When the picker has no properties for the selected customer, render "+ Add a property" that opens the create sheet pre-seeded with the current `customerId` as `owner_id`.
+- [ ] **Step 1: Empty-state action.** When the picker has no properties for the selected customer, render "+ Add a property" that opens the create sheet pre-seeded with the current `customerId` as `owner_id`.
 - [ ] **Step 2: On create success, refresh + select.** Invalidate `usePropertiesByOwner`'s key (`['operator-booking','properties-by-owner',orgId,ownerId]`) and auto-select the new property id in the form.
-- [ ] **Step 3: Typecheck + lint + browser.** For a customer with zero properties, add one inline and confirm it auto-selects and the booking proceeds.
+- [ ] **Step 3: Verify.** `npx tsc --noEmit && npm run lint`. Report for browser-check: a zero-property customer, add inline, auto-selects, booking proceeds.
 - [ ] **Step 4: Commit.**
 
 ```bash
@@ -602,17 +445,17 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 13: `CustomerDetailSheet` property deep-link
+### Task 12: `CustomerDetailSheet` property deep-link
 
 **Files:**
 - Modify: `src/components/redesign/customers/CustomerDetailSheet.tsx` (property cards ~`:208-221`) + its presenter props / VM in `OperatorCustomers.tsx`
 
 **Interfaces:**
-- Consumes: `useOpenProperty()` (Task 7).
+- Consumes: `useOpenProperty()` (Task 5).
 - Produces: clicking a customer's property card opens the property sheet in place (`?property=<id>`), preserving the customer context.
 
-- [ ] **Step 1: Add the affordance.** Make each read-only property card actionable (button/row) that calls `useOpenProperty().open(p.id)`. Thread an `onOpenProperty` handler through the presenter props (the sheet is a dumb presenter; the container wires the opener). Keep the cards read-only otherwise.
-- [ ] **Step 2: Typecheck + lint + browser.** From a customer with properties, click a property card → property sheet opens over the Customers page; closing returns to the customer sheet with `?c=`/context intact.
+- [ ] **Step 1: Add the affordance.** Make each read-only property card actionable, calling `useOpenProperty().open(p.id)`. Thread an `onOpenProperty` handler through the presenter props (the sheet is a dumb presenter; the container wires the opener). Cards stay read-only otherwise.
+- [ ] **Step 2: Verify.** `npx tsc --noEmit && npm run lint`. Report for browser-check: from a customer with properties, click a property card → property sheet opens over the Customers page; closing returns to the customer sheet with `?c=` intact.
 - [ ] **Step 3: Commit.**
 
 ```bash
@@ -624,26 +467,26 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 14: Full verification pass + ui-ux-pro-max conformance + optional E2E
+### Task 13: Full verification pass + ui-ux-pro-max conformance + optional E2E
 
 **Files:**
 - Create (optional): `tests/e2e/operator-properties.spec.ts`
 
-- [ ] **Step 1: Gates.** `npm run test` (all green), `npx tsc --noEmit` (only the 12 pre-existing baseline errors), `npm run lint` (clean on changed files), `npx supabase db reset` (schema rebuilds, integration tests still pass).
-- [ ] **Step 2: ui-ux-pro-max implementation-phase conformance.** Run the skill against the built Properties components; fix any flagged off-system styling (raw hex, non-token colors, touch-target sizes, missing focus/disabled states). Confirm no mockup styling leaked (grep the new files for stray hex).
-- [ ] **Step 3: Browser walkthrough (send screenshots to Bridger).** List (table + filters + empty/loading/error, mobile cards), read/edit/create sheet, photo-after-save, homeowner assign/change/remove, delete (all three actions + permission-gated override), book-from-property, inline add-property, customer deep-link. Verify no console errors, no legacy `/admin-dashboard?tab=` escapes.
-- [ ] **Step 4 (optional): E2E happy path.** A Playwright spec covering open → create → edit → book-from-property, scoped against existing E2E patterns in `tests/e2e/`.
-- [ ] **Step 5: Open the PR** to `master` with the summary, the follow-ups from spec §12, and a note on the two migrations. Do NOT merge without Bridger's explicit go-ahead.
+- [ ] **Step 1: Gates.** `npm run test` (green — or targeted `npm run test:unit` + note the local integration rate-limit; CI is the source of truth), `npx tsc --noEmit` (only the 12 pre-existing baseline errors), `npm run lint` (clean on changed files), `npx supabase db reset` (schema rebuilds, integration tests still pass).
+- [ ] **Step 2: ui-ux-pro-max implementation-phase conformance.** Run the skill against the built Properties components; fix flagged off-system styling (raw hex, non-token colors, touch targets, focus/disabled states). Grep the new files for stray hex to confirm no mockup styling leaked.
+- [ ] **Step 3: Browser walkthrough (screenshots to Bridger).** List (table + filters + empty/loading/error, mobile cards), read/edit/create sheet, photo-after-save, homeowner assign/change/remove, delete (all three actions + permission-gated override), book-from-property, inline add-property, customer deep-link. No console errors, no legacy `/admin-dashboard?tab=` escapes.
+- [ ] **Step 4 (optional): E2E happy path** in `tests/e2e/` (open → create → edit → book-from-property), scoped against existing patterns.
+- [ ] **Step 5: Open the PR** to `master` with the summary, spec §12 follow-ups, and the two migrations note. Do NOT merge without Bridger's explicit go-ahead.
 
 ---
 
 ## Self-Review
 
-**Spec coverage:** §4 migration → Task 1; type + archived filter → Task 3; §5 permissions (RLS-only, `can_view_properties` gate, cross-permission delete gate) → Tasks 5/10; §6 nav/host/list/sheet/delete/shared → Tasks 2/5/6/7/8/10; §7.1 list → Task 6; §7.2/7.3 read/edit/create → Tasks 7/8; §7.4 delete model → Tasks 4/10; §7.5 book-from-property → Task 11; §7.6 inline add → Task 12; §7.7 customer deep-link → Task 13; §7.8 archived filter → Task 3; §8 reuse → Task 2 + throughout; §9 testing → Tasks 4/6/11 (unit) + Task 14 (E2E); §11 copy guardrails → Global Constraints. All spec sections map to a task.
+**Spec coverage:** §4 migration → T1; type + archived filter → T3; §5 permissions → T5/T8/T9; §6 nav/host/list/sheet/delete/shared → T2/T5/T6/T8/T9; §7.1 list → T8; §7.2/7.3 read/edit/create → T5/T6; §7.4 delete → T4/T9; §7.5 book-from-property → T10; §7.6 inline add → T11; §7.7 deep-link → T12; §7.8 archived filter → T3; §8 reuse → T2 + throughout; §9 testing → T4/T8/T10 unit + T13 E2E; §11 copy → Global Constraints. All spec sections map to a task.
 
-**Placeholder scan:** No "TBD"/"add appropriate handling". UI tasks give exact reuse sources + interface contracts + behavior rather than every JSX line — deliberate for a lift-heavy build with fresh implementers who read the cited sources; pure logic has full test+impl code.
+**Placeholder scan:** No "TBD"/"add appropriate handling". UI tasks give exact reuse sources + interface contracts + behavior; pure logic has full test+impl code.
 
-**Type consistency:** `PropertyDeletePlan.action` values (`hard-delete`/`cancel-and-archive`/`archive-only`) are consistent across Tasks 4 and 10; `PropertyFormValues`/`toNumberOrNull` from `@/lib/properties/validateProperty` consistent across Tasks 2/8; `buildPropertySeed` shape consistent across Tasks 11/12; `useOpenProperty` consistent across Tasks 6/7/13; `AdminProperty` gains `photo_url`/`archived_at` in Task 3 and is consumed in Tasks 4/6.
+**Type consistency:** `PropertyDeleteAction` values consistent across T4/T9; `PropertyFormValues`/`toNumberOrNull` (`@/lib/properties/validateProperty`) consistent T2/T6; `buildPropertySeed` shape consistent T10/T11; `useOpenProperty` consistent T5/T8/T12; `AdminProperty` gains `photo_url`/`archived_at` in T3, consumed T4/T8; `PropertyDetailSheet` footer grows Edit(T6)→Delete(T9)→Book(T10) with no dead intermediate button.
 
 ---
 
