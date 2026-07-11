@@ -1654,7 +1654,10 @@ export function OperatorBookingForm({ prefill, onDone }: { prefill?: { date?: st
           slots: [
             {
               date: prefill.date ?? EMPTY_OPERATOR_BOOKING.slots[0]?.date ?? '',
-              time: prefill.time ?? EMPTY_OPERATOR_BOOKING.slots[0]?.time ?? '',
+              // A date-only prefill (month-view day click) has no time; default to
+              // 09:00 so the seeded slot is complete and editable rather than an
+              // empty-time slot that reads as filled but has no time.
+              time: prefill.time ?? '09:00',
             },
           ],
         }
