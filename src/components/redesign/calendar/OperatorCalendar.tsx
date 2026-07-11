@@ -31,7 +31,10 @@ function rangeLabelFor(view: string, date: Date): string {
   const days = weekDays(date, 1);
   const a = days[0], b = days[6];
   const left = a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const right = b.toLocaleDateString('en-US', { day: 'numeric', year: 'numeric' });
+  const right =
+    a.getMonth() === b.getMonth()
+      ? `${b.getDate()}, ${b.getFullYear()}`
+      : b.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   return `${left} to ${right}`;
 }
 
