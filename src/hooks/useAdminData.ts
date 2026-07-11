@@ -1504,7 +1504,8 @@ export function useAdminCustomers() {
           .from('properties')
           .select('owner_id')
           .eq('organization_id', orgId)
-          .in('owner_id', homeownerIds),
+          .in('owner_id', homeownerIds)
+          .is('archived_at', null),
         supabase
           .from('appointments')
           .select('homeowner_id, total_price, scheduled_date')
@@ -1597,6 +1598,7 @@ export function useCustomerDetails(customerId: string | null) {
           `)
           .eq('organization_id', orgId)
           .eq('owner_id', customerId as string)
+          .is('archived_at', null)
           .order('created_at', { ascending: false }),
       ]);
 
@@ -1725,6 +1727,7 @@ export interface AdminProperty {
   bathrooms: number | null;
   square_feet: number | null;
   photo_url?: string | null;
+  archived_at?: string | null;
   special_instructions: string | null;
   access_instructions: string | null;
   created_at: string;
@@ -1773,6 +1776,7 @@ export function useAdminProperties() {
           )
         `)
         .eq('organization_id', orgId)
+        .is('archived_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

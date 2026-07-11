@@ -39,6 +39,7 @@ export function usePropertiesByOwner(ownerId: string | null) {
         .from('properties')
         .select('id, name, address, city, state, owner_id, owner:user_profiles!owner_id(first_name, last_name)')
         .eq('organization_id', orgId as string)
+        .is('archived_at', null)
         .order('name', { ascending: true });
       if (ownerId) q = q.eq('owner_id', ownerId);
       const { data, error } = await q;
