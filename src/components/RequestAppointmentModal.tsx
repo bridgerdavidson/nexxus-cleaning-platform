@@ -88,6 +88,7 @@ export default function RequestAppointmentModal({
         .from("properties")
         .select("id, name, address, city, state, zip_code")
         .eq("owner_id", homeownerId)
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
       if (propsErr) throw propsErr;
       const ps = (data ?? []) as Property[];

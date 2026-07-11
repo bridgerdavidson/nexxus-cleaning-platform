@@ -715,6 +715,7 @@ export default function AddAppointmentModal({
         .from("properties")
         .select("*")
         .eq("owner_id", ownerId)
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -738,6 +739,7 @@ export default function AddAppointmentModal({
         .from("properties")
         .select("*, owner:user_profiles!owner_id(first_name, last_name)")
         .eq("organization_id", currentOrganizationId)
+        .is("archived_at", null)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
