@@ -15,7 +15,7 @@ import {
   coerceManagerPermissions,
   type ManagerPermissions,
 } from '../lib/permissions/managerFlags';
-import { planPropertyDeletion, LIVE_APPT_STATUSES } from '@/lib/properties/deletePlan';
+import { planPropertyDeletion, LIVE_APPT_STATUSES, HISTORY_APPT_STATUSES } from '@/lib/properties/deletePlan';
 
 export type { ManagerPermissions } from '../lib/permissions/managerFlags';
 
@@ -1927,7 +1927,7 @@ export async function countPropertyAppointments(propertyId: string) {
     supabase.from('appointments').select('id', { count: 'exact', head: true })
       .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]),
     supabase.from('appointments').select('id', { count: 'exact', head: true })
-      .eq('property_id', propertyId).in('status', ['completed', 'cancelled']),
+      .eq('property_id', propertyId).in('status', HISTORY_APPT_STATUSES as unknown as string[]),
   ]);
   return { liveCount: live ?? 0, historyCount: history ?? 0 };
 }
