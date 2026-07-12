@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { useAdminProperties } from "@/hooks/useAdminData";
+import { useAuth } from "@/hooks/useAuth";
+import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { PropertyDetailSheet } from "./PropertyDetailSheet";
 
 /**
@@ -13,8 +15,9 @@ import { PropertyDetailSheet } from "./PropertyDetailSheet";
  * absent, or resolves to no row (e.g. a stale/foreign id, or a property that
  * has since been archived and dropped from useAdminProperties()). The
  * special id `"new"` opens the sheet in create mode instead of resolving a
- * row; a pre-set owner (`createOwnerId`) and a list/nav entry point that
- * links here are later tasks.
+ * row, and only when the operator has can_edit_properties; a pre-set owner
+ * (`createOwnerId`) and a list/nav entry point that links here are later
+ * tasks.
  */
 export function OperatorPropertyDetailHost() {
   const { paramId, setParam } = useDetailParam("property");
@@ -43,12 +46,18 @@ function HostInner({
   onClose: () => void;
 }) {
   const { properties } = useAdminProperties();
+  const { currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  const canEdit =
+    currentOrgRole === "owner" ||
+    currentOrgRole === "admin" ||
+    !!permissions?.can_edit_properties;
   const isCreate = propertyId === "new";
   const property = isCreate ? null : (properties.find((p) => p.id === propertyId) ?? null);
 
   return (
     <PropertyDetailSheet
-      open={open && (isCreate || !!property)}
+      open={open && (isCreate ? canEdit : !!property)}
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
