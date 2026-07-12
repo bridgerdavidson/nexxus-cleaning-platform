@@ -1836,6 +1836,7 @@ export async function updateProperty(
     photo_url?: string | null;
     special_instructions?: string | null;
     access_instructions?: string | null;
+    owner_id?: string | null;
   }
 ): Promise<{ success: boolean; data?: AdminProperty; error?: string }> {
   try {

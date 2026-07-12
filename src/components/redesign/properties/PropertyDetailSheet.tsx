@@ -20,11 +20,13 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/toast";
 import { Field, DiscardChangesDialog } from "@/components/redesign/bookings/detail-atoms";
 import { PropertyPhotoField } from "@/components/redesign/properties/PropertyPhotoField";
+import { HomeownerAssignField } from "@/components/redesign/properties/HomeownerAssignField";
 import { personInitials } from "@/lib/initials";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { keys } from "@/lib/queryKeys";
+import { stripeSelfPayUiEnabled } from "@/lib/stripe/flags";
 import { updateProperty, type AdminProperty } from "@/hooks/useAdminData";
 import {
   EMPTY_PROPERTY_FORM,
@@ -281,6 +283,17 @@ export function PropertyDetailSheet({
                         Save this property first to add a photo.
                       </p>
                     )}
+
+                    {stripeSelfPayUiEnabled() && !creating && activeProperty ? (
+                      <>
+                        <HomeownerAssignField
+                          propertyId={activeProperty.id}
+                          homeowner={activeProperty.homeowner}
+                          onUpdated={(u) => setActiveProperty(u)}
+                        />
+                        <Separator />
+                      </>
+                    ) : null}
 
                     <FormField label="Property name" htmlFor="prop-name" required>
                       <Input
