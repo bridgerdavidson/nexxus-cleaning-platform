@@ -12,6 +12,7 @@ import { useAdminCustomers, useAdminCleaners } from '@/hooks/useAdminData';
 import { useServices } from '@/hooks/useServices';
 import { useChecklists } from '@/hooks/useChecklists';
 import { EMPTY_OPERATOR_BOOKING, type OperatorBookingState } from './operator-booking-types';
+import type { NewBookingSeed } from './useOpenOperatorBooking';
 import {
   addSlot,
   removeSlotAt,
@@ -54,26 +55,34 @@ export function OperatorBookingForm({
   prefill,
   onDone,
 }: {
-  prefill?: { date?: string; time?: string };
+  prefill?: NewBookingSeed;
   onDone: () => void;
 }) {
   const { currentOrganizationId } = useAuth();
-  const [state, setState] = useState<OperatorBookingState>(() =>
-    prefill?.date || prefill?.time
-      ? {
-          ...EMPTY_OPERATOR_BOOKING,
-          slots: [
-            {
-              date: prefill.date ?? EMPTY_OPERATOR_BOOKING.slots[0]?.date ?? '',
-              // A date-only prefill (month-view day click) has no time; default to
-              // 09:00 so the seeded slot is complete and editable rather than an
-              // empty-time slot that reads as filled but has no time.
-              time: prefill.time ?? '09:00',
-            },
-          ],
-        }
-      : EMPTY_OPERATOR_BOOKING,
-  );
+  const [state, setState] = useState<OperatorBookingState>(() => {
+    const base: OperatorBookingState =
+      prefill?.date || prefill?.time
+        ? {
+            ...EMPTY_OPERATOR_BOOKING,
+            slots: [
+              {
+                date: prefill.date ?? EMPTY_OPERATOR_BOOKING.slots[0]?.date ?? '',
+                // A date-only prefill (month-view day click) has no time; default to
+                // 09:00 so the seeded slot is complete and editable rather than an
+                // empty-time slot that reads as filled but has no time.
+                time: prefill.time ?? '09:00',
+              },
+            ],
+          }
+        // Copy (not the shared constant reference) since the seeding below mutates `base`.
+        : { ...EMPTY_OPERATOR_BOOKING };
+    // Book-from-property seeding (customer, property, bill-to). Applied in the initializer
+    // (not an effect) so it can never be clobbered by a later render.
+    if (prefill?.billTo === 'customer' || prefill?.billTo === 'self_pay') base.billTo = prefill.billTo;
+    if (prefill?.customerId) base.customerId = prefill.customerId;
+    if (prefill?.propertyId) base.propertyId = prefill.propertyId;
+    return base;
+  });
   const [page, setPage] = useState<'form' | 'review'>('form');
   const self = isSelfPay(state);
 

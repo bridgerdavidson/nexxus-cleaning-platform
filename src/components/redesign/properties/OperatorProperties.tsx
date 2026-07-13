@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Building2, CalendarPlus, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -31,9 +31,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ListFilterBar } from "@/components/redesign/shared/ListFilterBar";
-import { useAdminProperties } from "@/hooks/useAdminData";
+import { useAdminProperties, type AdminProperty } from "@/hooks/useAdminData";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
+import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
+import { buildPropertySeed } from "@/components/redesign/bookings/new-booking/seedFromProperty";
 import { useOpenProperty } from "./useOpenProperty";
 import { toPropertyRowVM, type PropertyRowVM } from "./propertyRowVM";
 import { PropertyDeleteDialog } from "./PropertyDeleteDialog";
@@ -97,12 +99,18 @@ function PropertiesSkeleton() {
 
 function RowMenu({
   row,
+  canEdit,
+  canBook,
   onEdit,
   onDelete,
+  onBook,
 }: {
   row: PropertyRowVM;
+  canEdit: boolean;
+  canBook: boolean;
   onEdit: (id: string) => void;
   onDelete: (row: PropertyRowVM) => void;
+  onBook: (row: PropertyRowVM) => void;
 }) {
   return (
     <DropdownMenu>
@@ -112,12 +120,21 @@ function RowMenu({
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[10rem]">
-        <DropdownMenuItem onSelect={() => onEdit(row.id)}>
-          <Pencil /> Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem destructive onSelect={() => onDelete(row)}>
-          <Trash2 /> Delete
-        </DropdownMenuItem>
+        {canBook ? (
+          <DropdownMenuItem onSelect={() => onBook(row)}>
+            <CalendarPlus /> Book
+          </DropdownMenuItem>
+        ) : null}
+        {canEdit ? (
+          <>
+            <DropdownMenuItem onSelect={() => onEdit(row.id)}>
+              <Pencil /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem destructive onSelect={() => onDelete(row)}>
+              <Trash2 /> Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -126,15 +143,19 @@ function RowMenu({
 function PropertiesTable({
   rows,
   canEdit,
+  canBook,
   onOpenRow,
   onEditRow,
   onDeleteRow,
+  onBookRow,
 }: {
   rows: PropertyRowVM[];
   canEdit: boolean;
+  canBook: boolean;
   onOpenRow: (id: string) => void;
   onEditRow: (id: string) => void;
   onDeleteRow: (row: PropertyRowVM) => void;
+  onBookRow: (row: PropertyRowVM) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-card border border-border bg-card shadow-soft-sm">
@@ -164,7 +185,16 @@ function PropertiesTable({
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{row.detailsLabel}</TableCell>
               <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                {canEdit ? <RowMenu row={row} onEdit={onEditRow} onDelete={onDeleteRow} /> : null}
+                {canEdit || canBook ? (
+                  <RowMenu
+                    row={row}
+                    canEdit={canEdit}
+                    canBook={canBook}
+                    onEdit={onEditRow}
+                    onDelete={onDeleteRow}
+                    onBook={onBookRow}
+                  />
+                ) : null}
               </TableCell>
             </TableRow>
           ))}
@@ -177,15 +207,19 @@ function PropertiesTable({
 function PropertiesCardList({
   rows,
   canEdit,
+  canBook,
   onOpenRow,
   onEditRow,
   onDeleteRow,
+  onBookRow,
 }: {
   rows: PropertyRowVM[];
   canEdit: boolean;
+  canBook: boolean;
   onOpenRow: (id: string) => void;
   onEditRow: (id: string) => void;
   onDeleteRow: (row: PropertyRowVM) => void;
+  onBookRow: (row: PropertyRowVM) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -211,9 +245,16 @@ function PropertiesCardList({
                 <div className="truncate text-xs text-muted-foreground">{row.addressLine}</div>
               </div>
             </div>
-            {canEdit ? (
+            {canEdit || canBook ? (
               <span onClick={(e) => e.stopPropagation()}>
-                <RowMenu row={row} onEdit={onEditRow} onDelete={onDeleteRow} />
+                <RowMenu
+                  row={row}
+                  canEdit={canEdit}
+                  canBook={canBook}
+                  onEdit={onEditRow}
+                  onDelete={onDeleteRow}
+                  onBook={onBookRow}
+                />
               </span>
             ) : null}
           </div>
@@ -237,16 +278,21 @@ function PropertiesCardList({
  * data of its own (the sheet is a global host, not owned by this screen).
  * Delete opens `PropertyDeleteDialog` from the row menu (single instance
  * driven by `deleteTarget`); the dialog's own invalidation drops the row out
- * of the list once it archives/deletes. Book row action is a later task.
+ * of the list once it archives/deletes. The row menu's "Book" item is gated
+ * on booking permission (not property permission, mirroring OperatorShell's
+ * canCreateBooking gate) and seeds the operator new-booking sheet from the
+ * row's underlying `AdminProperty` via `buildPropertySeed`.
  */
 export function OperatorProperties() {
   const { currentOrgRole, currentOrganizationId } = useAuth();
   const { permissions } = useManagerPermissions();
   const { properties, loading, error, refetch } = useAdminProperties();
   const { open, openForEdit } = useOpenProperty();
+  const openBooking = useOpenOperatorBooking();
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canEdit = privileged || !!permissions?.can_edit_properties;
+  const canBook = privileged || !!permissions?.can_edit_bookings;
 
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
@@ -257,6 +303,16 @@ export function OperatorProperties() {
     () => rows.filter((r) => matchesSearch(r, search) && matchesOwnerFilter(r, ownerFilter)),
     [rows, search, ownerFilter],
   );
+  // The row VM doesn't carry owner_id, so the "Book" action looks the raw
+  // AdminProperty back up by id to build the seed.
+  const propertyById = useMemo(
+    () => new Map<string, AdminProperty>(properties.map((p) => [p.id, p])),
+    [properties],
+  );
+  const handleBookRow = (row: PropertyRowVM) => {
+    const property = propertyById.get(row.id);
+    if (property) openBooking(buildPropertySeed(property));
+  };
 
   const filtersActive = !!search || ownerFilter !== "all";
   const countLabel = loading
@@ -347,18 +403,22 @@ export function OperatorProperties() {
             <PropertiesTable
               rows={filteredRows}
               canEdit={canEdit}
+              canBook={canBook}
               onOpenRow={open}
               onEditRow={openForEdit}
               onDeleteRow={(row) => setDeleteTarget({ id: row.id, name: row.name })}
+              onBookRow={handleBookRow}
             />
           </div>
           <div className="lg:hidden">
             <PropertiesCardList
               rows={filteredRows}
               canEdit={canEdit}
+              canBook={canBook}
               onOpenRow={open}
               onEditRow={openForEdit}
               onDeleteRow={(row) => setDeleteTarget({ id: row.id, name: row.name })}
+              onBookRow={handleBookRow}
             />
           </div>
         </>

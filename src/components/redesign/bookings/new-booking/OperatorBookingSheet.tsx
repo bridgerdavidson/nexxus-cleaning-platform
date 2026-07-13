@@ -2,6 +2,7 @@
 
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { OperatorBookingForm } from './OperatorBookingForm';
+import type { NewBookingSeed } from './useOpenOperatorBooking';
 
 /**
  * The operator new-booking container: a right-anchored Sheet (slide-over on desktop, full-screen on
@@ -15,7 +16,7 @@ export function OperatorBookingSheet({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  prefill?: { date?: string; time?: string };
+  prefill?: NewBookingSeed;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

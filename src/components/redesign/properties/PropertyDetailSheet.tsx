@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Building2, Mail, Pencil, Trash2 } from "lucide-react";
+import { AlertCircle, Building2, CalendarPlus, Mail, Pencil, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
@@ -29,6 +29,8 @@ import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { keys } from "@/lib/queryKeys";
 import { stripeSelfPayUiEnabled } from "@/lib/stripe/flags";
 import { updateProperty, type AdminProperty } from "@/hooks/useAdminData";
+import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
+import { buildPropertySeed } from "@/components/redesign/bookings/new-booking/seedFromProperty";
 import {
   EMPTY_PROPERTY_FORM,
   toNumberOrNull,
@@ -92,7 +94,10 @@ function formsEqual(a: PropertyFormValues, b: PropertyFormValues): boolean {
  * is internal (not prop-drilled): a privileged role or `can_edit_properties`
  * reveals the Edit button, which flips the body into the same form used for
  * `mode="create"`. Delete opens `PropertyDeleteDialog` from the footer, gated
- * on the same `canEdit` as Edit. Book is a later task.
+ * on the same `canEdit` as Edit. "Book cleaning" is the primary footer CTA,
+ * gated on `can_edit_bookings` (mirrors OperatorShell's booking gate, not
+ * `can_edit_properties`), and seeds the operator new-booking sheet via
+ * `buildPropertySeed`.
  */
 export function PropertyDetailSheet({
   open,
@@ -104,9 +109,13 @@ export function PropertyDetailSheet({
   const { currentOrganizationId, currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
   const queryClient = useQueryClient();
+  const openBooking = useOpenOperatorBooking();
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canEdit = privileged || !!permissions?.can_edit_properties;
+  // Gated on booking permission (not property permission) - mirrors OperatorShell's
+  // canCreateBooking gate, since the booking host itself is only mounted when this is true.
+  const canBook = privileged || !!permissions?.can_edit_bookings;
 
   // The row this sheet is currently showing: the `property` prop for
   // read/edit, or (once a create-mode insert succeeds) the freshly returned
@@ -456,20 +465,32 @@ export function PropertyDetailSheet({
                         {activeProperty.access_instructions || "None on file."}
                       </Field>
 
-                      {canEdit ? (
+                      {canBook || canEdit ? (
                         <>
                           <Separator />
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button variant="secondary" onClick={() => setEditing(true)}>
-                              <Pencil /> Edit
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              className="text-critical-700 hover:bg-critical-50 hover:text-critical-700"
-                              onClick={() => setDeleteOpen(true)}
-                            >
-                              <Trash2 /> Delete
-                            </Button>
+                          <div className="space-y-2">
+                            {canBook ? (
+                              <Button
+                                className="w-full"
+                                onClick={() => openBooking(buildPropertySeed(activeProperty))}
+                              >
+                                <CalendarPlus /> Book cleaning
+                              </Button>
+                            ) : null}
+                            {canEdit ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <Button variant="secondary" onClick={() => setEditing(true)}>
+                                  <Pencil /> Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="text-critical-700 hover:bg-critical-50 hover:text-critical-700"
+                                  onClick={() => setDeleteOpen(true)}
+                                >
+                                  <Trash2 /> Delete
+                                </Button>
+                              </div>
+                            ) : null}
                           </div>
                         </>
                       ) : null}
