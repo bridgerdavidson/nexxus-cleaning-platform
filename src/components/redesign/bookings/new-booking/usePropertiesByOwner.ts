@@ -22,6 +22,10 @@ function flattenOwner(v: unknown): OwnerProperty['owner'] {
   return (o as OwnerProperty['owner']) ?? null;
 }
 
+export function propertiesByOwnerKey(orgId: string | null, ownerId: string | null) {
+  return ['operator-booking', 'properties-by-owner', orgId ?? 'none', ownerId ?? 'org'] as const;
+}
+
 /**
  * Properties for the booking flow (org-scoped). When `ownerId` is set (customer-billed), returns that
  * customer's homes. When null (self-pay), returns every org property , including the homeowner owner
@@ -32,13 +36,14 @@ export function usePropertiesByOwner(ownerId: string | null) {
   const orgId = currentOrganizationId ?? null;
 
   const query = useQuery({
-    queryKey: ['operator-booking', 'properties-by-owner', orgId ?? 'none', ownerId ?? 'org'],
+    queryKey: propertiesByOwnerKey(orgId, ownerId),
     enabled: !!orgId,
     queryFn: async (): Promise<OwnerProperty[]> => {
       let q = supabase
         .from('properties')
         .select('id, name, address, city, state, owner_id, owner:user_profiles!owner_id(first_name, last_name)')
         .eq('organization_id', orgId as string)
+        .is('archived_at', null)
         .order('name', { ascending: true });
       if (ownerId) q = q.eq('owner_id', ownerId);
       const { data, error } = await q;

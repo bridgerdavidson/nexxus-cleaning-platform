@@ -157,6 +157,8 @@ export interface Property {
   square_feet: number | null;
   special_instructions: string | null;
   access_instructions: string | null;
+  photo_url: string | null;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }

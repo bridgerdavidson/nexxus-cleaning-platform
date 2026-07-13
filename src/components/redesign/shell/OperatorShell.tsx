@@ -13,6 +13,7 @@ import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
 import { OperatorBookingDetailHost } from "@/components/redesign/bookings/OperatorBookingDetailHost";
 import { useOpenBookingDetail } from "@/components/redesign/bookings/useOpenBookingDetail";
+import { OperatorPropertyDetailHost } from "@/components/redesign/properties/OperatorPropertyDetailHost";
 import { OPERATOR_NAV } from "./nav-items";
 import { useOperatorNav } from "./useOperatorNav";
 
@@ -70,6 +71,10 @@ export function OperatorShell({
   // so a restricted manager can never open it anywhere.
   const canViewBookings = privileged || !!permissions?.can_view_bookings;
   const openBookingDetail = useOpenBookingDetail();
+  // The property-detail sheet is a global surface too (deep-linked via
+  // ?property=<id>). Gated like the properties workspace itself
+  // (can_view_properties); nav/route are added by a later task.
+  const canViewProperties = privileged || !!permissions?.can_view_properties;
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -94,6 +99,11 @@ export function OperatorShell({
         {canViewBookings ? (
           <Suspense fallback={null}>
             <OperatorBookingDetailHost />
+          </Suspense>
+        ) : null}
+        {canViewProperties ? (
+          <Suspense fallback={null}>
+            <OperatorPropertyDetailHost />
           </Suspense>
         ) : null}
       </div>

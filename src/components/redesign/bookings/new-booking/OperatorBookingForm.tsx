@@ -2,16 +2,20 @@
 
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useManagerPermissions } from '@/hooks/useManagerPermissions';
 import { useAdminCustomers, useAdminCleaners } from '@/hooks/useAdminData';
 import { useServices } from '@/hooks/useServices';
 import { useChecklists } from '@/hooks/useChecklists';
+import { PropertyDetailSheet } from '@/components/redesign/properties/PropertyDetailSheet';
 import { EMPTY_OPERATOR_BOOKING, type OperatorBookingState } from './operator-booking-types';
+import type { NewBookingSeed } from './useOpenOperatorBooking';
 import {
   addSlot,
   removeSlotAt,
@@ -25,7 +29,7 @@ import { EntityPickerField, type PickerItem } from './EntityPickerField';
 import { TimePickerPopover } from './TimePickerPopover';
 import { BookingPaymentField } from './BookingPaymentField';
 import { RecurrenceSection } from './RecurrenceSection';
-import { usePropertiesByOwner } from './usePropertiesByOwner';
+import { usePropertiesByOwner, propertiesByOwnerKey } from './usePropertiesByOwner';
 import { useRankedCleaners } from './useRankedCleaners';
 import { useCreateOperatorBooking } from './useCreateOperatorBooking';
 import { formatSlotLabel } from '@/components/redesign/homeowner/booking/deriveBooking';
@@ -54,26 +58,39 @@ export function OperatorBookingForm({
   prefill,
   onDone,
 }: {
-  prefill?: { date?: string; time?: string };
+  prefill?: NewBookingSeed;
   onDone: () => void;
 }) {
-  const { currentOrganizationId } = useAuth();
-  const [state, setState] = useState<OperatorBookingState>(() =>
-    prefill?.date || prefill?.time
-      ? {
-          ...EMPTY_OPERATOR_BOOKING,
-          slots: [
-            {
-              date: prefill.date ?? EMPTY_OPERATOR_BOOKING.slots[0]?.date ?? '',
-              // A date-only prefill (month-view day click) has no time; default to
-              // 09:00 so the seeded slot is complete and editable rather than an
-              // empty-time slot that reads as filled but has no time.
-              time: prefill.time ?? '09:00',
-            },
-          ],
-        }
-      : EMPTY_OPERATOR_BOOKING,
-  );
+  const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  const queryClient = useQueryClient();
+  const privileged = currentOrgRole === 'owner' || currentOrgRole === 'admin';
+  const canAddProperty = privileged || !!permissions?.can_edit_properties;
+  const [addPropertyOpen, setAddPropertyOpen] = useState(false);
+  const [state, setState] = useState<OperatorBookingState>(() => {
+    const base: OperatorBookingState =
+      prefill?.date || prefill?.time
+        ? {
+            ...EMPTY_OPERATOR_BOOKING,
+            slots: [
+              {
+                date: prefill.date ?? EMPTY_OPERATOR_BOOKING.slots[0]?.date ?? '',
+                // A date-only prefill (month-view day click) has no time; default to
+                // 09:00 so the seeded slot is complete and editable rather than an
+                // empty-time slot that reads as filled but has no time.
+                time: prefill.time ?? '09:00',
+              },
+            ],
+          }
+        // Copy (not the shared constant reference) since the seeding below mutates `base`.
+        : { ...EMPTY_OPERATOR_BOOKING };
+    // Book-from-property seeding (customer, property, bill-to). Applied in the initializer
+    // (not an effect) so it can never be clobbered by a later render.
+    if (prefill?.billTo === 'customer' || prefill?.billTo === 'self_pay') base.billTo = prefill.billTo;
+    if (prefill?.customerId) base.customerId = prefill.customerId;
+    if (prefill?.propertyId) base.propertyId = prefill.propertyId;
+    return base;
+  });
   const [page, setPage] = useState<'form' | 'review'>('form');
   const self = isSelfPay(state);
 
@@ -81,7 +98,7 @@ export function OperatorBookingForm({
   const { cleaners } = useAdminCleaners();
   const { services } = useServices();
   const { checklists } = useChecklists(state.serviceTypeId);
-  const { properties } = usePropertiesByOwner(self ? null : state.customerId);
+  const { properties, loading: propertiesLoading } = usePropertiesByOwner(self ? null : state.customerId);
 
   const service = services.find((s) => s.id === state.serviceTypeId) ?? null;
   const checklist = checklists.find((c) => c.id === state.checklistId) ?? null;
@@ -181,6 +198,7 @@ export function OperatorBookingForm({
       : '-';
 
   return (
+    <>
     <div className="flex min-h-0 flex-1 flex-col">
       <SheetHeader className="border-b border-border p-4 pr-12">
         <SheetTitle>{page === 'review' ? 'Review & create' : 'New booking'}</SheetTitle>
@@ -235,6 +253,18 @@ export function OperatorBookingForm({
               disabled={!self && !state.customerId}
               emptyText={!self && !state.customerId ? 'Choose a customer first.' : 'No properties.'}
             />
+
+            {!self && !!state.customerId && !propertiesLoading && properties.length === 0 && canAddProperty && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-brand-700"
+                onClick={() => setAddPropertyOpen(true)}
+              >
+                + Add a property
+              </Button>
+            )}
 
             <EntityPickerField
               label="Service"
@@ -430,5 +460,20 @@ export function OperatorBookingForm({
         </>
       )}
     </div>
+
+    <PropertyDetailSheet
+      open={addPropertyOpen}
+      onOpenChange={setAddPropertyOpen}
+      property={null}
+      mode="create"
+      createOwnerId={state.customerId}
+      onSaved={(p) => {
+        patch({ propertyId: p.id });
+        void queryClient.invalidateQueries({
+          queryKey: propertiesByOwnerKey(currentOrganizationId, state.customerId),
+        });
+      }}
+    />
+    </>
   );
 }

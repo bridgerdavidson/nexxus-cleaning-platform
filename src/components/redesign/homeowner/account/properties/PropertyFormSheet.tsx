@@ -18,13 +18,13 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import type { Property } from '@/hooks/useHomeownerData';
-import { PropertyPhotoField } from './PropertyPhotoField';
+import { PropertyPhotoField } from '@/components/redesign/properties/PropertyPhotoField';
 import {
   EMPTY_PROPERTY_FORM,
   toNumberOrNull,
   validateProperty,
   type PropertyFormValues,
-} from './validateProperty';
+} from '@/lib/properties/validateProperty';
 
 function fromProperty(p: Property): PropertyFormValues {
   return {

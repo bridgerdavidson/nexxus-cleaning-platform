@@ -241,6 +241,7 @@ export function useHomeownerProperties() {
         .select('*')
         .eq('owner_id', userId)
         .eq('organization_id', orgId)
+        .is('archived_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

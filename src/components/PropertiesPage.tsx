@@ -20,7 +20,7 @@ import AddPropertyModal from "./AddPropertyModal";
 import AddAppointmentModal from "./AddAppointmentModal";
 import {
   AdminProperty,
-  deleteProperty,
+  archiveOrDeleteProperty,
   deleteProperties,
 } from "../hooks/useAdminData";
 import { useAuth } from "../hooks/useAuth";
@@ -221,7 +221,11 @@ export default function PropertiesPage({
     if (!deleteConfirmModal.propertyId || !currentOrganizationId) return;
 
     setIsDeleting(true);
-    const result = await deleteProperty(
+    // Legacy dashboards (no real users). Route through the safe executor so a
+    // delete never cascade-destroys appointment history: never-booked -> hard
+    // delete; any history -> cancel live cleanings + archive. (Bulk delete on
+    // this dead page still uses the naive path; not worth a safe-bulk executor.)
+    const result = await archiveOrDeleteProperty(
       deleteConfirmModal.propertyId,
       currentOrganizationId,
     );
