@@ -55,6 +55,13 @@ export type PropertyDetailSheetProps = {
    *  own detail sheet, a later task). `null` = org-owned. Only consulted in
    *  `mode="create"`. */
   createOwnerId?: string | null;
+  /** When provided, a successful create-mode save hands the new row back to
+   *  the caller (and closes the sheet) instead of transitioning to the
+   *  in-sheet edit mode for a photo. Used by callers that manage their own
+   *  local instance of this sheet (e.g. the booking form's inline "add a
+   *  property" flow) rather than the global properties-list host. Not
+   *  consulted for `mode="edit"` or `"read"`. */
+  onSaved?: (property: AdminProperty) => void;
 };
 
 /** "123 Main St, Springfield, IL 62704" (omits any missing part). Mirrors the
@@ -105,6 +112,7 @@ export function PropertyDetailSheet({
   property,
   mode = "read",
   createOwnerId = null,
+  onSaved,
 }: PropertyDetailSheetProps) {
   const { currentOrganizationId, currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
@@ -233,6 +241,14 @@ export function PropertyDetailSheet({
         // this task, and the background invalidation below will backfill the
         // join once the org properties list refetches.
         const inserted: AdminProperty = { ...(data as Omit<AdminProperty, "homeowner">), homeowner: null };
+        if (onSaved) {
+          toast.success("Property created");
+          void queryClient.invalidateQueries({ queryKey: keys.properties.byOrg(currentOrganizationId) });
+          void queryClient.invalidateQueries({ queryKey: keys.customers.byOrg(currentOrganizationId) });
+          onSaved(inserted);
+          onOpenChange(false);
+          return;
+        }
         setActiveProperty(inserted);
         setForm(fromProperty(inserted));
         setPhotoUrl(inserted.photo_url ?? null);
