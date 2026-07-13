@@ -1,49 +1,43 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard } from 'lucide-react';
-import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from '@/components/ui/toast';
-import { stripeNewChargeFlowUiEnabled } from '@/lib/stripe/flags';
+import { useAuth } from '@/hooks/useAuth';
+import { stripeSelfPayUiEnabled } from '@/lib/stripe/flags';
+import {
+  paymentMethodTitle,
+  type SavedPaymentMethod,
+} from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 import { RemoveCardSheet } from '@/components/redesign/shared/payment-methods/RemoveCardSheet';
-import { paymentMethodTitle, type SavedPaymentMethod } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
-import { HomeownerPaymentMethodsView } from './HomeownerPaymentMethodsView';
-import { AddCardSheet } from './AddCardSheet';
-import { useSavedPaymentMethods } from './useSavedPaymentMethods';
+import { OrgPaymentMethodsView } from './OrgPaymentMethodsView';
+import { OrgAddCardSheet } from './OrgAddCardSheet';
+import { useOrgPaymentMethods } from './useOrgPaymentMethods';
 
 /**
- * Saved payment methods for the authenticated homeowner: list, set-default, remove, and add
- * (Stripe SetupIntent). Behind the new-charge-flow UI flag; when off, the whole area shows a
- * graceful "unavailable" state (the hub already hides the entry, but the route is reachable).
+ * The organization's self-pay company payment methods for Settings > Payments: list, add (Stripe
+ * SetupIntent), set-default, remove. A newly added card becomes the charged default (self-pay
+ * completion charges read the Customer's default). Behind `stripeSelfPayUiEnabled()`; the parent
+ * section also gates on the same flag, so this returns null defensively when off.
  */
-export function HomeownerPaymentMethods() {
-  const enabled = stripeNewChargeFlowUiEnabled();
-  const { cards, loading, error, setDefault, remove, refetch } = useSavedPaymentMethods();
+export function OrgPaymentMethods() {
+  const { currentOrganizationId } = useAuth();
+  const enabled = stripeSelfPayUiEnabled();
+  const { cards, loading, error, setDefault, remove, refetch } = useOrgPaymentMethods();
 
   const [addOpen, setAddOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<SavedPaymentMethod | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
-  if (!enabled) {
-    return (
-      <div className="py-10">
-        <EmptyState
-          icon={<CreditCard />}
-          title="Payments are not set up"
-          description="Saved cards are not available for this company yet."
-        />
-      </div>
-    );
-  }
+  if (!enabled) return null;
 
   async function handleSetDefault(pm: SavedPaymentMethod) {
     setBusyId(pm.id);
     try {
       await setDefault(pm.id);
-      toast.success('Default card updated');
+      toast.success('Default company card updated');
     } catch (e) {
-      toast.error('Could not update your default card', {
+      toast.error('Could not update the default card', {
         description: e instanceof Error ? e.message : undefined,
       });
     } finally {
@@ -60,13 +54,13 @@ export function HomeownerPaymentMethods() {
     try {
       await remove(removeTarget.id);
       setRemoveTarget(null);
-      // Never leave the homeowner with no default: if we removed the default and
-      // other cards remain, promote the next one (completion charges read the default).
+      // Never leave the org with no charged default: if we removed the default and other cards
+      // remain, promote the next one (self-pay completion charges read the default).
       if (wasDefault && remaining.length > 0) {
         try {
           await setDefault(remaining[0].id);
           toast.success('Card removed', {
-            description: `${paymentMethodTitle(remaining[0])} is now your default.`,
+            description: `${paymentMethodTitle(remaining[0])} is now the default.`,
           });
         } catch {
           // The removal itself succeeded; only the re-assignment failed.
@@ -84,15 +78,21 @@ export function HomeownerPaymentMethods() {
     }
   }
 
-  async function handleAdded() {
+  async function handleAdded(pmId: string) {
+    // A newly added company card becomes the charged default (you added it to use it).
+    try {
+      await setDefault(pmId);
+    } catch {
+      // Best-effort: the card is still saved and listed even if set-default failed.
+    }
     await refetch();
     setAddOpen(false);
-    toast.success('Card saved');
+    toast.success('Company card saved');
   }
 
   return (
     <>
-      <HomeownerPaymentMethodsView
+      <OrgPaymentMethodsView
         cards={cards}
         loading={loading}
         error={error}
@@ -103,7 +103,14 @@ export function HomeownerPaymentMethods() {
         onRetry={() => refetch()}
       />
 
-      <AddCardSheet open={addOpen} onOpenChange={setAddOpen} onSaved={handleAdded} />
+      {currentOrganizationId ? (
+        <OrgAddCardSheet
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          organizationId={currentOrganizationId}
+          onSaved={handleAdded}
+        />
+      ) : null}
 
       <RemoveCardSheet
         open={!!removeTarget}

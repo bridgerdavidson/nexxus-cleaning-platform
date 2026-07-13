@@ -14,11 +14,11 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { useSavedPaymentMethods } from '../account/payment-methods/useSavedPaymentMethods';
-import { AccountAddCardPanel } from '../account/payment-methods/AccountAddCardPanel';
+import { AccountAddCardPanel } from '@/components/redesign/shared/payment-methods/AccountAddCardPanel';
 import {
   paymentMethodTitle,
   paymentMethodSubtitle,
-} from '../account/payment-methods/derive-payment-methods';
+} from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 import type { PaymentMethodKind } from '@/lib/payments/processingFee';
 
 export interface CardPickerSheetProps {

@@ -6,12 +6,12 @@ import { Check, CreditCard, Landmark, Clock, Plus } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AccountAddCardPanel } from '@/components/redesign/homeowner/account/payment-methods/AccountAddCardPanel';
+import { AccountAddCardPanel } from '@/components/redesign/shared/payment-methods/AccountAddCardPanel';
 import {
   paymentMethodTitle,
   paymentMethodSubtitle,
   type SavedPaymentMethod,
-} from '@/components/redesign/homeowner/account/payment-methods/derive-payment-methods';
+} from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 import type { PaymentMethodKind } from '@/lib/payments/processingFee';
 
 export const DEFER_PAYMENT = 'defer';

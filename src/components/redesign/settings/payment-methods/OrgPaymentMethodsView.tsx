@@ -1,14 +1,15 @@
 'use client';
 
-import { CreditCard, Plus } from 'lucide-react';
+import { CreditCard, Landmark, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { stripeAchUiEnabled } from '@/lib/stripe/flags';
 import { PaymentMethodRow } from '@/components/redesign/shared/payment-methods/PaymentMethodRow';
 import type { SavedPaymentMethod } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 
-export interface HomeownerPaymentMethodsViewProps {
+export interface OrgPaymentMethodsViewProps {
   cards: SavedPaymentMethod[];
   loading: boolean;
   error: boolean;
@@ -20,7 +21,7 @@ export interface HomeownerPaymentMethodsViewProps {
   onRetry?: () => void;
 }
 
-export function HomeownerPaymentMethodsView({
+export function OrgPaymentMethodsView({
   cards,
   loading,
   error,
@@ -29,21 +30,19 @@ export function HomeownerPaymentMethodsView({
   onSetDefault,
   onRemove,
   onRetry,
-}: HomeownerPaymentMethodsViewProps) {
+}: OrgPaymentMethodsViewProps) {
   if (error) {
     return (
       <div className="py-8">
-        <ErrorState title="Couldn't load payment methods" onRetry={onRetry} />
+        <ErrorState title="Couldn't load company payment methods" onRetry={onRetry} />
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="space-y-2.5 pt-1">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <Skeleton key={i} className="h-[104px] w-full rounded-card" />
-        ))}
+      <div className="pt-1">
+        <Skeleton className="h-[104px] w-full rounded-card" />
       </div>
     );
   }
@@ -53,8 +52,8 @@ export function HomeownerPaymentMethodsView({
       <div className="py-8">
         <EmptyState
           icon={<CreditCard />}
-          title="No saved cards yet"
-          description="Add a card so your cleanings can be paid automatically when they are done."
+          title="No company card on file"
+          description="Add a card so your company can book and pay for its own (self-pay) cleanings."
           action={
             <Button onClick={onAdd}>
               <Plus className="size-4" aria-hidden /> Add a card
@@ -64,6 +63,8 @@ export function HomeownerPaymentMethodsView({
       </div>
     );
   }
+
+  const hasBank = cards.some((c) => c.type === 'us_bank_account');
 
   return (
     <div className="space-y-3">
@@ -83,10 +84,16 @@ export function HomeownerPaymentMethodsView({
           />
         ))}
       </div>
-      <p className="px-0.5 pt-1 text-xs leading-relaxed text-muted-foreground">
-        Your default card is charged after each cleaning is completed. You will not be charged just
-        for saving a card.
-      </p>
+      {stripeAchUiEnabled() && !hasBank ? (
+        <p className="flex items-start gap-1.5 px-0.5 pt-1 text-xs leading-relaxed text-muted-foreground">
+          <Landmark className="mt-0.5 size-3.5 shrink-0 text-brand-600" aria-hidden />
+          Paying by bank account costs less than a card. Add one to save on processing fees.
+        </p>
+      ) : (
+        <p className="px-0.5 pt-1 text-xs leading-relaxed text-muted-foreground">
+          Your default card is charged when a self-pay cleaning is completed.
+        </p>
+      )}
     </div>
   );
 }

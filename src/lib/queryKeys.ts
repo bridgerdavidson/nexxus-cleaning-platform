@@ -53,6 +53,7 @@ export const keys = {
   },
   paymentMethods: {
     byUser: (userId: string) => ['payment-methods', 'user', userId] as const,
+    byOrg: (orgId: string) => ['payment-methods', 'org', orgId] as const,
   },
   conversations: {
     byUser: (userId: string, scope: 'office' | 'job' | 'org-office' = 'office') =>
