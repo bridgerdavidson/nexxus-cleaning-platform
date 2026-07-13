@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Building2, Mail, Pencil } from "lucide-react";
+import { AlertCircle, Building2, Mail, Pencil, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Sheet,
@@ -21,6 +21,7 @@ import { toast } from "@/components/ui/toast";
 import { Field, DiscardChangesDialog } from "@/components/redesign/bookings/detail-atoms";
 import { PropertyPhotoField } from "@/components/redesign/properties/PropertyPhotoField";
 import { HomeownerAssignField } from "@/components/redesign/properties/HomeownerAssignField";
+import { PropertyDeleteDialog } from "@/components/redesign/properties/PropertyDeleteDialog";
 import { personInitials } from "@/lib/initials";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -90,7 +91,8 @@ function formsEqual(a: PropertyFormValues, b: PropertyFormValues): boolean {
  * instruction fields) with Edit and Create modes layered on top. Edit state
  * is internal (not prop-drilled): a privileged role or `can_edit_properties`
  * reveals the Edit button, which flips the body into the same form used for
- * `mode="create"`. Book / Delete are later tasks.
+ * `mode="create"`. Delete opens `PropertyDeleteDialog` from the footer, gated
+ * on the same `canEdit` as Edit. Book is a later task.
  */
 export function PropertyDetailSheet({
   open,
@@ -123,6 +125,7 @@ export function PropertyDetailSheet({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Reset to a fresh state whenever the sheet opens: a blank create form for
   // `mode="create"`, or the loaded property (read view) otherwise. Keyed on
@@ -456,9 +459,18 @@ export function PropertyDetailSheet({
                       {canEdit ? (
                         <>
                           <Separator />
-                          <Button variant="secondary" className="w-full" onClick={() => setEditing(true)}>
-                            <Pencil /> Edit
-                          </Button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button variant="secondary" onClick={() => setEditing(true)}>
+                              <Pencil /> Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              className="text-critical-700 hover:bg-critical-50 hover:text-critical-700"
+                              onClick={() => setDeleteOpen(true)}
+                            >
+                              <Trash2 /> Delete
+                            </Button>
+                          </div>
                         </>
                       ) : null}
                     </>
@@ -479,6 +491,17 @@ export function PropertyDetailSheet({
           onOpenChange(false);
         }}
       />
+
+      {activeProperty ? (
+        <PropertyDeleteDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          propertyId={activeProperty.id}
+          propertyName={activeProperty.name}
+          organizationId={currentOrganizationId ?? ""}
+          onDeleted={() => onOpenChange(false)}
+        />
+      ) : null}
     </>
   );
 }

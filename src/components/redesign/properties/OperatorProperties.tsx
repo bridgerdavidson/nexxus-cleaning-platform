@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, MoreHorizontal, Pencil, Plus, Search } from "lucide-react";
+import { Building2, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -36,6 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useOpenProperty } from "./useOpenProperty";
 import { toPropertyRowVM, type PropertyRowVM } from "./propertyRowVM";
+import { PropertyDeleteDialog } from "./PropertyDeleteDialog";
 
 type OwnerFilter = "all" | "homeowner" | "org";
 
@@ -97,9 +98,11 @@ function PropertiesSkeleton() {
 function RowMenu({
   row,
   onEdit,
+  onDelete,
 }: {
   row: PropertyRowVM;
   onEdit: (id: string) => void;
+  onDelete: (row: PropertyRowVM) => void;
 }) {
   return (
     <DropdownMenu>
@@ -112,6 +115,9 @@ function RowMenu({
         <DropdownMenuItem onSelect={() => onEdit(row.id)}>
           <Pencil /> Edit
         </DropdownMenuItem>
+        <DropdownMenuItem destructive onSelect={() => onDelete(row)}>
+          <Trash2 /> Delete
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -122,11 +128,13 @@ function PropertiesTable({
   canEdit,
   onOpenRow,
   onEditRow,
+  onDeleteRow,
 }: {
   rows: PropertyRowVM[];
   canEdit: boolean;
   onOpenRow: (id: string) => void;
   onEditRow: (id: string) => void;
+  onDeleteRow: (row: PropertyRowVM) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-card border border-border bg-card shadow-soft-sm">
@@ -156,7 +164,7 @@ function PropertiesTable({
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{row.detailsLabel}</TableCell>
               <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                {canEdit ? <RowMenu row={row} onEdit={onEditRow} /> : null}
+                {canEdit ? <RowMenu row={row} onEdit={onEditRow} onDelete={onDeleteRow} /> : null}
               </TableCell>
             </TableRow>
           ))}
@@ -171,11 +179,13 @@ function PropertiesCardList({
   canEdit,
   onOpenRow,
   onEditRow,
+  onDeleteRow,
 }: {
   rows: PropertyRowVM[];
   canEdit: boolean;
   onOpenRow: (id: string) => void;
   onEditRow: (id: string) => void;
+  onDeleteRow: (row: PropertyRowVM) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -203,7 +213,7 @@ function PropertiesCardList({
             </div>
             {canEdit ? (
               <span onClick={(e) => e.stopPropagation()}>
-                <RowMenu row={row} onEdit={onEditRow} />
+                <RowMenu row={row} onEdit={onEditRow} onDelete={onDeleteRow} />
               </span>
             ) : null}
           </div>
@@ -225,10 +235,12 @@ function PropertiesCardList({
  * (ListFilterBar + table/card responsive split + Skeleton/ErrorState/
  * EmptyState), kept in one file since the list has no lazy-loaded detail
  * data of its own (the sheet is a global host, not owned by this screen).
- * Book / Delete row actions are added by later tasks.
+ * Delete opens `PropertyDeleteDialog` from the row menu (single instance
+ * driven by `deleteTarget`); the dialog's own invalidation drops the row out
+ * of the list once it archives/deletes. Book row action is a later task.
  */
 export function OperatorProperties() {
-  const { currentOrgRole } = useAuth();
+  const { currentOrgRole, currentOrganizationId } = useAuth();
   const { permissions } = useManagerPermissions();
   const { properties, loading, error, refetch } = useAdminProperties();
   const { open, openForEdit } = useOpenProperty();
@@ -238,6 +250,7 @@ export function OperatorProperties() {
 
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const rows = useMemo(() => properties.map(toPropertyRowVM), [properties]);
   const filteredRows = useMemo(
@@ -331,13 +344,36 @@ export function OperatorProperties() {
       ) : (
         <>
           <div className="hidden lg:block">
-            <PropertiesTable rows={filteredRows} canEdit={canEdit} onOpenRow={open} onEditRow={openForEdit} />
+            <PropertiesTable
+              rows={filteredRows}
+              canEdit={canEdit}
+              onOpenRow={open}
+              onEditRow={openForEdit}
+              onDeleteRow={(row) => setDeleteTarget({ id: row.id, name: row.name })}
+            />
           </div>
           <div className="lg:hidden">
-            <PropertiesCardList rows={filteredRows} canEdit={canEdit} onOpenRow={open} onEditRow={openForEdit} />
+            <PropertiesCardList
+              rows={filteredRows}
+              canEdit={canEdit}
+              onOpenRow={open}
+              onEditRow={openForEdit}
+              onDeleteRow={(row) => setDeleteTarget({ id: row.id, name: row.name })}
+            />
           </div>
         </>
       )}
+
+      <PropertyDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+        propertyId={deleteTarget?.id ?? ""}
+        propertyName={deleteTarget?.name ?? ""}
+        organizationId={currentOrganizationId ?? ""}
+        onDeleted={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
