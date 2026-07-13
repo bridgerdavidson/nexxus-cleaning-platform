@@ -49,7 +49,11 @@ export function HomeownerAssignField({
   }));
 
   async function writeOwner(ownerId: string | null, action: Exclude<BusyAction, null>, successMessage: string) {
-    if (!currentOrganizationId) return;
+    if (!currentOrganizationId) {
+      toast.error("You are signed out. Please sign in again.");
+      return;
+    }
+    if (ownerId === homeowner?.id) return;
     setBusy(action);
     const res = await updateProperty(propertyId, { owner_id: ownerId });
     setBusy(null);
@@ -76,7 +80,7 @@ export function HomeownerAssignField({
             </Avatar>
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium text-foreground">
-                {`${homeowner.first_name} ${homeowner.last_name}`.trim()}
+                {`${homeowner.first_name ?? ""} ${homeowner.last_name ?? ""}`.trim() || homeowner.email}
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
                 <Mail className="size-3.5 shrink-0" />

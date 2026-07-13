@@ -414,7 +414,7 @@ export function PropertyDetailSheet({
                             </Avatar>
                             <div className="min-w-0">
                               <div className="truncate font-medium text-foreground">
-                                {`${activeProperty.homeowner.first_name} ${activeProperty.homeowner.last_name}`.trim()}
+                                {`${activeProperty.homeowner.first_name ?? ""} ${activeProperty.homeowner.last_name ?? ""}`.trim() || activeProperty.homeowner.email}
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
                                 <Mail className="size-3.5 shrink-0" />
