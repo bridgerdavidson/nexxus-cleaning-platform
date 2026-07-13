@@ -44,8 +44,10 @@ export type PropertyDetailSheetProps = {
    *  whole pre-first-save window of `mode="create"`. */
   property: AdminProperty | null;
   /** `"create"` starts the sheet directly in an empty editing form even
-   *  though `property` is null. Defaults to `"read"`. */
-  mode?: "read" | "create";
+   *  though `property` is null. `"edit"` starts an existing row directly in
+   *  the editing form (e.g. a list row's "Edit" menu action). Defaults to
+   *  `"read"`. */
+  mode?: "read" | "create" | "edit";
   /** Pre-set homeowner for a new property (e.g. opened from a customer's
    *  own detail sheet, a later task). `null` = org-owned. Only consulted in
    *  `mode="create"`. */
@@ -109,7 +111,7 @@ export function PropertyDetailSheet({
   // row held locally so the photo field can appear immediately without
   // waiting for the org properties query to refetch (see handleSave).
   const [activeProperty, setActiveProperty] = useState<AdminProperty | null>(property);
-  const [editing, setEditing] = useState(mode === "create");
+  const [editing, setEditing] = useState(mode === "create" || mode === "edit");
   // True only for the pre-first-save window of a create session; flips to
   // false the moment the insert succeeds, at which point Save/Cancel behave
   // like a normal edit session on the returned row.
@@ -141,7 +143,7 @@ export function PropertyDetailSheet({
       setActiveProperty(property);
       setForm(fromProperty(property));
       setPhotoUrl(property.photo_url ?? null);
-      setEditing(false);
+      setEditing(mode === "edit");
       setCreating(false);
       setError(null);
     }

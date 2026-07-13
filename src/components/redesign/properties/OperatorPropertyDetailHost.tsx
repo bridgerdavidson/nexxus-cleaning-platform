@@ -6,6 +6,7 @@ import { useAdminProperties } from "@/hooks/useAdminData";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { PropertyDetailSheet } from "./PropertyDetailSheet";
+import { useOpenProperty } from "./useOpenProperty";
 
 /**
  * Shell-level `?property=<id>` host: opens the property detail sheet in place
@@ -15,12 +16,15 @@ import { PropertyDetailSheet } from "./PropertyDetailSheet";
  * absent, or resolves to no row (e.g. a stale/foreign id, or a property that
  * has since been archived and dropped from useAdminProperties()). The
  * special id `"new"` opens the sheet in create mode instead of resolving a
- * row, and only when the operator has can_edit_properties; a pre-set owner
- * (`createOwnerId`) and a list/nav entry point that links here are later
- * tasks.
+ * row, and only when the operator has can_edit_properties. A companion
+ * `?propertyEdit=1` param (set by a list row's "Edit" menu action via
+ * useOpenProperty().openForEdit) opens an existing row directly in edit mode
+ * instead of read mode; a pre-set owner (`createOwnerId`) is a later task.
  */
 export function OperatorPropertyDetailHost() {
-  const { paramId, setParam } = useDetailParam("property");
+  const { paramId } = useDetailParam("property");
+  const { paramId: editFlag } = useDetailParam("propertyEdit");
+  const { close } = useOpenProperty();
   // Retain the last id after the param clears so the sheet stays mounted
   // through its exit animation instead of vanishing mid-close.
   const [lastId, setLastId] = useState<string | null>(null);
@@ -31,7 +35,8 @@ export function OperatorPropertyDetailHost() {
       key={lastId}
       propertyId={lastId}
       open={!!paramId}
-      onClose={() => setParam(null)}
+      editFlag={editFlag}
+      onClose={close}
     />
   );
 }
@@ -39,10 +44,12 @@ export function OperatorPropertyDetailHost() {
 function HostInner({
   propertyId,
   open,
+  editFlag,
   onClose,
 }: {
   propertyId: string;
   open: boolean;
+  editFlag: string | null;
   onClose: () => void;
 }) {
   const { properties } = useAdminProperties();
@@ -53,6 +60,7 @@ function HostInner({
     currentOrgRole === "admin" ||
     !!permissions?.can_edit_properties;
   const isCreate = propertyId === "new";
+  const wantsEdit = editFlag === "1";
   const property = isCreate ? null : (properties.find((p) => p.id === propertyId) ?? null);
 
   return (
@@ -62,7 +70,7 @@ function HostInner({
         if (!o) onClose();
       }}
       property={property}
-      mode={isCreate ? "create" : "read"}
+      mode={isCreate ? "create" : wantsEdit && canEdit ? "edit" : "read"}
     />
   );
 }

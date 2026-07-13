@@ -9,6 +9,7 @@ import {
   BarChart3,
   MessageSquare,
   Settings,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 import type { ManagerPermissionKey, ManagerPermissions } from "@/lib/permissions/managerFlags";
@@ -37,6 +38,7 @@ export const OPERATOR_NAV: NavItem[] = [
   { id: "overview", label: "Overview", href: "/app/admin-dashboard", icon: Home, primary: true },
   { id: "bookings", label: "Bookings", href: "/app/admin-dashboard/bookings", icon: CalendarDays, primary: true, requires: "can_view_bookings" },
   { id: "calendar", label: "Calendar", href: "/app/admin-dashboard/calendar", icon: CalendarRange, requires: "can_view_bookings" },
+  { id: "properties", label: "Properties", href: "/app/admin-dashboard/properties", icon: Building2, requires: "can_view_properties" },
   { id: "people", label: "Customers", href: "/app/admin-dashboard/customers", icon: Users, primary: true, requires: "can_view_customers" },
   { id: "cleaners", label: "Cleaners & team", href: "/app/admin-dashboard/cleaners", icon: SprayCan, requires: "can_manage_cleaners" },
   { id: "services", label: "Services", href: "/app/admin-dashboard/services", icon: Tag, requires: "can_view_services" },

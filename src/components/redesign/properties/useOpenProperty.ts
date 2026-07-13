@@ -4,14 +4,19 @@ import { useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 /**
- * Open/close the operator property-detail sheet via `?property=<id>` on the
- * current path. Mirrors useOpenBookingDetail: reads the current query string
- * from window.location inside each handler (never during render) so sibling
+ * Open/close the operator property-detail sheet via `?property=<id>` (and,
+ * for edit intent, a companion `?propertyEdit=1`) on the current path.
+ * Mirrors useOpenBookingDetail: reads the current query string from
+ * window.location inside each handler (never during render) so sibling
  * params (e.g. a Messages `?c=` thread selection) survive, and callers need no
  * Suspense boundary (unlike useSearchParams). Uses router.replace (no scroll)
  * so closing restores list state.
  */
-export function useOpenProperty(): { open: (id: string) => void; close: () => void } {
+export function useOpenProperty(): {
+  open: (id: string) => void;
+  openForEdit: (id: string) => void;
+  close: () => void;
+} {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -19,6 +24,17 @@ export function useOpenProperty(): { open: (id: string) => void; close: () => vo
     (id: string) => {
       const sp = new URLSearchParams(window.location.search);
       sp.set("property", id);
+      sp.delete("propertyEdit");
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    },
+    [router, pathname],
+  );
+
+  const openForEdit = useCallback(
+    (id: string) => {
+      const sp = new URLSearchParams(window.location.search);
+      sp.set("property", id);
+      sp.set("propertyEdit", "1");
       router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
     },
     [router, pathname],
@@ -27,9 +43,10 @@ export function useOpenProperty(): { open: (id: string) => void; close: () => vo
   const close = useCallback(() => {
     const sp = new URLSearchParams(window.location.search);
     sp.delete("property");
+    sp.delete("propertyEdit");
     const qs = sp.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [router, pathname]);
 
-  return { open, close };
+  return { open, openForEdit, close };
 }
