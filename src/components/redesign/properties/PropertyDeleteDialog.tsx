@@ -62,6 +62,7 @@ export function PropertyDeleteDialog({
     if (!open) {
       setPlan(null);
       setError(null);
+      setLoading(false);
       return;
     }
     let stale = false;
@@ -118,15 +119,15 @@ export function PropertyDeleteDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Delete {propertyName}?</DialogTitle>
-          {plan?.action !== "cancel-and-archive" ? (
-            <DialogDescription>
-              {loading
-                ? "Checking cleanings..."
-                : plan?.action === "archive-only"
-                  ? "Past cleanings stay on record. The property is archived so history still resolves."
+          <DialogDescription className={plan?.action === "cancel-and-archive" ? "sr-only" : undefined}>
+            {loading
+              ? "Checking cleanings..."
+              : plan?.action === "archive-only"
+                ? "Past cleanings stay on record. The property is archived so history still resolves."
+                : plan?.action === "cancel-and-archive"
+                  ? "This property has upcoming cleanings that will be cancelled if you delete it."
                   : "No cleanings on record. This is permanent and can't be undone."}
-            </DialogDescription>
-          ) : null}
+          </DialogDescription>
         </DialogHeader>
 
         {error ? (
