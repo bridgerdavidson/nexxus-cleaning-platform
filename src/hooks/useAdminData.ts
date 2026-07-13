@@ -1959,10 +1959,16 @@ export async function archiveOrDeleteProperty(propertyId: string, organizationId
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('property_id', propertyId).in('status', LIVE_APPT_STATUSES as unknown as string[]);
       if (cancelErr) throw cancelErr;
-      const { error: seriesErr } = await supabase.from('recurring_appointment_series')
-        .update({ is_active: false }).eq('property_id', propertyId).eq('is_active', true);
-      if (seriesErr) throw seriesErr;
     }
+    // Stop any active recurring series before archiving, for BOTH archive paths
+    // (archive-only and cancel-and-archive). Idempotent: matches 0 rows when none
+    // is active. This also closes the gap where a mid-sequence failure + retry
+    // re-plans as archive-only (live cleanings already cancelled) and would
+    // otherwise leave a stranded active series that can regenerate appointments
+    // on an archived property.
+    const { error: seriesErr } = await supabase.from('recurring_appointment_series')
+      .update({ is_active: false }).eq('property_id', propertyId).eq('is_active', true);
+    if (seriesErr) throw seriesErr;
     const { error: archiveErr } = await supabase.from('properties')
       .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', propertyId);
