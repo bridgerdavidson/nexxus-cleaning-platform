@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useDetailParam } from "@/hooks/useDetailParam";
+import { useOpenProperty } from "@/components/redesign/properties/useOpenProperty";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   useAdminCustomers,
@@ -194,6 +195,7 @@ export function OperatorCustomers() {
     <OperatorCustomersData
       canViewPayments={privileged || !!permissions?.can_view_payments}
       canEdit={privileged || !!permissions?.can_edit_customers}
+      canViewProperties={privileged || !!permissions?.can_view_properties}
     />
   );
 }
@@ -208,13 +210,16 @@ export function OperatorCustomers() {
 function OperatorCustomersData({
   canViewPayments,
   canEdit,
+  canViewProperties,
 }: {
   canViewPayments: boolean;
   canEdit: boolean;
+  canViewProperties: boolean;
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
   const { customers, loading, error, refetch, updateCustomerInState } = useAdminCustomers();
   const { paramId: customerParam, setParam: setCustomerParam } = useDetailParam("customer");
+  const { open: openProperty } = useOpenProperty();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<CustomerSort>("recent");
@@ -462,6 +467,7 @@ function OperatorCustomersData({
         onEditingChange={setEditing}
         onSave={handleSave}
         onDelete={() => detail && setConfirm({ kind: "delete", ids: [detail.id] })}
+        onOpenProperty={canViewProperties ? openProperty : undefined}
       />
 
       <AddCustomerDialog

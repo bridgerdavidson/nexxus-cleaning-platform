@@ -40,6 +40,8 @@ export type CustomerDetailSheetProps = {
   /** Returns true on success so the sheet can exit edit mode. */
   onSave: (fields: CustomerSaveFields) => Promise<boolean>;
   onDelete: () => void;
+  /** When provided, property cards become clickable and deep-link into the Properties workspace. */
+  onOpenProperty?: (propertyId: string) => void;
 };
 
 function StatBox({ label, value }: { label: string; value: string }) {
@@ -75,6 +77,7 @@ export function CustomerDetailSheet({
   onEditingChange,
   onSave,
   onDelete,
+  onOpenProperty,
 }: CustomerDetailSheetProps) {
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
 
@@ -205,18 +208,34 @@ export function CustomerDetailSheet({
                     ) : properties.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No properties on file.</p>
                     ) : (
-                      properties.map((p) => (
-                        <div key={p.id} className="rounded-control border border-border bg-card px-3 py-2">
-                          <div className="flex items-center gap-1.5 font-medium text-foreground">
-                            <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{p.name}</span>
+                      properties.map((p) => {
+                        const cardContent = (
+                          <>
+                            <div className="flex items-center gap-1.5 font-medium text-foreground">
+                              <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                            <div className="mt-0.5 text-sm text-muted-foreground">{p.address}</div>
+                            {p.metaLabel ? (
+                              <div className="mt-0.5 text-xs text-muted-foreground">{p.metaLabel}</div>
+                            ) : null}
+                          </>
+                        );
+                        return onOpenProperty ? (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => onOpenProperty(p.id)}
+                            className="w-full rounded-control border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {cardContent}
+                          </button>
+                        ) : (
+                          <div key={p.id} className="rounded-control border border-border bg-card px-3 py-2">
+                            {cardContent}
                           </div>
-                          <div className="mt-0.5 text-sm text-muted-foreground">{p.address}</div>
-                          {p.metaLabel ? (
-                            <div className="mt-0.5 text-xs text-muted-foreground">{p.metaLabel}</div>
-                          ) : null}
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </section>
 
