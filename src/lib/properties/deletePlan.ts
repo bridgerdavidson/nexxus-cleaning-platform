@@ -9,3 +9,20 @@ export function planPropertyDeletion(counts: { liveCount: number; historyCount: 
   if (liveCount === 0) return { action: 'archive-only', liveCount, historyCount, needsBookingEdit: false };
   return { action: 'cancel-and-archive', liveCount, historyCount, needsBookingEdit: true };
 }
+
+/**
+ * Whether the delete affordance must be blocked for lack of booking-edit rights.
+ * Only `cancel-and-archive` (a property with upcoming cleanings) needs to cancel
+ * appointments, an `appointments` UPDATE gated by `can_edit_bookings` (migration
+ * 106). Owner/admin are privileged: they have no `manager_permissions` row (so
+ * the raw flag reads false) but bypass all flags at the RLS layer, so privilege
+ * alone un-blocks them. Non-cancel plans (hard-delete / archive-only) are never
+ * blocked by this permission.
+ */
+export function isDeleteBlockedByPermission(
+  action: PropertyDeleteAction | null | undefined,
+  opts: { privileged: boolean; canEditBookingsFlag: boolean },
+): boolean {
+  if (action !== 'cancel-and-archive') return false;
+  return !opts.privileged && !opts.canEditBookingsFlag;
+}

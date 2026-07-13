@@ -14,9 +14,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { keys } from "@/lib/queryKeys";
+import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { countPropertyAppointments, archiveOrDeleteProperty } from "@/hooks/useAdminData";
-import { planPropertyDeletion, type PropertyDeletePlan } from "@/lib/properties/deletePlan";
+import { planPropertyDeletion, isDeleteBlockedByPermission, type PropertyDeletePlan } from "@/lib/properties/deletePlan";
 
 export type PropertyDeleteDialogProps = {
   open: boolean;
@@ -46,8 +47,12 @@ export function PropertyDeleteDialog({
   organizationId,
   onDeleted,
 }: PropertyDeleteDialogProps) {
+  const { currentOrgRole } = useAuth();
   const { permissions } = useManagerPermissions();
-  const canEditBookings = !!permissions?.can_edit_bookings;
+  // Owner/admin bypass manager flags entirely (no manager_permissions row), so
+  // privilege OR the flag grants booking-edit. Mirrors OperatorProperties.
+  const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
+  const canEditBookings = privileged || !!permissions?.can_edit_bookings;
   const queryClient = useQueryClient();
 
   const [plan, setPlan] = useState<PropertyDeletePlan | null>(null);
@@ -112,7 +117,10 @@ export function PropertyDeleteDialog({
     }
   }
 
-  const blockedByPermission = plan?.action === "cancel-and-archive" && !canEditBookings;
+  const blockedByPermission = isDeleteBlockedByPermission(plan?.action, {
+    privileged,
+    canEditBookingsFlag: !!permissions?.can_edit_bookings,
+  });
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!deleting) onOpenChange(o); }}>
