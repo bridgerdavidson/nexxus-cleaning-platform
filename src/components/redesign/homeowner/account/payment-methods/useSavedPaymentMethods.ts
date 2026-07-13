@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { keys } from '@/lib/queryKeys';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
-import { sortPaymentMethods, type SavedPaymentMethod } from './derive-payment-methods';
+import { sortPaymentMethods, type SavedPaymentMethod } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 
 async function authedFetch(input: string, init?: RequestInit) {
   const token = await getAccessToken();

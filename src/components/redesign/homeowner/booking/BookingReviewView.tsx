@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Property } from '@/hooks/useHomeownerData';
 import type { ServiceType } from '@/hooks/useServices';
-import type { SavedPaymentMethod } from '../account/payment-methods/derive-payment-methods';
-import { paymentMethodTitle } from '../account/payment-methods/derive-payment-methods';
+import type { SavedPaymentMethod } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
+import { paymentMethodTitle } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 import type { BookingState } from './booking-types';
 import { canSend, formatSlotLabel, slotOrdinal, bookingTotal } from './deriveBooking';
 

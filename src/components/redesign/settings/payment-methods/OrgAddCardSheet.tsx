@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import {
   Drawer,
@@ -12,47 +11,50 @@ import {
 } from '@/components/ui/drawer';
 import { AccountAddCardPanel } from '@/components/redesign/shared/payment-methods/AccountAddCardPanel';
 
-export interface AddCardSheetProps {
+export interface OrgAddCardSheetProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  organizationId: string;
   /** Called with the newly-saved PaymentMethod id after confirmSetup succeeds. */
   onSaved: (paymentMethodId: string) => void | Promise<void>;
 }
 
-export function AddCardSheet({ open, onOpenChange, onSaved }: AddCardSheetProps) {
-  const { user } = useAuth();
-  const userId = user?.id;
-  // While a card save (incl. 3DS) is in flight, block swipe/overlay dismissal so the
-  // confirmSetup call is never unmounted mid-flight. Reset whenever the sheet closes.
+/**
+ * Add a company (self-pay) card. Reuses the shared SetupIntent -> confirmSetup panel, pointed at
+ * the org SetupIntent route (which creates the intent against the org's self-pay Customer, so the
+ * client confirmSetup attaches the card to it automatically). The container makes the new card the
+ * default after it saves.
+ */
+export function OrgAddCardSheet({ open, onOpenChange, organizationId, onSaved }: OrgAddCardSheetProps) {
+  // While a card save (incl. 3DS) is in flight, block swipe/overlay dismissal so the confirmSetup
+  // call is never unmounted mid-flight. Reset whenever the sheet closes.
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!open) setSaving(false);
   }, [open]);
 
-  // Self-scoped SetupIntent: pass only homeowner_id (no organization_id) so the route treats
-  // the caller as acting on their own Customer.
   const createSetupIntent = useCallback(async (): Promise<string> => {
     const token = await getAccessToken();
-    const res = await fetch('/api/stripe/create-setup-intent', {
+    const res = await fetch('/api/stripe/org/create-setup-intent', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ homeowner_id: userId }),
+      body: JSON.stringify({ organization_id: organizationId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.client_secret) throw new Error(data.error || 'Could not start card setup');
     return data.client_secret as string;
-  }, [userId]);
+  }, [organizationId]);
 
   return (
     <Drawer open={open} onOpenChange={(v) => !saving && onOpenChange(v)}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Add a card</DrawerTitle>
+          <DrawerTitle>Add a company card</DrawerTitle>
           <DrawerDescription>
-            Your card is saved securely for future cleanings. You will not be charged now.
+            This card funds self-pay cleanings your company books. You will not be charged now.
           </DrawerDescription>
         </DrawerHeader>
         <div className="px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
