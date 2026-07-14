@@ -19,7 +19,7 @@ export function useAppointmentCard(args: {
 }) {
   const { homeownerId, organizationId, paymentMethodId, enabled = true } = args;
   const query = useQuery({
-    queryKey: [...keys.paymentMethods.byOrg(organizationId ?? 'none'), 'homeowner', homeownerId ?? 'none'],
+    queryKey: keys.paymentMethods.byAppointmentHomeowner(organizationId ?? 'none', homeownerId ?? 'none'),
     enabled: enabled && !!homeownerId && !!organizationId,
     queryFn: async (): Promise<SavedPaymentMethod[]> => {
       const token = await getAccessToken();
