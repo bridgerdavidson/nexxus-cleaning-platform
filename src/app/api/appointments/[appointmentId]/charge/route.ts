@@ -30,6 +30,9 @@ const HTTP_BY_CODE: Record<ChargeNowCode, number> = {
   tenant_not_ready: 409,
   cleaner_not_payable: 409,
   not_chargeable: 409,
+  // Another charge for this appointment won the atomic claim and is in flight (operator + homeowner
+  // retry, or a double-click). The loser bows out here so only one real charge is created.
+  charge_in_progress: 409,
   // A genuine Stripe failure from the ACH fallback (created+confirm threw), not a precondition.
   failed: 502,
   error: 500,
@@ -82,7 +85,12 @@ export async function POST(
       }
     }
 
-    const outcome = await chargeCompletedAppointmentAuto(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+    const outcome = await chargeCompletedAppointmentAuto(
+      supabaseAdmin,
+      appointmentId,
+      `user:${auth.userId}`,
+      auth.role,
+    );
 
     return NextResponse.json(
       {

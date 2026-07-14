@@ -197,6 +197,41 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     }
   });
 
+  it('serializes concurrent charges: only one PaymentIntent, the other returns charge_in_progress (409)', async () => {
+    // R7 adds a homeowner "Pay now" alongside the operator "Retry charge", so two humans can fire a
+    // charge for the same failed+completed job inside the Stripe-latency window. The atomic claim
+    // must let exactly one through: one real PaymentIntent, the loser bows out with 409.
+    const apptId = await completedApptWithCard();
+
+    const fire = () =>
+      callRoute<{ success: boolean; code: string }>(handlerFor(apptId), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+    const [a, b] = await Promise.all([fire(), fire()]);
+
+    // The single most important invariant: never more than one real charge for the appointment.
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+
+    const statuses = [a.status, b.status].sort();
+    const codes = [a.body.code, b.body.code].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(codes).toEqual(['charge_in_progress', 'charged']);
+
+    const db = createTestSupabaseClient();
+    // The winner captured; exactly one paid revenue row exists (no duplicate charge).
+    const { data: a2 } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a2 as { authorization_status: string }).authorization_status).toBe('captured');
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status')
+      .eq('appointment_id', apptId)
+      .eq('payment_type', 'revenue');
+    expect(payRows).toHaveLength(1);
+    expect((payRows![0] as { status: string }).status).toBe('paid');
+  });
+
   it('lets a manager WITH can_manage_payments charge a NON-self-pay appointment', async () => {
     const apptId = await completedApptWithCard();
     const mgr = await addManagerToOrg(org.organizationId, { can_manage_payments: true });

@@ -45,6 +45,7 @@ export type ChargeNowCode =
   | 'tenant_not_ready'
   | 'cleaner_not_payable'
   | 'not_chargeable'
+  | 'charge_in_progress'
   | 'failed'
   | 'error';
 
@@ -68,11 +69,19 @@ interface AppointmentRow {
   reauth_count: number | null;
 }
 
-/** Routes a completed appointment to the homeowner or self-pay charge-now path. */
+/**
+ * Routes a completed appointment to the homeowner or self-pay charge-now path.
+ *
+ * `actorRole` is the caller's org role (owner/admin/manager/cleaner/homeowner). It is used only as a
+ * defense-in-depth guard on the self-pay company-card path; the operator route passes staff roles,
+ * and the R7 homeowner "Pay now" route passes `homeowner` (which self-pay refuses here as a second
+ * layer behind that route's own self-pay block).
+ */
 export async function chargeCompletedAppointmentAuto(
   supabase: SupabaseClient,
   appointmentId: string,
   actor: string,
+  actorRole?: string,
 ): Promise<ChargeNowOutcome> {
   const { data: apptData, error: apptErr } = await supabase
     .from('appointments')
@@ -95,9 +104,59 @@ export async function chargeCompletedAppointmentAuto(
   const settled = await alreadySettled(supabase, appt.id);
   if (settled) return { ok: true, code: settled.code, message: 'Already charged', paymentIntentId: settled.paymentIntentId };
 
-  return appt.is_self_pay
-    ? chargeSelfPayNow(supabase, appt, actor)
-    : chargeHomeownerNow(supabase, appt, actor);
+  // Atomic per-appointment charge claim. R7 adds a homeowner "Pay now" alongside the operator
+  // "Retry charge", so two humans (or a double-click) can fire a retry for the same completed job
+  // inside the Stripe-latency window; because each attempt bumps reauth_count for a fresh
+  // idempotency key, both would otherwise create a real charge. Flip the row into a transient
+  // 'charging' sentinel, but only while it is still chargeable: NULL for the initial completion
+  // charge (this MUST be allowed or normal completions could never claim) OR 'failed' /
+  // 'requires_action' for a recovery retry. Postgres serializes the two UPDATEs on the row lock, so
+  // exactly one caller matches the WHERE and updates the row; the loser matches 0 rows and bows out
+  // with charge_in_progress (the route maps it to HTTP 409). Every charge caller (operator route,
+  // R7 homeowner route, webhook re-charge) funnels through here, so one claim covers them all.
+  const { data: claimRows, error: claimErr } = await supabase
+    .from('appointments')
+    .update({ authorization_status: 'charging' })
+    .eq('id', appointmentId)
+    .or('authorization_status.is.null,authorization_status.in.(failed,requires_action)')
+    .select('id');
+  if (claimErr) throw claimErr;
+  if (!claimRows || claimRows.length === 0) {
+    return { ok: false, code: 'charge_in_progress', message: 'A charge for this appointment is already in progress' };
+  }
+
+  // finishCharge / recordChargeDecline (inside the dispatched path) write the REAL terminal
+  // authorization_status (captured / requires_action / failed), overwriting the 'charging' sentinel.
+  // Track that so the finally never stomps a terminal status: restore to NULL (so the reconcile
+  // sweep re-attempts) only when we exit before a terminal write. The `.eq('authorization_status',
+  // 'charging')` guard is the hard safety, it resets a STILL-claimed row and can never clobber a
+  // status a racing finish just wrote.
+  //
+  // Known residual (out of scope for PR 1, noted in the PR): a hard process crash between the claim
+  // and finishCharge leaves the row stuck in 'charging' because the finally never runs. Follow-up: a
+  // `charge_claimed_at` column + reconcile-sweep recovery. Rare, and it does not double-charge.
+  let terminalWritten = false;
+  try {
+    const outcome = appt.is_self_pay
+      ? await chargeSelfPayNow(supabase, appt, actor, actorRole)
+      : await chargeHomeownerNow(supabase, appt, actor);
+    // These are exactly the outcomes whose path wrote a non-'charging' terminal authorization_status
+    // (charged -> captured, requires_action -> requires_action, declined -> failed). Any other
+    // outcome (processing, a precondition bail, the self-pay homeowner guard) left the row still
+    // 'charging', so the guarded reset below releases the claim.
+    if (outcome.code === 'charged' || outcome.code === 'requires_action' || outcome.code === 'declined') {
+      terminalWritten = true;
+    }
+    return outcome;
+  } finally {
+    if (!terminalWritten) {
+      await supabase
+        .from('appointments')
+        .update({ authorization_status: null })
+        .eq('id', appointmentId)
+        .eq('authorization_status', 'charging');
+    }
+  }
 }
 
 /** Returns the in-flight outcome if a revenue row for the appointment is already paid/processing. */
@@ -311,7 +370,15 @@ async function chargeSelfPayNow(
   supabase: SupabaseClient,
   appt: AppointmentRow,
   actor: string,
+  actorRole?: string,
 ): Promise<ChargeNowOutcome> {
+  // Defense in depth: self-pay draws on the COMPANY card, never a homeowner's. The R7 homeowner
+  // "Pay now" route already refuses self-pay appointments up front; rejecting a homeowner actor here
+  // too means a future route regression can never reach a company-card charge from a homeowner.
+  if (actorRole === 'homeowner') {
+    return { ok: false, code: 'not_chargeable', message: 'Self-pay appointments cannot be charged by a homeowner' };
+  }
+
   type CleanerRow = {
     payout_model: string | null;
     stripe_connect_account_id: string | null;
