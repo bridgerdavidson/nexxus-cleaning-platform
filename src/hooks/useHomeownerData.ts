@@ -1,10 +1,13 @@
 'use client';
 
+import { useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
+import { useSavedPaymentMethods } from '../components/redesign/homeowner/account/payment-methods/useSavedPaymentMethods';
+import type { SavedPaymentMethod } from '../components/redesign/shared/payment-methods/derive-payment-methods';
 
 export interface Appointment {
   id: string;
@@ -21,6 +24,22 @@ export interface Appointment {
   series_id?: string | null;
   total_price: number;
   special_requests?: string | null;
+  /** Required by `POST /api/appointments/[id]/charge` and .../payment-method (Pay now, Update card). */
+  organization_id?: string;
+  /**
+   * Card-hold/charge lifecycle for the new charge flow (migration 065). Distinguishes a plain
+   * decline (`failed`) from an off-session 3DS bounce (`requires_action`) for the R7 payment
+   * recovery section; `payment_status` alone conflates them.
+   */
+  authorization_status?: string | null;
+  /** The Stripe payment method id saved to this appointment (card on file), if any. */
+  payment_method_id?: string | null;
+  /**
+   * The homeowner's own saved card matching `payment_method_id` (resolved client-side against
+   * `useSavedPaymentMethods`), for "Charged to Visa •••• 4242" style copy. Null while the saved
+   * cards are still loading or when no match is found (e.g. the card was later removed).
+   */
+  payment_method_card?: SavedPaymentMethod | null;
   property: {
     name: string;
     address: string;
@@ -109,6 +128,8 @@ export function useHomeownerAppointments() {
   const userId = user?.id ?? '';
   const orgId = currentOrganizationId ?? '';
   const queryKey = keys.appointments.byHomeowner(userId);
+  // Reused (not refetched) to resolve "card on file" metadata onto each appointment below.
+  const { cards } = useSavedPaymentMethods();
 
   const query = useOrgQuery({
     queryKey,
@@ -117,6 +138,7 @@ export function useHomeownerAppointments() {
         .from('appointments')
         .select(`
           id,
+          organization_id,
           property_id,
           service_type_id,
           checklist_id,
@@ -132,6 +154,8 @@ export function useHomeownerAppointments() {
           completed_at,
           cancelled_at,
           cleaner_confirmation_status,
+          authorization_status,
+          payment_method_id,
           property:properties(
             name,
             address,
@@ -220,8 +244,22 @@ export function useHomeownerAppointments() {
     }),
   });
 
+  // Resolved separately from the queryFn (rather than inline there) so a saved-card change
+  // (e.g. after "Update card") re-derives card metadata on every render without needing to
+  // refetch the appointments query itself.
+  const appointments = useMemo(
+    () =>
+      (query.data ?? []).map((appointment) => ({
+        ...appointment,
+        payment_method_card: appointment.payment_method_id
+          ? (cards.find((c) => c.id === appointment.payment_method_id) ?? null)
+          : null,
+      })),
+    [query.data, cards],
+  );
+
   return {
-    appointments: query.data ?? [],
+    appointments,
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,
