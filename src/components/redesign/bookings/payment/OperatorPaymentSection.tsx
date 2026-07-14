@@ -48,6 +48,16 @@ const STATE_HINT: Record<PaymentSectionState, string | null> = {
   self_pay: "Managed in Settings, Payments.",
 };
 
+// The static before_charge hint above reads "Charged automatically when the job is completed,"
+// which is stale once the job already IS completed (e.g. a completed-but-uncharged/null row).
+// Swap in a completed-accurate variant there; every other state's hint is unaffected by job status.
+function stateHint(state: PaymentSectionState, jobCompleted: boolean): string | null {
+  if (state === "before_charge" && jobCompleted) {
+    return "This cleaning is complete. It will be charged on the next billing run.";
+  }
+  return STATE_HINT[state];
+}
+
 /**
  * R6 operator Payment section: view the card on file + status, and (when
  * canManagePayments) the per-state recovery actions. Mounted inside
@@ -73,12 +83,13 @@ export function OperatorPaymentSection({
   const homeownerId = appointment.homeowner_id ?? null;
   const paymentMethodId = appointment.payment_method_id ?? null;
   const isSelfPay = !!appointment.is_self_pay;
+  const jobCompleted = appointment.status === "completed";
 
   const state = derivePaymentSectionState({
     authorizationStatus: appointment.authorization_status ?? null,
     paymentStatus: appointment.payment_status ?? null,
     isSelfPay,
-    jobCompleted: appointment.status === "completed",
+    jobCompleted,
     hasCard: !!paymentMethodId,
   });
 
@@ -174,7 +185,7 @@ export function OperatorPaymentSection({
     }
   };
 
-  const hint = STATE_HINT[state];
+  const hint = stateHint(state, jobCompleted);
 
   return (
     <>

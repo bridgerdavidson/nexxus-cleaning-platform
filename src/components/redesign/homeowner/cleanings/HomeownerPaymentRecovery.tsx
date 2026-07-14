@@ -213,8 +213,13 @@ export function HomeownerPaymentRecovery({ appointment }: { appointment: Appoint
   const showCardPreview = effectiveState !== 'paid';
   // Pay now stays available after "Update card" clears a failed auth back to null: a completed job
   // in before_charge is due now. requires_action deliberately never offers it (3DS can't clear
-  // off-session).
-  const canPayNow = effectiveState === 'failed' || (effectiveState === 'before_charge' && jobCompleted);
+  // off-session). Also suppress it while authorization_status is the transient 'charging' claim
+  // (chargeCompletedAppointment.ts): derivePaymentSectionState maps that to before_charge for the
+  // sub-second window a completion charge is in flight, and a Pay now click then would 403 against
+  // the charge-in-progress guard.
+  const canPayNow =
+    appointment.authorization_status !== 'charging' &&
+    (effectiveState === 'failed' || (effectiveState === 'before_charge' && jobCompleted));
   const showActions =
     effectiveState === 'failed' ||
     effectiveState === 'requires_action' ||

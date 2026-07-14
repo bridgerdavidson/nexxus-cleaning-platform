@@ -96,7 +96,17 @@ export async function POST(
       apptUpdate.authorization_status = null;
       apptUpdate.reauth_count = (appt.reauth_count ?? 0) + 1;
     }
-    await supabaseAdmin.from('appointments').update(apptUpdate).eq('id', appointmentId);
+    // Belt-and-suspenders: if a completion charge raced in between our read above and this write and
+    // claimed the row (authorization_status = 'charging', see chargeCompletedAppointment.ts), don't
+    // let this write clobber that claim. Normal state on this path is 'failed' (or null, pre-charge),
+    // so the guard doesn't affect the ordinary reset. Use an OR (not a bare .neq) because SQL's
+    // three-valued logic means `authorization_status <> 'charging'` alone excludes NULL rows too —
+    // the same null-inclusive pattern the charge claim itself uses below.
+    await supabaseAdmin
+      .from('appointments')
+      .update(apptUpdate)
+      .eq('id', appointmentId)
+      .or('authorization_status.neq.charging,authorization_status.is.null');
 
     if (wasFailed) {
       await supabaseAdmin
