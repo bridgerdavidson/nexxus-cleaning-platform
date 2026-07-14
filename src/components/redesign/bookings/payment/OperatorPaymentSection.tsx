@@ -273,6 +273,7 @@ export function OperatorPaymentSection({
           invalidate();
           setChangeOpen(false);
         }}
+        onEmailCardLink={handleEmailCardLink}
       />
     </>
   );

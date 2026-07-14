@@ -23,6 +23,12 @@ export interface ChangeCardSheetProps {
   organizationId: string | null;
   currentPaymentMethodId: string | null;
   onChanged: () => void;
+  /**
+   * When the customer has <=1 saved card there's nothing to swap to, so the sheet degrades to a
+   * hint. If provided, the hint offers a one-click Email card link (fires this, then closes) instead
+   * of a dead-end "Got it".
+   */
+  onEmailCardLink?: () => void;
 }
 
 /**
@@ -41,6 +47,7 @@ export function ChangeCardSheet({
   organizationId,
   currentPaymentMethodId,
   onChanged,
+  onEmailCardLink,
 }: ChangeCardSheetProps) {
   const queryClient = useQueryClient();
   const [settingId, setSettingId] = useState<string | null>(null);
@@ -96,9 +103,22 @@ export function ChangeCardSheet({
               <p className="text-sm text-muted-foreground">
                 This customer has no other saved card. Use Email card link so they can add a new one.
               </p>
-              <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
-                Got it
-              </Button>
+              {onEmailCardLink ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    onEmailCardLink();
+                    onOpenChange(false);
+                  }}
+                >
+                  Email card link
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
+                  Got it
+                </Button>
+              )}
             </div>
           ) : (
             cards.map((pm) => {

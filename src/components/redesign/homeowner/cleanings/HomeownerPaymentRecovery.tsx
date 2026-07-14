@@ -29,8 +29,9 @@ function paymentCopy(args: {
   priceLabel: string;
   cardLabel: string | null;
   justPaidNow: boolean;
+  jobCompleted: boolean;
 }): { heading: string; description: string | null } {
-  const { state, priceLabel, cardLabel, justPaidNow } = args;
+  const { state, priceLabel, cardLabel, justPaidNow, jobCompleted } = args;
   switch (state) {
     case 'failed':
       return { heading: 'Payment failed', description: "We couldn't charge your card for this cleaning." };
@@ -42,10 +43,17 @@ function paymentCopy(args: {
     case 'processing':
       return { heading: 'Payment processing', description: "We'll let you know once it's confirmed." };
     case 'before_charge':
-      return {
-        heading: 'Card on file',
-        description: `You'll be charged ${priceLabel} after your cleaning is completed.`,
-      };
+      // Once the job is done the charge is due now (e.g. after "Update card" cleared a failed auth
+      // back to null), so the pre-completion "you'll be charged after" line would be wrong.
+      return jobCompleted
+        ? {
+            heading: 'Card on file',
+            description: 'Your cleaning is done. Pay now to complete your payment.',
+          }
+        : {
+            heading: 'Card on file',
+            description: `You'll be charged ${priceLabel} after your cleaning is completed.`,
+          };
     case 'paid':
       return {
         heading: `Paid ${priceLabel}`,
@@ -91,12 +99,16 @@ export function HomeownerPaymentRecovery({ appointment }: { appointment: Appoint
   const organizationId = appointment.organization_id ?? currentOrganizationId ?? null;
   const card = appointment.payment_method_card ?? null;
   const priceLabel = formatUsd(appointment.total_price);
+  const jobCompleted = appointment.status === 'completed';
 
   const state = derivePaymentSectionState({
     authorizationStatus: appointment.authorization_status ?? null,
     paymentStatus: appointment.payment_status ?? null,
+    // The homeowner appointment shape (useHomeownerData) doesn't carry is_self_pay today; self-pay
+    // cleanings are company-funded and never surface a homeowner Pay now, so false is safe here.
+    // Pass the real flag through if that column is ever added to the query/type.
     isSelfPay: false,
-    jobCompleted: appointment.status === 'completed',
+    jobCompleted,
     hasCard: !!appointment.payment_method_id,
   });
 
@@ -196,8 +208,13 @@ export function HomeownerPaymentRecovery({ appointment }: { appointment: Appoint
     priceLabel,
     cardLabel: card ? paymentMethodTitle(card) : null,
     justPaidNow,
+    jobCompleted,
   });
   const showCardPreview = effectiveState !== 'paid';
+  // Pay now stays available after "Update card" clears a failed auth back to null: a completed job
+  // in before_charge is due now. requires_action deliberately never offers it (3DS can't clear
+  // off-session).
+  const canPayNow = effectiveState === 'failed' || (effectiveState === 'before_charge' && jobCompleted);
   const showActions =
     effectiveState === 'failed' ||
     effectiveState === 'requires_action' ||
@@ -267,14 +284,14 @@ export function HomeownerPaymentRecovery({ appointment }: { appointment: Appoint
 
       {showActions ? (
         <div className="flex flex-wrap gap-2">
-          {effectiveState === 'failed' ? (
+          {canPayNow ? (
             <Button size="sm" loading={charging} onClick={() => void handlePayNow()}>
               Pay now · {priceLabel}
             </Button>
           ) : null}
           <Button
             size="sm"
-            variant={effectiveState === 'failed' ? 'outline' : 'default'}
+            variant={canPayNow ? 'outline' : 'default'}
             loading={updatingCard}
             onClick={() => setCardPickerOpen(true)}
           >

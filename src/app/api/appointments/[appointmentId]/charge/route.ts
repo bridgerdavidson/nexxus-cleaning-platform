@@ -52,9 +52,9 @@ export async function POST(
     const { organization_id } = body as { organization_id?: string };
 
     // Org staff may charge any appointment in their org; a cleaner may charge ONLY the appointment
-    // they're assigned to (they complete the job -> charge-on-completion). A homeowner may retry a
-    // charge ("Pay now") ONLY on their own completed job whose auth is `failed` (see the fail-closed
-    // allowlist below).
+    // they're assigned to (they complete the job -> charge-on-completion). A homeowner may self-collect
+    // ("Pay now") ONLY on their own completed job whose auth is `failed` OR `null` (not yet charged) —
+    // see the fail-closed allowlist below.
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
       allowedRoles: ['owner', 'admin', 'manager', 'cleaner', 'homeowner'],
     });
@@ -72,10 +72,12 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
     }
 
-    // Homeowner "Pay now" retry: fail closed. A homeowner may only re-charge THEIR OWN appointment,
-    // and only when it is a completed job whose off-session charge already `failed` and is NOT
-    // self-pay (self-pay draws on the company card, never a homeowner's). We deliberately exclude
-    // `requires_action`: an off-session retry cannot clear 3DS, so allowing it would loop.
+    // Homeowner "Pay now": fail closed. A homeowner may only charge THEIR OWN appointment, and only
+    // when it is a completed job whose off-session charge already `failed` OR was never charged
+    // (`null`), and is NOT self-pay (self-pay draws on the company card, never a homeowner's). We
+    // deliberately exclude `requires_action` (an off-session retry cannot clear 3DS, so it would
+    // loop), `captured` (already paid), and `charging` (a charge is mid-flight). The existing
+    // `alreadySettled` check downstream blocks an already-paid/processing job from a second charge.
     if (auth.role === 'homeowner') {
       const a = appt as {
         homeowner_id: string | null;
@@ -86,7 +88,7 @@ export async function POST(
       const ok =
         a.homeowner_id === auth.userId &&
         a.status === 'completed' &&
-        a.authorization_status === 'failed' &&
+        (a.authorization_status === 'failed' || a.authorization_status === null) &&
         !a.is_self_pay;
       if (!ok) {
         return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });

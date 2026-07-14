@@ -243,21 +243,27 @@ export async function recoverStuckCharging(
   let reset = 0;
   for (const id of candidates) {
     if (settled.has(id)) continue;
-    const { data: updated } = await supabase
-      .from('appointments')
-      .update({ authorization_status: null })
-      .eq('id', id)
-      .eq('authorization_status', 'charging')
-      .select('id');
-    if (updated && updated.length > 0) {
-      reset++;
-      await recordPaymentEvent(supabase, {
-        appointmentId: id,
-        organizationId: null,
-        eventType: 'drift_repaired',
-        actor: 'reconciler',
-        payload: { source: 'recover-stuck-charging' },
-      });
+    // Per-row isolation: a transient DB error on one row must not abort the sweep (matches the
+    // sibling chargeUncollectedCompletions contract that each job swallows per-item errors).
+    try {
+      const { data: updated } = await supabase
+        .from('appointments')
+        .update({ authorization_status: null })
+        .eq('id', id)
+        .eq('authorization_status', 'charging')
+        .select('id');
+      if (updated && updated.length > 0) {
+        reset++;
+        await recordPaymentEvent(supabase, {
+          appointmentId: id,
+          organizationId: null,
+          eventType: 'drift_repaired',
+          actor: 'reconciler',
+          payload: { source: 'recover-stuck-charging' },
+        });
+      }
+    } catch (err) {
+      console.error('recoverStuckCharging failed for', id, err);
     }
   }
 
