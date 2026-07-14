@@ -28,10 +28,12 @@ import {
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import { Field, DiscardChangesDialog } from "./detail-atoms";
 import { JobMessagesPanel } from "./JobMessagesPanel";
+import { OperatorPaymentSection } from "./payment/OperatorPaymentSection";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 import type { RescheduleInit } from "./reschedule/RescheduleDialog";
 import { EditBookingDetailsForm } from "./edit/EditBookingDetailsForm";
 import type { AdminAppointment } from "@/hooks/useAdminData";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 export type BookingDetailSheetProps = {
   open: boolean;
@@ -290,19 +292,27 @@ function DetailBody({
         {canViewPayments ? (
           <>
             <Separator />
-            <div className="flex items-center justify-between">
-              <Field label="Payment">
-                <PaymentBadge payment={detail.payment} /> {detail.payment ? null : "Not recorded"}
-              </Field>
-              {detail.priceLabel ? (
-                <div className="text-right">
-                  <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-                    Total
+            {stripeNewChargeFlowUiEnabled() && appointment ? (
+              <OperatorPaymentSection
+                appointment={appointment}
+                canManagePayments={canManagePayments}
+                priceLabel={detail.priceLabel}
+              />
+            ) : (
+              <div className="flex items-center justify-between">
+                <Field label="Payment">
+                  <PaymentBadge payment={detail.payment} /> {detail.payment ? null : "Not recorded"}
+                </Field>
+                {detail.priceLabel ? (
+                  <div className="text-right">
+                    <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                      Total
+                    </div>
+                    <div className="text-lg font-bold text-foreground">{detail.priceLabel}</div>
                   </div>
-                  <div className="text-lg font-bold text-foreground">{detail.priceLabel}</div>
-                </div>
-              ) : null}
-            </div>
+                ) : null}
+              </div>
+            )}
           </>
         ) : null}
 
