@@ -52,15 +52,17 @@ export async function POST(
     const { organization_id } = body as { organization_id?: string };
 
     // Org staff may charge any appointment in their org; a cleaner may charge ONLY the appointment
-    // they're assigned to (they complete the job -> charge-on-completion).
+    // they're assigned to (they complete the job -> charge-on-completion). A homeowner may retry a
+    // charge ("Pay now") ONLY on their own completed job whose auth is `failed` (see the fail-closed
+    // allowlist below).
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager', 'cleaner'],
+      allowedRoles: ['owner', 'admin', 'manager', 'cleaner', 'homeowner'],
     });
     if (!auth.ok) return auth.response;
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('organization_id, is_self_pay, cleaner_id')
+      .select('organization_id, is_self_pay, cleaner_id, homeowner_id, status, authorization_status')
       .eq('id', appointmentId)
       .maybeSingle();
     if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
@@ -68,6 +70,27 @@ export async function POST(
     }
     if (auth.role === 'cleaner' && (appt as { cleaner_id: string | null }).cleaner_id !== auth.userId) {
       return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
+    }
+
+    // Homeowner "Pay now" retry: fail closed. A homeowner may only re-charge THEIR OWN appointment,
+    // and only when it is a completed job whose off-session charge already `failed` and is NOT
+    // self-pay (self-pay draws on the company card, never a homeowner's). We deliberately exclude
+    // `requires_action`: an off-session retry cannot clear 3DS, so allowing it would loop.
+    if (auth.role === 'homeowner') {
+      const a = appt as {
+        homeowner_id: string | null;
+        status: string | null;
+        authorization_status: string | null;
+        is_self_pay: boolean | null;
+      };
+      const ok =
+        a.homeowner_id === auth.userId &&
+        a.status === 'completed' &&
+        a.authorization_status === 'failed' &&
+        !a.is_self_pay;
+      if (!ok) {
+        return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
+      }
     }
 
     // Any manager-triggered charge requires Manage Payments (owner/admin always pass; the assigned

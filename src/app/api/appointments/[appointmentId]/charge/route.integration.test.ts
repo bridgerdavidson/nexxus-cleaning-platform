@@ -24,7 +24,7 @@ import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
-import { withTestOrg, addManagerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, addHomeownerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
@@ -304,6 +304,89 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     } finally {
       await mgr.cleanup();
     }
+  });
+
+  // R7 homeowner "Pay now" retry. The route accepts a homeowner caller ONLY through a fail-closed
+  // allowlist: their own completed job, whose off-session charge already `failed`, and NOT self-pay.
+  // Every other shape must 403 before any Stripe call.
+  it('lets a homeowner retry a charge on their OWN failed completed job (200, charged)', async () => {
+    const apptId = await completedApptWithCard();
+    const { status, body } = await callRoute<{ success: boolean; code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    expect(body.code).toBe('charged');
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a homeowner charging someone else's appointment (403)", async () => {
+    const apptId = await completedApptWithCard(); // owned by org.homeowner
+    const other = await addHomeownerToOrg(org.organizationId);
+    try {
+      const { status } = await callRoute(handlerFor(apptId), {
+        method: 'POST',
+        headers: bearerHeader(other.accessToken),
+        body: { organization_id: org.organizationId },
+      });
+      expect(status).toBe(403);
+      expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+    } finally {
+      await other.cleanup();
+    }
+  });
+
+  it('rejects a homeowner charging their own NON-failed appointment (403)', async () => {
+    // Completed but authorization_status stays NULL (never failed) -> not a recoverable charge.
+    const apptId = await completedApptWithCard(false);
+    const { status } = await callRoute(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('rejects a homeowner charging their own requires_action appointment (403, no 3DS loop)', async () => {
+    // An off-session retry can never clear 3DS, so requires_action must NOT be homeowner-retryable
+    // (allowing it would loop). Only `failed` is.
+    const apptId = await completedApptWithCard(false);
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ authorization_status: 'requires_action' }).eq('id', apptId);
+
+    const { status } = await callRoute(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+  });
+
+  it('rejects a homeowner charging their own self-pay appointment (403)', async () => {
+    // Self-pay draws on the COMPANY card, not the homeowner's. Keep homeowner_id set (self-pay on a
+    // homeowner-owned property) and make it completed + failed so the ONLY failing allowlist
+    // condition is is_self_pay.
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+      selfPay: true,
+    });
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(403);
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
   });
 });
 
