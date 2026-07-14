@@ -56,6 +56,28 @@ export interface ChargeNowOutcome {
   paymentIntentId?: string;
 }
 
+/**
+ * Pre-Stripe precondition outcomes: the charge bailed BEFORE any PaymentIntent was created and
+ * WITHOUT bumping reauth_count (each of these returns ahead of nextReauthAttempt in both
+ * chargeHomeownerNow and chargeSelfPayNow, and ahead of any charge in the ACH sub-paths, which never
+ * bump reauth_count at all). Releasing the transient 'charging' claim to NULL for these would ERASE a
+ * prior `failed` / `requires_action` recovery state, silently dropping the row out of operator triage
+ * (authorization_status IN ('failed','requires_action')), the setup_intent.succeeded self-heal, and
+ * back into the reconcile sweep the failed state was meant to exclude. So the claim releases to the
+ * PRE-CLAIM status for these ONLY. Any other non-terminal exit (processing, a thrown exception) DID
+ * create a PaymentIntent and/or bump reauth_count, so it releases to NULL: restoring priorStatus there
+ * would double-charge (a `failed` row makes nextReauthAttempt bump reauth_count → fresh idempotency
+ * key → second PaymentIntent).
+ */
+const PRECONDITION_CODES: ReadonlySet<ChargeNowCode> = new Set([
+  'no_card',
+  'no_org_card',
+  'no_org_bank',
+  'tenant_not_ready',
+  'cleaner_not_payable',
+  'not_chargeable',
+]);
+
 interface AppointmentRow {
   id: string;
   organization_id: string;
@@ -114,6 +136,10 @@ export async function chargeCompletedAppointmentAuto(
   // exactly one caller matches the WHERE and updates the row; the loser matches 0 rows and bows out
   // with charge_in_progress (the route maps it to HTTP 409). Every charge caller (operator route,
   // R7 homeowner route, webhook re-charge) funnels through here, so one claim covers them all.
+  // Capture the pre-claim status so the finally can restore it on a pre-Stripe precondition bail
+  // (see PRECONDITION_CODES) rather than erasing a `failed` / `requires_action` recovery state.
+  const priorStatus = appt.authorization_status;
+
   const { data: claimRows, error: claimErr } = await supabase
     .from('appointments')
     .update({ authorization_status: 'charging' })
@@ -127,32 +153,37 @@ export async function chargeCompletedAppointmentAuto(
 
   // finishCharge / recordChargeDecline (inside the dispatched path) write the REAL terminal
   // authorization_status (captured / requires_action / failed), overwriting the 'charging' sentinel.
-  // Track that so the finally never stomps a terminal status: restore to NULL (so the reconcile
-  // sweep re-attempts) only when we exit before a terminal write. The `.eq('authorization_status',
-  // 'charging')` guard is the hard safety, it resets a STILL-claimed row and can never clobber a
-  // status a racing finish just wrote.
+  // Track that so the finally never stomps a terminal status: it releases the claim only when we
+  // exit before a terminal write. The release target is `restoreStatus`: NULL by default (so the
+  // reconcile sweep re-attempts), or the PRE-CLAIM status for a pre-Stripe precondition bail (so a
+  // recovery row stays in triage, see PRECONDITION_CODES). The `.eq('authorization_status',
+  // 'charging')` guard is the hard safety: it only ever resets a STILL-claimed row and can never
+  // clobber a status a racing finish just wrote.
   //
-  // Known residual (out of scope for PR 1, noted in the PR): a hard process crash between the claim
-  // and finishCharge leaves the row stuck in 'charging' because the finally never runs. Follow-up: a
-  // `charge_claimed_at` column + reconcile-sweep recovery. Rare, and it does not double-charge.
+  // Residual (hard process crash between the claim and finishCharge): the finally never runs, so the
+  // row is left stuck in 'charging'. recoverStuckCharging in the reconcile sweep (reconcile.ts)
+  // releases such rows back to NULL after a 10-minute grace window. It does not double-charge.
   let terminalWritten = false;
+  let restoreStatus: string | null = null;
   try {
     const outcome = appt.is_self_pay
       ? await chargeSelfPayNow(supabase, appt, actor, actorRole)
       : await chargeHomeownerNow(supabase, appt, actor);
     // These are exactly the outcomes whose path wrote a non-'charging' terminal authorization_status
-    // (charged -> captured, requires_action -> requires_action, declined -> failed). Any other
-    // outcome (processing, a precondition bail, the self-pay homeowner guard) left the row still
-    // 'charging', so the guarded reset below releases the claim.
+    // (charged -> captured, requires_action -> requires_action, declined -> failed).
     if (outcome.code === 'charged' || outcome.code === 'requires_action' || outcome.code === 'declined') {
       terminalWritten = true;
+    } else if (PRECONDITION_CODES.has(outcome.code)) {
+      // Pre-Stripe bail: release back to the pre-claim status, not NULL, so a `failed` /
+      // `requires_action` recovery row is not silently dropped from triage / the self-heal / the sweep.
+      restoreStatus = priorStatus;
     }
     return outcome;
   } finally {
     if (!terminalWritten) {
       await supabase
         .from('appointments')
-        .update({ authorization_status: null })
+        .update({ authorization_status: restoreStatus })
         .eq('id', appointmentId)
         .eq('authorization_status', 'charging');
     }

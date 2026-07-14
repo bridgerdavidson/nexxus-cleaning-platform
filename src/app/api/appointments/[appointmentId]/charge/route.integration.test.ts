@@ -19,6 +19,7 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
 }));
 
 import { POST } from './route';
+import { chargeCompletedAppointmentAuto } from '@/lib/payments/chargeCompletedAppointment';
 import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
@@ -211,13 +212,17 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
       });
     const [a, b] = await Promise.all([fire(), fire()]);
 
-    // The single most important invariant: never more than one real charge for the appointment.
+    // The single most important invariant (hard): never more than one real charge for the
+    // appointment. AT MOST one caller reached createDestinationCharge, so there is no double-charge.
     expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
 
-    const statuses = [a.status, b.status].sort();
-    const codes = [a.body.code, b.body.code].sort();
-    expect(statuses).toEqual([200, 409]);
-    expect(codes).toEqual(['charge_in_progress', 'charged']);
+    // Best-effort on the HTTP shape: the loser USUALLY 409s (charge_in_progress) but can legitimately
+    // return 200 (charged) if it runs just after the winner commits the paid row and short-circuits
+    // via alreadySettled. So we only require both to land on a valid terminal status with at least one
+    // 200 (a winner). The money-safety invariants are the single-charge assertion above and the
+    // single-paid-row assertion below, not the exact status pairing.
+    for (const r of [a, b]) expect([200, 409]).toContain(r.status);
+    expect([a.status, b.status]).toContain(200);
 
     const db = createTestSupabaseClient();
     // The winner captured; exactly one paid revenue row exists (no duplicate charge).
@@ -230,6 +235,58 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
       .eq('payment_type', 'revenue');
     expect(payRows).toHaveLength(1);
     expect((payRows![0] as { status: string }).status).toBe('paid');
+  });
+
+  it('precondition bail on a FAILED job leaves authorization_status still failed (not NULL)', async () => {
+    // Regression guard for the claim-release finally: a retry of a `failed` appointment that bails on
+    // a pre-Stripe precondition (here no_card) must NOT be dropped to NULL, which would silently
+    // remove it from operator triage / the setup_intent self-heal / re-arm the sweep.
+    const db = createTestSupabaseClient();
+    const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;
+    await db
+      .from('organizations')
+      .update({ stripe_connect_account_id: acctId, stripe_connect_charges_enabled: true })
+      .eq('id', org.organizationId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+    });
+    // Failed recovery row with NO card on the appointment -> chargeHomeownerNow bails no_card before
+    // any PaymentIntent / reauth bump.
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    const outcome = await chargeCompletedAppointmentAuto(db, appt.id, 'operator', 'admin');
+    expect(outcome.code).toBe('no_card');
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', appt.id).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBe('failed');
+  });
+
+  it('a processing outcome releases the claim to NULL (re-arms reconciliation, not triage)', async () => {
+    // A non-precondition, non-terminal exit (a PaymentIntent WAS created) must release to NULL so the
+    // in-flight processing row is the source of truth; restoring `failed` would double-charge on retry.
+    const apptId = await completedApptWithCard();
+    vi.mocked(createDestinationCharge).mockResolvedValueOnce({ id: 'pi_processing_now', status: 'processing' } as never);
+
+    const db = createTestSupabaseClient();
+    const outcome = await chargeCompletedAppointmentAuto(db, apptId, 'operator', 'admin');
+    expect(outcome.code).toBe('processing');
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBeNull();
+
+    const { data: payRows } = await db
+      .from('payments')
+      .select('status')
+      .eq('appointment_id', apptId)
+      .eq('payment_type', 'revenue');
+    expect(payRows).toHaveLength(1);
+    expect((payRows![0] as { status: string }).status).toBe('processing');
   });
 
   it('lets a manager WITH can_manage_payments charge a NON-self-pay appointment', async () => {
@@ -345,5 +402,20 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     expect(status).toBe(403);
     expect(body.error).toBe('Requires the Manage Payments permission');
     expect(vi.mocked(createSelfPayCharge)).not.toHaveBeenCalled();
+  });
+
+  it('refuses a homeowner actor on the self-pay company-card path (defense in depth)', async () => {
+    // Self-pay draws on the COMPANY card, never a homeowner's. Even calling the orchestration directly
+    // with actorRole=homeowner (a hypothetical future route regression) must not reach a charge.
+    const apptId = await completedSelfPayAppt();
+    const db = createTestSupabaseClient();
+
+    const outcome = await chargeCompletedAppointmentAuto(db, apptId, 'homeowner-actor', 'homeowner');
+    expect(outcome.code).toBe('not_chargeable');
+    expect(vi.mocked(createSelfPayCharge)).not.toHaveBeenCalled();
+
+    // not_chargeable is a pre-Stripe precondition, so the claim releases back to the prior `failed`.
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBe('failed');
   });
 });
