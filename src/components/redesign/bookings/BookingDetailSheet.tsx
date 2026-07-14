@@ -17,6 +17,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible } from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -280,7 +281,9 @@ function DetailBody({
         {detail.customerId && detail.cleanerId ? (
           <>
             <Separator />
-            <JobMessagesPanel appointmentId={detail.id} cleanerId={detail.cleanerId} />
+            <Collapsible title="Messages">
+              <JobMessagesPanel appointmentId={detail.id} cleanerId={detail.cleanerId} />
+            </Collapsible>
           </>
         ) : null}
 
@@ -397,13 +400,22 @@ function DetailBody({
           </>
         ) : null}
 
-        {detail.declinedReason ? (
-          <Field label="Decline reason">{detail.declinedReason}</Field>
+        {detail.declinedReason || detail.specialRequests || detail.notes ? (
+          <>
+            <Separator />
+            <Collapsible title="Requests & notes">
+              <div className="space-y-5">
+                {detail.declinedReason ? (
+                  <Field label="Decline reason">{detail.declinedReason}</Field>
+                ) : null}
+                {detail.specialRequests ? (
+                  <Field label="Special requests">{detail.specialRequests}</Field>
+                ) : null}
+                {detail.notes ? <Field label="Notes">{detail.notes}</Field> : null}
+              </div>
+            </Collapsible>
+          </>
         ) : null}
-        {detail.specialRequests ? (
-          <Field label="Special requests">{detail.specialRequests}</Field>
-        ) : null}
-        {detail.notes ? <Field label="Notes">{detail.notes}</Field> : null}
 
         <Separator />
 
