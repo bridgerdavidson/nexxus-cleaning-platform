@@ -1,11 +1,14 @@
 'use client'
 
 import * as React from 'react'
-import { motion as m, useReducedMotion } from 'motion/react'
+import { AnimatePresence, motion as m, useReducedMotion } from 'motion/react'
 import { Camera, CheckCircle2 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { cn } from '@/lib/utils'
+
+const EASE = [0.22, 1, 0.36, 1] as const
 
 // Mirrors the real homeowner LiveCleaningProgress: everything lives inside the
 // brand gradient "Cleaning in progress" hero (white text, white progress bar,
@@ -78,12 +81,32 @@ export function LiveTrackingSection() {
               this is the customer's phone; repeating the chrome around one card
               just crowds it. The gradient card is the whole point of the
               section, so it stands alone. */}
-          <div className="grid w-full max-w-[340px] grid-cols-1 gap-3 text-left">
+          <div className="w-full max-w-[340px] text-left">
               {/* the real homeowner hero card: brand gradient, white text */}
               <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-5 text-white shadow-soft-lg">
-                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">
-                  {complete ? 'Cleaning complete' : 'Cleaning in progress'}
-                </p>
+                {/* This switch is the payoff of the whole section, so it carries
+                    the emphasis itself rather than handing it to a badge that
+                    appears below the card and shoves the card up. Fixed height
+                    plus an AnimatePresence swap keyed on the state: the line
+                    changes in place and nothing below it moves. */}
+                <div className="flex h-4 items-center">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <m.span
+                      key={complete ? 'done' : 'live'}
+                      initial={reduced ? false : { opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
+                      transition={{ duration: 0.26, ease: EASE }}
+                      className={cn(
+                        'flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em]',
+                        complete ? 'text-white' : 'text-white/80',
+                      )}
+                    >
+                      {complete ? <CheckCircle2 className="size-3.5 flex-none" aria-hidden /> : null}
+                      {complete ? 'Cleaning complete' : 'Cleaning in progress'}
+                    </m.span>
+                  </AnimatePresence>
+                </div>
                 <p className="mt-1 text-lg font-extrabold tnum">Thu · 9:00 AM</p>
                 <p className="text-[11px] text-white/85">8 Cedar Ct · Deep clean</p>
                 <div className="mt-2.5 flex items-center gap-2">
@@ -125,12 +148,6 @@ export function LiveTrackingSection() {
                 </div>
               </div>
 
-              {complete ? (
-                <Badge variant="positive" className="justify-center py-1.5">
-                  <CheckCircle2 className="size-3.5" aria-hidden />
-                  All done. Photos are in your inbox.
-                </Badge>
-              ) : null}
           </div>
         </div>
       </div>
