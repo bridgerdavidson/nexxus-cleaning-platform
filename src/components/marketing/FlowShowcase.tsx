@@ -281,12 +281,19 @@ function LiveDot({ live }: { live: boolean }) {
  *  form, flies path A, and sits in the queue. */
 function ApptCard() {
   return (
-    <div className="w-[190px] rounded-control border border-border bg-card px-3 py-2 shadow-soft-lg">
+    // This card is a stage overlay, not a child of the phone, so what reads is
+    // its width against the frame: 166 keeps it at ~75% of the 220px phone, the
+    // ratio it had at 252. The subtitle drops "Sarah K." because at 9px the full
+    // string is ~163px and would wrap inside a 166px card, changing its height
+    // mid-flight. The name is not lost: the queue row it lands on reads
+    // "Thu · 9:00 AM · Sarah K.", and the label above the phone says
+    // "Sarah · Customer".
+    <div className="w-[166px] rounded-control border border-border bg-card px-3 py-2 shadow-soft-lg">
       <p className="flex items-center justify-between text-[11px] font-bold text-foreground">
         <span className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-accent-foreground" aria-hidden />Deep clean</span>
         <span className="tnum">$180</span>
       </p>
-      <p className="mt-0.5 text-[9px] text-muted-foreground">Thu · 9:00 AM · Sarah K. · 8 Cedar Ct</p>
+      <p className="mt-0.5 text-[9px] text-muted-foreground">Thu · 9:00 AM · 8 Cedar Ct</p>
     </div>
   )
 }
@@ -386,7 +393,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
         <Pop show delay={0.35}>
           <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2.5 text-[11px]">
             <CheckCircle2 className="size-4 shrink-0 text-positive-700" aria-hidden />
-            <span className="font-semibold text-foreground">Request sent. The office will confirm your time.</span>
+            <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Sent. Confirming soon.</span>
           </div>
         </Pop>
       ) : null}
@@ -435,7 +442,7 @@ function OperatorSurface({ cue }: { cue: number }) {
         <div className="mb-2 grid grid-cols-3 gap-1.5">
           <MiniKpi label="Today's jobs">6</MiniKpi>
           <MiniKpi label="Needs you"><AnimatedNumber value={needsYou} /></MiniKpi>
-          <MiniKpi label="Revenue this month" emphasized={revenueBeat && cue < CUE_INDEX.settle}>
+          <MiniKpi label="Monthly revenue" emphasized={revenueBeat && cue < CUE_INDEX.settle}>
             <AnimatedNumber value={revenue} prefix="$" />
           </MiniKpi>
         </div>
@@ -573,7 +580,7 @@ function CleanerSurface({ cue }: { cue: number }) {
           <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
             <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">8:00</span>
             <span className="h-6 w-px bg-border" aria-hidden />
-            <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Chen home</span>
+            <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Chen</span>
             <StatusPill status="completed" label="Done" className="px-2 py-0.5 text-[9px]" />
           </div>
           {incoming ? (
@@ -586,7 +593,7 @@ function CleanerSurface({ cue }: { cue: number }) {
               <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">9:00</span>
               <span className="h-6 w-px bg-brand-200" aria-hidden />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold text-foreground">Sarah K. · Deep clean</span>
+                <span className="block truncate font-semibold text-foreground">Sarah K.</span>
                 <span className="block text-[9px] text-muted-foreground">8 Cedar Ct</span>
               </span>
               <Badge className="px-1.5 py-0.5 text-[9px]">New</Badge>
