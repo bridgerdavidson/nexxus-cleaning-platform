@@ -59,7 +59,11 @@ const CLEAN = { x: 840, y: 30, w: 220, h: 380 }
 // sit ~85px above the straight line between endpoints, at roughly one third
 // and two thirds across, to keep the arc that reads as flight rather than a
 // slide.
-const PATH_A = 'M 110 123 C 257 87, 405 137, 552 271'
+// PATH_A ends 552 279, not 552 271: the queue row sits at 279 while
+// unassigned (Assign chip), and that's its state at the `drop` cue, when
+// this flight lands. It only moves to 271 once `assigned` fires, which is
+// where PATH_B departs from below. Same row, two stable heights.
+const PATH_A = 'M 110 123 C 257 90, 405 142, 552 279'
 const PATH_B = 'M 552 271 C 685 156, 817 125, 950 180'
 
 const FLIGHT_A_MS = 1450
