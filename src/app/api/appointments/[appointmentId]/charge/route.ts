@@ -30,6 +30,9 @@ const HTTP_BY_CODE: Record<ChargeNowCode, number> = {
   tenant_not_ready: 409,
   cleaner_not_payable: 409,
   not_chargeable: 409,
+  // Another charge for this appointment won the atomic claim and is in flight (operator + homeowner
+  // retry, or a double-click). The loser bows out here so only one real charge is created.
+  charge_in_progress: 409,
   // A genuine Stripe failure from the ACH fallback (created+confirm threw), not a precondition.
   failed: 502,
   error: 500,
@@ -49,15 +52,17 @@ export async function POST(
     const { organization_id } = body as { organization_id?: string };
 
     // Org staff may charge any appointment in their org; a cleaner may charge ONLY the appointment
-    // they're assigned to (they complete the job -> charge-on-completion).
+    // they're assigned to (they complete the job -> charge-on-completion). A homeowner may self-collect
+    // ("Pay now") ONLY on their own completed job whose auth is `failed` OR `null` (not yet charged) —
+    // see the fail-closed allowlist below.
     const auth = await requireOrgAuth(request, organization_id, supabaseAdmin, {
-      allowedRoles: ['owner', 'admin', 'manager', 'cleaner'],
+      allowedRoles: ['owner', 'admin', 'manager', 'cleaner', 'homeowner'],
     });
     if (!auth.ok) return auth.response;
 
     const { data: appt } = await supabaseAdmin
       .from('appointments')
-      .select('organization_id, is_self_pay, cleaner_id')
+      .select('organization_id, is_self_pay, cleaner_id, homeowner_id, status, authorization_status')
       .eq('id', appointmentId)
       .maybeSingle();
     if (!appt || (appt as { organization_id: string }).organization_id !== organization_id) {
@@ -65,6 +70,29 @@ export async function POST(
     }
     if (auth.role === 'cleaner' && (appt as { cleaner_id: string | null }).cleaner_id !== auth.userId) {
       return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
+    }
+
+    // Homeowner "Pay now": fail closed. A homeowner may only charge THEIR OWN appointment, and only
+    // when it is a completed job whose off-session charge already `failed` OR was never charged
+    // (`null`), and is NOT self-pay (self-pay draws on the company card, never a homeowner's). We
+    // deliberately exclude `requires_action` (an off-session retry cannot clear 3DS, so it would
+    // loop), `captured` (already paid), and `charging` (a charge is mid-flight). The existing
+    // `alreadySettled` check downstream blocks an already-paid/processing job from a second charge.
+    if (auth.role === 'homeowner') {
+      const a = appt as {
+        homeowner_id: string | null;
+        status: string | null;
+        authorization_status: string | null;
+        is_self_pay: boolean | null;
+      };
+      const ok =
+        a.homeowner_id === auth.userId &&
+        a.status === 'completed' &&
+        (a.authorization_status === 'failed' || a.authorization_status === null) &&
+        !a.is_self_pay;
+      if (!ok) {
+        return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
+      }
     }
 
     // Any manager-triggered charge requires Manage Payments (owner/admin always pass; the assigned
@@ -82,7 +110,12 @@ export async function POST(
       }
     }
 
-    const outcome = await chargeCompletedAppointmentAuto(supabaseAdmin, appointmentId, `user:${auth.userId}`);
+    const outcome = await chargeCompletedAppointmentAuto(
+      supabaseAdmin,
+      appointmentId,
+      `user:${auth.userId}`,
+      auth.role,
+    );
 
     return NextResponse.json(
       {

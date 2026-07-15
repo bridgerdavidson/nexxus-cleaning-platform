@@ -12,6 +12,7 @@ import type { Appointment } from '@/hooks/useHomeownerData';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
 import { formatCleaningWhen } from '../home/home-presenters';
 import { CancelCleaningSheet } from './CancelCleaningSheet';
+import { HomeownerPaymentRecovery } from './HomeownerPaymentRecovery';
 import { useOpenBooking } from '../booking/useOpenBooking';
 import { useOpenMessageThread } from '../messages/useOpenMessageThread';
 import { useHomeownerOfficeContact } from '../messages/useHomeownerOfficeContact';
@@ -146,6 +147,10 @@ export function HomeownerCleaningDetail({
                       </Field>
                     </div>
                   </div>
+
+                  {stripeNewChargeFlowUiEnabled() && (
+                    <HomeownerPaymentRecovery appointment={appointment} />
+                  )}
 
                   <div className="space-y-2">
                     {appointment.status === 'completed' &&

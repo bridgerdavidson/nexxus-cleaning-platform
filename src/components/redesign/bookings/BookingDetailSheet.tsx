@@ -17,6 +17,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible } from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -27,10 +28,12 @@ import {
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import { Field, DiscardChangesDialog } from "./detail-atoms";
 import { JobMessagesPanel } from "./JobMessagesPanel";
+import { OperatorPaymentSection } from "./payment/OperatorPaymentSection";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 import type { RescheduleInit } from "./reschedule/RescheduleDialog";
 import { EditBookingDetailsForm } from "./edit/EditBookingDetailsForm";
 import type { AdminAppointment } from "@/hooks/useAdminData";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 export type BookingDetailSheetProps = {
   open: boolean;
@@ -280,26 +283,36 @@ function DetailBody({
         {detail.customerId && detail.cleanerId ? (
           <>
             <Separator />
-            <JobMessagesPanel appointmentId={detail.id} cleanerId={detail.cleanerId} />
+            <Collapsible title="Messages">
+              <JobMessagesPanel appointmentId={detail.id} cleanerId={detail.cleanerId} />
+            </Collapsible>
           </>
         ) : null}
 
         {canViewPayments ? (
           <>
             <Separator />
-            <div className="flex items-center justify-between">
-              <Field label="Payment">
-                <PaymentBadge payment={detail.payment} /> {detail.payment ? null : "Not recorded"}
-              </Field>
-              {detail.priceLabel ? (
-                <div className="text-right">
-                  <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-                    Total
+            {stripeNewChargeFlowUiEnabled() && appointment ? (
+              <OperatorPaymentSection
+                appointment={appointment}
+                canManagePayments={canManagePayments}
+                priceLabel={detail.priceLabel}
+              />
+            ) : (
+              <div className="flex items-center justify-between">
+                <Field label="Payment">
+                  <PaymentBadge payment={detail.payment} /> {detail.payment ? null : "Not recorded"}
+                </Field>
+                {detail.priceLabel ? (
+                  <div className="text-right">
+                    <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                      Total
+                    </div>
+                    <div className="text-lg font-bold text-foreground">{detail.priceLabel}</div>
                   </div>
-                  <div className="text-lg font-bold text-foreground">{detail.priceLabel}</div>
-                </div>
-              ) : null}
-            </div>
+                ) : null}
+              </div>
+            )}
           </>
         ) : null}
 
@@ -397,13 +410,22 @@ function DetailBody({
           </>
         ) : null}
 
-        {detail.declinedReason ? (
-          <Field label="Decline reason">{detail.declinedReason}</Field>
+        {detail.declinedReason || detail.specialRequests || detail.notes ? (
+          <>
+            <Separator />
+            <Collapsible title="Requests & notes">
+              <div className="space-y-5">
+                {detail.declinedReason ? (
+                  <Field label="Decline reason">{detail.declinedReason}</Field>
+                ) : null}
+                {detail.specialRequests ? (
+                  <Field label="Special requests">{detail.specialRequests}</Field>
+                ) : null}
+                {detail.notes ? <Field label="Notes">{detail.notes}</Field> : null}
+              </div>
+            </Collapsible>
+          </>
         ) : null}
-        {detail.specialRequests ? (
-          <Field label="Special requests">{detail.specialRequests}</Field>
-        ) : null}
-        {detail.notes ? <Field label="Notes">{detail.notes}</Field> : null}
 
         <Separator />
 

@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { useSupabaseRealtimeSync } from "@/lib/useSupabaseRealtimeSync";
+import { useDetailParam } from "@/hooks/useDetailParam";
 import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 import { money2, longDate } from "./payments-presenters";
 import type { TriageChargeVM, TriagePayoutVM, TriageHeldVM } from "./payments-types";
@@ -60,6 +61,7 @@ export type PaymentsTriage = {
 export function usePaymentsTriage(): PaymentsTriage {
   const { currentOrganizationId, currentOrganization } = useAuth();
   const router = useRouter();
+  const { setParam: setBookingParam } = useDetailParam("booking");
 
   const [loading, setLoading] = useState(true);
   const [charges, setCharges] = useState<TriageChargeVM[]>([]);
@@ -273,13 +275,14 @@ export function usePaymentsTriage(): PaymentsTriage {
   );
 
   // Fixing a failed/unauthenticated charge means putting a WORKING card on, which
-  // lives in the appointment drawer. That drawer is mounted on the legacy dashboard
-  // (?appointment=<id> + the panel host), not the redesign shell, so deep-link there.
+  // now lives in the redesign booking sheet's Payment section (R6). Open it in
+  // place with ?booking=<id>, mirroring how the other operator surfaces deep-link
+  // into a booking (see useOpenBookingDetail / OperatorBookings' openDetail).
   const fixCard = useCallback(
     (apptId: string) => {
-      router.push(`/admin-dashboard?tab=bookings&appointment=${apptId}`);
+      setBookingParam(apptId);
     },
-    [router],
+    [setBookingParam],
   );
 
   // The redesign Messages screen creates/opens the thread itself from ?to=,

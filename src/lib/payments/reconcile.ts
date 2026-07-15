@@ -4,6 +4,7 @@
  *
  *   1.  retryDeadLetterWebhooks      — re-dispatch webhook_events stuck in received/failed
  *   2.  reconcileStuckPayments       — replay the true Stripe PI status for pending/processing payments past SLA
+ *   2a-pre. recoverStuckCharging     : release appointments orphaned in the 'charging' claim sentinel
  *   2a. chargeUncollectedCompletions — charge completed jobs whose completion charge never ran
  *   2b. settleUnsettledCaptures      — settle captured charges whose funds never moved (refunds
  *                                      cancelled-job completion charges instead of settling them)
@@ -176,6 +177,97 @@ export async function reconcileStuckPayments(
   }
 
   return { checked: list.length, repaired };
+}
+
+// ── 2a-pre) Stuck-'charging'-claim recovery ─────────────────────────────────────
+export interface StuckChargingResult {
+  checked: number;
+  reset: number;
+}
+
+/**
+ * Release appointments orphaned in the transient 'charging' claim sentinel. The charge claim in
+ * chargeCompletedAppointmentAuto flips authorization_status to 'charging' and a `finally` releases it,
+ * but a function timeout/kill between the claim and finishCharge leaves the row 'charging' FOREVER:
+ * invisible to chargeUncollectedCompletions (it matches only NULL), to the setup_intent.succeeded
+ * self-heal and operator triage (both key on failed/requires_action), and to a manual retry (the
+ * claim WHERE never re-matches 'charging' → a permanent charge_in_progress 409).
+ *
+ * The claim UPDATE bumps updated_at and a real charge finishes in well under a minute, so a 'charging'
+ * row whose updated_at is older than 10 minutes is definitively orphaned, never an in-flight charge.
+ * Reset it to NULL so it re-enters the normal NULL recovery path (chargeUncollectedCompletions on a
+ * later sweep; the reset itself bumps updated_at, so it waits out that job's own SLA first).
+ *
+ * Skips any row already settled / in flight (a paid or processing COMPLETION revenue row): the
+ * processing branch of finishCharge writes the payment row but leaves authorization_status='charging'
+ * until the caller's finally clears it, so a crash in that gap must NOT be re-armed. The per-row
+ * UPDATE re-asserts `.eq('authorization_status','charging')` so a finishCharge that just wrote a
+ * terminal status always wins the race.
+ *
+ * Residual (documented, not repaired here): the rare crash AFTER the Stripe charge SUCCEEDED but
+ * BEFORE any DB write leaves a 'charging' row with NO payment row, so the settled-skip can't see it.
+ * Resetting to NULL re-arms a charge; the idempotency key `charge-{id}-{attempt}` collapses the retry
+ * onto the same PaymentIntent rather than double-charging, but full Stripe-side reconciliation
+ * (matching an orphan PaymentIntent back to its appointment) is a pre-existing concern out of scope
+ * here.
+ */
+export async function recoverStuckCharging(
+  supabase: SupabaseClient,
+  opts: { batch?: number; staleMinutes?: number } = {},
+): Promise<StuckChargingResult> {
+  const batch = opts.batch ?? DEFAULT_BATCH;
+  const cutoff = staleCutoffIso(opts.staleMinutes ?? 10);
+
+  const { data: rows } = await supabase
+    .from('appointments')
+    .select('id')
+    .eq('authorization_status', 'charging')
+    .lte('updated_at', cutoff)
+    .limit(batch);
+  const candidates = ((rows ?? []) as Array<{ id: string }>).map((r) => r.id);
+  if (candidates.length === 0) return { checked: 0, reset: 0 };
+
+  // Never re-arm a job whose completion money already moved / is in flight (a crash after the
+  // processing/paid payment row was written but before 'charging' was cleared).
+  const { data: payRows } = await supabase
+    .from('payments')
+    .select('appointment_id, status')
+    .in('appointment_id', candidates)
+    .eq('payment_type', 'revenue')
+    .eq('charge_kind', 'completion')
+    .in('status', ['paid', 'processing']);
+  const settled = new Set(
+    ((payRows ?? []) as Array<{ appointment_id: string }>).map((r) => r.appointment_id),
+  );
+
+  let reset = 0;
+  for (const id of candidates) {
+    if (settled.has(id)) continue;
+    // Per-row isolation: a transient DB error on one row must not abort the sweep (matches the
+    // sibling chargeUncollectedCompletions contract that each job swallows per-item errors).
+    try {
+      const { data: updated } = await supabase
+        .from('appointments')
+        .update({ authorization_status: null })
+        .eq('id', id)
+        .eq('authorization_status', 'charging')
+        .select('id');
+      if (updated && updated.length > 0) {
+        reset++;
+        await recordPaymentEvent(supabase, {
+          appointmentId: id,
+          organizationId: null,
+          eventType: 'drift_repaired',
+          actor: 'reconciler',
+          payload: { source: 'recover-stuck-charging' },
+        });
+      }
+    } catch (err) {
+      console.error('recoverStuckCharging failed for', id, err);
+    }
+  }
+
+  return { checked: candidates.length, reset };
 }
 
 // ── 2a) Completed-but-never-charged sweep ───────────────────────────────────────

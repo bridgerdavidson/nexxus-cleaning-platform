@@ -83,6 +83,8 @@ export interface AdminAppointment {
     | 'canceled'
     | 'failed'
     | null;
+  /** The Stripe payment method id saved to this appointment (card on file), if any. */
+  payment_method_id?: string | null;
   /**
    * Wave 2 SLA: timestamp by which the cleaner must respond. Null once they
    * have. Overdue is derived client-side via isAppointmentOverdue.
@@ -211,6 +213,7 @@ export function useAdminAppointments() {
           status,
           total_price,
           authorization_status,
+          payment_method_id,
           special_requests,
           notes,
           series_id,
