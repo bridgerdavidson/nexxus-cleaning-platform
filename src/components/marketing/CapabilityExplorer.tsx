@@ -393,9 +393,14 @@ function ExplorerRail({
   return (
     <nav
       aria-label="Demo sections"
-      className="hidden w-[196px] shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex"
+      className="hidden w-[168px] shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex"
     >
-      <RailLogo className="mb-3 ml-1 h-6" width="w-[30px]" />
+      {/* Expanded rail, so the FULL lockup: the bare icon belongs to the
+          collapsed state. The lockup renders ~4.5x as wide as it is tall, so at
+          h-8 it is ~144px, and the rail is that plus its p-3 either side. The
+          rail is sized to the wordmark rather than the wordmark dropped into an
+          arbitrary rail. */}
+      <RailLogo variant="full" className="mb-3 ml-1 h-8" />
       {TABS.map((t) => {
         const active = t.id === tab
         return (
@@ -462,7 +467,14 @@ export function CapabilityExplorer() {
         <BrowserFrame label="app.nexxus.com" appBar>
           <div className="flex">
             <ExplorerRail tab={tab} setTab={selectTab} showHint={!touched} />
-            <div className="min-w-0 flex-1 bg-background p-4 sm:p-5">
+            {/* Pinned so the frame does not resize under the pointer as you tab
+                through. The tabs range from 280px (Messages) to 440px (Crew), a
+                160px jump, and a window that changes height when you click
+                inside it does not read as an app. Floor is the tallest tab, so
+                only shorter ones gain slack. Applied from sm up, where the rail
+                lives: below that the content reflows taller than 440 anyway and
+                the floor would never bind. Re-measure if a tab's content grows. */}
+            <div className="min-w-0 flex-1 bg-background p-4 sm:min-h-[440px] sm:p-5">
               {/* Mobile nav. The rail is the nav from sm up, matching the real
                   OperatorRail's desktop-only behaviour, but a 196px rail has
                   nowhere to go on a phone, so the pills carry it there. */}

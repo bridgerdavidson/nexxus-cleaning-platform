@@ -108,20 +108,36 @@ export function PhoneFrame({
   )
 }
 
-/** The Nexxus mark as the real OperatorRail shows it: the icon alone, produced by
- *  clipping the wordmark off the full lockup with a fixed-width overflow wrapper.
- *  NOT clip-path, which does not affect layout and would let the image blow out
- *  its container. `logo-black.svg` is viewBox 0 0 567.04 125.65, so at a given
- *  height the lockup renders ~4.5x as wide; the icon is the leftmost ~26% and the
- *  wordmark starts at ~34%, so a window at ~28% of the full width shows the icon
- *  and nothing else. Shared by both rails so the mark is defined once.
+/** The Nexxus lockup, in the two forms the real OperatorRail uses.
+ *
+ *  `full` is the whole thing, icon + wordmark. That is what an EXPANDED rail
+ *  shows.
+ *  `icon` is the mark alone, which is what a COLLAPSED rail shows. It is made by
+ *  clipping the wordmark off the same lockup with a fixed-width overflow wrapper,
+ *  the mechanism OperatorRail itself uses. NOT clip-path, which does not affect
+ *  layout and would let the image blow out its container. `logo-black.svg` is
+ *  viewBox 0 0 567.04 125.65, so it renders ~4.5x as wide as it is tall; the icon
+ *  is the leftmost ~26% and the wordmark starts at ~34%, so a window at ~28% of
+ *  the full width shows the icon and nothing else.
+ *
+ *  Pick by the rail's state, not by taste: an expanded rail showing only the icon
+ *  is wearing the collapsed rail's clothes.
  */
-export function RailLogo({ className, width }: { className?: string; width: string }) {
-  return (
-    <span className={cn('block overflow-hidden', width, className)}>
-      <Image src="/brand/logo-black.svg" alt="" width={567} height={126} className="h-full w-auto max-w-none" />
-    </span>
+export function RailLogo({
+  variant = 'icon',
+  className,
+  iconWidth,
+}: {
+  variant?: 'icon' | 'full'
+  className?: string
+  /** Width of the clip window. Required for `icon`, ignored for `full`. */
+  iconWidth?: string
+}) {
+  const img = (
+    <Image src="/brand/logo-black.svg" alt="Nexxus" width={567} height={126} className="h-full w-auto max-w-none" />
   )
+  if (variant === 'full') return <span className={cn('block w-auto', className)}>{img}</span>
+  return <span className={cn('block overflow-hidden', iconWidth, className)}>{img}</span>
 }
 
 const RAIL_TABS: LucideIcon[] = [Home, CalendarDays, Users, CreditCard]
@@ -147,7 +163,8 @@ export function MiniRail({ variant = 'sketch' }: { variant?: 'sketch' | 'app' })
 
   return (
     <div className="hidden w-11 shrink-0 flex-col items-center gap-1.5 border-r border-border bg-card py-3 sm:flex" aria-hidden>
-      <RailLogo className="mb-2 h-4" width="w-5" />
+      {/* collapsed rail, so: icon only */}
+      <RailLogo className="mb-2 h-4" iconWidth="w-5" />
       {RAIL_TABS.map((Icon, i) => (
         <span
           key={i}
