@@ -85,9 +85,14 @@ of the stage, so they read as a set rather than three stickers.
 The three surfaces share a top edge at y=30 (see Geometry). The old composition staggered
 them (desktop at y=12, phones at y=56); that stagger is dropped, because a shared label
 baseline over staggered frames puts a variable gap between each label and its frame, which
-looks like a mistake. Variation now comes from the frames themselves: the phones are 380
-tall and the desktop is shorter, so the silhouette still steps rather than sitting in a
-flat row.
+looks like a mistake.
+
+Measured, the desktop is currently 346 tall. The new app bar adds about 34, taking it to
+roughly 380, which is the same height as the new phones. So the three frames land as a tidy
+aligned row: tops at y=30, bottoms near y=410. That is the intended result, not an accident.
+The desktop still dominates by being 460 wide against 220, which is the only dominance it
+needs. Do not force the desktop to an exact height to chase this; it stays content-height
+and lands where it lands.
 
 - `**Sarah** · Customer`
 - `**Dana** · The office`
@@ -169,16 +174,42 @@ PATH_A = 'M 126 252 C 240 165, 400 148, 556 212'
 PATH_B = 'M 556 212 C 700 148, 830 162, 936 246'
 ```
 
-Starting estimates for the new layout (**must be verified visually, not trusted**):
+**This spec deliberately does not give replacement numbers.** An earlier draft guessed
+`M 110 350` for the new start, reasoning that the card sits near the bottom of the phone.
+Measured, the real start (126, 252) sits **58% down** a phone spanning y 56..396, so the
+guess was about 100px too low and would have launched the card from empty space below it.
+Guessed path numbers are how this drifts. Measure them.
 
-```
-PATH_A = 'M 110 350 C 240 280, 400 240, 552 210'
-PATH_B = 'M 552 210 C 700 150, 830 140, 950 165'
+**Why they stay hardcoded rather than derived.** The file already has `stageCenter(id, el)`,
+which measures an element's centre in stage coordinates, and the cursor uses it against
+`id="flow-queue-row"`. Paths cannot use the same trick: `flow-queue-row` only mounts once
+`cue >= drop`, but the card starts flying at `lift`, one cue **earlier**. The destination
+does not exist when the flight begins. So the constants stay constants; they just have to be
+measured constants.
+
+**The recipe** (run after the geometry change lands, with the dev server up):
+
+1. Give stable ids to the two anchors that lack them: the homeowner request card and Maria's
+   job row. `flow-queue-row` already exists.
+2. Let the loop reach a cue where the anchor is mounted, then read its centre in stage space:
+
+```js
+// in the browser, against #flow-showcase
+const stage = document.querySelector('#flow-showcase .absolute.left-0.top-0');
+const sr = stage.getBoundingClientRect();
+const sc = sr.width / 1060;                       // stage is uniformly scaled
+const centre = (id) => {
+  const r = document.getElementById(id).getBoundingClientRect();
+  return { x: Math.round((r.left + r.width/2 - sr.left)/sc),
+           y: Math.round((r.top + r.height/2 - sr.top)/sc) };
+};
 ```
 
-The endpoints must land on the actual rendered centres of: the homeowner request card, the
-Needs-you-now queue row, and Maria's job row. Verify by watching the loop, not by trusting
-the numbers above.
+3. Set `PATH_A`'s start to the request card's centre and its end to the queue row's centre;
+   `PATH_B` runs queue row to job row. Keep the control points at roughly the same relative
+   arc height as today, so the flight keeps its lift.
+4. Watch the full ~24s loop. The card must land **on** the queue row and **on** the job row,
+   not near them.
 
 `focusFor()` derives from `HOME`/`DASH`/`CLEAN` and needs no edit, but the camera pan should
 be re-checked at narrow widths once the constants change.
@@ -186,6 +217,53 @@ be re-checked at narrow widths once the constants change.
 `HomeownerSurface`'s `min-h-[290px]` and the equivalent on the other surfaces should become
 consistent with the fixed 380px frame minus top bar (44) minus bottom nav (~40), leaving
 about 296px of content.
+
+## The cards inside the frames
+
+Narrowing the phones by 32px is not just a frame change. Everything inside them, and the
+card that flies between them, has to be re-fitted. This is the part most likely to look
+broken if it is skipped.
+
+### The travelling card (`ApptCard`) must shrink
+
+`ApptCard` is hardcoded **`w-[190px]`**. Today it overlays a 252px phone whose body padding
+is `px-3.5`, so it spans 190 of 224 usable px, about **75%**: a card resting on a phone.
+
+At 220px wide the usable width becomes 192. **A 190px card would leave 2px of slack**, touch
+both edges, and stop reading as a card.
+
+Preserve the ratio instead of the pixels: 220 x 0.75 ≈ **`w-[166px]`**.
+
+### That forces a copy change
+
+`ApptCard`'s subtitle reads `Thu · 9:00 AM · Sarah K. · 8 Cedar Ct`. At `text-[9px]` that is
+roughly 163px of text; inside a 166px card with `px-3` it has about 142px, so **it will wrap
+to two lines** and change the card's height mid-flight.
+
+Shorten it to **`Thu · 9:00 AM · 8 Cedar Ct`** (about 114px, fits). Dropping the name costs
+nothing here, and this is checked rather than assumed:
+
+- the queue row it lands on already reads `Thu · 9:00 AM · Sarah K.` (line 448), so the
+  operator still sees whose booking it is, and
+- the new label above the phone reads `Sarah · Customer`.
+
+The title row (`Deep clean` / `$180` at `text-[11px]`) fits at 142px.
+
+### Everything else to re-fit, in priority order
+
+| What | Now | After | Risk |
+|---|---|---|---|
+| `ApptCard` | `w-[190px]` | `w-[166px]` + shorter subtitle | **High.** Certain to break. |
+| Phone body inner width | 224 | 192 (-14%) | Every row inside both phones reflows. |
+| `GlideAlong` B pill | auto (~136px): avatar + `Thu 9:00 · Sarah K.` | unchanged | Low, should still clear 220. Verify. |
+| `HomeownerSurface` rows | `Visa ·· 4242` / `at completion` etc. | reflow at 192 | Low. Widest pair is ~130 of 172. Verify. |
+| `CleanerSurface` job rows | `8:00 · Chen home · Done` | reflow at 192 | Medium. Tighter than the homeowner's. |
+| `min-h-[290px]` | 290 | content box is now 296 (380 − 44 top bar − 40 bottom nav) | Low. |
+| `OperatorSurface` | 346 tall | +34 app bar → ~380, ending at y=410 | **Medium.** Sits exactly on the stage's bottom margin. Confirm nothing overflows 420. |
+
+None of the "verify" rows should be taken on trust. Narrowing by 14% is enough to wrap a
+line, and a wrapped line changes a card's height, which moves what the paths were measured
+against.
 
 ## Component changes
 
@@ -259,3 +337,11 @@ Corrections made during design, recorded so they are not re-litigated:
    an unloaded skeleton, and the bottom nav is the entire reason the phone reads as a phone.
 4. The rail logo is a blue rounded square — **wrong**, that is the favicon asset. The rail
    renders the two-tone X on transparent.
+5. `PATH_A` should start near the phone's bottom (`M 110 350`) — **wrong**, off by about
+   100px. Measured, the card launches from 58% down the phone. Hence the measure-don't-guess
+   recipe in Geometry.
+6. `PhoneFrame` should own the 220 x 380 box — **wrong**, it would drag LiveTracking's 288px
+   phone to ~490 tall. The consumer owns the box.
+7. The frames keep a stagger under a shared label baseline — **wrong** twice over: it makes
+   the label-to-frame gap uneven, and once the app bar lands the desktop is ~380 anyway, the
+   same as the phones. They align.
