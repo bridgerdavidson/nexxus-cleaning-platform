@@ -42,6 +42,15 @@ const GLIDE: [number, number, number, number] = [0.45, 0.05, 0.25, 1]
 const STAGE_W = 1060
 const STAGE_H = 420
 
+// The viewport is overflow-hidden so the camera can pan on narrow screens, which
+// means it also slices the frames' shadow-soft-lg into a hard line wherever a
+// frame sits near a stage edge. That shadow (0 14px 34px) reaches ~48px below a
+// frame and ~34px to its sides, but the phones bottom out at y=410 in a 420
+// stage and the right phone ends at exactly STAGE_W. So: bleed the viewport
+// below the stage, and let it reclaim the section's horizontal padding with -mx
+// so the outer shadows have somewhere to go.
+const BLEED = 44
+
 // Three frames on a shared top edge at y=30, with the label band above them in
 // y 0..24. The old composition staggered them (dash y=12, phones y=56); that is
 // dropped, because a shared label baseline over staggered frames leaves an
@@ -830,8 +839,8 @@ export function FlowShowcase() {
     <div ref={rootRef} id="flow-showcase">
       <div
         ref={viewportRef}
-        className="relative overflow-hidden"
-        style={{ height: STAGE_H * scale }}
+        className="relative -mx-4 overflow-hidden sm:-mx-6"
+        style={{ height: (STAGE_H + BLEED) * scale }}
         aria-hidden
       >
         <m.div
@@ -866,7 +875,9 @@ export function FlowShowcase() {
         </m.div>
       </div>
 
-      <p className="mx-auto mt-6 min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground" aria-live="polite">
+      {/* pulled up into the viewport's bleed, so the caption keeps its original
+          distance from the frames rather than sitting 44px lower */}
+      <p className="mx-auto -mt-4 min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground" aria-live="polite">
         {caption}
       </p>
     </div>

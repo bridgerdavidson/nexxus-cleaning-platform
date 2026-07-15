@@ -6,10 +6,6 @@ import { Camera, CheckCircle2 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { PhoneFrame } from './frames'
-import { HOMEOWNER_NAV } from '@/components/redesign/homeowner/shell/homeowner-nav-items'
-
-const HOMEOWNER_TABS = HOMEOWNER_NAV.map((i) => i.icon)
 
 // Mirrors the real homeowner LiveCleaningProgress: everything lives inside the
 // brand gradient "Cleaning in progress" hero (white text, white progress bar,
@@ -78,13 +74,13 @@ export function LiveTrackingSection() {
         </div>
 
         <div ref={ref} className="flex flex-col items-center">
-          <p className="mb-2 text-center text-xs font-semibold text-muted-foreground">
-            <span className="font-extrabold text-foreground">Sarah</span> · Customer
-          </p>
-          <PhoneFrame initials="SK" tabs={HOMEOWNER_TABS} className="h-[400px] w-72">
-            <div className="grid grid-cols-1 gap-3 text-left">
+          {/* No phone shell here on purpose. The hero already establishes that
+              this is the customer's phone; repeating the chrome around one card
+              just crowds it. The gradient card is the whole point of the
+              section, so it stands alone. */}
+          <div className="grid w-full max-w-[340px] grid-cols-1 gap-3 text-left">
               {/* the real homeowner hero card: brand gradient, white text */}
-              <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-4 text-white shadow-soft-md">
+              <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-5 text-white shadow-soft-lg">
                 <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">
                   {complete ? 'Cleaning complete' : 'Cleaning in progress'}
                 </p>
@@ -135,8 +131,7 @@ export function LiveTrackingSection() {
                   All done. Photos are in your inbox.
                 </Badge>
               ) : null}
-            </div>
-          </PhoneFrame>
+          </div>
         </div>
       </div>
     </section>
