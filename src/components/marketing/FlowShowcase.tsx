@@ -18,9 +18,9 @@ import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { cn } from '@/lib/utils'
-import { BrowserFrame, MiniRail, PhoneFrame } from './frames'
 import { HOMEOWNER_NAV } from '@/components/redesign/homeowner/shell/homeowner-nav-items'
 import { CLEANER_NAV } from '@/components/redesign/cleaner/shell/cleaner-nav-items'
+import { BrowserFrame, MiniRail, PhoneFrame } from './frames'
 
 const HOMEOWNER_TABS = HOMEOWNER_NAV.map((i) => i.icon)  // 4: Home, Cleanings, Messages, Account
 const CLEANER_TABS = CLEANER_NAV.map((i) => i.icon)      // 5: Today, Schedule, Earnings, Messages, Profile
@@ -272,7 +272,7 @@ function MiniKpi({ label, emphasized, children }: { label: string; emphasized?: 
         emphasized ? 'border-brand-300 shadow-soft-md ring-2 ring-brand-200' : 'border-border',
       )}
     >
-      <p className="text-[9px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</p>
+      <p className="text-[9px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">{label}</p>
       <p className="text-base font-extrabold text-foreground tnum">{children}</p>
     </m.div>
   )
@@ -452,7 +452,7 @@ function OperatorSurface({ cue }: { cue: number }) {
         <div className="mb-2 grid grid-cols-3 gap-1.5">
           <MiniKpi label="Today's jobs">6</MiniKpi>
           <MiniKpi label="Needs you"><AnimatedNumber value={needsYou} /></MiniKpi>
-          <MiniKpi label="Monthly revenue" emphasized={revenueBeat && cue < CUE_INDEX.settle}>
+          <MiniKpi label="Revenue this month" emphasized={revenueBeat && cue < CUE_INDEX.settle}>
             <AnimatedNumber value={revenue} prefix="$" />
           </MiniKpi>
         </div>
