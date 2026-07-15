@@ -21,7 +21,7 @@ import { StatusPill } from '@/components/ui/status-pill'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { BrowserFrame, MiniRail } from './frames'
+import { BrowserFrame, RailLogo } from './frames'
 import { DEMO_CLEANERS, DEMO_JOBS, cleanerById, type DemoJob } from './demo-data'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -372,8 +372,78 @@ const TAB_CONTENT: Record<TabId, React.ComponentType> = {
   messages: MessagesTab,
 }
 
+/**
+ * The demo's navigation, shaped like the product's: an expanded OperatorRail.
+ * The real rail collapses to icons and reveals labels on hover; this one stays
+ * expanded, because a visitor has no reason to go hunting for a hover state and
+ * the icons alone would not tell them what they are looking at.
+ *
+ * Desktop only, mirroring the real rail's `hidden lg:flex`. The pill tab bar
+ * survives underneath it as the mobile nav, where a 200px rail cannot fit.
+ */
+function ExplorerRail({
+  tab,
+  setTab,
+  showHint,
+}: {
+  tab: TabId
+  setTab: (id: TabId) => void
+  showHint: boolean
+}) {
+  return (
+    <nav
+      aria-label="Demo sections"
+      className="hidden w-[196px] shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex"
+    >
+      <RailLogo className="mb-3 ml-1 h-6" width="w-[30px]" />
+      {TABS.map((t) => {
+        const active = t.id === tab
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+              'flex items-center gap-3 rounded-control px-2.5 py-2 text-left text-[13px] font-medium transition-colors duration-base',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              active
+                ? 'bg-brand-600 text-white'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <t.Icon className="size-4 flex-none" aria-hidden />
+            {t.label}
+          </button>
+        )
+      })}
+      <AnimatePresence>
+        {showHint ? (
+          <m.p
+            key="hint"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+            className="mt-3 px-2.5 text-[11px] font-medium leading-snug text-muted-foreground"
+          >
+            Click any tab. It is a live demo.
+          </m.p>
+        ) : null}
+      </AnimatePresence>
+    </nav>
+  )
+}
+
 export function CapabilityExplorer() {
   const [tab, setTab] = React.useState<TabId>('overview')
+  // The hint retires itself the moment someone navigates: it exists to start the
+  // interaction, not to narrate it.
+  const [touched, setTouched] = React.useState(false)
+  const selectTab = React.useCallback((id: TabId) => {
+    setTab(id)
+    setTouched(true)
+  }, [])
   const Content = TAB_CONTENT[tab]
   return (
     <section id="try-it" className="scroll-mt-20 mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
@@ -389,19 +459,21 @@ export function CapabilityExplorer() {
       </div>
 
       <div className="mt-8">
-        <BrowserFrame label="app.nexxus · Brightside Cleaning Co · demo data">
+        <BrowserFrame label="app.nexxus.com" appBar>
           <div className="flex">
-            <MiniRail />
+            <ExplorerRail tab={tab} setTab={selectTab} showHint={!touched} />
             <div className="min-w-0 flex-1 bg-background p-4 sm:p-5">
-              {/* tab bar */}
-              <div className="mb-4 flex gap-1 overflow-x-auto rounded-pill bg-muted p-1">
+              {/* Mobile nav. The rail is the nav from sm up, matching the real
+                  OperatorRail's desktop-only behaviour, but a 196px rail has
+                  nowhere to go on a phone, so the pills carry it there. */}
+              <div className="mb-4 flex gap-1 overflow-x-auto rounded-pill bg-muted p-1 sm:hidden">
                 {TABS.map((t) => {
                   const active = t.id === tab
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setTab(t.id)}
+                      onClick={() => selectTab(t.id)}
                       aria-pressed={active}
                       className={cn(
                         'inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-all duration-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
