@@ -138,16 +138,18 @@ export async function chargeCompletedAppointmentAuto(
   // R7 homeowner route, webhook re-charge) funnels through here, so one claim covers them all.
   // Capture the pre-claim status so the finally can restore it on a pre-Stripe precondition bail
   // (see PRECONDITION_CODES) rather than erasing a `failed` / `requires_action` recovery state.
+  //
+  // The claim runs as a raw-SQL RPC (migration 109), not an inline `.update().or()` query:
+  // PostgREST intermittently fails to resolve authorization_status inside an OR-filtered mutation
+  // (42703), while the identical predicate inside a function is immune. Same statement, same
+  // row-lock serialization; the RPC returns the claimed id (empty = a concurrent charge won).
   const priorStatus = appt.authorization_status;
 
-  const { data: claimRows, error: claimErr } = await supabase
-    .from('appointments')
-    .update({ authorization_status: 'charging' })
-    .eq('id', appointmentId)
-    .or('authorization_status.is.null,authorization_status.in.(failed,requires_action)')
-    .select('id');
+  const { data: claimRows, error: claimErr } = await supabase.rpc('claim_appointment_for_charge', {
+    p_appointment_id: appointmentId,
+  });
   if (claimErr) throw claimErr;
-  if (!claimRows || claimRows.length === 0) {
+  if (!claimRows || (claimRows as unknown[]).length === 0) {
     return { ok: false, code: 'charge_in_progress', message: 'A charge for this appointment is already in progress' };
   }
 

@@ -25,7 +25,7 @@ import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import { withTestOrg, addManagerToOrg, addHomeownerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
-import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
+import { createTestSupabaseClient, createAnonClient } from '../../../../../../tests/helpers/supabase';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
   POST(req, { params: Promise.resolve({ appointmentId }) });
@@ -549,5 +549,88 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     // not_chargeable is a pre-Stripe precondition, so the claim releases back to the prior `failed`.
     const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
     expect((a as { authorization_status: string | null }).authorization_status).toBe('failed');
+  });
+});
+
+describe('claim_appointment_for_charge RPC (migration 109)', () => {
+  // The atomic claim moved from an inline `.update().or()` into this raw-SQL function because
+  // PostgREST intermittently failed to resolve authorization_status inside an OR-filtered mutation
+  // (42703) on the shared dev project. These tests pin the function's semantics + grants so a
+  // future migration can't silently loosen the money-path serialization.
+  let org: TestOrgFixture;
+
+  beforeEach(async () => {
+    org = await withTestOrg();
+  });
+
+  afterEach(async () => {
+    await org.cleanup();
+  });
+
+  async function apptWithAuthStatus(authorizationStatus: string | null): Promise<string> {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+    });
+    if (authorizationStatus !== null) {
+      await db.from('appointments').update({ authorization_status: authorizationStatus }).eq('id', appt.id);
+    }
+    return appt.id;
+  }
+
+  it.each([null, 'failed', 'requires_action'])(
+    'claims a chargeable row (authorization_status=%s) and flips it to charging',
+    async (initial) => {
+      const apptId = await apptWithAuthStatus(initial as string | null);
+      const db = createTestSupabaseClient();
+
+      const { data, error } = await db.rpc('claim_appointment_for_charge', { p_appointment_id: apptId });
+      expect(error).toBeNull();
+      expect(data).toEqual([apptId]);
+
+      const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+      expect((a as { authorization_status: string }).authorization_status).toBe('charging');
+    },
+  );
+
+  it('returns no rows when the claim is already held (charging)', async () => {
+    const apptId = await apptWithAuthStatus('failed');
+    const db = createTestSupabaseClient();
+
+    const first = await db.rpc('claim_appointment_for_charge', { p_appointment_id: apptId });
+    expect(first.data).toEqual([apptId]);
+
+    // Second claim loses: the row is mid-charge, so the caller must bow out (charge_in_progress).
+    const second = await db.rpc('claim_appointment_for_charge', { p_appointment_id: apptId });
+    expect(second.error).toBeNull();
+    expect(second.data).toEqual([]);
+  });
+
+  it.each(['captured', 'authorized'])('returns no rows on a non-chargeable terminal status (%s)', async (terminal) => {
+    const apptId = await apptWithAuthStatus(terminal);
+    const db = createTestSupabaseClient();
+
+    const { data, error } = await db.rpc('claim_appointment_for_charge', { p_appointment_id: apptId });
+    expect(error).toBeNull();
+    expect(data).toEqual([]);
+
+    // And the terminal status is untouched: the claim never downgrades a paid/authorized row.
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string }).authorization_status).toBe(terminal);
+  });
+
+  it('is not executable by anon (server-only grant)', async () => {
+    const apptId = await apptWithAuthStatus('failed');
+
+    const { error } = await createAnonClient().rpc('claim_appointment_for_charge', { p_appointment_id: apptId });
+    expect(error).not.toBeNull();
+
+    // And the row was not claimed.
+    const db = createTestSupabaseClient();
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string }).authorization_status).toBe('failed');
   });
 });
