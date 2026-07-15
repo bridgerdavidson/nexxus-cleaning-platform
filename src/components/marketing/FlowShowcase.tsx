@@ -451,8 +451,10 @@ function OperatorSurface({ cue }: { cue: number }) {
   const pillKey = completed ? 'completed' : started ? 'in_progress' : 'confirmed'
 
   return (
+    // The rail is hoisted to BrowserFrame's `rail` slot, so it sits full-height
+    // beside this content with the app bar starting at its edge, matching the
+    // real shell. This surface is the content column only.
     <div className="flex">
-      <MiniRail variant="app" />
       <div className="min-w-0 flex-1 bg-background p-3 text-left">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-[13px] font-bold text-foreground">Good morning, Dana</p>
@@ -857,7 +859,7 @@ export function FlowShowcase() {
             </PhoneFrame>
           </div>
           <div className="absolute z-10" style={{ left: DASH.x, top: DASH.y, width: DASH.w }}>
-            <BrowserFrame label="app.nexxus.com" appBar>
+            <BrowserFrame label="app.nexxus.com" appBar rail={<MiniRail variant="app" />}>
               <OperatorSurface cue={cue} />
             </BrowserFrame>
           </div>

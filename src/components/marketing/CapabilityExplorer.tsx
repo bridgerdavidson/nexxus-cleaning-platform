@@ -468,9 +468,12 @@ export function CapabilityExplorer() {
       </div>
 
       <div className="mt-8">
-        <BrowserFrame label="app.nexxus.com" appBar>
-          <div className="flex">
-            <ExplorerRail tab={tab} setTab={selectTab} showHint={!touched} />
+        <BrowserFrame
+          label="app.nexxus.com"
+          appBar
+          rail={<ExplorerRail tab={tab} setTab={selectTab} showHint={!touched} />}
+        >
+          <>
             {/* Pinned so the frame does not resize under the pointer as you tab
                 through. The tabs range from 280px (Messages) to 440px (Crew), a
                 160px jump, and a window that changes height when you click
@@ -478,7 +481,7 @@ export function CapabilityExplorer() {
                 only shorter ones gain slack. Applied from sm up, where the rail
                 lives: below that the content reflows taller than 440 anyway and
                 the floor would never bind. Re-measure if a tab's content grows. */}
-            <div className="min-w-0 flex-1 bg-background p-4 sm:min-h-[440px] sm:p-5">
+            <div className="bg-background p-4 sm:min-h-[440px] sm:p-5">
               {/* Mobile nav. The rail is the nav from sm up, matching the real
                   OperatorRail's desktop-only behaviour, but a 196px rail has
                   nowhere to go on a phone, so the pills carry it there. */}
@@ -514,7 +517,7 @@ export function CapabilityExplorer() {
                 </m.div>
               </AnimatePresence>
             </div>
-          </div>
+          </>
         </BrowserFrame>
       </div>
     </section>

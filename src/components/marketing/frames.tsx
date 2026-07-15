@@ -5,21 +5,52 @@ import { Bell, CalendarDays, CreditCard, Home, Plus, Search, Settings, Users, ty
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 /** Browser-chrome wrapper for desktop app vignettes.
- *  `appBar` adds the operator top bar (search / New booking / bell / avatar)
- *  beneath the browser chrome, mirroring OperatorTopBar at sketch scale.
- *  Off by default: CapabilityExplorer wants browser chrome only.
+ *  `appBar` adds the operator top bar (search / New booking / bell / avatar),
+ *  mirroring OperatorTopBar at sketch scale.
+ *  `rail` slots the app's rail in beside the content.
+ *  Both are off by default: CapabilityExplorer's original layout wanted browser
+ *  chrome only.
+ *
+ *  Layout, when a rail is given, follows the real shell rather than the obvious
+ *  reading: OperatorRail is `fixed inset-y-0 left-0`, so it owns the full height
+ *  and the top bar is offset to its right ("Sits to the right of the rail on
+ *  desktop (parent offsets it)"). The rail is dominant; the bar starts where the
+ *  rail ends. Only the browser chrome spans everything, because that belongs to
+ *  the browser, not the app.
  */
 export function BrowserFrame({
   label,
   appBar = false,
+  rail,
   className,
   children,
 }: {
   label: string
   appBar?: boolean
+  rail?: React.ReactNode
   className?: string
   children: React.ReactNode
 }) {
+  const bar = appBar ? (
+    <div className="flex items-center gap-2 border-b border-border bg-card px-2.5 py-2" aria-hidden>
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 rounded-pill border border-border bg-background px-2.5 py-1">
+        <Search className="size-3 shrink-0 text-muted-foreground" />
+        <span className="truncate text-[9px] text-muted-foreground">Search bookings, customers, cleaners...</span>
+        <span className="ml-auto shrink-0 rounded-chip bg-muted px-1.5 py-0.5 text-[8px] font-semibold leading-none text-muted-foreground">
+          ⌘K
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1 rounded-chip bg-brand-600 px-2 py-1 text-[9px] font-bold text-white">
+        <Plus className="size-2.5" />
+        New booking
+      </span>
+      <Bell className="size-3.5 shrink-0 text-muted-foreground" />
+      <Avatar className="size-4 shrink-0 text-[7px]">
+        <AvatarFallback>DA</AvatarFallback>
+      </Avatar>
+    </div>
+  ) : null
+
   return (
     <div className={cn('overflow-hidden rounded-card border border-border bg-card shadow-soft-lg', className)}>
       <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2.5">
@@ -31,27 +62,20 @@ export function BrowserFrame({
         </span>
       </div>
 
-      {appBar ? (
-        <div className="flex items-center gap-2 border-b border-border bg-card px-2.5 py-2" aria-hidden>
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 rounded-pill border border-border bg-background px-2.5 py-1">
-            <Search className="size-3 shrink-0 text-muted-foreground" />
-            <span className="truncate text-[9px] text-muted-foreground">Search bookings, customers, cleaners...</span>
-            <span className="ml-auto shrink-0 rounded-chip bg-muted px-1.5 py-0.5 text-[8px] font-semibold leading-none text-muted-foreground">
-              ⌘K
-            </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-1 rounded-chip bg-brand-600 px-2 py-1 text-[9px] font-bold text-white">
-            <Plus className="size-2.5" />
-            New booking
-          </span>
-          <Bell className="size-3.5 shrink-0 text-muted-foreground" />
-          <Avatar className="size-4 shrink-0 text-[7px]">
-            <AvatarFallback>DA</AvatarFallback>
-          </Avatar>
+      {rail ? (
+        <div className="flex">
+          {rail}
+          <div className="min-w-0 flex-1">
+            {bar}
+            {children}
+          </div>
         </div>
-      ) : null}
-
-      {children}
+      ) : (
+        <>
+          {bar}
+          {children}
+        </>
+      )}
     </div>
   )
 }
