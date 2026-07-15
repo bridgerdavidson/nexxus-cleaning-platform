@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Check, CreditCard, Landmark, Clock, Plus } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
+import { useAuth } from '@/hooks/useAuth';
+import { useManagerPermissions } from '@/hooks/useManagerPermissions';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AccountAddCardPanel } from '@/components/redesign/shared/payment-methods/AccountAddCardPanel';
@@ -59,8 +61,9 @@ function CardRow({
 /**
  * Operator payment selection, rebuilt from the design system (no legacy AppointmentPaymentSection /
  * OrgPaymentMethodPicker styling). Customer-billed: the customer's saved cards, "add a card" (via the
- * brand SetupIntent panel, org-staff acting on the customer), or "collect later". Self-pay: the org's
- * saved cards (report method + whether one exists). "Send a payment link" is a fast follow-up.
+ * brand SetupIntent panel, org-staff acting on the customer), or "collect later". Self-pay: the
+ * charged company default card, display-only (self-pay always charges the org default server-side;
+ * cards are managed in Settings). "Send a payment link" is a fast follow-up.
  */
 export function BookingPaymentField({
   billTo,
@@ -81,6 +84,14 @@ export function BookingPaymentField({
 }) {
   const selfPay = billTo === 'self_pay';
   const [adding, setAdding] = useState(false);
+  // "Manage in Settings" targets the payments settings section, which a manager without
+  // can_manage_payments cannot reach (OperatorSettings silently falls back to Profile) — so only
+  // offer the link to viewers who can actually land there. Owners/admins have no
+  // manager_permissions row (all-false), hence the privileged bypass.
+  const { currentOrgRole } = useAuth();
+  const { permissions } = useManagerPermissions();
+  const canManageOrgCards =
+    currentOrgRole === 'owner' || currentOrgRole === 'admin' || !!permissions?.can_manage_payments;
 
   const customerCards = useQuery({
     queryKey: ['operator-booking', 'customer-cards', organizationId, customerId],
@@ -140,13 +151,18 @@ export function BookingPaymentField({
           orgDefault && <CardRow pm={orgDefault} selected />
         )}
         <p className="px-0.5 text-xs text-muted-foreground">
-          Self-pay cleanings are charged to the company default card when the job is completed.{' '}
-          <Link
-            href="/app/admin-dashboard/settings?section=payments"
-            className="font-medium text-foreground hover:underline"
-          >
-            Manage in Settings
-          </Link>
+          Self-pay cleanings are charged to the company default card when the job is completed.
+          {canManageOrgCards && (
+            <>
+              {' '}
+              <Link
+                href="/app/admin-dashboard/settings?section=payments"
+                className="font-medium text-foreground hover:underline"
+              >
+                Manage in Settings
+              </Link>
+            </>
+          )}
         </p>
       </div>
     );

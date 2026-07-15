@@ -59,7 +59,7 @@ export function OrgAddCardSheet({ open, onOpenChange, organizationId, onSaved }:
             This card funds self-pay cleanings your company books. You will not be charged now.
           </SheetDescription>
         </SheetHeader>
-        <div className="mt-4">
+        <div className="mt-4 px-6 pb-6">
           {/* Mount the panel only while open so each open fetches a fresh SetupIntent. */}
           {open && (
             <AccountAddCardPanel
