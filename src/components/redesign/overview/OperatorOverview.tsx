@@ -13,6 +13,7 @@ import { SetupCompleteCard } from "@/components/redesign/onboarding/SetupComplet
 import { WelcomeContent } from "@/components/redesign/onboarding/WelcomeContent";
 import { getWelcomeCopy } from "@/lib/onboarding/welcomeCopy";
 import { useOpenBookingDetail } from "@/components/redesign/bookings/useOpenBookingDetail";
+import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 // --- display mappers (AdminAppointment -> View display items) ---
 
@@ -90,6 +91,19 @@ export function OperatorOverview() {
   // handler for a restricted manager and the queue renders informational-only.
   const canViewBookings = privileged || !!permissions?.can_view_bookings;
 
+  // Failed/requires-action charges surface in the queue only for viewers who can see money,
+  // and only under the new charge flow (authorization_status is that flow's outcome mirror) —
+  // the same gates as the Payments triage band.
+  const failedPayment: QueueItem[] =
+    stripeNewChargeFlowUiEnabled() && canViewPayments
+      ? sections.failedPayment.map((a) => ({
+          ...toQueueItem(a),
+          subtitle: `${fmtShortDate(a.scheduled_date)} · ${
+            a.authorization_status === "requires_action" ? "Card needs authentication" : "Card declined"
+          }`,
+        }))
+      : [];
+
   const today: ScheduleItem[] = [...sections.today]
     .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? ""))
     .map((a) => ({
@@ -154,7 +168,9 @@ export function OperatorOverview() {
           ...toQueueItem(a),
           subtitle: `${fmtShortDate(a.scheduled_date)} · ${fmtTime(a.scheduled_time)} · ${cleanerLabel(a)} has not responded`,
         }))}
+        failedPayment={failedPayment}
         onOpenBooking={canViewBookings ? openBooking : undefined}
+        paymentsHref={canViewPayments ? "/app/admin-dashboard/payments" : undefined}
         today={today}
         activeNow={activeNow}
         checklist={checklist}

@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { AccountAddCardPanel } from '@/components/redesign/shared/payment-methods/AccountAddCardPanel';
 
 export interface OrgAddCardSheetProps {
@@ -49,15 +49,17 @@ export function OrgAddCardSheet({ open, onOpenChange, organizationId, onSaved }:
   }, [organizationId]);
 
   return (
-    <Drawer open={open} onOpenChange={(v) => !saving && onOpenChange(v)}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Add a company card</DrawerTitle>
-          <DrawerDescription>
+    // Settings is a desktop surface: a right-side Sheet, matching every other detail sheet
+    // (BookingDetailSheet etc.), not the mobile bottom Drawer.
+    <Sheet open={open} onOpenChange={(v) => !saving && onOpenChange(v)}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>Add a company card</SheetTitle>
+          <SheetDescription>
             This card funds self-pay cleanings your company books. You will not be charged now.
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-4">
           {/* Mount the panel only while open so each open fetches a fresh SetupIntent. */}
           {open && (
             <AccountAddCardPanel
@@ -67,7 +69,7 @@ export function OrgAddCardSheet({ open, onOpenChange, organizationId, onSaved }:
             />
           )}
         </div>
-      </DrawerContent>
-    </Drawer>
+      </SheetContent>
+    </Sheet>
   );
 }

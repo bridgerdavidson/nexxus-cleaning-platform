@@ -56,6 +56,35 @@ describe("deriveOverviewSections", () => {
     expect(r.counterProposed).toHaveLength(0);
   });
 
+  describe("failedPayment (charge failed or needs authentication)", () => {
+    it("includes completed jobs with a failed or requires_action charge", () => {
+      const r = deriveOverviewSections(
+        [
+          appt({ cleaner_id: "c1", status: "completed", authorization_status: "failed" }),
+          appt({ cleaner_id: "c1", status: "completed", authorization_status: "requires_action" }),
+        ],
+        today,
+        NOW
+      );
+      expect(r.failedPayment).toHaveLength(2);
+    });
+
+    it("excludes cancelled rows and non-failure statuses", () => {
+      const r = deriveOverviewSections(
+        [
+          appt({ cleaner_id: "c1", status: "cancelled", authorization_status: "failed" }),
+          appt({ cleaner_id: "c1", status: "completed", authorization_status: "captured" }),
+          appt({ cleaner_id: "c1", status: "completed", authorization_status: "charging" }),
+          appt({ cleaner_id: "c1", status: "completed", authorization_status: null }),
+          appt({ cleaner_id: "c1", status: "completed" }), // column absent entirely
+        ],
+        today,
+        NOW
+      );
+      expect(r.failedPayment).toHaveLength(0);
+    });
+  });
+
   describe("overdue (cleaner response deadline passed)", () => {
     const asked = (over: Partial<OverviewAppointment> = {}) =>
       appt({ cleaner_id: "c1", cleaner_confirmation_status: "awaiting", ...over });

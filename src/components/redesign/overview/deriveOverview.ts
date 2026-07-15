@@ -10,6 +10,7 @@ export interface OverviewAppointment {
   scheduled_date: string; // YYYY-MM-DD
   cleaner_availability_feedback?: unknown[] | null;
   response_deadline?: string | null; // ISO timestamp the asked cleaner must respond by
+  authorization_status?: string | null; // charge-outcome mirror: 'failed' | 'requires_action' | 'captured' | ...
 }
 
 export type OverviewSections<T extends OverviewAppointment = OverviewAppointment> = {
@@ -17,6 +18,7 @@ export type OverviewSections<T extends OverviewAppointment = OverviewAppointment
   declined: T[];
   counterProposed: T[];
   overdue: T[];
+  failedPayment: T[];
   today: T[];
   activeNow: T[];
 };
@@ -45,6 +47,13 @@ export function deriveOverviewSections<T extends OverviewAppointment>(
     // qualifies (a confirmed/in-progress row has already resolved) and only
     // with a cleaner attached (a null cleaner is the unassigned bucket's job).
     overdue: appts.filter((a) => isResponseOverdue(a, nowMs)),
+    // A completed job whose charge declined ('failed') or needs 3DS the customer isn't present
+    // for ('requires_action'). Money already earned but not collected, so it belongs in the
+    // operator's face, not just the Payments triage band. Deliberately NOT limited to upcoming
+    // dates: these are completed jobs. Mirrors usePaymentsTriage's charge query.
+    failedPayment: appts.filter(
+      (a) => live(a) && (a.authorization_status === "failed" || a.authorization_status === "requires_action")
+    ),
     today: appts.filter((a) => live(a) && a.scheduled_date === todayISO),
     activeNow: appts.filter((a) => a.status === "in_progress"),
   };

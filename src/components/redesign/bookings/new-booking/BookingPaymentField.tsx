@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Check, CreditCard, Landmark, Clock, Plus } from 'lucide-react';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
@@ -133,11 +134,20 @@ export function BookingPaymentField({
             No company card on file. Add one in Settings, Payments to book a self-pay cleaning.
           </p>
         ) : (
-          // Display-only: self-pay always charges the org default (or first) card server-side,
-          // so the rows mirror that choice instead of offering a selection.
-          cards.map((pm) => <CardRow key={pm.id} pm={pm} selected={pm.id === orgDefault?.id} />)
+          // Self-pay always charges the org default (or first) card server-side, so show ONLY that
+          // card (product decision 2026-07-15: honest display, not a per-booking picker). Listing
+          // the other saved cards here read as a broken selection.
+          orgDefault && <CardRow pm={orgDefault} selected />
         )}
-        <p className="px-0.5 text-xs text-muted-foreground">The company card is charged when the job is completed.</p>
+        <p className="px-0.5 text-xs text-muted-foreground">
+          Self-pay cleanings are charged to the company default card when the job is completed.{' '}
+          <Link
+            href="/app/admin-dashboard/settings?section=payments"
+            className="font-medium text-foreground hover:underline"
+          >
+            Manage in Settings
+          </Link>
+        </p>
       </div>
     );
   }

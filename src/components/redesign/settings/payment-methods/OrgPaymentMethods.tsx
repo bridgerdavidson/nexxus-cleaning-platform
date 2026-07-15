@@ -8,7 +8,7 @@ import {
   paymentMethodTitle,
   type SavedPaymentMethod,
 } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
-import { RemoveCardSheet } from '@/components/redesign/shared/payment-methods/RemoveCardSheet';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { OrgPaymentMethodsView } from './OrgPaymentMethodsView';
 import { OrgAddCardSheet } from './OrgAddCardSheet';
 import { useOrgPaymentMethods } from './useOrgPaymentMethods';
@@ -112,11 +112,18 @@ export function OrgPaymentMethods() {
         />
       ) : null}
 
-      <RemoveCardSheet
+      {/* Desktop settings surface: a centered confirm dialog, not the mobile bottom drawer
+          (RemoveCardSheet stays as-is for the homeowner's mobile-first account screen). */}
+      <ConfirmDialog
         open={!!removeTarget}
-        onOpenChange={(v) => !v && setRemoveTarget(null)}
-        label={removeTarget ? paymentMethodTitle(removeTarget) : ''}
-        removing={removing}
+        onOpenChange={(v) => !v && !removing && setRemoveTarget(null)}
+        title="Remove this card?"
+        description={
+          removeTarget ? `${paymentMethodTitle(removeTarget)} will be removed from your saved payment methods.` : undefined
+        }
+        confirmLabel="Remove card"
+        destructive
+        loading={removing}
         onConfirm={handleRemoveConfirm}
       />
     </>
