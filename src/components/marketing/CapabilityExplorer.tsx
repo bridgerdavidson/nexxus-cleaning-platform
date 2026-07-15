@@ -393,14 +393,18 @@ function ExplorerRail({
   return (
     <nav
       aria-label="Demo sections"
-      className="hidden w-[168px] shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex"
+      className="hidden w-[144px] shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex"
     >
       {/* Expanded rail, so the FULL lockup: the bare icon belongs to the
-          collapsed state. The lockup renders ~4.5x as wide as it is tall, so at
-          h-8 it is ~144px, and the rail is that plus its p-3 either side. The
-          rail is sized to the wordmark rather than the wordmark dropped into an
-          arbitrary rail. */}
-      <RailLogo variant="full" className="mb-3 ml-1 h-8" />
+          collapsed state.
+          Sizing runs nav-first, not logo-first. The widest label ("Messages")
+          needs 111px including its icon, gap and padding, so the rail is 144 =
+          120 of inner width plus p-3 either side. The lockup renders ~4.5x as
+          wide as it is tall, so h-6 puts it at ~108: a little narrower than the
+          nav buttons it sits above, which is what keeps it from shouting. Letting
+          the logo set the rail's width, as an earlier pass did at h-8, made the
+          rail 24px wider than its own navigation needed. */}
+      <RailLogo variant="full" className="mb-3 ml-1 h-6" />
       {TABS.map((t) => {
         const active = t.id === tab
         return (
