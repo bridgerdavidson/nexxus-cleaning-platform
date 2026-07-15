@@ -19,6 +19,11 @@ import { StatusPill } from '@/components/ui/status-pill'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { cn } from '@/lib/utils'
 import { BrowserFrame, MiniRail, PhoneFrame } from './frames'
+import { HOMEOWNER_NAV } from '@/components/redesign/homeowner/shell/homeowner-nav-items'
+import { CLEANER_NAV } from '@/components/redesign/cleaner/shell/cleaner-nav-items'
+
+const HOMEOWNER_TABS = HOMEOWNER_NAV.map((i) => i.icon)  // 4: Home, Cleanings, Messages, Account
+const CLEANER_TABS = CLEANER_NAV.map((i) => i.icon)      // 5: Today, Schedule, Earnings, Messages, Profile
 
 // ---------------------------------------------------------------------------
 // One booking travels through Nexxus as a single continuous ~24s loop. The
@@ -37,9 +42,15 @@ const GLIDE: [number, number, number, number] = [0.45, 0.05, 0.25, 1]
 const STAGE_W = 1060
 const STAGE_H = 420
 
-const HOME = { x: 0, y: 56, w: 252 }
-const DASH = { x: 306, y: 12, w: 460 }
-const CLEAN = { x: 812, y: 56, w: 248 }
+// Three frames on a shared top edge at y=30, with the label band above them in
+// y 0..24. The old composition staggered them (dash y=12, phones y=56); that is
+// dropped, because a shared label baseline over staggered frames leaves an
+// uneven label-to-frame gap. With the app bar the dashboard lands near 380 tall
+// anyway, the same as the phones, so the three align. The dashboard still
+// dominates at 460 wide against 220.
+const HOME = { x: 0, y: 30, w: 220, h: 380 }
+const DASH = { x: 300, y: 30, w: 460 }
+const CLEAN = { x: 840, y: 30, w: 220, h: 380 }
 
 // Card centers, used by the motion paths (offset-path follows these curves).
 const PATH_A = 'M 126 252 C 240 165, 400 148, 556 212'
@@ -88,6 +99,32 @@ const CAPTIONS: Array<{ from: CueName; text: string }> = [
   { from: 'panBack', text: 'Job complete: the saved card is charged and revenue rolls up.' },
   { from: 'settle', text: 'Booked to paid, with nobody chasing anybody.' },
 ]
+
+const ROLES = [
+  { key: 'home', name: 'Sarah', role: 'Customer', x: HOME.x, w: HOME.w },
+  { key: 'dash', name: 'Dana', role: 'The office', x: DASH.x, w: DASH.w },
+  { key: 'clean', name: 'Maria', role: 'Cleaner', x: CLEAN.x, w: CLEAN.w },
+] as const
+
+/** Role labels on a shared baseline above the frames. These are the page's
+ *  voice, not product chrome: the frames themselves stay honest screenshots.
+ *  "Customer" not "Homeowner" on purpose, see the spec: the operator nav says
+ *  "Customers", the hero sells past homes, and demo-data has a rental. */
+function StageLabels() {
+  return (
+    <>
+      {ROLES.map((r) => (
+        <p
+          key={r.key}
+          className="absolute top-0 text-center text-xs font-semibold text-muted-foreground"
+          style={{ left: r.x, width: r.w }}
+        >
+          <span className="font-extrabold text-foreground">{r.name}</span> · {r.role}
+        </p>
+      ))}
+    </>
+  )
+}
 
 function focusFor(cue: number): number {
   if (cue < CUE_INDEX.lift) return HOME.x + HOME.w / 2
@@ -285,8 +322,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
   const complete = cue >= CUE_INDEX.panBack
   const paid = cue >= CUE_INDEX.revenue
   return (
-    <div className="grid min-h-[290px] grid-cols-1 content-start gap-2 text-left">
-      <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Sarah · customer</Badge>
+    <div className="grid grid-cols-1 content-start gap-2 text-left">
       <AnimatePresence mode="popLayout" initial={false}>
       {!collapsed ? (
         <m.div
@@ -390,7 +426,7 @@ function OperatorSurface({ cue }: { cue: number }) {
 
   return (
     <div className="flex">
-      <MiniRail />
+      <MiniRail variant="app" />
       <div className="min-w-0 flex-1 bg-background p-3 text-left">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-[13px] font-bold text-foreground">Good morning, Dana</p>
@@ -530,8 +566,7 @@ function CleanerSurface({ cue }: { cue: number }) {
   const checks = cue >= CUE_INDEX.checkDone ? 8 : cue >= CUE_INDEX.check2 ? 5 : cue >= CUE_INDEX.check1 ? 3 : 2
 
   return (
-    <div className="grid min-h-[290px] grid-cols-1 content-start gap-2 text-left">
-      <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Maria · cleaner</Badge>
+    <div className="grid grid-cols-1 content-start gap-2 text-left">
       {!started ? (
         <>
           <p className="text-[13px] font-bold text-foreground">Your Thursday</p>
@@ -789,18 +824,19 @@ export function FlowShowcase() {
           animate={{ x: camX, scale }}
           transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 55, damping: 20 }}
         >
-          <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w }}>
-            <PhoneFrame>
+          <StageLabels />
+          <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w, height: HOME.h }}>
+            <PhoneFrame initials="SK" tabs={HOMEOWNER_TABS} className="h-full w-full">
               <HomeownerSurface cue={cue} />
             </PhoneFrame>
           </div>
           <div className="absolute z-10" style={{ left: DASH.x, top: DASH.y, width: DASH.w }}>
-            <BrowserFrame label="app.nexxus · demo data">
+            <BrowserFrame label="app.nexxus.com" appBar>
               <OperatorSurface cue={cue} />
             </BrowserFrame>
           </div>
-          <div className="absolute z-10" style={{ left: CLEAN.x, top: CLEAN.y, width: CLEAN.w }}>
-            <PhoneFrame>
+          <div className="absolute z-10" style={{ left: CLEAN.x, top: CLEAN.y, width: CLEAN.w, height: CLEAN.h }}>
+            <PhoneFrame initials="MR" tabs={CLEANER_TABS} className="h-full w-full">
               <CleanerSurface cue={cue} />
             </PhoneFrame>
           </div>
