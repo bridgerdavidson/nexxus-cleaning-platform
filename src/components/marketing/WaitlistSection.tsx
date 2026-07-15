@@ -58,18 +58,26 @@ export function WaitlistSection() {
 
   return (
     <section id="waitlist" className="scroll-mt-20 mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-6 sm:pb-20">
-      <div className="rounded-card bg-gradient-to-br from-brand-950 to-brand-700 px-6 py-12 text-center shadow-soft-lg sm:px-12 sm:py-16">
-        <h2 className="text-3xl font-extrabold tracking-tight text-primary-foreground sm:text-4xl">
+      {/* A card on the warm canvas, the same recipe every other surface on this
+          page uses. It was a brand-950 -> brand-700 gradient slab, which nothing
+          in the app does, and that one choice forced everything else off-system:
+          the labels needed an arbitrary-variant override to stay legible, the
+          submit button had to be inverted to avoid vanishing into its own
+          background, and the error message was styled pale blue because critical
+          red would have clashed. Put the surface back on-system and all three
+          hacks simply stop being necessary. */}
+      <div className="rounded-card border border-border bg-card px-6 py-12 text-center shadow-soft-lg sm:px-12 sm:py-16">
+        <h2 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
           Be first in line
         </h2>
-        <p className="mx-auto mt-3 max-w-md text-base font-medium text-brand-100">
+        <p className="mx-auto mt-3 max-w-md text-base font-medium text-muted-foreground">
           Early access opens soon. Founding companies get hands-on onboarding and keep early
           pricing for good.
         </p>
 
         {status === 'success' ? (
           <div
-            className="mx-auto mt-8 flex max-w-md items-center justify-center gap-2.5 rounded-field bg-card px-6 py-5 text-left shadow-soft-md"
+            className="mx-auto mt-8 flex max-w-md items-center justify-center gap-2.5 rounded-field border border-border bg-positive-50 px-6 py-5 text-left"
             role="status"
           >
             <CheckCircle2 className="size-6 shrink-0 text-positive-700" aria-hidden />
@@ -82,7 +90,7 @@ export function WaitlistSection() {
             onSubmit={submit}
             className="mx-auto mt-8 grid max-w-3xl gap-3 text-left sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
           >
-            <FormField label="Work email" htmlFor="wl-email" required error={emailError} className="[&_label]:text-brand-100">
+            <FormField label="Work email" htmlFor="wl-email" required error={emailError}>
               <Input
                 id="wl-email"
                 type="email"
@@ -93,7 +101,7 @@ export function WaitlistSection() {
                 required
               />
             </FormField>
-            <FormField label="Company" htmlFor="wl-company" className="[&_label]:text-brand-100">
+            <FormField label="Company" htmlFor="wl-company">
               <Input
                 id="wl-company"
                 autoComplete="organization"
@@ -102,7 +110,7 @@ export function WaitlistSection() {
                 onChange={(e) => setCompany(e.target.value)}
               />
             </FormField>
-            <FormField label="Team size" htmlFor="wl-team" className="[&_label]:text-brand-100">
+            <FormField label="Team size" htmlFor="wl-team">
               <Select value={teamSize} onValueChange={setTeamSize}>
                 <SelectTrigger id="wl-team" aria-label="Team size">
                   <SelectValue placeholder="Team size" />
@@ -116,16 +124,16 @@ export function WaitlistSection() {
                 </SelectContent>
               </Select>
             </FormField>
-            <Button
-              type="submit"
-              size="lg"
-              loading={status === 'submitting'}
-              className="bg-card text-accent-foreground hover:bg-card hover:brightness-95 sm:mb-0"
-            >
+            {/* Default variant, no override: `--primary` resolves to brand-600
+                in the redesign scope, so this is already the brand button. It
+                was inverted to a white pill only to survive the blue slab. */}
+            <Button type="submit" size="lg" loading={status === 'submitting'}>
               Join the waitlist
             </Button>
             {status === 'error' ? (
-              <p className="text-sm font-semibold text-brand-100 sm:col-span-4" role="alert">
+              // Was text-brand-100: a pale blue error, because critical red would
+              // have fought the slab. An error should look like one.
+              <p className="text-sm font-semibold text-critical-700 sm:col-span-4" role="alert">
                 Something went wrong on our end. Please try again in a moment.
               </p>
             ) : null}
