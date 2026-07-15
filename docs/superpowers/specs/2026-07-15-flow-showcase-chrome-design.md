@@ -62,11 +62,24 @@ Left-aligned search icon, spacer, notification bell, avatar. **No greeting text.
 > comparing the vignette to the app will find a mismatch; that mismatch is intentional.
 > Revisit only if mobile search is dropped from the roadmap.
 
-### 3. Phone bottom nav: 5 tabs, real icons
+### 3. Phone bottom nav: the real tabs, real icons
 
-Five tabs, real lucide icons, no labels. Active tab: `text-brand-600` plus the 2px
-brand-600 top indicator, mirroring `CleanerBottomNav`. Which tab is active is not
-meaningful; do not imply a specific one.
+Real lucide icons, no labels. Active tab: `text-brand-600` plus the 2px brand-600 top
+indicator, mirroring `CleanerBottomNav`.
+
+**The two phones do not have the same number of tabs.** Import the real arrays rather than
+hardcoding, so the vignettes track the app:
+
+- `HOMEOWNER_NAV` (`homeowner-nav-items.ts`) is **4 tabs**: Home, Cleanings, Messages, Account.
+- `CLEANER_NAV` (`cleaner-nav-items.ts`) is **5 tabs**: Today, Schedule, Earnings, Messages,
+  Profile.
+
+An earlier draft of this spec said "5 tabs" for both, which would have given the homeowner a
+tab she does not have.
+
+**Active tab is the first one** in each (Home / Today). That is not arbitrary: the homeowner
+surface shows a request form and the cleaner surface shows "Your Thursday", so tab one is the
+screen each phone is actually displaying.
 
 This is the element that does most of the work. It is the strongest "phone" signal and it
 fills the dead space that made the frames read as cards.
@@ -226,13 +239,18 @@ broken if it is skipped.
 
 ### The travelling card (`ApptCard`) must shrink
 
-`ApptCard` is hardcoded **`w-[190px]`**. Today it overlays a 252px phone whose body padding
-is `px-3.5`, so it spans 190 of 224 usable px, about **75%**: a card resting on a phone.
+`ApptCard` is hardcoded **`w-[190px]`**. It is a **stage overlay**, absolutely positioned on
+the flight path and floating above the phone, not a child of it, so the phone's padding does
+not constrain it. What matters is its width against the **frame** width.
 
-At 220px wide the usable width becomes 192. **A 190px card would leave 2px of slack**, touch
-both edges, and stop reading as a card.
+Today: 190 on a 252 frame, about **75%**, leaving 31px of margin each side. It reads as a
+card resting on a phone.
 
-Preserve the ratio instead of the pixels: 220 x 0.75 ≈ **`w-[166px]`**.
+At 220: 190 would leave **15px each side**, halving the margin and reading cramped against
+the frame edges.
+
+Preserve the ratio rather than the pixels: 220 x 0.75 ≈ **`w-[166px]`**, back to about 27px
+each side.
 
 ### That forces a copy change
 
