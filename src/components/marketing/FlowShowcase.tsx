@@ -53,8 +53,14 @@ const DASH = { x: 300, y: 30, w: 460 }
 const CLEAN = { x: 840, y: 30, w: 220, h: 380 }
 
 // Card centers, used by the motion paths (offset-path follows these curves).
-const PATH_A = 'M 126 252 C 240 165, 400 148, 556 212'
-const PATH_B = 'M 556 212 C 700 148, 830 162, 936 246'
+// Endpoints are measured (not derived on paper) from the rendered centers of
+// #flow-request-card, #flow-queue-row, and #flow-job-row via stageCenter's
+// own math, polled across a full loop in the browser console. Control points
+// sit ~85px above the straight line between endpoints, at roughly one third
+// and two thirds across, to keep the arc that reads as flight rather than a
+// slide.
+const PATH_A = 'M 110 123 C 257 87, 405 137, 552 271'
+const PATH_B = 'M 552 271 C 685 156, 817 125, 950 180'
 
 const FLIGHT_A_MS = 1450
 const FLIGHT_B_MS = 1350
@@ -338,7 +344,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
           className="grid grid-cols-1 gap-2"
         >
           <p className="text-[13px] font-bold text-foreground">Request a cleaning</p>
-          <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
+          <div id="flow-request-card" className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
             <span className="flex items-center gap-1.5 font-semibold text-foreground"><Sparkles className="size-3.5 text-accent-foreground" aria-hidden />Deep clean</span>
             <span className="font-bold text-foreground tnum">$180</span>
           </div>
@@ -589,7 +595,7 @@ function CleanerSurface({ cue }: { cue: number }) {
             </div>
           ) : null}
           <Land show={hasJob}>
-            <div className="flex items-center gap-2 rounded-control border border-brand-200 bg-accent px-2.5 py-2 text-[11px]">
+            <div id="flow-job-row" className="flex items-center gap-2 rounded-control border border-brand-200 bg-accent px-2.5 py-2 text-[11px]">
               <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">9:00</span>
               <span className="h-6 w-px bg-brand-200" aria-hidden />
               <span className="min-w-0 flex-1">
