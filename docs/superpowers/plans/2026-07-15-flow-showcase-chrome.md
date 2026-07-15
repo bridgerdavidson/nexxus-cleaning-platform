@@ -120,8 +120,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 - [ ] **Step 3: Typecheck**
 
-Run: `npx tsc --noEmit 2>&1 | grep -c "error"`
-Expected: `12`. Both call sites are still passing the old props, so you WILL see errors naming `initials`/`tabs` on `PhoneFrame` at `FlowShowcase.tsx` and `LiveTrackingSection.tsx`. That is expected and Tasks 4 and 7 fix them. If the count is above 12 for any OTHER reason, stop and fix.
+Run: `npx tsc --noEmit 2>&1 | grep "error"`
+
+**The count will be ABOVE the 12-error baseline here, and that is correct.** `PhoneFrame` now requires `initials` and `tabs`, but both call sites still pass the old props, so you will see new errors at `FlowShowcase.tsx` and `LiveTrackingSection.tsx`. Tasks 4 and 7 fix them.
+
+Read the new errors and confirm every one of them names `initials` or `tabs` at one of those two call sites. If a new error says anything else, stop and fix it. Record the error list in your report so the reviewer can check the same thing.
 
 - [ ] **Step 4: Commit**
 
