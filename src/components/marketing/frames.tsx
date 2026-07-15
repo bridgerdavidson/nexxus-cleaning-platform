@@ -1,5 +1,7 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
+import { Bell, Search, type LucideIcon } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 /** Browser-chrome wrapper for desktop app vignettes. */
 export function BrowserFrame({
@@ -26,20 +28,54 @@ export function BrowserFrame({
   )
 }
 
-/** Phone-shell wrapper for mobile vignettes. */
+/** Phone-shell wrapper for mobile vignettes. Supplies the shell, the top bar,
+ *  and the bottom nav; the CONSUMER supplies the box via className (both width
+ *  and height), because the two callers want different proportions.
+ *
+ *  The top bar deliberately shows a search icon, which the real CleanerTopBar /
+ *  HomeownerTopBar do NOT have today ("No global search (operator-only)").
+ *  That divergence is intentional and forward-looking, not a bug to fix back.
+ *  See docs/superpowers/specs/2026-07-15-flow-showcase-chrome-design.md.
+ */
 export function PhoneFrame({
+  initials,
+  tabs,
   className,
   children,
 }: {
+  initials: string
+  tabs: LucideIcon[]
   className?: string
   children: React.ReactNode
 }) {
   return (
-    <div className={cn('overflow-hidden rounded-[30px] border border-border bg-card shadow-soft-lg', className)}>
-      <div className="grid place-items-center py-2" aria-hidden>
-        <span className="h-1.5 w-16 rounded-pill bg-warm-200" />
+    <div
+      className={cn(
+        'flex flex-col overflow-hidden rounded-card border border-border bg-card shadow-soft-lg',
+        className,
+      )}
+    >
+      <div className="flex flex-none items-center gap-2 border-b border-border bg-card px-3 py-2.5" aria-hidden>
+        <Search className="size-3.5 text-muted-foreground" />
+        <span className="flex-1" />
+        <Bell className="size-3.5 text-muted-foreground" />
+        <Avatar className="size-4 text-[7px]">
+          <AvatarFallback>{initials}</AvatarFallback>
+        </Avatar>
       </div>
-      <div className="bg-background px-3.5 pb-5 pt-1.5">{children}</div>
+
+      <div className="min-h-0 flex-1 bg-background px-3 py-2.5">{children}</div>
+
+      <nav className="flex flex-none border-t border-border bg-card" aria-hidden>
+        {tabs.map((Icon, i) => (
+          <span key={i} className="relative flex flex-1 items-center justify-center py-2.5">
+            {i === 0 ? (
+              <span className="absolute left-1/2 top-0 h-0.5 w-4 -translate-x-1/2 rounded-pill bg-brand-600" />
+            ) : null}
+            <Icon className={cn('size-3.5', i === 0 ? 'text-brand-600' : 'text-muted-foreground')} />
+          </span>
+        ))}
+      </nav>
     </div>
   )
 }
