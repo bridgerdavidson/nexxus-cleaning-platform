@@ -1,16 +1,22 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
-import { Bell, CalendarDays, CreditCard, Home, Search, Settings, Users, type LucideIcon } from 'lucide-react'
+import { Bell, CalendarDays, CreditCard, Home, Plus, Search, Settings, Users, type LucideIcon } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
-/** Browser-chrome wrapper for desktop app vignettes. */
+/** Browser-chrome wrapper for desktop app vignettes.
+ *  `appBar` adds the operator top bar (search / New booking / bell / avatar)
+ *  beneath the browser chrome, mirroring OperatorTopBar at sketch scale.
+ *  Off by default: CapabilityExplorer wants browser chrome only.
+ */
 export function BrowserFrame({
   label,
+  appBar = false,
   className,
   children,
 }: {
   label: string
+  appBar?: boolean
   className?: string
   children: React.ReactNode
 }) {
@@ -24,6 +30,27 @@ export function BrowserFrame({
           {label}
         </span>
       </div>
+
+      {appBar ? (
+        <div className="flex items-center gap-2 border-b border-border bg-card px-2.5 py-2" aria-hidden>
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 rounded-pill border border-border bg-background px-2.5 py-1">
+            <Search className="size-3 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[9px] text-muted-foreground">Search bookings, customers, cleaners...</span>
+            <span className="ml-auto shrink-0 rounded-chip bg-muted px-1.5 py-0.5 text-[8px] font-semibold leading-none text-muted-foreground">
+              ⌘K
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1 rounded-chip bg-brand-600 px-2 py-1 text-[9px] font-bold text-white">
+            <Plus className="size-2.5" />
+            New booking
+          </span>
+          <Bell className="size-3.5 shrink-0 text-muted-foreground" />
+          <Avatar className="size-4 shrink-0 text-[7px]">
+            <AvatarFallback>DA</AvatarFallback>
+          </Avatar>
+        </div>
+      ) : null}
+
       {children}
     </div>
   )
