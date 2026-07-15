@@ -7,6 +7,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { PhoneFrame } from './frames'
+import { HOMEOWNER_NAV } from '@/components/redesign/homeowner/shell/homeowner-nav-items'
+
+const HOMEOWNER_TABS = HOMEOWNER_NAV.map((i) => i.icon)
 
 // Mirrors the real homeowner LiveCleaningProgress: everything lives inside the
 // brand gradient "Cleaning in progress" hero (white text, white progress bar,
@@ -74,11 +77,12 @@ export function LiveTrackingSection() {
           </ul>
         </div>
 
-        <div ref={ref} className="flex justify-center">
-          <PhoneFrame className="w-72">
+        <div ref={ref} className="flex flex-col items-center">
+          <p className="mb-2 text-center text-xs font-semibold text-muted-foreground">
+            <span className="font-extrabold text-foreground">Sarah</span> · Customer
+          </p>
+          <PhoneFrame initials="SK" tabs={HOMEOWNER_TABS} className="h-[400px] w-72">
             <div className="grid grid-cols-1 gap-3 text-left">
-              <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Sarah · customer</Badge>
-
               {/* the real homeowner hero card: brand gradient, white text */}
               <div className="rounded-card bg-gradient-to-br from-brand-600 to-brand-500 p-4 text-white shadow-soft-md">
                 <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">
