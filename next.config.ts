@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
     // dashboard/settings URL redirects into its /app/* replacement so no
     // legacy screen stays reachable. Deliberately temporary (307), never 308:
     // rolling back the flag must not fight browser-cached permanent
-    // redirects. Graduate to permanent when the legacy pages are deleted
+    // redirects. Graduate these to permanent when the legacy pages are deleted
     // (runbook Phase 4). Next appends the original query string to the
     // destination (?tab=... rides along); the redesign routes ignore it.
     const redesignActive =
