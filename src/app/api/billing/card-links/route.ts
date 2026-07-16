@@ -127,6 +127,8 @@ export async function POST(request: NextRequest) {
           homeownerName: profile.first_name?.trim() || null,
           orgName,
           url: `${appBase}/billing/add-card?t=${token}`,
+          // Signed-in alternative for recipients wary of email payment links.
+          accountUrl: `${appBase}/app/homeowner-dashboard/account/payment-methods`,
           expiresInDays: LINK_TTL_DAYS,
         });
         await sendEmail({ to: profile.email, ...message });

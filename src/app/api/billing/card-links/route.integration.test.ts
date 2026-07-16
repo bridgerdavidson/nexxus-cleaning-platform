@@ -151,6 +151,8 @@ describe('POST /api/billing/card-links email delivery', () => {
     const emailedUrl = `https://app.nexxus.test/billing/add-card?t=${body.token}`;
     expect(sent.html).toContain(emailedUrl);
     expect(sent.text).toContain(emailedUrl);
+    // The signed-in alternative also builds from APP_URL.
+    expect(sent.html).toContain('https://app.nexxus.test/app/homeowner-dashboard/account/payment-methods');
     // The copy URL keeps the request origin for the operator's own browser.
     expect(body.url).toContain(`/billing/add-card?t=${body.token}`);
     expect(body.url).not.toContain('app.nexxus.test');

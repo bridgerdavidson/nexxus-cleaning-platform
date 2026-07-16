@@ -55,6 +55,23 @@ describe('cardLinkEmail', () => {
     expect(text.startsWith('Hi,')).toBe(true);
   });
 
+  it('includes the signed-in alternative only when accountUrl is provided', () => {
+    const accountUrl = 'https://app.example.com/app/homeowner-dashboard/account/payment-methods';
+    const withAccount = cardLinkEmail({
+      homeownerName: 'John',
+      orgName: 'Sparkle Co',
+      url: URL,
+      accountUrl,
+    });
+    expect(withAccount.html).toContain(`href="${accountUrl}"`);
+    expect(withAccount.html).toContain('Sign in to your account');
+    expect(withAccount.text).toContain(accountUrl);
+
+    const without = cardLinkEmail({ homeownerName: 'John', orgName: 'Sparkle Co', url: URL });
+    expect(without.html).not.toContain('Sign in to your account');
+    expect(without.text).not.toContain('Sign in to your account');
+  });
+
   it('states the expiry window', () => {
     const { html, text } = cardLinkEmail({
       homeownerName: 'John',

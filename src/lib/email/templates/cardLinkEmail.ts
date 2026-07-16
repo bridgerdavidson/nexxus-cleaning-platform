@@ -19,6 +19,11 @@ export interface CardLinkEmailInput {
   orgName: string;
   /** Full https URL to the hosted add-card page, built server-side from APP_URL. */
   url: string;
+  /**
+   * Optional signed-in alternative for recipients wary of email payment links:
+   * the homeowner dashboard's Payment methods page, also built from APP_URL.
+   */
+  accountUrl?: string | null;
   expiresInDays?: number;
 }
 
@@ -40,12 +45,14 @@ export function cardLinkEmail({
   homeownerName,
   orgName,
   url,
+  accountUrl,
   expiresInDays = 7,
 }: CardLinkEmailInput): { subject: string; html: string; text: string } {
   const safeOrg = escapeHtml(orgName);
   const greetingName = (homeownerName ?? '').trim();
   const greeting = greetingName ? `Hi ${escapeHtml(greetingName)},` : 'Hi,';
   const safeUrl = escapeHtml(url);
+  const safeAccountUrl = accountUrl ? escapeHtml(accountUrl) : null;
 
   const subject = sanitizeHeaderValue(`Update your payment method for ${orgName}`);
 
@@ -74,7 +81,12 @@ export function cardLinkEmail({
                   </tr>
                 </table>
                 <p style="margin:0 0 8px 0;font-size:13px;line-height:1.6;color:#6B6459;">Or paste this link into your browser:</p>
-                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;word-break:break-all;"><a href="${safeUrl}" style="color:#0150FC;text-decoration:underline;">${safeUrl}</a></p>
+                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;word-break:break-all;"><a href="${safeUrl}" style="color:#0150FC;text-decoration:underline;">${safeUrl}</a></p>${
+                  safeAccountUrl
+                    ? `
+                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;color:#6B6459;">Prefer not to use payment links from email? <a href="${safeAccountUrl}" style="color:#0150FC;text-decoration:underline;">Sign in to your account</a> and update your card from the Payment methods page.</p>`
+                    : ''
+                }
                 <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6459;">This link is just for you and expires in ${expiresInDays} days. Your card details go directly to our payment processor and are never stored by ${safeOrg}. If you were not expecting this email, you can ignore it.</p>
               </td>
             </tr>
@@ -97,6 +109,9 @@ export function cardLinkEmail({
     '',
     url,
     '',
+    ...(accountUrl
+      ? [`Prefer not to use payment links from email? Sign in to your account and update your card from the Payment methods page: ${accountUrl}`, '']
+      : []),
     `This link is just for you and expires in ${expiresInDays} days. If you were not expecting this email, you can ignore it.`,
     '',
     `Sent by ${orgName} via Nexxus`,
