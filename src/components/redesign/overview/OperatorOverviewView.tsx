@@ -18,8 +18,12 @@ export type OperatorOverviewViewProps = {
   counterProposed: QueueItem[];
   /** Cleaner response deadline passed with no answer (SLA blown). */
   overdue: QueueItem[];
+  /** Completed jobs whose charge failed or needs authentication (uncollected money). */
+  failedPayment: QueueItem[];
   /** Opens a booking's detail (deep-links to the Bookings screen). */
   onOpenBooking?: (appointmentId: string) => void;
+  /** When set, the failed-payment group header links to the Payments screen. */
+  paymentsHref?: string;
   today: ScheduleItem[];
   activeNow: ActiveItem[];
   /** Optional onboarding checklist or completion card rendered above the page header. */
@@ -40,7 +44,9 @@ export function OperatorOverviewView({
   declined,
   counterProposed,
   overdue,
+  failedPayment,
   onOpenBooking,
+  paymentsHref,
   today,
   activeNow,
   checklist,
@@ -67,8 +73,10 @@ export function OperatorOverviewView({
             declined={declined}
             counterProposed={counterProposed}
             overdue={overdue}
+            failedPayment={failedPayment}
             loading={loading}
             onOpenBooking={onOpenBooking}
+            paymentsHref={paymentsHref}
           />
         </div>
         <div className="lg:col-span-1">

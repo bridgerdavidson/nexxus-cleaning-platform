@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,25 +20,34 @@ export function NeedsYouNowQueue({
   declined,
   counterProposed,
   overdue,
+  failedPayment,
   loading,
   onOpenBooking,
+  paymentsHref,
 }: {
   unassigned: QueueItem[];
   declined: QueueItem[];
   counterProposed: QueueItem[];
   /** Cleaner response deadline passed with no answer (SLA blown). */
   overdue: QueueItem[];
+  /** Completed jobs whose charge failed or needs authentication (uncollected money). */
+  failedPayment: QueueItem[];
   loading?: boolean;
   /** Opens a booking's detail (deep-links to the Bookings screen). */
   onOpenBooking?: (appointmentId: string) => void;
+  /** When set, the failed-payment group header links to the Payments screen. */
+  paymentsHref?: string;
 }) {
   const groups: Group[] = [
+    // Uncollected money first: the job is done and the charge failed, nothing else
+    // in the queue outranks that.
+    { kind: "failed-payment", label: "Payment failed", actionLabel: "Fix payment", tone: "critical", items: failedPayment },
     { kind: "overdue", label: "Response overdue", actionLabel: "Review", tone: "critical", items: overdue },
     { kind: "unassigned", label: "Unassigned", actionLabel: "Assign", tone: "caution", items: unassigned },
     { kind: "declined", label: "All cleaners declined", actionLabel: "Force-assign", tone: "critical", items: declined },
     { kind: "counter", label: "Counter-proposed", actionLabel: "Review", tone: "info", items: counterProposed },
   ];
-  const total = unassigned.length + declined.length + counterProposed.length + overdue.length;
+  const total = unassigned.length + declined.length + counterProposed.length + overdue.length + failedPayment.length;
 
   return (
     <Card>
@@ -67,6 +77,14 @@ export function NeedsYouNowQueue({
                 <div className="mb-2 flex items-center gap-2">
                   <Badge variant={g.tone}>{g.label}</Badge>
                   <Badge variant="secondary">{g.items.length}</Badge>
+                  {g.kind === "failed-payment" && paymentsHref && (
+                    <Link
+                      href={paymentsHref}
+                      className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      View in Payments
+                    </Link>
+                  )}
                 </div>
                 <div className="space-y-2">
                   {g.items.map((it) => (

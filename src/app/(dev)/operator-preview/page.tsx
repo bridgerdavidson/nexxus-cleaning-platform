@@ -27,6 +27,8 @@ export default function OperatorPreviewPage() {
         declined={[{ id: "d1", title: "Birch Ln · Move-out clean", subtitle: "Sat Jun 27 · 9:00am · 3 cleaners declined" }]}
         counterProposed={[{ id: "c1", title: "Cedar Ct · Standard clean", subtitle: "Marco proposed Mon Jun 23 · 2:00pm" }]}
         overdue={[{ id: "o1", title: "Willow Way · Deep clean", subtitle: "Thu Jun 26 · 10:00am · Dana has not responded" }]}
+        failedPayment={[{ id: "f1", title: "Aspen Rd · Deep clean", subtitle: "Wed Jun 24 · Card declined" }]}
+        paymentsHref="/app/admin-dashboard/payments"
         today={[
           { id: "t1", time: "8:00", title: "Pine St · Standard clean · Marco D." },
           { id: "t2", time: "10:30", title: "Elm Ave · Deep clean · Sara K." },
