@@ -141,6 +141,34 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     expect(staffRows.length).toBeGreaterThan(0);
   });
 
+  it("does NOT bell-notify the homeowner about their OWN failed Pay now (actor exclusion)", async () => {
+    const apptId = await completedApptWithCard();
+    vi.mocked(createDestinationCharge).mockRejectedValueOnce(
+      Object.assign(new Error('Your card was declined.'), {
+        payment_intent: { id: 'pi_declined_self', status: 'requires_payment_method' },
+      }),
+    );
+
+    const { status } = await callRoute(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.homeowner.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(402);
+
+    const db = createTestSupabaseClient();
+    const { data: rows } = await db
+      .from('notification_events')
+      .select('recipient_user_id')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_failed');
+    // They watched the decline inline; no self-notification. Staff still notified.
+    expect(
+      (rows ?? []).some((r) => (r as { recipient_user_id: string }).recipient_user_id === org.homeowner.userId),
+    ).toBe(false);
+    expect((rows ?? []).length).toBeGreaterThan(0);
+  });
+
   it('409 not_chargeable when the appointment is not completed', async () => {
     const db = createTestSupabaseClient();
     const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;

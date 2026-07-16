@@ -572,6 +572,7 @@ async function finishCharge(
       amountCents: chargeCents,
       reason: 'authentication_required',
       dedupeSuffix: pi.id,
+      actor,
     });
     return { ok: false, code: 'requires_action', paymentIntentId: pi.id, message: 'Customer authentication required' };
   }
@@ -584,6 +585,7 @@ async function finishCharge(
     reason: 'declined',
     error: `Unexpected PaymentIntent status: ${pi.status}`,
     dedupeSuffix: pi.id,
+    actor,
   });
   return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${pi.status}`, paymentIntentId: pi.id };
 }
@@ -634,6 +636,7 @@ async function recordChargeDecline(
     error: opts.err instanceof Error ? opts.err.message : String(opts.err),
     selfPay: opts.isSelfPay,
     dedupeSuffix: failedPi?.id ?? 'na',
+    actor,
   });
   return { ok: false, code: 'declined', message: opts.err instanceof Error ? opts.err.message : 'Charge declined' };
 }
@@ -647,7 +650,15 @@ async function recordChargeDecline(
 async function notifyChargeFailed(
   supabase: SupabaseClient,
   appt: AppointmentRow,
-  opts: { amountCents: number; reason: 'declined' | 'authentication_required'; error?: string; selfPay?: boolean; dedupeSuffix: string },
+  opts: {
+    amountCents: number;
+    reason: 'declined' | 'authentication_required';
+    error?: string;
+    selfPay?: boolean;
+    dedupeSuffix: string;
+    /** Who triggered the charge (route passes `user:{id}`); used for actor exclusion. */
+    actor: string;
+  },
 ): Promise<void> {
   const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
   await recordNotificationEvent(supabase, {
@@ -665,12 +676,18 @@ async function notifyChargeFailed(
     },
   });
   if (!appt.is_self_pay && appt.homeowner_id) {
+    // Actor exclusion: a homeowner who just tapped Pay now is reading the inline
+    // decline already; a toast + unread bell row about their own action is noise
+    // (and would stack one per retry). Staff retries and automatic charges
+    // (actor 'system:*' / 'webhook:*') still notify them, which is the point.
+    const actorUserId = opts.actor.startsWith('user:') ? opts.actor.slice('user:'.length) : null;
     await recordNotificationEvent(supabase, {
       event_type: 'charge_failed',
       appointment_id: appt.id,
       organization_id: appt.organization_id,
       recipient_user_id: appt.homeowner_id,
       dedupe_key: `charge_failed:homeowner:${appt.id}:${opts.dedupeSuffix}`,
+      ...(actorUserId ? { exclude_user_ids: [actorUserId] } : {}),
       payload: {
         ...ctx,
         audience: 'homeowner',
