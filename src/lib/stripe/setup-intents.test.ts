@@ -9,14 +9,16 @@ import type Stripe from 'stripe';
  * Stripe account not registered for the FC `balances` product, which previously broke ALL
  * card-adding in prod (see todo/enable-ach-payments-prod.md). We never read FC balances.
  */
-const setupIntentsCreate = vi.fn(
-  async (params: Stripe.SetupIntentCreateParams) => ({
-    id: 'seti_card_1',
-    object: 'setup_intent',
-    client_secret: 'seti_card_1_secret',
-    ...params,
-  }),
-);
+// The generic carries the (params, opts) tuple type so `mock.calls[0]` destructures
+// both the create params and the per-request options (idempotency key) below.
+const setupIntentsCreate = vi.fn<
+  (params: Stripe.SetupIntentCreateParams, opts?: Stripe.RequestOptions) => Promise<Record<string, unknown>>
+>(async (params) => ({
+  id: 'seti_card_1',
+  object: 'setup_intent',
+  client_secret: 'seti_card_1_secret',
+  ...params,
+}));
 const achEnabledMock = vi.fn(() => true);
 
 vi.mock('@/lib/stripe', () => ({

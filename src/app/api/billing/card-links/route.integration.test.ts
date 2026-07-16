@@ -16,7 +16,13 @@ vi.mock('@/lib/email/sendEmail', () => ({
 import { emailConfigured, sendEmail } from '@/lib/email/sendEmail';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, addManagerToOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import {
+  withTestOrg,
+  addManagerToOrg,
+  addHomeownerToOrg,
+  createTestAppointment,
+  type TestOrgFixture,
+} from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 describe('POST /api/billing/card-links', () => {
@@ -192,6 +198,102 @@ describe('POST /api/billing/card-links email delivery', () => {
     expect(status).toBe(200);
     expect(body.delivered).toBe('copy');
     expect(vi.mocked(sendEmail)).not.toHaveBeenCalled();
+  });
+
+  it('sends the urgent variant when appointment_id names a failed charge (amount + date included)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+      scheduledDate: '2026-06-24',
+    });
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    const { status, body } = await create({ appointment_id: appt.id });
+    expect(status).toBe(200);
+    expect(body.delivered).toBe('email');
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.subject).toContain('Action needed');
+    expect(sent.html).toContain('June 24');
+    expect(sent.html).toContain('$100.00');
+  });
+
+  it('falls back to the routine email when the appointment has not actually failed', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+    });
+    const { body } = await create({ appointment_id: appt.id });
+    expect(body.delivered).toBe('email');
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.subject).toContain('Update your payment method');
+    expect(sent.subject).not.toContain('Action needed');
+  });
+
+  it('sends the routine email for a failed SELF-PAY appointment (company card, not the homeowner)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      selfPay: true,
+    });
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    const { body } = await create({ appointment_id: appt.id });
+    expect(body.delivered).toBe('email');
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.subject).toContain('Update your payment method');
+    expect(sent.subject).not.toContain('Action needed');
+  });
+
+  it("ignores a same-org appointment belonging to a DIFFERENT homeowner (routine email)", async () => {
+    const other = await addHomeownerToOrg(org.organizationId);
+    try {
+      const foreign = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: other.userId,
+      });
+      const db = createTestSupabaseClient();
+      await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', foreign.id);
+
+      // Link is for org.homeowner, but the appointment is other's.
+      const { status, body } = await create({ appointment_id: foreign.id });
+      expect(status).toBe(200);
+      expect(body.delivered).toBe('email');
+      const sent = vi.mocked(sendEmail).mock.calls[0][0];
+      expect(sent.subject).toContain('Update your payment method');
+      expect(sent.subject).not.toContain('Action needed');
+    } finally {
+      await other.cleanup();
+    }
+  });
+
+  it("ignores a cross-tenant appointment_id (routine email, identical response, no leak)", async () => {
+    const org2 = await withTestOrg();
+    try {
+      const foreign = await createTestAppointment({
+        organizationId: org2.organizationId,
+        cleanerId: org2.cleaner.userId,
+        homeownerId: org2.homeowner.userId,
+      });
+      const db = createTestSupabaseClient();
+      await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', foreign.id);
+
+      const { status, body } = await create({ appointment_id: foreign.id });
+      expect(status).toBe(200);
+      expect(body.delivered).toBe('email');
+      const sent = vi.mocked(sendEmail).mock.calls[0][0];
+      expect(sent.subject).toContain('Update your payment method');
+      expect(sent.subject).not.toContain('Action needed');
+    } finally {
+      await org2.cleanup();
+    }
   });
 });
 

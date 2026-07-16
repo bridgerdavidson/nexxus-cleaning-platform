@@ -12,6 +12,15 @@
  * from APP_URL + a base64url token, so escaping never alters a legit URL).
  */
 
+export interface FailedPaymentContext {
+  /** 'declined' = the charge failed; 'verification' = the bank wants 3DS/extra confirmation. */
+  reason: 'declined' | 'verification';
+  /** Preformatted, e.g. "$100.00". Server-derived from the appointment, never client input. */
+  amountLabel: string | null;
+  /** Preformatted, e.g. "June 24". Server-derived from the appointment. */
+  dateLabel: string | null;
+}
+
 export interface CardLinkEmailInput {
   /** Recipient display name; falls back to a generic greeting when empty. */
   homeownerName: string | null;
@@ -24,6 +33,12 @@ export interface CardLinkEmailInput {
    * the homeowner dashboard's Payment methods page, also built from APP_URL.
    */
   accountUrl?: string | null;
+  /**
+   * When present, the email switches to the urgent "your payment did not go
+   * through" variant instead of routine "keep a card on file" wording. Derived
+   * server-side from the appointment's authorization_status.
+   */
+  failedPayment?: FailedPaymentContext | null;
   expiresInDays?: number;
 }
 
@@ -46,6 +61,7 @@ export function cardLinkEmail({
   orgName,
   url,
   accountUrl,
+  failedPayment,
   expiresInDays = 7,
 }: CardLinkEmailInput): { subject: string; html: string; text: string } {
   const safeOrg = escapeHtml(orgName);
@@ -54,7 +70,27 @@ export function cardLinkEmail({
   const safeUrl = escapeHtml(url);
   const safeAccountUrl = accountUrl ? escapeHtml(accountUrl) : null;
 
-  const subject = sanitizeHeaderValue(`Update your payment method for ${orgName}`);
+  // "your cleaning on June 24 ($100.00)" with graceful omission of missing parts.
+  const cleaningRef = failedPayment
+    ? `your cleaning${failedPayment.dateLabel ? ` on ${failedPayment.dateLabel}` : ''}${
+        failedPayment.amountLabel ? ` (${failedPayment.amountLabel})` : ''
+      }`
+    : '';
+
+  const subject = sanitizeHeaderValue(
+    failedPayment
+      ? `Action needed: your payment to ${orgName} did not go through`
+      : `Update your payment method for ${orgName}`,
+  );
+  const preheader = failedPayment
+    ? 'Your card could not be charged for your recent cleaning. Update it to get this resolved.'
+    : 'Add or update the card on file for your cleanings. It takes about a minute.';
+  const heading = failedPayment ? 'Your payment did not go through' : 'Update your card on file';
+  const leadHtml = failedPayment
+    ? failedPayment.reason === 'verification'
+      ? `Your bank needs extra verification before the payment for ${escapeHtml(cleaningRef)} can go through, so ${safeOrg} has not been paid yet. Please update or re-confirm your card using the secure link below. If you have questions, contact ${safeOrg} directly.`
+      : `The card on file was declined for ${escapeHtml(cleaningRef)}, so ${safeOrg} has not been paid yet. Please update your card using the secure link below. If you have questions, contact ${safeOrg} directly.`
+    : `${safeOrg} keeps a card on file to pay for your cleanings. Use the secure link below to add or update your card. It takes about a minute.`;
 
   const fontStack =
     "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -62,7 +98,7 @@ export function cardLinkEmail({
   const html = `<!DOCTYPE html>
 <html lang="en">
   <body style="margin:0;padding:0;background-color:#F7F6F3;">
-    <div style="display:none;max-height:0;overflow:hidden;">Add or update the card on file for your cleanings. It takes about a minute.</div>
+    <div style="display:none;max-height:0;overflow:hidden;">${preheader}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F7F6F3;padding:32px 16px;">
       <tr>
         <td align="center">
@@ -70,9 +106,9 @@ export function cardLinkEmail({
             <tr>
               <td style="padding:32px 32px 24px 32px;font-family:${fontStack};">
                 <p style="margin:0 0 24px 0;font-size:14px;font-weight:700;color:#0150FC;">${safeOrg}</p>
-                <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;font-weight:700;color:#211E1A;">Update your card on file</h1>
+                <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;font-weight:700;color:#211E1A;">${heading}</h1>
                 <p style="margin:0 0 8px 0;font-size:15px;line-height:1.6;color:#211E1A;">${greeting}</p>
-                <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#211E1A;">${safeOrg} keeps a card on file to pay for your cleanings. Use the secure link below to add or update your card. It takes about a minute.</p>
+                <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#211E1A;">${leadHtml}</p>
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0;">
                   <tr>
                     <td style="border-radius:10px;background-color:#0150FC;">
@@ -87,7 +123,9 @@ export function cardLinkEmail({
                 <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;color:#6B6459;">Prefer not to use payment links from email? <a href="${safeAccountUrl}" style="color:#0150FC;text-decoration:underline;">Sign in to your account</a> and update your card from the Payment methods page.</p>`
                     : ''
                 }
-                <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6459;">This link is just for you and expires in ${expiresInDays} days. Your card details go directly to our payment processor and are never stored by ${safeOrg}. If you were not expecting this email, you can ignore it.</p>
+                <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6459;">This link is just for you and expires in ${expiresInDays} days. Your card details go directly to our payment processor and are never stored by ${safeOrg}.${
+                  failedPayment ? '' : ' If you were not expecting this email, you can ignore it.'
+                }</p>
               </td>
             </tr>
             <tr>
@@ -102,17 +140,23 @@ export function cardLinkEmail({
   </body>
 </html>`;
 
+  const leadText = failedPayment
+    ? failedPayment.reason === 'verification'
+      ? `Your bank needs extra verification before the payment for ${cleaningRef} can go through, so ${orgName} has not been paid yet. Update or re-confirm your card with this secure link, or contact ${orgName} if you have questions:`
+      : `The card on file was declined for ${cleaningRef}, so ${orgName} has not been paid yet. Update your card with this secure link, or contact ${orgName} if you have questions:`
+    : `${orgName} keeps a card on file to pay for your cleanings. Use this secure link to add or update your card:`;
+
   const text = [
     greetingName ? `Hi ${greetingName},` : 'Hi,',
     '',
-    `${orgName} keeps a card on file to pay for your cleanings. Use this secure link to add or update your card:`,
+    leadText,
     '',
     url,
     '',
     ...(accountUrl
       ? [`Prefer not to use payment links from email? Sign in to your account and update your card from the Payment methods page: ${accountUrl}`, '']
       : []),
-    `This link is just for you and expires in ${expiresInDays} days. If you were not expecting this email, you can ignore it.`,
+    `This link is just for you and expires in ${expiresInDays} days.${failedPayment ? '' : ' If you were not expecting this email, you can ignore it.'}`,
     '',
     `Sent by ${orgName} via Nexxus`,
   ].join('\n');
