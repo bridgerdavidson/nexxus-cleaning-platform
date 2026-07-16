@@ -103,7 +103,9 @@ export function AvatarEditor({
       <div className="relative shrink-0">
         <Avatar className="size-16 shadow-soft-sm ring-2 ring-card">
           {displayUrl ? <AvatarImage src={displayUrl} alt="Your profile photo" className="object-cover" /> : null}
-          <AvatarFallback className="bg-brand-600 text-lg font-bold text-white">{initials}</AvatarFallback>
+          {/* Default (muted) fallback colors so the placeholder matches every
+              other avatar in the app; only the size is scaled up. */}
+          <AvatarFallback className="text-lg">{initials}</AvatarFallback>
         </Avatar>
         {!pendingFile && (
           <button
