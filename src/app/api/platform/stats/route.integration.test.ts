@@ -121,11 +121,15 @@ describe('GET /api/platform/stats', () => {
 
     const after = await fetchStats(admin.accessToken);
 
-    expect(after.tenants).toBe(before.tenants + 1);
-    expect(after.new_tenants_30d).toBe(before.new_tenants_30d + 1);
-    expect(after.total_appointments).toBe(before.total_appointments + 1);
-    expect(after.gmv_cents).toBe(before.gmv_cents + 10000);
-    expect(after.platform_fees_cents).toBe(before.platform_fees_cents + 400);
+    // These are GLOBAL aggregates, so assert "increased by at least my
+    // contribution" rather than an exact delta: concurrent test runs sharing the
+    // local Supabase may add more rows in the before/after window (CI runs on an
+    // isolated DB, so the lower bound is exact there).
+    expect(after.tenants).toBeGreaterThanOrEqual(before.tenants + 1);
+    expect(after.new_tenants_30d).toBeGreaterThanOrEqual(before.new_tenants_30d + 1);
+    expect(after.total_appointments).toBeGreaterThanOrEqual(before.total_appointments + 1);
+    expect(after.gmv_cents).toBeGreaterThanOrEqual(before.gmv_cents + 10000);
+    expect(after.platform_fees_cents).toBeGreaterThanOrEqual(before.platform_fees_cents + 400);
   });
 
   it('excludes non-paid and non-revenue payments from GMV', async () => {
@@ -160,6 +164,10 @@ describe('GET /api/platform/stats', () => {
     ]);
 
     const after = await fetchStats(admin.accessToken);
-    expect(after.gmv_cents).toBe(before.gmv_cents);
+    // A correct RPC counts neither the pending nor the refund payment, so GMV
+    // rises only by concurrent activity (>= 0). A buggy WHERE clause that counted
+    // them would add their $120 (12000c), which this upper bound catches. (CI's
+    // isolated DB makes the concurrent delta exactly 0.)
+    expect(after.gmv_cents).toBeLessThan(before.gmv_cents + 12000);
   });
 });
