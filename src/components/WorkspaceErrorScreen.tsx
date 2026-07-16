@@ -37,7 +37,7 @@ export default function WorkspaceErrorScreen({
           Couldn&apos;t load your workspace
         </h2>
         <p className="mb-6 text-sm text-gray-600">
-          We hit a snag loading your account. This is usually temporary — you&apos;re still
+          We hit a snag loading your account. This is usually temporary. You&apos;re still
           signed in.
         </p>
         <button

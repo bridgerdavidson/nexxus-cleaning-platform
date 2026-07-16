@@ -27,10 +27,9 @@ export type NavItem = {
   requires?: ManagerPermissionKey;
 };
 
-// Operator (admin + manager) destinations. Only Overview is redesigned so far;
-// every other destination falls back to its LEGACY route (/admin-dashboard?tab=…
-// or /settings) so the shell never dead-ends (404) during the incremental
-// rollout. Repoint each href to its /app/* redesign route as that screen ships.
+// Operator (admin + manager) destinations. Every screen is redesigned, so all
+// hrefs point at /app/* routes. Settings keeps activeFor: ["/settings"] only as
+// a nav-highlight alias while the legacy settings pages remain reachable.
 //
 // Icons are lucide. Cleaners & team uses SprayCan (a cleaning glyph) instead of
 // a second people-icon, so it never reads as a near-duplicate of Customers.
