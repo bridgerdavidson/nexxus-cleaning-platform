@@ -87,7 +87,13 @@ export function OperatorShell({
             onOpenSearch={() => setSearchOpen(true)}
             onOpenBooking={canViewBookings ? openBookingDetail : undefined}
           />
-          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
+          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
+            {/* Keyed by pathname so each tab/page switch replays the entrance
+                animation on the incoming content (the shell itself stays put). */}
+            <div key={pathname} className="animate-page-in motion-reduce:animate-none">
+              {children}
+            </div>
+          </main>
         </div>
         <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} />
         <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />
