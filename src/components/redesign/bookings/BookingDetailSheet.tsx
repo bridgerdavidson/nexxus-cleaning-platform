@@ -29,6 +29,8 @@ import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import { Field, DiscardChangesDialog } from "./detail-atoms";
 import { JobMessagesPanel } from "./JobMessagesPanel";
 import { OperatorPaymentSection } from "./payment/OperatorPaymentSection";
+import { JobPhotosSection } from "./photos/JobPhotosSection";
+import { RoutingHistorySection } from "./routing/RoutingHistorySection";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 import type { RescheduleInit } from "./reschedule/RescheduleDialog";
 import { EditBookingDetailsForm } from "./edit/EditBookingDetailsForm";
@@ -409,6 +411,15 @@ function DetailBody({
             </div>
           </>
         ) : null}
+
+        <JobPhotosSection
+          appointmentId={detail.id}
+          status={detail.status}
+          photosSkipped={appointment?.photos_skipped ?? false}
+          photoSkipReason={appointment?.photo_skip_reason ?? null}
+        />
+
+        <RoutingHistorySection appointmentId={detail.id} cleanerOptions={cleanerOptions} />
 
         {detail.declinedReason || detail.specialRequests || detail.notes ? (
           <>

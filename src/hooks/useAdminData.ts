@@ -69,6 +69,9 @@ export interface AdminAppointment {
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   /** True when the org paid from its company card (no homeowner involved). */
   is_self_pay?: boolean;
+  /** Cleaner used the photo-gate skip for this job (org allows skipping). */
+  photos_skipped?: boolean;
+  photo_skip_reason?: string | null;
   /**
    * Card-hold (authorization) lifecycle for the new charge flow (migration 065).
    * Drives the "Card held / Auth failed / Captured" indicator next to the payment badge.
@@ -216,6 +219,8 @@ export function useAdminAppointments() {
           payment_method_id,
           special_requests,
           notes,
+          photos_skipped,
+          photo_skip_reason,
           series_id,
           cleaner_confirmation_status,
           response_deadline,
