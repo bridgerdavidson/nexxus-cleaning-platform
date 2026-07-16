@@ -7,6 +7,7 @@ import { OperatorRail } from '@/components/redesign/shell/OperatorRail';
 import { PlatformTopBar } from './PlatformTopBar';
 import { PlatformMobileNav } from './PlatformMobileNav';
 import { TenantDetailHost } from './TenantDetailHost';
+import { RedesignImpersonationBanner } from '@/components/redesign/shell/RedesignImpersonationBanner';
 import { PLATFORM_NAV } from './platform-nav';
 
 function deriveActive(pathname: string | null): string | undefined {
@@ -46,6 +47,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         </a>
         <OperatorRail activeId={activeId} nav={PLATFORM_NAV} />
         <div className="lg:pl-16">
+          <RedesignImpersonationBanner />
           <PlatformTopBar />
           <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
             {/* Keyed by pathname so each page switch replays the entrance animation

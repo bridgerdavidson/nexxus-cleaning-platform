@@ -22,11 +22,16 @@ function LoginContent() {
 
   useEffect(() => {
     // Redirect if already logged in. Wait for the platform-admin check to
-    // resolve (non-null) so a platform admin lands on /owner instead of being
-    // briefly bounced to a tenant dashboard.
+    // resolve (non-null) so a platform admin lands on the owner back-office
+    // (the redesign one when the flag is on) instead of being briefly bounced
+    // to a tenant dashboard.
     if (user && isPlatformAdmin !== null) {
       router.push(
-        isPlatformAdmin ? "/owner" : getDashboardPath(user.role, { redesign: redesignUiEnabled() })
+        isPlatformAdmin
+          ? redesignUiEnabled()
+            ? "/app/owner"
+            : "/owner"
+          : getDashboardPath(user.role, { redesign: redesignUiEnabled() }),
       );
     }
   }, [user, isPlatformAdmin, router]);
