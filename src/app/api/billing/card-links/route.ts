@@ -6,18 +6,37 @@ import { stripeEnabled, stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
 import { getOrCreateStripeCustomer } from '@/lib/stripe/customers/homeowner';
 import { createCardSetupIntent } from '@/lib/stripe/setup-intents';
 import { homeownerBelongsToOrg } from '@/lib/payments/orgHomeowner';
+import { emailConfigured, sendEmail } from '@/lib/email/sendEmail';
+import { cardLinkEmail } from '@/lib/email/templates/cardLinkEmail';
+
+// nodemailer needs the Node runtime.
+export const runtime = 'nodejs';
 
 const LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const LINK_TTL_DAYS = 7;
+
+/**
+ * The emailed URL is built from a pinned server base (matching the invite-email
+ * convention), NEVER from the request Host: a Host-derived origin in an auto-sent
+ * email is a phishing / token-exfiltration vector. `request.nextUrl.origin` is only
+ * used for the copy-link URL returned to the operator's own browser.
+ */
+function trustedAppBase(): string | null {
+  const base = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || '';
+  return base ? base.replace(/\/+$/, '') : null;
+}
 
 /**
  * POST /api/billing/card-links
  *
  * Org staff: create a single-use, 7-day hosted card-collection link for a homeowner.
- * Ensures the homeowner has a platform Customer + a fresh SetupIntent, then stores a
- * `homeowner_payment_links` row and returns the shareable URL. (SMS/email delivery is a
- * follow-up; for now the URL is returned for the admin to send.)
+ * Ensures the homeowner has a platform Customer + a fresh SetupIntent, stores a
+ * `homeowner_payment_links` row, and emails the link to the homeowner when SMTP is
+ * configured (falling back to returning the URL for the operator to share manually).
  *
- * Body: { organization_id, homeowner_id }
+ * Body: { organization_id, homeowner_id, deliver?: 'email' | 'copy' }
+ * Response: { success, token, url, expires_at, delivered: 'email' | 'copy' }
+ * An email-send failure never fails the request; it degrades to delivered: 'copy'.
  */
 export async function POST(request: NextRequest) {
   if (!stripeEnabled() || !stripeNewChargeFlowEnabled()) {
@@ -26,7 +45,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { organization_id, homeowner_id } = body as { organization_id?: string; homeowner_id?: string };
+    const { organization_id, homeowner_id, deliver } = body as {
+      organization_id?: string;
+      homeowner_id?: string;
+      deliver?: 'email' | 'copy';
+    };
 
     // Creating a card-collection link precedes a payment-spending action, so a manager
     // additionally needs can_manage_payments.
@@ -86,7 +109,36 @@ export async function POST(request: NextRequest) {
     }
 
     const url = `${request.nextUrl.origin}/billing/add-card?t=${token}`;
-    return NextResponse.json({ success: true, token, url, expires_at: expiresAt });
+
+    // Deliver by email when SMTP + a trusted base URL are configured (unless the
+    // caller explicitly asked for copy). Failure degrades to copy, never a 500:
+    // the link row already exists and the operator can still share it manually.
+    const appBase = trustedAppBase();
+    let delivered: 'email' | 'copy' = 'copy';
+    if (deliver !== 'copy' && emailConfigured() && appBase) {
+      try {
+        const { data: org } = await supabaseAdmin
+          .from('organizations')
+          .select('name')
+          .eq('id', organization_id!)
+          .maybeSingle();
+        const orgName = (org as { name?: string } | null)?.name?.trim() || 'Your cleaning company';
+        const message = cardLinkEmail({
+          homeownerName: profile.first_name?.trim() || null,
+          orgName,
+          url: `${appBase}/billing/add-card?t=${token}`,
+          // Signed-in alternative for recipients wary of email payment links.
+          accountUrl: `${appBase}/app/homeowner-dashboard/account/payment-methods`,
+          expiresInDays: LINK_TTL_DAYS,
+        });
+        await sendEmail({ to: profile.email, ...message });
+        delivered = 'email';
+      } catch (emailError) {
+        console.error('Card link email failed; falling back to copy:', emailError);
+      }
+    }
+
+    return NextResponse.json({ success: true, token, url, expires_at: expiresAt, delivered });
   } catch (error) {
     console.error('Error creating card link:', error);
     return NextResponse.json(

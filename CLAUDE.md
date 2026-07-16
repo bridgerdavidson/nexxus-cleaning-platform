@@ -259,6 +259,8 @@ Required for full functionality:
 
 Optional / debug:
 
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` — Brevo SMTP for app-sent transactional email (currently the card-collection link email, `src/lib/email/**`). All five must be set together; when any is missing the card-links route degrades to copy-link (`delivered: 'copy'`).
+- `APP_URL` — trusted absolute base URL for links embedded in emails (invites, card links). Emailed links are never built from the request Host; without `APP_URL` (or `NEXT_PUBLIC_APP_URL` as fallback), card-link email delivery is skipped.
 - `NEXT_PUBLIC_AUTH_DEBUG` — set to `"true"` to enable auth/session diagnostics (`src/lib/authDebug.ts`): `[authdbg]` console logs across the auth event stream, org-context load, token rotation, and disabled org-scoped queries, plus an on-screen corner badge (`AuthDebugOverlay`) showing `user / orgStatus / orgId / token`. Off (and a no-op) by default; safe to leave unset in prod. Used to reproduce the concurrent-session blank-dashboard class of bug.
 
 ## Visual Testing
