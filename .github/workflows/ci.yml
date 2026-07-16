@@ -28,12 +28,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # Typecheck runs but does not block — the codebase has accumulated pre-existing
-      # type errors that next.config.ts masks via typescript.ignoreBuildErrors. Failures
-      # surface as warnings in the Actions log; remove continue-on-error once cleaned up.
+      # Typecheck is BLOCKING: the pre-existing error baseline was cleaned to zero,
+      # so any failure here is new type drift. (next.config.ts still sets
+      # typescript.ignoreBuildErrors, so this step is the only type gate.)
       - name: TypeScript check
         run: npx tsc --noEmit
-        continue-on-error: true
+      # Lint stays advisory until its pre-existing debt (64 errors at last count)
+      # is cleaned; then drop continue-on-error here too.
       - run: npm run lint
         continue-on-error: true
 
