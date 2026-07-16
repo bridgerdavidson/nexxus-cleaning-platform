@@ -72,6 +72,46 @@ describe('cardLinkEmail', () => {
     expect(without.text).not.toContain('Sign in to your account');
   });
 
+  it('switches to the urgent variant for a declined failed payment', () => {
+    const { subject, html, text } = cardLinkEmail({
+      homeownerName: 'John',
+      orgName: 'Sparkle Co',
+      url: URL,
+      failedPayment: { reason: 'declined', amountLabel: '$100.00', dateLabel: 'June 24' },
+    });
+    expect(subject).toBe('Action needed: your payment to Sparkle Co did not go through');
+    expect(html).toContain('Your payment did not go through');
+    expect(html).toContain('was declined');
+    expect(html).toContain('June 24');
+    expect(html).toContain('$100.00');
+    expect(html).toContain('has not been paid yet');
+    expect(text).toContain('was declined');
+    expect(text).toContain('June 24');
+    expect(text).toContain('$100.00');
+  });
+
+  it('uses bank-verification wording for requires_action, and omits missing amount/date', () => {
+    const { subject, html, text } = cardLinkEmail({
+      homeownerName: 'John',
+      orgName: 'Sparkle Co',
+      url: URL,
+      failedPayment: { reason: 'verification', amountLabel: null, dateLabel: null },
+    });
+    expect(subject).toContain('Action needed');
+    expect(html).toContain('extra verification');
+    expect(html).toContain('your cleaning');
+    expect(html).not.toContain('your cleaning on');
+    expect(html).not.toContain('()');
+    expect(text).toContain('extra verification');
+  });
+
+  it('keeps the routine wording when failedPayment is absent', () => {
+    const { subject, html } = cardLinkEmail({ homeownerName: 'John', orgName: 'Sparkle Co', url: URL });
+    expect(subject).toBe('Update your payment method for Sparkle Co');
+    expect(html).toContain('Update your card on file');
+    expect(html).not.toContain('did not go through');
+  });
+
   it('states the expiry window', () => {
     const { html, text } = cardLinkEmail({
       homeownerName: 'John',

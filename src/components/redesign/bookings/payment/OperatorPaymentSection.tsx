@@ -165,7 +165,13 @@ export function OperatorPaymentSection({
       const res = await fetch("/api/billing/card-links", {
         method: "POST",
         headers: await authHeaders(),
-        body: JSON.stringify({ organization_id: organizationId, homeowner_id: homeownerId }),
+        // appointment_id lets the server send the urgent "payment did not go
+        // through" email variant when this appointment's charge actually failed.
+        body: JSON.stringify({
+          organization_id: organizationId,
+          homeowner_id: homeownerId,
+          appointment_id: appointment.id,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not create a card link");
