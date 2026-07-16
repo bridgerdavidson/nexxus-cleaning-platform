@@ -368,3 +368,27 @@ Corrections made during design, recorded so they are not re-litigated:
 7. The frames keep a stagger under a shared label baseline — **wrong** twice over: it makes
    the label-to-frame gap uneven, and once the app bar lands the desktop is ~380 anyway, the
    same as the phones. They align.
+
+8. **"The cause is not missing chrome, it is proportion and emptiness"** (the opening claim of
+   this spec) — **wrong, and the build disproved it.** The evidence is a near-controlled
+   experiment the work produced by accident:
+
+   | | ratio | chrome | reads as a phone? |
+   |---|---|---|---|
+   | master | 252 x ~340 = **1:1.35** | none | **no** |
+   | LiveTracking, mid-build | 288 x 400 = **1:1.39** | yes | **yes** |
+   | hero, final | 220 x 380 = **1:1.7** | yes | yes |
+
+   1.39 against 1.35 is a 3% difference. Proportion held roughly constant, chrome varied, and
+   the outcome flipped. **Chrome is the causal variable.** The spec even contradicted itself:
+   §3 says the bottom nav "is the element that does most of the work... the strongest 'phone'
+   signal."
+
+   Was the geometry change wasted? Not entirely: the shared top edge and label baseline are a
+   real composition win on their own, and 220 bought the tidy aligned row. But it cost the
+   `ApptCard` refit, two copy shortenings, the KPI 0.41px near-miss, and the whole of Task 6,
+   which was the most expensive task and produced the one Important bug. Keeping 252 and
+   adding chrome would have reached the same deliverable far cheaper.
+
+   **The lesson for the next vignette:** add the chrome first, look, and only then decide
+   whether the proportions still need touching.
