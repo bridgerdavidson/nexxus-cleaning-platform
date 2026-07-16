@@ -21,7 +21,7 @@ import { StatusPill } from '@/components/ui/status-pill'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { BrowserFrame, MiniRail } from './frames'
+import { BrowserFrame, RailLogo } from './frames'
 import { DEMO_CLEANERS, DEMO_JOBS, cleanerById, type DemoJob } from './demo-data'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -372,8 +372,87 @@ const TAB_CONTENT: Record<TabId, React.ComponentType> = {
   messages: MessagesTab,
 }
 
+/**
+ * The demo's navigation, shaped like the product's: an expanded OperatorRail.
+ * The real rail collapses to icons and reveals labels on hover; this one stays
+ * expanded, because a visitor has no reason to go hunting for a hover state and
+ * the icons alone would not tell them what they are looking at.
+ *
+ * Desktop only, mirroring the real rail's `hidden lg:flex`. The pill tab bar
+ * survives underneath it as the mobile nav, where a 200px rail cannot fit.
+ */
+function ExplorerRail({
+  tab,
+  setTab,
+  showHint,
+}: {
+  tab: TabId
+  setTab: (id: TabId) => void
+  showHint: boolean
+}) {
+  return (
+    <nav
+      aria-label="Demo sections"
+      className="hidden w-[144px] shrink-0 flex-col gap-1 border-r border-border bg-card p-3 sm:flex"
+    >
+      {/* Expanded rail, so the FULL lockup: the bare icon belongs to the
+          collapsed state.
+          Sizing runs nav-first, not logo-first. The widest label ("Messages")
+          needs 111px including its icon, gap and padding, so the rail is 144 =
+          120 of inner width plus p-3 either side. The lockup renders ~4.5x as
+          wide as it is tall, so h-6 puts it at ~108: a little narrower than the
+          nav buttons it sits above, which is what keeps it from shouting. Letting
+          the logo set the rail's width, as an earlier pass did at h-8, made the
+          rail 24px wider than its own navigation needed. */}
+      <RailLogo variant="full" className="mb-3 ml-1 h-6" />
+      {TABS.map((t) => {
+        const active = t.id === tab
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+              'flex items-center gap-3 rounded-control px-2.5 py-2 text-left text-[13px] font-medium transition-colors duration-base',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              active
+                ? 'bg-brand-600 text-white'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <t.Icon className="size-4 flex-none" aria-hidden />
+            {t.label}
+          </button>
+        )
+      })}
+      <AnimatePresence>
+        {showHint ? (
+          <m.p
+            key="hint"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: EASE }}
+            className="mt-3 px-2.5 text-[11px] font-medium leading-snug text-muted-foreground"
+          >
+            Click any tab. It is a live demo.
+          </m.p>
+        ) : null}
+      </AnimatePresence>
+    </nav>
+  )
+}
+
 export function CapabilityExplorer() {
   const [tab, setTab] = React.useState<TabId>('overview')
+  // The hint retires itself the moment someone navigates: it exists to start the
+  // interaction, not to narrate it.
+  const [touched, setTouched] = React.useState(false)
+  const selectTab = React.useCallback((id: TabId) => {
+    setTab(id)
+    setTouched(true)
+  }, [])
   const Content = TAB_CONTENT[tab]
   return (
     <section id="try-it" className="scroll-mt-20 mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
@@ -389,19 +468,31 @@ export function CapabilityExplorer() {
       </div>
 
       <div className="mt-8">
-        <BrowserFrame label="app.nexxus · Brightside Cleaning Co · demo data">
-          <div className="flex">
-            <MiniRail />
-            <div className="min-w-0 flex-1 bg-background p-4 sm:p-5">
-              {/* tab bar */}
-              <div className="mb-4 flex gap-1 overflow-x-auto rounded-pill bg-muted p-1">
+        <BrowserFrame
+          label="app.nexxus.com"
+          appBar
+          rail={<ExplorerRail tab={tab} setTab={selectTab} showHint={!touched} />}
+        >
+          <>
+            {/* Pinned so the frame does not resize under the pointer as you tab
+                through. The tabs range from 280px (Messages) to 440px (Crew), a
+                160px jump, and a window that changes height when you click
+                inside it does not read as an app. Floor is the tallest tab, so
+                only shorter ones gain slack. Applied from sm up, where the rail
+                lives: below that the content reflows taller than 440 anyway and
+                the floor would never bind. Re-measure if a tab's content grows. */}
+            <div className="bg-background p-4 sm:min-h-[440px] sm:p-5">
+              {/* Mobile nav. The rail is the nav from sm up, matching the real
+                  OperatorRail's desktop-only behaviour, but a 196px rail has
+                  nowhere to go on a phone, so the pills carry it there. */}
+              <div className="mb-4 flex gap-1 overflow-x-auto rounded-pill bg-muted p-1 sm:hidden">
                 {TABS.map((t) => {
                   const active = t.id === tab
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setTab(t.id)}
+                      onClick={() => selectTab(t.id)}
                       aria-pressed={active}
                       className={cn(
                         'inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3.5 py-1.5 text-xs font-semibold transition-all duration-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -426,7 +517,7 @@ export function CapabilityExplorer() {
                 </m.div>
               </AnimatePresence>
             </div>
-          </div>
+          </>
         </BrowserFrame>
       </div>
     </section>
