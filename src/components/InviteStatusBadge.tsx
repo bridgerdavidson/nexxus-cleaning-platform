@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Ban,
   Clock,
   CheckCircle2,
   XCircle,
@@ -23,6 +24,7 @@ const CONFIG: Record<
   failed: { bg: 'bg-red-100', text: 'text-red-700', icon: XCircle, label: 'Failed' },
   expired: { bg: 'bg-orange-100', text: 'text-orange-700', icon: AlertCircle, label: 'Expired' },
   superseded: { bg: 'bg-gray-100', text: 'text-gray-600', icon: RefreshCcw, label: 'Superseded' },
+  revoked: { bg: 'bg-gray-100', text: 'text-gray-600', icon: Ban, label: 'Revoked' },
   creating: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Loader2, label: 'Sending…', spin: true },
 };
 

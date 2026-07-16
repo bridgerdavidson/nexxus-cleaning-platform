@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       const resolved = await waitForCommit(organization_id as string);
       if (!resolved) {
         return NextResponse.json(
-          { error: 'Stripe Connect onboarding is in progress — please retry in a moment' },
+          { error: 'Stripe Connect onboarding is in progress, please retry in a moment' },
           { status: 409 },
         );
       }

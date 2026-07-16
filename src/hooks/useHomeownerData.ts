@@ -32,6 +32,12 @@ export interface Appointment {
    * recovery section; `payment_status` alone conflates them.
    */
   authorization_status?: string | null;
+  /**
+   * True when the ORG's company card funds this cleaning (a comped booking can
+   * still carry homeowner_id). A failed self-pay charge is the company's problem,
+   * never the homeowner's; payment alerts must exclude these rows.
+   */
+  is_self_pay?: boolean | null;
   /** The Stripe payment method id saved to this appointment (card on file), if any. */
   payment_method_id?: string | null;
   /**
@@ -155,6 +161,7 @@ export function useHomeownerAppointments() {
           cancelled_at,
           cleaner_confirmation_status,
           authorization_status,
+          is_self_pay,
           payment_method_id,
           property:properties(
             name,
