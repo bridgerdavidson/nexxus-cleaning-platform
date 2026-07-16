@@ -51,17 +51,22 @@ async function failedPaymentContext(
   if (!appointmentId) return null;
   const { data } = await supabaseAdmin
     .from('appointments')
-    .select('organization_id, homeowner_id, authorization_status, total_price, scheduled_date')
+    .select('organization_id, homeowner_id, authorization_status, is_self_pay, total_price, scheduled_date')
     .eq('id', appointmentId)
     .maybeSingle();
   const appt = data as {
     organization_id: string | null;
     homeowner_id: string | null;
     authorization_status: string | null;
+    is_self_pay: boolean | null;
     total_price: number | null;
     scheduled_date: string | null;
   } | null;
   if (!appt || appt.organization_id !== organizationId || appt.homeowner_id !== homeownerId) return null;
+  // A comped self-pay booking keeps homeowner_id, but its failed charge is the
+  // COMPANY card's failure. Telling the homeowner THEIR card was declined (with
+  // an amount they don't owe) would be false; send the routine email instead.
+  if (appt.is_self_pay) return null;
   if (appt.authorization_status !== 'failed' && appt.authorization_status !== 'requires_action') return null;
   return {
     reason: appt.authorization_status === 'failed' ? 'declined' : 'verification',

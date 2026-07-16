@@ -25,6 +25,9 @@ function cleaningDateLabel(scheduledDate: string | null | undefined): string | n
 export function derivePaymentAlerts(appointments: Appointment[]): PaymentAlertVM[] {
   return appointments
     .filter((a) => a.status !== 'cancelled')
+    // A comped self-pay booking keeps homeowner_id, but its failed charge is the
+    // COMPANY card's failure; alarming the homeowner about it would be false.
+    .filter((a) => !a.is_self_pay)
     .filter((a) => a.authorization_status === 'failed' || a.authorization_status === 'requires_action')
     .map((a) => {
       const date = cleaningDateLabel(a.scheduled_date);

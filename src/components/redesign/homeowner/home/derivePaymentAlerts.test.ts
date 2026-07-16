@@ -39,6 +39,14 @@ describe('derivePaymentAlerts', () => {
     expect(alerts).toHaveLength(0);
   });
 
+  it('never alarms the homeowner about a failed COMPANY-card (self-pay) charge', () => {
+    const alerts = derivePaymentAlerts([
+      appt({ id: 'comped', authorization_status: 'failed', is_self_pay: true }),
+      appt({ id: 'comped2', authorization_status: 'requires_action', is_self_pay: true }),
+    ]);
+    expect(alerts).toHaveLength(0);
+  });
+
   it('falls back to generic wording when the date is unparseable', () => {
     const alerts = derivePaymentAlerts([
       appt({ authorization_status: 'failed', scheduled_date: '' as Appointment['scheduled_date'] }),
