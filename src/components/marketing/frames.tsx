@@ -166,25 +166,13 @@ export function RailLogo({
 
 const RAIL_TABS: LucideIcon[] = [Home, CalendarDays, Users, CreditCard]
 
-/** Slim rail echoing the real OperatorRail.
- *  'sketch' is the original abstract treatment, kept for CapabilityExplorer
- *  until its rail-vs-tab-bar question is settled (see the spec's follow-up).
- *  'app' mirrors OperatorRail: the real Nexxus mark, real nav icons, and the
- *  active tab filled brand-600, matching `active && "bg-brand-600 text-white"`.
+/** Slim collapsed rail, mirroring the real OperatorRail: the Nexxus mark, real
+ *  nav icons, and the active tab filled brand-600, matching OperatorRail's own
+ *  `active && "bg-brand-600 text-white"`.
+ *
+ *  Decorative. CapabilityExplorer's rail is real navigation and lives there.
  */
-export function MiniRail({ variant = 'sketch' }: { variant?: 'sketch' | 'app' }) {
-  if (variant === 'sketch') {
-    return (
-      <div className="hidden w-11 shrink-0 flex-col items-center gap-2.5 border-r border-border bg-card py-3.5 sm:flex" aria-hidden>
-        <span className="mb-1.5 size-6 rounded-chip bg-brand-600" />
-        <span className="size-6 rounded-chip bg-accent ring-1 ring-brand-200" />
-        <span className="size-6 rounded-chip bg-muted" />
-        <span className="size-6 rounded-chip bg-muted" />
-        <span className="size-6 rounded-chip bg-muted" />
-      </div>
-    )
-  }
-
+export function MiniRail() {
   return (
     <div className="hidden w-11 shrink-0 flex-col items-center gap-1.5 border-r border-border bg-card py-3 sm:flex" aria-hidden>
       {/* collapsed rail, so: icon only */}

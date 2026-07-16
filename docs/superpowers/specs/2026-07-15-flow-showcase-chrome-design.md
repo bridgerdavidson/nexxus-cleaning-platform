@@ -315,20 +315,25 @@ on screen**, not from this document:
 - Pick whichever of those trades looks right, then verify. Do not narrow it to 220 blind
   just to match the hero number; the hero's exact pixels are not the target, the proportion is.
 
-## Out of scope, and the debt this leaves
+## The CapabilityExplorer debt: raised here, then paid in the same PR
 
-**`CapabilityExplorer` keeps its abstract rail**, so the page will carry two rail treatments
-until that is resolved. This is a knowing trade, not an oversight.
+This spec originally deferred `CapabilityExplorer`, which kept its abstract rail beside a
+fully real tab bar. The stated follow-up was "decide whether that section's nav is the rail
+or the tab bar, then migrate it off `variant='sketch'`".
 
-It has the same abstract-rail-next-to-real-chrome inconsistency as the hero, but worse: its
-rail sits beside a fully real tab bar with icons *and* labels (Overview, Analytics, Crew,
-Payments, Messages). Giving its rail real nav icons would make it list Overview/Bookings/
-Customers/Payments next to a tab bar listing something else: two conflicting navs, worse than
-today. Fixing it properly means deciding whether that section's nav is the rail or the tab
-bar, which is its own design conversation.
+**Bridger resolved it during the build, and it shipped in this PR.** The answer was the rail:
+the section's five tab icons already *were* the real nav icons from `nav-items.ts` (Home,
+BarChart3, SprayCan, CreditCard, MessageSquare), so moving them into the rail was relocation
+rather than redesign. The rail is now the navigation, the pill bar survives only as the mobile
+nav (`sm:hidden`, mirroring the real rail's desktop-only `hidden lg:flex`), and the frame
+picked up the operator app bar.
 
-**Follow-up ticket:** resolve CapabilityExplorer's rail vs tab bar, then migrate it off
-`variant='sketch'` and delete the variant.
+`MiniRail`'s `variant='sketch'` is now unused by any consumer. **Follow-up:** delete the
+variant and the branch.
+
+## Out of scope
+
+Nothing from this spec remains deferred.
 
 ## Verification
 

@@ -859,7 +859,7 @@ export function FlowShowcase() {
             </PhoneFrame>
           </div>
           <div className="absolute z-10" style={{ left: DASH.x, top: DASH.y, width: DASH.w }}>
-            <BrowserFrame label="app.nexxus.com" appBar rail={<MiniRail variant="app" />}>
+            <BrowserFrame label="app.nexxus.com" appBar rail={<MiniRail />}>
               <OperatorSurface cue={cue} />
             </BrowserFrame>
           </div>
