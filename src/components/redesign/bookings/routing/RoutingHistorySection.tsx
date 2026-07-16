@@ -8,30 +8,21 @@ import { Separator } from '@/components/ui/separator';
 import { Timeline, TimelineItem } from '@/components/ui/timeline';
 import { buildRoutingTimeline } from '@/lib/bookings/routingHistoryVm';
 import { useRoutingLog } from '@/hooks/useRoutingLog';
-import type { CleanerOption } from '../bookings-types';
 
 /**
  * R10: the cleaner-assignment offer trail, oldest attempt first. View-only.
  * Hidden entirely for directly-assigned bookings (no routing rows) and while
- * loading, so the common direct-assign case never flashes a section.
+ * loading, so the common direct-assign case never flashes a section. Cleaner
+ * names arrive resolved on the rows (useRoutingLog), so rendering never races
+ * a separate cleaner-list query.
  */
-export function RoutingHistorySection({
-  appointmentId,
-  cleanerOptions,
-}: {
-  appointmentId: string;
-  cleanerOptions: CleanerOption[];
-}) {
+export function RoutingHistorySection({ appointmentId }: { appointmentId: string }) {
   const { rows, loading, error, refetch } = useRoutingLog(appointmentId);
 
   if (loading) return null;
   if (!error && rows.length === 0) return null;
 
-  const items = buildRoutingTimeline(
-    rows,
-    new Map(cleanerOptions.map((c) => [c.id, c.name])),
-    new Date(),
-  );
+  const items = buildRoutingTimeline(rows, new Date());
 
   return (
     <>

@@ -320,7 +320,10 @@ export function useAdminAppointments() {
     enabled: !!orgId,
     onEvent: () => ({
       type: 'invalidate',
-      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId)],
+      // Routing-log rows change alongside appointment updates (decline,
+      // expiry, next-attempt dispatch), so this event doubles as the
+      // invalidation signal for the sheet's routing-history section.
+      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId), ['appointments', 'routing-log']],
     }),
   });
 

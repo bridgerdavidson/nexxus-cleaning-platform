@@ -37,11 +37,12 @@ export function JobPhotosSection({
   const { allPhotos, loading, error, refetch } = useJobPhotosForAppointment(appointmentId);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  // While loading we don't know photoCount yet; show the skeleton only when
-  // the section would plausibly render (started/completed/skipped), so
-  // future bookings never flash it.
-  const maybeVisible = shouldShowJobPhotos({ photoCount: 1, photosSkipped, status });
-  if (loading && !maybeVisible) return null;
+  // While loading (or errored) we don't know photoCount, so gate on the
+  // photo-independent signals only (skipped / job started): future bookings
+  // never flash a skeleton, and never show a phantom error section either. A
+  // future booking that DOES have photos appears once the query resolves.
+  const baseVisible = shouldShowJobPhotos({ photoCount: 0, photosSkipped, status });
+  if ((loading || error) && !baseVisible) return null;
   if (!loading && !error && !shouldShowJobPhotos({ photoCount: allPhotos.length, photosSkipped, status })) {
     return null;
   }

@@ -4,6 +4,9 @@ import { format, isSameDay } from 'date-fns';
 export type RoutingLogRow = {
   id: string;
   cleaner_id: string;
+  /** Resolved by the hook from user_profiles; null when the cleaner's profile
+   *  is no longer visible (left the org). */
+  cleaner_name: string | null;
   attempt_index: number;
   sent_at: string;
   deadline_at: string;
@@ -15,7 +18,7 @@ export type RoutingLogRow = {
 export type RoutingTimelineItem = {
   id: string;
   name: string;
-  badgeVariant: 'positive' | 'critical' | 'secondary' | 'info';
+  badgeVariant: 'positive' | 'critical' | 'secondary' | 'info' | 'caution';
   badgeLabel: string;
   metaLine: string;
   declineReason: string | null;
@@ -28,7 +31,6 @@ const stamp = (iso: string) => format(new Date(iso), 'MMM d, h:mm a');
  *  parameter (not Date.now()) so tests and callers control the clock. */
 export function buildRoutingTimeline(
   rows: RoutingLogRow[],
-  cleanerNameById: Map<string, string>,
   now: Date,
 ): RoutingTimelineItem[] {
   const sorted = [...rows].sort((a, b) => a.attempt_index - b.attempt_index);
@@ -52,8 +54,15 @@ export function buildRoutingTimeline(
         break;
       default: {
         const deadline = new Date(r.deadline_at);
-        badgeVariant = 'info';
-        badgeLabel = `Respond by ${isSameDay(deadline, now) ? format(deadline, 'h:mm a') : stamp(r.deadline_at)}`;
+        if (deadline.getTime() < now.getTime()) {
+          // Still 'pending' past its deadline: the expiry sweep hasn't closed
+          // the row yet. Don't promise a response by a time already gone.
+          badgeVariant = 'caution';
+          badgeLabel = 'Response overdue';
+        } else {
+          badgeVariant = 'info';
+          badgeLabel = `Respond by ${isSameDay(deadline, now) ? format(deadline, 'h:mm a') : stamp(r.deadline_at)}`;
+        }
       }
     }
 
@@ -65,7 +74,7 @@ export function buildRoutingTimeline(
 
     return {
       id: r.id,
-      name: cleanerNameById.get(r.cleaner_id) ?? 'Former cleaner',
+      name: r.cleaner_name ?? 'Former cleaner',
       badgeVariant,
       badgeLabel,
       metaLine,

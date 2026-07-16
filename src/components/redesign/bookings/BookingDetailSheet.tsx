@@ -419,7 +419,7 @@ function DetailBody({
           photoSkipReason={appointment?.photo_skip_reason ?? null}
         />
 
-        <RoutingHistorySection appointmentId={detail.id} cleanerOptions={cleanerOptions} />
+        <RoutingHistorySection appointmentId={detail.id} />
 
         {detail.declinedReason || detail.specialRequests || detail.notes ? (
           <>
