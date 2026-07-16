@@ -27,7 +27,11 @@ export function HomeownerShell({ children }: { children: ReactNode }) {
         </a>
         <HomeownerTopBar />
         <main id="main-content" className="mx-auto max-w-lg px-4 pb-28 pt-4">
-          {children}
+          {/* Keyed by pathname so each tab/page switch replays the entrance
+              animation on the incoming content (the shell itself stays put). */}
+          <div key={pathname} className="animate-page-in motion-reduce:animate-none">
+            {children}
+          </div>
         </main>
         <HomeownerBottomNav activeId={activeId} messagesUnread={messagesUnread} />
       </div>
