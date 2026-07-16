@@ -25,9 +25,15 @@ const jakarta = Plus_Jakarta_Sans({
   variable: "--font-sans",
 });
 
+// Fallback metadata for every page that does not set its own, which means the
+// homeowner, cleaner and operator dashboards as well as auth. So the title is
+// the bare brand: those pages have a mixed audience, and a homeowner's tab
+// should not read "Run your cleaning company". The landing page overrides this
+// with the B2B line, because that is the one place the audience is known.
 export const metadata: Metadata = {
-  title: "Nexxus Cleaning Solutions",
-  description: "Professional cleaning services for your home and business",
+  title: "Nexxus",
+  description:
+    "Bookings, crews, and payments in one place. The software cleaning companies run on.",
   appleWebApp: {
     title: "Nexxus",
   },

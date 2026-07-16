@@ -18,7 +18,12 @@ import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { cn } from '@/lib/utils'
+import { HOMEOWNER_NAV } from '@/components/redesign/homeowner/shell/homeowner-nav-items'
+import { CLEANER_NAV } from '@/components/redesign/cleaner/shell/cleaner-nav-items'
 import { BrowserFrame, MiniRail, PhoneFrame } from './frames'
+
+const HOMEOWNER_TABS = HOMEOWNER_NAV.map((i) => i.icon)  // 4: Home, Cleanings, Messages, Account
+const CLEANER_TABS = CLEANER_NAV.map((i) => i.icon)      // 5: Today, Schedule, Earnings, Messages, Profile
 
 // ---------------------------------------------------------------------------
 // One booking travels through Nexxus as a single continuous ~24s loop. The
@@ -37,13 +42,38 @@ const GLIDE: [number, number, number, number] = [0.45, 0.05, 0.25, 1]
 const STAGE_W = 1060
 const STAGE_H = 420
 
-const HOME = { x: 0, y: 56, w: 252 }
-const DASH = { x: 306, y: 12, w: 460 }
-const CLEAN = { x: 812, y: 56, w: 248 }
+// The viewport is overflow-hidden so the camera can pan on narrow screens, which
+// means it also slices the frames' shadow-soft-lg into a hard line wherever a
+// frame sits near a stage edge. That shadow (0 14px 34px) reaches ~48px below a
+// frame and ~34px to its sides, but the phones bottom out at y=410 in a 420
+// stage and the right phone ends at exactly STAGE_W. So: bleed the viewport
+// below the stage, and let it reclaim the section's horizontal padding with -mx
+// so the outer shadows have somewhere to go.
+const BLEED = 44
+
+// Three frames on a shared top edge at y=30, with the label band above them in
+// y 0..24. The old composition staggered them (dash y=12, phones y=56); that is
+// dropped, because a shared label baseline over staggered frames leaves an
+// uneven label-to-frame gap. With the app bar the dashboard lands near 380 tall
+// anyway, the same as the phones, so the three align. The dashboard still
+// dominates at 460 wide against 220.
+const HOME = { x: 0, y: 30, w: 220, h: 380 }
+const DASH = { x: 300, y: 30, w: 460 }
+const CLEAN = { x: 840, y: 30, w: 220, h: 380 }
 
 // Card centers, used by the motion paths (offset-path follows these curves).
-const PATH_A = 'M 126 252 C 240 165, 400 148, 556 212'
-const PATH_B = 'M 556 212 C 700 148, 830 162, 936 246'
+// Endpoints are measured (not derived on paper) from the rendered centers of
+// #flow-request-card, #flow-queue-row, and #flow-job-row via stageCenter's
+// own math, polled across a full loop in the browser console. Control points
+// sit ~85px above the straight line between endpoints, at roughly one third
+// and two thirds across, to keep the arc that reads as flight rather than a
+// slide.
+// PATH_A ends 552 279, not 552 271: the queue row sits at 279 while
+// unassigned (Assign chip), and that's its state at the `drop` cue, when
+// this flight lands. It only moves to 271 once `assigned` fires, which is
+// where PATH_B departs from below. Same row, two stable heights.
+const PATH_A = 'M 110 123 C 257 90, 405 142, 552 279'
+const PATH_B = 'M 552 271 C 685 156, 817 125, 950 180'
 
 const FLIGHT_A_MS = 1450
 const FLIGHT_B_MS = 1350
@@ -88,6 +118,32 @@ const CAPTIONS: Array<{ from: CueName; text: string }> = [
   { from: 'panBack', text: 'Job complete: the saved card is charged and revenue rolls up.' },
   { from: 'settle', text: 'Booked to paid, with nobody chasing anybody.' },
 ]
+
+const ROLES = [
+  { key: 'home', name: 'Sarah', role: 'Customer', x: HOME.x, w: HOME.w },
+  { key: 'dash', name: 'Dana', role: 'The office', x: DASH.x, w: DASH.w },
+  { key: 'clean', name: 'Maria', role: 'Cleaner', x: CLEAN.x, w: CLEAN.w },
+] as const
+
+/** Role labels on a shared baseline above the frames. These are the page's
+ *  voice, not product chrome: the frames themselves stay honest screenshots.
+ *  "Customer" not "Homeowner" on purpose, see the spec: the operator nav says
+ *  "Customers", the hero sells past homes, and demo-data has a rental. */
+function StageLabels() {
+  return (
+    <>
+      {ROLES.map((r) => (
+        <p
+          key={r.key}
+          className="absolute top-0 text-center text-xs font-semibold text-muted-foreground"
+          style={{ left: r.x, width: r.w }}
+        >
+          <span className="font-extrabold text-foreground">{r.name}</span> · {r.role}
+        </p>
+      ))}
+    </>
+  )
+}
 
 function focusFor(cue: number): number {
   if (cue < CUE_INDEX.lift) return HOME.x + HOME.w / 2
@@ -225,7 +281,7 @@ function MiniKpi({ label, emphasized, children }: { label: string; emphasized?: 
         emphasized ? 'border-brand-300 shadow-soft-md ring-2 ring-brand-200' : 'border-border',
       )}
     >
-      <p className="text-[9px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</p>
+      <p className="text-[9px] font-semibold uppercase tracking-[0.03em] text-muted-foreground">{label}</p>
       <p className="text-base font-extrabold text-foreground tnum">{children}</p>
     </m.div>
   )
@@ -244,12 +300,19 @@ function LiveDot({ live }: { live: boolean }) {
  *  form, flies path A, and sits in the queue. */
 function ApptCard() {
   return (
-    <div className="w-[190px] rounded-control border border-border bg-card px-3 py-2 shadow-soft-lg">
+    // This card is a stage overlay, not a child of the phone, so what reads is
+    // its width against the frame: 166 keeps it at ~75% of the 220px phone, the
+    // ratio it had at 252. The subtitle drops "Sarah K." because at 9px the full
+    // string is ~163px and would wrap inside a 166px card, changing its height
+    // mid-flight. The name is not lost: the queue row it lands on reads
+    // "Thu · 9:00 AM · Sarah K.", and the label above the phone says
+    // "Sarah · Customer".
+    <div className="w-[166px] rounded-control border border-border bg-card px-3 py-2 shadow-soft-lg">
       <p className="flex items-center justify-between text-[11px] font-bold text-foreground">
         <span className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-accent-foreground" aria-hidden />Deep clean</span>
         <span className="tnum">$180</span>
       </p>
-      <p className="mt-0.5 text-[9px] text-muted-foreground">Thu · 9:00 AM · Sarah K. · 8 Cedar Ct</p>
+      <p className="mt-0.5 text-[9px] text-muted-foreground">Thu · 9:00 AM · 8 Cedar Ct</p>
     </div>
   )
 }
@@ -285,8 +348,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
   const complete = cue >= CUE_INDEX.panBack
   const paid = cue >= CUE_INDEX.revenue
   return (
-    <div className="grid min-h-[290px] grid-cols-1 content-start gap-2 text-left">
-      <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Sarah · customer</Badge>
+    <div className="grid grid-cols-1 content-start gap-2 text-left">
       <AnimatePresence mode="popLayout" initial={false}>
       {!collapsed ? (
         <m.div
@@ -295,7 +357,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
           className="grid grid-cols-1 gap-2"
         >
           <p className="text-[13px] font-bold text-foreground">Request a cleaning</p>
-          <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
+          <div id="flow-request-card" className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
             <span className="flex items-center gap-1.5 font-semibold text-foreground"><Sparkles className="size-3.5 text-accent-foreground" aria-hidden />Deep clean</span>
             <span className="font-bold text-foreground tnum">$180</span>
           </div>
@@ -350,7 +412,7 @@ function HomeownerSurface({ cue }: { cue: number }) {
         <Pop show delay={0.35}>
           <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2.5 text-[11px]">
             <CheckCircle2 className="size-4 shrink-0 text-positive-700" aria-hidden />
-            <span className="font-semibold text-foreground">Request sent. The office will confirm your time.</span>
+            <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Sent. Confirming soon.</span>
           </div>
         </Pop>
       ) : null}
@@ -389,8 +451,10 @@ function OperatorSurface({ cue }: { cue: number }) {
   const pillKey = completed ? 'completed' : started ? 'in_progress' : 'confirmed'
 
   return (
+    // The rail is hoisted to BrowserFrame's `rail` slot, so it sits full-height
+    // beside this content with the app bar starting at its edge, matching the
+    // real shell. This surface is the content column only.
     <div className="flex">
-      <MiniRail />
       <div className="min-w-0 flex-1 bg-background p-3 text-left">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-[13px] font-bold text-foreground">Good morning, Dana</p>
@@ -530,15 +594,14 @@ function CleanerSurface({ cue }: { cue: number }) {
   const checks = cue >= CUE_INDEX.checkDone ? 8 : cue >= CUE_INDEX.check2 ? 5 : cue >= CUE_INDEX.check1 ? 3 : 2
 
   return (
-    <div className="grid min-h-[290px] grid-cols-1 content-start gap-2 text-left">
-      <Badge variant="secondary" className="justify-self-start px-2 py-0.5 text-[10px]">Maria · cleaner</Badge>
+    <div className="grid grid-cols-1 content-start gap-2 text-left">
       {!started ? (
         <>
           <p className="text-[13px] font-bold text-foreground">Your Thursday</p>
           <div className="flex items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
             <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">8:00</span>
             <span className="h-6 w-px bg-border" aria-hidden />
-            <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Chen home</span>
+            <span className="min-w-0 flex-1 truncate font-semibold text-foreground">Chen</span>
             <StatusPill status="completed" label="Done" className="px-2 py-0.5 text-[9px]" />
           </div>
           {incoming ? (
@@ -547,11 +610,11 @@ function CleanerSurface({ cue }: { cue: number }) {
             </div>
           ) : null}
           <Land show={hasJob}>
-            <div className="flex items-center gap-2 rounded-control border border-brand-200 bg-accent px-2.5 py-2 text-[11px]">
+            <div id="flow-job-row" className="flex items-center gap-2 rounded-control border border-brand-200 bg-accent px-2.5 py-2 text-[11px]">
               <span className="w-8 shrink-0 text-center font-extrabold text-foreground tnum">9:00</span>
               <span className="h-6 w-px bg-brand-200" aria-hidden />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold text-foreground">Sarah K. · Deep clean</span>
+                <span className="block truncate font-semibold text-foreground">Sarah K.</span>
                 <span className="block text-[9px] text-muted-foreground">8 Cedar Ct</span>
               </span>
               <Badge className="px-1.5 py-0.5 text-[9px]">New</Badge>
@@ -778,8 +841,8 @@ export function FlowShowcase() {
     <div ref={rootRef} id="flow-showcase">
       <div
         ref={viewportRef}
-        className="relative overflow-hidden"
-        style={{ height: STAGE_H * scale }}
+        className="relative -mx-4 overflow-hidden sm:-mx-6"
+        style={{ height: (STAGE_H + BLEED) * scale }}
         aria-hidden
       >
         <m.div
@@ -789,18 +852,19 @@ export function FlowShowcase() {
           animate={{ x: camX, scale }}
           transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 55, damping: 20 }}
         >
-          <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w }}>
-            <PhoneFrame>
+          <StageLabels />
+          <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w, height: HOME.h }}>
+            <PhoneFrame initials="SK" tabs={HOMEOWNER_TABS} className="h-full w-full">
               <HomeownerSurface cue={cue} />
             </PhoneFrame>
           </div>
           <div className="absolute z-10" style={{ left: DASH.x, top: DASH.y, width: DASH.w }}>
-            <BrowserFrame label="app.nexxus · demo data">
+            <BrowserFrame label="app.nexxus.com" appBar rail={<MiniRail />}>
               <OperatorSurface cue={cue} />
             </BrowserFrame>
           </div>
-          <div className="absolute z-10" style={{ left: CLEAN.x, top: CLEAN.y, width: CLEAN.w }}>
-            <PhoneFrame>
+          <div className="absolute z-10" style={{ left: CLEAN.x, top: CLEAN.y, width: CLEAN.w, height: CLEAN.h }}>
+            <PhoneFrame initials="MR" tabs={CLEANER_TABS} className="h-full w-full">
               <CleanerSurface cue={cue} />
             </PhoneFrame>
           </div>
@@ -813,7 +877,9 @@ export function FlowShowcase() {
         </m.div>
       </div>
 
-      <p className="mx-auto mt-6 min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground" aria-live="polite">
+      {/* pulled up into the viewport's bleed, so the caption keeps its original
+          distance from the frames rather than sitting 44px lower */}
+      <p className="mx-auto -mt-4 min-h-10 max-w-md text-center text-sm font-medium text-muted-foreground" aria-live="polite">
         {caption}
       </p>
     </div>
