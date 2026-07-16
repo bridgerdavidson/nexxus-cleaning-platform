@@ -126,6 +126,7 @@ export const keys = {
       all: ['platform', 'organizations'] as const,
       detail: (id: string) => ['platform', 'organizations', 'detail', id] as const,
     },
+    stats: ['platform', 'stats'] as const,
   },
   onboarding: {
     all: ['onboarding'] as const,
