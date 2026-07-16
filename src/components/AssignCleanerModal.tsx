@@ -244,8 +244,8 @@ export default function AssignCleanerModal({
                 </h2>
                 <p className="text-primary-100 text-sm">
                   {forceMode
-                    ? "Pick any cleaner — availability checks are skipped."
-                    : "Pick from the ranked list — coverage badges show which offered times they can take."}
+                    ? "Pick any cleaner. Availability checks are skipped."
+                    : "Pick from the ranked list. Coverage badges show which offered times they can take."}
                 </p>
               </div>
             </div>

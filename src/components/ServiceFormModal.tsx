@@ -346,7 +346,7 @@ export default function ServiceFormModal({
                               ["owner", "admin", "manager"].includes(m.role),
                           ) && (
                             <span className="text-green-700">
-                              Membership looks OK — check auth.uid() in Supabase
+                              Membership looks OK. Check auth.uid() in Supabase
                               or run SQL script
                             </span>
                           )}
@@ -519,7 +519,7 @@ export default function ServiceFormModal({
               />
               <p className="text-xs text-secondary-600">
                 Next, you&apos;ll set up this service&apos;s{" "}
-                <span className="font-semibold text-secondary-900">checklist</span> — the steps
+                <span className="font-semibold text-secondary-900">checklist</span>: the steps
                 your cleaners follow. We&apos;ll start you with a default one; you can edit it or
                 add more checklists (like a deep clean) that add to the price.
               </p>

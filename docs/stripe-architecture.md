@@ -7,6 +7,13 @@ How payments work in the Nexxus Cleaning Platform after the multi-tenant restruc
 > **Rollout note:** the new flow is **flag-gated and not yet the production default**. The
 > legacy platform-as-merchant path still runs when the flags are off. See
 > [Feature flags & rollout](#feature-flags--rollout-state) and [Cutover](#cutover-still-pending).
+>
+> ⚠️ **State correction (2026-07-16):** the production Vercel env does NOT match this note —
+> `STRIPE_NEW_CHARGE_FLOW_ENABLED` is already `true` in Production while the server
+> `STRIPE_TENANT_CONNECT_ENABLED` row is missing there (split-flag state; completion charges
+> would fail `tenant_not_ready` for un-onboarded orgs). Observed state, implications, and the
+> ordered cutover plan live in `docs/redesign/cutover-runbook.md` — trust that over this note
+> until cutover lands.
 
 ## Why it changed
 

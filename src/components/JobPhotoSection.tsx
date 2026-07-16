@@ -271,7 +271,7 @@ export default function JobPhotoSection({
               No {label.toLowerCase()} photos yet
             </p>
             <p className="text-xs text-gray-400">
-              Tap "Take Photo" or "Upload Photos" — up to 10 per batch
+              Tap "Take Photo" or "Upload Photos" (up to 10 per batch)
             </p>
           </div>
         )

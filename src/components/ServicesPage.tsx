@@ -483,7 +483,7 @@ function ChecklistsView({
             </p>
             <p className="text-gray-500 text-sm mt-2 max-w-xl">
               A service can have multiple checklists. Each one can add to the base
-              price — use extra checklists for deeper cleans or add-ons.
+              price. Use extra checklists for deeper cleans or add-ons.
             </p>
           </div>
         </div>
@@ -515,14 +515,14 @@ function ChecklistsView({
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-base font-bold text-secondary-900">
-                Your service is ready — now set up its checklist
+                Your service is ready. Now set up its checklist
               </h3>
               <p className="mt-1 text-sm text-secondary-600">
                 We started{" "}
                 <span className="font-semibold text-secondary-900">
                   {service.name}
                 </span>{" "}
-                with a default checklist below — the steps your cleaners follow on
+                with a default checklist below: the steps your cleaners follow on
                 every job. Review it, edit the steps, or rename it.
               </p>
               <ul className="mt-3 space-y-1.5 text-sm text-secondary-600">
@@ -549,7 +549,7 @@ function ChecklistsView({
                     <span className="font-semibold text-secondary-900">
                       price add-on
                     </span>{" "}
-                    — it&apos;s added to the base price when a customer books that
+                    that&apos;s added to the base price when a customer books that
                     checklist.
                   </span>
                 </li>
@@ -561,7 +561,7 @@ function ChecklistsView({
                   className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 >
                   <Check className="h-4 w-4" aria-hidden="true" />
-                  Looks good — done
+                  Looks good, done
                 </button>
               </div>
             </div>
