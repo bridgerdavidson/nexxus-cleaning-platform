@@ -28,7 +28,7 @@ export function AgendaRow({ event, nowMs, onOpen }: { event: CalendarEvent; nowM
       onClick={() => onOpen(event.id)}
       className="mb-2 flex w-full items-center gap-3.5 rounded-control border border-border bg-card px-3.5 py-2.5 text-left shadow-soft-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="w-28 shrink-0">
+      <div className="w-[4.5rem] shrink-0 sm:w-28">
         <div className="text-[12.5px] font-bold tabular-nums text-foreground">{fmtTime(event.start.toTimeString().slice(0, 5))}</div>
         <div className="text-[11px] text-muted-foreground">{durationLabel(event.durationMin)}</div>
       </div>
@@ -42,8 +42,14 @@ export function AgendaRow({ event, nowMs, onOpen }: { event: CalendarEvent; nowM
       <div className="flex shrink-0 items-center gap-2.5">
         <Badge variant={s.variant}>{s.label}</Badge>
         <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-warm-700">
-          <span className="grid size-[22px] place-items-center rounded-full bg-brand-600 text-[10px] font-extrabold text-white">{initials(event.cleanerName)}</span>
-          {event.cleanerName ?? 'Unassigned'}
+          <span
+            className="grid size-[22px] place-items-center rounded-full bg-brand-600 text-[10px] font-extrabold text-white"
+            title={event.cleanerName ?? 'Unassigned'}
+          >
+            {initials(event.cleanerName)}
+          </span>
+          {/* Name text would crush the customer column at phone widths; the avatar carries it there. */}
+          <span className="hidden sm:inline">{event.cleanerName ?? 'Unassigned'}</span>
         </span>
       </div>
     </button>

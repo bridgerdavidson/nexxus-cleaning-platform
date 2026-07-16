@@ -1,12 +1,11 @@
 // src/components/redesign/calendar/MobileMonthView.tsx
 'use client';
 
-import { CalendarDays, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { CalendarEvent } from '@/lib/calendar/types';
 import { cn } from '@/lib/utils';
 import { monthMatrix, toDateKey, isSameDayLocal } from '@/lib/calendar/dateRange';
 import { groupEventsByDate } from '@/lib/calendar/groupEvents';
-import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { AgendaRow } from './AgendaRow';
 import { monthCellSummary, type MonthCellSummary } from './monthCellSummary';
@@ -124,18 +123,16 @@ export function MobileMonthView({
         {dayEvents.length > 0 ? (
           dayEvents.map((ev) => <AgendaRow key={ev.id} event={ev} nowMs={nowMs} onOpen={onOpen} />)
         ) : (
-          <EmptyState
-            icon={<CalendarDays />}
-            title="Nothing scheduled"
-            description="No bookings on this day."
-            action={
-              canEdit ? (
-                <Button onClick={() => onCreate(selectedKey)}>
-                  <Plus /> Book this day
-                </Button>
-              ) : undefined
-            }
-          />
+          /* Deliberately compact (not the full EmptyState card) so the action
+             stays clear of the shell FAB on short pages. */
+          <div className="flex flex-col items-center gap-3 rounded-card border border-dashed border-border bg-card/50 px-6 py-6 text-center">
+            <p className="text-sm font-semibold text-foreground">Nothing scheduled</p>
+            {canEdit ? (
+              <Button variant="secondary" size="sm" onClick={() => onCreate(selectedKey)}>
+                <Plus /> Book this day
+              </Button>
+            ) : null}
+          </div>
         )}
       </div>
     </div>
