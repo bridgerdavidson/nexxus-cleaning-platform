@@ -24,6 +24,16 @@ describe("deriveOverviewSections", () => {
     expect(r.unassigned).toHaveLength(0);
   });
 
+  it("lists a fully-declined booking (no cleaner + rejected) only under declined, not unassigned too", () => {
+    const r = deriveOverviewSections(
+      [appt({ cleaner_id: null, cleaner_confirmation_status: "rejected" })],
+      today,
+      NOW
+    );
+    expect(r.declined).toHaveLength(1);
+    expect(r.unassigned).toHaveLength(0);
+  });
+
   it("classifies declined and counter-proposed", () => {
     const r = deriveOverviewSections(
       [
