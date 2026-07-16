@@ -82,13 +82,13 @@ function TenantCell({
 
 /** Global platform audit log: filterable, paginated table over platform_audit_log. */
 export function PlatformAuditLog() {
-  const { data, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } =
-    usePlatformAudit({ limit: 50 });
-  const { open } = useOpenTenant();
   const [action, setAction] = useState('all');
+  // Filter server-side so pagination + "load more" apply to the filtered set.
+  const { data, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    usePlatformAudit({ action: action === 'all' ? undefined : action, limit: 50 });
+  const { open } = useOpenTenant();
 
-  const all = data?.pages.flatMap((p) => p.entries) ?? [];
-  const entries = action === 'all' ? all : all.filter((e) => e.action === action);
+  const entries = data?.pages.flatMap((p) => p.entries) ?? [];
 
   return (
     <div className="max-w-[1700px] space-y-6">
@@ -124,11 +124,11 @@ export function PlatformAuditLog() {
       ) : entries.length === 0 ? (
         <EmptyState
           icon={<ScrollText />}
-          title={all.length === 0 ? 'No activity recorded yet.' : 'No entries match this filter'}
+          title={action === 'all' ? 'No activity recorded yet.' : 'No entries match this filter'}
           description={
-            all.length === 0
+            action === 'all'
               ? 'Platform actions (impersonations, provisions, deletes, resets) will appear here.'
-              : 'Try a different action, or load more entries.'
+              : 'Try a different action.'
           }
         />
       ) : (

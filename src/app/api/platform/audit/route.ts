@@ -49,16 +49,23 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
   const orgId = params.get('org_id');
+  const action = params.get('action');
   const limit = Math.min(Math.max(Number(params.get('limit')) || 50, 1), 100);
   const offset = Math.max(Number(params.get('offset')) || 0, 0);
 
   let query = supabaseAdmin
     .from('platform_audit_log')
     .select('id, actor_user_id, action, target_org_id, metadata, started_at, ended_at')
+    // id is the tiebreaker so rows sharing a started_at can't duplicate or skip
+    // across page boundaries.
     .order('started_at', { ascending: false })
+    .order('id', { ascending: false })
     .range(offset, offset + limit); // fetch limit + 1 rows to detect a next page
 
   if (orgId) query = query.eq('target_org_id', orgId);
+  // Filter by action server-side so pagination applies to the filtered set (a
+  // client-side filter over paged data would hide "load more" for older matches).
+  if (action) query = query.eq('action', action);
 
   const { data, error } = await query;
   if (error) {

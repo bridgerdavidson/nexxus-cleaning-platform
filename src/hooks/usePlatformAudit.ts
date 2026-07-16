@@ -17,17 +17,21 @@ interface AuditPage {
  * Consumers read `data.pages.flatMap(p => p.entries)` and drive `fetchNextPage`
  * off `hasNextPage`.
  */
-export function usePlatformAudit(params: { orgId?: string | null; limit?: number } = {}) {
+export function usePlatformAudit(
+  params: { orgId?: string | null; action?: string | null; limit?: number } = {},
+) {
   const { accessToken, isPlatformAdmin } = useAuth();
   const orgId = params.orgId ?? null;
+  const action = params.action ?? null;
   const limit = params.limit ?? 50;
 
   return useInfiniteQuery({
-    queryKey: keys.platform.audit({ orgId, limit }),
+    queryKey: keys.platform.audit({ orgId, action, limit }),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => {
       const qs = new URLSearchParams({ limit: String(limit), offset: String(pageParam) });
       if (orgId) qs.set('org_id', orgId);
+      if (action) qs.set('action', action);
       return platformFetch<AuditPage>(
         `/api/platform/audit?${qs.toString()}`,
         accessToken as string,

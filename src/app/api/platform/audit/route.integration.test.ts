@@ -115,5 +115,14 @@ describe('GET /api/platform/audit', () => {
     expect(page2.body.entries).toHaveLength(1);
     expect(page2.body.entries[0].action).toBe('reset_tenant_connect');
     expect(page2.body.nextOffset).toBeNull();
+
+    // Server-side action filter: scope to one action within this org.
+    const byAction = await callRoute<AuditResponse>(GET, {
+      method: 'GET',
+      url: `${BASE}?org_id=${org.organizationId}&action=impersonation_start`,
+      headers: bearerHeader(admin.accessToken),
+    });
+    expect(byAction.body.entries).toHaveLength(1);
+    expect(byAction.body.entries[0].action).toBe('impersonation_start');
   });
 });

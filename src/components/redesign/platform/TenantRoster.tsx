@@ -295,7 +295,7 @@ export function TenantRoster() {
 
           {/* Mobile card list */}
           <div className="space-y-3 lg:hidden">
-            {filtered.map((org) => (
+            {capped.map((org) => (
               <div
                 key={org.id}
                 role="button"

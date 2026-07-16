@@ -127,8 +127,8 @@ export const keys = {
       detail: (id: string) => ['platform', 'organizations', 'detail', id] as const,
     },
     stats: ['platform', 'stats'] as const,
-    audit: (params: { orgId?: string | null; limit?: number } = {}) =>
-      ['platform', 'audit', params.orgId ?? 'all', params.limit ?? 50] as const,
+    audit: (params: { orgId?: string | null; action?: string | null; limit?: number } = {}) =>
+      ['platform', 'audit', params.orgId ?? 'all', params.action ?? 'all', params.limit ?? 50] as const,
   },
   onboarding: {
     all: ['onboarding'] as const,
