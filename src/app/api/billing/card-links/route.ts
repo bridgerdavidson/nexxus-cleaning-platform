@@ -7,7 +7,7 @@ import { getOrCreateStripeCustomer } from '@/lib/stripe/customers/homeowner';
 import { createCardSetupIntent } from '@/lib/stripe/setup-intents';
 import { homeownerBelongsToOrg } from '@/lib/payments/orgHomeowner';
 import { emailConfigured, sendEmail } from '@/lib/email/sendEmail';
-import { cardLinkEmail } from '@/lib/email/templates/cardLinkEmail';
+import { cardLinkEmail, type FailedPaymentContext } from '@/lib/email/templates/cardLinkEmail';
 
 // nodemailer needs the Node runtime.
 export const runtime = 'nodejs';
@@ -24,6 +24,50 @@ const LINK_TTL_DAYS = 7;
 function trustedAppBase(): string | null {
   const base = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || '';
   return base ? base.replace(/\/+$/, '') : null;
+}
+
+/** "2026-06-24" -> "June 24" without timezone drift (the column is a plain date). */
+function scheduledDateLabel(scheduledDate: string | null): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(scheduledDate ?? '');
+  if (!m) return null;
+  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * Optional email context: when the caller names an appointment whose charge
+ * failed (or needs bank verification), the email switches to the urgent
+ * "your payment did not go through" wording with the server-derived amount and
+ * date. The appointment must belong to this org AND this homeowner; anything
+ * else (missing, mismatched, not actually failed) silently degrades to the
+ * generic email rather than failing link creation, and the identical response
+ * shape means a mismatched id leaks nothing.
+ */
+async function failedPaymentContext(
+  appointmentId: string | undefined,
+  organizationId: string,
+  homeownerId: string,
+): Promise<FailedPaymentContext | null> {
+  if (!appointmentId) return null;
+  const { data } = await supabaseAdmin
+    .from('appointments')
+    .select('organization_id, homeowner_id, authorization_status, total_price, scheduled_date')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  const appt = data as {
+    organization_id: string | null;
+    homeowner_id: string | null;
+    authorization_status: string | null;
+    total_price: number | null;
+    scheduled_date: string | null;
+  } | null;
+  if (!appt || appt.organization_id !== organizationId || appt.homeowner_id !== homeownerId) return null;
+  if (appt.authorization_status !== 'failed' && appt.authorization_status !== 'requires_action') return null;
+  return {
+    reason: appt.authorization_status === 'failed' ? 'declined' : 'verification',
+    amountLabel: appt.total_price != null ? `$${Number(appt.total_price).toFixed(2)}` : null,
+    dateLabel: scheduledDateLabel(appt.scheduled_date),
+  };
 }
 
 /**
@@ -45,10 +89,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { organization_id, homeowner_id, deliver } = body as {
+    const { organization_id, homeowner_id, deliver, appointment_id } = body as {
       organization_id?: string;
       homeowner_id?: string;
       deliver?: 'email' | 'copy';
+      /** Optional: the failed appointment this link is fixing (urgent email wording). */
+      appointment_id?: string;
     };
 
     // Creating a card-collection link precedes a payment-spending action, so a manager
@@ -129,6 +175,7 @@ export async function POST(request: NextRequest) {
           url: `${appBase}/billing/add-card?t=${token}`,
           // Signed-in alternative for recipients wary of email payment links.
           accountUrl: `${appBase}/app/homeowner-dashboard/account/payment-methods`,
+          failedPayment: await failedPaymentContext(appointment_id, organization_id!, homeowner_id),
           expiresInDays: LINK_TTL_DAYS,
         });
         await sendEmail({ to: profile.email, ...message });
