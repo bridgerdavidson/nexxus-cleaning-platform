@@ -182,7 +182,7 @@ export default function DeleteOrgDialog({
             <div className="px-6 py-5">
               <p className="mb-4 text-sm text-gray-700">
                 Are you absolutely sure? Deleting{' '}
-                <span className="font-semibold">{orgName}</span> is permanent — there is no undo,
+                <span className="font-semibold">{orgName}</span> is permanent: there is no undo,
                 no restore, and no audit-log reversal.
               </p>
               {error && (
@@ -214,7 +214,7 @@ export default function DeleteOrgDialog({
           {stage === 'deleting' && (
             <div className="flex items-center gap-3 px-6 py-8 text-sm text-gray-700">
               <Loader2 className="h-5 w-5 animate-spin text-red-600" />
-              Deleting {orgName} — this can take a few seconds…
+              Deleting {orgName}. This can take a few seconds…
             </div>
           )}
         </div>

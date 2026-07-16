@@ -178,7 +178,7 @@ export default function CleanerConnectResetButton({
                       <li>
                         In-flight payouts at reset:{' '}
                         <span className="font-semibold text-red-700">{result.payout_count}</span>{' '}
-                        (orphaned — reconcile manually)
+                        (orphaned, reconcile manually)
                       </li>
                     )}
                   </ul>

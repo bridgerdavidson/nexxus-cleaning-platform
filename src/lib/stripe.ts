@@ -332,20 +332,15 @@ export async function getConnectAccountStatus(
 
 /**
  * Create a short-lived login link that redirects an Express connected account
- * holder to their Stripe Express dashboard.
+ * holder to their Stripe Express dashboard. (Stripe dropped `redirect_url`
+ * from login-link creation; the API version we pin has no post-logout
+ * redirect, so this takes only the account.)
  */
 export async function createExpressDashboardLoginLink(
-  accountId: string,
-  redirectUrl?: string
+  accountId: string
 ): Promise<Stripe.LoginLink> {
   const stripe = getStripe();
-
-  const params: Stripe.LoginLinkCreateParams = {};
-  if (redirectUrl) {
-    params.redirect_url = redirectUrl;
-  }
-
-  return stripe.accounts.createLoginLink(accountId, params);
+  return stripe.accounts.createLoginLink(accountId);
 }
 
 /**

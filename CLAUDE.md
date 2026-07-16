@@ -235,7 +235,7 @@ Realtime tables must be added to the `supabase_realtime` publication and have `R
 - `payment_stats(p_org_id)` — used by `usePaymentStats`
 - `org_customers_with_counts(p_org_id)` — used by `useAdminCustomers` (also fixes the previous lossy client-side merge)
 
-Each hook calls the RPC first and falls back to the legacy multi-query path if the RPC errors (so the app keeps working before the migration is applied to a new environment). The fallback should be removed once 049 has shipped to all envs.
+Each hook calls its RPC directly and throws on error (TanStack Query surfaces it). The legacy multi-query fallbacks were removed once 049 had shipped to every environment; a fresh local environment gets the RPCs via `npx supabase db reset`.
 
 ### Dashboards
 

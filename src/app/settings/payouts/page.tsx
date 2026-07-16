@@ -85,6 +85,6 @@ function buildHeroCopy(
   return {
     title: 'Set up payouts',
     description:
-      'Connect a bank account to receive automatic payouts when jobs complete. Everything happens right here — no need to leave the app.',
+      'Connect a bank account to receive automatic payouts when jobs complete. Everything happens right here, no need to leave the app.',
   };
 }

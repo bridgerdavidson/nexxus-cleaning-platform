@@ -353,7 +353,7 @@ function ReassignRow({ item, onReassign }: ReassignRowProps) {
             )}
             <span className="truncate">
               {isOverdue
-                ? `${cleaner} hasn't responded — SLA elapsed`
+                ? `${cleaner} hasn't responded (SLA elapsed)`
                 : `${cleaner} declined${feedbackReason ? `: ${feedbackReason}` : " this time"}`}
             </span>
           </p>
