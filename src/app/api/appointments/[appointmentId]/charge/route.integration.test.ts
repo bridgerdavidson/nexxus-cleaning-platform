@@ -103,6 +103,44 @@ describe('POST /api/appointments/:appointmentId/charge — homeowner card', () =
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'charged')).toBe(true);
   });
 
+  it('a declined charge notifies org staff AND the homeowner in the bell', async () => {
+    const apptId = await completedApptWithCard();
+    vi.mocked(createDestinationCharge).mockRejectedValueOnce(
+      Object.assign(new Error('Your card was declined.'), {
+        payment_intent: { id: 'pi_declined_bell', status: 'requires_payment_method' },
+      }),
+    );
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(402);
+    expect(body.code).toBe('declined');
+
+    const db = createTestSupabaseClient();
+    const { data: rows } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_failed');
+    const homeownerRows = (rows ?? []).filter(
+      (r) => (r as { recipient_user_id: string }).recipient_user_id === org.homeowner.userId,
+    );
+    expect(homeownerRows).toHaveLength(1);
+    const payload = (homeownerRows[0] as { payload: { audience?: string; reason?: string; error?: string } }).payload;
+    expect(payload.audience).toBe('homeowner');
+    expect(payload.reason).toBe('declined');
+    // The raw Stripe error stays internal; the homeowner payload must not carry it.
+    expect(payload.error).toBeUndefined();
+    // Staff fan-out unchanged alongside the homeowner row.
+    const staffRows = (rows ?? []).filter(
+      (r) => (r as { recipient_user_id: string }).recipient_user_id !== org.homeowner.userId,
+    );
+    expect(staffRows.length).toBeGreaterThan(0);
+  });
+
   it('409 not_chargeable when the appointment is not completed', async () => {
     const db = createTestSupabaseClient();
     const acctId = `acct_ready_${org.organizationId.slice(0, 12)}`;
@@ -510,6 +548,49 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     expect(pay.status).toBe('paid');
     expect(pay.is_self_pay).toBe(true);
     expect(pay.stripe_payment_intent_id).toBe('pi_selfpay_charge_now');
+  });
+
+  it('a declined SELF-PAY charge never notifies the comped homeowner', async () => {
+    // selfPay WITHOUT orgOwnedProperty keeps homeowner_id: a comped booking. The
+    // company card failing is staff's problem, not the homeowner's.
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ stripe_self_pay_customer_id: `cus_selfpay_${org.organizationId.slice(0, 12)}` })
+      .eq('id', org.organizationId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+      selfPay: true,
+    });
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+    vi.mocked(createSelfPayCharge).mockRejectedValueOnce(
+      Object.assign(new Error('Company card declined.'), {
+        payment_intent: { id: 'pi_selfpay_declined', status: 'requires_payment_method' },
+      }),
+    );
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(402);
+    expect(body.code).toBe('declined');
+
+    const { data: rows } = await db
+      .from('notification_events')
+      .select('recipient_user_id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'charge_failed');
+    expect(
+      (rows ?? []).some((r) => (r as { recipient_user_id: string }).recipient_user_id === org.homeowner.userId),
+    ).toBe(false);
+    // Staff still notified about the company-card failure.
+    expect((rows ?? []).length).toBeGreaterThan(0);
   });
 
   it('403 when a manager WITHOUT can_manage_payments charges a self-pay appointment', async () => {

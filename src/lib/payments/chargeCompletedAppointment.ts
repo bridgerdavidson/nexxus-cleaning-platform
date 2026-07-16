@@ -579,6 +579,12 @@ async function finishCharge(
   // Any other terminal status is a failure.
   await supabase.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
   await upsertRevenueRow(supabase, appt.id, { ...baseRow, status: 'failed' });
+  await notifyChargeFailed(supabase, appt, {
+    amountCents: chargeCents,
+    reason: 'declined',
+    error: `Unexpected PaymentIntent status: ${pi.status}`,
+    dedupeSuffix: pi.id,
+  });
   return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${pi.status}`, paymentIntentId: pi.id };
 }
 
@@ -632,7 +638,12 @@ async function recordChargeDecline(
   return { ok: false, code: 'declined', message: opts.err instanceof Error ? opts.err.message : 'Charge declined' };
 }
 
-/** Admin notification for a failed completion charge (decline or off-session 3-D Secure). */
+/**
+ * Notifications for a failed completion charge (decline or off-session 3-D Secure):
+ * an org-staff fan-out row, plus a bell notification to the HOMEOWNER whose card
+ * it actually is (skipped for self-pay, where the failure is the company card and
+ * only staff can act on it). The homeowner payload omits the raw Stripe error.
+ */
 async function notifyChargeFailed(
   supabase: SupabaseClient,
   appt: AppointmentRow,
@@ -653,6 +664,21 @@ async function notifyChargeFailed(
       ...(opts.selfPay ? { self_pay: true } : {}),
     },
   });
+  if (!appt.is_self_pay && appt.homeowner_id) {
+    await recordNotificationEvent(supabase, {
+      event_type: 'charge_failed',
+      appointment_id: appt.id,
+      organization_id: appt.organization_id,
+      recipient_user_id: appt.homeowner_id,
+      dedupe_key: `charge_failed:homeowner:${appt.id}:${opts.dedupeSuffix}`,
+      payload: {
+        ...ctx,
+        audience: 'homeowner',
+        amount_cents: opts.amountCents,
+        reason: opts.reason,
+      },
+    });
+  }
 }
 
 /** Ledger + admin notification for a self-pay completion with nothing to charge. */
