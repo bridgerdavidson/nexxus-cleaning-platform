@@ -290,10 +290,10 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const allowed: DeclineReason[] = ['sick', 'not_my_service', 'too_far', 'other'];
+      const allowed: DeclineReason[] = ['sick', 'not_available', 'not_my_service', 'too_far', 'other'];
       if (!allowed.includes(body.declineReason)) {
         return NextResponse.json(
-          { success: false, error: 'declineReason must be one of: sick | not_my_service | too_far | other' },
+          { success: false, error: 'declineReason must be one of: sick | not_available | not_my_service | too_far | other' },
           { status: 400 }
         );
       }
