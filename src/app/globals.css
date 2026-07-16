@@ -579,7 +579,10 @@ nav.sticky {
    Chrome only: backdrop, buttons, active-thumbnail accent. Variable names
    verified against yarl 3.32.0 dist CSS. */
 .job-photo-lightbox {
-  --yarl__color_backdrop: hsl(var(--foreground) / 0.95);
+  /* Solid, not alpha: a 95%-alpha backdrop on this fixed layer failed to
+     composite in some capture/paint paths, and at 0.95 the see-through was
+     imperceptible anyway. */
+  --yarl__color_backdrop: hsl(var(--foreground));
   --yarl__color_button: hsl(var(--background) / 0.9);
   --yarl__color_button_active: hsl(var(--background));
   --yarl__thumbnails_thumbnail_active_border_color: hsl(var(--primary));
