@@ -169,6 +169,12 @@ export function OperatorPaymentSection({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not create a card link");
+      if (data.delivered === "email") {
+        const customer = `${appointment.homeowner?.first_name ?? ""} ${appointment.homeowner?.last_name ?? ""}`.trim();
+        toast.success(customer ? `Payment link emailed to ${customer}` : "Payment link emailed to the customer");
+        return;
+      }
+      // SMTP not configured (or the send failed server-side): fall back to copy.
       const url = typeof data.url === "string" ? data.url : null;
       if (url && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         try {

@@ -251,19 +251,23 @@ export function usePaymentsTriage(): PaymentsTriage {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not create card link");
-        // The endpoint returns a shareable URL but does NOT itself deliver it, so
-        // copy it to the clipboard for the operator to send, rather than claiming
-        // it was sent.
-        const url = typeof data.url === "string" ? data.url : null;
-        if (url && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-          try {
-            await navigator.clipboard.writeText(url);
-            setNotice("Card link copied to your clipboard. Share it with the customer.");
-          } catch {
-            setNotice(`Card link ready: ${url}`);
-          }
+        if (data.delivered === "email") {
+          setNotice("Card link emailed to the customer.");
         } else {
-          setNotice(url ? `Card link ready: ${url}` : "Card link created.");
+          // SMTP not configured (or the send failed server-side), so the link was
+          // NOT delivered: copy it for the operator to send, rather than claiming
+          // it was sent.
+          const url = typeof data.url === "string" ? data.url : null;
+          if (url && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(url);
+              setNotice("Card link copied to your clipboard. Share it with the customer.");
+            } catch {
+              setNotice(`Card link ready: ${url}`);
+            }
+          } else {
+            setNotice(url ? `Card link ready: ${url}` : "Card link created.");
+          }
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create card link");
