@@ -19,7 +19,7 @@ export function ImpersonationBanner() {
     <div className="sticky top-0 z-[100] flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-center text-sm font-medium text-white">
       <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span>
-        Viewing as <strong>{impersonatingOrgName ?? 'tenant'}</strong> — read-only
+        Viewing as <strong>{impersonatingOrgName ?? 'tenant'}</strong> (read-only)
       </span>
       <button
         type="button"

@@ -121,7 +121,7 @@ function buildHeroCopy(
     return {
       title: 'Verifying your account',
       description: isOwner
-        ? 'Stripe is reviewing your details. If anything else is needed, finish it below — you can come back any time.'
+        ? 'Stripe is reviewing your details. If anything else is needed, finish it below. You can come back any time.'
         : 'Stripe is reviewing your organization’s details. Your owner finishes any remaining steps; balances and payouts appear here once it’s done.',
     };
   }

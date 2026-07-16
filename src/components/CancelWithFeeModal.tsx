@@ -194,7 +194,7 @@ export default function CancelWithFeeModal({
             ) : preview.feeCents > 0 ? (
               <>A <span className="font-semibold">${feeDollars}</span> fee will be charged to the homeowner; the rest of the card hold is released.</>
             ) : (
-              <>No fee — the card hold (if any) will be released and nothing is charged.</>
+              <>No fee. The card hold (if any) will be released and nothing is charged.</>
             )}
           </div>
 

@@ -60,7 +60,7 @@ function CardForm({ firstName }: { firstName: string }) {
       <div className="flex flex-col items-center text-center py-8">
         <CheckCircle2 className="w-12 h-12 text-success-500 mb-3" />
         <h2 className="text-xl font-bold text-gray-900">Card saved</h2>
-        <p className="text-gray-500 mt-1">You’re all set — you can close this tab.</p>
+        <p className="text-gray-500 mt-1">You’re all set. You can close this tab.</p>
       </div>
     );
   }

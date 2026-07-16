@@ -2125,7 +2125,7 @@ export default function AddAppointmentModal({
                 />
                 {scheduledDate === today && scheduledTime && (
                   <p className="mt-1 text-xs text-gray-500">
-                    Today selected — pick a time after{" "}
+                    Today selected. Pick a time after{" "}
                     {new Date().toLocaleTimeString("en-US", {
                       hour: "2-digit",
                       minute: "2-digit",
