@@ -45,12 +45,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No Stripe Connect account found. Create one first.' }, { status: 400 });
     }
 
-    const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const redirectUrl = `${origin}/cleaner-dashboard`;
-
     const loginLink = await createExpressDashboardLoginLink(
-      cleaner.stripe_connect_account_id,
-      redirectUrl
+      cleaner.stripe_connect_account_id
     );
 
     return NextResponse.json({ success: true, url: loginLink.url });

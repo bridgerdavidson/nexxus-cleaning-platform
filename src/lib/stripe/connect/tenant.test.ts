@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type Stripe from 'stripe';
 
 // Capture the params handed to accountSessions.create without touching real Stripe.
-const createMock = vi.fn(async () => ({ client_secret: 'accs_test', object: 'account_session' }));
+// The generic's param type is what types `mock.calls[0][0]` for the assertions below.
+const createMock = vi.fn<
+  (params: Stripe.AccountSessionCreateParams) => Promise<{ client_secret: string; object: string }>
+>(async () => ({ client_secret: 'accs_test', object: 'account_session' }));
 vi.mock('@/lib/stripe', () => ({
   getStripe: () => ({ accountSessions: { create: createMock } }),
 }));
