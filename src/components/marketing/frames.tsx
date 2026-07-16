@@ -171,10 +171,18 @@ const RAIL_TABS: LucideIcon[] = [Home, CalendarDays, Users, CreditCard]
  *  `active && "bg-brand-600 text-white"`.
  *
  *  Decorative. CapabilityExplorer's rail is real navigation and lives there.
+ *
+ *  Unconditionally `flex`, never `sm:flex`: this rail lives inside FlowShowcase's
+ *  fixed 1060px stage, which is uniformly transform-scaled, not reflowed. The
+ *  internal layout always computes at 1060px regardless of the real viewport, and
+ *  the flight paths are measured against that layout WITH the rail present. A
+ *  viewport breakpoint here would drop the rail below 640px, widen the operator
+ *  column by 44px, shift #flow-queue-row, and leave the flying card landing off
+ *  target. Keep it always-on.
  */
 export function MiniRail() {
   return (
-    <div className="hidden w-11 shrink-0 flex-col items-center gap-1.5 border-r border-border bg-card py-3 sm:flex" aria-hidden>
+    <div className="flex w-11 shrink-0 flex-col items-center gap-1.5 border-r border-border bg-card py-3" aria-hidden>
       {/* collapsed rail, so: icon only */}
       <RailLogo className="mb-2 h-4" iconWidth="w-5" />
       {RAIL_TABS.map((Icon, i) => (
