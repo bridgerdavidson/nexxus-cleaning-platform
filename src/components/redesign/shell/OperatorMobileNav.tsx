@@ -60,14 +60,14 @@ export function OperatorMobileNav({
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium",
+                "group relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors duration-fast",
                 active ? "font-semibold text-brand-600" : "text-muted-foreground"
               )}
             >
               {active && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-7 rounded-full bg-brand-600" aria-hidden />
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-7 rounded-full bg-brand-600 animate-nav-pip-in motion-reduce:animate-none" aria-hidden />
               )}
-              <Icon className="h-6 w-6" aria-hidden />
+              <Icon className="h-6 w-6 transition-transform duration-fast group-active:scale-90" aria-hidden />
               {item.label}
             </Link>
           );
@@ -75,10 +75,10 @@ export function OperatorMobileNav({
 
         <Sheet>
           <SheetTrigger
-            className="flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Open menu"
           >
-            <Menu className="h-6 w-6" aria-hidden />
+            <Menu className="h-6 w-6 transition-transform duration-fast group-active:scale-90" aria-hidden />
             Menu
           </SheetTrigger>
           <SheetContent side="left" className="w-[80%] max-w-[320px] p-0">
