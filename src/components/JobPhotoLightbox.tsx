@@ -1,6 +1,16 @@
 "use client";
 
 import React, { useMemo } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download as DownloadIcon,
+  Maximize,
+  Minimize,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import Lightbox from "yet-another-react-lightbox";
 import Captions from "yet-another-react-lightbox/plugins/captions";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -79,6 +89,17 @@ export default function JobPhotoLightbox({
       plugins={[Zoom, Download, Captions, Thumbnails, Fullscreen]}
       carousel={{ finite: false }}
       controller={{ closeOnBackdropClick: true }}
+      className="job-photo-lightbox"
+      render={{
+        iconPrev: () => <ChevronLeft className="size-7" />,
+        iconNext: () => <ChevronRight className="size-7" />,
+        iconClose: () => <X className="size-6" />,
+        iconZoomIn: () => <ZoomIn className="size-6" />,
+        iconZoomOut: () => <ZoomOut className="size-6" />,
+        iconDownload: () => <DownloadIcon className="size-6" />,
+        iconEnterFullscreen: () => <Maximize className="size-6" />,
+        iconExitFullscreen: () => <Minimize className="size-6" />,
+      }}
       styles={{ container: { zIndex: 300 } }}
       download={{
         download: async ({ slide, saveAs }) => {

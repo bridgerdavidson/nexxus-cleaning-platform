@@ -38,7 +38,13 @@ export function deriveOverviewSections<T extends OverviewAppointment>(
 ): OverviewSections<T> {
   const live = (a: T) => a.status !== "cancelled";
   return {
-    unassigned: appts.filter((a) => live(a) && a.cleaner_id == null),
+    // A booking whose routing exhausted (all cleaners declined) ends up with
+    // cleaner_id null AND cleaner_confirmation_status 'rejected'. That row is
+    // the declined bucket's job — listing it under Unassigned too would show
+    // the same booking twice in Needs-you-now.
+    unassigned: appts.filter(
+      (a) => live(a) && a.cleaner_id == null && a.cleaner_confirmation_status !== "rejected"
+    ),
     declined: appts.filter((a) => live(a) && a.cleaner_confirmation_status === "rejected"),
     counterProposed: appts.filter((a) => live(a) && (a.cleaner_availability_feedback?.length ?? 0) > 0),
     // The asked cleaner's response deadline has passed with no answer: the

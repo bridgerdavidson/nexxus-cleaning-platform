@@ -984,7 +984,7 @@ export function useJobPhotosForAppointment(appointmentId: string | null): UseJob
   };
 }
 
-export type DeclineReason = 'sick' | 'not_my_service' | 'too_far' | 'other';
+export type DeclineReason = 'sick' | 'not_available' | 'not_my_service' | 'too_far' | 'other';
 
 /** Start a confirmed job (status -> in_progress; fires the 'started' lifecycle
  * notification inside updateAppointmentStatus). */

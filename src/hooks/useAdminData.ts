@@ -69,6 +69,9 @@ export interface AdminAppointment {
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   /** True when the org paid from its company card (no homeowner involved). */
   is_self_pay?: boolean;
+  /** Cleaner used the photo-gate skip for this job (org allows skipping). */
+  photos_skipped?: boolean;
+  photo_skip_reason?: string | null;
   /**
    * Card-hold (authorization) lifecycle for the new charge flow (migration 065).
    * Drives the "Card held / Auth failed / Captured" indicator next to the payment badge.
@@ -216,6 +219,8 @@ export function useAdminAppointments() {
           payment_method_id,
           special_requests,
           notes,
+          photos_skipped,
+          photo_skip_reason,
           series_id,
           cleaner_confirmation_status,
           response_deadline,
@@ -315,7 +320,10 @@ export function useAdminAppointments() {
     enabled: !!orgId,
     onEvent: () => ({
       type: 'invalidate',
-      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId)],
+      // Routing-log rows change alongside appointment updates (decline,
+      // expiry, next-attempt dispatch), so this event doubles as the
+      // invalidation signal for the sheet's routing-history section.
+      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId), ['appointments', 'routing-log']],
     }),
   });
 

@@ -14,7 +14,7 @@ import type { SeriesOffer } from "./deriveSeriesOffers";
 import { offeredSlots, formatTimeParts, formatDateLong } from "../shared/job-presenters";
 
 const DECLINE_REASONS: { value: DeclineReason; label: string }[] = [
-  { value: "sick", label: "I'm not available" },
+  { value: "not_available", label: "I'm not available" },
   { value: "too_far", label: "Too far from me" },
   { value: "not_my_service", label: "Not a service I do" },
   { value: "other", label: "Other reason" },
