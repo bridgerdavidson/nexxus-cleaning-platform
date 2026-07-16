@@ -15,14 +15,18 @@ import { RescheduleDialog, type RescheduleInit } from '@/components/redesign/boo
 import { useOpenBookingDetail } from '@/components/redesign/bookings/useOpenBookingDetail';
 import { operatorBookingParams } from '@/components/redesign/bookings/new-booking/useOpenOperatorBooking';
 import { deriveCalendarEvents } from './deriveCalendar';
-import { useCalendarNavigation } from './useCalendarNavigation';
+import { stepDate, useCalendarNavigation } from './useCalendarNavigation';
 import { decodeDropId, dropToInit } from './calendarDrop';
 import { CalendarToolbar } from './CalendarToolbar';
 import { WeekView } from './WeekView';
 import { DayView } from './DayView';
 import { MonthView } from './MonthView';
 import { AgendaView } from './AgendaView';
-import { weekDays } from '@/lib/calendar/dateRange';
+import { fromDateKey, toDateKey, weekDays } from '@/lib/calendar/dateRange';
+import { selectionForMonth } from './monthCellSummary';
+import { MobileCalendarBar, type MobileCalendarView } from './MobileCalendarBar';
+import { MobileMonthView } from './MobileMonthView';
+import { CalendarFilterSheet } from './CalendarFilterSheet';
 
 function rangeLabelFor(view: string, date: Date): string {
   if (view === 'month') return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -52,12 +56,14 @@ export function OperatorCalendar() {
 
   const isMobile = useIsMobile();
   const { view, focusedDate, setView, next, prev, today, goToDate } = useCalendarNavigation('week');
-  // Mobile (below md) defaults to Agenda, but never clobbers an explicit choice.
+  // Mobile (below md) defaults to the mini month, but never clobbers an explicit choice.
   const viewPicked = useRef(false);
   const pickView = (v: ViewMode) => { viewPicked.current = true; setView(v); };
-  useEffect(() => { if (isMobile && !viewPicked.current) setView('agenda'); }, [isMobile, setView]);
+  useEffect(() => { if (isMobile && !viewPicked.current) setView('month'); }, [isMobile, setView]);
   const [cleanerFilter, setCleanerFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedDayKey, setSelectedDayKey] = useState(() => toDateKey(new Date()));
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [reschedule, setReschedule] = useState<{ appointment: AdminAppointment; init: RescheduleInit } | null>(null);
 
   // Tick the now-line every 60s.
@@ -102,6 +108,65 @@ export function OperatorCalendar() {
   if (error) return <ErrorState title="Couldn't load the calendar" onRetry={() => void refetch()} />;
 
   const rangeLabel = rangeLabelFor(view, focusedDate);
+
+  // Mobile renders only month/agenda; any other view value coerces to month.
+  const mobileView: MobileCalendarView = view === 'agenda' ? 'agenda' : 'month';
+  const filtersActive = cleanerFilter !== 'all' || statusFilter !== 'all';
+
+  const mobileStep = (dir: -1 | 1) => {
+    const nd = stepDate(mobileView, focusedDate, dir);
+    goToDate(nd);
+    if (mobileView === 'month') setSelectedDayKey(selectionForMonth(nd, nowMs));
+  };
+  const mobileToday = () => {
+    today();
+    setSelectedDayKey(toDateKey(new Date(nowMs)));
+  };
+  const selectDay = (key: string) => {
+    setSelectedDayKey(key);
+    const d = fromDateKey(key);
+    if (d.getMonth() !== focusedDate.getMonth() || d.getFullYear() !== focusedDate.getFullYear()) goToDate(d);
+  };
+
+  if (isMobile) {
+    return (
+      <>
+        <MobileCalendarBar
+          view={mobileView}
+          rangeLabel={rangeLabelFor(mobileView, focusedDate)}
+          filtersActive={filtersActive}
+          onView={(v) => pickView(v)}
+          onPrev={() => mobileStep(-1)}
+          onNext={() => mobileStep(1)}
+          onToday={mobileToday}
+          onOpenFilters={() => setFiltersOpen(true)}
+        />
+        {mobileView === 'month' ? (
+          <MobileMonthView
+            events={events}
+            focusedDate={focusedDate}
+            selectedKey={selectedDayKey}
+            nowMs={nowMs}
+            canEdit={canEdit}
+            onSelectDay={selectDay}
+            onOpen={openBooking}
+            onCreate={(d) => openNewBooking(d)}
+          />
+        ) : (
+          <AgendaView events={events} focusedDate={focusedDate} nowMs={nowMs} onOpen={openBooking} />
+        )}
+        <CalendarFilterSheet
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          cleaners={cleanerOptions}
+          cleanerFilter={cleanerFilter}
+          statusFilter={statusFilter}
+          onCleanerFilter={setCleanerFilter}
+          onStatusFilter={setStatusFilter}
+        />
+      </>
+    );
+  }
 
   return (
     <>
