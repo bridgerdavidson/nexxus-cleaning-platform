@@ -52,6 +52,8 @@ describe('POST /api/cron/reconcile-payments', () => {
       stripeConnectAccountId: 'acct_cleaner_recon',
       stripeConnectOnboardingComplete: true,
       payoutPercent: 60,
+      // Pinned: assertions here depend on split amounts; the DB default became 100 in migration 111.
+      platformFeeBps: 0,
     });
 
     // Benign default: any unexpected PI looks still-in-flight (non-terminal), so the sweep retrieves

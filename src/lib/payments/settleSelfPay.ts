@@ -1,14 +1,15 @@
 /**
  * Settle a captured ORG self-pay charge → pay the cleaner.
  *
- * Sibling of `settleCleanerPayout`, but far simpler: there is NO tenant remainder and NO platform
- * fee (the org IS the tenant — it paid for its own cleaning). The captured funds sit on the
- * PLATFORM balance and a SINGLE platform→connected transfer pays the cleaner.
+ * Sibling of `settleCleanerPayout`, but far simpler: there is NO tenant remainder (the org IS
+ * the tenant — it paid for its own cleaning). The captured funds sit on the PLATFORM balance and
+ * a SINGLE platform→connected transfer pays the cleaner.
  *
  * Crucially, the cleaner is paid the EXACT cut derived from the job price × payout% (via
  * computeSelfPayAmounts), NOT the captured amount — the captured amount was grossed up to cover
- * Stripe's fee, and that overshoot stays on the platform/org. Never short the cleaner, never
- * overpay them.
+ * the platform fee (platform_fee_bps of the job gross) and Stripe's processing fee. Transferring
+ * only the cut is what RETAINS the platform fee (plus any gross-up overshoot) on the platform
+ * balance; there is no separate fee transfer. Never short the cleaner, never overpay them.
  *
  * Idempotent (a `selfpay-cleaner-${id}` key + an existing-paid-payout guard) and best-effort:
  * a failed transfer records a `failed` payout row for the retry sweep and never throws into the

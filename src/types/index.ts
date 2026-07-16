@@ -652,6 +652,7 @@ export interface ChargeProjection {
   method?: 'card' | 'us_bank_account';
   chargeCents?: number;
   feeCents?: number;
+  platformFeeCents?: number;
   payoutPercent?: number;
 }
 
