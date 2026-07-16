@@ -575,3 +575,14 @@ nav.sticky {
   --muted: 240 4% 16%; --muted-foreground: 240 5% 65%;
   --border: 240 5% 21%; --input: 240 5% 21%;
 }
+/* Job-photo lightbox (yet-another-react-lightbox) themed to the design system.
+   Chrome only: backdrop, buttons, active-thumbnail accent. Variable names
+   verified against yarl 3.32.0 dist CSS. */
+.job-photo-lightbox {
+  --yarl__color_backdrop: hsl(var(--foreground) / 0.95);
+  --yarl__color_button: hsl(var(--background) / 0.9);
+  --yarl__color_button_active: hsl(var(--background));
+  --yarl__thumbnails_thumbnail_active_border_color: hsl(var(--primary));
+  --yarl__thumbnails_container_background_color: transparent;
+  --yarl__thumbnails_thumbnail_background: transparent;
+}
