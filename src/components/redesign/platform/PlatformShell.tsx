@@ -1,10 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { OperatorRail } from '@/components/redesign/shell/OperatorRail';
 import { PlatformTopBar } from './PlatformTopBar';
 import { PlatformMobileNav } from './PlatformMobileNav';
+import { TenantDetailHost } from './TenantDetailHost';
 import { PLATFORM_NAV } from './platform-nav';
 
 function deriveActive(pathname: string | null): string | undefined {
@@ -54,6 +56,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
         <PlatformMobileNav activeId={activeId} />
+        <Suspense fallback={null}>
+          <TenantDetailHost />
+        </Suspense>
       </div>
     </TooltipProvider>
   );
