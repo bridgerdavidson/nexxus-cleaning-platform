@@ -53,7 +53,7 @@ export type PaymentsTriage = {
   reload: () => Promise<void>;
   retryPayout: (id: string) => Promise<void>;
   dismissPayout: (id: string) => Promise<void>;
-  sendCardLink: (apptId: string, homeownerId: string | null) => Promise<void>;
+  sendCardLink: (apptId: string, homeownerId: string | null, customerName?: string) => Promise<void>;
   fixCard: (apptId: string) => void;
   messageCleaner: (cleanerId: string | null) => Promise<void>;
 };
@@ -235,7 +235,7 @@ export function usePaymentsTriage(): PaymentsTriage {
   );
 
   const sendCardLink = useCallback(
-    async (apptId: string, homeownerId: string | null) => {
+    async (apptId: string, homeownerId: string | null, customerName?: string) => {
       if (!currentOrganizationId || !homeownerId) return;
       setBusyId(apptId);
       setError(null);
@@ -252,7 +252,8 @@ export function usePaymentsTriage(): PaymentsTriage {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not create card link");
         if (data.delivered === "email") {
-          setNotice("Card link emailed to the customer.");
+          const name = customerName?.trim();
+          setNotice(name ? `Card link emailed to ${name}.` : "Card link emailed to the customer.");
         } else {
           // SMTP not configured (or the send failed server-side), so the link was
           // NOT delivered: copy it for the operator to send, rather than claiming

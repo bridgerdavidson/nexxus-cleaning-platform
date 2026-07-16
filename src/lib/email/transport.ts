@@ -30,8 +30,12 @@ export function getTransport(): Transporter {
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port,
-      // 465 is implicit TLS; 587 (Brevo's default) upgrades via STARTTLS.
+      // 465 is implicit TLS; 587 (Brevo's default) upgrades via STARTTLS. requireTLS
+      // makes the upgrade mandatory: without it a STARTTLS-stripping MITM could force
+      // the credentials + tokened card link onto a plaintext connection. A failed
+      // upgrade then errors the send, which callers already degrade to copy-link.
       secure: port === 465,
+      requireTLS: true,
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     });
   }
