@@ -50,11 +50,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const origin =
-      request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const loginLink = await createExpressDashboardLoginLink(
       row.stripe_connect_account_id,
-      `${origin}/settings/payments`,
     );
 
     return NextResponse.json({ success: true, url: loginLink.url });
