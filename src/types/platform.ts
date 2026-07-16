@@ -64,3 +64,16 @@ export interface PlatformStats {
   total_appointments: number;
   new_tenants_30d: number;
 }
+
+/** One platform-audit-log entry with actor + target-org names resolved. */
+export interface PlatformAuditEntry {
+  id: string;
+  action: string;
+  actor_name: string;
+  actor_email: string | null;
+  target_org_id: string | null;
+  target_org_name: string | null;
+  metadata: Record<string, unknown>;
+  started_at: string;
+  ended_at: string | null;
+}
