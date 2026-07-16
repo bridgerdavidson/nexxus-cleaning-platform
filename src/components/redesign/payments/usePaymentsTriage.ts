@@ -247,7 +247,12 @@ export function usePaymentsTriage(): PaymentsTriage {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ organization_id: currentOrganizationId, homeowner_id: homeownerId }),
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            homeowner_id: homeownerId,
+            // Server-verified; switches the email to the urgent failed-payment wording.
+            appointment_id: apptId,
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not create card link");
