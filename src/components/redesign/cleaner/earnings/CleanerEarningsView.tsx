@@ -8,10 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import PayoutTimingNotice from "@/components/PayoutTimingNotice";
-import { money2, TxnStatusBadge } from "@/components/redesign/payments/payments-presenters";
+import { money2, PayoutStatusBadge, TxnStatusBadge } from "@/components/redesign/payments/payments-presenters";
 import { formatCardDate } from "@/components/redesign/cleaner/shared/job-presenters";
 import { ErrorState } from "@/components/ui/error-state";
-import type { ClearingRow, ClearingSettleKind, ConnectKind, EarningsData } from "./earnings-types";
+import type {
+  ClearingRow,
+  ClearingSettleKind,
+  ConnectKind,
+  EarningsData,
+  HeldKind,
+  HeldPayoutRow,
+} from "./earnings-types";
 
 export interface CleanerEarningsViewProps {
   data: EarningsData;
@@ -32,6 +39,15 @@ function settleCopy(kind: ClearingSettleKind): string {
   if (kind === "ach") return "Expected, about 4 business days";
   if (kind === "card") return "Expected, settling";
   return "Expected";
+}
+
+/** Row-level "why isn't this in my bank yet" copy. Depends on setup state, so it lives in the View. */
+function heldReason(kind: HeldKind, setUp: boolean): string {
+  if (kind === "failed") {
+    return setUp ? "We'll retry this automatically." : "Finish payout setup to receive it.";
+  }
+  if (kind === "approved") return "Approved, sending to your bank.";
+  return setUp ? "Sending to your bank soon." : "Waiting on your payout setup.";
 }
 
 export function CleanerEarningsView({
@@ -67,9 +83,15 @@ export function CleanerEarningsView({
   }
 
   const setUp = revealed || data.connectKind === "active";
+  const owedLabel = data.owedDollars > 0 ? money2(data.owedDollars) : null;
+  const failedRows = data.held.filter((r) => r.kind === "failed");
+  const heldRows = data.held.filter((r) => r.kind !== "failed");
+  const owedCount = data.held.length + data.clearing.length;
 
   return (
     <div className="space-y-4 py-2">
+      {owedLabel && <OwedSummary owedLabel={owedLabel} count={owedCount} setUp={setUp} />}
+
       <PayoutTimingNotice />
 
       <PayoutsSection
@@ -82,12 +104,26 @@ export function CleanerEarningsView({
         onOpenStripe={onOpenStripe}
         dashboardLoading={dashboardLoading}
         openStripeError={openStripeError}
-        hasWaiting={data.clearing.length > 0}
+        owedLabel={owedLabel}
       />
+
+      {failedRows.length > 0 && (
+        <PayoutBucketSection title="Needs attention" rows={failedRows} todayStr={todayStr} setUp={setUp} />
+      )}
+
+      {heldRows.length > 0 && (
+        <PayoutBucketSection
+          title="Held for you"
+          rows={heldRows}
+          todayStr={todayStr}
+          setUp={setUp}
+          footer={setUp ? undefined : "Sends to your bank once you connect an account."}
+        />
+      )}
 
       {data.clearing.length > 0 ? (
         <ClearingSection rows={data.clearing} todayStr={todayStr} setUp={setUp} />
-      ) : setUp ? (
+      ) : data.held.length === 0 && setUp ? (
         <EmptyState
           icon={<Wallet />}
           title="No earnings yet"
@@ -97,6 +133,29 @@ export function CleanerEarningsView({
 
       <ActivityTiles counts={data.counts} />
     </div>
+  );
+}
+
+function OwedSummary({
+  owedLabel,
+  count,
+  setUp,
+}: {
+  owedLabel: string;
+  count: number;
+  setUp: boolean;
+}) {
+  return (
+    <Card>
+      <CardContent className="py-4">
+        <p className="text-sm font-medium text-muted-foreground">You&apos;re owed</p>
+        <p className="mt-0.5 tabular-nums text-3xl font-bold text-foreground">{owedLabel}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Across {count} {count === 1 ? "cleaning" : "cleanings"}.{" "}
+          {setUp ? "Arriving in your bank as each one settles." : "Set up payouts to receive it."}
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -110,7 +169,7 @@ function PayoutsSection({
   onOpenStripe,
   dashboardLoading,
   openStripeError,
-  hasWaiting,
+  owedLabel,
 }: {
   mode: EarningsData["mode"];
   connectKind: ConnectKind;
@@ -121,7 +180,7 @@ function PayoutsSection({
   onOpenStripe: () => void;
   dashboardLoading: boolean;
   openStripeError: string | null;
-  hasWaiting: boolean;
+  owedLabel: string | null;
 }) {
   if (mode === "stripe-disabled") {
     return (
@@ -137,7 +196,7 @@ function PayoutsSection({
     if (connectKind === "loading" || !mounted) {
       return <Skeleton className="h-44 w-full rounded-card" />;
     }
-    return <EarningsSetupCard kind={connectKind} onSetup={onSetup} hasWaiting={hasWaiting} />;
+    return <EarningsSetupCard kind={connectKind} onSetup={onSetup} owedLabel={owedLabel} />;
   }
 
   return (
@@ -163,11 +222,11 @@ function PayoutsSection({
 function EarningsSetupCard({
   kind,
   onSetup,
-  hasWaiting,
+  owedLabel,
 }: {
   kind: ConnectKind;
   onSetup: () => void;
-  hasWaiting: boolean;
+  owedLabel: string | null;
 }) {
   const pending = kind === "pending";
   return (
@@ -183,8 +242,8 @@ function EarningsSetupCard({
           <p className="max-w-xs text-sm text-muted-foreground">
             {pending
               ? "You are almost there. Finish connecting your bank so we can send your payouts."
-              : hasWaiting
-                ? "Connect your bank account through Stripe to receive the money waiting below. Takes about 3 minutes."
+              : owedLabel
+                ? `Connect your bank account through Stripe to receive the ${owedLabel} waiting. Takes about 3 minutes.`
                 : "Connect your bank account through Stripe to receive your payouts. Takes about 3 minutes."}
           </p>
         </div>
@@ -192,6 +251,56 @@ function EarningsSetupCard({
           {pending ? "Finish setup" : "Set up payouts"}
         </Button>
         <p className="text-xs text-muted-foreground">Handled securely by Stripe.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PayoutBucketSection({
+  title,
+  rows,
+  todayStr,
+  setUp,
+  footer,
+}: {
+  title: string;
+  rows: HeldPayoutRow[];
+  todayStr: string;
+  setUp: boolean;
+  footer?: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-border">
+          {rows.map((r) => {
+            const dateLabel = r.dateRaw ? formatCardDate(r.dateRaw, todayStr) : null;
+            return (
+              <div key={r.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{r.serviceLabel}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {r.customerLabel}
+                      {dateLabel ? ` · ${dateLabel}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <PayoutStatusBadge badge={r.kind} />
+                    <span className="tabular-nums text-sm font-semibold text-foreground">
+                      {money2(r.amountDollars)}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{heldReason(r.kind, setUp)}</p>
+              </div>
+            );
+          })}
+        </div>
+        {footer ? <p className="px-4 py-3 text-xs text-muted-foreground">{footer}</p> : null}
       </CardContent>
     </Card>
   );
