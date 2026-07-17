@@ -9,7 +9,7 @@ export const PAYMENT_SORTS: { id: PaymentSort; label: string }[] = [
 ];
 
 export type TxnStatusFilter = "all" | "pending" | "processing" | "paid" | "failed" | "refunded";
-export type PayoutStatusFilter = "all" | "queued" | "paid" | "failed" | "reversed";
+export type PayoutStatusFilter = "all" | "queued" | "approved" | "paid" | "failed" | "reversed";
 
 export const TXN_STATUS_FILTERS: { id: TxnStatusFilter; label: string }[] = [
   { id: "all", label: "All statuses" },
@@ -22,6 +22,8 @@ export const TXN_STATUS_FILTERS: { id: TxnStatusFilter; label: string }[] = [
 export const PAYOUT_STATUS_FILTERS: { id: PayoutStatusFilter; label: string }[] = [
   { id: "all", label: "All statuses" },
   { id: "queued", label: "Held" },
+  // Legacy approved-but-unpaid rows were unfindable except by scrolling "All" (T2-16).
+  { id: "approved", label: "Approved" },
   { id: "paid", label: "Paid" },
   { id: "failed", label: "Failed" },
   { id: "reversed", label: "Reversed" },

@@ -7,7 +7,6 @@ import { supabase } from "@/lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { useSupabaseRealtimeSync } from "@/lib/useSupabaseRealtimeSync";
 import { useDetailParam } from "@/hooks/useDetailParam";
-import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 import { money2, longDate } from "./payments-presenters";
 import type { TriageChargeVM, TriagePayoutVM, TriageHeldVM } from "./payments-types";
 
@@ -79,22 +78,24 @@ export function usePaymentsTriage(): PaymentsTriage {
   const reload = useCallback(async () => {
     if (!currentOrganizationId) return;
     if (!loadedOnce.current) setLoading(true);
-    const chargesEnabled = stripeNewChargeFlowUiEnabled();
     const payoutSelect =
       "id, amount, status, cleaner_id, cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles(first_name, last_name))";
 
     const [chargeRes, failedRes, heldRes] = await Promise.all([
-      chargesEnabled
-        ? supabase
-            .from("appointments")
-            .select(
-              "id, scheduled_date, total_price, authorization_status, homeowner_id, is_self_pay, homeowner:user_profiles!homeowner_id(first_name, last_name)",
-            )
-            .eq("organization_id", currentOrganizationId)
-            .in("authorization_status", ["failed", "requires_action"])
-            .neq("status", "cancelled")
-            .order("scheduled_date", { ascending: true })
-        : Promise.resolve({ data: [] as Record<string, unknown>[], error: null }),
+      // Failed/requires-action charges are found by the DATA (authorization_status),
+      // not a build-time client flag. Gating this on NEXT_PUBLIC_STRIPE_NEW_CHARGE_FLOW_ENABLED
+      // meant a drifted mirror (the exact '' bug that hit STRIPE_TENANT_CONNECT_ENABLED)
+      // silently hid real uncollected money (T2-13). If the new charge flow isn't running,
+      // no appointment carries that status, so this simply returns nothing.
+      supabase
+        .from("appointments")
+        .select(
+          "id, scheduled_date, total_price, authorization_status, homeowner_id, is_self_pay, homeowner:user_profiles!homeowner_id(first_name, last_name)",
+        )
+        .eq("organization_id", currentOrganizationId)
+        .in("authorization_status", ["failed", "requires_action"])
+        .neq("status", "cancelled")
+        .order("scheduled_date", { ascending: true }),
       supabase
         .from("payouts")
         .select(payoutSelect)
@@ -109,6 +110,17 @@ export function usePaymentsTriage(): PaymentsTriage {
         .eq("status", "pending")
         .order("created_at", { ascending: false }),
     ]);
+
+    // T2-8: a failed query must NOT read as "all clear". Surface it and keep the
+    // last-known rows rather than overwriting them with empty arrays that hide the
+    // band (its absence is defined as the cockpit's all-clear).
+    if (chargeRes.error || failedRes.error || heldRes.error) {
+      setError("Couldn't load payments needing attention. Refresh to try again.");
+      loadedOnce.current = true;
+      setLoading(false);
+      return;
+    }
+    setError(null);
 
     const chargeVMs: TriageChargeVM[] = ((chargeRes.data as Record<string, unknown>[]) ?? []).map((a) => {
       const ho = firstOf(a.homeowner as NamePair | NamePair[]);

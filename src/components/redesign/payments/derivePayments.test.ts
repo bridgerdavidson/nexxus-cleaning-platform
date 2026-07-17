@@ -76,6 +76,12 @@ describe("matchesPayoutStatus", () => {
     expect(matchesPayoutStatus(payout({ status: "bank_paid" }), "paid")).toBe(true);
     expect(matchesPayoutStatus(payout({ status: "failed" }), "paid")).toBe(false);
   });
+  it("approved filters legacy approved-but-unpaid rows (T2-16)", () => {
+    expect(matchesPayoutStatus(payout({ status: "approved" }), "approved")).toBe(true);
+    expect(matchesPayoutStatus(payout({ status: "paid" }), "approved")).toBe(false);
+    // approved must NOT leak into the 'paid' bucket
+    expect(matchesPayoutStatus(payout({ status: "approved" }), "paid")).toBe(false);
+  });
 });
 
 describe("derivePayouts", () => {
