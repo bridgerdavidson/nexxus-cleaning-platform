@@ -17,6 +17,22 @@ function cleaningDateLabel(scheduledDate: string | null | undefined): string | n
 }
 
 /**
+ * Whether this cleaning has a payment problem the HOMEOWNER can act on, and the
+ * badge for it. Single source of truth for the home-page alert cards and the
+ * Cleanings-list row badge, so the two surfaces can never disagree. Excludes
+ * cancelled cleanings and self-pay (a comped booking keeps homeowner_id, but a
+ * failed self-pay charge is the COMPANY card's failure, not the homeowner's).
+ */
+export function paymentAlertBadge(
+  a: Appointment,
+): { label: string; tone: 'critical' | 'caution' } | null {
+  if (a.status === 'cancelled' || a.is_self_pay) return null;
+  if (a.authorization_status === 'failed') return { label: 'Payment failed', tone: 'critical' };
+  if (a.authorization_status === 'requires_action') return { label: 'Confirm payment', tone: 'caution' };
+  return null;
+}
+
+/**
  * Home-page payment alerts: one card per live (non-cancelled) cleaning whose
  * charge failed or bounced on bank verification. Completed cleanings are
  * deliberately INCLUDED; a failed charge on a finished job is exactly the case
@@ -24,11 +40,7 @@ function cleaningDateLabel(scheduledDate: string | null | undefined): string | n
  */
 export function derivePaymentAlerts(appointments: Appointment[]): PaymentAlertVM[] {
   return appointments
-    .filter((a) => a.status !== 'cancelled')
-    // A comped self-pay booking keeps homeowner_id, but its failed charge is the
-    // COMPANY card's failure; alarming the homeowner about it would be false.
-    .filter((a) => !a.is_self_pay)
-    .filter((a) => a.authorization_status === 'failed' || a.authorization_status === 'requires_action')
+    .filter((a) => paymentAlertBadge(a) !== null)
     .map((a) => {
       const date = cleaningDateLabel(a.scheduled_date);
       const forCleaning = date ? `your cleaning on ${date}` : 'your recent cleaning';

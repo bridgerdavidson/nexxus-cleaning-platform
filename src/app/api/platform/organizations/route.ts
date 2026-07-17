@@ -178,6 +178,16 @@ export async function POST(request: NextRequest) {
     .update({ status: 'pending', sent_at: new Date().toISOString() })
     .eq('id', inviteId);
 
+  // 5. Record the provision in the platform audit log (best-effort; a failed
+  //    audit write must not fail an otherwise-successful provision). This is the
+  //    'provision_tenant' action surfaced in the redesign audit view.
+  await supabaseAdmin.from('platform_audit_log').insert({
+    actor_user_id: auth.userId,
+    action: 'provision_tenant',
+    target_org_id: organizationId,
+    metadata: { org_name: name, owner_email: ownerEmail },
+  });
+
   return NextResponse.json(
     {
       success: true,

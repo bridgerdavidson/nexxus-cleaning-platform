@@ -59,6 +59,11 @@ describe('POST /api/platform/organizations (provision tenant)', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     const db = createTestSupabaseClient();
+    // Remove the provision audit rows first (target_org_id is ON DELETE SET NULL,
+    // so deleting the org would orphan them rather than clean them up).
+    await Promise.all(
+      createdOrgIds.map((id) => db.from('platform_audit_log').delete().eq('target_org_id', id)),
+    );
     await Promise.all(createdOrgIds.map((id) => db.from('organizations').delete().eq('id', id)));
     createdOrgIds.length = 0;
     await Promise.all([admin?.cleanup(), org?.cleanup()]);
@@ -144,5 +149,14 @@ describe('POST /api/platform/organizations (provision tenant)', () => {
     expect((opts as { redirectTo?: string }).redirectTo).toContain(
       `/accept-invite?invite_id=${body.invite.id}`,
     );
+
+    // The provision was recorded in the platform audit log (surfaced as
+    // 'provision_tenant' in the redesign audit view).
+    const { data: auditRows } = await db
+      .from('platform_audit_log')
+      .select('action')
+      .eq('target_org_id', orgId)
+      .eq('action', 'provision_tenant');
+    expect((auditRows ?? []).length).toBeGreaterThanOrEqual(1);
   });
 });
