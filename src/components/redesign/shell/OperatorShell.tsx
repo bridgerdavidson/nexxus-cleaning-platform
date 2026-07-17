@@ -8,6 +8,7 @@ import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
 import { OperatorMobileNav } from "./OperatorMobileNav";
+import { RedesignImpersonationBanner } from "./RedesignImpersonationBanner";
 import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
@@ -82,6 +83,7 @@ export function OperatorShell({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} nav={nav} />
         <div className="lg:pl-16">
+          <RedesignImpersonationBanner />
           <OperatorTopBar
             onNewBooking={onNewBooking}
             onOpenSearch={() => setSearchOpen(true)}

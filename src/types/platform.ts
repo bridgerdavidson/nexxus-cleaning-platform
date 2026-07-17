@@ -52,3 +52,28 @@ export const EMPTY_MEMBER_COUNTS: PlatformOrgMemberCounts = {
   homeowner: 0,
   total: 0,
 };
+
+/** Platform-wide overview metrics from the `platform_stats()` RPC. Money in cents. */
+export interface PlatformStats {
+  tenants: number;
+  active_plans: number;
+  trialing: number;
+  payments_ready: number;
+  platform_fees_cents: number;
+  gmv_cents: number;
+  total_appointments: number;
+  new_tenants_30d: number;
+}
+
+/** One platform-audit-log entry with actor + target-org names resolved. */
+export interface PlatformAuditEntry {
+  id: string;
+  action: string;
+  actor_name: string;
+  actor_email: string | null;
+  target_org_id: string | null;
+  target_org_name: string | null;
+  metadata: Record<string, unknown>;
+  started_at: string;
+  ended_at: string | null;
+}
