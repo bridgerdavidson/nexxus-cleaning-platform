@@ -29,15 +29,12 @@ export default function OperatorPreviewPage() {
         overdue={[{ id: "o1", title: "Willow Way · Deep clean", subtitle: "Thu Jun 26 · 10:00am · Dana has not responded" }]}
         failedPayment={[{ id: "f1", title: "Aspen Rd · Deep clean", subtitle: "Wed Jun 24 · Card declined" }]}
         paymentsHref="/app/admin-dashboard/payments"
-        today={[
-          { id: "t1", time: "8:00", title: "Pine St · Standard clean · Marco D." },
-          { id: "t2", time: "10:30", title: "Elm Ave · Deep clean · Sara K." },
-          { id: "t3", time: "1:00", title: "Maple Ave · Standard clean · Marco D." },
-          { id: "t4", time: "3:30", title: "Oak St · Move-in clean · Priya R." },
-        ]}
-        activeNow={[
-          { id: "a1", title: "Pine St · Marco D. · started 8:05am" },
-          { id: "a2", title: "Elm Ave · Sara K. · started 10:35am" },
+        todayItems={[
+          { id: "t1", time: "8:00am", title: "Pine St · Standard clean", subtitle: "Marco D.", status: "done" },
+          { id: "t2", time: "10:30am", title: "Elm Ave · Deep clean", subtitle: "Sara K.", status: "live", elapsed: "1 hr 7 min" },
+          { id: "t3", time: "11:15am", title: "Birch Ln · Standard clean", subtitle: "Marco D.", status: "live", elapsed: "27 min" },
+          { id: "t4", time: "1:00pm", title: "Maple Ave · Standard clean", subtitle: "No cleaner yet", status: "unassigned" },
+          { id: "t5", time: "3:30pm", title: "Oak St · Move-in clean", subtitle: "Priya R.", status: "upcoming" },
         ]}
       />
     </OperatorShell>
