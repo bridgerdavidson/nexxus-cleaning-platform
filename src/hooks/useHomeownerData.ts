@@ -6,6 +6,7 @@ import { useAuth } from './useAuth';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
+import { preferredPaymentStatus } from './homeownerPaymentStatus';
 import { useSavedPaymentMethods } from '../components/redesign/homeowner/account/payment-methods/useSavedPaymentMethods';
 import type { SavedPaymentMethod } from '../components/redesign/shared/payment-methods/derive-payment-methods';
 
@@ -192,17 +193,22 @@ export function useHomeownerAppointments() {
       if (fetchError) throw fetchError;
 
       const appointmentIds = (data || []).map(a => a.id);
-      let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
+      const paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
       if (appointmentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
-          .select('appointment_id, status')
-          .in('appointment_id', appointmentIds);
+          .select('appointment_id, status, created_at')
+          .in('appointment_id', appointmentIds)
+          .order('created_at', { ascending: false });
         if (payments) {
-          paymentStatusMap = payments.reduce((acc, p) => {
-            acc[p.appointment_id] = p.status;
-            return acc;
-          }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
+          // An appointment can have several payments rows (manual record + failed Stripe attempt,
+          // a retry, a refund). Collapse them deterministically by precedence so payment_status
+          // can't flip between refetches and a collected payment is never masked by a stray failed
+          // row (see homeownerPaymentStatus.ts). Ordered newest-first so ties keep the recent row.
+          for (const p of payments) {
+            const next = preferredPaymentStatus(paymentStatusMap[p.appointment_id], p.status);
+            if (next) paymentStatusMap[p.appointment_id] = next as 'pending' | 'paid' | 'failed' | 'refunded';
+          }
         }
       }
 
@@ -440,6 +446,9 @@ export function useHomeownerPayments() {
           id,
           amount,
           status,
+          charge_kind,
+          processing_fee_cents,
+          is_self_pay,
           paid_at,
           created_at,
           appointment:appointments(
@@ -451,6 +460,9 @@ export function useHomeownerPayments() {
           )
         `)
         .eq('organization_id', orgId)
+        // Self-pay rows are the company paying on the homeowner's behalf (a comped cleaning); the
+        // homeowner never paid them, so they must not appear as the homeowner's own receipts.
+        .eq('is_self_pay', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
