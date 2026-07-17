@@ -18,8 +18,35 @@ export type QueueItem = {
   subtitle: string; // date·time / service
 };
 
-export type ScheduleItem = { id: string; time: string; title: string };
-export type ActiveItem = { id: string; title: string };
+export type TodayItemStatus = "done" | "live" | "unassigned" | "upcoming";
+
+/** One row of the unified Today card. `elapsed` is preformatted ("42 min") and
+ *  present only for live rows whose started_at is known. */
+export type TodayItem = {
+  id: string;
+  time: string; // "8:00am"
+  title: string; // "Property · Service"
+  subtitle: string; // cleaner short name, with a date hint for non-today live rows
+  status: TodayItemStatus;
+  elapsed?: string | null;
+};
+
+export function fmtTime(t: string | undefined): string {
+  const [hh, mm] = (t ?? "").split(":");
+  let h = parseInt(hh ?? "0", 10);
+  if (Number.isNaN(h)) return t ?? "";
+  const m = mm ?? "00";
+  const ap = h >= 12 ? "pm" : "am";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${m}${ap}`;
+}
+
+export function fmtShortDate(s: string): string {
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
 
 /** Amounts are in whole dollars (matches the payment_stats RPC + legacy UI). */
 export function formatUsd(dollars: number): string {

@@ -1,9 +1,9 @@
 import { KpiStrip } from "./KpiStrip";
 import { NeedsYouNowQueue } from "./NeedsYouNowQueue";
-import { TodayActivePanel } from "./TodayActivePanel";
+import { TodayPanel } from "./TodayPanel";
 import { ErrorState } from "@/components/ui/error-state";
 import type React from "react";
-import type { ActiveItem, OverviewKpis, QueueItem, ScheduleItem } from "./overview-types";
+import type { OverviewKpis, QueueItem, TodayItem } from "./overview-types";
 
 export type OperatorOverviewViewProps = {
   loading?: boolean;
@@ -24,8 +24,8 @@ export type OperatorOverviewViewProps = {
   onOpenBooking?: (appointmentId: string) => void;
   /** When set, the failed-payment group header links to the Payments screen. */
   paymentsHref?: string;
-  today: ScheduleItem[];
-  activeNow: ActiveItem[];
+  /** Unified Today card rows (today's jobs ∪ in-progress jobs from any date). */
+  todayItems: TodayItem[];
   /** Optional onboarding checklist or completion card rendered above the page header. */
   checklist?: React.ReactNode;
 };
@@ -47,8 +47,7 @@ export function OperatorOverviewView({
   failedPayment,
   onOpenBooking,
   paymentsHref,
-  today,
-  activeNow,
+  todayItems,
   checklist,
 }: OperatorOverviewViewProps) {
   if (error) {
@@ -82,7 +81,7 @@ export function OperatorOverviewView({
           />
         </div>
         <div className="min-w-0 lg:col-span-1">
-          <TodayActivePanel today={today} activeNow={activeNow} loading={loading} />
+          <TodayPanel items={todayItems} loading={loading} onOpenBooking={onOpenBooking} />
         </div>
       </div>
     </div>
