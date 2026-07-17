@@ -23,10 +23,10 @@ function dayListLabel(d: Date, now: Date): string {
   return isSameDayLocal(d, now) ? `Today · ${label}` : label;
 }
 
-function CellSignal({ summary, onToday }: { summary: MonthCellSummary; onToday: boolean }) {
+function CellSignal({ summary }: { summary: MonthCellSummary }) {
   if (summary.kind === 'count') {
     return (
-      <span className={cn('text-[10px] font-extrabold leading-none tabular-nums', onToday ? 'text-white' : 'text-brand-700')}>
+      <span className="text-[10px] font-extrabold leading-none tabular-nums text-brand-700">
         {summary.count}
       </span>
     );
@@ -35,7 +35,7 @@ function CellSignal({ summary, onToday }: { summary: MonthCellSummary; onToday: 
     return (
       <>
         {summary.dotClasses.map((c, i) => (
-          <span key={i} className={cn('size-1.5 rounded-full', onToday ? 'bg-white' : c)} />
+          <span key={i} className={cn('size-1.5 rounded-full', c)} />
         ))}
       </>
     );
@@ -87,6 +87,10 @@ export function MobileMonthView({
             const selected = key === selectedKey;
             const cellEvents = byDate.get(key) ?? [];
             const summary = monthCellSummary(cellEvents, nowMs);
+            // Today and selected share one geometry (a size-7 circle on the number):
+            // filled brand circle = today, muted ring = selected. Dots live below,
+            // outside the circle, so they never crowd it and keep status colors
+            // even on today.
             return (
               <button
                 key={key}
@@ -94,23 +98,24 @@ export function MobileMonthView({
                 onClick={() => onSelectDay(key)}
                 aria-label={cellAriaLabel(d, cellEvents.length)}
                 aria-pressed={selected}
-                className={cn(
-                  'flex min-h-11 items-start justify-center rounded-control py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  selected && !today && 'bg-muted ring-1 ring-border',
-                )}
+                className="flex min-h-11 flex-col items-center gap-1 rounded-control py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className={cn('flex w-8 flex-col items-center gap-1 rounded-control pb-1 pt-0.5', today && 'bg-brand-600')}>
-                  <span
-                    className={cn(
-                      'text-[13px] font-bold leading-5 tabular-nums',
-                      today ? 'text-white' : inMonth ? 'text-foreground' : 'text-muted-foreground/50',
-                    )}
-                  >
-                    {d.getDate()}
-                  </span>
-                  <span className="flex h-1.5 items-center justify-center gap-0.5">
-                    <CellSignal summary={summary} onToday={today} />
-                  </span>
+                <span
+                  className={cn(
+                    'grid size-7 place-items-center rounded-full text-[13px] font-bold tabular-nums',
+                    today
+                      ? 'bg-brand-600 text-white'
+                      : selected
+                        ? 'bg-muted text-foreground ring-1 ring-border'
+                        : inMonth
+                          ? 'text-foreground'
+                          : 'text-muted-foreground/50',
+                  )}
+                >
+                  {d.getDate()}
+                </span>
+                <span className="flex h-1.5 items-center justify-center gap-0.5">
+                  <CellSignal summary={summary} />
                 </span>
               </button>
             );
