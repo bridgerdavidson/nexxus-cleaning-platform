@@ -5,6 +5,7 @@ import { loadConnectAndInitialize } from '@stripe/connect-js';
 import type { StripeConnectInstance } from '@stripe/connect-js';
 import { useAuth } from './useAuth';
 import { supabase } from '../lib/supabase';
+import { getRedesignConnectAppearance } from '../lib/stripe/appearance';
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
@@ -83,10 +84,9 @@ export function useCleanerConnect(
       const instance = loadConnectAndInitialize({
         publishableKey: PUBLISHABLE_KEY,
         fetchClientSecret,
-        appearance: appearanceOverride ?? {
-          // Legacy fallback for callers that pass nothing (brand yellow).
-          variables: { colorPrimary: '#F7C41E' },
-        },
+        // Caller-supplied theme (redesign, theme-aware) wins; otherwise the light
+        // brand appearance so legacy surfaces match the rebrand too.
+        appearance: appearanceOverride ?? getRedesignConnectAppearance(false),
       });
       setConnectInstance(instance);
     } catch (err) {

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { getRedesignConnectAppearance } from '@/lib/stripe/appearance';
 
 /**
  * Public, token-scoped hosted card-collection page. A homeowner opens the link an admin
@@ -20,7 +21,7 @@ interface LinkData {
   firstName: string;
 }
 
-function CardForm({ firstName }: { firstName: string }) {
+function CardForm() {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -156,10 +157,11 @@ function AddCardInner() {
         stripe={stripePromise}
         options={{
           clientSecret: link.clientSecret,
-          appearance: { variables: { colorPrimary: '#F7C41E' } },
+          // Public page has no theme provider; always the light brand appearance.
+          appearance: getRedesignConnectAppearance(false),
         }}
       >
-        <CardForm firstName={link.firstName} />
+        <CardForm />
       </Elements>
     </>
   );

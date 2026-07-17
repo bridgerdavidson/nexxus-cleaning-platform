@@ -273,6 +273,22 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
 
     case 'charge_failed': {
       const needsAuth = str(payload, 'reason') === 'authentication_required';
+      if (str(payload, 'audience') === 'homeowner') {
+        if (needsAuth) {
+          return {
+            title: 'Confirm your payment',
+            detail: joinDetail('Your bank needs to verify your card', property, when),
+            tone: 'warning',
+            icon: ShieldAlert,
+          };
+        }
+        return {
+          title: 'Payment failed',
+          detail: joinDetail("We couldn't charge your card for your cleaning", amount, when),
+          tone: 'error',
+          icon: CreditCard,
+        };
+      }
       if (needsAuth) {
         return {
           title: customer ? `Card needs verification for ${customer}` : 'Card needs identity verification',

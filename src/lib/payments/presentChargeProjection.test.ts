@@ -8,6 +8,7 @@ const full: FullChargeBreakdown = {
   chargeCents: 12500,
   feeCents: 500,
   cleanerCutCents: 4800,
+  platformFeeCents: 120,
   payoutPercent: 40,
   isSelfPay: false,
 };
@@ -24,6 +25,8 @@ describe('presentChargeProjection', () => {
     expect(p.baseCents).toBeUndefined();
     expect(p.method).toBeUndefined();
     expect(p.payoutPercent).toBeUndefined();
+    // The platform fee is derived from the job gross, so it is redacted with the rest.
+    expect(p.platformFeeCents).toBeUndefined();
   });
 
   it('payout_only + org staff viewer (not cleaner): returns the full breakdown', () => {
@@ -34,6 +37,7 @@ describe('presentChargeProjection', () => {
     expect(p.method).toBe('card');
     expect(p.chargeCents).toBe(full.chargeCents);
     expect(p.feeCents).toBe(full.feeCents);
+    expect(p.platformFeeCents).toBe(full.platformFeeCents);
     expect(p.payoutPercent).toBe(full.payoutPercent);
     expect(p.isSelfPay).toBe(false);
   });

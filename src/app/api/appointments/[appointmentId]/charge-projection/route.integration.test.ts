@@ -29,7 +29,9 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
     process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
     process.env.STRIPE_ENABLED = 'true';
     // payoutPercent=40 on the cleaner so we can assert exact numbers.
-    org = await withTestOrg({ payoutPercent: 40 });
+    // Pinned to 0: the expected projections below hardcode platformFeeBps 0, and the DB
+    // default became 100 in migration 111.
+    org = await withTestOrg({ payoutPercent: 40, platformFeeBps: 0 });
   });
 
   afterEach(async () => {
