@@ -1,7 +1,7 @@
 'use client';
 
 import { TxnStatusBadge, money2, longDate } from '@/components/redesign/payments/payments-presenters';
-import { paymentBadgeKey, paymentServiceLabel, type PaymentLike } from './derive-payments';
+import { paymentBadgeKey, paymentKindLabel, type PaymentLike } from './derive-payments';
 
 export function PaymentRow({ payment, onOpen }: { payment: PaymentLike; onOpen: () => void }) {
   return (
@@ -12,7 +12,7 @@ export function PaymentRow({ payment, onOpen }: { payment: PaymentLike; onOpen: 
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[15px] font-bold text-foreground">
-          {paymentServiceLabel(payment)}
+          {paymentKindLabel(payment)}
         </span>
         <span className="mt-0.5 block truncate text-xs tabular-nums text-muted-foreground">
           {longDate(payment.paid_at || payment.created_at)}
