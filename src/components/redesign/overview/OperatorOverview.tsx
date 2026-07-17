@@ -5,7 +5,8 @@ import { useAdminAppointments, useAdminStats, usePaymentStats, type AdminAppoint
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { OperatorOverviewView } from "./OperatorOverviewView";
 import { deriveOverviewSections } from "./deriveOverview";
-import { getGreeting, type ActiveItem, type QueueItem, type ScheduleItem } from "./overview-types";
+import { buildTodayItems } from "./buildTodayItems";
+import { fmtShortDate, fmtTime, getGreeting, type QueueItem } from "./overview-types";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useOperatorOnboarding } from "@/hooks/useOperatorOnboarding";
 import { SetupChecklistCard } from "@/components/redesign/onboarding/SetupChecklistCard";
@@ -19,23 +20,6 @@ import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 function todayLocalISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function fmtTime(t: string | undefined): string {
-  const [hh, mm] = (t ?? "").split(":");
-  let h = parseInt(hh ?? "0", 10);
-  if (Number.isNaN(h)) return t ?? "";
-  const m = mm ?? "00";
-  const ap = h >= 12 ? "pm" : "am";
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${m}${ap}`;
-}
-
-function fmtShortDate(s: string): string {
-  const d = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 function propertyLabel(a: AdminAppointment): string {
@@ -104,18 +88,12 @@ export function OperatorOverview() {
         }))
       : [];
 
-  const today: ScheduleItem[] = [...sections.today]
-    .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? ""))
-    .map((a) => ({
-      id: a.id,
-      time: fmtTime(a.scheduled_time),
-      title: `${propertyLabel(a)} · ${serviceLabel(a)} · ${cleanerLabel(a)}`,
-    }));
-
-  const activeNow: ActiveItem[] = sections.activeNow.map((a) => ({
-    id: a.id,
-    title: `${propertyLabel(a)} · ${cleanerLabel(a)}`,
-  }));
+  const todayItems = buildTodayItems(sections.today, sections.activeNow, {
+    todayISO: todayLocalISO(now),
+    nowMs: now.getTime(),
+    title: (a) => `${propertyLabel(a)} · ${serviceLabel(a)}`,
+    cleaner: cleanerLabel,
+  });
 
   // Onboarding is owner-only: the required "Set cleaner pay" step routes to the
   // owner-only Payout settings section, so an admin could not complete it (and the
@@ -171,8 +149,7 @@ export function OperatorOverview() {
         failedPayment={failedPayment}
         onOpenBooking={canViewBookings ? openBooking : undefined}
         paymentsHref={canViewPayments ? "/app/admin-dashboard/payments" : undefined}
-        today={today}
-        activeNow={activeNow}
+        todayItems={todayItems}
         checklist={checklist}
       />
       {showOnboarding && onboarding.showWelcome && (

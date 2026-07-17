@@ -29,6 +29,8 @@ export interface AdminAppointment {
   /** Length of the appointment in minutes (DB column). */
   duration_minutes?: number;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+  /** Stamped by the lifecycle route when the cleaner starts the job. */
+  started_at?: string | null;
   total_price: number;
   special_requests?: string | null;
   notes?: string | null;
@@ -214,6 +216,7 @@ export function useAdminAppointments() {
           scheduled_time,
           duration_minutes,
           status,
+          started_at,
           total_price,
           authorization_status,
           payment_method_id,
