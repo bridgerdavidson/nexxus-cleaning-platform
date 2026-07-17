@@ -4,18 +4,14 @@ import { redesignUiEnabled } from "./flags";
 describe("redesignUiEnabled", () => {
   afterEach(() => { vi.unstubAllEnvs(); });
 
-  it("returns true only when the flag is exactly 'true'", () => {
-    vi.stubEnv("NEXT_PUBLIC_REDESIGN_ENABLED", "true");
+  // The redesign is permanent post-cutover (Phase 4, 4d): this is unconditionally
+  // true and ignores NEXT_PUBLIC_REDESIGN_ENABLED (retired). Guards against
+  // anyone re-introducing an env gate that could hide the app.
+  it("is always true regardless of the (retired) env flag", () => {
     expect(redesignUiEnabled()).toBe(true);
-  });
-
-  it("returns false when unset", () => {
     vi.stubEnv("NEXT_PUBLIC_REDESIGN_ENABLED", "");
-    expect(redesignUiEnabled()).toBe(false);
-  });
-
-  it("returns false for truthy-but-not-'true' values", () => {
-    vi.stubEnv("NEXT_PUBLIC_REDESIGN_ENABLED", "1");
-    expect(redesignUiEnabled()).toBe(false);
+    expect(redesignUiEnabled()).toBe(true);
+    vi.stubEnv("NEXT_PUBLIC_REDESIGN_ENABLED", "false");
+    expect(redesignUiEnabled()).toBe(true);
   });
 });
