@@ -544,6 +544,105 @@ export function useCleanerAwaitingPayments() {
   };
 }
 
+export interface CleanerHeldPayoutRow {
+  id: string;
+  /** payouts.amount is the transfer TO the cleaner (their own cut), so it is privacy-safe to render. */
+  amount: number;
+  status: 'pending' | 'approved' | 'failed';
+  createdAt: string;
+  appointment: {
+    id: string;
+    scheduledDate: string | null;
+    homeownerName: string;
+    serviceName: string | null;
+  } | null;
+}
+
+/**
+ * The cleaner's own payout rows that are owed but not yet in their bank: 'pending'/'approved' (held,
+ * e.g. awaiting onboarding or admin approval) and 'failed' (the platform->cleaner transfer errored).
+ * This is "Hop 2", after a customer payment has settled, and is distinct from
+ * useCleanerAwaitingPayments ("Hop 1", the customer's bank debit still clearing). Without this the
+ * redesign Earnings screen showed only in-flight ACH + the Stripe embed, so a held or failed slice
+ * (the Wanda-Jones onboarding stall) was invisible and the setup card read "No earnings yet".
+ * payouts.amount is the cleaner's cut (never the customer charge); RLS payouts_select (migration 075)
+ * scopes payouts to the cleaner's own rows.
+ */
+export function useCleanerHeldPayouts() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+
+  const query = useOrgQuery({
+    queryKey: ['cleaner-earnings', 'held', userId],
+    queryFn: async ({ orgId, userId }) => {
+      const { data, error } = await supabase
+        .from('payouts')
+        .select(`
+          id, amount, status, is_self_pay, created_at,
+          appointment:appointments(
+            id, scheduled_date,
+            homeowner:user_profiles!homeowner_id(first_name, last_name),
+            service_type:service_types(name)
+          )
+        `)
+        .eq('cleaner_id', userId)
+        .eq('organization_id', orgId)
+        .in('status', ['pending', 'approved', 'failed'])
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      return (data || []).map((p: Record<string, unknown>) => {
+        const apptRaw = p.appointment as Record<string, unknown> | Record<string, unknown>[] | null;
+        const appt = (Array.isArray(apptRaw) ? apptRaw[0] : apptRaw) as Record<string, unknown> | null;
+        const hoRaw = appt?.homeowner as { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
+        const ho = Array.isArray(hoRaw) ? hoRaw[0] : hoRaw;
+        const svcRaw = appt?.service_type as { name?: string } | { name?: string }[] | null;
+        const svc = Array.isArray(svcRaw) ? svcRaw[0] : svcRaw;
+        const isSelfPay = Boolean(p.is_self_pay);
+        return {
+          id: p.id as string,
+          amount: Number(p.amount ?? 0),
+          status: p.status as CleanerHeldPayoutRow['status'],
+          createdAt: p.created_at as string,
+          appointment: appt
+            ? {
+                id: appt.id as string,
+                scheduledDate: (appt.scheduled_date as string) ?? null,
+                homeownerName: isSelfPay
+                  ? 'Company-paid'
+                  : ho
+                    ? `${ho.first_name ?? ''} ${ho.last_name ?? ''}`.trim() || 'Customer'
+                    : 'Customer',
+                serviceName: svc?.name ?? null,
+              }
+            : null,
+        } as CleanerHeldPayoutRow;
+      });
+    },
+  });
+
+  // A payout row status flip (transfer sent, failed, approved) means the held/failed slice changed.
+  // Own subscription: useSupabaseRealtimeSync gives each hook a unique topic (useId), so this and
+  // useCleanerAwaitingPayments can both watch `payouts` for this cleaner without colliding.
+  useSupabaseRealtimeSync({
+    channelName: `payouts:cleaner:held:${userId}`,
+    table: 'payouts',
+    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
+    enabled: !!userId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [['cleaner-earnings', 'held', userId]],
+    }),
+  });
+
+  return {
+    heldPayouts: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
 export function useCleanerPhotos() {
   const { user } = useAuth();
   const userId = user?.id ?? '';

@@ -1,5 +1,5 @@
 // src/components/redesign/cleaner/earnings/earnings-types.ts
-import type { AwaitingPaymentRow, CleanerStats } from "@/hooks/useCleanerData";
+import type { AwaitingPaymentRow, CleanerHeldPayoutRow, CleanerStats } from "@/hooks/useCleanerData";
 import type { CleanerPayoutModel } from "@/components/redesign/cleaner/today/today-types";
 
 /** Mirrors cleanerStatusKind()'s output (computed in the Container). */
@@ -22,6 +22,25 @@ export interface ClearingRow {
   settleKind: ClearingSettleKind;
 }
 
+/**
+ * A payout the cleaner is owed but hasn't received: "held" (pending), "approved" (about to send),
+ * or "failed" (transfer errored). A subset of the payments `PayoutBadgeKey` union by design, so the
+ * View can hand `kind` straight to `PayoutStatusBadge`.
+ */
+export type HeldKind = "held" | "approved" | "failed";
+
+export interface HeldPayoutRow {
+  id: string;
+  appointmentId: string | null;
+  serviceLabel: string;
+  customerLabel: string;
+  /** scheduledDate when present, else createdAt; formatted in the View. */
+  dateRaw: string | null;
+  /** The cleaner's own payout amount, in dollars (privacy-safe). */
+  amountDollars: number;
+  kind: HeldKind;
+}
+
 export interface ActivityCounts {
   thisWeek: number;
   completed: number;
@@ -32,6 +51,14 @@ export interface EarningsData {
   mode: EarningsMode;
   connectKind: ConnectKind;
   clearing: ClearingRow[];
+  /** Held/approved/failed payout rows (Hop 2). Split into "Needs attention" + "Held" in the View. */
+  held: HeldPayoutRow[];
+  /**
+   * Total the cleaner is owed but hasn't received: the sum of their own clearing cuts + held/failed
+   * payout amounts. Derived from per-row cleaner cuts ONLY, never from the org-derived stats
+   * aggregates (totalEarnings/pendingPayouts), which the privacy test forbids leaking here.
+   */
+  owedDollars: number;
   counts: ActivityCounts;
 }
 
@@ -40,5 +67,6 @@ export interface DeriveEarningsInput {
   payoutModel: CleanerPayoutModel;
   connectKind: ConnectKind;
   awaiting: AwaitingPaymentRow[] | undefined;
+  heldPayouts: CleanerHeldPayoutRow[] | undefined;
   stats: CleanerStats | undefined;
 }

@@ -1,12 +1,14 @@
 // src/components/redesign/cleaner/earnings/deriveEarnings.ts
 // React-free: no imports from any .tsx. Formatting happens in the View.
-import type { AwaitingPaymentRow } from "@/hooks/useCleanerData";
+import type { AwaitingPaymentRow, CleanerHeldPayoutRow } from "@/hooks/useCleanerData";
 import type {
   ClearingRow,
   ClearingSettleKind,
   ConnectKind,
   DeriveEarningsInput,
   EarningsData,
+  HeldKind,
+  HeldPayoutRow,
 } from "./earnings-types";
 
 function settleKindFromMethod(method: string | null | undefined): ClearingSettleKind {
@@ -27,18 +29,47 @@ function toClearingRow(row: AwaitingPaymentRow): ClearingRow {
   };
 }
 
+function heldKindFromStatus(status: CleanerHeldPayoutRow["status"]): HeldKind {
+  if (status === "failed") return "failed";
+  if (status === "approved") return "approved";
+  return "held"; // pending
+}
+
+function toHeldRow(row: CleanerHeldPayoutRow): HeldPayoutRow {
+  return {
+    id: row.id,
+    appointmentId: row.appointment?.id ?? null,
+    serviceLabel: row.appointment?.serviceName ?? "Cleaning",
+    customerLabel: row.appointment?.homeownerName ?? "Customer",
+    dateRaw: row.appointment?.scheduledDate ?? row.createdAt ?? null,
+    amountDollars: row.amount ?? 0,
+    kind: heldKindFromStatus(row.status),
+  };
+}
+
 export function deriveEarnings(input: DeriveEarningsInput): EarningsData {
-  const { stripeEnabled, payoutModel, connectKind, awaiting, stats } = input;
+  const { stripeEnabled, payoutModel, connectKind, awaiting, heldPayouts, stats } = input;
 
   let mode: EarningsData["mode"];
   if (payoutModel === "hourly_external") mode = "employee";
   else if (!stripeEnabled) mode = "stripe-disabled";
   else mode = "connect";
 
+  const clearing = (awaiting ?? []).map(toClearingRow);
+  const held = (heldPayouts ?? []).map(toHeldRow);
+
+  // Owed = everything earned but not yet received. Summed from the cleaner's OWN cut rows
+  // (clearing cuts + held/failed payout amounts), never from the org-derived stats aggregates.
+  const owedDollars =
+    clearing.reduce((sum, r) => sum + (r.cutDollars || 0), 0) +
+    held.reduce((sum, r) => sum + (r.amountDollars || 0), 0);
+
   return {
     mode,
     connectKind,
-    clearing: (awaiting ?? []).map(toClearingRow),
+    clearing,
+    held,
+    owedDollars,
     counts: {
       thisWeek: stats?.completedThisWeek ?? 0,
       completed: stats?.completedJobs ?? 0,
