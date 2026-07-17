@@ -95,6 +95,94 @@ describe('computeSelfPayAmounts — method-aware fee (card vs bank)', () => {
   });
 });
 
+describe('computeSelfPayAmounts — platform fee (bps of the job gross, added ON TOP of the cut)', () => {
+  it('canonical: $100 job, 80% cleaner, 1% fee → org charged gross-up of cut + fee', () => {
+    const a = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, platformFeeBps: 100 });
+    expect(a.cleanerCutCents).toBe(8000); // unchanged by the fee
+    expect(a.platformFeeCents).toBe(100); // 1% of the $100 job gross
+    // ceil((8000 + 100 + 30) / 0.971) = ceil(8372.81) = 8373
+    expect(a.chargeCents).toBe(8373);
+    // estimatedFeeCents stays the Stripe-overhead estimate only (excludes our fee):
+    // real fee on 8373 = round(8373·0.029) + 30 = 273 → net 8100 = cut + platform fee exactly.
+    expect(a.estimatedFeeCents).toBe(273);
+    expect(a.chargeCents - stripeFeeCents(a.chargeCents)).toBeGreaterThanOrEqual(
+      a.cleanerCutCents + a.platformFeeCents,
+    );
+  });
+
+  it('the fee basis is the JOB GROSS, not the cleaner cut (same basis as the homeowner path)', () => {
+    // $100 job at 20% payout: fee is 1% of $100 = $1.00, not 1% of the $20 cut.
+    const a = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 20, platformFeeBps: 100 });
+    expect(a.cleanerCutCents).toBe(2000);
+    expect(a.platformFeeCents).toBe(100);
+  });
+
+  it('the cleaner cut is identical with and without the fee', () => {
+    const without = computeSelfPayAmounts({ jobGrossCents: 12345, payoutPercent: 72.5 });
+    const withFee = computeSelfPayAmounts({ jobGrossCents: 12345, payoutPercent: 72.5, platformFeeBps: 100 });
+    expect(withFee.cleanerCutCents).toBe(without.cleanerCutCents);
+    expect(withFee.chargeCents).toBeGreaterThan(without.chargeCents);
+  });
+
+  it('omitting platformFeeBps keeps the legacy zero-fee behavior', () => {
+    const a = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80 });
+    expect(a.platformFeeCents).toBe(0);
+    expect(a.chargeCents).toBe(8270);
+  });
+
+  it('bank method grosses up cut + fee at the cheaper ACH rate', () => {
+    const a = computeSelfPayAmounts({
+      jobGrossCents: 10000,
+      payoutPercent: 80,
+      platformFeeBps: 100,
+      method: 'us_bank_account',
+    });
+    expect(a.cleanerCutCents).toBe(8000);
+    expect(a.platformFeeCents).toBe(100);
+    // ceil((8000 + 100) / 0.992) = ceil(8165.32) = 8166; ACH fee round(8166·0.008) = 65 → net 8101.
+    expect(a.chargeCents).toBe(8166);
+    expect(a.estimatedFeeCents).toBe(66);
+  });
+
+  it('a 100%-payout cleaner still works: the fee rides on top (the org is the payer)', () => {
+    const a = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 100, platformFeeBps: 100 });
+    expect(a.cleanerCutCents).toBe(10000);
+    expect(a.platformFeeCents).toBe(100);
+    // ceil((10000 + 100 + 30) / 0.971) = ceil(10432.54) = 10433
+    expect(a.chargeCents).toBe(10433);
+  });
+
+  it('a zero cut still charges nothing, fee or not (no job money movement → no fee)', () => {
+    const a = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 0, platformFeeBps: 100 });
+    expect(a.cleanerCutCents).toBe(0);
+    expect(a.platformFeeCents).toBe(0);
+    expect(a.chargeCents).toBe(0);
+    expect(a.estimatedFeeCents).toBe(0);
+  });
+
+  it('the platform always nets at least cut + fee after the real Stripe fee', () => {
+    const cases = [
+      { jobGrossCents: 700, payoutPercent: 100, platformFeeBps: 100 },
+      { jobGrossCents: 10000, payoutPercent: 5, platformFeeBps: 100 },
+      { jobGrossCents: 31250, payoutPercent: 80, platformFeeBps: 100 },
+      { jobGrossCents: 99999, payoutPercent: 72.5, platformFeeBps: 100 },
+      { jobGrossCents: 250000, payoutPercent: 100, platformFeeBps: 100 },
+    ];
+    for (const c of cases) {
+      const a = computeSelfPayAmounts(c);
+      const net = a.chargeCents - stripeFeeCents(a.chargeCents);
+      expect(net).toBeGreaterThanOrEqual(a.cleanerCutCents + a.platformFeeCents);
+      expect(net - (a.cleanerCutCents + a.platformFeeCents)).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('rejects an invalid platformFeeBps', () => {
+    expect(() => computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, platformFeeBps: 10.5 })).toThrow();
+    expect(() => computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, platformFeeBps: -1 })).toThrow();
+    expect(() => computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, platformFeeBps: 10001 })).toThrow();
+  });
+});
+
 describe('grossUpForStripeFee', () => {
   it('returns 0 for a 0 net', () => {
     expect(grossUpForStripeFee(0)).toBe(0);

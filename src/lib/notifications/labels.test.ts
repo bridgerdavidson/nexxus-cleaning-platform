@@ -170,6 +170,26 @@ describe('describeNotification', () => {
     expect(describeNotification('charge_failed').title).toBe('Payment failed for a completed job');
   });
 
+  it('words charge_failed for the homeowner audience (their own card, no customer name)', () => {
+    const declined = describeNotification('charge_failed', {
+      ...FULL_PAYLOAD,
+      audience: 'homeowner',
+      reason: 'declined',
+    });
+    expect(declined.title).toBe('Payment failed');
+    expect(declined.detail).toContain("We couldn't charge your card");
+    expect(declined.detail).toContain('$42.00');
+    expect(declined.tone).toBe('error');
+
+    const needsAuth = describeNotification('charge_failed', {
+      ...FULL_PAYLOAD,
+      audience: 'homeowner',
+      reason: 'authentication_required',
+    });
+    expect(needsAuth.title).toBe('Confirm your payment');
+    expect(needsAuth.tone).toBe('warning');
+  });
+
   it('words cancellation_fee_failed by reason', () => {
     const noCard = describeNotification('cancellation_fee_failed', { ...FULL_PAYLOAD, reason: 'no_card' });
     expect(noCard.title).toBe('Cancellation fee not collected from Jane Doe');

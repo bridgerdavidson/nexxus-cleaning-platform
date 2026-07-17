@@ -8,6 +8,8 @@ import {
   cleanerDisplayName,
   formatCleaningWhen,
 } from '../home/home-presenters';
+import { stripeNewChargeFlowUiEnabled } from '@/lib/stripe/flags';
+import { paymentAlertBadge } from '../home/derivePaymentAlerts';
 
 const TONE_TO_VARIANT = {
   default: 'default',
@@ -25,6 +27,10 @@ export function CleaningRow({
   onClick: () => void;
 }) {
   const { label, tone } = homeownerStatusLabel(appointment.status);
+  // A cleaning can be "all done" and still have an unresolved payment; the row
+  // must not read as settled green when the card needs the homeowner's action.
+  // Same flag gate as the home banner and the detail's recovery section.
+  const payBadge = stripeNewChargeFlowUiEnabled() ? paymentAlertBadge(appointment) : null;
   const cleaner = cleanerDisplayName(appointment);
   const where = appointment.property?.address ?? appointment.property?.name ?? 'Your home';
   const service = appointment.service_type?.name ?? 'Cleaning';
@@ -41,6 +47,11 @@ export function CleaningRow({
           <Badge variant={TONE_TO_VARIANT[tone]} className="shrink-0">
             {label}
           </Badge>
+          {payBadge && (
+            <Badge variant={payBadge.tone} className="shrink-0">
+              {payBadge.label}
+            </Badge>
+          )}
         </div>
         <p className="mt-1 text-sm font-medium tabular-nums text-muted-foreground">
           {formatCleaningWhen(appointment.scheduled_date, appointment.scheduled_time)}

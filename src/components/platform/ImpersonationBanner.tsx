@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Eye, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -12,8 +12,11 @@ import { useAuth } from '@/hooks/useAuth';
 export function ImpersonationBanner() {
   const { impersonatingOrgId, impersonatingOrgName, stopImpersonation } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
-  if (!impersonatingOrgId) return null;
+  // The redesign shells render their own design-system impersonation banner;
+  // suppress this legacy amber one on /app/* so the two never double up.
+  if (!impersonatingOrgId || pathname?.startsWith('/app')) return null;
 
   return (
     <div className="sticky top-0 z-[100] flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-center text-sm font-medium text-white">

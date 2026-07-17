@@ -10,6 +10,13 @@
  * leftover rounding cents accrue to the tenant. The invariant
  * `platformFee + cleaner + tenantRemainder === gross` always holds.
  *
+ * The platform fee is CAPPED at what the tenant has left after the cleaner's share
+ * (the fee comes out of the tenant remainder, never the cleaner's cut): a 100%-payout
+ * cleaner leaves nothing, so the fee caps to 0 rather than underflowing. Self-pay does
+ * NOT use this cap — there the org is the payer and the fee rides on top (see
+ * `selfPayMath.computeSelfPayAmounts`), sharing `platformFeeCentsFor` as the one
+ * fee-on-gross formula.
+ *
  * `payoutPercent` is 0 for hourly_external cleaners (no Stripe payout — the tenant
  * pays them outside the app), which makes cleanerCents 0 and the tenant keep
  * everything after the platform fee.
@@ -33,6 +40,21 @@ export interface PaymentSplitParams {
   platformFeeBps: number;
 }
 
+/**
+ * The platform's fee on `grossCents` at `platformFeeBps`, UNCAPPED: round(gross · bps / 10000).
+ * The single fee-on-gross formula shared by the homeowner split (below, where it is then capped
+ * at the tenant remainder) and the self-pay charge (`selfPayMath`, where it rides on top).
+ */
+export function platformFeeCentsFor(grossCents: number, platformFeeBps: number): number {
+  if (!Number.isInteger(grossCents) || grossCents < 0) {
+    throw new Error('platformFeeCentsFor: grossCents must be a non-negative integer');
+  }
+  if (!Number.isInteger(platformFeeBps) || platformFeeBps < 0 || platformFeeBps > 10000) {
+    throw new Error('platformFeeCentsFor: platformFeeBps must be an integer between 0 and 10000');
+  }
+  return Math.round((grossCents * platformFeeBps) / 10000);
+}
+
 export function computePaymentSplit({
   grossCents,
   payoutPercent,
@@ -48,16 +70,12 @@ export function computePaymentSplit({
     throw new Error('computePaymentSplit: platformFeeBps must be an integer between 0 and 10000');
   }
 
-  const platformFeeCents = Math.round((grossCents * platformFeeBps) / 10000);
+  // Cleaner first (their % of gross is locked), then the fee is capped at what the tenant has
+  // left. Without the cap, payout% + fee > 100% of gross (e.g. a 100%-payout cleaner with any
+  // fee) would underflow and crash settlement.
   const cleanerCents = Math.floor((grossCents * payoutPercent) / 100);
+  const platformFeeCents = Math.min(platformFeeCentsFor(grossCents, platformFeeBps), grossCents - cleanerCents);
   const tenantRemainderCents = grossCents - platformFeeCents - cleanerCents;
-
-  if (tenantRemainderCents < 0) {
-    // Guard the impossible-with-valid-inputs case (e.g. fee + payout > 100% of gross).
-    throw new Error(
-      `computePaymentSplit: split underflow (gross=${grossCents}, fee=${platformFeeCents}, cleaner=${cleanerCents})`,
-    );
-  }
 
   return { grossCents, platformFeeCents, cleanerCents, tenantRemainderCents };
 }

@@ -14,6 +14,12 @@ export interface FullChargeBreakdown {
   chargeCents: number;
   feeCents: number;
   cleanerCutCents: number;
+  /**
+   * The platform's per-appointment fee. Self-pay: added on top of the cut (part of
+   * chargeCents). Homeowner: retained out of the tenant remainder (not part of the
+   * customer's charge).
+   */
+  platformFeeCents: number;
   payoutPercent: number;
   isSelfPay: boolean;
 }
@@ -42,13 +48,14 @@ export function projectCompletionCharge(input: ProjectCompletionChargeInput): Fu
   const { baseCents, method, isSelfPay, payoutPercent, platformFeeBps, feePassthrough } = input;
 
   if (isSelfPay) {
-    const sp = computeSelfPayAmounts({ jobGrossCents: baseCents, payoutPercent, method });
+    const sp = computeSelfPayAmounts({ jobGrossCents: baseCents, payoutPercent, platformFeeBps, method });
     return {
       baseCents,
       method,
       chargeCents: sp.chargeCents,
       feeCents: sp.estimatedFeeCents,
       cleanerCutCents: sp.cleanerCutCents,
+      platformFeeCents: sp.platformFeeCents,
       payoutPercent,
       isSelfPay: true,
     };
@@ -66,6 +73,7 @@ export function projectCompletionCharge(input: ProjectCompletionChargeInput): Fu
     chargeCents,
     feeCents,
     cleanerCutCents: split.cleanerCents,
+    platformFeeCents: split.platformFeeCents,
     payoutPercent,
     isSelfPay: false,
   };

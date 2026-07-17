@@ -419,7 +419,11 @@ async function chargeSelfPayNow(
     payout_percent: number | string;
   };
   const [orgRes, cleanerRes] = await Promise.all([
-    supabase.from('organizations').select('stripe_self_pay_customer_id').eq('id', appt.organization_id).maybeSingle(),
+    supabase
+      .from('organizations')
+      .select('stripe_self_pay_customer_id, platform_fee_bps')
+      .eq('id', appt.organization_id)
+      .maybeSingle(),
     appt.cleaner_id
       ? supabase
           .from('cleaner_profiles')
@@ -429,8 +433,8 @@ async function chargeSelfPayNow(
       : Promise.resolve({ data: null as CleanerRow | null }),
   ]);
 
-  const customerId =
-    (orgRes.data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
+  const orgRow = orgRes.data as { stripe_self_pay_customer_id: string | null; platform_fee_bps: number } | null;
+  const customerId = orgRow?.stripe_self_pay_customer_id ?? null;
   if (!customerId) {
     await recordSelfPayNoCard(supabase, appt, actor, 'no_self_pay_customer');
     return { ok: false, code: 'no_org_card', message: 'Organization has no company card on file' };
@@ -466,9 +470,11 @@ async function chargeSelfPayNow(
   }
 
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);
-  const { chargeCents, cleanerCutCents, estimatedFeeCents } = computeSelfPayAmounts({
+  const platformFeeBps = orgRow?.platform_fee_bps ?? 0;
+  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmounts({
     jobGrossCents,
     payoutPercent: Number(cleaner!.payout_percent),
+    platformFeeBps,
   });
 
   const reauthAttempt = await nextReauthAttempt(supabase, appt);
@@ -492,6 +498,9 @@ async function chargeSelfPayNow(
     });
   }
 
+  // application_fee_amount/bps mirror the homeowner row: the platform's retained fee. Self-pay has
+  // no Stripe-side application fee object — the funds land on the platform balance and only the
+  // cleaner cut is transferred out, so the fee is retained implicitly; the row is the record.
   const baseRow = {
     organization_id: appt.organization_id,
     appointment_id: appt.id,
@@ -502,9 +511,11 @@ async function chargeSelfPayNow(
     charge_kind: 'completion' as const,
     is_self_pay: true,
     stripe_payment_intent_id: pi.id,
+    application_fee_amount: platformFeeCents,
+    application_fee_bps_snapshot: platformFeeBps,
     payment_intent_status: pi.status,
   };
-  return finishCharge(supabase, appt, pi, baseRow, chargeCents, actor, { cleanerCutCents });
+  return finishCharge(supabase, appt, pi, baseRow, chargeCents, actor, { cleanerCutCents, platformFeeCents });
 }
 
 // --- Shared result handling ----------------------------------------------------------------------
@@ -520,7 +531,7 @@ async function finishCharge(
   baseRow: Record<string, unknown>,
   chargeCents: number,
   actor: string,
-  extra?: { cleanerCutCents?: number },
+  extra?: { cleanerCutCents?: number; platformFeeCents?: number },
 ): Promise<ChargeNowOutcome> {
   const now = new Date().toISOString();
 
@@ -572,6 +583,7 @@ async function finishCharge(
       amountCents: chargeCents,
       reason: 'authentication_required',
       dedupeSuffix: pi.id,
+      actor,
     });
     return { ok: false, code: 'requires_action', paymentIntentId: pi.id, message: 'Customer authentication required' };
   }
@@ -579,6 +591,13 @@ async function finishCharge(
   // Any other terminal status is a failure.
   await supabase.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
   await upsertRevenueRow(supabase, appt.id, { ...baseRow, status: 'failed' });
+  await notifyChargeFailed(supabase, appt, {
+    amountCents: chargeCents,
+    reason: 'declined',
+    error: `Unexpected PaymentIntent status: ${pi.status}`,
+    dedupeSuffix: pi.id,
+    actor,
+  });
   return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${pi.status}`, paymentIntentId: pi.id };
 }
 
@@ -628,15 +647,29 @@ async function recordChargeDecline(
     error: opts.err instanceof Error ? opts.err.message : String(opts.err),
     selfPay: opts.isSelfPay,
     dedupeSuffix: failedPi?.id ?? 'na',
+    actor,
   });
   return { ok: false, code: 'declined', message: opts.err instanceof Error ? opts.err.message : 'Charge declined' };
 }
 
-/** Admin notification for a failed completion charge (decline or off-session 3-D Secure). */
+/**
+ * Notifications for a failed completion charge (decline or off-session 3-D Secure):
+ * an org-staff fan-out row, plus a bell notification to the HOMEOWNER whose card
+ * it actually is (skipped for self-pay, where the failure is the company card and
+ * only staff can act on it). The homeowner payload omits the raw Stripe error.
+ */
 async function notifyChargeFailed(
   supabase: SupabaseClient,
   appt: AppointmentRow,
-  opts: { amountCents: number; reason: 'declined' | 'authentication_required'; error?: string; selfPay?: boolean; dedupeSuffix: string },
+  opts: {
+    amountCents: number;
+    reason: 'declined' | 'authentication_required';
+    error?: string;
+    selfPay?: boolean;
+    dedupeSuffix: string;
+    /** Who triggered the charge (route passes `user:{id}`); used for actor exclusion. */
+    actor: string;
+  },
 ): Promise<void> {
   const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
   await recordNotificationEvent(supabase, {
@@ -653,6 +686,27 @@ async function notifyChargeFailed(
       ...(opts.selfPay ? { self_pay: true } : {}),
     },
   });
+  if (!appt.is_self_pay && appt.homeowner_id) {
+    // Actor exclusion: a homeowner who just tapped Pay now is reading the inline
+    // decline already; a toast + unread bell row about their own action is noise
+    // (and would stack one per retry). Staff retries and automatic charges
+    // (actor 'system:*' / 'webhook:*') still notify them, which is the point.
+    const actorUserId = opts.actor.startsWith('user:') ? opts.actor.slice('user:'.length) : null;
+    await recordNotificationEvent(supabase, {
+      event_type: 'charge_failed',
+      appointment_id: appt.id,
+      organization_id: appt.organization_id,
+      recipient_user_id: appt.homeowner_id,
+      dedupe_key: `charge_failed:homeowner:${appt.id}:${opts.dedupeSuffix}`,
+      ...(actorUserId ? { exclude_user_ids: [actorUserId] } : {}),
+      payload: {
+        ...ctx,
+        audience: 'homeowner',
+        amount_cents: opts.amountCents,
+        reason: opts.reason,
+      },
+    });
+  }
 }
 
 /** Ledger + admin notification for a self-pay completion with nothing to charge. */

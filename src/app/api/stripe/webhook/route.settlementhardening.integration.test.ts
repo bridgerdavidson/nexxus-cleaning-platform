@@ -123,6 +123,8 @@ describe('POST /api/stripe/webhook (settlement + clawback hardening)', () => {
       stripeConnectAccountId: 'acct_cleaner_hardening',
       stripeConnectOnboardingComplete: true,
       payoutPercent: 60,
+      // Pinned: assertions here depend on split amounts; the DB default became 100 in migration 111.
+      platformFeeBps: 0,
     });
     tenantAcct = `acct_tenant_${org.organizationId.slice(0, 12)}`;
     const db = createTestSupabaseClient();
