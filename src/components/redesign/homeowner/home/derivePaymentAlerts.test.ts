@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { derivePaymentAlerts } from './derivePaymentAlerts';
+import { derivePaymentAlerts, paymentAlertBadge } from './derivePaymentAlerts';
 import type { Appointment } from '@/hooks/useHomeownerData';
 
 function appt(overrides: Partial<Appointment>): Appointment {
@@ -45,6 +45,20 @@ describe('derivePaymentAlerts', () => {
       appt({ id: 'comped2', authorization_status: 'requires_action', is_self_pay: true }),
     ]);
     expect(alerts).toHaveLength(0);
+  });
+
+  it('exposes the same exclusions through paymentAlertBadge for the Cleanings row', () => {
+    expect(paymentAlertBadge(appt({ authorization_status: 'failed' }))).toEqual({
+      label: 'Payment failed',
+      tone: 'critical',
+    });
+    expect(paymentAlertBadge(appt({ authorization_status: 'requires_action' }))).toEqual({
+      label: 'Confirm payment',
+      tone: 'caution',
+    });
+    expect(paymentAlertBadge(appt({ authorization_status: 'failed', is_self_pay: true }))).toBeNull();
+    expect(paymentAlertBadge(appt({ authorization_status: 'failed', status: 'cancelled' }))).toBeNull();
+    expect(paymentAlertBadge(appt({ authorization_status: null }))).toBeNull();
   });
 
   it('falls back to generic wording when the date is unparseable', () => {
