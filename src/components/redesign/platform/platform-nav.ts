@@ -1,4 +1,4 @@
-import { Building2, ScrollText } from 'lucide-react';
+import { Building2, ScrollText, BellRing } from 'lucide-react';
 import type { NavItem } from '@/components/redesign/shell/nav-items';
 
 /**
@@ -9,5 +9,6 @@ import type { NavItem } from '@/components/redesign/shell/nav-items';
  */
 export const PLATFORM_NAV: NavItem[] = [
   { id: 'tenants', label: 'Tenants', href: '/app/owner', icon: Building2 },
+  { id: 'alerts', label: 'Alerts', href: '/app/owner/alerts', icon: BellRing },
   { id: 'audit', label: 'Audit log', href: '/app/owner/audit', icon: ScrollText },
 ];

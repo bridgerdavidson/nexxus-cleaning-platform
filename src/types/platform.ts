@@ -77,3 +77,18 @@ export interface PlatformAuditEntry {
   started_at: string;
   ended_at: string | null;
 }
+
+export type PlatformAlertSeverity = 'info' | 'warning' | 'critical';
+
+/** One platform-owner operational alert row (public.platform_alerts, migration 085). */
+export interface PlatformAlert {
+  id: string;
+  alert_type: string;
+  severity: PlatformAlertSeverity;
+  summary: string;
+  details: Record<string, unknown>;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+}
