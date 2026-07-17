@@ -6,6 +6,7 @@ import type Stripe from 'stripe';
 vi.mock('@/lib/stripe/reconcile', () => ({
   retrieveStripeEvent: vi.fn(),
   retrievePaymentIntent: vi.fn(),
+  retrieveCharge: vi.fn(),
 }));
 
 // Failed-payout retry → settleCleanerPayout → @/lib/stripe/transfers (getStripe()). Mock it.
@@ -23,7 +24,11 @@ vi.mock('@/lib/stripe/transfers', () => ({
 
 import { POST } from './route';
 import { retrieveStripeEvent, retrievePaymentIntent } from '@/lib/stripe/reconcile';
-import { createPlatformTransfer } from '@/lib/stripe/transfers';
+import {
+  createPlatformTransfer,
+  listTransfersByGroup,
+  reversePlatformTransfer,
+} from '@/lib/stripe/transfers';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -429,5 +434,188 @@ describe('POST /api/cron/reconcile-payments', () => {
 
     await db.from('webhook_events').delete().eq('id', eventId);
     await db.from('platform_alerts').delete().eq('alert_type', 'reconcile_dead_letter_stuck');
+  });
+
+  /**
+   * Seed the T1-1 stranded state: a refunded payment whose transfer unwind failed (the failure
+   * event is on the ledger, the transfers are still un-reversed at Stripe). Returns the ids the
+   * sweep needs to find it.
+   */
+  async function seedStrandedUnwind() {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const piId = `pi_unwind_${appt.id}`;
+    const { data: payRow } = await db
+      .from('payments')
+      .insert({
+        organization_id: org.organizationId,
+        appointment_id: appt.id,
+        amount: 100,
+        status: 'refunded',
+        payment_method: 'card',
+        payment_type: 'revenue',
+        stripe_payment_intent_id: piId,
+        payment_intent_status: 'succeeded',
+      })
+      .select('id')
+      .single();
+    const paymentId = (payRow as { id: string }).id;
+    const cleanerTransferId = `tr_cl_${appt.id}`;
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 60,
+      status: 'paid',
+      stripe_transfer_id: cleanerTransferId,
+      payout_percent_snapshot: 60,
+    });
+    // The stranded failure event, older than the stale window so the sweep picks it up.
+    await db.from('payment_events').insert({
+      appointment_id: appt.id,
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      event_type: 'transfer_reversal_failed',
+      actor: 'webhook',
+      amount: 4000,
+      payload: { transfer_id: `tr_tenant_${appt.id}`, error: 'account restricted' },
+      created_at: HOUR_AGO(),
+    });
+
+    // Stripe's truth: the charge was fully refunded; both transfers are still un-reversed.
+    vi.mocked(retrievePaymentIntent).mockResolvedValue({
+      id: piId,
+      object: 'payment_intent',
+      status: 'succeeded',
+      latest_charge: {
+        id: `ch_unwind_${appt.id}`,
+        object: 'charge',
+        amount: 10000,
+        amount_refunded: 10000,
+      },
+    } as unknown as Stripe.PaymentIntent);
+    vi.mocked(listTransfersByGroup).mockResolvedValue([
+      { id: `tr_tenant_${appt.id}`, amount: 4000, amount_reversed: 0 },
+      { id: cleanerTransferId, amount: 6000, amount_reversed: 0 },
+    ] as Awaited<ReturnType<typeof listTransfersByGroup>>);
+
+    return { db, appt, paymentId, cleanerTransferId };
+  }
+
+  it('stranded refund-unwind: re-reverses the failed transfers and records the recovery marker', async () => {
+    const { db, appt, cleanerTransferId } = await seedStrandedUnwind();
+
+    const { status, body } = await callRoute<{
+      strandedRefundUnwinds: { checked: number; recovered: number; stillFailed: number };
+    }>(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+    expect(body.strandedRefundUnwinds.recovered).toBeGreaterThanOrEqual(1);
+
+    // Both legs re-reversed for the full refund: tenant $40 + cleaner $60.
+    const reversals = vi.mocked(reversePlatformTransfer).mock.calls;
+    expect(reversals.find((c) => c[0] === `tr_tenant_${appt.id}`)?.[1]).toBe(4000);
+    expect(reversals.find((c) => c[0] === cleanerTransferId)?.[1]).toBe(6000);
+
+    // The terminal marker takes this appointment out of every later sweep.
+    const { data: recoveredEvents } = await db
+      .from('payment_events')
+      .select('amount, payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_unwind_recovered');
+    expect((recoveredEvents ?? []).length).toBe(1);
+    expect(Number((recoveredEvents![0] as { amount: number }).amount)).toBe(10000);
+
+    // The cleaner payout mirrors the fully-reversed transfer.
+    const { data: payout } = await db
+      .from('payouts')
+      .select('status')
+      .eq('appointment_id', appt.id)
+      .single();
+    expect((payout as { status: string }).status).toBe('reversed');
+  });
+
+  it('stranded refund-unwind: a still-failing reversal stays stranded and alerts the platform owner', async () => {
+    const { db, appt } = await seedStrandedUnwind();
+    vi.mocked(reversePlatformTransfer).mockRejectedValue(new Error('account still restricted'));
+
+    try {
+      const { status, body } = await callRoute<{
+        strandedRefundUnwinds: { stillFailed: number };
+      }>(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(status).toBe(200);
+      expect(body.strandedRefundUnwinds.stillFailed).toBeGreaterThanOrEqual(1);
+
+      // No recovery marker: the appointment re-enters the next sweep.
+      const { data: recoveredEvents } = await db
+        .from('payment_events')
+        .select('id')
+        .eq('appointment_id', appt.id)
+        .eq('event_type', 'refund_unwind_recovered');
+      expect((recoveredEvents ?? []).length).toBe(0);
+
+      // The retry re-recorded both legs' failure events (tenant + cleaner).
+      const { data: freshFailures } = await db
+        .from('payment_events')
+        .select('event_type')
+        .eq('appointment_id', appt.id)
+        .eq('actor', 'reconciler')
+        .in('event_type', ['transfer_reversal_failed', 'refund_clawback_failed']);
+      expect((freshFailures ?? []).length).toBe(2);
+
+      // ...which raised the org-scoped critical platform alert (T1-8 substrate).
+      const alertType = `payment_transfer_reversal_failed:${org.organizationId}`;
+      const { data: alerts } = await db
+        .from('platform_alerts')
+        .select('severity')
+        .eq('alert_type', alertType)
+        .is('resolved_at', null);
+      expect((alerts ?? []).length).toBe(1);
+      expect((alerts![0] as { severity: string }).severity).toBe('critical');
+    } finally {
+      vi.mocked(reversePlatformTransfer).mockImplementation(
+        async () => ({ id: 'trr_test' }) as never,
+      );
+      await db
+        .from('platform_alerts')
+        .delete()
+        .in('alert_type', [
+          `payment_transfer_reversal_failed:${org.organizationId}`,
+          `payment_refund_clawback_failed:${org.organizationId}`,
+        ]);
+    }
+  });
+
+  it('stranded refund-unwind: a recovery marker newer than the failure excludes the appointment', async () => {
+    const { db, appt, paymentId } = await seedStrandedUnwind();
+    // Recovered 30 minutes ago, strictly after the hour-old failure.
+    await db.from('payment_events').insert({
+      appointment_id: appt.id,
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      event_type: 'refund_unwind_recovered',
+      actor: 'reconciler',
+      amount: 10000,
+      payload: { source: 'retry-stranded-refund-unwinds' },
+      created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    });
+
+    const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+
+    // Not retried: no reversal touched this job's transfers and no second marker was written.
+    const groupCalls = vi.mocked(listTransfersByGroup).mock.calls.map((c) => c[0]);
+    expect(groupCalls).not.toContain(`appt_${appt.id}`);
+    const { data: recoveredEvents } = await db
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_unwind_recovered');
+    expect((recoveredEvents ?? []).length).toBe(1);
   });
 });

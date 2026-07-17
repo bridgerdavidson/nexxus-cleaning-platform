@@ -115,7 +115,12 @@ describe('POST /api/payments/:paymentId/refund', () => {
 
   it('full refund: refunds homeowner, reverses cleaner transfer, marks payment refunded', async () => {
     const { paymentId } = await seedPaidPayment();
-    const { status, body } = await callRoute<{ success: boolean; fully_refunded: boolean; amount_cents: number }>(
+    const { status, body } = await callRoute<{
+      success: boolean;
+      fully_refunded: boolean;
+      amount_cents: number;
+      transfer_unwind: { reversed_cents: number; failures: number };
+    }>(
       handlerFor(paymentId),
       {
         method: 'POST',
@@ -126,6 +131,7 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(status).toBe(200);
     expect(body.fully_refunded).toBe(true);
     expect(body.amount_cents).toBe(10000);
+    expect(body.transfer_unwind).toEqual({ reversed_cents: 10000, failures: 0 });
 
     // full refund → no explicit amount; both transfers fully reversed
     expect(vi.mocked(createRefund)).toHaveBeenCalledTimes(1);
@@ -253,20 +259,25 @@ describe('POST /api/payments/:paymentId/refund', () => {
     const { appt, paymentId } = await seedPaidPayment();
     // The cleaner-leg reversal throws; the refund already succeeded, so the route must still 200 and
     // record a REFUND-scoped failure — not cleaner_clawback_failed, which the full-clawback sweep
-    // would over-reverse. (Refund reversals self-heal via the charge.refunded webhook re-run.)
+    // would over-reverse. The stranded unwind is retried by retryStrandedRefundUnwinds and alerted
+    // via paymentEventAlerts (T1-1); the response reports it instead of claiming a clean unwind.
     vi.mocked(reversePlatformTransfer).mockImplementation(async (transferId: string) => {
       if (transferId === 'tr_x') throw new Error('reversal boom');
       return { id: 'trr_ok' } as never;
     });
+    const db = createTestSupabaseClient();
     try {
-      const { status } = await callRoute(handlerFor(paymentId), {
+      const { status, body } = await callRoute<{
+        transfer_unwind: { reversed_cents: number; failures: number };
+      }>(handlerFor(paymentId), {
         method: 'POST',
         headers: bearerHeader(org.admin.accessToken),
         body: { organization_id: org.organizationId },
       });
       expect(status).toBe(200);
+      // Tenant leg ($40) reversed; the cleaner leg failed and is reported, not hidden.
+      expect(body.transfer_unwind).toEqual({ reversed_cents: 4000, failures: 1 });
 
-      const db = createTestSupabaseClient();
       const { data: failed } = await db
         .from('payment_events')
         .select('event_type')
@@ -279,10 +290,23 @@ describe('POST /api/payments/:paymentId/refund', () => {
         .eq('appointment_id', appt.id)
         .eq('event_type', 'cleaner_clawback_failed');
       expect((wrongType ?? []).length).toBe(0);
+
+      // The stranded unwind raised the org-scoped critical platform alert.
+      const { data: alerts } = await db
+        .from('platform_alerts')
+        .select('severity')
+        .eq('alert_type', `payment_refund_clawback_failed:${org.organizationId}`)
+        .is('resolved_at', null);
+      expect((alerts ?? []).length).toBe(1);
+      expect((alerts![0] as { severity: string }).severity).toBe('critical');
     } finally {
       // Restore the default success mock for any later test.
       vi.mocked(reversePlatformTransfer).mockReset();
       vi.mocked(reversePlatformTransfer).mockResolvedValue({ id: 'trr_test_123' } as never);
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_refund_clawback_failed:${org.organizationId}`);
     }
   });
 });
