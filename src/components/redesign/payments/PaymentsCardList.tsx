@@ -1,6 +1,12 @@
 "use client";
 
-import { DisputedTag, PayoutStatusBadge, SelfPayTag, TxnStatusBadge } from "./payments-presenters";
+import {
+  DisputedTag,
+  PartialRefundTag,
+  PayoutStatusBadge,
+  SelfPayTag,
+  TxnStatusBadge,
+} from "./payments-presenters";
 import type { PaymentLedger, PayoutRowVM, TransactionRowVM } from "./payments-types";
 
 const cardClass =
@@ -31,6 +37,7 @@ export function PaymentsCardList({ ledger, txnRows, payoutRows, onOpenRow }: Pay
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <span className="font-semibold tnum text-foreground">{r.amountLabel}</span>
                 {r.disputed ? <DisputedTag /> : null}
+                {r.partiallyRefunded ? <PartialRefundTag /> : null}
                 <TxnStatusBadge badge={r.badge} />
               </div>
             </button>

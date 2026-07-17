@@ -23,7 +23,7 @@ import type {
 // mocks. The live screen is at /app/admin-dashboard/payments.
 
 const TXN_ROWS: TransactionRowVM[] = [
-  { id: "t1", dateLabel: "Jun 20, 2026", payer: "Jane Smith", selfPay: false, service: "Deep clean", amountLabel: "$240.00", method: "Card", badge: "paid" },
+  { id: "t1", dateLabel: "Jun 20, 2026", payer: "Jane Smith", selfPay: false, service: "Deep clean", amountLabel: "$240.00", method: "Card", badge: "paid", partiallyRefunded: true },
   { id: "t2", dateLabel: "Jun 19, 2026", payer: "Acme Cleaning Co", selfPay: true, service: "Standard clean", amountLabel: "$120.00", method: "Card", badge: "processing" },
   { id: "t3", dateLabel: "Jun 18, 2026", payer: "Nadia Patel", selfPay: false, service: "Move-out clean", amountLabel: "$310.00", method: "ACH", badge: "refunded" },
   { id: "t4", dateLabel: "Jun 17, 2026", payer: "Aaron Lee", selfPay: false, service: "Standard clean", amountLabel: "$95.00", method: "Manual", badge: "pending" },
@@ -38,11 +38,11 @@ const PAYOUT_ROWS: PayoutRowVM[] = [
 ];
 
 const TXN_DETAILS: Record<string, TransactionDetailVM> = {
-  t1: { ...TXN_ROWS[0], reference: "AP-1042", notes: "Paid in full at completion.", createdLabel: "Jun 20, 2026", paidLabel: "Jun 20, 2026", refundable: true },
-  t2: { ...TXN_ROWS[1], reference: null, notes: "Company self-pay.", createdLabel: "Jun 19, 2026", paidLabel: null, refundable: false },
-  t3: { ...TXN_ROWS[2], reference: "AP-1031", notes: null, createdLabel: "Jun 18, 2026", paidLabel: "Jun 18, 2026", refundable: false },
-  t4: { ...TXN_ROWS[3], reference: null, notes: "Cash on site.", createdLabel: "Jun 17, 2026", paidLabel: null, refundable: false },
-  t5: { ...TXN_ROWS[4], reference: null, notes: null, createdLabel: "Jun 16, 2026", paidLabel: null, refundable: false },
+  t1: { ...TXN_ROWS[0], reference: "AP-1042", notes: "Partially refunded after a rescheduled room.", createdLabel: "Jun 20, 2026", paidLabel: "Jun 20, 2026", refundable: true, refundedLabel: "$40.00", grossAmount: 240, refundedAmount: 40, remainingRefundable: 200 },
+  t2: { ...TXN_ROWS[1], reference: null, notes: "Company self-pay.", createdLabel: "Jun 19, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 120, refundedAmount: 0, remainingRefundable: 120 },
+  t3: { ...TXN_ROWS[2], reference: "AP-1031", notes: null, createdLabel: "Jun 18, 2026", paidLabel: "Jun 18, 2026", refundable: false, refundedLabel: "$310.00", grossAmount: 310, refundedAmount: 310, remainingRefundable: 0 },
+  t4: { ...TXN_ROWS[3], reference: null, notes: "Cash on site.", createdLabel: "Jun 17, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 95, refundedAmount: 0, remainingRefundable: 95 },
+  t5: { ...TXN_ROWS[4], reference: null, notes: null, createdLabel: "Jun 16, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 220, refundedAmount: 0, remainingRefundable: 220 },
 };
 
 const PAYOUT_DETAILS: Record<string, PayoutDetailVM> = {

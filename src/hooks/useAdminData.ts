@@ -165,6 +165,13 @@ export interface AdminPayment {
   created_at: string;
   /** True when this payment was funded by an org self-pay charge (no homeowner). */
   is_self_pay?: boolean;
+  /** Present only for Stripe-backed charges. Refundability derives from this, not
+   *  payment_method: a manual 'card' row has none and can't be refunded; a settled
+   *  ACH charge has one and can. */
+  stripe_payment_intent_id?: string | null;
+  /** Refund rows against this payment. `amount` is CENTS. Used to show refunded
+   *  totals and cap the refundable remainder (pending + succeeded reduce it). */
+  refunds?: { amount: number; status: string }[];
   appointment: {
     scheduled_date: string;
     homeowner: {
@@ -525,6 +532,8 @@ export function useAdminPayments() {
           paid_at,
           created_at,
           is_self_pay,
+          stripe_payment_intent_id,
+          refunds:refunds(amount, status),
           appointment:appointments(
             scheduled_date,
             homeowner:user_profiles!homeowner_id(
@@ -699,6 +708,8 @@ const PAYMENTS_INFINITE_SELECT = `
   paid_at,
   created_at,
   is_self_pay,
+  stripe_payment_intent_id,
+  refunds:refunds(amount, status),
   appointment:appointments(
     scheduled_date,
     homeowner:user_profiles!homeowner_id(

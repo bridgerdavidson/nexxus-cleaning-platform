@@ -29,12 +29,15 @@ import { PaymentsKpiStrip } from "./PaymentsKpiStrip";
 import { PaymentsYourMoney } from "./PaymentsYourMoney";
 import { PaymentDetailSheet } from "./PaymentDetailSheet";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
+import { RefundDialog } from "./RefundDialog";
+import { refundMath } from "./deriveRefunds";
 import type {
   PaymentLedger,
   PaymentSort,
   PayoutDetailVM,
   PayoutRowVM,
   PayoutStatusFilter,
+  RefundReason,
   TransactionDetailVM,
   TransactionRowVM,
   TxnStatusFilter,
@@ -67,6 +70,7 @@ function toTxnRow(p: AdminPayment, orgName: string, disputedIds: Set<string>): T
     method: methodLabel(p.payment_method),
     badge: deriveTransactionBadge(p.status),
     disputed: disputedIds.has(p.id),
+    partiallyRefunded: refundMath(p.amount, p.refunds).partiallyRefunded,
   };
 }
 
@@ -171,6 +175,7 @@ function OperatorPaymentsData({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<TransactionDetailVM | null>(null);
   const [busy, setBusy] = useState(false);
 
   const setLedger = useCallback(
@@ -216,6 +221,7 @@ function OperatorPaymentsData({
     const p = payments.find((x) => x.id === selectedRowId);
     if (!p) return null;
     const { payer, selfPay } = payerOf(p, orgName);
+    const rm = refundMath(p.amount, p.refunds);
     return {
       id: p.id,
       dateLabel: longDate(p.appointment?.scheduled_date || p.created_at),
@@ -226,11 +232,20 @@ function OperatorPaymentsData({
       method: methodLabel(p.payment_method),
       badge: deriveTransactionBadge(p.status),
       disputed: openDisputedIds.has(p.id),
+      partiallyRefunded: rm.partiallyRefunded,
       reference: p.reference ?? null,
       notes: p.notes ?? null,
       createdLabel: longDate(p.created_at),
       paidLabel: p.paid_at ? longDate(p.paid_at) : null,
-      refundable: canRefund && p.status === "paid" && p.payment_method === "card",
+      // Refundable derives from a PaymentIntent (not payment_method): a manual
+      // 'card' row has none and would 409; a settled ACH charge has one. Requires
+      // something still left to refund.
+      refundable:
+        canRefund && p.status === "paid" && !!p.stripe_payment_intent_id && rm.remainingCents > 0,
+      refundedLabel: rm.refundedCents > 0 ? money2(rm.refundedCents / 100) : null,
+      grossAmount: p.amount,
+      refundedAmount: rm.refundedCents / 100,
+      remainingRefundable: rm.remainingCents / 100,
     };
   }, [ledger, selectedRowId, payments, orgName, canRefund, openDisputedIds]);
 
@@ -265,21 +280,27 @@ function OperatorPaymentsData({
   }, []);
 
   const handleRefund = useCallback(
-    async (id: string) => {
+    async (id: string, amountDollars?: number, reason?: RefundReason) => {
       if (!currentOrganizationId) return;
       setBusy(true);
       try {
         const res = await fetch(`/api/payments/${id}/refund`, {
           method: "POST",
           headers: await authHeaders(),
-          body: JSON.stringify({ organization_id: currentOrganizationId }),
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            ...(typeof amountDollars === "number" ? { amount: amountDollars } : {}),
+            ...(reason ? { reason } : {}),
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Refund failed");
         toast.success(data.fully_refunded ? "Payment refunded" : "Partial refund issued");
         await refetchPayments();
+        setRefundTarget(null);
         setSelectedRowId(null);
       } catch (e) {
+        // Keep the dialog open so the operator can adjust the amount and retry.
         toast.error(e instanceof Error ? e.message : "Refund failed");
       } finally {
         setBusy(false);
@@ -400,7 +421,9 @@ function OperatorPaymentsData({
         payout={payoutDetail}
         canManagePayments={canManagePayments}
         busy={busy}
-        onRefund={handleRefund}
+        onRefund={() => {
+          if (txnDetail) setRefundTarget(txnDetail);
+        }}
         onRetry={handleRetry}
         onDismiss={handleDismiss}
         onMessage={handleMessage}
@@ -418,6 +441,21 @@ function OperatorPaymentsData({
               queryKey: keys.payments.statsByOrg(currentOrganizationId),
             });
           }
+        }}
+      />
+
+      <RefundDialog
+        open={!!refundTarget}
+        onOpenChange={(o) => {
+          if (!o) setRefundTarget(null);
+        }}
+        payer={refundTarget?.payer ?? ""}
+        grossLabel={refundTarget?.amountLabel ?? ""}
+        refundedLabel={refundTarget?.refundedLabel ?? null}
+        remaining={refundTarget?.remainingRefundable ?? 0}
+        busy={busy}
+        onConfirm={(amount, reason) => {
+          if (refundTarget) void handleRefund(refundTarget.id, amount, reason);
         }}
       />
     </>

@@ -136,6 +136,17 @@ export function DisputedTag() {
   );
 }
 
+/** Ledger-row flag: some money was refunded but the payment isn't fully refunded,
+ *  so a plain "Paid" would overstate what the customer actually kept. */
+export function PartialRefundTag() {
+  return (
+    <Badge variant="info" className="shrink-0 whitespace-nowrap">
+      <RotateCcw />
+      Partial refund
+    </Badge>
+  );
+}
+
 // --- formatters reused across the payments components ---
 
 export function money2(n: number): string {

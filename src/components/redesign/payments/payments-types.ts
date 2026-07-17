@@ -30,6 +30,14 @@ export const PAYOUT_STATUS_FILTERS: { id: PayoutStatusFilter; label: string }[] 
 export type TxnBadgeKey = "paid" | "processing" | "pending" | "failed" | "refunded";
 export type PayoutBadgeKey = "paid" | "held" | "failed" | "reversed" | "approved";
 
+/** Stripe refund reasons the refund route accepts (`amount` omitted = full). */
+export type RefundReason = "requested_by_customer" | "duplicate" | "fraudulent";
+export const REFUND_REASONS: { id: RefundReason; label: string }[] = [
+  { id: "requested_by_customer", label: "Requested by customer" },
+  { id: "duplicate", label: "Duplicate charge" },
+  { id: "fraudulent", label: "Fraudulent" },
+];
+
 export type TransactionRowVM = {
   id: string;
   dateLabel: string; // "Jun 20, 2026"
@@ -42,6 +50,9 @@ export type TransactionRowVM = {
   /** True when an OPEN chargeback hit this payment, so the row shows a
    *  "Disputed" flag instead of reading as a clean "Paid". */
   disputed?: boolean;
+  /** Some money was refunded but the payment isn't fully refunded yet, so the
+   *  row shows a "Partial refund" flag next to "Paid". */
+  partiallyRefunded?: boolean;
 };
 
 export type PayoutRowVM = {
@@ -57,7 +68,13 @@ export type TransactionDetailVM = TransactionRowVM & {
   notes: string | null;
   createdLabel: string;
   paidLabel: string | null;
-  refundable: boolean; // canRefund && status==='paid' && method card
+  /** canRefund && status==='paid' && has a PaymentIntent && something left to refund. */
+  refundable: boolean;
+  /** Refunded-so-far display ("$80.00"), null when nothing refunded. */
+  refundedLabel: string | null;
+  grossAmount: number; // dollars, for the refund dialog
+  refundedAmount: number; // dollars already refunded / in-flight
+  remainingRefundable: number; // dollars still refundable
 };
 
 export type PayoutDetailVM = PayoutRowVM & {

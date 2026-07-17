@@ -10,7 +10,13 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { DisputedTag, PayoutStatusBadge, SelfPayTag, TxnStatusBadge } from "./payments-presenters";
+import {
+  DisputedTag,
+  PartialRefundTag,
+  PayoutStatusBadge,
+  SelfPayTag,
+  TxnStatusBadge,
+} from "./payments-presenters";
 import type { PaymentLedger, PayoutDetailVM, TransactionDetailVM } from "./payments-types";
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
@@ -70,6 +76,7 @@ export function PaymentDetailSheet({
               <div className="flex flex-wrap items-center gap-2">
                 <TxnStatusBadge badge={txn.badge} />
                 {txn.disputed ? <DisputedTag /> : null}
+                {txn.partiallyRefunded ? <PartialRefundTag /> : null}
                 {txn.selfPay ? <SelfPayTag /> : null}
               </div>
               <SheetTitle className="truncate">{txn.payer}</SheetTitle>
@@ -84,6 +91,12 @@ export function PaymentDetailSheet({
               <Field label="Date" value={txn.dateLabel} />
               <Field label="Recorded" value={txn.createdLabel} />
               {txn.paidLabel ? <Field label="Paid" value={txn.paidLabel} /> : null}
+              {txn.refundedLabel ? (
+                <Field
+                  label="Refunded"
+                  value={<span className="font-semibold tnum">{txn.refundedLabel}</span>}
+                />
+              ) : null}
               {txn.reference ? <Field label="Reference" value={txn.reference} /> : null}
               {txn.notes ? <NotesBlock notes={txn.notes} /> : null}
               {txn.refundable ? (
