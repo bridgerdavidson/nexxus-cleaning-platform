@@ -28,6 +28,7 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   transfer_reversal_failed: { severity: 'critical', label: 'Transfer reversal failed during a refund, platform out the money' },
   refund_clawback_failed: { severity: 'critical', label: 'Cleaner clawback failed during a refund, platform out the money' },
   transfer_list_failed: { severity: 'critical', label: 'Could not list transfers to reverse for a refund' },
+  refund_unwind_manual_review: { severity: 'critical', label: 'Refund unwind needs a manual decision (mixed charges or refund absorbed at settlement), auto-retry stopped' },
   cleaner_clawback_failed: { severity: 'critical', label: 'Cleaner payout clawback failed' },
   // Warning: money is stuck or a platform-account risk signal fired, but it is retryable or non-loss.
   cleaner_transfer_failed: { severity: 'warning', label: 'Cleaner payout transfer failed' },

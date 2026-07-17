@@ -1,70 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { selectStrandedUnwindCandidates, type StrandedUnwindEventRow } from './reconcile';
+import { unwindRetryBackoffMinutes } from './reconcile';
 
-function failure(
-  appointmentId: string,
-  createdAt: string,
-  extra: Partial<StrandedUnwindEventRow> = {},
-): StrandedUnwindEventRow {
-  return {
-    appointment_id: appointmentId,
-    organization_id: 'org-1',
-    payment_id: 'pay-1',
-    created_at: createdAt,
-    ...extra,
-  };
-}
-
-describe('selectStrandedUnwindCandidates', () => {
-  it('keeps an appointment with failures and no recovery marker', () => {
-    const out = selectStrandedUnwindCandidates([failure('a', '2026-07-17T10:00:00Z')], []);
-    expect(out).toHaveLength(1);
-    expect(out[0].appointment_id).toBe('a');
+describe('unwindRetryBackoffMinutes', () => {
+  it('first retry waits only the base window (the RPC cutoff already enforces it)', () => {
+    expect(unwindRetryBackoffMinutes(0, 15)).toBe(15);
   });
 
-  it('dedupes to one candidate per appointment, keeping the newest failure row', () => {
-    const out = selectStrandedUnwindCandidates(
-      [
-        failure('a', '2026-07-17T10:00:00Z', { payment_id: 'pay-old' }),
-        failure('a', '2026-07-17T12:00:00Z', { payment_id: 'pay-new' }),
-        failure('b', '2026-07-17T11:00:00Z'),
-      ],
-      [],
-    );
-    expect(out).toHaveLength(2);
-    expect(out.find((c) => c.appointment_id === 'a')?.payment_id).toBe('pay-new');
+  it('doubles per prior reconciler attempt', () => {
+    expect(unwindRetryBackoffMinutes(1, 15)).toBe(30);
+    expect(unwindRetryBackoffMinutes(2, 15)).toBe(60);
+    expect(unwindRetryBackoffMinutes(3, 15)).toBe(120);
   });
 
-  it('drops an appointment whose recovery marker is newer than its newest failure', () => {
-    const out = selectStrandedUnwindCandidates(
-      [failure('a', '2026-07-17T10:00:00Z')],
-      [{ appointment_id: 'a', created_at: '2026-07-17T10:30:00Z' }],
-    );
-    expect(out).toHaveLength(0);
+  it('caps at 2^6 so money is never abandoned, just retried at a bounded cadence', () => {
+    expect(unwindRetryBackoffMinutes(6, 15)).toBe(15 * 64);
+    expect(unwindRetryBackoffMinutes(7, 15)).toBe(15 * 64);
+    expect(unwindRetryBackoffMinutes(1000, 15)).toBe(15 * 64);
   });
 
-  it('keeps an appointment whose newest failure postdates its recovery (a later refund failed again)', () => {
-    const out = selectStrandedUnwindCandidates(
-      [failure('a', '2026-07-17T10:00:00Z'), failure('a', '2026-07-17T14:00:00Z')],
-      [{ appointment_id: 'a', created_at: '2026-07-17T11:00:00Z' }],
-    );
-    expect(out).toHaveLength(1);
-  });
-
-  it('retries on an exact failure/recovery timestamp tie (worst case: one idempotent no-op)', () => {
-    const out = selectStrandedUnwindCandidates(
-      [failure('a', '2026-07-17T10:00:00Z')],
-      [{ appointment_id: 'a', created_at: '2026-07-17T10:00:00Z' }],
-    );
-    expect(out).toHaveLength(1);
-  });
-
-  it('only compares recoveries against their own appointment', () => {
-    const out = selectStrandedUnwindCandidates(
-      [failure('a', '2026-07-17T10:00:00Z'), failure('b', '2026-07-17T10:00:00Z')],
-      [{ appointment_id: 'b', created_at: '2026-07-17T12:00:00Z' }],
-    );
-    expect(out).toHaveLength(1);
-    expect(out[0].appointment_id).toBe('a');
+  it('treats a negative attempt count as zero', () => {
+    expect(unwindRetryBackoffMinutes(-1, 15)).toBe(15);
   });
 });
