@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { deriveEarnings, shouldReveal } from "./deriveEarnings";
 import type { DeriveEarningsInput } from "./earnings-types";
-import type { AwaitingPaymentRow, CleanerStats } from "@/hooks/useCleanerData";
+import type { AwaitingPaymentRow, CleanerHeldPayoutRow, CleanerStats } from "@/hooks/useCleanerData";
 
 function awaiting(over: Partial<AwaitingPaymentRow> = {}): AwaitingPaymentRow {
   return {
@@ -15,6 +15,22 @@ function awaiting(over: Partial<AwaitingPaymentRow> = {}): AwaitingPaymentRow {
       scheduledDate: "2026-06-27",
       homeownerName: "Sarah M.",
       serviceName: "Deep clean",
+    },
+    ...over,
+  };
+}
+
+function held(over: Partial<CleanerHeldPayoutRow> = {}): CleanerHeldPayoutRow {
+  return {
+    id: "pyt_1",
+    amount: 120,
+    status: "pending",
+    createdAt: "2026-06-20T10:00:00.000Z",
+    appointment: {
+      id: "appt_2",
+      scheduledDate: "2026-06-21",
+      homeownerName: "A. Nguyen",
+      serviceName: "Standard clean",
     },
     ...over,
   };
@@ -38,6 +54,7 @@ function input(over: Partial<DeriveEarningsInput> = {}): DeriveEarningsInput {
     payoutModel: "percentage_contractor",
     connectKind: "active",
     awaiting: [awaiting()],
+    heldPayouts: [],
     stats: stats(),
     ...over,
   };
@@ -98,14 +115,94 @@ describe("deriveEarnings", () => {
     });
   });
 
-  it("never leaks a money aggregate into the view-model", () => {
+  it("never leaks the org-derived stats aggregates into the view-model", () => {
+    // owedDollars is allowed (it's summed from the cleaner's OWN cut rows), but the coarse
+    // org-derived stats money (totalEarnings/pendingPayouts) must never reach the view-model.
     const result = deriveEarnings(input());
-    expect(Object.keys(result).sort()).toEqual(["clearing", "connectKind", "counts", "mode"]);
+    expect(Object.keys(result).sort()).toEqual([
+      "clearing",
+      "connectKind",
+      "counts",
+      "held",
+      "mode",
+      "owedDollars",
+    ]);
     const json = JSON.stringify(result);
     expect(json).not.toContain("totalEarnings");
     expect(json).not.toContain("pendingPayouts");
     expect(json).not.toContain("5240");
     expect(json).not.toContain("420");
+  });
+});
+
+describe("deriveEarnings held payouts (T2-15)", () => {
+  it("maps pending/approved/failed payout statuses to held/approved/failed kinds", () => {
+    const rows = deriveEarnings(
+      input({
+        heldPayouts: [
+          held({ id: "a", status: "pending" }),
+          held({ id: "b", status: "approved" }),
+          held({ id: "c", status: "failed" }),
+        ],
+      }),
+    ).held;
+    expect(rows.map((r) => [r.id, r.kind])).toEqual([
+      ["a", "held"],
+      ["b", "approved"],
+      ["c", "failed"],
+    ]);
+  });
+
+  it("maps a held row's amount + labels and prefers scheduledDate", () => {
+    const row = deriveEarnings(input({ heldPayouts: [held()] })).held[0];
+    expect(row).toEqual({
+      id: "pyt_1",
+      appointmentId: "appt_2",
+      serviceLabel: "Standard clean",
+      customerLabel: "A. Nguyen",
+      dateRaw: "2026-06-21",
+      amountDollars: 120,
+      kind: "held",
+    });
+  });
+
+  it("falls back to createdAt + default labels when the appointment is missing", () => {
+    const row = deriveEarnings(
+      input({ heldPayouts: [held({ appointment: null })] }),
+    ).held[0];
+    expect(row.serviceLabel).toBe("Cleaning");
+    expect(row.customerLabel).toBe("Customer");
+    expect(row.dateRaw).toBe("2026-06-20T10:00:00.000Z");
+    expect(row.appointmentId).toBeNull();
+  });
+
+  it("is empty when there are no held payouts", () => {
+    expect(deriveEarnings(input({ heldPayouts: [] })).held).toEqual([]);
+    expect(deriveEarnings(input({ heldPayouts: undefined })).held).toEqual([]);
+  });
+});
+
+describe("deriveEarnings owedDollars (You're owed $X)", () => {
+  it("sums the cleaner's clearing cuts and held/failed payout amounts", () => {
+    // clearing cut 84 + held 120 + failed 30 = 234 (never touches stats' 420/5240)
+    const result = deriveEarnings(
+      input({
+        awaiting: [awaiting({ cleanerCut: 84 })],
+        heldPayouts: [held({ amount: 120, status: "pending" }), held({ id: "f", amount: 30, status: "failed" })],
+      }),
+    );
+    expect(result.owedDollars).toBe(234);
+  });
+
+  it("is zero when nothing is clearing or held", () => {
+    expect(deriveEarnings(input({ awaiting: [], heldPayouts: [] })).owedDollars).toBe(0);
+  });
+
+  it("derives owed from cut rows, not from the org stats pendingPayouts", () => {
+    const result = deriveEarnings(
+      input({ awaiting: [awaiting({ cleanerCut: 84 })], heldPayouts: [], stats: stats({ pendingPayouts: 999 }) }),
+    );
+    expect(result.owedDollars).toBe(84);
   });
 });
 
