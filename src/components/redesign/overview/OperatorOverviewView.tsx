@@ -66,8 +66,10 @@ export function OperatorOverviewView({
         <h1 className="sr-only">Operator Overview</h1>
       )}
       <KpiStrip kpis={kpis} loading={loading} />
+      {/* min-w-0 on both grid items: without it the queue's nowrap row titles set the
+          track's min-content width and blow the page out sideways on phones. */}
       <div className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="min-w-0 lg:col-span-2">
           <NeedsYouNowQueue
             unassigned={unassigned}
             declined={declined}
@@ -79,7 +81,7 @@ export function OperatorOverviewView({
             paymentsHref={paymentsHref}
           />
         </div>
-        <div className="lg:col-span-1">
+        <div className="min-w-0 lg:col-span-1">
           <TodayActivePanel today={today} activeNow={activeNow} loading={loading} />
         </div>
       </div>
