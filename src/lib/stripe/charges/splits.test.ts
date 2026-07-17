@@ -68,4 +68,41 @@ describe('computePaymentSplit', () => {
     expect(() => computePaymentSplit({ grossCents: 100, payoutPercent: -1, platformFeeBps: 0 })).toThrow(/between 0 and 100/);
     expect(() => computePaymentSplit({ grossCents: 100, payoutPercent: 50, platformFeeBps: 10001 })).toThrow(/between 0 and 10000/);
   });
+
+  describe('platform fee capped at the tenant remainder (never the cleaner share)', () => {
+    it('a 100%-payout cleaner with a platform fee does NOT throw: the fee caps to 0', () => {
+      // Before the cap this hit the underflow guard (cleaner 100% + fee 1% > gross), which
+      // would crash settlement for any 100%-payout cleaner once platform_fee_bps > 0.
+      const split = computePaymentSplit({ grossCents: 10000, payoutPercent: 100, platformFeeBps: 100 });
+      expect(split.cleanerCents).toBe(10000);
+      expect(split.platformFeeCents).toBe(0);
+      expect(split.tenantRemainderCents).toBe(0);
+    });
+
+    it('a partial squeeze caps the fee to what the tenant has left', () => {
+      // 99% cleaner leaves $1.00; a 2% fee ($2.00) caps to the $1.00 available.
+      const split = computePaymentSplit({ grossCents: 10000, payoutPercent: 99, platformFeeBps: 200 });
+      expect(split.cleanerCents).toBe(9900);
+      expect(split.platformFeeCents).toBe(100);
+      expect(split.tenantRemainderCents).toBe(0);
+    });
+
+    it('an uncapped fee is unchanged', () => {
+      const split = computePaymentSplit({ grossCents: 10000, payoutPercent: 80, platformFeeBps: 100 });
+      expect(split.platformFeeCents).toBe(100);
+      expect(split.cleanerCents).toBe(8000);
+      expect(split.tenantRemainderCents).toBe(1900);
+    });
+
+    it('invariant still holds at and around the cap boundary', () => {
+      for (const payoutPercent of [98, 99, 99.5, 100]) {
+        for (const platformFeeBps of [0, 50, 100, 200]) {
+          const s = computePaymentSplit({ grossCents: 12345, payoutPercent, platformFeeBps });
+          expect(s.platformFeeCents + s.cleanerCents + s.tenantRemainderCents).toBe(s.grossCents);
+          expect(s.tenantRemainderCents).toBeGreaterThanOrEqual(0);
+          expect(s.platformFeeCents).toBeGreaterThanOrEqual(0);
+        }
+      }
+    });
+  });
 });

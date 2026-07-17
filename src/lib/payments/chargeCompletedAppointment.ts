@@ -419,7 +419,11 @@ async function chargeSelfPayNow(
     payout_percent: number | string;
   };
   const [orgRes, cleanerRes] = await Promise.all([
-    supabase.from('organizations').select('stripe_self_pay_customer_id').eq('id', appt.organization_id).maybeSingle(),
+    supabase
+      .from('organizations')
+      .select('stripe_self_pay_customer_id, platform_fee_bps')
+      .eq('id', appt.organization_id)
+      .maybeSingle(),
     appt.cleaner_id
       ? supabase
           .from('cleaner_profiles')
@@ -429,8 +433,8 @@ async function chargeSelfPayNow(
       : Promise.resolve({ data: null as CleanerRow | null }),
   ]);
 
-  const customerId =
-    (orgRes.data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
+  const orgRow = orgRes.data as { stripe_self_pay_customer_id: string | null; platform_fee_bps: number } | null;
+  const customerId = orgRow?.stripe_self_pay_customer_id ?? null;
   if (!customerId) {
     await recordSelfPayNoCard(supabase, appt, actor, 'no_self_pay_customer');
     return { ok: false, code: 'no_org_card', message: 'Organization has no company card on file' };
@@ -466,9 +470,11 @@ async function chargeSelfPayNow(
   }
 
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);
-  const { chargeCents, cleanerCutCents, estimatedFeeCents } = computeSelfPayAmounts({
+  const platformFeeBps = orgRow?.platform_fee_bps ?? 0;
+  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmounts({
     jobGrossCents,
     payoutPercent: Number(cleaner!.payout_percent),
+    platformFeeBps,
   });
 
   const reauthAttempt = await nextReauthAttempt(supabase, appt);
@@ -492,6 +498,9 @@ async function chargeSelfPayNow(
     });
   }
 
+  // application_fee_amount/bps mirror the homeowner row: the platform's retained fee. Self-pay has
+  // no Stripe-side application fee object — the funds land on the platform balance and only the
+  // cleaner cut is transferred out, so the fee is retained implicitly; the row is the record.
   const baseRow = {
     organization_id: appt.organization_id,
     appointment_id: appt.id,
@@ -502,9 +511,11 @@ async function chargeSelfPayNow(
     charge_kind: 'completion' as const,
     is_self_pay: true,
     stripe_payment_intent_id: pi.id,
+    application_fee_amount: platformFeeCents,
+    application_fee_bps_snapshot: platformFeeBps,
     payment_intent_status: pi.status,
   };
-  return finishCharge(supabase, appt, pi, baseRow, chargeCents, actor, { cleanerCutCents });
+  return finishCharge(supabase, appt, pi, baseRow, chargeCents, actor, { cleanerCutCents, platformFeeCents });
 }
 
 // --- Shared result handling ----------------------------------------------------------------------
@@ -520,7 +531,7 @@ async function finishCharge(
   baseRow: Record<string, unknown>,
   chargeCents: number,
   actor: string,
-  extra?: { cleanerCutCents?: number },
+  extra?: { cleanerCutCents?: number; platformFeeCents?: number },
 ): Promise<ChargeNowOutcome> {
   const now = new Date().toISOString();
 

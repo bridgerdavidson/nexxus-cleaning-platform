@@ -31,6 +31,7 @@ export function presentChargeProjection(
     method: full.method,
     chargeCents: full.chargeCents,
     feeCents: full.feeCents,
+    platformFeeCents: full.platformFeeCents,
     payoutPercent: full.payoutPercent,
   };
 }

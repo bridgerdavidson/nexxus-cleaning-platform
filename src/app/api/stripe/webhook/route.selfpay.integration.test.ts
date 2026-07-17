@@ -79,6 +79,8 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
       stripeConnectAccountId: 'acct_selfpay_cleaner',
       stripeConnectOnboardingComplete: true,
       payoutPercent: 60,
+      // Pinned: assertions here depend on split amounts; the DB default became 100 in migration 111.
+      platformFeeBps: 0,
     });
   });
 
