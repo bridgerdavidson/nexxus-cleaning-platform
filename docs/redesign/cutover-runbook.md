@@ -10,6 +10,18 @@ Companion docs: `docs/stripe-architecture.md` (payment architecture + the
 original cutover prerequisites), `docs/redesign/2026-07-09-functionality-audit.md`
 (the finished audit checklist).
 
+> **Update 2026-07-16 (post-flip).** Phases 0–2 are DONE: the flip happened the
+> evening of 2026-07-16 and the §4 verification passed (22-route redirect/200
+> sweep, browser chain, zero runtime errors). Phase 3's redirects shipped early
+> (PR #163) and activated with the flip. Phase 4 below was **rewritten the same
+> night**: it now ends with removing the `/app` URL prefix entirely, and the
+> old "graduate 307 → 308" step is **cancelled** (see the Phase 4 preamble for
+> why a permanent redirect into `/app` would strand users in a loop).
+> Prerequisite reading before executing Phase 4:
+> `docs/redesign/2026-07-16-post-cutover-gap-scan.md` — its §1 leak-fix PR
+> lands FIRST (it edits the same `next.config.ts` redirect block that step 4e
+> rewrites).
+
 ---
 
 ## 1. Current state, as actually observed (2026-07-16)
@@ -153,9 +165,18 @@ Implementation note: `next.config.ts` `redirects()` can branch on
 **before** the flip and activate with it — previews (flag implicitly on) get
 the redirects, local flag-off builds keep legacy reachable.
 
-- [ ] PR: conditional redirects + e2e assertion that legacy URLs 308 to
-      redesign routes when the flag is on.
-- [ ] Keep the redirects for at least one release cycle before Phase 4.
+- [x] PR: conditional redirects + e2e assertion that legacy URLs redirect to
+      redesign routes when the flag is on. (Shipped as 307s in PR #163,
+      pre-flip; activated with the flip.)
+- [ ] Keep the redirects until Phase 4 step 4e replaces them.
+
+> **2026-07-16: the 307 → 308 graduation is cancelled.** Phase 4 now removes
+> the `/app` prefix (step 4e), which REVERSES redirect direction. If browsers
+> ever cache a permanent redirect pointing into `/app`, the reversal creates an
+> infinite loop for those users (`/admin-dashboard` → cached 308 →
+> `/app/admin-dashboard` → new redirect → `/admin-dashboard` → …). Everything
+> stays 307 until after 4e; permanence returns only in step 4f, pointing OUT of
+> `/app`.
 
 ### 5.1 Webhook event list (the config target for Phase 1b)
 
@@ -176,32 +197,114 @@ Unsubscribed-but-handled events cost nothing; **subscribed-but-unhandled**
 events log `Unhandled event type` and ack — also harmless. Err on subscribing
 to the full list above.
 
-## 6. Phase 4 — retirement (separate PRs, after the soak + redirects)
+## 6. Phase 4 — retirement + `/app` prefix removal (separate PRs, in order)
+
+Rewritten 2026-07-16 after the flip. Two changes from the original plan:
+(1) a new step **4e removes the `/app` URL prefix** — once legacy is deleted,
+the prefix is pure vestige and the redesign takes over the top-level URLs;
+(2) the old "graduate 307 → 308" step is **cancelled** — never ship a
+permanent redirect pointing INTO `/app` (see the Phase 3 note; a cached 308
+would loop when 4e reverses direction). Permanence returns only in 4f,
+pointing out of `/app`.
+
+Prerequisite: the §1 leak-fix PR from
+`docs/redesign/2026-07-16-post-cutover-gap-scan.md` merges FIRST (it edits the
+same `next.config.ts` redirect block that 4e rewrites — land small before big).
 
 Order matters; each bullet is its own reviewable PR.
 
 - [ ] **4a. Remove the legacy charge path** in
       `src/app/api/stripe/create-payment-intent/route.ts` (+ its client
-      callers in legacy components). Only after Phase 1d confirms no legacy
-      in-flight payments. This was the original cutover step 4 in
-      `docs/stripe-architecture.md`.
+      callers in legacy components). Phase 1d is answered: prod had no real
+      payment traffic pre-flip, so there are no legacy in-flight payments to
+      drain. Also fold in the two orphaned Stripe-URL routes from the gap scan:
+      delete `api/stripe/connect/onboarding-link` (hosted-flow URLs point at
+      legacy paths; zero client callers since embedded onboarding) and repoint
+      the `api/stripe/billing/portal-link` fallback `return_url`.
 - [ ] **4b. Delete legacy page dirs**: `src/app/{admin,manager,cleaner,
-      homeowner}-dashboard`, `src/app/settings` — the redirects from Phase 3
-      take over the URLs (move redirect handling out of the deleted pages if
-      any was in-page). Verified safe: no redesign imports.
+      homeowner}-dashboard`, `src/app/settings` (14 files), and
+      `src/app/owner` — the legacy back-office; the redesign one lives at
+      `(redesign)/app/owner`. The Phase 3 redirects keep all these URLs
+      working. Verified safe: no redesign imports. **Do NOT touch
+      `src/app/billing/add-card`** (standalone token-gated public page; the
+      card-link emails hold live 7-day tokens) or the §1.1 shared keep-list.
 - [ ] **4c. Delete legacy-only components/hooks** that lose their last
-      consumer in 4b (run `npx tsc --noEmit` + lint to find orphans;
-      the §1.1 shared keep-list stays).
+      consumer in 4b (run `npx tsc --noEmit` + lint to find orphans; known
+      from the gap scan: `DashboardHeader`, `DesktopMenuDropdown`, legacy
+      `platform/ImpersonationBanner`, `PlatformOverviewPage` /
+      `PlatformOrgDetail`; the §1.1 shared keep-list stays).
 - [ ] **4d. Simplify the gates**: remove the `(redesign)/layout.tsx` 404 gate +
-      `redesignUiEnabled()` + the `getDashboardPath` legacy branches, and
-      retire `NEXT_PUBLIC_REDESIGN_ENABLED` from Vercel. The redesign is just
-      "the app" now.
-- [ ] **4e. Optional cleanup**: `(dev)` route group, `activeFor: ["/settings"]`
-      alias, stale rollout comments, `docs/stripe-architecture.md` rollout
-      note rewritten to describe the post-cutover state.
+      `redesignUiEnabled()` + the `getDashboardPath` legacy branches (and
+      harden its `/` default — the gap scan notes a role-less signed-in user
+      would ping-pong `/` → `/login` → `/`), then retire
+      `NEXT_PUBLIC_REDESIGN_ENABLED` from Vercel. The redesign is just "the
+      app" now.
+- [ ] **4e. Remove the `/app` prefix** (one big mechanical PR):
+      - Move `src/app/(redesign)/app/*` up one level so
+        `/app/admin-dashboard/payments` becomes `/admin-dashboard/payments`
+        (and `/app/owner` becomes `/owner`).
+      - Sweep every literal `/app/...` path: ~116 occurrences across 40 src
+        files + 9 e2e references at last count
+        (`git grep -e '"/app/' -e "'/app/" -e '\`/app/'`) — `nav-items.ts`,
+        `dashboardPath.ts`, `Link` hrefs, `router.push` calls, specs.
+      - Rewrite `next.config.ts`: DELETE the legacy→`/app` rules (the old
+        URLs now serve the pages natively — old bookmarks stop redirecting
+        entirely), retarget the `?tab=` deep-link maps to the unprefixed
+        destinations, and ADD `/app/:path*` → `/:path*` (307 for now) for
+        anyone who bookmarked during the prefix era.
+      - Check DB-stored hrefs (bell notifications) for `/app/` paths; sweep
+        or map if any exist.
+      - Naming DECIDED 2026-07-16 (Bridger): **role roots** — see §6.1 for the
+        full canonical URL map and redirect table this PR implements.
+- [ ] **4f. Graduate the remaining redirects to 308** after 4e has soaked:
+      `/app/:path*` → `/:path*` plus the tab maps. This replaces the cancelled
+      graduation — permanent is safe only in this direction.
+- [ ] **4g. Optional cleanup**: `(dev)` route group, `activeFor: ["/settings"]`
+      alias, stale rollout comments, dead `/signup` reference
+      (`AuthContext.tsx:649`), `docs/stripe-architecture.md` rollout note
+      rewritten to describe the post-cutover state, and a decision log for the
+      audit §4 nice-to-haves (see the gap scan notes).
 
-**Rollback:** 4a–4d are git reverts; nothing schema-level. That's why they're
-separate PRs.
+**Rollback:** every step is a git revert; nothing schema-level. That's why
+they're separate PRs.
+
+### 6.1 Decided URL map for 4e (Bridger, 2026-07-16: role roots)
+
+Only the four area roots change; every sub-route name stays identical.
+Verified against the full route inventory on master (29 pages) — no manifest,
+service worker, or other URL pinning exists outside code + DB hrefs.
+
+| Area | Today | After 4e |
+|---|---|---|
+| Operator (admin + manager) | `/app/admin-dashboard[/x]` | `/admin[/x]` — x ∈ analytics, bookings, calendar, cleaners, customers, messages, payments, properties, services, settings |
+| Cleaner | `/app/cleaner-dashboard[/x]` | `/cleaner[/x]` — x ∈ schedule, earnings, messages, profile, profile/services, profile/services/[serviceId] |
+| Homeowner | `/app/homeowner-dashboard[/x]` | `/homeowner[/x]` — x ∈ cleanings, messages, account, account/{payment-methods,profile,properties,receipts,services} |
+| Platform back-office | `/app/owner[/audit]` | `/owner[/audit]` |
+
+Collision check done: `/admin`, `/cleaner`, `/homeowner` don't exist top-level
+today (legacy dirs are `*-dashboard`), so the moves are clean.
+
+**Redirect table after 4e** (all 307 until 4f graduates them):
+
+- Prefix-era bookmarks — four rules, `:path*` matches zero segments so each
+  covers its root too:
+  - `/app/admin-dashboard/:path*` → `/admin/:path*`
+  - `/app/cleaner-dashboard/:path*` → `/cleaner/:path*`
+  - `/app/homeowner-dashboard/:path*` → `/homeowner/:path*`
+  - `/app/owner/:path*` → `/owner/:path*`
+- Legacy-era bookmarks (replaces today's legacy→`/app` rules; targets lose the
+  prefix AND the `-dashboard` suffix):
+  - `/admin-dashboard` `?tab=` map → `/admin/<target>` (home→root,
+    team/invites→cleaners, rest 1:1); bare root → `/admin`
+  - `/manager-dashboard` → `/admin`
+  - `/cleaner-dashboard` → `/cleaner`; `/homeowner-dashboard` → `/homeowner`
+    (+ retarget whatever tab maps the gap-scan §1 PR added for these sources,
+    e.g. homeowner `?tab=payment-methods` → `/homeowner/account/payment-methods`)
+  - `/settings`, `/settings/:path*` → `/admin/settings`
+  - `/owner` → DELETE the redirect the gap-scan §1 PR added (the redesign
+    back-office takes the URL natively once legacy `src/app/owner` is gone)
+- `getDashboardPath` returns: admin/manager → `/admin`, cleaner → `/cleaner`,
+  homeowner → `/homeowner`; platform-admin call sites → `/owner`.
 
 ## 7. Coordination with concurrent sessions
 
