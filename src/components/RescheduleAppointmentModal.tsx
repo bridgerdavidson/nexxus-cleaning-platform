@@ -666,7 +666,7 @@ export default function RescheduleAppointmentModal({
                             Use {currentCleanerName}&apos;s suggestion
                           </h3>
                           <p className="text-xs text-gray-600 mt-0.5">
-                            Confirms instantly — no second round-trip.
+                            Confirms instantly, no second round-trip.
                           </p>
                         </div>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary-100 text-primary-800 text-[11px] font-semibold uppercase tracking-wide flex-shrink-0">
@@ -913,9 +913,9 @@ export default function RescheduleAppointmentModal({
                             <CheckCircle className="w-4 h-4 text-primary-700 mt-0.5 flex-shrink-0" />
                             <span className="leading-snug">
                               <span className="font-semibold">
-                                Will auto-confirm
+                                Will auto-confirm.
                               </span>{" "}
-                              — this matches one of {currentCleanerName}&apos;s
+                              This matches one of {currentCleanerName}&apos;s
                               suggestions and keeps the same cleaner.
                             </span>
                           </>
@@ -980,9 +980,9 @@ export default function RescheduleAppointmentModal({
                           {!nextAvailableSlot && (
                             <p className="text-xs mt-2 border-t border-orange-200 pt-2">
                               <span className="font-semibold">
-                                No same-day opening
+                                No same-day opening.
                               </span>{" "}
-                              — try a different day.
+                              Try a different day.
                             </p>
                           )}
                         </div>

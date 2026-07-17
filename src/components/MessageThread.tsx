@@ -266,6 +266,7 @@ export default function MessageThread({
         phone: user.profile.phone || null,
         role: user.role,
         avatar_url: user.profile.avatarUrl || null,
+        stripe_customer_id: null,
         created_at: user.createdAt,
         updated_at: user.updatedAt,
       };

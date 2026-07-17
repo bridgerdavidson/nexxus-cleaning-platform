@@ -18,9 +18,6 @@ export const supabaseAdmin = (() => {
           headers: {
             'x-application-name': 'nexxus-cleaning-platform'
           }
-        },
-        db: {
-          schema: 'public'
         }
       }
     );

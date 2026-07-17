@@ -39,19 +39,19 @@ interface PendingAppointment {
   homeowner?: {
     first_name: string | null;
     last_name: string | null;
-  };
+  } | null;
   property?: {
     address: string;
     city: string;
     state: string;
     zip_code?: string;
-  };
+  } | null;
   service_type?: {
     name: string;
-  };
+  } | null;
   checklist?: {
     name: string;
-  };
+  } | null;
   homeowner_initiated?: boolean;
   requested_slots?: OfferedSlot[];
 }

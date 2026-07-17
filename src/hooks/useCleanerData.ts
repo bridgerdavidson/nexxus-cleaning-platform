@@ -275,87 +275,21 @@ export function useCleanerStats() {
   const query = useOrgQuery({
     queryKey: keys.stats.cleaner(userId),
     queryFn: async ({ orgId, userId }) => {
-      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      // Single RPC round trip (migration 049_dashboard_rpcs.sql, shipped to all envs;
+      // the legacy multi-query fallback is gone).
       const rpcRes = await supabase.rpc('cleaner_stats', {
         p_cleaner_id: userId,
         p_org_id: orgId,
       });
-      if (!rpcRes.error && rpcRes.data) {
-        const r = rpcRes.data as Record<string, number>;
-        return {
-          totalJobs: Number(r.totalJobs ?? 0),
-          completedJobs: Number(r.completedJobs ?? 0),
-          upcomingJobs: Number(r.upcomingJobs ?? 0),
-          completedThisWeek: Number(r.completedThisWeek ?? 0),
-          totalEarnings: Number(r.totalEarnings ?? 0),
-          pendingPayouts: Number(r.pendingPayouts ?? 0),
-        } as CleanerStats;
-      }
-
-      // Fallback: legacy 6-query waterfall.
-      const { data: cleanerProfile, error: profileError } = await supabase
-        .from('cleaner_profiles')
-        .select('id, payout_percent')
-        .eq('id', userId)
-        .eq('organization_id', orgId)
-        .single();
-      if (profileError) throw profileError;
-      if (!cleanerProfile) throw new Error('Cleaner profile not found');
-
-      const { count: totalJobs } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId);
-      const { count: completedJobs } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .eq('status', 'completed');
-      const { count: upcomingJobs } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .in('status', ['pending', 'confirmed', 'in_progress']);
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      const { count: completedThisWeek } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .eq('status', 'completed')
-        .gte('scheduled_date', oneWeekAgo.toISOString().split('T')[0]);
-      const { data: completedAppointments } = await supabase
-        .from('appointments')
-        .select('id, total_price')
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .eq('status', 'completed');
-      const totalEarnings = (completedAppointments ?? []).reduce(
-        (sum, a) => sum + Number(a.total_price),
-        0
-      );
-      const payoutPercent = Number(cleanerProfile.payout_percent) || 0;
-      const cleanerEarnings = totalEarnings * (payoutPercent / 100);
-      const { data: payouts } = await supabase
-        .from('payments')
-        .select('amount')
-        .eq('organization_id', orgId)
-        .eq('status', 'paid')
-        .in('appointment_id', completedAppointments?.map(a => a.id) ?? []);
-      const paidAmount = (payouts ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
-      const pendingPayouts = Math.max(0, cleanerEarnings - paidAmount);
-
+      if (rpcRes.error) throw rpcRes.error;
+      const r = (rpcRes.data ?? {}) as Record<string, number>;
       return {
-        totalJobs: totalJobs || 0,
-        completedJobs: completedJobs || 0,
-        upcomingJobs: upcomingJobs || 0,
-        completedThisWeek: completedThisWeek || 0,
-        totalEarnings: Math.round(cleanerEarnings),
-        pendingPayouts: Math.round(pendingPayouts),
+        totalJobs: Number(r.totalJobs ?? 0),
+        completedJobs: Number(r.completedJobs ?? 0),
+        upcomingJobs: Number(r.upcomingJobs ?? 0),
+        completedThisWeek: Number(r.completedThisWeek ?? 0),
+        totalEarnings: Number(r.totalEarnings ?? 0),
+        pendingPayouts: Number(r.pendingPayouts ?? 0),
       } as CleanerStats;
     },
   });

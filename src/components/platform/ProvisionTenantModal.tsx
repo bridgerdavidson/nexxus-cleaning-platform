@@ -43,7 +43,7 @@ export default function ProvisionTenantModal({ onClose }: Props) {
         owner_email: trimmedOwner,
         billing_email: billingEmail.trim() || undefined,
       });
-      showToast('Tenant provisioned — invite sent to the owner', { variant: 'success' });
+      showToast('Tenant provisioned, invite sent to the owner', { variant: 'success' });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to provision tenant');
