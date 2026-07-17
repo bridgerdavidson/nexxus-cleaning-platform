@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { derivePaymentSectionState, mapChargeResponse } from './paymentSectionState';
+import {
+  derivePaymentSectionState,
+  homeownerPaymentSectionState,
+  mapChargeResponse,
+} from './paymentSectionState';
 
 describe('derivePaymentSectionState', () => {
   const base = { authorizationStatus: null, paymentStatus: null, isSelfPay: false, jobCompleted: false, hasCard: true };
@@ -47,6 +51,39 @@ describe('mapChargeResponse', () => {
   });
   it('error 500 (genuine system failure) -> declined, not precondition', () => {
     expect(mapChargeResponse('error', 500)).toEqual({ outcome: 'declined', badgeTone: 'critical', stayFailed: true });
+  });
+});
+
+describe('homeownerPaymentSectionState (column -> arg wiring)', () => {
+  it('passes is_self_pay through so a company-funded cleaning short-circuits to self_pay', () => {
+    // Regression guard: the component used to hardcode isSelfPay:false, so a
+    // comped self-pay row with a failed auth wrongly rendered "Payment failed".
+    expect(
+      homeownerPaymentSectionState({
+        is_self_pay: true,
+        authorization_status: 'failed',
+        payment_method_id: 'pm_1',
+        status: 'completed',
+      }),
+    ).toBe('self_pay');
+  });
+  it('a non-self-pay failed charge still reads as failed', () => {
+    expect(
+      homeownerPaymentSectionState({
+        is_self_pay: false,
+        authorization_status: 'failed',
+        payment_method_id: 'pm_1',
+        status: 'completed',
+      }),
+    ).toBe('failed');
+  });
+  it('treats missing/null is_self_pay as not self-pay', () => {
+    expect(
+      homeownerPaymentSectionState({ payment_method_id: 'pm_1', status: 'scheduled' }),
+    ).toBe('before_charge');
+    expect(
+      homeownerPaymentSectionState({ is_self_pay: null, payment_method_id: null }),
+    ).toBe('no_card');
   });
 });
 

@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
+import { getDashboardPath } from "@/lib/redesign/dashboardPath";
+import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 function Spinner() {
   return (
@@ -30,14 +32,32 @@ function Spinner() {
  */
 export default function OperatorDashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const { user, loading, orgStatus, reloadOrganization } = useAuth();
+  const { user, loading, orgStatus, reloadOrganization, impersonatingOrgId } = useAuth();
+
+  // Soft role guard. The operator shell legitimately serves admin AND manager,
+  // and a platform admin "viewing as" a tenant is pushed here too
+  // (TenantDetailSheet → /app/admin-dashboard), so this is a denylist of the two
+  // roles that belong elsewhere rather than the sibling layouts' single-role
+  // allowlist: a cleaner or homeowner with a stale bookmark (every legacy role's
+  // chrome carried a /settings link that now 307s into this shell) gets sent
+  // back to their own dashboard instead of stranding on empty org queries.
+  const wrongRole =
+    !impersonatingOrgId && (user?.role === "cleaner" || user?.role === "homeowner");
 
   useEffect(() => {
-    if (!loading && !user) router.push("/login");
-  }, [user, loading, router]);
+    if (loading) return;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+    if (wrongRole) {
+      router.push(getDashboardPath(user.role, { redesign: redesignUiEnabled() }));
+    }
+  }, [user, loading, router, wrongRole]);
 
   if (loading || !user || orgStatus === "idle" || orgStatus === "loading") return <Spinner />;
   if (orgStatus === "error") return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
+  if (wrongRole) return <Spinner />;
 
   return (
     <Suspense fallback={<Spinner />}>

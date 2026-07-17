@@ -31,6 +31,29 @@ export function derivePaymentSectionState(input: {
   return 'before_charge';
 }
 
+/**
+ * Derives the homeowner payment section state straight from an appointment row.
+ * Extracted from HomeownerPaymentRecovery so the column→arg wiring is unit
+ * testable: `is_self_pay` must reach the deriver (a comped/company-funded
+ * cleaning is never the homeowner's problem, so it must short-circuit to
+ * `self_pay` and never surface a Pay now that would 403).
+ */
+export function homeownerPaymentSectionState(appointment: {
+  authorization_status?: string | null;
+  payment_status?: string | null;
+  is_self_pay?: boolean | null;
+  status?: string | null;
+  payment_method_id?: string | null;
+}): PaymentSectionState {
+  return derivePaymentSectionState({
+    authorizationStatus: appointment.authorization_status ?? null,
+    paymentStatus: appointment.payment_status ?? null,
+    isSelfPay: !!appointment.is_self_pay,
+    jobCompleted: appointment.status === 'completed',
+    hasCard: !!appointment.payment_method_id,
+  });
+}
+
 export type ChargeOutcome = 'charged' | 'processing' | 'requires_action' | 'declined' | 'precondition';
 
 /**

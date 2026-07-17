@@ -30,8 +30,12 @@ const nextConfig: NextConfig = {
       process.env.VERCEL_ENV === "preview" ||
       process.env.NEXT_PUBLIC_REDESIGN_ENABLED === "true";
 
-    // Legacy ?tab= ids (ADMIN_MANAGER_DASHBOARD_TAB_IDS) → redesign routes.
-    // team + invites fold into Cleaners & team in the redesign.
+    // Legacy ?tab= ids → redesign routes, per dashboard source. Mapping each
+    // source's tabs (not just admin's) means a deep link like
+    // /homeowner-dashboard?tab=payment-methods lands on the right redesign
+    // screen instead of the dashboard root. Ids mirror the *_DASHBOARD_TAB_IDS
+    // in src/hooks/usePersistedDashboardTab.ts.
+    // Admin/manager: team + invites fold into Cleaners & team in the redesign.
     const adminTabTargets: Record<string, string> = {
       home: "",
       bookings: "/bookings",
@@ -45,22 +49,56 @@ const nextConfig: NextConfig = {
       payments: "/payments",
       analytics: "/analytics",
     };
+    // Homeowner: legacy tabs map into the redesign's Account sub-routes.
+    const homeownerTabTargets: Record<string, string> = {
+      home: "",
+      messages: "/messages",
+      services: "/account/services",
+      properties: "/account/properties",
+      payments: "/account/receipts",
+      "payment-methods": "/account/payment-methods",
+    };
+    // Cleaner: jobs → schedule, services → profile/services.
+    const cleanerTabTargets: Record<string, string> = {
+      home: "",
+      jobs: "/schedule",
+      messages: "/messages",
+      earnings: "/earnings",
+      services: "/profile/services",
+    };
+
+    // For one legacy source, emit its ?tab= deep-link rules (first match wins)
+    // followed by the plain-root redirect. Next appends the original query
+    // string to the destination (?tab=... rides along); the redesign ignores it.
+    const tabRules = (
+      source: string,
+      base: string,
+      targets: Record<string, string>,
+    ) => [
+      ...Object.entries(targets).map(([tab, path]) => ({
+        source,
+        has: [{ type: "query" as const, key: "tab", value: tab }],
+        destination: `${base}${path}`,
+        permanent: false,
+      })),
+      { source, destination: base, permanent: false },
+    ];
 
     const legacyRedirects = redesignActive
       ? [
-          // Tab deep-links first (first match wins), then the plain roots.
-          ...Object.entries(adminTabTargets).map(([tab, path]) => ({
-            source: "/admin-dashboard",
-            has: [{ type: "query" as const, key: "tab", value: tab }],
-            destination: `/app/admin-dashboard${path}`,
-            permanent: false,
-          })),
-          { source: "/admin-dashboard", destination: "/app/admin-dashboard", permanent: false },
-          { source: "/manager-dashboard", destination: "/app/admin-dashboard", permanent: false },
-          { source: "/cleaner-dashboard", destination: "/app/cleaner-dashboard", permanent: false },
-          { source: "/homeowner-dashboard", destination: "/app/homeowner-dashboard", permanent: false },
+          // Manager shares the operator shell (and the same tab ids) as admin.
+          ...tabRules("/admin-dashboard", "/app/admin-dashboard", adminTabTargets),
+          ...tabRules("/manager-dashboard", "/app/admin-dashboard", adminTabTargets),
+          ...tabRules("/cleaner-dashboard", "/app/cleaner-dashboard", cleanerTabTargets),
+          ...tabRules("/homeowner-dashboard", "/app/homeowner-dashboard", homeownerTabTargets),
           { source: "/settings", destination: "/app/admin-dashboard/settings", permanent: false },
           { source: "/settings/:path*", destination: "/app/admin-dashboard/settings", permanent: false },
+          // Legacy platform back-office — the one legacy screen still reachable
+          // post-flip (this list covered the four dashboards + /settings but not
+          // /owner, and middleware only matches "/"). Sub-paths collapse to the
+          // redesign back-office root; Phase 4 step 4e reverses this direction.
+          { source: "/owner", destination: "/app/owner", permanent: false },
+          { source: "/owner/:path*", destination: "/app/owner", permanent: false },
         ]
       : [];
 
