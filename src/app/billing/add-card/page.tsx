@@ -6,6 +6,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getRedesignConnectAppearance } from '@/lib/stripe/appearance';
+import { Button } from '@/components/ui/button';
 
 /**
  * Public, token-scoped hosted card-collection page. A homeowner opens the link an admin
@@ -59,9 +60,9 @@ function CardForm() {
   if (done) {
     return (
       <div className="flex flex-col items-center text-center py-8">
-        <CheckCircle2 className="w-12 h-12 text-success-500 mb-3" />
-        <h2 className="text-xl font-bold text-gray-900">Card saved</h2>
-        <p className="text-gray-500 mt-1">You’re all set. You can close this tab.</p>
+        <CheckCircle2 className="w-12 h-12 text-positive mb-3" />
+        <h2 className="text-xl font-bold text-foreground">Card saved</h2>
+        <p className="text-muted-foreground mt-1">You’re all set. You can close this tab.</p>
       </div>
     );
   }
@@ -70,19 +71,15 @@ function CardForm() {
     <form onSubmit={handleSubmit} className="space-y-5">
       <PaymentElement />
       {error && (
-        <p className="flex items-center gap-2 text-sm text-red-600">
+        <p className="flex items-center gap-2 text-sm text-critical-700">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={!stripe || submitting}
-        className="w-full rounded-xl bg-primary-600 px-4 py-3 font-semibold text-white transition hover:bg-primary-700 disabled:opacity-60"
-      >
-        {submitting ? 'Saving…' : 'Save card'}
-      </button>
-      <p className="text-center text-xs text-gray-400">
+      <Button type="submit" disabled={!stripe} loading={submitting} className="w-full">
+        Save card
+      </Button>
+      <p className="text-center text-xs text-muted-foreground">
         Your card won’t be charged until your cleaning is completed.
       </p>
     </form>
@@ -132,8 +129,8 @@ function AddCardInner() {
   if (loading) {
     return (
       <div className="flex flex-col items-center py-12">
-        <Loader2 className="w-7 h-7 animate-spin text-primary-600 mb-3" />
-        <p className="text-gray-500">Loading…</p>
+        <Loader2 className="w-7 h-7 animate-spin text-brand-600 mb-3" />
+        <p className="text-muted-foreground">Loading…</p>
       </div>
     );
   }
@@ -141,8 +138,8 @@ function AddCardInner() {
   if (error || !link || !stripePromise) {
     return (
       <div className="flex flex-col items-center text-center py-12">
-        <AlertCircle className="w-10 h-10 text-gray-300 mb-3" />
-        <p className="text-gray-600 max-w-sm">{error ?? 'Payment setup is unavailable right now.'}</p>
+        <AlertCircle className="w-10 h-10 text-muted-foreground mb-3" />
+        <p className="text-muted-foreground max-w-sm">{error ?? 'Payment setup is unavailable right now.'}</p>
       </div>
     );
   }
@@ -150,8 +147,8 @@ function AddCardInner() {
   return (
     <>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Hi {link.firstName} 👋</h1>
-        <p className="text-gray-500 mt-1">Add a card to confirm your cleaning booking.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Hi {link.firstName} 👋</h1>
+        <p className="text-muted-foreground mt-1">Add a card to confirm your cleaning booking.</p>
       </div>
       <Elements
         stripe={stripePromise}
@@ -169,12 +166,12 @@ function AddCardInner() {
 
 export default function AddCardPage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 md:p-8 shadow-sm border border-gray-100">
+    <div className="min-h-screen bg-muted flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-2xl bg-card p-6 md:p-8 shadow-soft-sm border border-border">
         <Suspense
           fallback={
             <div className="flex justify-center py-12">
-              <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+              <Loader2 className="w-7 h-7 animate-spin text-brand-600" />
             </div>
           }
         >
