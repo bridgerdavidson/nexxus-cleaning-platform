@@ -33,12 +33,13 @@ Source docs (canonical):
 Source: gap scan §1 + §3. Prerequisite for Phase 4 step 4e (edits the same `next.config.ts`
 redirect block — land small before big).
 
-- [ ] PR 1: `/owner` redirect (**the one blocker** — legacy back-office still reachable),
+- [x] PR 1: `/owner` redirect (**the one blocker** — legacy back-office still reachable),
       operator-layout wrong-role guard, extend `?tab=` deep-link maps to the other 3 dashboards,
       the `isSelfPay` one-liner (= audit item T3-10), repoint/kill the 2 orphaned Stripe-URL
-      routes.
-- [ ] PR 2: re-theme `/billing/add-card` (live emailed page, still legacy yellow) + decide
-      invoices (port a read-only view into redesign payments, or record the retirement).
+      routes. **Done: PR #172 (merged 2026-07-17).**
+- [x] PR 2: re-theme `/billing/add-card` (live emailed page, still legacy yellow) — **PR #173**;
+      invoices **DECIDED: retire for MVP** (Bridger, 2026-07-17 — dormant feature, table + route
+      kept, no UI built; see gap-scan §1 invoices bullet). Block 1 complete.
 
 ## 2. Payments audit Tier 1 — live prod, money moves wrong (the big rock)
 
