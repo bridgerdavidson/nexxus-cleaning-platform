@@ -48,18 +48,35 @@ would put two sessions in `reconcile.ts` and three in the same component. So we 
 
 ## Lane A — Cutover (legacy leaks → Phase 4)
 
-- **Owner:** Session 1 (running). **Branch prefix:** `fix/cutover-*`.
-- **Status:** §1 PR 1 merged (#172). Next: §1 PR 2, then §5 Phase 4 after soak.
+- **Owner:** Session 1. **Branch prefix:** `fix/cutover-*`.
+- **Status:** §1 legacy leaks **done** (#172 merged). Next: **§5 Phase 4 — legacy retirement**,
+  spec = `docs/redesign/cutover-runbook.md` §6 (PR #167 rewrite). One PR per step, in order.
 - **Owns (exclusive):**
   - `next.config.ts`
-  - `src/app/(redesign)/app/**/layout.tsx` (wrong-role guards)
-  - `src/app/api/stripe/billing/**`, orphaned Stripe-URL routes it repointed
-  - `src/app/billing/add-card/**` (the live emailed page) + invoices decision
-  - legacy page dirs slated for Phase-4 deletion
-- **Forbidden:** `src/lib/payments/**` (that's B — note `paymentSectionState.ts` and
-  `HomeownerPaymentRecovery.tsx` were A's for #172 but are now **released** to B/D on master).
-- **Queue:** §1 (gap scan legacy leaks) → §5 Phase 4 (owns `next.config.ts`, so retirement +
-  `/app`-prefix removal stay here; order is load-bearing, see runbook §6).
+  - `src/app/(redesign)/**/layout.tsx` (wrong-role guards + the redesign 404 gate, removed in 4d)
+  - legacy page dirs slated for deletion: `src/app/{admin,manager,cleaner,homeowner}-dashboard`,
+    `src/app/settings`, legacy `src/app/owner`, and legacy-only components/hooks (4b/4c)
+  - the **legacy Stripe URL routes** retired in 4a: `api/stripe/create-payment-intent`,
+    `api/stripe/connect/onboarding-link`, `api/stripe/connect/create-account`,
+    `api/stripe/billing/portal-link`, `api/stripe/connect/reconcile-payouts`
+  - `src/lib/dashboardPath.ts` / `getDashboardPath`, `redesignUiEnabled()` (simplified in 4d)
+  - **Do NOT** touch `src/app/billing/add-card/**` (live token-gated emailed page — keep-list)
+- **Forbidden:** `src/lib/payments/**` and the webhook/cron **reconcile logic** (Lane B);
+  `src/components/redesign/**` except when 4e sweeps `/app/` href literals (see gate below);
+  any migration (Lane B). `paymentSectionState.ts` + `HomeownerPaymentRecovery.tsx` were A's for
+  #172 but are now **released** to B/D on master.
+- **Phase 4 gates (load-bearing):**
+  1. **4a runs now** — legacy charge path + orphaned Stripe-URL routes are disjoint from every
+     other lane; prod had no real pre-flip payment traffic to drain (runbook 1d).
+  2. **4b/4c (delete legacy pages + orphaned components): confirm the soak window with Bridger
+     first.** Deletion is one-way; the runbook wants legacy reachable-by-URL for a soak.
+  3. **4d (gate + `NEXT_PUBLIC_REDESIGN_ENABLED` removal)** after 4b/4c.
+  4. **STOP before 4e and check in.** 4e rewrites ~116 `/app/...` path literals across ~40 src
+     files that Lanes C and D are actively editing — it **must wait until C and D have drained
+     and merged**, or it collides hard. Do 4a-4d, then hold.
+- **Seam with Lane B (T1-3):** B adds a `bank_paid` reconcile job inside `reconcile.ts` (its
+  file); A deletes the dead `reconcile-payouts` *route* in 4a (its file). Different files, so no
+  conflict — just don't reach into `reconcile.ts`.
 
 ## Lane B — Money backend correctness (Tier 1 → Tier 3)
 
@@ -173,7 +190,9 @@ existing payout rows), so **C and D are not blocked on B** for the bulk of their
 - **§6 Dark mode** — touches every component C and D own; run it *after* their lanes quiesce, as a
   dedicated pass (plan: `docs/redesign/2026-07-16-dark-mode-plan.md`).
 - **§7 Tier 3** — B's files; B runs it after Tier 1 (already in B's list).
-- **§5 Phase 4** — Lane A, after soak; order is load-bearing (runbook §6).
+- **§5 Phase 4** — Lane A, after soak; order is load-bearing (runbook §6). 4a-4d can run in
+  parallel now (legacy files only); **4e (the `/app`-prefix sweep) waits for C and D to drain +
+  merge** — it rewrites `/app/` href literals across the files they own.
 
 ## Migration requests (C/D append here; B lands them)
 
@@ -186,11 +205,23 @@ existing payout rows), so **C and D are not blocked on B** for the bulk of their
 Paste one into a fresh session. Each is self-contained enough to enforce boundaries even before
 this doc is on the session's radar.
 
-### Lane A (Session 1 — continue)
-> You are **Lane A (Cutover)** in `docs/redesign/2026-07-17-parallel-lanes.md`. Read it, then
-> continue §1: open PR 2 (re-theme `/billing/add-card` + decide invoices), then §5 Phase 4 after
-> soak. Only touch Lane A's owned files (`next.config.ts`, layout guards, billing/add-card,
-> legacy dirs). Start from current master.
+### Lane A (Session 1 — continue into Phase 4)
+> You are **Lane A (Cutover)** in `docs/redesign/2026-07-17-parallel-lanes.md`. §1 legacy leaks
+> is done and merged (#172). Your next block is **§5 Phase 4 — legacy retirement**, spec'd in
+> `docs/redesign/cutover-runbook.md` §6 (the PR #167 rewrite). Read both, then work Phase 4 in
+> order, one PR per step, respecting these gates:
+> - **Start with 4a** (remove the legacy charge path + fold in the two orphaned Stripe-URL
+>   routes). Safe to run now — its files are disjoint from every other lane.
+> - **Before 4b/4c** (deleting legacy pages + orphaned components), **confirm with Bridger that
+>   the legacy soak window is satisfied** — deletion is one-way.
+> - **STOP before 4e and check in.** 4e rewrites ~116 `/app/...` path literals across ~40 files
+>   that Lanes C and D are editing; it must wait until C and D have drained and merged. Do
+>   4a-4d, then hold.
+> - **You own** `next.config.ts`, redesign `layout.tsx` gates, legacy page dirs, legacy-only
+>   components, and the legacy Stripe URL routes named in 4a. **Do NOT** touch
+>   `src/lib/payments/**`, the webhook/cron reconcile logic, redesign components (until 4e), or
+>   any migration. Follow `CLAUDE.md` (tests, tsc, lint; each step its own PR). Start from
+>   current master.
 
 ### Lane B (this session — money backend)
 > You are **Lane B (Money backend)** in `docs/redesign/2026-07-17-parallel-lanes.md`. Work the
