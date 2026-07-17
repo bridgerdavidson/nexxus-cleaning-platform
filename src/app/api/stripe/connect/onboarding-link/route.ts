@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const returnUrl = `${origin}/cleaner-dashboard?stripe_return=true`;
-    const refreshUrl = `${origin}/cleaner-dashboard?stripe_refresh=true`;
+    const returnUrl = `${origin}/app/cleaner-dashboard?stripe_return=true`;
+    const refreshUrl = `${origin}/app/cleaner-dashboard?stripe_refresh=true`;
 
     const link = await createAccountOnboardingLink(
       cleaner.stripe_connect_account_id,
