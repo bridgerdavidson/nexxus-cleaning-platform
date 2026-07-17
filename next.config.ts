@@ -23,8 +23,10 @@ const nextConfig: NextConfig = {
     // dashboard/settings URL redirects into its /app/* replacement so no
     // legacy screen stays reachable. Deliberately temporary (307), never 308:
     // rolling back the flag must not fight browser-cached permanent
-    // redirects. Graduate these to permanent when the legacy pages are deleted
-    // (runbook Phase 4). Next appends the original query string to the
+    // redirects. Do NOT graduate these to permanent: runbook Phase 4 removes
+    // the /app prefix and reverses redirect direction, and a browser-cached
+    // 308 into /app would loop forever after the reversal. These rules are
+    // deleted wholesale in Phase 4 step 4e. Next appends the original query string to the
     // destination (?tab=... rides along); the redesign routes ignore it.
     const redesignActive =
       process.env.NODE_ENV !== "production" ||
