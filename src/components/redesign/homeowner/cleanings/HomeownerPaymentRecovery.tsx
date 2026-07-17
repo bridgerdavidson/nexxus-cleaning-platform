@@ -19,6 +19,8 @@ import {
   paymentMethodTitle,
 } from '@/components/redesign/shared/payment-methods/derive-payment-methods';
 import { CardPickerSheet } from '@/components/redesign/homeowner/booking/CardPickerSheet';
+import { bookingTotal } from '@/components/redesign/homeowner/booking/deriveBooking';
+import { stripeFeePassthroughUiEnabled } from '@/lib/stripe/flags';
 
 function formatUsd(n: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
@@ -98,7 +100,16 @@ export function HomeownerPaymentRecovery({ appointment }: { appointment: Appoint
 
   const organizationId = appointment.organization_id ?? currentOrganizationId ?? null;
   const card = appointment.payment_method_card ?? null;
-  const priceLabel = formatUsd(appointment.total_price);
+  // Quote what the card is actually charged, not the base service price. With fee-passthrough on
+  // (prod today) the completion charge is the price grossed up for the Stripe fee ($120 -> $123.89),
+  // so the "you'll be charged" line, the Paid heading, the toast, and "Pay now" must all show the
+  // total or the homeowner authorizes one number and is charged another. Gated on the UI passthrough
+  // flag so it tracks the server: when passthrough is off, the charge is the base price.
+  const chargeMethod = card?.type === 'us_bank_account' ? 'us_bank_account' : 'card';
+  const chargedUsd = stripeFeePassthroughUiEnabled()
+    ? bookingTotal(appointment.total_price, chargeMethod).totalUsd
+    : appointment.total_price;
+  const priceLabel = formatUsd(chargedUsd);
   const jobCompleted = appointment.status === 'completed';
 
   // useHomeownerData now selects and types is_self_pay, so pass it through: a
