@@ -11,6 +11,8 @@ import {
   retryStrandedClawbacks,
   checkMoneyMathInvariants,
 } from '@/lib/payments/reconcile';
+import { raiseReconcileSweepAlerts } from '@/lib/payments/reconcileAlerts';
+import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 // Needs the service-role admin client; nothing edge-specific here.
 export const runtime = 'nodejs';
@@ -61,6 +63,11 @@ export async function POST(request: NextRequest) {
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
     const moneyMath = await checkMoneyMathInvariants(supabaseAdmin);
 
+    // T1-8: pg_cron discards this response, so the sweep alerts on its own results
+    // (a dead-letter queue that won't drain). Money-math violations + failed
+    // transfers/clawbacks already alert per-incident via recordPaymentEvent.
+    await raiseReconcileSweepAlerts(supabaseAdmin, { deadLetter });
+
     return NextResponse.json({
       success: true,
       deadLetter,
@@ -74,6 +81,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('reconcile-payments sweep failed:', error);
+    // The reliability backstop itself broke — no payment_event captures this, so alert
+    // directly. Best-effort: recordPlatformAlert never throws.
+    await recordPlatformAlert(supabaseAdmin, {
+      alert_type: 'reconcile_sweep_failed',
+      severity: 'critical',
+      summary: 'The payments reconciliation sweep threw and did not complete',
+      details: { error: error instanceof Error ? error.message : 'Unknown error' },
+    });
     return NextResponse.json(
       { error: 'Reconciliation sweep failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 },

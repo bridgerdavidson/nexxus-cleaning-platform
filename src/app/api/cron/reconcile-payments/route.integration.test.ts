@@ -385,5 +385,49 @@ describe('POST /api/cron/reconcile-payments', () => {
       .eq('appointment_id', appt.id)
       .eq('event_type', 'money_math_violation');
     expect((events ?? []).length).toBe(1);
+
+    // T1-8: the violation was previously recorded only to the write-only payment_events
+    // table. It now also raises a platform-owner alert (org-scoped dedupe key).
+    const alertType = `payment_money_math_violation:${org.organizationId}`;
+    const { data: alerts } = await db
+      .from('platform_alerts')
+      .select('severity')
+      .eq('alert_type', alertType);
+    expect((alerts ?? []).length).toBe(1);
+    expect((alerts![0] as { severity: string }).severity).toBe('critical');
+    await db.from('platform_alerts').delete().eq('alert_type', alertType);
+  });
+
+  it('dead-letter: alerts the platform owner when an event still fails after retry', async () => {
+    const db = createTestSupabaseClient();
+    const eventId = `evt_stuck_${org.organizationId.slice(0, 8)}_${Date.now()}`;
+    await db.from('webhook_events').insert({
+      id: eventId,
+      type: 'payment_intent.succeeded',
+      status: 'failed',
+      received_at: HOUR_AGO(), // older than the stale window → picked up by the sweep
+    });
+    // Stripe is unreachable, so the dead-letter retry can't recover it → stillFailed++.
+    vi.mocked(retrieveStripeEvent).mockRejectedValue(new Error('stripe unreachable'));
+
+    const { status, body } = await callRoute<{ deadLetter: { stillFailed: number } }>(POST, {
+      method: 'POST',
+      headers: cronHeaders,
+      body: {},
+    });
+    expect(status).toBe(200);
+    expect(body.deadLetter.stillFailed).toBeGreaterThanOrEqual(1);
+
+    // The sweep inspects its own result (pg_cron discards the JSON) and alerts.
+    const { data: alerts } = await db
+      .from('platform_alerts')
+      .select('severity')
+      .eq('alert_type', 'reconcile_dead_letter_stuck')
+      .is('resolved_at', null);
+    expect((alerts ?? []).length).toBeGreaterThanOrEqual(1);
+    expect((alerts![0] as { severity: string }).severity).toBe('warning');
+
+    await db.from('webhook_events').delete().eq('id', eventId);
+    await db.from('platform_alerts').delete().eq('alert_type', 'reconcile_dead_letter_stuck');
   });
 });
