@@ -58,6 +58,13 @@ function payerOf(p: AdminPayment, orgName: string): { payer: string; selfPay: bo
   return { payer: "Customer", selfPay: false };
 }
 
+// A cancellation/no-show fee isn't a cleaning, so label it as such — otherwise a
+// FAILED fee is indistinguishable from a failed job charge in the ledger (T2-7).
+function serviceLabel(p: AdminPayment): string {
+  if (p.charge_kind === "cancellation_fee") return "Cancellation fee";
+  return p.appointment?.service_type?.name || "Cleaning";
+}
+
 function toTxnRow(p: AdminPayment, orgName: string, disputedIds: Set<string>): TransactionRowVM {
   const { payer, selfPay } = payerOf(p, orgName);
   return {
@@ -65,7 +72,7 @@ function toTxnRow(p: AdminPayment, orgName: string, disputedIds: Set<string>): T
     dateLabel: longDate(p.appointment?.scheduled_date || p.created_at),
     payer,
     selfPay,
-    service: p.appointment?.service_type?.name || "Cleaning",
+    service: serviceLabel(p),
     amountLabel: money2(p.amount),
     method: methodLabel(p.payment_method),
     badge: deriveTransactionBadge(p.status),
@@ -227,7 +234,7 @@ function OperatorPaymentsData({
       dateLabel: longDate(p.appointment?.scheduled_date || p.created_at),
       payer,
       selfPay,
-      service: p.appointment?.service_type?.name || "Cleaning",
+      service: serviceLabel(p),
       amountLabel: money2(p.amount),
       method: methodLabel(p.payment_method),
       badge: deriveTransactionBadge(p.status),

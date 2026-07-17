@@ -159,6 +159,9 @@ export interface AdminPayment {
   payment_type?: string;
   /** 'card' | 'ach' | 'manual'. Already fetched by the select. */
   payment_method?: string;
+  /** 'completion' | 'cancellation_fee' | null — distinguishes a job charge from a
+   *  cancellation/no-show fee so a failed fee isn't mistaken for a failed job charge. */
+  charge_kind?: 'completion' | 'cancellation_fee' | null;
   reference?: string;
   notes?: string;
   paid_at?: string;
@@ -527,6 +530,7 @@ export function useAdminPayments() {
           status,
           payment_type,
           payment_method,
+          charge_kind,
           reference,
           notes,
           paid_at,
@@ -703,6 +707,7 @@ const PAYMENTS_INFINITE_SELECT = `
   status,
   payment_type,
   payment_method,
+  charge_kind,
   reference,
   notes,
   paid_at,

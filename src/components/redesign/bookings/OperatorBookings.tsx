@@ -175,7 +175,7 @@ export function OperatorBookings() {
     const n = confirm.ids.length;
     switch (confirm.kind) {
       case "cancel":
-        return { title: "Cancel this booking?", description: "The customer and cleaner will be notified.", confirmLabel: "Cancel booking", destructive: false };
+        return { title: "Cancel this booking?", description: "This can't be undone.", confirmLabel: "Cancel booking", destructive: false };
       case "delete":
         return { title: "Delete this booking?", description: "This permanently removes the booking. This cannot be undone.", confirmLabel: "Delete", destructive: true };
       case "bulkCancel":
