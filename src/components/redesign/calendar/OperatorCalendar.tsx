@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useManagerPermissions } from '@/hooks/useManagerPermissions';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { ViewMode } from '@/lib/calendar/types';
 import type { CleanerOption } from '@/components/redesign/bookings/bookings-types';
 import { RescheduleDialog, type RescheduleInit } from '@/components/redesign/bookings/reschedule/RescheduleDialog';
@@ -42,11 +43,27 @@ function rangeLabelFor(view: string, date: Date): string {
   return `${left} to ${right}`;
 }
 
+// First paint had no loading state, so an in-flight fetch showed an empty grid that
+// reads as "no jobs". A calendar-shaped skeleton makes loading legible instead.
+function CalendarSkeleton() {
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-7">
+      {Array.from({ length: 7 }).map((_, col) => (
+        <div key={col} className="space-y-2">
+          <Skeleton className="h-6 w-full rounded-control" />
+          <Skeleton className="h-24 w-full rounded-control" />
+          <Skeleton className="h-16 w-full rounded-control" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function OperatorCalendar() {
   const router = useRouter();
   const pathname = usePathname();
   const { currentOrgRole } = useAuth();
-  const { appointments, error, refetch } = useAdminAppointments();
+  const { appointments, loading, error, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
   const { permissions } = useManagerPermissions();
 
@@ -141,7 +158,9 @@ export function OperatorCalendar() {
           onToday={mobileToday}
           onOpenFilters={() => setFiltersOpen(true)}
         />
-        {mobileView === 'month' ? (
+        {loading ? (
+          <CalendarSkeleton />
+        ) : mobileView === 'month' ? (
           <MobileMonthView
             events={events}
             focusedDate={focusedDate}
@@ -186,12 +205,16 @@ export function OperatorCalendar() {
         onNewBooking={() => openNewBooking()}
       />
 
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        {view === 'week' && <WeekView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
-        {view === 'day' && <DayView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
-        {view === 'month' && <MonthView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={(d) => openNewBooking(d)} onPickDay={(d) => { goToDate(d); pickView('day'); }} />}
-        {view === 'agenda' && <AgendaView events={events} focusedDate={focusedDate} nowMs={nowMs} onOpen={openBooking} />}
-      </DndContext>
+      {loading ? (
+        <CalendarSkeleton />
+      ) : (
+        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+          {view === 'week' && <WeekView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
+          {view === 'day' && <DayView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
+          {view === 'month' && <MonthView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={(d) => openNewBooking(d)} onPickDay={(d) => { goToDate(d); pickView('day'); }} />}
+          {view === 'agenda' && <AgendaView events={events} focusedDate={focusedDate} nowMs={nowMs} onOpen={openBooking} />}
+        </DndContext>
+      )}
 
       {reschedule ? (
         <RescheduleDialog
