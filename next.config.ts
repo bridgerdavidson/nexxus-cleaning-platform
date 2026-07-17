@@ -9,14 +9,11 @@ const nextConfig: NextConfig = {
     // your project has type errors.
     ignoreBuildErrors: true,
   },
-  // The app domain root goes straight to login (invite-only product). The
-  // marketing subdomain is excluded: config redirects run BEFORE middleware,
-  // so without the `missing` guard this would swallow the middleware rewrite
-  // that serves /landing on MARKETING_HOST. Temporary (307) on purpose, not a
-  // cached permanent redirect, so this stays easy to revisit.
+  // The domain root serves the marketing landing page. See rewrites() below:
+  // it's a REWRITE, not a redirect, so the URL stays the bare root while the
+  // /landing route renders. Sign-in stays reachable from the landing nav /
+  // footer "Log in" links and directly at /login.
   async redirects() {
-    const marketingHost = process.env.MARKETING_HOST;
-
     // Legacy-route retirement (cutover runbook Phase 3). When the redesign is
     // the active experience — the SAME three-arm gate as
     // src/app/(redesign)/layout.tsx, evaluated at build time — every legacy
@@ -67,15 +64,17 @@ const nextConfig: NextConfig = {
         ]
       : [];
 
-    return [
-      {
-        source: "/",
-        destination: "/login",
-        permanent: false,
-        ...(marketingHost ? { missing: [{ type: "host" as const, value: marketingHost }] } : {}),
-      },
-      ...legacyRedirects,
-    ];
+    return legacyRedirects;
+  },
+  // Serve the marketing landing page at the domain root without changing the
+  // URL. `/landing` still resolves to the same page; this makes "/" an alias
+  // for it. beforeFiles so it wins ahead of any future filesystem root route.
+  async rewrites() {
+    return {
+      beforeFiles: [{ source: "/", destination: "/landing" }],
+      afterFiles: [],
+      fallback: [],
+    };
   },
 };
 
