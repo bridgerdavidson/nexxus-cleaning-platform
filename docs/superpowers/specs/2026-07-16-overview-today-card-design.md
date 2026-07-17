@@ -25,7 +25,13 @@ design system's language, while the "Needs you now" queue beside it does:
 
 Replace the two stacked cards with **one "Today" card**: a single time-sorted list of
 today's jobs in the queue's row idiom, with live status carried by a tinted row + a
-static-dot "Live" pill showing elapsed time. No blinking anywhere.
+pill showing elapsed time. No blinking anywhere.
+
+**Status colors follow the app-wide vocabulary** (Bridger correction, 2026-07-17: the
+first cut copied the mockup's green for live — exactly the leak this workflow bans).
+The canonical hierarchy lives in `bookings-presenters.tsx`: amber = needs you, red =
+problem, gray = settled (confirmed), **blue = live (in progress)**, **green = done**.
+The Today card reuses `BookingStatusBadge` directly so it cannot drift.
 
 ### Card
 
@@ -44,14 +50,18 @@ on the row, semibold sm title, xs muted subtitle.
 - Left: scheduled time, tabular numerals, neutral foreground (not brand blue).
 - Middle: title "Property · Service"; subtitle: cleaner short name ("Marco D."), or
   "No cleaner yet" when unassigned.
-- Right (status pill, only when the row is exceptional):
-  - `completed` → `secondary` pill "Done"; row rendered slightly faded.
-  - `in_progress` → row gets a soft positive tint + `positive` pill
-    "Live · <elapsed>" with a **static** dot. Elapsed comes from
+- Right (status pill, only when the row is exceptional; all three reuse the Bookings
+  badge vocabulary):
+  - `completed` → `BookingStatusBadge badge="completed"` (green "Completed");
+    row rendered slightly faded.
+  - `in_progress` → row gets a soft `primary` tint (`border-primary/30 bg-primary/5`,
+    `dark:bg-primary/10`) + the Bookings in-progress pill (blue `default` variant,
+    motion-safe spinner icon) with the elapsed time as its text. Elapsed comes from
     `appointments.started_at` via the existing `formatElapsed` helper
-    ("just started" / "42 min" / "1 hr 7 min"). When `started_at` is null the pill
-    reads just "Live".
-  - Unassigned (`cleaner_id == null`) → `caution` pill "Unassigned".
+    ("just started" / "42 min" / "1 hr 7 min"). When `started_at` is null it falls
+    back to the stock `BookingStatusBadge badge="in_progress"` ("In progress").
+  - Unassigned (`cleaner_id == null`) → `BookingStatusBadge badge="unassigned"`
+    (amber "Unassigned").
   - Ordinary upcoming (pending/confirmed with a cleaner) → no pill.
 - Rows open the booking sheet via `useOpenBookingDetail` (`?booking=<id>`), passed
   down as `onOpenBooking` and **gated by `can_view_bookings`** exactly like the
@@ -73,9 +83,10 @@ The browser-companion mockups behind this decision are UX/structure reference ON
 Every visual is implemented from the design system: the primitives in
 `src/components/ui/*` (`Card`, `Badge`, `Skeleton`, the queue's row pattern in
 `NeedsYouNowQueue`) and the tokens in `tailwind.config.js` + `src/app/globals.css`.
-Do not copy ad-hoc colors, raw hex, or bespoke classes from a mockup. The live-row
-tint must be derived from the `positive` token ramp with a dark-theme-safe variant,
-not a hardcoded light-mode hex. If a needed pattern has no primitive, build it as a
+Do not copy ad-hoc colors, raw hex, or bespoke classes from a mockup — including
+status colors: status hue is a design-system decision owned by the Bookings badge
+vocabulary, never by a mockup. The live-row tint is derived from the `primary`
+token with alpha (dark-theme-safe), not a hardcoded light-mode hex. If a needed pattern has no primitive, build it as a
 reusable primitive, not a one-off. No `animate-ping` / infinite animation.
 
 ## Implementation surface

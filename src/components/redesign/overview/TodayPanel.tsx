@@ -1,15 +1,18 @@
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BookingStatusBadge } from "@/components/redesign/bookings/bookings-presenters";
 import { cn } from "@/lib/utils";
 import type { TodayItem } from "./overview-types";
 
 /**
  * Unified "Today" dispatch card: one time-sorted list of today's jobs plus any
- * still-running job from a previous day. Live state is carried by the badge
- * vocabulary (static dot, elapsed time) and a soft row tint — no infinite
- * motion. Rows use the same row-card idiom as NeedsYouNowQueue so the whole
- * Overview speaks one visual language.
+ * still-running job from a previous day. Status rendering reuses the Bookings
+ * badge vocabulary (blue = in progress, green = done, amber = unassigned) so
+ * the card can't drift from the app-wide status colors; live rows add a soft
+ * primary row tint. Rows use the same row-card idiom as NeedsYouNowQueue so
+ * the whole Overview speaks one visual language.
  */
 export function TodayPanel({
   items,
@@ -29,12 +32,7 @@ export function TodayPanel({
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <h2 className="text-xl font-bold tracking-tight">Today</h2>
         <div className="flex items-center gap-2">
-          {liveCount > 0 && (
-            <Badge variant="positive">
-              <span aria-hidden className="size-1.5 rounded-pill bg-positive-700" />
-              {liveCount} live
-            </Badge>
-          )}
+          {liveCount > 0 && <Badge variant="default">{liveCount} live</Badge>}
           <Badge variant="secondary">
             {items.length} {items.length === 1 ? "job" : "jobs"}
           </Badge>
@@ -76,9 +74,7 @@ function TodayRow({
         : {})}
       className={cn(
         "flex w-full items-center gap-3 rounded-control border p-3 text-left transition-colors duration-200",
-        live
-          ? "border-positive/30 bg-positive-50 dark:border-positive/25 dark:bg-positive/10"
-          : "border-border bg-card",
+        live ? "border-primary/30 bg-primary/5 dark:bg-primary/10" : "border-border bg-card",
         item.status === "done" && "opacity-60",
         onOpenBooking &&
           "cursor-pointer hover:border-brand-600/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -98,24 +94,20 @@ function TodayRow({
 function StatusPill({ item }: { item: TodayItem }) {
   switch (item.status) {
     case "live":
-      return (
-        <Badge variant="positive" className="flex-none">
-          <span aria-hidden className="size-1.5 rounded-pill bg-positive-700" />
-          {item.elapsed ? `Live · ${item.elapsed}` : "Live"}
+      // Same pill as Bookings' "In progress" (blue + motion-safe spinner),
+      // with the elapsed time as the text when we know it.
+      return item.elapsed ? (
+        <Badge variant="default" className="shrink-0 whitespace-nowrap">
+          <Loader2 className="motion-safe:animate-spin" />
+          {item.elapsed}
         </Badge>
+      ) : (
+        <BookingStatusBadge badge="in_progress" />
       );
     case "done":
-      return (
-        <Badge variant="secondary" className="flex-none">
-          Done
-        </Badge>
-      );
+      return <BookingStatusBadge badge="completed" />;
     case "unassigned":
-      return (
-        <Badge variant="caution" className="flex-none">
-          Unassigned
-        </Badge>
-      );
+      return <BookingStatusBadge badge="unassigned" />;
     default:
       return null;
   }
