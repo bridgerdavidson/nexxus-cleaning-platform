@@ -254,10 +254,8 @@ Order matters; each bullet is its own reviewable PR.
         anyone who bookmarked during the prefix era.
       - Check DB-stored hrefs (bell notifications) for `/app/` paths; sweep
         or map if any exist.
-      - Decide with Bridger before opening this PR: keep the
-        `/admin-dashboard`-style names (default — smallest diff, no
-        muscle-memory break) or use the one-time chance to rename
-        (e.g. `/admin`). Redirects cover the transition either way.
+      - Naming DECIDED 2026-07-16 (Bridger): **role roots** — see §6.1 for the
+        full canonical URL map and redirect table this PR implements.
 - [ ] **4f. Graduate the remaining redirects to 308** after 4e has soaked:
       `/app/:path*` → `/:path*` plus the tab maps. This replaces the cancelled
       graduation — permanent is safe only in this direction.
@@ -269,6 +267,44 @@ Order matters; each bullet is its own reviewable PR.
 
 **Rollback:** every step is a git revert; nothing schema-level. That's why
 they're separate PRs.
+
+### 6.1 Decided URL map for 4e (Bridger, 2026-07-16: role roots)
+
+Only the four area roots change; every sub-route name stays identical.
+Verified against the full route inventory on master (29 pages) — no manifest,
+service worker, or other URL pinning exists outside code + DB hrefs.
+
+| Area | Today | After 4e |
+|---|---|---|
+| Operator (admin + manager) | `/app/admin-dashboard[/x]` | `/admin[/x]` — x ∈ analytics, bookings, calendar, cleaners, customers, messages, payments, properties, services, settings |
+| Cleaner | `/app/cleaner-dashboard[/x]` | `/cleaner[/x]` — x ∈ schedule, earnings, messages, profile, profile/services, profile/services/[serviceId] |
+| Homeowner | `/app/homeowner-dashboard[/x]` | `/homeowner[/x]` — x ∈ cleanings, messages, account, account/{payment-methods,profile,properties,receipts,services} |
+| Platform back-office | `/app/owner[/audit]` | `/owner[/audit]` |
+
+Collision check done: `/admin`, `/cleaner`, `/homeowner` don't exist top-level
+today (legacy dirs are `*-dashboard`), so the moves are clean.
+
+**Redirect table after 4e** (all 307 until 4f graduates them):
+
+- Prefix-era bookmarks — four rules, `:path*` matches zero segments so each
+  covers its root too:
+  - `/app/admin-dashboard/:path*` → `/admin/:path*`
+  - `/app/cleaner-dashboard/:path*` → `/cleaner/:path*`
+  - `/app/homeowner-dashboard/:path*` → `/homeowner/:path*`
+  - `/app/owner/:path*` → `/owner/:path*`
+- Legacy-era bookmarks (replaces today's legacy→`/app` rules; targets lose the
+  prefix AND the `-dashboard` suffix):
+  - `/admin-dashboard` `?tab=` map → `/admin/<target>` (home→root,
+    team/invites→cleaners, rest 1:1); bare root → `/admin`
+  - `/manager-dashboard` → `/admin`
+  - `/cleaner-dashboard` → `/cleaner`; `/homeowner-dashboard` → `/homeowner`
+    (+ retarget whatever tab maps the gap-scan §1 PR added for these sources,
+    e.g. homeowner `?tab=payment-methods` → `/homeowner/account/payment-methods`)
+  - `/settings`, `/settings/:path*` → `/admin/settings`
+  - `/owner` → DELETE the redirect the gap-scan §1 PR added (the redesign
+    back-office takes the URL natively once legacy `src/app/owner` is gone)
+- `getDashboardPath` returns: admin/manager → `/admin`, cleaner → `/cleaner`,
+  homeowner → `/homeowner`; platform-admin call sites → `/owner`.
 
 ## 7. Coordination with concurrent sessions
 
