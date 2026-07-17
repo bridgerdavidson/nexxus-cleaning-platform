@@ -1,6 +1,6 @@
 "use client";
 
-import { SprayCan, Plus, RefreshCw, X, Eye, EyeOff, Mail } from "lucide-react";
+import { Users, Plus, RefreshCw, X, Eye, EyeOff, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -239,7 +239,7 @@ export function OperatorCleanersView({
         <CleanersSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState
-          icon={<SprayCan />}
+          icon={<Users />}
           title={
             totalActiveCount === 0 && pendingCount === 0
               ? "No cleaners yet"

@@ -22,8 +22,8 @@ export function AuthShell({
   return (
     <div className="redesign font-jakarta min-h-screen bg-background text-foreground md:grid md:grid-cols-[minmax(0,44%)_minmax(0,56%)]">
       <aside className="relative hidden overflow-hidden bg-brand-600 p-10 text-white md:flex md:flex-col md:justify-between">
-        <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full border border-white/15" aria-hidden />
-        <div className="pointer-events-none absolute -left-16 bottom-24 size-44 rounded-full border border-white/15" aria-hidden />
+        <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full border border-white/30" aria-hidden />
+        <div className="pointer-events-none absolute -left-16 bottom-24 size-44 rounded-full border border-white/30" aria-hidden />
         {/* Wrapped so the image is not a direct flex child (align-items would
             stretch it to the full column width and break its aspect ratio). */}
         <div>

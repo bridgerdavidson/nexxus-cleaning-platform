@@ -8,7 +8,7 @@
  * data layer, so it is unit-testable in isolation; the data component maps the
  * concrete hook rows into the normalized Palette* shapes below.
  */
-import { CalendarDays, Users, SprayCan, Tag, type LucideIcon } from 'lucide-react';
+import { ClipboardList, BookUser, Users, Tag, type LucideIcon } from 'lucide-react';
 
 export type CommandGroupName = 'Bookings' | 'Customers' | 'Cleaners' | 'Services' | 'Actions';
 
@@ -119,7 +119,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         key: `booking:${b.id}`,
         label: b.property || b.service || 'Booking',
         sublabel: joinDot(b.customerName, b.dateLabel),
-        icon: CalendarDays,
+        icon: ClipboardList,
         group: 'Bookings',
         href: `/app/admin-dashboard/bookings?booking=${b.id}`,
       }));
@@ -134,7 +134,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         key: `customer:${c.id}`,
         label: c.name || c.email,
         sublabel: c.name ? c.email : c.phone,
-        icon: Users,
+        icon: BookUser,
         group: 'Customers',
         href: `/app/admin-dashboard/customers?customer=${c.id}`,
       }));
@@ -149,7 +149,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         key: `cleaner:${c.id}`,
         label: c.name || c.email,
         sublabel: c.roleLabel || c.email,
-        icon: SprayCan,
+        icon: Users,
         group: 'Cleaners',
         href: `/app/admin-dashboard/cleaners?cleaner=${c.id}`,
       }));

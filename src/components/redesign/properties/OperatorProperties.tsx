@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, CalendarPlus, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Building2, CalendarPlus, MapPinHouse, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -372,7 +372,7 @@ export function OperatorProperties() {
         <PropertiesSkeleton />
       ) : filteredRows.length === 0 ? (
         <EmptyState
-          icon={<Building2 />}
+          icon={<MapPinHouse />}
           title={rows.length === 0 ? "No properties yet." : "No properties match your filters"}
           description={
             rows.length === 0
