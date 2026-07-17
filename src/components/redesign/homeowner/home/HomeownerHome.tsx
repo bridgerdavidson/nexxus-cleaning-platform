@@ -7,6 +7,7 @@ import { pickHeroAppointment } from './home-presenters';
 import { deriveHomeownerSeries } from './derive-homeowner-series';
 import { HomeownerCleaningHero } from '../HomeownerCleaningHero';
 import { HomeownerRepeatingCard } from './HomeownerRepeatingCard';
+import { HomeownerPaymentAlerts } from './HomeownerPaymentAlerts';
 import { PendingRequestCard } from './PendingRequestCard';
 import { useOpenCleaning } from '../cleanings/useOpenCleaning';
 import { useHomeownerOnboarding } from '@/hooks/useHomeownerOnboarding';
@@ -35,6 +36,9 @@ export function HomeownerHome() {
   return (
     <>
     <div className="flex flex-col gap-4 pb-8">
+      {/* Above the hero on purpose: a failed payment must be the first thing seen. */}
+      <HomeownerPaymentAlerts appointments={appointments} onOpen={openCleaning} />
+
       {loading ? (
         <div className="h-40 animate-pulse rounded-card bg-muted" aria-hidden />
       ) : (

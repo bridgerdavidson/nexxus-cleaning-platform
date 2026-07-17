@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Loader2, AlertCircle, CreditCard } from "lucide-react";
+import { getRedesignConnectAppearance } from "@/lib/stripe/appearance";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
@@ -85,7 +86,7 @@ export default function AddPaymentMethodPanel({ createSetupIntent, onSaved, save
   return (
     <Elements
       stripe={stripePromise}
-      options={{ clientSecret: secret, appearance: { variables: { colorPrimary: "#F7C41E" } } }}
+      options={{ clientSecret: secret, appearance: getRedesignConnectAppearance(false) }}
     >
       <AddPaymentMethodInner onSaved={onSaved} saveLabel={saveLabel} />
     </Elements>

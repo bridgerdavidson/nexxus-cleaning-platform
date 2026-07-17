@@ -4,6 +4,7 @@ import * as React from 'react'
 import { AnimatePresence, motion as m } from 'motion/react'
 import {
   BarChart3,
+  Camera,
   CreditCard,
   Home,
   MessageSquare,
@@ -333,28 +334,56 @@ function PaymentsTab() {
 
 // --- Messages ----------------------------------------------------------------
 
+/** One chat bubble. `side` picks the sender styling: `in` is the muted
+ *  left-aligned received bubble, `out` is the brand office reply on the right. */
+function Bubble({ author, side, children }: { author: string; side: 'in' | 'out'; children: React.ReactNode }) {
+  const out = side === 'out'
+  return (
+    <div className={cn('flex', out ? 'justify-end' : 'justify-start')}>
+      <div
+        className={cn(
+          'max-w-[78%] rounded-card px-3 py-2 text-xs',
+          out ? 'rounded-tr-chip bg-primary text-primary-foreground' : 'rounded-tl-chip bg-muted text-foreground',
+        )}
+      >
+        <p className={cn('mb-0.5 text-[10px] font-semibold', out ? 'text-brand-100' : 'text-muted-foreground')}>{author}</p>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function MessagesTab() {
   return (
     <div className="grid gap-2">
       <p className="px-1 text-[11px] font-bold text-foreground">Job thread · 8 Cedar Ct</p>
       <div className="grid gap-2 rounded-control border border-border bg-card p-3">
-        <div className="flex justify-start">
-          <div className="max-w-[75%] rounded-card rounded-tl-chip bg-muted px-3 py-2 text-xs text-foreground">
-            <p className="mb-0.5 text-[10px] font-semibold text-muted-foreground">Sarah (customer)</p>
-            Gate code is 4412. The dog is friendly!
-          </div>
-        </div>
-        <div className="flex justify-end">
-          <div className="max-w-[75%] rounded-card rounded-tr-chip bg-primary px-3 py-2 text-xs text-primary-foreground">
-            <p className="mb-0.5 text-[10px] font-semibold text-brand-100">Office</p>
-            Thanks! Maria is on her way, ETA 9:00.
-          </div>
-        </div>
-        <div className="flex justify-start">
-          <div className="max-w-[75%] rounded-card rounded-tl-chip bg-muted px-3 py-2 text-xs text-foreground">
-            <p className="mb-0.5 text-[10px] font-semibold text-muted-foreground">Maria (cleaner)</p>
-            Arrived and starting now. Will send photos when done.
-          </div>
+        <Bubble author="Sarah (customer)" side="in">Gate code is 4412. The dog is friendly!</Bubble>
+        <Bubble author="Office" side="out">Thanks! Maria is on her way, ETA 9:00.</Bubble>
+        <Bubble author="Maria (cleaner)" side="in">Arrived and starting now. Will send photos when done.</Bubble>
+        <Bubble author="Maria (cleaner)" side="in">
+          All finished, before and afters attached.
+          <span className="mt-1.5 flex gap-1.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="grid size-8 place-items-center rounded-chip bg-secondary">
+                <Camera className="size-3.5 text-muted-foreground" />
+              </span>
+            ))}
+          </span>
+        </Bubble>
+        {/* System event closes the thread: the auto-charge lands right in the
+            conversation, so the demo shows the product's whole point (job done,
+            card charged) instead of trailing off after "will send photos". Kept
+            as the last line on purpose, both as the narrative payoff and to hold
+            this tab under the tallest tab's height so the frame never grows when
+            you click to it. */}
+        <div className="flex items-center gap-2 py-0.5" aria-hidden>
+          <span className="h-px flex-1 bg-border" />
+          <span className="flex items-center gap-1 whitespace-nowrap text-[10px] font-medium text-muted-foreground">
+            <CheckCircle2 className="size-3 text-positive-700" />
+            Completed · $180 charged to Visa ·· 4242
+          </span>
+          <span className="h-px flex-1 bg-border" />
         </div>
       </div>
       <p className="px-1 text-[10px] text-muted-foreground">

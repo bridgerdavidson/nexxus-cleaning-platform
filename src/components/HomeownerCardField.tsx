@@ -5,6 +5,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { CreditCard, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import { getRedesignConnectAppearance } from "../lib/stripe/appearance";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
@@ -92,7 +93,7 @@ export default function HomeownerCardField({
     return (
       <div className="flex items-center gap-2 rounded-lg border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700">
         <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
-        Card saved — it won&apos;t be charged until your cleaning is completed.
+        Card saved. It won&apos;t be charged until your cleaning is completed.
       </div>
     );
   }
@@ -109,7 +110,7 @@ export default function HomeownerCardField({
     return (
       <p className="flex items-center gap-2 text-sm text-gray-500">
         <AlertCircle className="h-4 w-4 flex-shrink-0" />
-        {loadError ?? "Card setup is unavailable right now — you can add a card later."}
+        {loadError ?? "Card setup is unavailable right now. You can add a card later."}
       </p>
     );
   }
@@ -120,7 +121,7 @@ export default function HomeownerCardField({
       options={{
         clientSecret: siSecret,
         ...(csSecret ? { customerSessionClientSecret: csSecret } : {}),
-        appearance: { variables: { colorPrimary: "#F7C41E" } },
+        appearance: getRedesignConnectAppearance(false),
       }}
     >
       <CardInner onSaved={onSaved} />

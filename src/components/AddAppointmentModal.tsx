@@ -959,8 +959,30 @@ export default function AddAppointmentModal({
     [selfPay],
   );
 
+  // Org platform fee (bps) for the self-pay quote. The charge path reads the same column
+  // server-side at completion, so the quote matches what the company is actually charged.
+  const [orgPlatformFeeBps, setOrgPlatformFeeBps] = useState(0);
+  useEffect(() => {
+    if (!isOpen || !selfPay || !currentOrganizationId) return;
+    let cancelled = false;
+    supabase
+      .from("organizations")
+      .select("platform_fee_bps")
+      .eq("id", currentOrganizationId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const bps = Number((data as { platform_fee_bps: number } | null)?.platform_fee_bps ?? 0);
+        setOrgPlatformFeeBps(Number.isInteger(bps) && bps >= 0 && bps <= 10000 ? bps : 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, selfPay, currentOrganizationId]);
+
   // Itemized self-pay charge math, only when a payable cleaner is chosen. Method-aware: the charge
-  // is the cleaner's cut grossed up for the CHARGED method's fee (bank is cheaper than card).
+  // is the cleaner's cut plus the platform fee, grossed up for the CHARGED method's fee (bank is
+  // cheaper than card).
   const selfPayAmounts = useMemo(() => {
     if (!selfPay || !selectedCleaner || !selectedCleanerPayable) return null;
     const finalPrice =
@@ -972,6 +994,7 @@ export default function AddAppointmentModal({
     return computeSelfPayAmounts({
       jobGrossCents,
       payoutPercent: Number(selectedCleaner.payout_percent ?? 0),
+      platformFeeBps: orgPlatformFeeBps,
       method: selfPayMethod,
     });
   }, [
@@ -982,6 +1005,7 @@ export default function AddAppointmentModal({
     customPrice,
     getSystemCalculatedPrice,
     selfPayMethod,
+    orgPlatformFeeBps,
   ]);
 
   // The price the customer will be charged for (override or base + checklist adder), in dollars.
@@ -2125,7 +2149,7 @@ export default function AddAppointmentModal({
                 />
                 {scheduledDate === today && scheduledTime && (
                   <p className="mt-1 text-xs text-gray-500">
-                    Today selected — pick a time after{" "}
+                    Today selected. Pick a time after{" "}
                     {new Date().toLocaleTimeString("en-US", {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -2701,6 +2725,7 @@ export default function AddAppointmentModal({
                           breakdown={{
                             baseCents: selfPayAmounts.cleanerCutCents,
                             feeCents: selfPayAmounts.estimatedFeeCents,
+                            platformFeeCents: selfPayAmounts.platformFeeCents,
                             chargeCents: selfPayAmounts.chargeCents,
                             baseLabel: "Cleaner payout",
                             totalLabel: "Your company is charged",

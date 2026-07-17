@@ -3,16 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { keys } from '../lib/queryKeys';
+import { platformFetch } from '../lib/platform/fetch';
 import type { PlatformOrgDetail, PlatformOrgSummary } from '../types/platform';
-
-async function platformFetch<T>(url: string, token: string): Promise<T> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `Request failed (${res.status})`);
-  }
-  return res.json() as Promise<T>;
-}
 
 /** All tenant orgs with member counts (platform-owner oversight). */
 export function usePlatformOrganizations() {
