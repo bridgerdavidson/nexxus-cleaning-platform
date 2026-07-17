@@ -347,6 +347,9 @@ function HomeownerSurface({ cue }: { cue: number }) {
   const inProgress = cue >= CUE_INDEX.started
   const complete = cue >= CUE_INDEX.panBack
   const paid = cue >= CUE_INDEX.revenue
+  // Same checklist progress the cleaner is ticking off, so the customer's card
+  // reflects the live clean rather than just a "cleaning" label.
+  const checks = cue >= CUE_INDEX.checkDone ? 8 : cue >= CUE_INDEX.check2 ? 5 : cue >= CUE_INDEX.check1 ? 3 : 2
   return (
     <div className="grid grid-cols-1 content-start gap-2 text-left">
       <AnimatePresence mode="popLayout" initial={false}>
@@ -396,8 +399,22 @@ function HomeownerSurface({ cue }: { cue: number }) {
             <div className="mt-2 flex items-center gap-1.5">
               <Avatar className="size-5 text-[8px]"><AvatarFallback className="bg-card/25 text-primary-foreground">MR</AvatarFallback></Avatar>
               <span className="text-[10px] font-semibold">Maria R. · your cleaner</span>
-              {inProgress && !complete ? <span className="ml-auto"><LiveDot live /></span> : null}
             </div>
+            {inProgress ? (
+              <div className="mt-2.5">
+                <div className="flex items-center justify-between text-[9px] font-semibold">
+                  <span className="text-brand-100">{complete ? 'All tasks done' : 'Tasks done'}</span>
+                  <span className="tnum text-primary-foreground">{checks} of 8</span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-pill bg-primary-foreground/25" aria-hidden>
+                  <m.div
+                    className="h-full rounded-pill bg-primary-foreground"
+                    animate={{ width: `${(checks / 8) * 100}%` }}
+                    transition={{ duration: 0.5, ease: EASE }}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
           <Pop show={paid}>
             <div className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2 text-[11px]">
@@ -796,6 +813,7 @@ export function FlowShowcase() {
   const reduced = useReducedMotion() ?? false
   const { cue, rootRef } = useFlowClock(reduced)
   const [containerW, setContainerW] = React.useState<number | null>(null)
+  const [settled, setSettled] = React.useState(false)
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const stageRef = React.useRef<HTMLDivElement>(null)
   const [cursorTargets, setCursorTargets] = React.useState<{ assign: Pt; maria: Pt }>({
@@ -824,12 +842,26 @@ export function FlowShowcase() {
     return () => ro.disconnect()
   }, [])
 
+  // The stage is placed by an animated camera (`camX`). Its real width only
+  // lands a frame after mount, so springing from the pre-measurement default
+  // reads as a sideways slide-in, out of step with the fade-up every other
+  // block on the page uses. Snap that first placement instantly, then let the
+  // spring handle genuine focus pans and resizes.
+  React.useEffect(() => {
+    if (containerW != null) setSettled(true)
+  }, [containerW])
+
   const cw = containerW ?? STAGE_W
   const scale = cw >= STAGE_W ? 1 : Math.min(1, cw / 520)
   const panning = cw < STAGE_W * scale + 1
   const focusX = focusFor(cue)
+  // On narrow viewports the camera centers whichever surface is in focus (so the
+  // phone sits centered with the next surface peeking in, then slides over as the
+  // booking moves customer -> office -> cleaner) rather than pinning it to the
+  // left edge. The unclamped center leaves a little breathing room at the first
+  // and last stops, which is what keeps it off the edge of the screen.
   const camX = panning
-    ? Math.min(0, Math.max(cw - STAGE_W * scale, cw / 2 - focusX * scale))
+    ? cw / 2 - focusX * scale
     : (cw - STAGE_W * scale) / 2
 
   const caption =
@@ -849,8 +881,9 @@ export function FlowShowcase() {
           ref={stageRef}
           className="absolute left-0 top-0"
           style={{ width: STAGE_W, height: STAGE_H, transformOrigin: '0 0' }}
+          initial={false}
           animate={{ x: camX, scale }}
-          transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 55, damping: 20 }}
+          transition={reduced || !settled ? { duration: 0 } : { type: 'spring', stiffness: 55, damping: 20 }}
         >
           <StageLabels />
           <div className="absolute z-10" style={{ left: HOME.x, top: HOME.y, width: HOME.w, height: HOME.h }}>
