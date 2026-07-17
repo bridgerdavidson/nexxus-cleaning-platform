@@ -93,7 +93,7 @@ export async function chargeSelfPayAchAppointment(
   const [orgRes, cleanerRes] = await Promise.all([
     supabase
       .from('organizations')
-      .select('stripe_self_pay_customer_id')
+      .select('stripe_self_pay_customer_id, platform_fee_bps')
       .eq('id', appt.organization_id)
       .maybeSingle(),
     appt.cleaner_id
@@ -105,8 +105,8 @@ export async function chargeSelfPayAchAppointment(
       : Promise.resolve({ data: null as CleanerRow | null }),
   ]);
 
-  const customerId =
-    (orgRes.data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null;
+  const orgRow = orgRes.data as { stripe_self_pay_customer_id: string | null; platform_fee_bps: number } | null;
+  const customerId = orgRow?.stripe_self_pay_customer_id ?? null;
   if (!customerId) {
     await recordSelfPayNoMethod(supabase, appt, actor, 'no_self_pay_customer');
     return { ok: false, code: 'no_org_card', message: 'Organization has no company payment method on file' };
@@ -142,9 +142,11 @@ export async function chargeSelfPayAchAppointment(
   }
 
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);
-  const { chargeCents, cleanerCutCents, estimatedFeeCents } = computeSelfPayAmounts({
+  const platformFeeBps = orgRow?.platform_fee_bps ?? 0;
+  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmounts({
     jobGrossCents,
     payoutPercent: Number(cleaner!.payout_percent),
+    platformFeeBps,
     method: 'us_bank_account',
   });
   if (chargeCents <= 0) return { ok: false, code: 'not_chargeable', message: 'Nothing to charge' };
@@ -163,6 +165,7 @@ export async function chargeSelfPayAchAppointment(
   }
 
   // ACH PaymentIntent starts in `processing`; the row mirrors that until payment_intent.succeeded.
+  // application_fee_amount/bps record the platform's retained fee (see chargeCompletedAppointment).
   const paymentRow = {
     organization_id: appt.organization_id,
     appointment_id: appt.id,
@@ -174,6 +177,8 @@ export async function chargeSelfPayAchAppointment(
     charge_kind: 'completion' as const,
     is_self_pay: true,
     stripe_payment_intent_id: pi.id,
+    application_fee_amount: platformFeeCents,
+    application_fee_bps_snapshot: platformFeeBps,
     payment_intent_status: pi.status,
   };
 
@@ -187,7 +192,13 @@ export async function chargeSelfPayAchAppointment(
     newStatus: 'processing',
     actor,
     amount: chargeCents,
-    payload: { payment_intent_id: pi.id, pi_status: pi.status, self_pay: true, cleaner_cut_cents: cleanerCutCents },
+    payload: {
+      payment_intent_id: pi.id,
+      pi_status: pi.status,
+      self_pay: true,
+      cleaner_cut_cents: cleanerCutCents,
+      platform_fee_cents: platformFeeCents,
+    },
   });
 
   return { ok: true, code: 'processing', paymentIntentId: pi.id };

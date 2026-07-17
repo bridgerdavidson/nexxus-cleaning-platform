@@ -575,3 +575,21 @@ nav.sticky {
   --muted: 240 4% 16%; --muted-foreground: 240 5% 65%;
   --border: 240 5% 21%; --input: 240 5% 21%;
 }
+/* Job-photo lightbox (yet-another-react-lightbox) themed to the design system.
+   Chrome only: backdrop, buttons, active-thumbnail accent. Variable names
+   verified against yarl 3.32.0 dist CSS.
+   THEME-STABLE ON PURPOSE: a photo viewer keeps a dark scrim and light
+   controls in BOTH themes. Tying these to --foreground/--background would
+   invert them in dark mode (near-white backdrop, invisible buttons), so the
+   literals below are warm-900/warm-50 from the token table above.
+   Solid backdrop, not alpha: a 95%-alpha background on this fixed layer
+   failed to composite in some paint/capture paths, and at 0.95 the
+   see-through was imperceptible anyway. */
+.job-photo-lightbox {
+  --yarl__color_backdrop: hsl(34 12% 12%);      /* warm-900 #211E1A */
+  --yarl__color_button: hsl(45 20% 96% / 0.9);  /* warm-50 #F7F6F3 */
+  --yarl__color_button_active: hsl(45 20% 96%);
+  --yarl__thumbnails_thumbnail_active_border_color: hsl(var(--primary));
+  --yarl__thumbnails_container_background_color: transparent;
+  --yarl__thumbnails_thumbnail_background: transparent;
+}

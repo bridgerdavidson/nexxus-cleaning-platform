@@ -465,12 +465,14 @@ export type AppointmentBucket =
 // Canned decline reasons cleaner can pick when hard-declining an assignment.
 // Reason text is stored verbatim in cleaner_availability_feedback.reason; the
 // enum lives client-side until reporting needs a DB-level enum.
-export type DeclineReason = 'sick' | 'not_my_service' | 'too_far' | 'other';
+export type DeclineReason = 'sick' | 'not_available' | 'not_my_service' | 'too_far' | 'other';
 
 export function declineReasonLabel(reason: DeclineReason): string {
   switch (reason) {
     case 'sick':
       return 'Sick';
+    case 'not_available':
+      return 'Not available';
     case 'not_my_service':
       return 'Not my service';
     case 'too_far':
@@ -500,6 +502,7 @@ export function routingDeclineReasonLabel(
     case 'expired':
       return 'Did not respond before deadline';
     case 'sick':
+    case 'not_available':
     case 'not_my_service':
     case 'too_far':
     case 'other':
@@ -649,6 +652,7 @@ export interface ChargeProjection {
   method?: 'card' | 'us_bank_account';
   chargeCents?: number;
   feeCents?: number;
+  platformFeeCents?: number;
   payoutPercent?: number;
 }
 

@@ -152,6 +152,7 @@ export default function InvitesPage({
       failed: 0,
       expired: 0,
       superseded: 0,
+      revoked: 0,
       creating: 0,
     };
     for (const inv of invites) {

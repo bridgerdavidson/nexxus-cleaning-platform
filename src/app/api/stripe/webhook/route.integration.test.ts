@@ -40,11 +40,14 @@ describe('POST /api/stripe/webhook', () => {
   beforeEach(async () => {
     fake = globalThis.__stripeFake as StripeFake;
     fake.reset();
-    // Cleaner is fully onboarded so the route reaches the transfer step.
+    // Cleaner is fully onboarded so the route reaches the transfer step. platform_fee_bps is
+    // PINNED to 0: this suite tests split/settlement mechanics, and the DB default changed to
+    // 100 in migration 111 (the dedicated platform-fee test overrides to 100 itself).
     org = await withTestOrg({
       stripeConnectAccountId: 'acct_test_fake',
       stripeConnectOnboardingComplete: true,
       payoutPercent: 60,
+      platformFeeBps: 0,
     });
   });
 
@@ -412,6 +415,31 @@ describe('POST /api/stripe/webhook', () => {
     const payout = payouts![0] as { amount: number; status: string };
     expect(Number(payout.amount)).toBe(60);
     expect(payout.status).toBe('paid');
+  });
+
+  it('platform_fee_bps=100 retains 1% on the platform: cleaner keeps the full %, tenant remainder shrinks', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('organizations').update({ platform_fee_bps: 100 }).eq('id', org.organizationId);
+    const { appt, tenantAccount } = await seedForSettlement();
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 100, tenantAccount));
+    const sig = signWebhookPayload(payload);
+
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': sig },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls).toHaveLength(2);
+    const cleanerCall = calls.find((c) => c.destinationAccountId === 'acct_test_fake');
+    const tenantCall = calls.find((c) => c.destinationAccountId === tenantAccount);
+    expect(cleanerCall?.amountCents).toBe(6000); // still 60% of the $100 gross, never fee-shaved
+    expect(tenantCall?.amountCents).toBe(3900); // remainder = 10000 − 6000 − 100 fee
+    // The 100-cent fee is what STAYS on the platform: transfers total gross − fee.
+    expect((cleanerCall?.amountCents ?? 0) + (tenantCall?.amountCents ?? 0)).toBe(9900);
   });
 
   it('does NOT pay an hourly_external cleaner — the whole amount goes to the tenant', async () => {

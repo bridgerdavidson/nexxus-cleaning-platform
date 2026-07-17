@@ -118,6 +118,10 @@ module.exports = {
         'bounce-gentle': 'bounceGentle 2s infinite',
         'toast-in': 'toast-in 0.3s ease-out forwards',
         'toast-out': 'toast-out 0.25s ease-in forwards',
+        // Dashboard page-switch entrance (subtle fade + rise) and the bottom
+        // nav's active-tab pip growing in. Both use the out-soft easing token.
+        'page-in': 'pageIn 240ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'nav-pip-in': 'navPipIn 200ms cubic-bezier(0.16, 1, 0.3, 1)',
       },
       keyframes: {
         fadeIn: {
@@ -143,6 +147,16 @@ module.exports = {
         bounceGentle: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-5px)' },
+        },
+        pageIn: {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        // The pip is horizontally centered with -translate-x-1/2, so every
+        // frame must carry the translate or the pip would jump on play.
+        navPipIn: {
+          '0%': { opacity: '0', transform: 'translate(-50%, 0) scaleX(0.4)' },
+          '100%': { opacity: '1', transform: 'translate(-50%, 0) scaleX(1)' },
         }
       }
     },

@@ -100,7 +100,10 @@ export default function AppointmentPaymentSection({ homeownerId, organizationId,
       const res = await fetch('/api/billing/card-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ organization_id: organizationId, homeowner_id: homeownerId }),
+        // deliver: 'copy' because this UI hands the URL to the operator to send
+        // ("Send this to the customer" + Copy); the route's default would email the
+        // homeowner directly, double-delivering without any indication here.
+        body: JSON.stringify({ organization_id: organizationId, homeowner_id: homeownerId, deliver: 'copy' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create card link');

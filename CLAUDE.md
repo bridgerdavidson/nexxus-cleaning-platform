@@ -235,7 +235,7 @@ Realtime tables must be added to the `supabase_realtime` publication and have `R
 - `payment_stats(p_org_id)` — used by `usePaymentStats`
 - `org_customers_with_counts(p_org_id)` — used by `useAdminCustomers` (also fixes the previous lossy client-side merge)
 
-Each hook calls the RPC first and falls back to the legacy multi-query path if the RPC errors (so the app keeps working before the migration is applied to a new environment). The fallback should be removed once 049 has shipped to all envs.
+Each hook calls its RPC directly and throws on error (TanStack Query surfaces it). The legacy multi-query fallbacks were removed once 049 had shipped to every environment; a fresh local environment gets the RPCs via `npx supabase db reset`.
 
 ### Dashboards
 
@@ -259,6 +259,8 @@ Required for full functionality:
 
 Optional / debug:
 
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` — Brevo SMTP for app-sent transactional email (currently the card-collection link email, `src/lib/email/**`). All five must be set together; when any is missing the card-links route degrades to copy-link (`delivered: 'copy'`).
+- `APP_URL` — trusted absolute base URL for links embedded in emails (invites, card links). Emailed links are never built from the request Host; without `APP_URL` (or `NEXT_PUBLIC_APP_URL` as fallback), card-link email delivery is skipped.
 - `NEXT_PUBLIC_AUTH_DEBUG` — set to `"true"` to enable auth/session diagnostics (`src/lib/authDebug.ts`): `[authdbg]` console logs across the auth event stream, org-context load, token rotation, and disabled org-scoped queries, plus an on-screen corner badge (`AuthDebugOverlay`) showing `user / orgStatus / orgId / token`. Off (and a no-op) by default; safe to leave unset in prod. Used to reproduce the concurrent-session blank-dashboard class of bug.
 
 ## Visual Testing

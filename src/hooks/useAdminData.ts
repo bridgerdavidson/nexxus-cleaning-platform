@@ -69,6 +69,9 @@ export interface AdminAppointment {
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   /** True when the org paid from its company card (no homeowner involved). */
   is_self_pay?: boolean;
+  /** Cleaner used the photo-gate skip for this job (org allows skipping). */
+  photos_skipped?: boolean;
+  photo_skip_reason?: string | null;
   /**
    * Card-hold (authorization) lifecycle for the new charge flow (migration 065).
    * Drives the "Card held / Auth failed / Captured" indicator next to the payment badge.
@@ -216,6 +219,8 @@ export function useAdminAppointments() {
           payment_method_id,
           special_requests,
           notes,
+          photos_skipped,
+          photo_skip_reason,
           series_id,
           cleaner_confirmation_status,
           response_deadline,
@@ -315,7 +320,10 @@ export function useAdminAppointments() {
     enabled: !!orgId,
     onEvent: () => ({
       type: 'invalidate',
-      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId)],
+      // Routing-log rows change alongside appointment updates (decline,
+      // expiry, next-attempt dispatch), so this event doubles as the
+      // invalidation signal for the sheet's routing-history section.
+      keys: [queryKey, keys.stats.admin(orgId), keys.customers.byOrg(orgId), ['appointments', 'routing-log']],
     }),
   });
 
@@ -457,77 +465,21 @@ export function useAdminStats() {
   const query = useOrgQuery({
     queryKey: keys.stats.admin(orgId),
     queryFn: async ({ orgId }) => {
-      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      // Single RPC round trip (migration 049_dashboard_rpcs.sql, shipped to all envs;
+      // the legacy multi-query fallback is gone).
       const rpcRes = await supabase.rpc('admin_dashboard_stats', { p_org_id: orgId });
-      if (!rpcRes.error && rpcRes.data) {
-        const r = rpcRes.data as Record<string, number>;
-        return {
-          totalBookings: Number(r.totalBookings ?? 0),
-          activeCleaners: Number(r.activeCleaners ?? 0),
-          totalRevenue: Number(r.totalRevenue ?? 0),
-          pendingApprovals: Number(r.pendingApprovals ?? 0),
-          monthlyGrowth: 15.3, // placeholder; not yet computed in RPC
-          completionRate: Number(r.completionRate ?? 0),
-          avgRating: Number(r.avgRating ?? 0),
-          avgJobsPerDay: Number(r.avgJobsPerDay ?? 0),
-          avgJobValue: Number(r.avgJobValue ?? 0),
-        } as AdminStats;
-      }
-
-      // Fallback: legacy 8-query waterfall (used until migration 049 is applied).
-      const { count: totalBookings } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', orgId);
-      const { count: activeCleaners } = await supabase
-        .from('cleaner_profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', orgId)
-        .eq('is_available', true);
-      const { count: pendingApprovals } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', orgId)
-        .eq('status', 'pending');
-      const { data: payments } = await supabase
-        .from('payments')
-        .select('amount, is_self_pay')
-        .eq('organization_id', orgId)
-        .eq('status', 'paid');
-      const totalRevenue = (payments ?? []).reduce(
-        (s, p) => (p.is_self_pay === true ? s : s + Number(p.amount)),
-        0,
-      );
-      const { count: completedJobs } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', orgId)
-        .eq('status', 'completed');
-      const completionRate = totalBookings ? ((completedJobs || 0) / totalBookings) * 100 : 0;
-      const { data: reviews } = await supabase
-        .from('reviews')
-        .select('rating')
-        .eq('organization_id', orgId);
-      const avgRating = reviews?.length
-        ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
-        : 0;
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const { count: recentJobs } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('organization_id', orgId)
-        .gte('created_at', thirtyDaysAgo.toISOString());
+      if (rpcRes.error) throw rpcRes.error;
+      const r = (rpcRes.data ?? {}) as Record<string, number>;
       return {
-        totalBookings: totalBookings || 0,
-        activeCleaners: activeCleaners || 0,
-        totalRevenue,
-        pendingApprovals: pendingApprovals || 0,
-        monthlyGrowth: 15.3,
-        completionRate: Math.round(completionRate * 10) / 10,
-        avgRating: Math.round(avgRating * 10) / 10,
-        avgJobsPerDay: Math.round(((recentJobs || 0) / 30) * 10) / 10,
-        avgJobValue: Math.round(totalBookings ? totalRevenue / totalBookings : 0),
+        totalBookings: Number(r.totalBookings ?? 0),
+        activeCleaners: Number(r.activeCleaners ?? 0),
+        totalRevenue: Number(r.totalRevenue ?? 0),
+        pendingApprovals: Number(r.pendingApprovals ?? 0),
+        monthlyGrowth: 15.3, // placeholder; not yet computed in RPC
+        completionRate: Number(r.completionRate ?? 0),
+        avgRating: Number(r.avgRating ?? 0),
+        avgJobsPerDay: Number(r.avgJobsPerDay ?? 0),
+        avgJobValue: Number(r.avgJobValue ?? 0),
       } as AdminStats;
     },
   });
@@ -1018,50 +970,15 @@ export function usePaymentStats() {
   const query = useOrgQuery({
     queryKey: keys.payments.statsByOrg(orgId),
     queryFn: async ({ orgId }) => {
-      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      // Single RPC round trip (migration 049_dashboard_rpcs.sql, shipped to all envs;
+      // the legacy multi-query fallback is gone).
       const rpcRes = await supabase.rpc('payment_stats', { p_org_id: orgId });
-      if (!rpcRes.error && rpcRes.data) {
-        const r = rpcRes.data as Record<string, number>;
-        return {
-          totalRevenue: Number(r.totalRevenue ?? 0),
-          pendingPayouts: Number(r.pendingPayouts ?? 0),
-          thisMonthRevenue: Number(r.thisMonthRevenue ?? 0),
-        } as PaymentStats;
-      }
-
-      // Fallback: 3-query waterfall.
-      const { data: revenueData } = await supabase
-        .from('payments')
-        .select('amount')
-        .eq('organization_id', orgId)
-        .eq('status', 'paid')
-        .eq('payment_type', 'revenue')
-        .eq('is_self_pay', false);
-      const totalRevenue = (revenueData ?? []).reduce((s, p) => s + Number(p.amount), 0);
-
-      const { data: payoutsData } = await supabase
-        .from('payouts')
-        .select('amount')
-        .eq('organization_id', orgId)
-        .eq('status', 'pending');
-      const pendingPayouts = (payoutsData ?? []).reduce((s, p) => s + Number(p.amount), 0);
-
-      const now = new Date();
-      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const { data: monthData } = await supabase
-        .from('payments')
-        .select('amount')
-        .eq('organization_id', orgId)
-        .eq('status', 'paid')
-        .eq('payment_type', 'revenue')
-        .eq('is_self_pay', false)
-        .gte('created_at', firstDayOfMonth);
-      const thisMonthRevenue = (monthData ?? []).reduce((s, p) => s + Number(p.amount), 0);
-
+      if (rpcRes.error) throw rpcRes.error;
+      const r = (rpcRes.data ?? {}) as Record<string, number>;
       return {
-        totalRevenue: Math.round(totalRevenue),
-        pendingPayouts: Math.round(pendingPayouts),
-        thisMonthRevenue: Math.round(thisMonthRevenue),
+        totalRevenue: Number(r.totalRevenue ?? 0),
+        pendingPayouts: Number(r.pendingPayouts ?? 0),
+        thisMonthRevenue: Number(r.thisMonthRevenue ?? 0),
       } as PaymentStats;
     },
   });
@@ -1468,80 +1385,23 @@ export function useAdminCustomers() {
   const query = useOrgQuery({
     queryKey,
     queryFn: async ({ orgId }) => {
-      // Fast path: single RPC (migration 049_dashboard_rpcs.sql)
+      // Single RPC round trip (migration 049_dashboard_rpcs.sql, shipped to all envs;
+      // the legacy 4-query parallel + lossy client merge is gone).
       const rpcRes = await supabase.rpc('org_customers_with_counts', { p_org_id: orgId });
-      if (!rpcRes.error && Array.isArray(rpcRes.data)) {
-        return (rpcRes.data as Array<Record<string, unknown>>).map(row => ({
-          id: row.id as string,
-          first_name: (row.first_name ?? null) as string | null,
-          last_name: (row.last_name ?? null) as string | null,
-          email: row.email as string,
-          phone: (row.phone ?? null) as string | null,
-          avatar_url: (row.avatar_url ?? null) as string | null,
-          created_at: row.created_at as string,
-          updated_at: row.updated_at as string,
-          properties_count: Number(row.properties_count ?? 0),
-          appointments_count: Number(row.appointments_count ?? 0),
-          total_spent: Number(row.total_spent ?? 0),
-          last_appointment_date: (row.last_appointment_date ?? null) as string | null,
-        })) as AdminCustomer[];
-      }
-
-      // Fallback: legacy 4-query parallel + client merge.
-      const { data: orgMembers, error: membersError } = await supabase
-        .from('organization_members')
-        .select('user_id')
-        .eq('organization_id', orgId)
-        .eq('role', 'homeowner');
-      if (membersError) throw membersError;
-      if (!orgMembers || orgMembers.length === 0) return [];
-
-      const homeownerIds = orgMembers.map(m => m.user_id);
-
-      const [profilesRes, propertiesRes, appointmentsRes] = await Promise.all([
-        supabase
-          .from('user_profiles')
-          .select('id, first_name, last_name, email, phone, avatar_url, created_at, updated_at')
-          .in('id', homeownerIds)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('properties')
-          .select('owner_id')
-          .eq('organization_id', orgId)
-          .in('owner_id', homeownerIds)
-          .is('archived_at', null),
-        supabase
-          .from('appointments')
-          .select('homeowner_id, total_price, scheduled_date')
-          .eq('organization_id', orgId)
-          .in('homeowner_id', homeownerIds),
-      ]);
-
-      if (profilesRes.error) throw profilesRes.error;
-      if (propertiesRes.error) throw propertiesRes.error;
-      if (appointmentsRes.error) throw appointmentsRes.error;
-
-      const propertiesCount: Record<string, number> = {};
-      const appointmentsCount: Record<string, number> = {};
-      const totalSpent: Record<string, number> = {};
-      const lastAppointment: Record<string, string | null> = {};
-
-      propertiesRes.data?.forEach(p => {
-        propertiesCount[p.owner_id] = (propertiesCount[p.owner_id] || 0) + 1;
-      });
-      appointmentsRes.data?.forEach(a => {
-        appointmentsCount[a.homeowner_id] = (appointmentsCount[a.homeowner_id] || 0) + 1;
-        totalSpent[a.homeowner_id] = (totalSpent[a.homeowner_id] || 0) + Number(a.total_price);
-        const cur = lastAppointment[a.homeowner_id];
-        if (!cur || a.scheduled_date > cur) lastAppointment[a.homeowner_id] = a.scheduled_date;
-      });
-
-      return (profilesRes.data ?? []).map(profile => ({
-        ...profile,
-        properties_count: propertiesCount[profile.id] || 0,
-        appointments_count: appointmentsCount[profile.id] || 0,
-        total_spent: totalSpent[profile.id] || 0,
-        last_appointment_date: lastAppointment[profile.id] || null,
+      if (rpcRes.error) throw rpcRes.error;
+      return ((rpcRes.data ?? []) as Array<Record<string, unknown>>).map(row => ({
+        id: row.id as string,
+        first_name: (row.first_name ?? null) as string | null,
+        last_name: (row.last_name ?? null) as string | null,
+        email: row.email as string,
+        phone: (row.phone ?? null) as string | null,
+        avatar_url: (row.avatar_url ?? null) as string | null,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        properties_count: Number(row.properties_count ?? 0),
+        appointments_count: Number(row.appointments_count ?? 0),
+        total_spent: Number(row.total_spent ?? 0),
+        last_appointment_date: (row.last_appointment_date ?? null) as string | null,
       })) as AdminCustomer[];
     },
   });

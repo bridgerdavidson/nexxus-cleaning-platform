@@ -77,9 +77,9 @@ export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: b
                           size="sm"
                           variant="secondary"
                           loading={t.busyId === c.apptId}
-                          onClick={() => t.sendCardLink(c.apptId, c.homeownerId)}
+                          onClick={() => t.sendCardLink(c.apptId, c.homeownerId, c.payer)}
                         >
-                          Copy card link
+                          Send card link
                         </Button>
                       ) : null}
                     </div>

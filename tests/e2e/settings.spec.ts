@@ -16,29 +16,33 @@ async function signIn(page: import('@playwright/test').Page) {
   await page.waitForURL(/dashboard/, { timeout: 30_000 });
 }
 
-test.describe('Settings route family', () => {
-  test('navigating /settings persists in the URL across reloads', async ({ page }) => {
+// Legacy-route retirement (cutover runbook Phase 3): with the redesign active
+// (always true on previews, where E2E runs), every legacy dashboard/settings
+// URL 307s into its /app/* replacement. These specs pin that contract.
+test.describe('Legacy routes redirect into the redesign', () => {
+  test('legacy /settings and its sections land on redesign Settings', async ({ page }) => {
     await signIn(page);
 
-    // Go to /settings — admin should redirect to /settings/payments (default).
     await page.goto('/settings', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/\/settings\/(payments|profile|payouts)/, {
-      timeout: 10_000,
+    await expect(page).toHaveURL(/\/app\/admin-dashboard\/settings/, { timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: /^settings$/i })).toBeVisible({
+      timeout: 15_000,
     });
 
-    // Navigate explicitly to /settings/profile and reload — should stay there.
     await page.goto('/settings/profile', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /^profile$/i })).toBeVisible();
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(/\/settings\/profile$/);
-    await expect(page.getByRole('heading', { name: /^profile$/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/admin-dashboard\/settings/);
+
+    await page.goto('/settings/cancellation-policy', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/app\/admin-dashboard\/settings/);
   });
 
-  test('cancellation policy has its own page, not nested in payments', async ({ page }) => {
+  test('legacy admin dashboard tab deep-links map to redesign routes', async ({ page }) => {
     await signIn(page);
-    await page.goto('/settings/cancellation-policy');
-    await expect(page.getByRole('heading', { name: /cancellation policy/i })).toBeVisible();
-    // The policy fields render
-    await expect(page.getByLabel(/cancellation window/i)).toBeVisible();
+
+    await page.goto('/admin-dashboard?tab=payments', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/app\/admin-dashboard\/payments/, { timeout: 10_000 });
+
+    await page.goto('/admin-dashboard', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL(/\/app\/admin-dashboard(?:\?|$)/);
   });
 });

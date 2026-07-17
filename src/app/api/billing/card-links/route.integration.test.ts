@@ -6,10 +6,23 @@ vi.mock('@/lib/stripe/customers/homeowner', () => ({
 vi.mock('@/lib/stripe/setup-intents', () => ({
   createCardSetupIntent: vi.fn(async () => ({ id: 'seti_link' })),
 }));
+// Unconfigured by default so the pre-email tests keep their copy-link behavior;
+// the delivery describe below flips emailConfigured per test.
+vi.mock('@/lib/email/sendEmail', () => ({
+  sendEmail: vi.fn(async () => undefined),
+  emailConfigured: vi.fn(() => false),
+}));
 
+import { emailConfigured, sendEmail } from '@/lib/email/sendEmail';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, addManagerToOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import {
+  withTestOrg,
+  addManagerToOrg,
+  addHomeownerToOrg,
+  createTestAppointment,
+  type TestOrgFixture,
+} from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 describe('POST /api/billing/card-links', () => {
@@ -90,6 +103,197 @@ describe('POST /api/billing/card-links', () => {
       .eq('id', org.homeowner.userId)
       .single();
     expect((ho as { stripe_customer_id: string }).stripe_customer_id).toBe('cus_link');
+  });
+});
+
+describe('POST /api/billing/card-links email delivery', () => {
+  let org: TestOrgFixture;
+  let originalFlag: string | undefined;
+  let originalAppUrl: string | undefined;
+  let originalPublicAppUrl: string | undefined;
+
+  const restoreEnv = (name: string, value: string | undefined) => {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  };
+
+  beforeEach(async () => {
+    originalFlag = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    originalAppUrl = process.env.APP_URL;
+    originalPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    process.env.APP_URL = 'https://app.nexxus.test';
+    vi.mocked(emailConfigured).mockReturnValue(true);
+    vi.mocked(sendEmail).mockClear();
+    vi.mocked(sendEmail).mockResolvedValue(undefined);
+    org = await withTestOrg();
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalFlag;
+    restoreEnv('APP_URL', originalAppUrl);
+    restoreEnv('NEXT_PUBLIC_APP_URL', originalPublicAppUrl);
+    vi.mocked(emailConfigured).mockReturnValue(false);
+    await org.cleanup();
+  });
+
+  const create = (extra: Record<string, unknown> = {}) =>
+    callRoute<{ success: boolean; token: string; url: string; delivered: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, homeowner_id: org.homeowner.userId, ...extra },
+    });
+
+  it('emails the homeowner a link built from APP_URL (not the request origin)', async () => {
+    const { status, body } = await create();
+    expect(status).toBe(200);
+    expect(body.delivered).toBe('email');
+
+    expect(vi.mocked(sendEmail)).toHaveBeenCalledTimes(1);
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.to).toBe(org.homeowner.email);
+    expect(sent.subject).toContain('Update your payment method');
+    const emailedUrl = `https://app.nexxus.test/billing/add-card?t=${body.token}`;
+    expect(sent.html).toContain(emailedUrl);
+    expect(sent.text).toContain(emailedUrl);
+    // The signed-in alternative also builds from APP_URL.
+    expect(sent.html).toContain('https://app.nexxus.test/app/homeowner-dashboard/account/payment-methods');
+    // The copy URL keeps the request origin for the operator's own browser.
+    expect(body.url).toContain(`/billing/add-card?t=${body.token}`);
+    expect(body.url).not.toContain('app.nexxus.test');
+  });
+
+  it('degrades to delivered: copy when the send fails, without failing the request', async () => {
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('SMTP down'));
+    const { status, body } = await create();
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.delivered).toBe('copy');
+    // The link row still exists so the operator can share it manually.
+    const db = createTestSupabaseClient();
+    const { data: links } = await db.from('homeowner_payment_links').select('status').eq('token', body.token);
+    expect(links).toHaveLength(1);
+  });
+
+  it('returns delivered: copy and sends nothing when SMTP is unconfigured', async () => {
+    vi.mocked(emailConfigured).mockReturnValue(false);
+    const { status, body } = await create();
+    expect(status).toBe(200);
+    expect(body.delivered).toBe('copy');
+    expect(vi.mocked(sendEmail)).not.toHaveBeenCalled();
+  });
+
+  it('returns delivered: copy and sends nothing when APP_URL is missing (no trusted base)', async () => {
+    delete process.env.APP_URL;
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    const { status, body } = await create();
+    expect(status).toBe(200);
+    expect(body.delivered).toBe('copy');
+    expect(vi.mocked(sendEmail)).not.toHaveBeenCalled();
+  });
+
+  it("honors an explicit deliver: 'copy' even when email is configured", async () => {
+    const { status, body } = await create({ deliver: 'copy' });
+    expect(status).toBe(200);
+    expect(body.delivered).toBe('copy');
+    expect(vi.mocked(sendEmail)).not.toHaveBeenCalled();
+  });
+
+  it('sends the urgent variant when appointment_id names a failed charge (amount + date included)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+      scheduledDate: '2026-06-24',
+    });
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    const { status, body } = await create({ appointment_id: appt.id });
+    expect(status).toBe(200);
+    expect(body.delivered).toBe('email');
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.subject).toContain('Action needed');
+    expect(sent.html).toContain('June 24');
+    expect(sent.html).toContain('$100.00');
+  });
+
+  it('falls back to the routine email when the appointment has not actually failed', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+    });
+    const { body } = await create({ appointment_id: appt.id });
+    expect(body.delivered).toBe('email');
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.subject).toContain('Update your payment method');
+    expect(sent.subject).not.toContain('Action needed');
+  });
+
+  it('sends the routine email for a failed SELF-PAY appointment (company card, not the homeowner)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      selfPay: true,
+    });
+    const db = createTestSupabaseClient();
+    await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', appt.id);
+
+    const { body } = await create({ appointment_id: appt.id });
+    expect(body.delivered).toBe('email');
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.subject).toContain('Update your payment method');
+    expect(sent.subject).not.toContain('Action needed');
+  });
+
+  it("ignores a same-org appointment belonging to a DIFFERENT homeowner (routine email)", async () => {
+    const other = await addHomeownerToOrg(org.organizationId);
+    try {
+      const foreign = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: other.userId,
+      });
+      const db = createTestSupabaseClient();
+      await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', foreign.id);
+
+      // Link is for org.homeowner, but the appointment is other's.
+      const { status, body } = await create({ appointment_id: foreign.id });
+      expect(status).toBe(200);
+      expect(body.delivered).toBe('email');
+      const sent = vi.mocked(sendEmail).mock.calls[0][0];
+      expect(sent.subject).toContain('Update your payment method');
+      expect(sent.subject).not.toContain('Action needed');
+    } finally {
+      await other.cleanup();
+    }
+  });
+
+  it("ignores a cross-tenant appointment_id (routine email, identical response, no leak)", async () => {
+    const org2 = await withTestOrg();
+    try {
+      const foreign = await createTestAppointment({
+        organizationId: org2.organizationId,
+        cleanerId: org2.cleaner.userId,
+        homeownerId: org2.homeowner.userId,
+      });
+      const db = createTestSupabaseClient();
+      await db.from('appointments').update({ authorization_status: 'failed' }).eq('id', foreign.id);
+
+      const { status, body } = await create({ appointment_id: foreign.id });
+      expect(status).toBe(200);
+      expect(body.delivered).toBe('email');
+      const sent = vi.mocked(sendEmail).mock.calls[0][0];
+      expect(sent.subject).toContain('Update your payment method');
+      expect(sent.subject).not.toContain('Action needed');
+    } finally {
+      await org2.cleanup();
+    }
   });
 });
 

@@ -7,6 +7,7 @@ import { useAuth } from './useAuth';
 import { useManagerPermissions } from './useManagerPermissions';
 import { supabase } from '../lib/supabase';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
+import { getRedesignConnectAppearance } from '../lib/stripe/appearance';
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
@@ -251,11 +252,9 @@ export function useTenantConnect(
       const instance = loadConnectAndInitialize({
         publishableKey: PUBLISHABLE_KEY,
         fetchClientSecret,
-        // Caller-supplied theme (redesign) wins; otherwise the legacy brand yellow
-        // (tailwind primary-500 = #F7C41E).
-        appearance: appearanceOverride ?? {
-          variables: { colorPrimary: '#F7C41E' },
-        },
+        // Caller-supplied theme (redesign, theme-aware) wins; otherwise the light
+        // brand appearance so legacy surfaces match the rebrand too.
+        appearance: appearanceOverride ?? getRedesignConnectAppearance(false),
       });
       setConnectInstance(instance);
     } catch (err) {

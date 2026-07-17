@@ -8,6 +8,7 @@ import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
 import { OperatorMobileNav } from "./OperatorMobileNav";
+import { RedesignImpersonationBanner } from "./RedesignImpersonationBanner";
 import { CommandPalette } from "@/components/redesign/command/CommandPalette";
 import { OperatorBookingHost } from "@/components/redesign/bookings/new-booking/OperatorBookingHost";
 import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
@@ -82,12 +83,19 @@ export function OperatorShell({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
         <OperatorRail activeId={activeId} nav={nav} />
         <div className="lg:pl-16">
+          <RedesignImpersonationBanner />
           <OperatorTopBar
             onNewBooking={onNewBooking}
             onOpenSearch={() => setSearchOpen(true)}
             onOpenBooking={canViewBookings ? openBookingDetail : undefined}
           />
-          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">{children}</main>
+          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
+            {/* Keyed by pathname so each tab/page switch replays the entrance
+                animation on the incoming content (the shell itself stays put). */}
+            <div key={pathname} className="animate-page-in motion-reduce:animate-none">
+              {children}
+            </div>
+          </main>
         </div>
         <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} />
         <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />

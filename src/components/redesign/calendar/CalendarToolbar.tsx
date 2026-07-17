@@ -15,7 +15,7 @@ const VIEW_OPTIONS: { value: ViewMode; label: string }[] = [
   { value: 'agenda', label: 'Agenda' },
 ];
 
-const STATUS_OPTIONS = [
+export const STATUS_OPTIONS = [
   { value: 'all', label: 'All statuses' },
   { value: 'pending', label: 'Pending' },
   { value: 'confirmed', label: 'Confirmed' },

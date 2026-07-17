@@ -53,7 +53,7 @@ export type PaymentsTriage = {
   reload: () => Promise<void>;
   retryPayout: (id: string) => Promise<void>;
   dismissPayout: (id: string) => Promise<void>;
-  sendCardLink: (apptId: string, homeownerId: string | null) => Promise<void>;
+  sendCardLink: (apptId: string, homeownerId: string | null, customerName?: string) => Promise<void>;
   fixCard: (apptId: string) => void;
   messageCleaner: (cleanerId: string | null) => Promise<void>;
 };
@@ -235,7 +235,7 @@ export function usePaymentsTriage(): PaymentsTriage {
   );
 
   const sendCardLink = useCallback(
-    async (apptId: string, homeownerId: string | null) => {
+    async (apptId: string, homeownerId: string | null, customerName?: string) => {
       if (!currentOrganizationId || !homeownerId) return;
       setBusyId(apptId);
       setError(null);
@@ -247,23 +247,33 @@ export function usePaymentsTriage(): PaymentsTriage {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ organization_id: currentOrganizationId, homeowner_id: homeownerId }),
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            homeowner_id: homeownerId,
+            // Server-verified; switches the email to the urgent failed-payment wording.
+            appointment_id: apptId,
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not create card link");
-        // The endpoint returns a shareable URL but does NOT itself deliver it, so
-        // copy it to the clipboard for the operator to send, rather than claiming
-        // it was sent.
-        const url = typeof data.url === "string" ? data.url : null;
-        if (url && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-          try {
-            await navigator.clipboard.writeText(url);
-            setNotice("Card link copied to your clipboard. Share it with the customer.");
-          } catch {
-            setNotice(`Card link ready: ${url}`);
-          }
+        if (data.delivered === "email") {
+          const name = customerName?.trim();
+          setNotice(name ? `Card link emailed to ${name}.` : "Card link emailed to the customer.");
         } else {
-          setNotice(url ? `Card link ready: ${url}` : "Card link created.");
+          // SMTP not configured (or the send failed server-side), so the link was
+          // NOT delivered: copy it for the operator to send, rather than claiming
+          // it was sent.
+          const url = typeof data.url === "string" ? data.url : null;
+          if (url && typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+            try {
+              await navigator.clipboard.writeText(url);
+              setNotice("Card link copied to your clipboard. Share it with the customer.");
+            } catch {
+              setNotice(`Card link ready: ${url}`);
+            }
+          } else {
+            setNotice(url ? `Card link ready: ${url}` : "Card link created.");
+          }
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not create card link");

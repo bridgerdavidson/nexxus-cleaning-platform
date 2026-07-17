@@ -64,6 +64,13 @@ export interface WithTestOrgOptions {
   stripeConnectAccountId?: string;
   /** organizations.default_payout_model (default 'percentage_contractor'). */
   defaultPayoutModel?: 'percentage_contractor' | 'hourly_external';
+  /**
+   * organizations.platform_fee_bps. Tests that assert split/charge amounts should PIN this
+   * explicitly (0 for pure-split mechanics, 100 for fee behavior) instead of inheriting the
+   * DB default, which changed from 0 to 100 in migration 111 and may differ between a local
+   * database and CI.
+   */
+  platformFeeBps?: number;
 }
 
 /**
@@ -83,6 +90,7 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
     .insert({
       name: orgName,
       ...(opts.defaultPayoutModel ? { default_payout_model: opts.defaultPayoutModel } : {}),
+      ...(opts.platformFeeBps !== undefined ? { platform_fee_bps: opts.platformFeeBps } : {}),
     })
     .select('id')
     .single();

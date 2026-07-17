@@ -9,6 +9,8 @@ export interface TotalBreakdown {
   baseCents: number;
   feeCents: number;
   chargeCents: number;
+  /** Platform's per-appointment fee, itemized on its own line when > 0. */
+  platformFeeCents?: number;
   /** Line label for the base amount (e.g. "Cleaner payout"). Defaults to "Service". */
   baseLabel?: string;
   /** Line label for the total (e.g. "Your company card"). Defaults to "Total". */
@@ -54,6 +56,7 @@ export default function BookingTotalSummary({
   let feeCents: number;
   let chargeCents: number;
   let showFee: boolean;
+  let platformFeeCents = 0;
   let baseLabel = "Service";
   let totalLabel = "Total";
 
@@ -61,7 +64,8 @@ export default function BookingTotalSummary({
     baseCents = breakdown.baseCents;
     feeCents = breakdown.feeCents;
     chargeCents = breakdown.chargeCents;
-    showFee = feeCents > 0;
+    platformFeeCents = breakdown.platformFeeCents ?? 0;
+    showFee = feeCents > 0 || platformFeeCents > 0;
     if (breakdown.baseLabel) baseLabel = breakdown.baseLabel;
     if (breakdown.totalLabel) totalLabel = breakdown.totalLabel;
   } else {
@@ -90,15 +94,23 @@ export default function BookingTotalSummary({
               <dt className="text-gray-600">{baseLabel}</dt>
               <dd className="tabular-nums">{formatUsd(baseCents)}</dd>
             </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-gray-600">
-                Processing fee
-                <span className="ml-1 text-xs text-gray-500">
-                  ({method === "us_bank_account" ? "bank" : "card"})
-                </span>
-              </dt>
-              <dd className="tabular-nums">{formatUsd(feeCents)}</dd>
-            </div>
+            {platformFeeCents > 0 && (
+              <div className="flex items-center justify-between">
+                <dt className="text-gray-600">Platform fee</dt>
+                <dd className="tabular-nums">{formatUsd(platformFeeCents)}</dd>
+              </div>
+            )}
+            {feeCents > 0 && (
+              <div className="flex items-center justify-between">
+                <dt className="text-gray-600">
+                  Processing fee
+                  <span className="ml-1 text-xs text-gray-500">
+                    ({method === "us_bank_account" ? "bank" : "card"})
+                  </span>
+                </dt>
+                <dd className="tabular-nums">{formatUsd(feeCents)}</dd>
+              </div>
+            )}
           </>
         )}
         <div
