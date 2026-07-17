@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { PayoutStatusBadge, SelfPayTag, TxnStatusBadge } from "./payments-presenters";
+import { DisputedTag, PayoutStatusBadge, SelfPayTag, TxnStatusBadge } from "./payments-presenters";
 import type { PaymentLedger, PayoutDetailVM, TransactionDetailVM } from "./payments-types";
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
@@ -67,8 +67,9 @@ export function PaymentDetailSheet({
         {kind === "transactions" && txn ? (
           <>
             <SheetHeader className="pr-12">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <TxnStatusBadge badge={txn.badge} />
+                {txn.disputed ? <DisputedTag /> : null}
                 {txn.selfPay ? <SelfPayTag /> : null}
               </div>
               <SheetTitle className="truncate">{txn.payer}</SheetTitle>

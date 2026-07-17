@@ -39,6 +39,9 @@ export type TransactionRowVM = {
   amountLabel: string; // "$120.00"
   method: string; // "Card" | "ACH" | "Manual"
   badge: TxnBadgeKey;
+  /** True when an OPEN chargeback hit this payment, so the row shows a
+   *  "Disputed" flag instead of reading as a clean "Paid". */
+  disputed?: boolean;
 };
 
 export type PayoutRowVM = {
@@ -78,3 +81,37 @@ export type TriageChargeVM = {
 };
 export type TriagePayoutVM = { id: string; cleaner: string; amountLabel: string };
 export type TriageHeldVM = { cleanerId: string | null; cleaner: string; amountLabel: string };
+
+// --- Disputes (chargebacks) ---
+
+export type DisputeBadgeKey =
+  | "needs_response" // open, action required (Stripe needs_response)
+  | "warning" // early fraud warning, respond to avoid escalation
+  | "under_review" // evidence submitted, waiting on the bank
+  | "won" // resolved in our favor (incl. 'prevented')
+  | "lost" // resolved against us
+  | "closed"; // warning_closed / other terminal
+
+/** How close the evidence deadline is, for the "Respond by" pill tone. */
+export type DisputeDeadlineUrgency = "overdue" | "soon" | "later" | "none";
+
+export type DisputeRowVM = {
+  id: string;
+  payer: string; // homeowner name OR org name
+  service: string; // service_type name or "Cleaning"
+  amountLabel: string; // disputed amount, "$120.00"
+  openedLabel: string; // when the dispute was created
+  reason: string; // humanized reason string
+  badge: DisputeBadgeKey;
+  isOpen: boolean; // still actionable (not won/lost/closed)
+  deadlineLabel: string | null; // "Jun 20, 2026" or null when Stripe set none
+  urgency: DisputeDeadlineUrgency;
+};
+
+export type DisputeDetailVM = DisputeRowVM & {
+  rawStatus: string; // raw Stripe status, for reference
+  method: string; // charged payment method label
+  paymentDateLabel: string | null; // the job's scheduled date
+  homeownerId: string | null; // for "Message customer" (null for self-pay / no homeowner)
+  stripeDisputeId: string;
+};

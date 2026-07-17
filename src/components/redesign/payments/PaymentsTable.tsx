@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PayoutStatusBadge, SelfPayTag, TxnStatusBadge } from "./payments-presenters";
+import { DisputedTag, PayoutStatusBadge, SelfPayTag, TxnStatusBadge } from "./payments-presenters";
 import type { PaymentLedger, PayoutRowVM, TransactionRowVM } from "./payments-types";
 
 export type PaymentsTableProps = {
@@ -53,7 +53,8 @@ export function PaymentsTable({ ledger, txnRows, payoutRows, onOpenRow }: Paymen
                   <TableCell className="text-sm text-foreground">{r.method}</TableCell>
                   <TableCell className="text-right font-semibold tnum text-foreground">{r.amountLabel}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {r.disputed ? <DisputedTag /> : null}
                       <TxnStatusBadge badge={r.badge} />
                     </div>
                   </TableCell>

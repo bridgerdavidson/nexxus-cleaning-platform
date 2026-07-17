@@ -994,6 +994,146 @@ export function usePaymentStats() {
   };
 }
 
+/**
+ * A chargeback/dispute row (Stripe `charge.dispute.*`), joined to the payment it
+ * hit and that payment's appointment context (payer + service) so the operator
+ * surface can show who/what/how-much without a second fetch. `amount` is CENTS
+ * (bigint from Stripe), unlike `AdminPayment.amount` which is dollars.
+ */
+export interface AdminDispute {
+  id: string;
+  /** Disputed amount in CENTS (Stripe `dispute.amount`). */
+  amount: number;
+  /** Stripe dispute status: needs_response | warning_needs_response | under_review |
+   *  warning_under_review | warning_closed | won | lost | prevented. Untyped string
+   *  because the webhook writes it through verbatim. */
+  status: string;
+  /** Stripe dispute reason (e.g. 'fraudulent', 'product_not_received'), or null. */
+  reason: string | null;
+  /** Evidence submission deadline; null until Stripe sets one. */
+  evidence_due_by: string | null;
+  created_at: string;
+  updated_at?: string;
+  payment_id: string | null;
+  stripe_dispute_id: string;
+  stripe_charge_id: string;
+  payment: {
+    id: string;
+    /** Payment amount in DOLLARS. */
+    amount: number;
+    payment_method?: string;
+    is_self_pay?: boolean;
+    appointment: {
+      scheduled_date: string;
+      homeowner_id: string | null;
+      homeowner: { first_name: string; last_name: string } | null;
+      service_type: { name: string } | null;
+    } | null;
+  } | null;
+}
+
+const DISPUTES_SELECT = `
+  id,
+  amount,
+  status,
+  reason,
+  evidence_due_by,
+  created_at,
+  updated_at,
+  payment_id,
+  stripe_dispute_id,
+  stripe_charge_id,
+  payment:payments(
+    id,
+    amount,
+    payment_method,
+    is_self_pay,
+    appointment:appointments(
+      scheduled_date,
+      homeowner_id,
+      homeowner:user_profiles!homeowner_id(
+        first_name,
+        last_name
+      ),
+      service_type:service_types(
+        name
+      )
+    )
+  )
+`;
+
+/**
+ * Chargebacks for the org. Low-volume, so a plain (non-infinite) org query.
+ * The webhook (dispatchStripeEvent) is the only writer; RLS lets owner/admin/manager
+ * read. Ordered soonest-deadline-first so the response window is front-and-center.
+ * Owns its own realtime channel (distinct from the two payments-list disputes subs,
+ * which only invalidate payments keys) so a new/updated dispute refreshes THIS list.
+ */
+export function useAdminDisputes() {
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+
+  const query = useOrgQuery({
+    queryKey: keys.disputes.byOrg(orgId),
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from('disputes')
+        .select(DISPUTES_SELECT)
+        .eq('organization_id', orgId)
+        .order('evidence_due_by', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(dispute => {
+        const payment = Array.isArray(dispute.payment) ? dispute.payment[0] : dispute.payment;
+        const appointment = payment
+          ? Array.isArray(payment.appointment)
+            ? payment.appointment[0]
+            : payment.appointment
+          : null;
+        return {
+          ...dispute,
+          payment: payment
+            ? {
+                ...payment,
+                appointment: appointment
+                  ? {
+                      ...appointment,
+                      homeowner: Array.isArray(appointment.homeowner)
+                        ? appointment.homeowner[0]
+                        : appointment.homeowner,
+                      service_type: Array.isArray(appointment.service_type)
+                        ? appointment.service_type[0]
+                        : appointment.service_type,
+                    }
+                  : null,
+              }
+            : null,
+        };
+      }) as AdminDispute[];
+    },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `disputes-list:${orgId}`,
+    table: 'disputes',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.disputes.byOrg(orgId)],
+    }),
+  });
+
+  return {
+    disputes: query.data ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
 export function useAdminMessages() {
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? '';

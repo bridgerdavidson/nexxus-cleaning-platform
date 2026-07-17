@@ -1,6 +1,22 @@
-import { CheckCircle2, Clock, Hourglass, Loader2, RotateCcw, Undo2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  CheckCircle2,
+  Clock,
+  Hourglass,
+  Loader2,
+  RotateCcw,
+  ShieldAlert,
+  Undo2,
+  XCircle,
+} from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import type { TxnBadgeKey, PayoutBadgeKey } from "./payments-types";
+import type {
+  TxnBadgeKey,
+  PayoutBadgeKey,
+  DisputeBadgeKey,
+  DisputeDeadlineUrgency,
+} from "./payments-types";
 
 // Shared presentational atoms so the desktop table and mobile cards render
 // status, self-pay, money, and dates identically. Mirrors bookings-presenters.
@@ -56,6 +72,66 @@ export function SelfPayTag() {
   return (
     <Badge variant="info" className="shrink-0 whitespace-nowrap">
       Self-pay
+    </Badge>
+  );
+}
+
+// --- Disputes (chargebacks) ---
+
+const BADGE_DISPUTE: Record<DisputeBadgeKey, BadgeConfig> = {
+  needs_response: { label: "Needs response", variant: "critical", Icon: AlertTriangle },
+  warning: { label: "Early warning", variant: "caution", Icon: ShieldAlert },
+  under_review: { label: "Under review", variant: "info", Icon: Clock },
+  won: { label: "Won", variant: "positive", Icon: CheckCircle2 },
+  lost: { label: "Lost", variant: "secondary", Icon: XCircle },
+  closed: { label: "Closed", variant: "secondary", Icon: Ban },
+};
+
+export function DisputeStatusBadge({ badge }: { badge: DisputeBadgeKey }) {
+  const c = BADGE_DISPUTE[badge];
+  return (
+    <Badge variant={c.variant} className="shrink-0 whitespace-nowrap">
+      <c.Icon className={c.spin ? "motion-safe:animate-spin" : undefined} />
+      {c.label}
+    </Badge>
+  );
+}
+
+/**
+ * The evidence-response deadline as a functional pill (not a decorative bar):
+ * red when overdue or due within 72h, amber when further out, hidden otherwise.
+ * Always carries icon + text so meaning never rides on color alone.
+ */
+export function DisputeDeadlinePill({
+  urgency,
+  dueLabel,
+}: {
+  urgency: DisputeDeadlineUrgency;
+  dueLabel: string | null;
+}) {
+  if (urgency === "none") return null;
+  if (urgency === "overdue") {
+    return (
+      <Badge variant="critical" className="shrink-0 whitespace-nowrap">
+        <AlertTriangle />
+        Response overdue
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant={urgency === "soon" ? "critical" : "caution"} className="shrink-0 whitespace-nowrap">
+      <Clock />
+      Respond by {dueLabel}
+    </Badge>
+  );
+}
+
+/** Ledger-row flag: an OPEN chargeback hit this payment, so it isn't just "Paid". */
+export function DisputedTag() {
+  return (
+    <Badge variant="critical" className="shrink-0 whitespace-nowrap">
+      <AlertTriangle />
+      Disputed
     </Badge>
   );
 }

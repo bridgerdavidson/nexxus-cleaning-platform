@@ -14,13 +14,16 @@ import {
   useAdminPaymentsInfinite,
   useAdminPayoutsInfinite,
   usePaymentStats,
+  useAdminDisputes,
   type AdminPayment,
   type AdminPayout,
 } from "@/hooks/useAdminData";
 import { deriveTransactions, derivePayouts } from "./derivePayments";
 import { deriveTransactionBadge, derivePayoutBadge } from "./derivePaymentsBadges";
+import { openDisputedPaymentIds } from "./deriveDisputes";
 import { longDate, methodLabel, money2 } from "./payments-presenters";
 import { OperatorPaymentsView } from "./OperatorPaymentsView";
+import { DisputesBand } from "./DisputesBand";
 import { PaymentsTriageBand } from "./PaymentsTriageBand";
 import { PaymentsKpiStrip } from "./PaymentsKpiStrip";
 import { PaymentsYourMoney } from "./PaymentsYourMoney";
@@ -52,7 +55,7 @@ function payerOf(p: AdminPayment, orgName: string): { payer: string; selfPay: bo
   return { payer: "Customer", selfPay: false };
 }
 
-function toTxnRow(p: AdminPayment, orgName: string): TransactionRowVM {
+function toTxnRow(p: AdminPayment, orgName: string, disputedIds: Set<string>): TransactionRowVM {
   const { payer, selfPay } = payerOf(p, orgName);
   return {
     id: p.id,
@@ -63,6 +66,7 @@ function toTxnRow(p: AdminPayment, orgName: string): TransactionRowVM {
     amountLabel: money2(p.amount),
     method: methodLabel(p.payment_method),
     badge: deriveTransactionBadge(p.status),
+    disputed: disputedIds.has(p.id),
   };
 }
 
@@ -151,6 +155,10 @@ function OperatorPaymentsData({
     error: payoutsError,
   } = useAdminPayoutsInfinite();
   const { stats, loading: statsLoading, error: statsError, refetch: refetchStats } = usePaymentStats();
+  // Open chargebacks tag their payment's ledger row so a disputed charge no
+  // longer reads as a clean "Paid" (the DisputesBand owns the full surface).
+  const { disputes } = useAdminDisputes();
+  const openDisputedIds = useMemo(() => openDisputedPaymentIds(disputes), [disputes]);
 
   const hasError = Boolean(paymentsError || payoutsError || statsError);
   const onRetry = () => { void refetchPayments(); void refetchPayouts(); void refetchStats(); };
@@ -191,8 +199,8 @@ function OperatorPaymentsData({
       statusFilter: statusFilter as TxnStatusFilter,
       sort,
       orgName,
-    }).map((p) => toTxnRow(p, orgName));
-  }, [ledger, payments, search, statusFilter, sort, orgName]);
+    }).map((p) => toTxnRow(p, orgName, openDisputedIds));
+  }, [ledger, payments, search, statusFilter, sort, orgName, openDisputedIds]);
 
   const payoutRows = useMemo<PayoutRowVM[]>(() => {
     if (ledger !== "payouts") return [];
@@ -217,13 +225,14 @@ function OperatorPaymentsData({
       amountLabel: money2(p.amount),
       method: methodLabel(p.payment_method),
       badge: deriveTransactionBadge(p.status),
+      disputed: openDisputedIds.has(p.id),
       reference: p.reference ?? null,
       notes: p.notes ?? null,
       createdLabel: longDate(p.created_at),
       paidLabel: p.paid_at ? longDate(p.paid_at) : null,
       refundable: canRefund && p.status === "paid" && p.payment_method === "card",
     };
-  }, [ledger, selectedRowId, payments, orgName, canRefund]);
+  }, [ledger, selectedRowId, payments, orgName, canRefund, openDisputedIds]);
 
   const payoutDetail = useMemo<PayoutDetailVM | null>(() => {
     if (ledger !== "payouts" || !selectedRowId) return null;
@@ -369,6 +378,7 @@ function OperatorPaymentsData({
         onOpenRow={setSelectedRowId}
         canManagePayments={canManagePayments}
         onRecordPayment={() => setRecordOpen(true)}
+        disputesBand={<DisputesBand />}
         triage={<PaymentsTriageBand canManagePayments={canManagePayments} />}
         kpis={
           <PaymentsKpiStrip
