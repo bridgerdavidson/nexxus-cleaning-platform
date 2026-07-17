@@ -10,7 +10,7 @@ import { toast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import {
-  derivePaymentSectionState,
+  homeownerPaymentSectionState,
   mapChargeResponse,
   type PaymentSectionState,
 } from '@/lib/payments/paymentSectionState';
@@ -101,16 +101,10 @@ export function HomeownerPaymentRecovery({ appointment }: { appointment: Appoint
   const priceLabel = formatUsd(appointment.total_price);
   const jobCompleted = appointment.status === 'completed';
 
-  const state = derivePaymentSectionState({
-    authorizationStatus: appointment.authorization_status ?? null,
-    paymentStatus: appointment.payment_status ?? null,
-    // The homeowner appointment shape (useHomeownerData) doesn't carry is_self_pay today; self-pay
-    // cleanings are company-funded and never surface a homeowner Pay now, so false is safe here.
-    // Pass the real flag through if that column is ever added to the query/type.
-    isSelfPay: false,
-    jobCompleted,
-    hasCard: !!appointment.payment_method_id,
-  });
+  // useHomeownerData now selects and types is_self_pay, so pass it through: a
+  // comped/company-funded cleaning short-circuits to the self_pay state instead
+  // of showing a false "Payment failed" + a Pay now that 403s.
+  const state = homeownerPaymentSectionState(appointment);
 
   // Once the refetched appointment confirms recovery (state moved off failed/requires_action),
   // drop the stale inline error/guidance banner.
