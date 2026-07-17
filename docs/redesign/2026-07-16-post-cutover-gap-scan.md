@@ -67,8 +67,13 @@ section gating). The gaps are the short list below.
 - **Invoices capability was lost at cutover.** Legacy `PaymentsPage` had an invoices tab
   (`src/components/PaymentsPage.tsx:21`); the redesign payments screen has none (zero invoice UI
   under `src/components/redesign/**`), and the 2026-07-09 functionality audit left it as
-  "decide deliberately" with no decision recorded. Either port a read-only invoices view into
-  `/app/admin-dashboard/payments` or record the deliberate retirement.
+  "decide deliberately" with no decision recorded.
+  **DECISION (Bridger, 2026-07-17): retire for MVP.** The `invoices` table (migration 000) and
+  `/api/invoices/create` (route + integration test) still exist, but nothing live creates
+  invoices (zero callers in the app) and the redesign shipped without the view with no one
+  missing it, so the feature is dormant. No invoices UI will be built for MVP; the data model +
+  route stay in place, so a proper invoices feature can be built later if the business needs it.
+  Reversible.
 - **`HomeownerPaymentRecovery` hardcodes `isSelfPay: false`, and its justifying comment is now stale.**
   `src/components/redesign/homeowner/cleanings/HomeownerPaymentRecovery.tsx:110`;
   `useHomeownerData.ts` now selects and types `is_self_pay` (lines 40, 164). Comped homeowners see
