@@ -5,6 +5,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { CreditCard, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { stripeNewChargeFlowUiEnabled } from "../lib/stripe/flags";
+import { getRedesignConnectAppearance } from "../lib/stripe/appearance";
 
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
@@ -120,7 +121,7 @@ export default function HomeownerCardField({
       options={{
         clientSecret: siSecret,
         ...(csSecret ? { customerSessionClientSecret: csSecret } : {}),
-        appearance: { variables: { colorPrimary: "#F7C41E" } },
+        appearance: getRedesignConnectAppearance(false),
       }}
     >
       <CardInner onSaved={onSaved} />
