@@ -8,12 +8,24 @@ const byTime = (a: CleanerAppointment, b: CleanerAppointment) =>
 const byTimeDesc = (a: CleanerAppointment, b: CleanerAppointment) =>
   -`${a.scheduled_date ?? ""} ${a.scheduled_time ?? ""}`.localeCompare(`${b.scheduled_date ?? ""} ${b.scheduled_time ?? ""}`);
 
+/** Minutes since midnight for a "HH:MM[:SS]" time, or NaN when unparseable. */
+function startMinutes(time: string | null | undefined): number {
+  const [h, m] = (time ?? "").split(":");
+  return Number(h) * 60 + Number(m ?? 0);
+}
+
+/** While a job is in progress, the next job is surfaced below the active card
+ *  (for one-tap directions) only when it starts within this many minutes of now,
+ *  so a far-off job does not clutter the active view. */
+export const NEXT_UP_WHILE_ACTIVE_MINUTES = 180;
+
 export function deriveToday(
   appointments: CleanerAppointment[],
   todayStr: string,
   tomorrowStr: string,
   graceFloorStr: string,
-  payoutModel: CleanerPayoutModel
+  payoutModel: CleanerPayoutModel,
+  nowMinutes?: number
 ): TodayData {
   // Active = today's (or future) in-progress work only; a stale in_progress is
   // unfinished, not "active".
@@ -37,11 +49,20 @@ export function deriveToday(
     .filter((a) => a.scheduled_date === todayStr && a.status === "confirmed")
     .sort(byTime);
 
-  // Lift the most-imminent not-yet-started job into a "Next up" card, but only
-  // when nothing is already in progress (the active-job card leads otherwise).
-  // The remaining today jobs stay in the list so nothing is double-listed.
-  const nextUp = activeJob ? null : todayConfirmed[0] ?? null;
-  const todayJobs = nextUp ? todayConfirmed.slice(1) : todayConfirmed;
+  // "Next up" is the imminent job. With nothing in progress it is pinned at the top
+  // (the earliest confirmed job today). While a job IS in progress, the active card
+  // leads and Next up sits just below it, but only for a job coming up soon (starting
+  // within NEXT_UP_WHILE_ACTIVE_MINUTES of now) so directions are useful, not noise.
+  // The surfaced job is pulled out of the list so nothing is double-listed.
+  const nextUp = activeJob
+    ? nowMinutes == null
+      ? null
+      : todayConfirmed.find((a) => {
+          const delta = startMinutes(a.scheduled_time) - nowMinutes;
+          return delta >= 0 && delta <= NEXT_UP_WHILE_ACTIVE_MINUTES;
+        }) ?? null
+    : todayConfirmed[0] ?? null;
+  const todayJobs = todayConfirmed.filter((a) => a.id !== nextUp?.id);
 
   const tomorrow = appointments
     .filter((a) => a.scheduled_date === tomorrowStr && (a.status === "confirmed" || a.status === "in_progress"))

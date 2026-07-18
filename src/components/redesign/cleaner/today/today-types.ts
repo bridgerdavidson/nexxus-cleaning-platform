@@ -5,10 +5,11 @@ export type CleanerPayoutModel = "percentage_contractor" | "hourly_external";
 export interface TodayData {
   /** First in-progress job scheduled today or later, pinned at the top. */
   activeJob: CleanerAppointment | null;
-  /** The single most-imminent not-yet-started confirmed job for today, lifted
-   *  out of todayJobs into a prominent "Next up" card with one-tap Start +
-   *  Directions. Null when a job is already active (the active card leads) or
-   *  nothing is confirmed for today. */
+  /** The imminent job, lifted out of todayJobs into a prominent "Next up" card
+   *  with one-tap Start + Directions. Pinned at the top when nothing is in
+   *  progress; while a job IS active it sits just below the active card, but only
+   *  for a job starting soon (see NEXT_UP_WHILE_ACTIVE_MINUTES). Null when nothing
+   *  qualifies. */
   nextUp: CleanerAppointment | null;
   /** Recent unfinished jobs (past-day, never completed) needing the cleaner's
    *  attention. Surfaced near the top so they are not lost. */

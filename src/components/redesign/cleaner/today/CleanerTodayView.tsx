@@ -106,6 +106,20 @@ export function CleanerTodayView({
         </section>
       )}
 
+      {/* Pinned directly under the active card (or at the very top when nothing is
+          active): the imminent job with one-tap Start + Directions. */}
+      {data.nextUp && (
+        <section>
+          <h2 className="sr-only">Next up</h2>
+          <CleanerNextUpCard
+            appointment={data.nextUp}
+            onStart={onStartNext}
+            starting={startingNext}
+            onOpenJob={onOpenJob}
+          />
+        </section>
+      )}
+
       {checklist}
 
       {data.needsAttention.length > 0 && (
@@ -179,18 +193,6 @@ export function CleanerTodayView({
               );
             })}
           </div>
-        </section>
-      )}
-
-      {data.nextUp && (
-        <section>
-          <h2 className="sr-only">Next up</h2>
-          <CleanerNextUpCard
-            appointment={data.nextUp}
-            onStart={onStartNext}
-            starting={startingNext}
-            onOpenJob={onOpenJob}
-          />
         </section>
       )}
 

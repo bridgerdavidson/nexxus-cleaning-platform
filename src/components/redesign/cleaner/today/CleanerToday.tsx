@@ -31,8 +31,9 @@ export function CleanerToday() {
   const payoutModel = currentOrganization?.default_payout_model ?? "percentage_contractor";
   const now = new Date();
   const todayStr = ymd(now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const graceFloorStr = ymd(new Date(now.getTime() - NEEDS_ATTENTION_DAYS * 864e5));
-  const data = deriveToday(appointments, todayStr, ymd(new Date(now.getTime() + 864e5)), graceFloorStr, payoutModel);
+  const data = deriveToday(appointments, todayStr, ymd(new Date(now.getTime() + 864e5)), graceFloorStr, payoutModel, nowMinutes);
 
   const checklistSlot = onboarding.showChecklist ? (
     <SetupChecklistCard

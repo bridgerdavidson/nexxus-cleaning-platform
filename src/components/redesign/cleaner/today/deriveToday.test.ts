@@ -125,7 +125,7 @@ describe("deriveToday", () => {
       expect(r.todayJobs.map((j) => j.id)).toEqual(["mid", "late"]);
     });
 
-    it("keeps nextUp null and lists every today job while a job is already active", () => {
+    it("with no clock reference, does not surface next up while a job is active", () => {
       const r = deriveToday(
         [
           appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
@@ -137,6 +137,47 @@ describe("deriveToday", () => {
       expect(r.activeJob?.id).toBe("active");
       expect(r.nextUp).toBeNull();
       expect(r.todayJobs.map((j) => j.id)).toEqual(["t1", "t2"]);
+    });
+
+    it("while active, surfaces the soon-starting job below and pulls it from the list", () => {
+      const r = deriveToday(
+        [
+          appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
+          appt({ id: "soon", scheduled_time: "10:00:00" }), // 120 min out, within 180
+          appt({ id: "late", scheduled_time: "17:00:00" }), // 540 min out, beyond
+        ],
+        TODAY, TOMORROW, GRACE, "percentage_contractor",
+        8 * 60 // now = 08:00
+      );
+      expect(r.activeJob?.id).toBe("active");
+      expect(r.nextUp?.id).toBe("soon");
+      expect(r.todayJobs.map((j) => j.id)).toEqual(["late"]);
+    });
+
+    it("while active, does not surface a job beyond the window", () => {
+      const r = deriveToday(
+        [
+          appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
+          appt({ id: "far", scheduled_time: "17:00:00" }),
+        ],
+        TODAY, TOMORROW, GRACE, "percentage_contractor",
+        8 * 60 // now = 08:00, far is 540 min out
+      );
+      expect(r.nextUp).toBeNull();
+      expect(r.todayJobs.map((j) => j.id)).toEqual(["far"]);
+    });
+
+    it("while active, ignores a job whose start has already passed", () => {
+      const r = deriveToday(
+        [
+          appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
+          appt({ id: "past", scheduled_time: "07:00:00" }),
+        ],
+        TODAY, TOMORROW, GRACE, "percentage_contractor",
+        9 * 60 // now = 09:00, past is -120 min
+      );
+      expect(r.nextUp).toBeNull();
+      expect(r.todayJobs.map((j) => j.id)).toEqual(["past"]);
     });
 
     it("is null when nothing is confirmed for today", () => {
