@@ -1,9 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { useCleanerAppointments, useRespondToOffer, useRespondToSeries, useStartJob } from "@/hooks/useCleanerData";
+import { useCleanerAppointments, useRespondToOffer, useRespondToSeries, useStartJob, type CleanerAppointment } from "@/hooks/useCleanerData";
 import { useOpenJob } from "@/components/redesign/cleaner/job/useOpenJob";
+import { keys } from "@/lib/queryKeys";
 import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
 import { deriveToday } from "./deriveToday";
 import { CleanerTodayView } from "./CleanerTodayView";
@@ -21,7 +23,9 @@ function ymd(d: Date): string {
 export function CleanerToday() {
   const router = useRouter();
   const openJob = useOpenJob();
-  const { currentOrganization } = useAuth();
+  const qc = useQueryClient();
+  const { user, currentOrganization } = useAuth();
+  const userId = user?.id;
   const { appointments, loading, error, refetch } = useCleanerAppointments();
   const respond = useRespondToOffer();
   const series = useRespondToSeries();
@@ -54,7 +58,23 @@ export function CleanerToday() {
         error={Boolean(error)}
         onRetry={() => refetch()}
         onContinueActive={() => data.activeJob && openJob(data.activeJob.id)}
-        onStartNext={(id) => startJob.mutate(id)}
+        onStartNext={(id) =>
+          startJob.mutate(id, {
+            onSuccess: () => {
+              // Drop the cleaner straight into the working view. The job is now
+              // in_progress on the server; patch the cache to match so the active
+              // job overlay opens on the checklist + photos instead of flashing
+              // the pre-start "Start job" screen while the refetch lands.
+              if (userId) {
+                qc.setQueryData<CleanerAppointment[] | undefined>(
+                  keys.appointments.byCleaner(userId),
+                  (old) => old?.map((a) => (a.id === id ? { ...a, status: "in_progress" } : a)),
+                );
+              }
+              openJob(id);
+            },
+          })
+        }
         startingNext={startJob.isPending}
         onOpenJob={openJob}
         todayStr={todayStr}
