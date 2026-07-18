@@ -14,9 +14,10 @@
  *                                      (tenant remainder + cleaner) for a homeowner refund.
  *
  * Both are idempotent (Stripe's `amount_reversed` caps every reversal + a per-target idempotency
- * key + a payout `status='reversed'` guard) and best-effort: a failed reversal records a
- * `cleaner_clawback_failed` ledger event (which the reconcile sweep retries) and NEVER throws, so
- * a webhook handler always returns 200 and the refund route never strands the homeowner.
+ * key + a payout `status='reversed'` guard) and best-effort: a failed reversal records a ledger
+ * event the reconcile sweep retries (`cleaner_clawback_failed` → retryStrandedClawbacks;
+ * `refund_clawback_failed`/`transfer_reversal_failed` → retryStrandedRefundUnwinds) and NEVER
+ * throws, so a webhook handler always returns 200 and the refund route never strands the homeowner.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -324,10 +325,11 @@ export async function reverseJobTransfersForRefund(
         appointmentId: p.appointmentId,
         organizationId: p.organizationId ?? null,
         stripeEventId: p.stripeEventId ?? null,
-        // A failed REFUND reversal self-heals via the charge.refunded webhook re-running this with
-        // cumulative amount_reversed math, so record a DISTINCT type the full-clawback sweep
-        // ignores: retryStrandedClawbacks reverses the FULL payout, which would over-claw-back what
-        // was only a partial refund. (clawbackCleanerPayout still uses cleaner_clawback_failed.)
+        // Record a DISTINCT type the full-clawback sweep ignores: retryStrandedClawbacks reverses
+        // the FULL payout, which would over-claw-back what was only a partial refund.
+        // (clawbackCleanerPayout still uses cleaner_clawback_failed.) These types are retried by
+        // retryStrandedRefundUnwinds, which re-runs THIS function with the cumulative target
+        // re-derived from the Stripe charge, and alerted via paymentEventAlerts (audit T1-1).
         eventType: isCleanerTransfer ? 'refund_clawback_failed' : 'transfer_reversal_failed',
         actor: p.actor,
         amount: reversalCents,

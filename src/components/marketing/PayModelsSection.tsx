@@ -6,6 +6,7 @@ import { Percent, Clock, HandCoins, CheckCircle2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { Reveal } from './Reveal'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -71,7 +72,7 @@ export function PayModelsSection() {
 
   return (
     <section className="border-y border-border bg-card">
-      <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+      <Reveal className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
           <Badge variant="secondary">However you pay your crew</Badge>
           <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
@@ -160,7 +161,7 @@ export function PayModelsSection() {
             </div>
           </Card>
         </div>
-      </div>
+      </Reveal>
     </section>
   )
 }

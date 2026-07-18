@@ -7,6 +7,7 @@
  * happened." Ledger writes are best-effort: a failure here must never break the money flow.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { maybeAlertForPaymentEvent } from './paymentEventAlerts';
 
 export interface PaymentEventInput {
   paymentId?: string | null;
@@ -42,4 +43,8 @@ export async function recordPaymentEvent(
   if (error) {
     console.error('recordPaymentEvent: failed to write payment_events row:', error.message);
   }
+
+  // T1-8: route owner-actionable failures to the platform-alert outbox. Best-effort and
+  // fires even if the ledger insert above failed — the condition was still detected.
+  await maybeAlertForPaymentEvent(supabase, ev);
 }

@@ -3,9 +3,17 @@
 import { ChevronLeft, Receipt as ReceiptIcon } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { TxnStatusBadge, money2, longDate } from '@/components/redesign/payments/payments-presenters';
-import { paymentBadgeKey, paymentServiceLabel, type PaymentLike } from './derive-payments';
+import {
+  isCancellationFee,
+  paymentBadgeKey,
+  paymentFeeBreakdown,
+  paymentServiceLabel,
+  type PaymentLike,
+} from './derive-payments';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -16,13 +24,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function MoneyRow({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={strong ? 'text-sm font-semibold text-foreground' : 'text-sm text-muted-foreground'}>
+        {label}
+      </span>
+      <span
+        className={
+          strong
+            ? 'text-sm font-semibold tabular-nums text-foreground'
+            : 'text-sm tabular-nums text-foreground'
+        }
+      >
+        {money2(value)}
+      </span>
+    </div>
+  );
+}
+
 export function PaymentReceipt({
   payment,
   onClose,
+  loading = false,
+  error = false,
+  onRetry,
 }: {
   payment: PaymentLike | null;
   onClose: () => void;
+  loading?: boolean;
+  error?: boolean;
+  onRetry?: () => void;
 }) {
+  const fees = payment ? paymentFeeBreakdown(payment) : null;
+
   return (
     <MobileTakeover ariaLabel="Receipt" keyboardAware={false} onClosed={onClose}>
       {(close) => (
@@ -43,7 +78,22 @@ export function PaymentReceipt({
 
           <div className="flex-1 overflow-y-auto overscroll-contain">
             <div className="mx-auto w-full max-w-lg space-y-5 px-5 pt-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
-              {!payment ? (
+              {error ? (
+                <div className="pt-10">
+                  <ErrorState title="Couldn't load receipt" onRetry={onRetry} />
+                </div>
+              ) : !payment && loading ? (
+                // The receipt can be opened straight from a deep link before the payments query
+                // resolves. Show a skeleton, never the "no longer on your account" empty state,
+                // until we actually know the payment isn't there.
+                <div className="space-y-5" aria-busy="true" aria-label="Loading receipt">
+                  <div className="flex flex-col items-center gap-2 pt-2">
+                    <Skeleton className="h-9 w-32" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
+                  <Skeleton className="h-40 w-full rounded-card" />
+                </div>
+              ) : !payment ? (
                 <div className="pt-10">
                   <EmptyState
                     icon={<ReceiptIcon />}
@@ -58,11 +108,31 @@ export function PaymentReceipt({
                       {money2(payment.amount)}
                     </span>
                     <TxnStatusBadge badge={paymentBadgeKey(payment.status)} />
+                    {isCancellationFee(payment) && (
+                      <span className="text-sm font-medium text-muted-foreground">Cancellation fee</span>
+                    )}
                   </div>
 
                   <div className="rounded-card border border-border bg-card p-4 shadow-soft-sm">
                     <div className="space-y-4">
-                      <Field label="Service">{paymentServiceLabel(payment)}</Field>
+                      <Field label={isCancellationFee(payment) ? 'Charge for' : 'Service'}>
+                        {paymentServiceLabel(payment)}
+                      </Field>
+
+                      {fees && (
+                        <>
+                          <Separator />
+                          <div className="space-y-2">
+                            <MoneyRow
+                              label={isCancellationFee(payment) ? 'Fee' : 'Subtotal'}
+                              value={fees.subtotal}
+                            />
+                            <MoneyRow label="Processing fee" value={fees.fee} />
+                            <MoneyRow label="Total charged" value={fees.total} strong />
+                          </div>
+                        </>
+                      )}
+
                       <Separator />
                       <Field label="Date">{longDate(payment.paid_at || payment.created_at)}</Field>
                       {payment.appointment?.scheduled_date && (

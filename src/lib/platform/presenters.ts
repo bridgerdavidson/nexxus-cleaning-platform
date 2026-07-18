@@ -3,10 +3,13 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  AlertCircle,
+  Info,
   XCircle,
   MinusCircle,
 } from 'lucide-react';
 import type { BadgeProps } from '@/components/ui/badge';
+import type { PlatformAlertSeverity } from '@/types/platform';
 
 export type PillVariant = NonNullable<BadgeProps['variant']>;
 type IconType = ComponentType<{ className?: string }>;
@@ -45,6 +48,18 @@ export interface PaymentsConnectState {
   stripe_connect_account_id: string | null;
   stripe_connect_charges_enabled: boolean;
   stripe_connect_payouts_enabled: boolean;
+}
+
+/** Platform-alert severity to pill meta. Unknown severities render as neutral Info. */
+export function alertSeverityMeta(severity: PlatformAlertSeverity | string): PillMeta {
+  switch (severity) {
+    case 'critical':
+      return { variant: 'critical', label: 'Critical', Icon: AlertTriangle };
+    case 'warning':
+      return { variant: 'caution', label: 'Warning', Icon: AlertCircle };
+    default:
+      return { variant: 'info', label: 'Info', Icon: Info };
+  }
 }
 
 /** Stripe Connect readiness to pill meta (mirrors the legacy PaymentsBadge derivation). */

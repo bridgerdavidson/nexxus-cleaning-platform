@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { cn } from '@/lib/utils'
+import { Reveal } from './Reveal'
 
 interface Tier {
   name: string
@@ -75,7 +76,7 @@ export function PricingSection() {
   const [cleaners, setCleaners] = React.useState(5)
   return (
     <section id="pricing" className="scroll-mt-16 border-y border-border bg-card">
-      <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+      <Reveal className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
           <Badge variant="secondary">Simple pricing</Badge>
           <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
@@ -157,7 +158,7 @@ export function PricingSection() {
           Early access pricing. Lock it in by joining the waitlist. Two months free when billed
           annually, and every plan starts with a 14 day free trial.
         </p>
-      </div>
+      </Reveal>
     </section>
   )
 }

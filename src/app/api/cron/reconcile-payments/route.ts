@@ -9,8 +9,11 @@ import {
   settleUnsettledCaptures,
   retryFailedPayouts,
   retryStrandedClawbacks,
+  retryStrandedRefundUnwinds,
   checkMoneyMathInvariants,
 } from '@/lib/payments/reconcile';
+import { raiseReconcileSweepAlerts } from '@/lib/payments/reconcileAlerts';
+import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 // Needs the service-role admin client; nothing edge-specific here.
 export const runtime = 'nodejs';
@@ -27,6 +30,8 @@ export const runtime = 'nodejs';
  *   2b) unsettled-capture heal   — re-run settlement for captured charges whose funds never moved
  *   3) failed-payout retry       — re-run cleaner settlement for payouts left 'failed'
  *   3b) stranded-clawback retry  — re-attempt cleaner clawbacks that failed (cleaner_clawback_failed)
+ *   3c) stranded refund-unwind   — re-run the refund transfer unwind for appointments stranded by a
+ *                                  failed reversal (transfer_reversal_failed / refund_clawback_failed)
  *   4) money-math invariant      — flag any paid cleaner payout that doesn't match the locked split
  *
  * Jobs run sequentially (so a dead-letter replay and a stuck-payment replay can't race on the
@@ -59,7 +64,13 @@ export async function POST(request: NextRequest) {
     const unsettledCaptures = await settleUnsettledCaptures(supabaseAdmin);
     const failedPayouts = await retryFailedPayouts(supabaseAdmin);
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
+    const strandedRefundUnwinds = await retryStrandedRefundUnwinds(supabaseAdmin);
     const moneyMath = await checkMoneyMathInvariants(supabaseAdmin);
+
+    // T1-8: pg_cron discards this response, so the sweep alerts on its own results
+    // (a dead-letter queue that won't drain). Money-math violations + failed
+    // transfers/clawbacks already alert per-incident via recordPaymentEvent.
+    await raiseReconcileSweepAlerts(supabaseAdmin, { deadLetter });
 
     return NextResponse.json({
       success: true,
@@ -70,10 +81,19 @@ export async function POST(request: NextRequest) {
       unsettledCaptures,
       failedPayouts,
       strandedClawbacks,
+      strandedRefundUnwinds,
       moneyMath,
     });
   } catch (error) {
     console.error('reconcile-payments sweep failed:', error);
+    // The reliability backstop itself broke — no payment_event captures this, so alert
+    // directly. Best-effort: recordPlatformAlert never throws.
+    await recordPlatformAlert(supabaseAdmin, {
+      alert_type: 'reconcile_sweep_failed',
+      severity: 'critical',
+      summary: 'The payments reconciliation sweep threw and did not complete',
+      details: { error: error instanceof Error ? error.message : 'Unknown error' },
+    });
     return NextResponse.json(
       { error: 'Reconciliation sweep failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 },

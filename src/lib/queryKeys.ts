@@ -133,6 +133,8 @@ export const keys = {
     stats: ['platform', 'stats'] as const,
     audit: (params: { orgId?: string | null; action?: string | null; limit?: number } = {}) =>
       ['platform', 'audit', params.orgId ?? 'all', params.action ?? 'all', params.limit ?? 50] as const,
+    alerts: (params: { status?: string | null; limit?: number } = {}) =>
+      ['platform', 'alerts', params.status ?? 'open', params.limit ?? 50] as const,
   },
   onboarding: {
     all: ['onboarding'] as const,
