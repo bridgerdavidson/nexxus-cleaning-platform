@@ -66,6 +66,9 @@ export type PayoutRowVM = {
 };
 
 export type TransactionDetailVM = TransactionRowVM & {
+  /** The booking this charge belongs to, for the "View booking" jump. Null when
+   *  the payment has no linked appointment. */
+  appointmentId: string | null;
   reference: string | null;
   notes: string | null;
   createdLabel: string;

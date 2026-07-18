@@ -129,6 +129,7 @@ export function OperatorPayments() {
     <OperatorPaymentsData
       canManagePayments={privileged || !!permissions?.can_manage_payments}
       canRefund={privileged}
+      canViewBookings={privileged || !!permissions?.can_view_bookings}
     />
   );
 }
@@ -136,9 +137,11 @@ export function OperatorPayments() {
 function OperatorPaymentsData({
   canManagePayments,
   canRefund,
+  canViewBookings,
 }: {
   canManagePayments: boolean;
   canRefund: boolean;
+  canViewBookings: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -231,6 +234,7 @@ function OperatorPaymentsData({
     const rm = refundMath(p.amount, p.refunds);
     return {
       id: p.id,
+      appointmentId: p.appointment?.id ?? null,
       dateLabel: longDate(p.appointment?.scheduled_date || p.created_at),
       payer,
       selfPay,
@@ -380,6 +384,19 @@ function OperatorPaymentsData({
     [router],
   );
 
+  // Close the payment sheet (local state) and open the booking sheet via
+  // ?booking in one navigation; the global booking-detail host is mounted only
+  // when canViewBookings, so onViewBooking is passed only in that case.
+  const handleViewBooking = useCallback(
+    (appointmentId: string) => {
+      setSelectedRowId(null);
+      const sp = new URLSearchParams(window.location.search);
+      sp.set("booking", appointmentId);
+      router.replace(`?${sp.toString()}`, { scroll: false });
+    },
+    [router],
+  );
+
   return (
     <>
       <OperatorPaymentsView
@@ -434,6 +451,7 @@ function OperatorPaymentsData({
         onRetry={handleRetry}
         onDismiss={handleDismiss}
         onMessage={handleMessage}
+        onViewBooking={canViewBookings ? handleViewBooking : undefined}
       />
 
       <RecordPaymentDialog

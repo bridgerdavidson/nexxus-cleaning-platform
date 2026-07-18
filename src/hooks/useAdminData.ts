@@ -176,6 +176,8 @@ export interface AdminPayment {
    *  totals and cap the refundable remainder (pending + succeeded reduce it). */
   refunds?: { amount: number; status: string }[];
   appointment: {
+    /** Only fetched by the infinite payments select (drives "View booking"). */
+    id?: string;
     scheduled_date: string;
     homeowner: {
       first_name: string;
@@ -716,6 +718,7 @@ const PAYMENTS_INFINITE_SELECT = `
   stripe_payment_intent_id,
   refunds:refunds(amount, status),
   appointment:appointments(
+    id,
     scheduled_date,
     homeowner:user_profiles!homeowner_id(
       first_name,

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { CalendarClock } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -52,6 +53,8 @@ export type PaymentDetailSheetProps = {
   onRetry: (id: string) => void;
   onDismiss: (id: string) => void;
   onMessage: (cleanerId: string | null) => void;
+  /** Open the booking this row is tied to. Omitted when the viewer can't view bookings. */
+  onViewBooking?: (appointmentId: string) => void;
 };
 
 export function PaymentDetailSheet({
@@ -66,6 +69,7 @@ export function PaymentDetailSheet({
   onRetry,
   onDismiss,
   onMessage,
+  onViewBooking,
 }: PaymentDetailSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -99,17 +103,26 @@ export function PaymentDetailSheet({
               ) : null}
               {txn.reference ? <Field label="Reference" value={txn.reference} /> : null}
               {txn.notes ? <NotesBlock notes={txn.notes} /> : null}
-              {txn.refundable ? (
+              {(onViewBooking && txn.appointmentId) || txn.refundable ? (
                 <>
                   <Separator className="my-3" />
-                  <Button
-                    variant="outline"
-                    className="text-destructive hover:bg-critical-50 hover:text-destructive"
-                    loading={busy}
-                    onClick={() => onRefund(txn.id)}
-                  >
-                    Refund
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    {onViewBooking && txn.appointmentId ? (
+                      <Button variant="secondary" onClick={() => onViewBooking(txn.appointmentId!)}>
+                        <CalendarClock /> View booking
+                      </Button>
+                    ) : null}
+                    {txn.refundable ? (
+                      <Button
+                        variant="outline"
+                        className="text-destructive hover:bg-critical-50 hover:text-destructive"
+                        loading={busy}
+                        onClick={() => onRefund(txn.id)}
+                      >
+                        Refund
+                      </Button>
+                    ) : null}
+                  </div>
                 </>
               ) : null}
             </div>
@@ -132,6 +145,15 @@ export function PaymentDetailSheet({
               {payout.approvedLabel ? <Field label="Approved" value={payout.approvedLabel} /> : null}
               {payout.paidLabel ? <Field label="Paid" value={payout.paidLabel} /> : null}
               {payout.notes ? <NotesBlock notes={payout.notes} /> : null}
+
+              {onViewBooking && payout.appointmentId ? (
+                <>
+                  <Separator className="my-3" />
+                  <Button variant="secondary" onClick={() => onViewBooking(payout.appointmentId!)}>
+                    <CalendarClock /> View booking
+                  </Button>
+                </>
+              ) : null}
 
               {canManagePayments && payout.rawStatus === "failed" ? (
                 <>
