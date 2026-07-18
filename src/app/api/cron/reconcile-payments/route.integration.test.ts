@@ -495,6 +495,10 @@ describe('POST /api/cron/reconcile-payments', () => {
     transferCreatedSecAgo?: number;
     latestChargeAsString?: boolean;
     withCancellationFeeRow?: boolean;
+    /** Cleaner slice carved but HELD (pending, no transfer) — the still-owed-payout guard case. */
+    heldPayout?: boolean;
+    /** Inject a 'failed' refund this many seconds ago (older than the live refund) — filter case. */
+    extraFailedRefundSecAgo?: number;
   } = {}) {
     const db = createTestSupabaseClient();
     const nowSec = Math.floor(Date.now() / 1000);
@@ -544,8 +548,9 @@ describe('POST /api/cron/reconcile-payments', () => {
       cleaner_id: org.cleaner.userId,
       appointment_id: appt.id,
       amount: 60,
-      status: 'paid',
-      stripe_transfer_id: cleanerTransferId,
+      // Held: carved at settlement but never transferred (cleaner not onboarded yet).
+      status: opts.heldPayout ? 'pending' : 'paid',
+      stripe_transfer_id: opts.heldPayout ? null : cleanerTransferId,
       payout_percent_snapshot: 60,
     });
     // The stranded failure event, older than the stale window so the sweep picks it up.
@@ -573,28 +578,46 @@ describe('POST /api/cron/reconcile-payments', () => {
       latest_charge: opts.latestChargeAsString ? chargeId : charge,
     });
     stranded.charges.set(chargeId, charge);
-    stranded.refunds.set(piId, [
-      {
-        id: `re_${appt.id}`,
-        amount: amountRefunded,
-        created: nowSec - (opts.refundCreatedSecAgo ?? 3600),
-      },
-    ]);
+    const liveRefund = {
+      id: `re_${appt.id}`,
+      amount: amountRefunded,
+      status: 'succeeded',
+      created: nowSec - (opts.refundCreatedSecAgo ?? 3600),
+    };
+    stranded.refunds.set(
+      piId,
+      opts.extraFailedRefundSecAgo != null
+        ? [
+            // A failed refund (no money moved) OLDER than the live one — must not drive the guards.
+            {
+              id: `re_failed_${appt.id}`,
+              amount: amountRefunded,
+              status: 'failed',
+              created: nowSec - opts.extraFailedRefundSecAgo,
+            },
+            liveRefund,
+          ]
+        : [liveRefund],
+    );
     const transferCreated = nowSec - (opts.transferCreatedSecAgo ?? 7200);
-    stranded.transfers.set(`appt_${appt.id}`, [
+    const groupTransfers: Array<{ id: string; amount: number; amount_reversed: number; created: number }> = [
       {
         id: `tr_tenant_${appt.id}`,
         amount: 4000,
         amount_reversed: opts.tenantReversed ?? 0,
         created: transferCreated,
       },
-      {
+    ];
+    // A held cleaner slice never produced a transfer, so it isn't in the group.
+    if (!opts.heldPayout) {
+      groupTransfers.push({
         id: cleanerTransferId,
         amount: 6000,
         amount_reversed: opts.cleanerReversed ?? 0,
         created: transferCreated,
-      },
-    ]);
+      });
+    }
+    stranded.transfers.set(`appt_${appt.id}`, groupTransfers);
     installStrandedMocks();
 
     return { db, appt, paymentId, piId, chargeId, cleanerTransferId };
@@ -859,6 +882,81 @@ describe('POST /api/cron/reconcile-payments', () => {
     const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
     expect(status).toBe(200);
     expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(1);
+  });
+
+  it('stranded refund-unwind: a still-owed (held) cleaner payout routes to manual review, not silent recovery', async () => {
+    // The cleaner slice was carved at settlement but HELD ('pending', never transferred), then the
+    // job was refunded. settleCleanerPayout will later pay that carved snapshot amount WITHOUT
+    // subtracting the refund, so silently recovering here would mask a future overpay — the sweep
+    // must route it to manual review instead (audit T1-1, Codex review Critical #1).
+    const { db, appt } = await seedStrandedUnwind({ heldPayout: true });
+
+    try {
+      const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(status).toBe(200);
+
+      // No money moved and no recovery marker: the still-owed slice can't be auto-reconciled.
+      const reversals = vi.mocked(reversePlatformTransfer).mock.calls;
+      expect(reversals.find((c) => String(c[0]).includes(appt.id))).toBeUndefined();
+      expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(0);
+
+      const manualEvents = await markerEvents(db, appt.id, 'refund_unwind_manual_review');
+      expect(manualEvents.length).toBe(1);
+      expect(manualEvents[0].payload.cleaner_slice_still_owed).toBe(true);
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}`);
+    }
+  });
+
+  it('stranded refund-unwind: a transfer created in the SAME second as the refund counts as absorbed', async () => {
+    // Stripe `created` is 1-second resolution; a net-of-refund settlement landing in the same second
+    // as the refund must be treated as absorbed (guard uses >=), never auto-reversed (would double-
+    // deduct). Codex review High #2.
+    const { db, appt } = await seedStrandedUnwind({
+      refundCreatedSecAgo: 3600,
+      transferCreatedSecAgo: 3600,
+    });
+
+    try {
+      const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(status).toBe(200);
+
+      const reversals = vi.mocked(reversePlatformTransfer).mock.calls;
+      expect(reversals.find((c) => String(c[0]).includes(appt.id))).toBeUndefined();
+      const manualEvents = await markerEvents(db, appt.id, 'refund_unwind_manual_review');
+      expect(manualEvents.length).toBe(1);
+      expect(manualEvents[0].payload.refund_absorbed_at_settlement).toBe(true);
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}`);
+    }
+  });
+
+  it('stranded refund-unwind: a failed refund does not falsely trip the settlement-absorbed guard', async () => {
+    // A failed refund (returned no money) at T0, real transfers at T1, a succeeded refund at T2
+    // (T0 < T1 < T2). Only the money-moving refund defines the guard; the transfers predate it, so
+    // the unwind auto-recovers instead of being wrongly stranded in manual review. Codex review
+    // Medium #6.
+    const { db, appt, cleanerTransferId } = await seedStrandedUnwind({
+      refundCreatedSecAgo: 1800, // succeeded refund, 30m ago
+      transferCreatedSecAgo: 2400, // transfers, 40m ago (before the succeeded refund)
+      extraFailedRefundSecAgo: 3600, // failed refund, 60m ago (before the transfers) — must be ignored
+    });
+
+    const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+
+    // Not stranded: the failed refund's older timestamp was filtered out before the guard.
+    expect((await markerEvents(db, appt.id, 'refund_unwind_manual_review')).length).toBe(0);
+    expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(1);
+    // Full refund → both legs reversed.
+    const reversals = vi.mocked(reversePlatformTransfer).mock.calls;
+    expect(reversals.find((c) => c[0] === cleanerTransferId)?.[1]).toBe(6000);
   });
 
   it('stranded_refund_unwind_candidates RPC: one row per appointment, oldest strand first, attempts counted', async () => {

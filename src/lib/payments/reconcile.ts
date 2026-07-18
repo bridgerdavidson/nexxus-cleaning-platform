@@ -36,6 +36,7 @@ import {
 } from '@/lib/stripe/reconcile';
 import { listTransfersByGroup, transferGroupFor } from '@/lib/stripe/transfers';
 import { stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
+import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 const DEFAULT_BATCH = 100;
 const DEFAULT_STALE_MINUTES = 15;
@@ -685,14 +686,17 @@ interface StrandedUnwindCandidate {
  * failure event, which bumps the open critical platform alert (paymentEventAlerts).
  *
  * Proportional-to-gross reversal is only valid when every transfer in the group was split from
- * the FULL charge and belongs to THIS charge, so two guards route anything else to a terminal
+ * the FULL charge and belongs to THIS charge, so three guards route anything else to a terminal
  * `refund_unwind_manual_review` marker (critical alert, no money moved) instead of auto-reversing:
  *   - another Stripe-charged payment shares the appointment (e.g. a cancellation fee) — the
  *     transfer group mixes charges, and a group-wide reversal would claw back the fee the tenant
  *     is owed;
- *   - a transfer was created AFTER the earliest refund — settlement splits net of refunds
- *     (settleCleanerPayout), so that refund is already absorbed in the transfer sizes and
- *     reversing proportional-to-gross would double-deduct it from the tenant and cleaner.
+ *   - a transfer was created at/after the earliest (money-moving) refund — settlement splits net
+ *     of refunds (settleCleanerPayout), so that refund is already absorbed in the transfer sizes
+ *     and reversing proportional-to-gross would double-deduct it from the tenant and cleaner;
+ *   - a cleaner slice is still owed (held 'pending' / 'failed' with no transfer) — it can't be
+ *     reversed here, and settleCleanerPayout later pays the carved snapshot amount without
+ *     subtracting this refund, so auto-recovering now would mask that future overpay (T1-2/T1-12).
  * And to keep the sweep from racing a live unwind to a DIFFERENT cumulative target (the
  * idempotency key only dedupes EQUAL targets), any appointment whose newest Stripe refund is
  * younger than the stale window is deferred to the next round.
@@ -710,9 +714,22 @@ export async function retryStrandedRefundUnwinds(
     p_batch: batch,
   });
   if (rpcError) {
-    // Migration 112 not applied yet (or transient DB error): no-op this round rather than fall
-    // back to a selection shape with the starvation bug.
+    // The candidate query IS the T1-1 backstop. If it fails (migration 112 not applied, grant
+    // drift, transient DB error) the sweep can recover nothing, so a silent zero-result would let
+    // stranded refunds rot while the cron reports a clean run. Raise a critical platform alert that
+    // the backstop itself is down (deduped by alert_type, so a persistent failure is one incident),
+    // and no-op this round rather than fall back to a selection shape with the starvation bug.
     console.error('retryStrandedRefundUnwinds: candidate RPC failed:', rpcError.message);
+    try {
+      await recordPlatformAlert(supabase, {
+        alert_type: 'refund_unwind_sweep_disabled',
+        severity: 'critical',
+        summary: 'Stranded refund-unwind sweep is disabled: candidate query failed',
+        details: { error: rpcError.message },
+      });
+    } catch (alertErr) {
+      console.error('retryStrandedRefundUnwinds: failed to raise sweep-disabled alert:', alertErr);
+    }
     return { checked: 0, recovered: 0, stillFailed: 0, manualReview: 0, deferred: 0 };
   }
   const candidates = (rows ?? []) as StrandedUnwindCandidate[];
@@ -806,7 +823,13 @@ export async function retryStrandedRefundUnwinds(
       } catch {
         continue; // Stripe unreadable — leave for the next sweep.
       }
-      if (refunds.length === 0) continue; // amount_refunded > 0 but no refunds listed — leave it.
+      // A 'failed'/'canceled' refund returned no money: it never shrank a transfer and settlement
+      // never netted it out, so its `created` time must not drive the guards below (an old failed
+      // refund would otherwise mis-classify a later transfer as settlement-absorbed, or its recency
+      // would wrongly defer the sweep). `charge.amount_refunded` already counts only money that
+      // actually moved. Mirrors the refund route's own status filter.
+      refunds = refunds.filter((r) => r.status !== 'failed' && r.status !== 'canceled');
+      if (refunds.length === 0) continue; // amount_refunded > 0 but no live refunds listed — leave it.
 
       // A refund younger than the stale window means the live unwind (route or charge.refunded
       // webhook) may still be acting on a DIFFERENT cumulative target; two concurrent unwinds
@@ -859,13 +882,30 @@ export async function retryStrandedRefundUnwinds(
           (t) => typeof t.source_transaction === 'string' && t.source_transaction !== charge.id,
         );
 
-      // Guard 2: a transfer created after the earliest refund was split NET of that refund
+      // Guard 2: a transfer created at or after the earliest refund was split NET of that refund
       // (settleCleanerPayout subtracts already-refunded cents), so proportional-to-gross would
-      // deduct it a second time.
+      // deduct it a second time. Stripe `created` is 1-second resolution, so a refund and a
+      // net-of-refund settlement in the SAME second must count as absorbed — hence `>=`, not `>`.
       const earliestRefundSec = Math.min(...refunds.map((r) => r.created ?? 0));
-      const refundAbsorbedAtSettlement = transfers.some((t) => (t.created ?? 0) > earliestRefundSec);
+      const refundAbsorbedAtSettlement = transfers.some((t) => (t.created ?? 0) >= earliestRefundSec);
 
-      if (mixedCharges || refundAbsorbedAtSettlement) {
+      // Guard 3: a still-owed cleaner slice — carved at settlement but HELD ('pending') or 'failed'
+      // with no transfer yet — can't be reversed here (no transfer exists to reverse). settleCleaner-
+      // Payout later pays that carved SNAPSHOT amount, which does NOT subtract this refund, so
+      // silently recovering now would mask a future overpay (the platform pays the cleaner the
+      // pre-refund share). Route to manual review until the held slice is reconciled against the
+      // refund. The real fix (shrink the carved slice by the refund) lives in settleCleanerPayout;
+      // see audit T1-2/T1-12. A slice that already has a transfer id is handled by the reversal below.
+      const { data: heldPayout } = await supabase
+        .from('payouts')
+        .select('id')
+        .eq('appointment_id', c.appointment_id)
+        .in('status', ['pending', 'failed'])
+        .is('stripe_transfer_id', null)
+        .limit(1);
+      const cleanerSliceStillOwed = ((heldPayout ?? []) as Array<{ id: string }>).length > 0;
+
+      if (mixedCharges || refundAbsorbedAtSettlement || cleanerSliceStillOwed) {
         await recordPaymentEvent(supabase, {
           paymentId: payment.id,
           appointmentId: c.appointment_id,
@@ -877,6 +917,7 @@ export async function retryStrandedRefundUnwinds(
             source: 'retry-stranded-refund-unwinds',
             mixed_charges: mixedCharges,
             refund_absorbed_at_settlement: refundAbsorbedAtSettlement,
+            cleaner_slice_still_owed: cleanerSliceStillOwed,
             gross_cents: grossCents,
           },
         });
