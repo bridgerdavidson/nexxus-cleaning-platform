@@ -54,7 +54,7 @@ describe("deriveToday", () => {
     expect(deriveToday([], TODAY, TOMORROW, GRACE, "hourly_external").isEmployee).toBe(true);
   });
 
-  it("lists today's confirmed jobs sorted by time (excludes completed)", () => {
+  it("lists today's confirmed jobs sorted by time (excludes completed); earliest lifts to nextUp", () => {
     const r = deriveToday(
       [
         appt({ id: "pm", scheduled_time: "16:30:00" }),
@@ -63,7 +63,8 @@ describe("deriveToday", () => {
       ],
       TODAY, TOMORROW, GRACE, "percentage_contractor"
     );
-    expect(r.todayJobs.map((j) => j.id)).toEqual(["am", "pm"]);
+    expect(r.nextUp?.id).toBe("am");
+    expect(r.todayJobs.map((j) => j.id)).toEqual(["pm"]);
   });
 
   it("counts tomorrow's jobs and finds the earliest start", () => {
@@ -94,7 +95,8 @@ describe("deriveToday", () => {
     );
     expect(r.activeJob).toBeNull();
     expect(r.needsAttention.map((j) => j.id).sort()).toEqual(["overdue", "stale"]);
-    expect(r.todayJobs.map((j) => j.id)).toEqual(["today"]);
+    expect(r.nextUp?.id).toBe("today");
+    expect(r.todayJobs).toHaveLength(0);
     expect(r.isEmpty).toBe(false);
   });
 
@@ -105,6 +107,55 @@ describe("deriveToday", () => {
     );
     expect(r.activeJob?.id).toBe("live");
     expect(r.needsAttention).toHaveLength(0);
+    expect(r.nextUp).toBeNull();
     expect(r.todayJobs).toHaveLength(0);
+  });
+
+  describe("nextUp (one-tap Start card)", () => {
+    it("lifts the earliest confirmed today job into nextUp and drops it from todayJobs", () => {
+      const r = deriveToday(
+        [
+          appt({ id: "late", scheduled_time: "14:00:00" }),
+          appt({ id: "early", scheduled_time: "09:00:00" }),
+          appt({ id: "mid", scheduled_time: "11:00:00" }),
+        ],
+        TODAY, TOMORROW, GRACE, "percentage_contractor"
+      );
+      expect(r.nextUp?.id).toBe("early");
+      expect(r.todayJobs.map((j) => j.id)).toEqual(["mid", "late"]);
+    });
+
+    it("keeps nextUp null and lists every today job while a job is already active", () => {
+      const r = deriveToday(
+        [
+          appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
+          appt({ id: "t1", scheduled_time: "09:00:00" }),
+          appt({ id: "t2", scheduled_time: "13:00:00" }),
+        ],
+        TODAY, TOMORROW, GRACE, "percentage_contractor"
+      );
+      expect(r.activeJob?.id).toBe("active");
+      expect(r.nextUp).toBeNull();
+      expect(r.todayJobs.map((j) => j.id)).toEqual(["t1", "t2"]);
+    });
+
+    it("is null when nothing is confirmed for today", () => {
+      const r = deriveToday(
+        [appt({ scheduled_date: TOMORROW })],
+        TODAY, TOMORROW, GRACE, "percentage_contractor"
+      );
+      expect(r.nextUp).toBeNull();
+    });
+
+    it("makes a lone confirmed today job the nextUp with an empty today list", () => {
+      const r = deriveToday(
+        [appt({ id: "only", scheduled_time: "10:00:00" })],
+        TODAY, TOMORROW, GRACE, "percentage_contractor"
+      );
+      expect(r.nextUp?.id).toBe("only");
+      expect(r.todayJobs).toHaveLength(0);
+      // The lifted job is still real work, so the day is not empty.
+      expect(r.isEmpty).toBe(false);
+    });
   });
 });

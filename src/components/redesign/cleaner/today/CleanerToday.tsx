@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useCleanerAppointments, useRespondToOffer, useRespondToSeries } from "@/hooks/useCleanerData";
+import { useCleanerAppointments, useRespondToOffer, useRespondToSeries, useStartJob } from "@/hooks/useCleanerData";
 import { useOpenJob } from "@/components/redesign/cleaner/job/useOpenJob";
 import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
 import { deriveToday } from "./deriveToday";
@@ -25,6 +25,7 @@ export function CleanerToday() {
   const { appointments, loading, error, refetch } = useCleanerAppointments();
   const respond = useRespondToOffer();
   const series = useRespondToSeries();
+  const startJob = useStartJob();
   const onboarding = useCleanerOnboarding();
 
   const payoutModel = currentOrganization?.default_payout_model ?? "percentage_contractor";
@@ -52,6 +53,8 @@ export function CleanerToday() {
         error={Boolean(error)}
         onRetry={() => refetch()}
         onContinueActive={() => data.activeJob && openJob(data.activeJob.id)}
+        onStartNext={(id) => startJob.mutate(id)}
+        startingNext={startJob.isPending}
         onOpenJob={openJob}
         todayStr={todayStr}
         onAcceptOffer={(id, slotIndex) => respond.accept.mutateAsync({ appointmentId: id, slotIndex })}

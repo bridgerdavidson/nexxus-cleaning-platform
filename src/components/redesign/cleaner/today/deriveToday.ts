@@ -33,9 +33,15 @@ export function deriveToday(
 
   // Confirmed jobs scheduled exactly today (in_progress is the pinned active job
   // or, if stale, in needsAttention , never double-listed here).
-  const todayJobs = appointments
+  const todayConfirmed = appointments
     .filter((a) => a.scheduled_date === todayStr && a.status === "confirmed")
     .sort(byTime);
+
+  // Lift the most-imminent not-yet-started job into a "Next up" card, but only
+  // when nothing is already in progress (the active-job card leads otherwise).
+  // The remaining today jobs stay in the list so nothing is double-listed.
+  const nextUp = activeJob ? null : todayConfirmed[0] ?? null;
+  const todayJobs = nextUp ? todayConfirmed.slice(1) : todayConfirmed;
 
   const tomorrow = appointments
     .filter((a) => a.scheduled_date === tomorrowStr && (a.status === "confirmed" || a.status === "in_progress"))
@@ -44,9 +50,9 @@ export function deriveToday(
   const tomorrowFirstTime = tomorrow[0]?.scheduled_time ?? null;
 
   const isEmpty =
-    !activeJob && needsAttention.length === 0 && offers.length === 0 && todayJobs.length === 0 && tomorrowCount === 0;
+    !activeJob && needsAttention.length === 0 && offers.length === 0 && todayConfirmed.length === 0 && tomorrowCount === 0;
 
   const isEmployee = payoutModel !== "percentage_contractor";
 
-  return { activeJob, needsAttention, offers, todayJobs, tomorrowCount, tomorrowFirstTime, isEmpty, isEmployee };
+  return { activeJob, nextUp, needsAttention, offers, todayJobs, tomorrowCount, tomorrowFirstTime, isEmpty, isEmployee };
 }
