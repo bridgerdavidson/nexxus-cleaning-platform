@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { useOpenProperty } from "@/components/redesign/properties/useOpenProperty";
+import { useOpenOperatorBooking } from "@/components/redesign/bookings/new-booking/useOpenOperatorBooking";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   useAdminCustomers,
@@ -196,6 +198,8 @@ export function OperatorCustomers() {
       canViewPayments={privileged || !!permissions?.can_view_payments}
       canEdit={privileged || !!permissions?.can_edit_customers}
       canViewProperties={privileged || !!permissions?.can_view_properties}
+      canCreateBooking={privileged || !!permissions?.can_edit_bookings}
+      canViewBookings={privileged || !!permissions?.can_view_bookings}
     />
   );
 }
@@ -211,15 +215,22 @@ function OperatorCustomersData({
   canViewPayments,
   canEdit,
   canViewProperties,
+  canCreateBooking,
+  canViewBookings,
 }: {
   canViewPayments: boolean;
   canEdit: boolean;
   canViewProperties: boolean;
+  canCreateBooking: boolean;
+  canViewBookings: boolean;
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const { customers, loading, error, refetch, updateCustomerInState } = useAdminCustomers();
   const { paramId: customerParam, setParam: setCustomerParam } = useDetailParam("customer");
   const { open: openProperty } = useOpenProperty();
+  const openNewBooking = useOpenOperatorBooking();
 
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<CustomerSort>("recent");
@@ -313,6 +324,31 @@ function OperatorCustomersData({
     setDetailId(null);
     setCustomerParam(null);
   }, [setCustomerParam]);
+
+  // --- customer quick actions (all target the customer whose sheet is open) ---
+  // Seed a new booking for this customer. useOpenOperatorBooking replaces the
+  // whole query string, so ?customer drops and the customer sheet closes as the
+  // global new-booking host takes over.
+  const handleNewBookingForCustomer = useCallback(() => {
+    if (detailId) openNewBooking({ customerId: detailId });
+  }, [detailId, openNewBooking]);
+
+  const handleMessageCustomer = useCallback(() => {
+    if (detailId) router.push(`/app/admin-dashboard/messages?to=${detailId}`);
+  }, [detailId, router]);
+
+  // Swap the customer sheet for the booking sheet in ONE navigation so they
+  // never stack: drop ?customer, set ?booking (the global booking-detail host,
+  // mounted when canViewBookings, opens it in place).
+  const openBookingFromCustomer = useCallback(
+    (appointmentId: string) => {
+      const sp = new URLSearchParams(window.location.search);
+      sp.delete("customer");
+      sp.set("booking", appointmentId);
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    },
+    [router, pathname],
+  );
 
   // Keep the detail in sync with the `?customer=<id>` deep link: open it when the
   // param is present and close it when the param is removed (e.g. browser Back).
@@ -468,6 +504,9 @@ function OperatorCustomersData({
         onSave={handleSave}
         onDelete={() => detail && setConfirm({ kind: "delete", ids: [detail.id] })}
         onOpenProperty={canViewProperties ? openProperty : undefined}
+        onNewBooking={canCreateBooking ? handleNewBookingForCustomer : undefined}
+        onMessage={handleMessageCustomer}
+        onOpenBooking={canViewBookings ? openBookingFromCustomer : undefined}
       />
 
       <AddCustomerDialog
