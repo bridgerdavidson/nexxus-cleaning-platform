@@ -18,19 +18,15 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible } from "@/components/ui/collapsible";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { BookingStatusBadge, PaymentBadge } from "./bookings-presenters";
 import { Field, DiscardChangesDialog } from "./detail-atoms";
 import { JobMessagesPanel } from "./JobMessagesPanel";
 import { OperatorPaymentSection } from "./payment/OperatorPaymentSection";
 import { JobPhotosSection } from "./photos/JobPhotosSection";
 import { RoutingHistorySection } from "./routing/RoutingHistorySection";
+import { EntityPickerField } from "./new-booking/EntityPickerField";
+import { useRankedCleaners } from "./new-booking/useRankedCleaners";
+import { cleanerPickerItems } from "./cleanerPickerItems";
 import type { BookingDetailVM, CleanerOption } from "./bookings-types";
 import type { RescheduleInit } from "./reschedule/RescheduleDialog";
 import { EditBookingDetailsForm } from "./edit/EditBookingDetailsForm";
@@ -183,6 +179,25 @@ function DetailBody({
 }: DetailBodyProps) {
   const [page, setPage] = useState<"view" | "edit">("view");
 
+  // Assigning goes through the reschedule route, which needs can_edit_bookings
+  // plus the cleaner-change escalation to can_handle_requests.
+  const canAssignCleaner = canHandleRequests && canEdit;
+  // Rank the cleaner list by availability for THIS booking's own slot so a
+  // double-booked cleaner reads as "Busy" before an operator hands them the
+  // job. Needs the raw row for the date/time/duration; without it (dev preview
+  // or the pre-resolve window) the picker degrades to plain names, and passing
+  // this booking's id keeps the currently-assigned cleaner from counting their
+  // own slot as a conflict.
+  const assignCandidate = appointment
+    ? {
+        date: appointment.scheduled_date,
+        time: appointment.scheduled_time,
+        durationMinutes: appointment.duration_minutes || 60,
+      }
+    : null;
+  const rankedCleaners = useRankedCleaners(cleanerOptions, assignCandidate, detail.id);
+  const cleanerItems = cleanerPickerItems(rankedCleaners, !!assignCandidate);
+
   // Only a confirmed (cleaner-accepted) booking can be started. A pending one is
   // still awaiting the cleaner's acceptance / counter-proposal, so starting it
   // would bypass that workflow. Starting/completing/rescheduling/cancelling all
@@ -246,25 +261,21 @@ function DetailBody({
         </Field>
 
         <Field label={detail.isUnassigned ? "Assign cleaner" : "Cleaner"}>
-          {/* Assigning goes through the reschedule route: can_edit_bookings
-              plus the cleaner-change escalation to can_handle_requests, so
-              the select needs BOTH flags or the server would 403. */}
-          <Select
-            value={detail.cleanerId ?? ""}
-            onValueChange={(v) => onAssign(v)}
-            disabled={busy || !canHandleRequests || !canEdit}
-          >
-            <SelectTrigger className="mt-1">
-              <SelectValue placeholder="Choose a cleaner" />
-            </SelectTrigger>
-            <SelectContent>
-              {cleanerOptions.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Availability-ranked (free cleaners first, each tagged Free/Busy
+              for this booking's slot) so operators don't hand a job to a
+              double-booked cleaner. Disabled unless BOTH assign flags are held
+              or the reschedule route would 403. */}
+          <div className="mt-1">
+            <EntityPickerField
+              placeholder="Choose a cleaner"
+              value={detail.cleanerId}
+              items={cleanerItems}
+              onSelect={(id) => onAssign(id)}
+              searchPlaceholder="Search cleaners..."
+              emptyText="No cleaners found."
+              disabled={busy || !canAssignCleaner}
+            />
+          </div>
         </Field>
 
         {detail.customerId || detail.cleanerId ? (
