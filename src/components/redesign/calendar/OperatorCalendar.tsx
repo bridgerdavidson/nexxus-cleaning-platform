@@ -10,6 +10,7 @@ import { useManagerPermissions } from '@/hooks/useManagerPermissions';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getUiPref, setUiPref } from '@/lib/uiPrefs';
 import type { ViewMode } from '@/lib/calendar/types';
 import type { CleanerOption } from '@/components/redesign/bookings/bookings-types';
 import { RescheduleDialog, type RescheduleInit } from '@/components/redesign/bookings/reschedule/RescheduleDialog';
@@ -28,6 +29,12 @@ import { selectionForMonth } from './monthCellSummary';
 import { MobileCalendarBar, type MobileCalendarView } from './MobileCalendarBar';
 import { MobileMonthView } from './MobileMonthView';
 import { CalendarFilterSheet } from './CalendarFilterSheet';
+
+const CALENDAR_VIEW_PREF = 'operator.calendar.view';
+
+function isViewMode(v: string | null): v is ViewMode {
+  return v === 'month' || v === 'week' || v === 'day' || v === 'agenda';
+}
 
 function rangeLabelFor(view: string, date: Date): string {
   if (view === 'month') return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -73,10 +80,19 @@ export function OperatorCalendar() {
 
   const isMobile = useIsMobile();
   const { view, focusedDate, setView, next, prev, today, goToDate } = useCalendarNavigation('week');
-  // Mobile (below md) defaults to the mini month, but never clobbers an explicit choice.
+  // An explicit pick is remembered device-locally so a return visit reopens on
+  // the same view instead of always snapping back to Week.
   const viewPicked = useRef(false);
-  const pickView = (v: ViewMode) => { viewPicked.current = true; setView(v); };
-  useEffect(() => { if (isMobile && !viewPicked.current) setView('month'); }, [isMobile, setView]);
+  const pickView = (v: ViewMode) => { viewPicked.current = true; setUiPref(CALENDAR_VIEW_PREF, v); setView(v); };
+  // Until the user picks: mobile (below md) defaults to the mini month; desktop
+  // restores the saved view. Reading the pref here (an effect, not render) keeps
+  // it off the server render so there's no hydration mismatch.
+  useEffect(() => {
+    if (viewPicked.current) return;
+    if (isMobile) { setView('month'); return; }
+    const saved = getUiPref(CALENDAR_VIEW_PREF);
+    if (isViewMode(saved)) setView(saved);
+  }, [isMobile, setView]);
   const [cleanerFilter, setCleanerFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDateKey(new Date()));
