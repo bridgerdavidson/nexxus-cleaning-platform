@@ -149,10 +149,12 @@ export async function POST(
     // 2) Reclaim the platform's outbound transfers (tenant remainder AND cleaner payout) to match
     //    the CUMULATIVE refunded amount, and mirror the cleaner payout to 'reversed'. Runs AFTER
     //    the refund so a Stripe failure above can't leave the cleaner clawed back but the homeowner
-    //    un-refunded. Idempotent (cumulative amount_reversed math) + best-effort: a failed cleaner
-    //    reversal records `cleaner_clawback_failed` for the reconcile sweep and never blocks the
-    //    (already-issued) refund.
-    await reverseJobTransfersForRefund(supabaseAdmin, {
+    //    un-refunded. Idempotent (cumulative amount_reversed math) + best-effort: a failed reversal
+    //    records `refund_clawback_failed`/`transfer_reversal_failed` (alerted via
+    //    paymentEventAlerts, retried by the retryStrandedRefundUnwinds sweep) and never blocks the
+    //    (already-issued) refund. The result is surfaced in the response so a stranded unwind
+    //    isn't reported as an unqualified success (audit T1-1).
+    const unwind = await reverseJobTransfersForRefund(supabaseAdmin, {
       appointmentId: payment.appointment_id,
       totalRefundedCents: alreadyRefunded + refundCents,
       grossCents,
@@ -179,6 +181,7 @@ export async function POST(
       amount_cents: refundCents,
       fully_refunded: nowFullyRefunded,
       ledger_recorded: !refundInsertError,
+      transfer_unwind: { reversed_cents: unwind.reversedCents, failures: unwind.failures },
     });
   } catch (error) {
     console.error('Error issuing refund:', error);
