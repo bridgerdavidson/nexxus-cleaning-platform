@@ -8,6 +8,7 @@ import {
   formatCleaningWhen,
   recentCleaningTaskLabel,
   recentCleaningPaymentBadge,
+  canBookAgain,
 } from './home-presenters';
 
 const TODAY = '2026-06-25';
@@ -99,6 +100,18 @@ describe('recentCleaningTaskLabel', () => {
   });
   it('returns null when there is no checklist', () => {
     expect(recentCleaningTaskLabel(0, 0)).toBeNull();
+  });
+});
+
+describe('canBookAgain', () => {
+  it('is true when both the property and service are still resolvable', () => {
+    expect(canBookAgain(appt({ property_id: 'prop-1', service_type_id: 'svc-1' }))).toBe(true);
+  });
+  it('is false when the property id is missing', () => {
+    expect(canBookAgain(appt({ property_id: undefined, service_type_id: 'svc-1' }))).toBe(false);
+  });
+  it('is false when the service id is missing', () => {
+    expect(canBookAgain(appt({ property_id: 'prop-1', service_type_id: undefined }))).toBe(false);
   });
 });
 
