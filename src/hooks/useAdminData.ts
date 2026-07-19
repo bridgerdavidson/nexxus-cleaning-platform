@@ -8,7 +8,6 @@ import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { pageRange, nextPageParam, PAYMENTS_PAGE_SIZE } from '../lib/pagination';
-import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
 import {
   MANAGER_FLAG_SELECT,
@@ -1064,49 +1063,8 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
 
         // New charge flow: charge the saved card now that the job is complete. Non-fatal; a payment
         // problem surfaces in "Payments needing attention" for follow-up.
-        if (stripeNewChargeFlowUiEnabled()) {
-          const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
-          return { success: true, ...result };
-        }
-
-        const response = await fetch('/api/stripe/create-payment-intent', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            appointment_id: appointmentId,
-            organization_id: appointment?.organization_id,
-          }),
-        });
-
-        let result;
-        try {
-          result = await response.json();
-        } catch {
-          // Don't fail the status update, just log the payment error
-          return { 
-            success: true, 
-            paymentStatus: 'failed',
-            paymentError: 'Failed to parse payment response'
-          };
-        }
-
-        if (!response.ok) {
-          // Don't fail the status update, just log the payment error
-          // The payment can be retried manually
-          return { 
-            success: true, 
-            paymentStatus: 'failed',
-            paymentError: result.error || 'Payment processing failed'
-          };
-        }
-
-        return { 
-          success: true, 
-          paymentStatus: result.payment_intent_status === 'succeeded' ? 'paid' : 'pending',
-          paymentIntentId: result.payment_intent_id
-        };
+        const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
+        return { success: true, ...result };
       } catch (paymentError) {
         // Don't fail the status update, just log the payment error
         return { 
