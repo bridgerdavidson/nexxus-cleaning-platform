@@ -18,7 +18,7 @@ export function CleanerServiceDetailView({
   return (
     <div className="space-y-4 pt-1">
       <CleanerSubHeader
-        backHref="/app/cleaner-dashboard/profile/services"
+        backHref="/cleaner/profile/services"
         backLabel="Services"
         title={detail?.name ?? "Service"}
       />

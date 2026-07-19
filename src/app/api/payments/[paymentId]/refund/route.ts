@@ -149,16 +149,24 @@ export async function POST(
     // 2) Reclaim the platform's outbound transfers (tenant remainder AND cleaner payout) to match
     //    the CUMULATIVE refunded amount, and mirror the cleaner payout to 'reversed'. Runs AFTER
     //    the refund so a Stripe failure above can't leave the cleaner clawed back but the homeowner
-    //    un-refunded. Idempotent (cumulative amount_reversed math) + best-effort: a failed cleaner
-    //    reversal records `cleaner_clawback_failed` for the reconcile sweep and never blocks the
-    //    (already-issued) refund.
-    await reverseJobTransfersForRefund(supabaseAdmin, {
+    //    un-refunded. Idempotent (cumulative amount_reversed math) + best-effort: a failed reversal
+    //    records `refund_clawback_failed`/`transfer_reversal_failed` (alerted via
+    //    paymentEventAlerts, retried by the retryStrandedRefundUnwinds sweep) and never blocks the
+    //    (already-issued) refund. The result is surfaced in the response so a stranded unwind
+    //    isn't reported as an unqualified success (audit T1-1).
+    // The charge this refund hit — scopes the unwind to this charge's transfers so it never claws
+    // back a cancellation fee's transfer sharing the appointment's transfer_group (audit T1-12).
+    const sourceChargeId =
+      typeof refund.charge === 'string' ? refund.charge : refund.charge?.id ?? null;
+
+    const unwind = await reverseJobTransfersForRefund(supabaseAdmin, {
       appointmentId: payment.appointment_id,
       totalRefundedCents: alreadyRefunded + refundCents,
       grossCents,
       actor: `user:${auth.userId}`,
       paymentId: payment.id,
       organizationId: organization_id,
+      sourceChargeId,
     });
 
     await recordPaymentEvent(supabaseAdmin, {
@@ -179,6 +187,7 @@ export async function POST(
       amount_cents: refundCents,
       fully_refunded: nowFullyRefunded,
       ledger_recorded: !refundInsertError,
+      transfer_unwind: { reversed_cents: unwind.reversedCents, failures: unwind.failures },
     });
   } catch (error) {
     console.error('Error issuing refund:', error);

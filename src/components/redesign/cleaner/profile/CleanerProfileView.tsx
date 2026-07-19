@@ -162,7 +162,7 @@ export function CleanerProfileView({
           icon={List}
           title="Service catalog"
           subtitle="What each clean includes"
-          href="/app/cleaner-dashboard/profile/services"
+          href="/cleaner/profile/services"
         />
       </section>
 

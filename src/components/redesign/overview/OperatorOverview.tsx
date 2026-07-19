@@ -148,7 +148,7 @@ export function OperatorOverview() {
         }))}
         failedPayment={failedPayment}
         onOpenBooking={canViewBookings ? openBooking : undefined}
-        paymentsHref={canViewPayments ? "/app/admin-dashboard/payments" : undefined}
+        paymentsHref={canViewPayments ? "/admin/payments" : undefined}
         todayItems={todayItems}
         checklist={checklist}
       />

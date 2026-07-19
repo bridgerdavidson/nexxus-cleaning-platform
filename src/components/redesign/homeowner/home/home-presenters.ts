@@ -65,6 +65,13 @@ export function cleanerDisplayName(appt: Appointment): string | null {
   return last ? `${first} ${last.charAt(0)}.` : first;
 }
 
+/** True when a cleaning still carries what a repeat booking needs to prefill:
+ *  both its property and its service. Guards the Home "Book this again" action so
+ *  it never opens the flow with a missing (deleted home / removed service) id. */
+export function canBookAgain(appt: Appointment): boolean {
+  return Boolean(appt.property_id && appt.service_type_id);
+}
+
 /** Footer task summary for the recent-cleaning card ("All 9 tasks done" / "6 of 9
  *  tasks done"), or null when the cleaning has no checklist. */
 export function recentCleaningTaskLabel(doneCount: number, totalCount: number): string | null {

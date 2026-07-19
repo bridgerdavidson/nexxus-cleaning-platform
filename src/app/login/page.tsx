@@ -29,7 +29,7 @@ function LoginContent() {
       router.push(
         isPlatformAdmin
           ? redesignUiEnabled()
-            ? "/app/owner"
+            ? "/owner"
             : "/owner"
           : getDashboardPath(user.role, { redesign: redesignUiEnabled() }),
       );

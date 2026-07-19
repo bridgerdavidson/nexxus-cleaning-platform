@@ -14,9 +14,10 @@
  *                                      (tenant remainder + cleaner) for a homeowner refund.
  *
  * Both are idempotent (Stripe's `amount_reversed` caps every reversal + a per-target idempotency
- * key + a payout `status='reversed'` guard) and best-effort: a failed reversal records a
- * `cleaner_clawback_failed` ledger event (which the reconcile sweep retries) and NEVER throws, so
- * a webhook handler always returns 200 and the refund route never strands the homeowner.
+ * key + a payout `status='reversed'` guard) and best-effort: a failed reversal records a ledger
+ * event the reconcile sweep retries (`cleaner_clawback_failed` → retryStrandedClawbacks;
+ * `refund_clawback_failed`/`transfer_reversal_failed` → retryStrandedRefundUnwinds) and NEVER
+ * throws, so a webhook handler always returns 200 and the refund route never strands the homeowner.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -88,6 +89,56 @@ async function loadCleanerPayout(
 }
 
 /**
+ * Funds already reached the cleaner's bank ('bank_paid'): reversing the transfer would drive their
+ * connected balance negative with no predictable recovery. Surface it for an ops decision (net
+ * against future jobs, invoice the cleaner) instead of auto-reversing. Shared by the full clawback
+ * (dispute / ACH return) and the refund unwind so both honor the same policy. One ledger event +
+ * one deduped notification per appointment; every later call is a cheap no-op (audit T1-2).
+ */
+async function recordBankPaidBlock(
+  supabase: SupabaseClient,
+  p: {
+    appointmentId: string;
+    paymentId?: string | null;
+    organizationId?: string | null;
+    stripeEventId?: string | null;
+    actor: string;
+    reason: ClawbackReason;
+    transferId: string;
+    blockedCents: number;
+  },
+): Promise<void> {
+  const { data: priorBlock } = await supabase
+    .from('payment_events')
+    .select('id')
+    .eq('appointment_id', p.appointmentId)
+    .eq('event_type', 'clawback_blocked_bank_paid')
+    .limit(1)
+    .maybeSingle();
+  if (priorBlock) return;
+  await recordPaymentEvent(supabase, {
+    paymentId: p.paymentId ?? null,
+    appointmentId: p.appointmentId,
+    organizationId: p.organizationId ?? null,
+    stripeEventId: p.stripeEventId ?? null,
+    eventType: 'clawback_blocked_bank_paid',
+    actor: p.actor,
+    amount: p.blockedCents,
+    payload: { transfer_id: p.transferId, reason: p.reason },
+  });
+  if (p.organizationId) {
+    const ctx = await loadNotificationContext(supabase, { appointmentId: p.appointmentId });
+    await recordNotificationEvent(supabase, {
+      event_type: 'clawback_blocked',
+      appointment_id: p.appointmentId,
+      organization_id: p.organizationId,
+      dedupe_key: `clawback_blocked:${p.appointmentId}`,
+      payload: { ...ctx, audience: 'admin', amount_cents: p.blockedCents, reason: p.reason },
+    });
+  }
+}
+
+/**
  * Reverse the cleaner's payout transfer in full (or `reversalCents`). Used when funds came back
  * but the homeowner is NOT being refunded the tenant remainder (lost dispute, ACH return) — the
  * tenant keeps theirs; only the cleaner's cut is clawed back. Idempotent + never throws.
@@ -111,41 +162,18 @@ export async function clawbackCleanerPayout(
   // clawed it back. Skip without calling Stripe — covers retries beyond the idempotency-key window.
   if (payout.status === 'reversed') return { ...base, alreadyReversed: true };
 
-  // Once the funds have LEFT Stripe for the cleaner's bank, reversing the transfer would drive
-  // the connected balance negative with no predictable recovery path. Surface it for an ops
-  // decision (net against future jobs, invoice the cleaner) instead of auto-reversing. One
-  // ledger event + one deduped notification per appointment; every later retry is a cheap no-op.
+  // Once the funds have LEFT Stripe for the cleaner's bank, surface for ops instead of auto-reversing.
   if (payout.status === 'bank_paid') {
-    const blockedCents = Math.round(Number(payout.amount) * 100);
-    const { data: priorBlock } = await supabase
-      .from('payment_events')
-      .select('id')
-      .eq('appointment_id', p.appointmentId)
-      .eq('event_type', 'clawback_blocked_bank_paid')
-      .limit(1)
-      .maybeSingle();
-    if (!priorBlock) {
-      await recordPaymentEvent(supabase, {
-        paymentId: p.paymentId ?? null,
-        appointmentId: p.appointmentId,
-        organizationId: p.organizationId ?? null,
-        stripeEventId: p.stripeEventId ?? null,
-        eventType: 'clawback_blocked_bank_paid',
-        actor: p.actor,
-        amount: blockedCents,
-        payload: { transfer_id: payout.stripe_transfer_id, reason: p.reason },
-      });
-      if (p.organizationId) {
-        const ctx = await loadNotificationContext(supabase, { appointmentId: p.appointmentId });
-        await recordNotificationEvent(supabase, {
-          event_type: 'clawback_blocked',
-          appointment_id: p.appointmentId,
-          organization_id: p.organizationId,
-          dedupe_key: `clawback_blocked:${p.appointmentId}`,
-          payload: { ...ctx, audience: 'admin', amount_cents: blockedCents, reason: p.reason },
-        });
-      }
-    }
+    await recordBankPaidBlock(supabase, {
+      appointmentId: p.appointmentId,
+      paymentId: p.paymentId,
+      organizationId: p.organizationId,
+      stripeEventId: p.stripeEventId,
+      actor: p.actor,
+      reason: p.reason,
+      transferId: payout.stripe_transfer_id!,
+      blockedCents: Math.round(Number(payout.amount) * 100),
+    });
     return { ...base, blocked: true };
   }
 
@@ -255,6 +283,14 @@ export interface RefundUnwindParams {
   stripeEventId?: string | null;
   paymentId?: string | null;
   organizationId?: string | null;
+  /**
+   * The platform charge being refunded. Every charge on an appointment shares one transfer_group,
+   * so a refund of (say) the completion charge would otherwise reverse a cancellation fee's tenant
+   * transfer in the same group — clawing back money the org is owed. When set, reversals are scoped
+   * to transfers funded by THIS charge. Omit when the charge is unknown (legacy); then every group
+   * transfer is eligible, as before. (audit T1-12)
+   */
+  sourceChargeId?: string | null;
 }
 
 export interface RefundUnwindResult {
@@ -289,6 +325,16 @@ export async function reverseJobTransfersForRefund(
     return { reversedCents: 0, failures: 1 };
   }
 
+  // Scope to the refunded charge: only reverse transfers funded by it, never a sibling charge's
+  // (e.g. a cancellation fee) transfer that shares this appointment's transfer_group (audit T1-12).
+  // Keep transfers with no source_transaction (rare retry-created legs) so we never drop our own.
+  if (p.sourceChargeId) {
+    transfers = transfers.filter((t) => {
+      const src = typeof t.source_transaction === 'string' ? t.source_transaction : null;
+      return src === null || src === p.sourceChargeId;
+    });
+  }
+
   const payout = await loadCleanerPayout(supabase, p.appointmentId);
 
   let reversedCents = 0;
@@ -303,6 +349,24 @@ export async function reverseJobTransfersForRefund(
     });
     if (reversalCents <= 0) continue;
     const isCleanerTransfer = !!payout && t.id === payout.stripe_transfer_id;
+
+    // The cleaner's cut already reached their bank ('bank_paid'): reversing would drive their
+    // connected balance negative. Block it for ops (same policy as clawbackCleanerPayout) and still
+    // reverse the tenant remainder below so the platform recovers what it can (audit T1-2).
+    if (isCleanerTransfer && payout!.status === 'bank_paid') {
+      await recordBankPaidBlock(supabase, {
+        appointmentId: p.appointmentId,
+        paymentId: p.paymentId,
+        organizationId: p.organizationId,
+        stripeEventId: p.stripeEventId,
+        actor: p.actor,
+        reason: 'refund',
+        transferId: t.id,
+        blockedCents: Math.round(Number(payout!.amount) * 100),
+      });
+      continue;
+    }
+
     try {
       await reversePlatformTransfer(
         t.id,
@@ -324,10 +388,11 @@ export async function reverseJobTransfersForRefund(
         appointmentId: p.appointmentId,
         organizationId: p.organizationId ?? null,
         stripeEventId: p.stripeEventId ?? null,
-        // A failed REFUND reversal self-heals via the charge.refunded webhook re-running this with
-        // cumulative amount_reversed math, so record a DISTINCT type the full-clawback sweep
-        // ignores: retryStrandedClawbacks reverses the FULL payout, which would over-claw-back what
-        // was only a partial refund. (clawbackCleanerPayout still uses cleaner_clawback_failed.)
+        // Record a DISTINCT type the full-clawback sweep ignores: retryStrandedClawbacks reverses
+        // the FULL payout, which would over-claw-back what was only a partial refund.
+        // (clawbackCleanerPayout still uses cleaner_clawback_failed.) These types are retried by
+        // retryStrandedRefundUnwinds, which re-runs THIS function with the cumulative target
+        // re-derived from the Stripe charge, and alerted via paymentEventAlerts (audit T1-1).
         eventType: isCleanerTransfer ? 'refund_clawback_failed' : 'transfer_reversal_failed',
         actor: p.actor,
         amount: reversalCents,

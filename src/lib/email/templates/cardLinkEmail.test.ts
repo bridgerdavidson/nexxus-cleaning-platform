@@ -56,7 +56,7 @@ describe('cardLinkEmail', () => {
   });
 
   it('includes the signed-in alternative only when accountUrl is provided', () => {
-    const accountUrl = 'https://app.example.com/app/homeowner-dashboard/account/payment-methods';
+    const accountUrl = 'https://app.example.com/homeowner/account/payment-methods';
     const withAccount = cardLinkEmail({
       homeownerName: 'John',
       orgName: 'Sparkle Co',

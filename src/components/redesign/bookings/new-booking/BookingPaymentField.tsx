@@ -156,7 +156,7 @@ export function BookingPaymentField({
             <>
               {' '}
               <Link
-                href="/app/admin-dashboard/settings?section=payments"
+                href="/admin/settings?section=payments"
                 className="font-medium text-foreground hover:underline"
               >
                 Manage in Settings

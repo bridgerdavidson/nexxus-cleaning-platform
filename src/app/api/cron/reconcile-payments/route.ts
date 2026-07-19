@@ -9,6 +9,7 @@ import {
   settleUnsettledCaptures,
   retryFailedPayouts,
   retryStrandedClawbacks,
+  retryStrandedRefundUnwinds,
   checkMoneyMathInvariants,
 } from '@/lib/payments/reconcile';
 import { raiseReconcileSweepAlerts } from '@/lib/payments/reconcileAlerts';
@@ -29,6 +30,8 @@ export const runtime = 'nodejs';
  *   2b) unsettled-capture heal   — re-run settlement for captured charges whose funds never moved
  *   3) failed-payout retry       — re-run cleaner settlement for payouts left 'failed'
  *   3b) stranded-clawback retry  — re-attempt cleaner clawbacks that failed (cleaner_clawback_failed)
+ *   3c) stranded refund-unwind   — re-run the refund transfer unwind for appointments stranded by a
+ *                                  failed reversal (transfer_reversal_failed / refund_clawback_failed)
  *   4) money-math invariant      — flag any paid cleaner payout that doesn't match the locked split
  *
  * Jobs run sequentially (so a dead-letter replay and a stuck-payment replay can't race on the
@@ -61,6 +64,7 @@ export async function POST(request: NextRequest) {
     const unsettledCaptures = await settleUnsettledCaptures(supabaseAdmin);
     const failedPayouts = await retryFailedPayouts(supabaseAdmin);
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
+    const strandedRefundUnwinds = await retryStrandedRefundUnwinds(supabaseAdmin);
     const moneyMath = await checkMoneyMathInvariants(supabaseAdmin);
 
     // T1-8: pg_cron discards this response, so the sweep alerts on its own results
@@ -77,6 +81,7 @@ export async function POST(request: NextRequest) {
       unsettledCaptures,
       failedPayouts,
       strandedClawbacks,
+      strandedRefundUnwinds,
       moneyMath,
     });
   } catch (error) {

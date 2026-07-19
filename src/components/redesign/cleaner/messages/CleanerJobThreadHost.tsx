@@ -81,7 +81,7 @@ function JobThreadHostInner({
   }, [router, pathname, searchParams]);
 
   const backToJob = useCallback(() => {
-    router.replace(`/app/cleaner-dashboard?job=${fromParam}`, { scroll: false });
+    router.replace(`/cleaner?job=${fromParam}`, { scroll: false });
   }, [router, fromParam]);
 
   return (

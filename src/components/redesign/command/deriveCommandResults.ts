@@ -121,7 +121,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         sublabel: joinDot(b.customerName, b.dateLabel),
         icon: ClipboardList,
         group: 'Bookings',
-        href: `/app/admin-dashboard/bookings?booking=${b.id}`,
+        href: `/admin/bookings?booking=${b.id}`,
       }));
       groups.push({ group: 'Bookings', items, overflow: matched.length - items.length });
     }
@@ -136,7 +136,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         sublabel: c.name ? c.email : c.phone,
         icon: BookUser,
         group: 'Customers',
-        href: `/app/admin-dashboard/customers?customer=${c.id}`,
+        href: `/admin/customers?customer=${c.id}`,
       }));
       groups.push({ group: 'Customers', items, overflow: matched.length - items.length });
     }
@@ -151,7 +151,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         sublabel: c.roleLabel || c.email,
         icon: Users,
         group: 'Cleaners',
-        href: `/app/admin-dashboard/cleaners?cleaner=${c.id}`,
+        href: `/admin/cleaners?cleaner=${c.id}`,
       }));
       groups.push({ group: 'Cleaners', items, overflow: matched.length - items.length });
     }
@@ -166,7 +166,7 @@ export function deriveCommandResults(input: DeriveCommandInput): CommandGroupVM[
         sublabel: s.priceLabel || undefined,
         icon: Tag,
         group: 'Services',
-        href: `/app/admin-dashboard/services?service=${s.id}`,
+        href: `/admin/services?service=${s.id}`,
       }));
       groups.push({ group: 'Services', items, overflow: matched.length - items.length });
     }

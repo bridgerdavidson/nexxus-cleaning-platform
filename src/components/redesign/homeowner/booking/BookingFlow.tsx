@@ -94,7 +94,7 @@ export function BookingFlow({
       {(close) => (
         <>
           {page === 'sent' ? (
-            <BookingSentView onDone={() => router.push('/app/homeowner-dashboard/cleanings')} />
+            <BookingSentView onDone={() => router.push('/homeowner/cleanings')} />
           ) : (
             <>
               <div className="flex items-center gap-2 border-b border-border px-2">

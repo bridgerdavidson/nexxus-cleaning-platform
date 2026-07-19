@@ -24,3 +24,13 @@ export async function retrievePaymentIntent(
 export async function retrieveCharge(chargeId: string): Promise<Stripe.Charge> {
   return getStripe().charges.retrieve(chargeId);
 }
+
+/**
+ * List a PaymentIntent's refunds — the authoritative refund history including out-of-band
+ * Dashboard refunds (the local `refunds` ledger can miss those). The retry sweep uses the
+ * `created` timestamps for its safety guards. 100 covers any realistic refund count per charge.
+ */
+export async function listRefundsForPaymentIntent(paymentIntentId: string): Promise<Stripe.Refund[]> {
+  const res = await getStripe().refunds.list({ payment_intent: paymentIntentId, limit: 100 });
+  return res.data;
+}

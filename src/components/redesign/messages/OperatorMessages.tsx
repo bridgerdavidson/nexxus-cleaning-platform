@@ -270,11 +270,11 @@ function OperatorMessagesData() {
     if (!participant) return
     const role = participant.role as UserRole
     if (role === 'cleaner') {
-      router.push(`/app/admin-dashboard/cleaners?cleaner=${participant.id}`)
+      router.push(`/admin/cleaners?cleaner=${participant.id}`)
     } else if (role === 'homeowner') {
-      router.push(`/app/admin-dashboard/customers?customer=${participant.id}`)
+      router.push(`/admin/customers?customer=${participant.id}`)
     } else {
-      router.push('/app/admin-dashboard/customers')
+      router.push('/admin/customers')
     }
   }, [participant, router])
 

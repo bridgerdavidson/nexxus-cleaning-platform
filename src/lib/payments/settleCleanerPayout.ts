@@ -18,7 +18,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
-import { transferGroupFor, createPlatformTransfer } from '@/lib/stripe/transfers';
+import { transferGroupFor, createPlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
 import { chargeAmountRefundedCents } from './refundGuards';
 
@@ -94,7 +94,24 @@ export async function settleCleanerPayout(
     paymentIntentId: paymentRow?.stripe_payment_intent_id ?? null,
   });
   if (refundedCents == null) {
-    refundedCents = paymentRow?.status === 'refunded' ? capturedTotalCents : 0;
+    // Stripe unreadable: assuming zero would overpay a carved slice that was PARTIALLY refunded (a
+    // partial refund never sets payments.status='refunded'), a silent loss. Fall back to the local
+    // refunds ledger (partial-aware), then the terminal 'refunded' status as a last resort.
+    const { data: refundRows } = await supabase
+      .from('refunds')
+      .select('amount')
+      .eq('appointment_id', appointmentId)
+      .in('status', ['pending', 'succeeded']);
+    const ledgerRefundedCents = (refundRows ?? []).reduce(
+      (sum, r) => sum + Number((r as { amount: number }).amount),
+      0,
+    );
+    refundedCents =
+      ledgerRefundedCents > 0
+        ? ledgerRefundedCents
+        : paymentRow?.status === 'refunded'
+          ? capturedTotalCents
+          : 0;
   }
   if (refundedCents >= capturedTotalCents) {
     // Fully refunded before settlement: nothing to distribute. Retire any retryable payout row
@@ -263,13 +280,52 @@ export async function settleCleanerPayout(
     (priorPayout.status === 'pending' || priorPayout.status === 'failed') &&
     priorPayout.amount != null;
 
-  // Amount + percent snapshot to settle: the carved slice on a retry, else the freshly computed
-  // split on first settlement. A carved slice is paid even if the current share is now 0.
-  const cleanerSettleCents = hasCarvedSlice ? Math.round(Number(priorPayout!.amount) * 100) : cleanerCents;
+  // Percent snapshot to settle: the carved slice's LOCKED percent on a retry (so a mid-onboarding
+  // percent edit can't break conservation vs the tenant's already-paid remainder), else the current
+  // share on first settlement.
   const cleanerSettlePercent =
     hasCarvedSlice && priorPayout!.payout_percent_snapshot != null
       ? Number(priorPayout!.payout_percent_snapshot)
       : payoutPercent;
+
+  // Amount to settle. First settlement pays the freshly computed split. A retry of a carved slice
+  // pays the SNAPSHOT amount — EXCEPT a refund that landed AFTER the carve, which shrank the split
+  // base (splitBaseCents already nets the live refunded total). The cleaner must then be paid their
+  // snapshot-percent share of the CURRENT base, never the pre-refund snapshot: paying the snapshot
+  // hands the cleaner money the homeowner got back, a silent platform loss (audit T1-13). Capped by
+  // the snapshot so a later percent edit can never push it ABOVE what was carved.
+  const carvedSnapshotCents = priorPayout ? Math.round(Number(priorPayout.amount) * 100) : 0;
+  const refundAdjustedCarvedCents = hasCarvedSlice
+    ? computePaymentSplit({
+        grossCents: splitBaseCents,
+        payoutPercent: cleanerSettlePercent,
+        platformFeeBps: org.platform_fee_bps ?? 0,
+      }).cleanerCents
+    : 0;
+  const cleanerSettleCents = hasCarvedSlice
+    ? Math.min(carvedSnapshotCents, refundAdjustedCarvedCents)
+    : cleanerCents;
+
+  // A refund since the carve fully absorbed the held slice (nothing left to pay). Retire the row so
+  // the failed-payout sweep stops re-selecting it, and leave a forensic marker.
+  if (hasCarvedSlice && cleanerSettleCents <= 0) {
+    await supabase
+      .from('payouts')
+      .update({ status: 'reversed', reversed_at: new Date().toISOString() })
+      .eq('id', priorPayout!.id);
+    await recordPaymentEvent(supabase, {
+      appointmentId,
+      organizationId: appt.organization_id,
+      eventType: 'cleaner_slice_refund_absorbed',
+      prevStatus: priorPayout!.status,
+      newStatus: 'reversed',
+      actor: 'webhook',
+      amount: carvedSnapshotCents,
+      payload: { split_base_cents: splitBaseCents, refunded_cents: refundedCents },
+    });
+    return { settled: true, reason: 'cleaner_slice_refund_absorbed' };
+  }
+
   const shouldSettleCleaner = (cleanerHasShare || hasCarvedSlice) && cleanerSettleCents > 0;
 
   if (shouldSettleCleaner) {
@@ -310,6 +366,50 @@ export async function settleCleanerPayout(
         payload: { reason: 'cleaner_not_onboarded' },
       });
       return { settled: true, reason: 'cleaner_slice_held' };
+    }
+
+    // A prior attempt can create the cleaner transfer at Stripe but LOSE the response (a network
+    // timeout after the request landed): the catch below then writes a 'failed'/'pending' row with a
+    // NULL transfer_id, which the H4 repair above (transfer_id required) doesn't cover. Re-issuing
+    // under the constant `cleaner-payout-${id}` key with a DIFFERENT amount — which a post-carve
+    // refund now produces (T1-13) — would 400 on the spent key and loop forever, or double-pay after
+    // Stripe's ~24h key window. On a retry, adopt any cleaner transfer already in the group instead of
+    // issuing a new one; a post-carve refund already reversed it proportionally, so it carries the
+    // correct net amount. (First settlement has no priorPayout, so the extra list is skipped there.)
+    if (priorPayout) {
+      let existingCleanerTransfer:
+        | Awaited<ReturnType<typeof listTransfersByGroup>>[number]
+        | null = null;
+      try {
+        const groupTransfers = await listTransfersByGroup(transferGroup);
+        existingCleanerTransfer =
+          groupTransfers.find((t) => {
+            const dest = typeof t.destination === 'string' ? t.destination : t.destination?.id ?? null;
+            return dest === cleaner!.stripe_connect_account_id;
+          }) ?? null;
+      } catch {
+        // Stripe unreadable — fall through; the constant key still protects a same-amount retry.
+      }
+      if (existingCleanerTransfer) {
+        await upsertPayout({
+          ...payoutBase,
+          amount: existingCleanerTransfer.amount / 100,
+          status: 'paid',
+          stripe_transfer_id: existingCleanerTransfer.id,
+          paid_at: new Date().toISOString(),
+        });
+        await recordPaymentEvent(supabase, {
+          appointmentId,
+          organizationId: appt.organization_id,
+          eventType: 'cleaner_payout_repaired',
+          prevStatus: priorPayout.status,
+          newStatus: 'paid',
+          actor: 'webhook',
+          amount: existingCleanerTransfer.amount,
+          payload: { transfer_id: existingCleanerTransfer.id, source: 'settle-adopt-existing' },
+        });
+        return { settled: true, reason: 'payout_adopted_existing' };
+      }
     }
 
     let transfer;

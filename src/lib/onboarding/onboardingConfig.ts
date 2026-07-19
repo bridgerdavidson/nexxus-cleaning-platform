@@ -14,21 +14,21 @@ export interface SetupStepDef {
 }
 
 const OPERATOR_PERCENTAGE: SetupStepDef[] = [
-  { key: 'payments', title: 'Connect payments', description: 'So you can charge customers and pay your cleaners', required: true, ctaLabel: 'Connect', href: '/app/admin-dashboard/settings?section=payments', completionKey: 'payments_connected' },
-  { key: 'services', title: 'Add your services and pricing', description: 'Define what you offer and what it costs', required: true, ctaLabel: 'Add service', href: '/app/admin-dashboard/services', completionKey: 'services_added' },
-  { key: 'payout', title: 'Set cleaner pay', description: 'The percent each cleaner earns per job', required: true, ctaLabel: 'Set pay', href: '/app/admin-dashboard/settings?section=payout', completionKey: 'cleaner_pay_set' },
-  { key: 'cleaners', title: 'Invite your cleaners', description: 'Build your team so you can assign jobs', required: true, ctaLabel: 'Invite', href: '/app/admin-dashboard/cleaners', completionKey: 'cleaners_invited' },
-  { key: 'hours', title: 'Set business hours and cancellation policy', description: 'When you work and your terms', required: false, ctaLabel: 'Set hours', href: '/app/admin-dashboard/settings?section=business-hours', completionKey: 'hours_policy_set' },
+  { key: 'payments', title: 'Connect payments', description: 'So you can charge customers and pay your cleaners', required: true, ctaLabel: 'Connect', href: '/admin/settings?section=payments', completionKey: 'payments_connected' },
+  { key: 'services', title: 'Add your services and pricing', description: 'Define what you offer and what it costs', required: true, ctaLabel: 'Add service', href: '/admin/services', completionKey: 'services_added' },
+  { key: 'payout', title: 'Set cleaner pay', description: 'The percent each cleaner earns per job', required: true, ctaLabel: 'Set pay', href: '/admin/settings?section=payout', completionKey: 'cleaner_pay_set' },
+  { key: 'cleaners', title: 'Invite your cleaners', description: 'Build your team so you can assign jobs', required: true, ctaLabel: 'Invite', href: '/admin/cleaners', completionKey: 'cleaners_invited' },
+  { key: 'hours', title: 'Set business hours and cancellation policy', description: 'When you work and your terms', required: false, ctaLabel: 'Set hours', href: '/admin/settings?section=business-hours', completionKey: 'hours_policy_set' },
 ];
 
 const CLEANER_PERCENTAGE: SetupStepDef[] = [
-  { key: 'payouts', title: 'Connect payouts', description: 'So you get paid to your bank', required: true, ctaLabel: 'Connect', href: '/app/cleaner-dashboard/earnings', completionKey: 'payouts_connected' },
-  { key: 'profile', title: 'Complete your profile', description: 'Add a photo so homeowners know who is coming', required: false, ctaLabel: 'Add photo', href: '/app/cleaner-dashboard/profile', completionKey: 'profile_complete' },
+  { key: 'payouts', title: 'Connect payouts', description: 'So you get paid to your bank', required: true, ctaLabel: 'Connect', href: '/cleaner/earnings', completionKey: 'payouts_connected' },
+  { key: 'profile', title: 'Complete your profile', description: 'Add a photo so homeowners know who is coming', required: false, ctaLabel: 'Add photo', href: '/cleaner/profile', completionKey: 'profile_complete' },
 ];
 
 const HOMEOWNER_PERCENTAGE: SetupStepDef[] = [
-  { key: 'home', title: 'Add your home', description: 'Where you would like us to clean', required: true, ctaLabel: 'Add home', href: '/app/homeowner-dashboard/account/properties', completionKey: 'home_added' },
-  { key: 'card', title: 'Add a payment method', description: 'You are only charged after a cleaning', required: true, ctaLabel: 'Add card', href: '/app/homeowner-dashboard/account/payment-methods', completionKey: 'payment_method_added' },
+  { key: 'home', title: 'Add your home', description: 'Where you would like us to clean', required: true, ctaLabel: 'Add home', href: '/homeowner/account/properties', completionKey: 'home_added' },
+  { key: 'card', title: 'Add a payment method', description: 'You are only charged after a cleaning', required: true, ctaLabel: 'Add card', href: '/homeowner/account/payment-methods', completionKey: 'payment_method_added' },
 ];
 
 /**

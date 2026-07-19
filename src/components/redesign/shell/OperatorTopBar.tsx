@@ -98,7 +98,7 @@ export function OperatorTopBar({
             <DropdownMenuLabel>{name}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/app/admin-dashboard/settings">Settings</Link>
+              <Link href="/admin/settings">Settings</Link>
             </DropdownMenuItem>
             <DropdownMenuItem destructive onClick={() => signOut()}>
               Sign out

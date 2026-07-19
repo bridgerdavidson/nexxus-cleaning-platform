@@ -115,7 +115,7 @@ function ThreadHostInner({
   // REPLACE (not push) so the dismissed /messages?to=...&from=... entry is collapsed off
   // the back-stack; otherwise a gesture/hardware back would re-open the thread we just left.
   const backToJob = useCallback(() => {
-    router.replace(`/app/cleaner-dashboard?job=${fromParam}`, { scroll: false });
+    router.replace(`/cleaner?job=${fromParam}`, { scroll: false });
   }, [router, fromParam]);
 
   const clearArmed = useCallback(() => {

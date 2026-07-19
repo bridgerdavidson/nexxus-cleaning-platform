@@ -13,6 +13,7 @@ import { JobRow } from "../shared/JobRow";
 import { OfferActionsBar } from "../shared/OfferActionsBar";
 import { deriveSeriesOffers } from "./deriveSeriesOffers";
 import { SeriesOfferCard } from "./SeriesOfferCard";
+import { CleanerNextUpCard } from "./CleanerNextUpCard";
 
 function SectionHeader({ title, trailing }: { title: string; trailing?: React.ReactNode }) {
   return (
@@ -29,6 +30,8 @@ export function CleanerTodayView({
   error,
   onRetry,
   onContinueActive,
+  onStartNext,
+  startingNext,
   onAcceptOffer,
   onDeclineOffer,
   onAcceptSeries,
@@ -43,6 +46,8 @@ export function CleanerTodayView({
   error?: boolean;
   onRetry?: () => void;
   onContinueActive: () => void;
+  onStartNext: (id: string) => void;
+  startingNext: boolean;
   onAcceptOffer: (id: string, slotIndex: number) => Promise<unknown> | void;
   onDeclineOffer: (id: string, reason: DeclineReason, other?: string) => Promise<unknown> | void;
   onAcceptSeries: (seriesId: string) => Promise<unknown> | void;
@@ -98,6 +103,20 @@ export function CleanerTodayView({
               Continue job
             </button>
           </div>
+        </section>
+      )}
+
+      {/* Pinned directly under the active card (or at the very top when nothing is
+          active): the imminent job with one-tap Start + Directions. */}
+      {data.nextUp && (
+        <section>
+          <h2 className="sr-only">Next up</h2>
+          <CleanerNextUpCard
+            appointment={data.nextUp}
+            onStart={onStartNext}
+            starting={startingNext}
+            onOpenJob={onOpenJob}
+          />
         </section>
       )}
 
@@ -180,10 +199,10 @@ export function CleanerTodayView({
       {data.todayJobs.length > 0 && (
         <section>
           <SectionHeader
-            title="Today"
+            title={data.nextUp ? "Later today" : "Today"}
             trailing={
               <span className="ml-auto text-xs font-medium text-muted-foreground">
-                {data.todayJobs.length} jobs
+                {data.todayJobs.length} {data.todayJobs.length === 1 ? "job" : "jobs"}
               </span>
             }
           />

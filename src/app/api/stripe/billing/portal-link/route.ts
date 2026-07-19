@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
     const returnUrl =
       url.searchParams.get('return_url') ||
-      `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.nexxus'}/app/admin-dashboard`;
+      `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.nexxus'}/admin`;
 
     const link = await getOrgPortalLink(supabaseAdmin, organizationId!, returnUrl);
     return NextResponse.json({ success: true, url: link });
