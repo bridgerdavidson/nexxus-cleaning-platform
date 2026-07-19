@@ -70,7 +70,7 @@ export function LiveTrackingSection() {
   const photosShown = i >= 3 ? 3 : i >= 1 ? Math.min(i, 2) : 0
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+    <section id="live-tracking" className="scroll-mt-20 mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
       <div className="grid items-center gap-10 lg:grid-cols-2">
         <div className="text-center lg:text-left">
           <Badge variant="secondary">Everyone stays in the loop</Badge>
