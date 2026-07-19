@@ -13,7 +13,7 @@ import type {
 
 // TEMPORARY dev-only preview (gated by the (dev) layout) so the presentational
 // Bookings View can be iterated on without auth/hooks. The live screen is at
-// /app/admin-dashboard/bookings via the hook-backed OperatorBookings.
+// /admin/bookings via the hook-backed OperatorBookings.
 
 const CLEANERS = [
   { id: "marco", name: "Marco Diaz" },

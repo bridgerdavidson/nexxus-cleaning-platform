@@ -49,33 +49,33 @@ describe('operatorNotificationHref', () => {
     // cleaner_accepted -> redesign booking detail
     expect(
       operatorNotificationHref({ event_type: 'cleaner_accepted', appointment_id: 'a1' }),
-    ).toBe('/app/admin-dashboard/bookings?booking=a1');
+    ).toBe('/admin/bookings?booking=a1');
     // charge_failed (with appointment) -> redesign payments (triage band surfaces it)
     expect(
       operatorNotificationHref({ event_type: 'charge_failed', appointment_id: 'a2' }),
-    ).toBe('/app/admin-dashboard/payments');
+    ).toBe('/admin/payments');
     // homeowner_request_submitted -> redesign booking detail
     expect(
       operatorNotificationHref({ event_type: 'homeowner_request_submitted', appointment_id: 'a3' }),
-    ).toBe('/app/admin-dashboard/bookings?booking=a3');
+    ).toBe('/admin/bookings?booking=a3');
   });
 
   it('routes appointment-less member_joined to redesign customers', () => {
     expect(
       operatorNotificationHref({ event_type: 'member_joined', appointment_id: null }),
-    ).toBe('/app/admin-dashboard/customers');
+    ).toBe('/admin/customers');
   });
 
   it('routes appointment-less money events to redesign payments', () => {
     expect(
       operatorNotificationHref({ event_type: 'dispute_opened', appointment_id: null }),
-    ).toBe('/app/admin-dashboard/payments');
+    ).toBe('/admin/payments');
   });
 
   it('falls back to the redesign overview for unknown appointment-less events', () => {
     expect(
       operatorNotificationHref({ event_type: 'something_new', appointment_id: null }),
-    ).toBe('/app/admin-dashboard');
+    ).toBe('/admin');
   });
 });
 
@@ -127,7 +127,7 @@ describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")'
       NOW,
       'cleaner',
     );
-    expect(g.latest.href).toBe('/app/cleaner-dashboard?job=appt-42');
+    expect(g.latest.href).toBe('/cleaner?job=appt-42');
   });
 
   it('routes cleaner_paid (no appointment) to the earnings screen', () => {
@@ -136,7 +136,7 @@ describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")'
       NOW,
       'cleaner',
     );
-    expect(g.latest.href).toBe('/app/cleaner-dashboard/earnings');
+    expect(g.latest.href).toBe('/cleaner/earnings');
   });
 
   it('falls back to cleaner dashboard home for non-appointment, non-paid events', () => {
@@ -145,7 +145,7 @@ describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")'
       NOW,
       'cleaner',
     );
-    expect(g.latest.href).toBe('/app/cleaner-dashboard');
+    expect(g.latest.href).toBe('/cleaner');
   });
 });
 
@@ -195,7 +195,7 @@ describe('deriveNotificationGroups', () => {
     );
     expect(g.latest.descriptor.title).toBe('New booking request from Sarah');
     expect(g.latest.relative).toBe('just now');
-    expect(g.latest.href).toBe('/app/admin-dashboard/bookings?booking=appt-1');
+    expect(g.latest.href).toBe('/admin/bookings?booking=appt-1');
   });
 
   it('exposes an accept action for counter-proposals with a suggested time id', () => {
@@ -238,7 +238,7 @@ describe('homeownerNotificationHref (via deriveNotificationGroups role="homeowne
       NOW,
       'homeowner',
     );
-    expect(g.latest.href).toBe('/app/homeowner-dashboard?appointment=appt-7');
+    expect(g.latest.href).toBe('/homeowner?appointment=appt-7');
   });
 
   it('falls back to the homeowner dashboard for appointment-less events', () => {
@@ -247,6 +247,6 @@ describe('homeownerNotificationHref (via deriveNotificationGroups role="homeowne
       NOW,
       'homeowner',
     );
-    expect(g.latest.href).toBe('/app/homeowner-dashboard');
+    expect(g.latest.href).toBe('/homeowner');
   });
 });

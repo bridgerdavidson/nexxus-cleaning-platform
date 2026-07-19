@@ -20,7 +20,7 @@ import { useOperatorNav } from "./useOperatorNav";
 
 function deriveActive(pathname: string | null): string | undefined {
   if (!pathname) return undefined;
-  // Longest matching href wins so /app/admin-dashboard/bookings resolves to
+  // Longest matching href wins so /admin/bookings resolves to
   // "bookings", not "overview" (whose href is a prefix of every other).
   let best: { id: string; len: number } | undefined;
   for (const item of OPERATOR_NAV) {

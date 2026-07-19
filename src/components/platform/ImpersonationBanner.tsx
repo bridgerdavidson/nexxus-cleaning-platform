@@ -15,8 +15,15 @@ export function ImpersonationBanner() {
   const pathname = usePathname();
 
   // The redesign shells render their own design-system impersonation banner;
-  // suppress this legacy amber one on /app/* so the two never double up.
-  if (!impersonatingOrgId || pathname?.startsWith('/app')) return null;
+  // suppress this legacy amber one on the redesign roots so the two never
+  // double up. Post-4e the shells live at /admin, /cleaner, /homeowner, /owner
+  // (before that they were under /app).
+  const onRedesignShell =
+    pathname != null &&
+    ['/admin', '/cleaner', '/homeowner', '/owner'].some(
+      (root) => pathname === root || pathname.startsWith(root + '/'),
+    );
+  if (!impersonatingOrgId || onRedesignShell) return null;
 
   return (
     <div className="sticky top-0 z-[100] flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-center text-sm font-medium text-white">

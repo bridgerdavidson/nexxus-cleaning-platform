@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-const MESSAGES_PATH = "/app/cleaner-dashboard/messages";
+const MESSAGES_PATH = "/cleaner/messages";
 
 /**
  * Open the cleaner's office thread takeover via URL params:

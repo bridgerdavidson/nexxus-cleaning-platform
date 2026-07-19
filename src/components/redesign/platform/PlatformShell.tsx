@@ -12,8 +12,8 @@ import { PLATFORM_NAV } from './platform-nav';
 
 function deriveActive(pathname: string | null): string | undefined {
   if (!pathname) return undefined;
-  // Longest matching href wins so /app/owner/audit resolves to "audit", not
-  // "tenants" (whose /app/owner href is a prefix of it).
+  // Longest matching href wins so /owner/audit resolves to "audit", not
+  // "tenants" (whose /owner href is a prefix of it).
   let best: { id: string; len: number } | undefined;
   for (const item of PLATFORM_NAV) {
     const roots = [item.href, ...(item.activeFor ?? [])];

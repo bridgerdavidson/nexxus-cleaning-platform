@@ -8,10 +8,10 @@ export interface HomeownerNavItem {
 }
 
 export const HOMEOWNER_NAV: HomeownerNavItem[] = [
-  { id: 'home', label: 'Home', href: '/app/homeowner-dashboard', icon: Home },
-  { id: 'cleanings', label: 'Cleanings', href: '/app/homeowner-dashboard/cleanings', icon: CalendarDays },
-  { id: 'messages', label: 'Messages', href: '/app/homeowner-dashboard/messages', icon: MessageSquare },
-  { id: 'account', label: 'Account', href: '/app/homeowner-dashboard/account', icon: UserCircle },
+  { id: 'home', label: 'Home', href: '/homeowner', icon: Home },
+  { id: 'cleanings', label: 'Cleanings', href: '/homeowner/cleanings', icon: CalendarDays },
+  { id: 'messages', label: 'Messages', href: '/homeowner/messages', icon: MessageSquare },
+  { id: 'account', label: 'Account', href: '/homeowner/account', icon: UserCircle },
 ];
 
 export function deriveHomeownerActive(pathname: string): string {

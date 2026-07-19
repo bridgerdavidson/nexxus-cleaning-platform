@@ -61,7 +61,7 @@ export function CleanerTopBar() {
             <DropdownMenuLabel>{fullName}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/app/cleaner-dashboard/profile">Profile</Link>
+              <Link href="/cleaner/profile">Profile</Link>
             </DropdownMenuItem>
             <DropdownMenuItem destructive onClick={() => signOut()}>
               Sign out

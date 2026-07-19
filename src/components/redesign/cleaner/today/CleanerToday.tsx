@@ -82,7 +82,7 @@ export function CleanerToday() {
         onDeclineOffer={(id, reason, other) => respond.decline.mutateAsync({ appointmentId: id, reason, other })}
         onAcceptSeries={(seriesId) => series.acceptAll(seriesId)}
         onDeclineSeries={(seriesId, reason, other) => series.declineAll(seriesId, reason, other)}
-        onSeeTomorrow={() => router.push("/app/cleaner-dashboard/schedule")}
+        onSeeTomorrow={() => router.push("/cleaner/schedule")}
         checklist={checklistSlot}
       />
       {onboarding.showWelcome && (

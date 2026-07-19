@@ -36,7 +36,7 @@ export default function OperatorDashboardLayout({ children }: { children: ReactN
 
   // Soft role guard. The operator shell legitimately serves admin AND manager,
   // and a platform admin "viewing as" a tenant is pushed here too
-  // (TenantDetailSheet → /app/admin-dashboard), so this is a denylist of the two
+  // (TenantDetailSheet → /admin), so this is a denylist of the two
   // roles that belong elsewhere rather than the sibling layouts' single-role
   // allowlist: a cleaner or homeowner with a stale bookmark (every legacy role's
   // chrome carried a /settings link that now 307s into this shell) gets sent

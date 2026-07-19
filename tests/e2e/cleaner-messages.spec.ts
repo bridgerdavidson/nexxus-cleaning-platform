@@ -48,7 +48,7 @@ async function signInAsCleaner(page: Page): Promise<boolean> {
       .getByRole('button', { name: /sign in|log in|continue/i })
       .first()
       .click();
-    await page.waitForURL(/dashboard/, { timeout: 20_000 });
+    await page.waitForURL(/\/(admin|cleaner|homeowner|owner)(?:\/|\?|$)/, { timeout: 20_000 });
     return true;
   } catch {
     return false;
@@ -59,8 +59,8 @@ async function signInAsCleaner(page: Page): Promise<boolean> {
 async function reachMessages(page: Page): Promise<boolean> {
   if (!(await signInAsCleaner(page))) return false;
   try {
-    await page.goto('/app/cleaner-dashboard/messages', { waitUntil: 'domcontentloaded' });
-    if (!page.url().includes('/app/cleaner-dashboard/messages')) return false;
+    await page.goto('/cleaner/messages', { waitUntil: 'domcontentloaded' });
+    if (!page.url().includes('/cleaner/messages')) return false;
     await page.getByRole('navigation').first().waitFor({ state: 'visible', timeout: 10_000 });
     return true;
   } catch {

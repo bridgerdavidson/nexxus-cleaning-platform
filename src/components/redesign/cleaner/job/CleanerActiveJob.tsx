@@ -243,7 +243,7 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
   const router = useRouter();
   const messagingEnabled = useOrgMessagingEnabled();
   const onMessageHomeowner = useCallback(() => {
-    router.push(`/app/cleaner-dashboard/messages?jobthread=${appointmentId}&from=${appointmentId}`);
+    router.push(`/cleaner/messages?jobthread=${appointmentId}&from=${appointmentId}`);
   }, [router, appointmentId]);
 
   // First-open progress advance (best-effort, loose order, non-blocking).

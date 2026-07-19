@@ -13,14 +13,14 @@ export type CleanerNavItem = {
 // route group; each destination ships as its own slice (Schedule, Earnings,
 // Messages, Profile arrive after Today).
 export const CLEANER_NAV: CleanerNavItem[] = [
-  { id: "today", label: "Today", href: "/app/cleaner-dashboard", icon: Home },
-  { id: "schedule", label: "Schedule", href: "/app/cleaner-dashboard/schedule", icon: CalendarDays },
-  { id: "earnings", label: "Earnings", href: "/app/cleaner-dashboard/earnings", icon: DollarSign },
-  { id: "messages", label: "Messages", href: "/app/cleaner-dashboard/messages", icon: MessageSquare },
-  { id: "profile", label: "Profile", href: "/app/cleaner-dashboard/profile", icon: User },
+  { id: "today", label: "Today", href: "/cleaner", icon: Home },
+  { id: "schedule", label: "Schedule", href: "/cleaner/schedule", icon: CalendarDays },
+  { id: "earnings", label: "Earnings", href: "/cleaner/earnings", icon: DollarSign },
+  { id: "messages", label: "Messages", href: "/cleaner/messages", icon: MessageSquare },
+  { id: "profile", label: "Profile", href: "/cleaner/profile", icon: User },
 ];
 
-/** Longest matching href wins so /app/cleaner-dashboard/schedule resolves to
+/** Longest matching href wins so /cleaner/schedule resolves to
  *  "schedule", not "today" (whose href is a prefix of every other). */
 export function deriveCleanerActive(pathname: string | null): string | undefined {
   if (!pathname) return undefined;

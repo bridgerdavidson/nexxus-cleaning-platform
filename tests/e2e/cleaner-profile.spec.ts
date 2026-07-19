@@ -47,7 +47,7 @@ async function signInAsCleaner(page: Page): Promise<boolean> {
       .getByRole('button', { name: /sign in|log in|continue/i })
       .first()
       .click();
-    await page.waitForURL(/dashboard/, { timeout: 20_000 });
+    await page.waitForURL(/\/(admin|cleaner|homeowner|owner)(?:\/|\?|$)/, { timeout: 20_000 });
     return true;
   } catch {
     return false;
@@ -57,8 +57,8 @@ async function signInAsCleaner(page: Page): Promise<boolean> {
 async function reachProfile(page: Page): Promise<boolean> {
   if (!(await signInAsCleaner(page))) return false;
   try {
-    await page.goto('/app/cleaner-dashboard/profile', { waitUntil: 'domcontentloaded' });
-    if (!page.url().includes('/app/cleaner-dashboard/profile')) return false;
+    await page.goto('/cleaner/profile', { waitUntil: 'domcontentloaded' });
+    if (!page.url().includes('/cleaner/profile')) return false;
     await page.getByRole('navigation').first().waitFor({ state: 'visible', timeout: 10_000 });
     return true;
   } catch {
@@ -108,7 +108,7 @@ test('the read-only services catalog is reachable from Profile', async ({ page }
     return;
   }
   try {
-    await page.goto('/app/cleaner-dashboard/profile/services', { waitUntil: 'domcontentloaded' });
+    await page.goto('/cleaner/profile/services', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: /^services$/i })).toBeVisible({ timeout: 15_000 });
   } catch (err) {
     test.skip(true, `Services catalog not reachable in this environment: ${(err as Error).message}`);
