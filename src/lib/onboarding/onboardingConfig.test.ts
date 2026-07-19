@@ -6,7 +6,7 @@ describe('getSetupSteps', () => {
     const steps = getSetupSteps('operator', 'percentage_contractor');
     expect(steps.map((s) => s.key)).toEqual(['payments', 'services', 'payout', 'cleaners', 'hours']);
     expect(steps.filter((s) => s.required).map((s) => s.key)).toEqual(['payments', 'services', 'payout', 'cleaners']);
-    expect(steps.find((s) => s.key === 'payout')!.href).toBe('/app/admin-dashboard/settings?section=payout');
+    expect(steps.find((s) => s.key === 'payout')!.href).toBe('/admin/settings?section=payout');
   });
 
   it('returns cleaner steps: required payouts + optional profile', () => {

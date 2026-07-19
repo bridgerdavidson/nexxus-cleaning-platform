@@ -4,7 +4,7 @@ import { getGreeting } from "@/components/redesign/overview/overview-types";
 
 // TEMPORARY dev-only preview for redesign fidelity iteration (gated by the (dev)
 // layout). Feeds the presentational Overview View mock data so it renders without
-// auth/hooks. Removed at Task 6 when the real /app/admin-dashboard page wires the
+// auth/hooks. Removed at Task 6 when the real /admin page wires the
 // hook-backed OperatorOverview.
 export default function OperatorPreviewPage() {
   const { greeting, dateLabel } = getGreeting("Sarah", new Date());
@@ -28,7 +28,7 @@ export default function OperatorPreviewPage() {
         counterProposed={[{ id: "c1", title: "Cedar Ct · Standard clean", subtitle: "Marco proposed Mon Jun 23 · 2:00pm" }]}
         overdue={[{ id: "o1", title: "Willow Way · Deep clean", subtitle: "Thu Jun 26 · 10:00am · Dana has not responded" }]}
         failedPayment={[{ id: "f1", title: "Aspen Rd · Deep clean", subtitle: "Wed Jun 24 · Card declined" }]}
-        paymentsHref="/app/admin-dashboard/payments"
+        paymentsHref="/admin/payments"
         todayItems={[
           { id: "t1", time: "8:00am", title: "Pine St · Standard clean", subtitle: "Marco D.", status: "done" },
           { id: "t2", time: "10:30am", title: "Elm Ave · Deep clean", subtitle: "Sara K.", status: "live", elapsed: "1 hr 7 min" },

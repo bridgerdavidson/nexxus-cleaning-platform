@@ -15,8 +15,9 @@ test('admin can sign in and land on the admin dashboard', async ({ page }) => {
   await page.locator('input[type="password"], input[name="password"]').first().fill(E2E_PASSWORD!);
   await page.getByRole('button', { name: /sign in|log in/i }).click();
 
-  // After successful sign-in the admin role should land on /admin-dashboard.
-  await page.waitForURL(/\/admin-dashboard/, { timeout: 30_000 });
+  // After successful sign-in the admin role should land on /admin (4e removed
+  // the /app prefix and the -dashboard suffix).
+  await page.waitForURL(/\/admin(?:\/|\?|$)/, { timeout: 30_000 });
   // A sanity check that the dashboard rendered.
   await expect(page.getByText(/bookings|appointments|dashboard/i).first()).toBeVisible({
     timeout: 10_000,

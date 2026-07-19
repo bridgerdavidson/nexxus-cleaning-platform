@@ -10,8 +10,8 @@ import { useAuth } from '@/hooks/useAuth';
  * platform admin is "viewing as" a tenant; Exit clears impersonation and returns
  * to the redesign owner back-office. Theme-aware (caution tokens), announced via
  * aria-live. Renders nothing when not impersonating. The legacy amber banner in
- * LayoutWrapper suppresses itself on /app/* so this is the only one on redesign
- * routes.
+ * LayoutWrapper suppresses itself on the redesign roots (/admin, /cleaner,
+ * /homeowner, /owner) so this is the only one on redesign routes.
  */
 export function RedesignImpersonationBanner() {
   const { impersonatingOrgId, impersonatingOrgName, stopImpersonation } = useAuth();
@@ -34,7 +34,7 @@ export function RedesignImpersonationBanner() {
         variant="outline"
         onClick={() => {
           stopImpersonation();
-          router.push('/app/owner');
+          router.push('/owner');
         }}
       >
         <LogOut /> Exit

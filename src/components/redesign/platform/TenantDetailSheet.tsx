@@ -84,7 +84,7 @@ export function TenantDetailSheet({
         setImpersonationError("Couldn't start View as: the audit log entry failed. Please try again.");
         return;
       }
-      router.push(redesignUiEnabled() ? '/app/admin-dashboard' : '/admin-dashboard');
+      router.push(redesignUiEnabled() ? '/admin' : '/admin-dashboard');
     } finally {
       setStarting(false);
     }

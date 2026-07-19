@@ -14,18 +14,19 @@ const nextConfig: NextConfig = {
   // /landing route renders. Sign-in stays reachable from the landing nav /
   // footer "Log in" links and directly at /login.
   async redirects() {
-    // Legacy-route retirement (cutover runbook Phase 3/4). The redesign is the
-    // app now and the legacy pages are deleted (4b/4c), so these run
-    // unconditionally — the NEXT_PUBLIC_REDESIGN_ENABLED gate was retired in 4d.
-    // Every legacy dashboard/settings/owner URL redirects into its /app/*
-    // replacement so old bookmarks keep working. Deliberately temporary (307),
-    // never 308: runbook Phase 4 step 4e removes the /app prefix and reverses
-    // redirect direction, and a browser-cached 308 into /app would loop forever
-    // after the reversal. These rules are rewritten wholesale in 4e. Next
-    // appends the original query string to the destination (?tab=... rides
-    // along); the redesign routes ignore it.
+    // Legacy + prefix-era route retirement (cutover runbook Phase 4, step 4e).
+    // The redesign is the app and owns the top-level URLs now: the role roots
+    // are /admin, /cleaner, /homeowner, /owner (4e removed the /app prefix AND
+    // the -dashboard suffix). Two bookmark classes still redirect so old links
+    // keep working:
+    //   (1) prefix-era  /app/<role>-dashboard/*  → /<root>/*
+    //   (2) legacy-era  /<role>-dashboard, /settings, ?tab= deep links → new roots
+    // All 307 (temporary) for now; step 4f graduates them to 308 once 4e has
+    // soaked. Permanent is safe only in THIS direction (pointing OUT of /app) —
+    // a cached 308 pointing INTO /app is why the old 307→308 graduation was
+    // cancelled. Next appends the original query string to the destination.
 
-    // Legacy ?tab= ids → redesign routes, per dashboard source. Mapping each
+    // Legacy ?tab= ids → redesign sub-routes, per dashboard source. Mapping each
     // source's tabs (not just admin's) means a deep link like
     // /homeowner-dashboard?tab=payment-methods lands on the right redesign
     // screen instead of the dashboard root. Ids mirror the *_DASHBOARD_TAB_IDS
@@ -79,21 +80,30 @@ const nextConfig: NextConfig = {
       { source, destination: base, permanent: false },
     ];
 
-    const legacyRedirects = [
-      // Manager shares the operator shell (and the same tab ids) as admin.
-      ...tabRules("/admin-dashboard", "/app/admin-dashboard", adminTabTargets),
-      ...tabRules("/manager-dashboard", "/app/admin-dashboard", adminTabTargets),
-      ...tabRules("/cleaner-dashboard", "/app/cleaner-dashboard", cleanerTabTargets),
-      ...tabRules("/homeowner-dashboard", "/app/homeowner-dashboard", homeownerTabTargets),
-      { source: "/settings", destination: "/app/admin-dashboard/settings", permanent: false },
-      { source: "/settings/:path*", destination: "/app/admin-dashboard/settings", permanent: false },
-      // Legacy platform back-office; sub-paths collapse to the redesign
-      // back-office root. Phase 4 step 4e reverses this direction.
-      { source: "/owner", destination: "/app/owner", permanent: false },
-      { source: "/owner/:path*", destination: "/app/owner", permanent: false },
+    // Prefix-era bookmarks (the /app/* era, between the flip and 4e): strip the
+    // /app prefix and the -dashboard suffix. `:path*` matches zero segments too,
+    // so each rule also covers its bare root (e.g. /app/admin-dashboard → /admin).
+    const prefixEraRedirects = [
+      { source: "/app/admin-dashboard/:path*", destination: "/admin/:path*", permanent: false },
+      { source: "/app/cleaner-dashboard/:path*", destination: "/cleaner/:path*", permanent: false },
+      { source: "/app/homeowner-dashboard/:path*", destination: "/homeowner/:path*", permanent: false },
+      { source: "/app/owner/:path*", destination: "/owner/:path*", permanent: false },
     ];
 
-    return legacyRedirects;
+    // Legacy-era bookmarks (pre-redesign URLs). Targets lose the -dashboard
+    // suffix. /owner is intentionally NOT here: the redesign back-office serves
+    // that URL natively now that legacy src/app/owner is gone.
+    const legacyRedirects = [
+      // Manager shares the operator shell (and the same tab ids) as admin.
+      ...tabRules("/admin-dashboard", "/admin", adminTabTargets),
+      ...tabRules("/manager-dashboard", "/admin", adminTabTargets),
+      ...tabRules("/cleaner-dashboard", "/cleaner", cleanerTabTargets),
+      ...tabRules("/homeowner-dashboard", "/homeowner", homeownerTabTargets),
+      { source: "/settings", destination: "/admin/settings", permanent: false },
+      { source: "/settings/:path*", destination: "/admin/settings", permanent: false },
+    ];
+
+    return [...prefixEraRedirects, ...legacyRedirects];
   },
   // Serve the marketing landing page at the domain root without changing the
   // URL. `/landing` still resolves to the same page; this makes "/" an alias

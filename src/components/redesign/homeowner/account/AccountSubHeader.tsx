@@ -8,7 +8,7 @@ export function AccountSubHeader({ title }: { title: string }) {
   return (
     <div className="mb-3 flex items-center gap-1">
       <Link
-        href="/app/homeowner-dashboard/account"
+        href="/homeowner/account"
         aria-label="Back to account"
         className="-ml-2 grid size-9 place-items-center rounded-control text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >

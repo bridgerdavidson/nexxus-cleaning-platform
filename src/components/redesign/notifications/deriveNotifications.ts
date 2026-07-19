@@ -85,12 +85,12 @@ export function operatorNotificationHref(
 ): string {
   if (item.appointment_id) {
     const tab = notificationTab(item.event_type, 'admin');
-    if (tab === 'payments') return '/app/admin-dashboard/payments';
-    return `/app/admin-dashboard/bookings?booking=${item.appointment_id}`;
+    if (tab === 'payments') return '/admin/payments';
+    return `/admin/bookings?booking=${item.appointment_id}`;
   }
   switch (item.event_type) {
     case 'member_joined':
-      return '/app/admin-dashboard/customers';
+      return '/admin/customers';
     case 'dispute_opened':
     case 'refund_failed':
     case 'cancelled_job_refunded':
@@ -100,9 +100,9 @@ export function operatorNotificationHref(
     case 'authorization_failed':
     case 'authentication_required':
     case 'cancellation_fee_failed':
-      return '/app/admin-dashboard/payments';
+      return '/admin/payments';
     default:
-      return '/app/admin-dashboard';
+      return '/admin';
   }
 }
 
@@ -117,12 +117,12 @@ function cleanerNotificationHref(
   item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
 ): string {
   if (item.appointment_id) {
-    return `/app/cleaner-dashboard?job=${item.appointment_id}`;
+    return `/cleaner?job=${item.appointment_id}`;
   }
   if (item.event_type === 'cleaner_paid') {
-    return '/app/cleaner-dashboard/earnings';
+    return '/cleaner/earnings';
   }
-  return '/app/cleaner-dashboard';
+  return '/cleaner';
 }
 
 /**
@@ -137,11 +137,11 @@ function homeownerNotificationHref(
 ): string {
   if (item.appointment_id) {
     if (item.event_type === 'job_message') {
-      return `/app/homeowner-dashboard?job=${item.appointment_id}`;
+      return `/homeowner?job=${item.appointment_id}`;
     }
-    return `/app/homeowner-dashboard?appointment=${item.appointment_id}`;
+    return `/homeowner?appointment=${item.appointment_id}`;
   }
-  return '/app/homeowner-dashboard';
+  return '/homeowner';
 }
 
 function notificationHref(
