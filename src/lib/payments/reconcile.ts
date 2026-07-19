@@ -551,7 +551,22 @@ export async function checkMoneyMathInvariants(
       result = null; // invalid recorded inputs are themselves a violation
     }
 
-    if (!result || !result.ok) {
+    // A refund legitimately makes the recorded payout SMALLER than the gross split: a held cleaner
+    // slice settled after a refund is paid its refund-shrunk share (audit T1-13), and a transfer-
+    // based partial refund reverses the transfer at Stripe while the row's amount stays put. Neither
+    // is a platform loss, and netting refunds here can't fit both shapes at once, so on a refunded
+    // appointment flag only an OVERPAY (recorded MORE than the gross split, drift > tolerance). The
+    // strict two-sided check still guards the common no-refund case.
+    const { data: refundRow } = await supabase
+      .from('refunds')
+      .select('id')
+      .eq('appointment_id', row.appointment_id)
+      .in('status', ['pending', 'succeeded'])
+      .limit(1);
+    const hasRefund = ((refundRow ?? []) as Array<{ id: string }>).length > 0;
+    const isViolation = !result || (hasRefund ? result.driftCents > 1 : !result.ok);
+
+    if (isViolation) {
       violations++;
       await recordPaymentEvent(supabase, {
         appointmentId: row.appointment_id,
@@ -932,6 +947,7 @@ export async function retryStrandedRefundUnwinds(
         actor: 'reconciler',
         paymentId: payment.id,
         organizationId: orgId,
+        sourceChargeId: charge.id,
       });
 
       if (result.failures > 0) {
