@@ -713,6 +713,7 @@ async function handleChargeRefunded(
       stripeEventId,
       paymentId: payment.id,
       organizationId: payment.organization_id,
+      sourceChargeId: charge.id,
     });
   }
 

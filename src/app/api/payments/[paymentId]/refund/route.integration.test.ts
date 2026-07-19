@@ -22,7 +22,7 @@ vi.mock('@/lib/stripe/transfers', () => ({
 
 import { POST } from './route';
 import { createRefund } from '@/lib/stripe/charges/refund';
-import { reversePlatformTransfer } from '@/lib/stripe/transfers';
+import { reversePlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -50,7 +50,7 @@ describe('POST /api/payments/:paymentId/refund', () => {
     await org.cleanup();
   });
 
-  async function seedPaidPayment(opts: { status?: string } = {}) {
+  async function seedPaidPayment(opts: { status?: string; payoutStatus?: string } = {}) {
     const db = createTestSupabaseClient();
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
@@ -77,7 +77,7 @@ describe('POST /api/payments/:paymentId/refund', () => {
       cleaner_id: org.cleaner.userId,
       appointment_id: appt.id,
       amount: 60,
-      status: 'paid',
+      status: opts.payoutStatus ?? 'paid',
       stripe_transfer_id: 'tr_x',
       source_balance_account_id: 'acct_tenant',
     });
@@ -308,5 +308,59 @@ describe('POST /api/payments/:paymentId/refund', () => {
         .delete()
         .eq('alert_type', `payment_refund_clawback_failed:${org.organizationId}`);
     }
+  });
+
+  it('does NOT reverse a bank_paid cleaner transfer on refund (blocks for ops, still reverses tenant) [T1-2]', async () => {
+    // The cleaner's cut already reached their bank. A refund must not reverse it (would drive their
+    // connected balance negative); it surfaces for ops and still claws back the tenant remainder.
+    const { appt, paymentId } = await seedPaidPayment({ payoutStatus: 'bank_paid' });
+    const db = createTestSupabaseClient();
+
+    const { status, body } = await callRoute<{
+      transfer_unwind: { reversed_cents: number; failures: number };
+    }>(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    // Tenant remainder ($40) reversed; cleaner leg blocked (not a failure).
+    expect(body.transfer_unwind).toEqual({ reversed_cents: 4000, failures: 0 });
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).not.toHaveBeenCalledWith('tr_x', expect.anything(), expect.anything());
+
+    const { data: blocked } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'clawback_blocked_bank_paid');
+    expect((blocked ?? []).length).toBe(1);
+  });
+
+  it('scopes the unwind to the refunded charge, leaving a cancellation fee transfer alone [T1-12]', async () => {
+    // Same transfer_group carries the completion charge's legs AND a cancellation fee's tenant
+    // transfer. A refund of the completion charge must touch only its own legs.
+    const { paymentId } = await seedPaidPayment();
+    vi.mocked(listTransfersByGroup).mockResolvedValueOnce([
+      { id: 'tr_x', amount: 6000, amount_reversed: 0, source_transaction: 'ch_completion' },
+      { id: 'tr_tenant', amount: 4000, amount_reversed: 0, source_transaction: 'ch_completion' },
+      { id: 'tr_fee', amount: 2500, amount_reversed: 0, source_transaction: 'ch_fee' },
+    ] as never);
+    // The Stripe refund reports the charge it hit → scopes the unwind to ch_completion.
+    vi.mocked(createRefund).mockResolvedValueOnce({
+      id: `re_scope_${crypto.randomUUID()}`,
+      charge: 'ch_completion',
+    } as never);
+
+    const { status } = await callRoute(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 6000, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000, expect.any(String));
+    // The cancellation fee's transfer (different source charge) is never touched.
+    expect(vi.mocked(reversePlatformTransfer)).not.toHaveBeenCalledWith('tr_fee', expect.anything(), expect.anything());
   });
 });
