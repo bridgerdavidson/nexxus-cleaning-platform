@@ -35,6 +35,12 @@ export async function settleCleanerPayout(
   /** Amount actually captured, in cents (PaymentIntent.amount_received). Falls back to the
    *  recorded payment / appointment price when omitted (e.g. the reconcile retry path). */
   capturedCents?: number,
+  /** The PaymentIntent being settled (webhook path only). Settlement reads processing_fee_cents from
+   *  the revenue row that carries THIS PI; when the row isn't that one yet (webhook raced the charge
+   *  route's write, or the single row still holds a prior attempt's PI/fee) the split would use the
+   *  wrong fee, so settlement defers. Omitted on the reconcile/retry path (capturedCents is null there
+   *  and the selected row is already authoritative). */
+  paymentIntentId?: string | null,
 ): Promise<SettleResult> {
   const { data: apptRow } = await supabase
     .from('appointments')
@@ -74,6 +80,38 @@ export async function settleCleanerPayout(
     | null;
   const tenantAlreadyTransferred =
     (payRow as { transfer_amount: number | null } | null)?.transfer_amount != null;
+
+  // T1-4: the webhook (capturedCents != null, = amount_received) can process
+  // payment_intent.succeeded BEFORE the charge route commits the revenue payments row — the only
+  // carrier of processing_fee_cents. Splitting then reads the fee as 0 (or a stale prior-attempt
+  // fee, since the single revenue row is updated IN PLACE) and transfers the full grossed-up amount,
+  // over-paying tenant + cleaner by the fee and overdrawing the platform (a re-creation of the prod
+  // negative-balance incident), under now-burned idempotency keys. So on the webhook path, settle
+  // ONLY once the revenue row carrying THIS PaymentIntent is committed: a missing row, or a newest
+  // row still holding a prior attempt's PI (null or different), means the authoritative fee isn't
+  // written yet. Defer; finishCharge rewrites the row to this PI + fee moments later and
+  // settleUnsettledCaptures re-settles with the correct fee. The reconcile/retry callers pass
+  // capturedCents=null (guard skipped) and select the already-authoritative paid row, so they are
+  // untouched. The marker is a silent forensic event (deliberately NOT in ALERTABLE_PAYMENT_EVENTS):
+  // the deferral self-heals within one sweep.
+  if (capturedCents != null) {
+    const rowPi = (payRow as { stripe_payment_intent_id?: string | null } | null)?.stripe_payment_intent_id ?? null;
+    const rowIsAuthoritative = paymentIntentId ? rowPi === paymentIntentId : !!payRow;
+    if (!rowIsAuthoritative) {
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'settlement_deferred_no_row',
+        actor: 'webhook',
+        amount: capturedCents,
+        payload: {
+          reason: payRow ? 'revenue_row_stale_pi' : 'revenue_row_not_yet_written',
+          firing_payment_intent: paymentIntentId ?? null,
+        },
+      });
+      return { settled: false, reason: 'payment_row_missing' };
+    }
+  }
 
   // Amount actually captured (handles partial capture + cancellation fees). Includes any
   // processing fee the payer funded on top of the service price.
