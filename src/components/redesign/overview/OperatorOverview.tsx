@@ -14,7 +14,6 @@ import { SetupCompleteCard } from "@/components/redesign/onboarding/SetupComplet
 import { WelcomeContent } from "@/components/redesign/onboarding/WelcomeContent";
 import { getWelcomeCopy } from "@/lib/onboarding/welcomeCopy";
 import { useOpenBookingDetail } from "@/components/redesign/bookings/useOpenBookingDetail";
-import { stripeNewChargeFlowUiEnabled } from "@/lib/stripe/flags";
 
 // --- display mappers (AdminAppointment -> View display items) ---
 
@@ -75,18 +74,18 @@ export function OperatorOverview() {
   // handler for a restricted manager and the queue renders informational-only.
   const canViewBookings = privileged || !!permissions?.can_view_bookings;
 
-  // Failed/requires-action charges surface in the queue only for viewers who can see money,
-  // and only under the new charge flow (authorization_status is that flow's outcome mirror) —
-  // the same gates as the Payments triage band.
-  const failedPayment: QueueItem[] =
-    stripeNewChargeFlowUiEnabled() && canViewPayments
-      ? sections.failedPayment.map((a) => ({
-          ...toQueueItem(a),
-          subtitle: `${fmtShortDate(a.scheduled_date)} · ${
-            a.authorization_status === "requires_action" ? "Card needs authentication" : "Card declined"
-          }`,
-        }))
-      : [];
+  // Failed/requires-action charges surface in the queue for viewers who can see money.
+  // Driven by the DATA (authorization_status is set only by the new charge flow), NOT a
+  // build-time client flag: gating on NEXT_PUBLIC_STRIPE_NEW_CHARGE_FLOW_ENABLED let a
+  // drifted mirror hide real uncollected money (T2-13, matches the triage band).
+  const failedPayment: QueueItem[] = canViewPayments
+    ? sections.failedPayment.map((a) => ({
+        ...toQueueItem(a),
+        subtitle: `${fmtShortDate(a.scheduled_date)} · ${
+          a.authorization_status === "requires_action" ? "Card needs authentication" : "Card declined"
+        }`,
+      }))
+    : [];
 
   const todayItems = buildTodayItems(sections.today, sections.activeNow, {
     todayISO: todayLocalISO(now),

@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/toast';
 import { useAuth } from '@/hooks/useAuth';
 import { type AdminAppointment } from '@/hooks/useAdminData';
@@ -16,8 +15,9 @@ import { toYMD } from '@/components/redesign/homeowner/booking/time-options';
 import { fmtTime, monthDay } from '../booking-vm';
 import { Field, DiscardChangesDialog } from '../detail-atoms';
 import type { CleanerOption } from '../bookings-types';
-import { EntityPickerField, type PickerItem } from '../new-booking/EntityPickerField';
+import { EntityPickerField } from '../new-booking/EntityPickerField';
 import { useRankedCleaners } from '../new-booking/useRankedCleaners';
+import { cleanerPickerItems } from '../cleanerPickerItems';
 import { useRescheduleBooking } from './useRescheduleBooking';
 import {
   ownedChips,
@@ -119,16 +119,7 @@ export function RescheduleDialog({
   const tier = date && time ? reaskTierHours(date, time) : null;
   const series = seriesLine(a);
 
-  const cleanerItems: PickerItem[] = ranked.map((r) => ({
-    id: r.cleaner.id,
-    label: r.cleaner.name,
-    sublabel: r.isAvailable ? 'Available' : `Busy (${r.conflicts.length})`,
-    badge: (
-      <Badge variant={r.isAvailable ? 'positive' : 'caution'} className="ml-2">
-        {r.isAvailable ? 'Free' : 'Busy'}
-      </Badge>
-    ),
-  }));
+  const cleanerItems = cleanerPickerItems(ranked, true);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

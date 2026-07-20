@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
@@ -187,6 +188,7 @@ export function OperatorCleanersData({
   showSegmentTabs: boolean;
 }) {
   const { currentOrganizationId, accessToken } = useAuth();
+  const router = useRouter();
   const { cleaners, loading, error, refetch } = useAdminCleanerScorecards();
   const { paramId: cleanerParam, setParam: setCleanerParam } = useDetailParam("cleaner");
   const { invites, resend, refetch: refetchInvites } = useInvites(
@@ -509,6 +511,11 @@ export function OperatorCleanersData({
         onDeactivate={() => detail && void doDeactivate(detail.id, true)}
         onReactivate={() => detail && void doDeactivate(detail.id, false)}
         onRemove={() => detail && setConfirm({ kind: "remove", ids: [detail.id] })}
+        onMessage={
+          // detail.id is the cleaner_profiles id = the cleaner's user id, which
+          // is exactly the ?to= the Messages screen resolves into a thread.
+          detail ? () => router.push(`/admin/messages?to=${detail.id}`) : undefined
+        }
       />
 
       <AddCleanerDialog open={addOpen} onOpenChange={setAddOpen} busy={busy} onInvite={handleInvite} />

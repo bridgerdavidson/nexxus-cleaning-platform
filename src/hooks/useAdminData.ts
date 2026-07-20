@@ -158,13 +158,25 @@ export interface AdminPayment {
   payment_type?: string;
   /** 'card' | 'ach' | 'manual'. Already fetched by the select. */
   payment_method?: string;
+  /** 'completion' | 'cancellation_fee' | null — distinguishes a job charge from a
+   *  cancellation/no-show fee so a failed fee isn't mistaken for a failed job charge. */
+  charge_kind?: 'completion' | 'cancellation_fee' | null;
   reference?: string;
   notes?: string;
   paid_at?: string;
   created_at: string;
   /** True when this payment was funded by an org self-pay charge (no homeowner). */
   is_self_pay?: boolean;
+  /** Present only for Stripe-backed charges. Refundability derives from this, not
+   *  payment_method: a manual 'card' row has none and can't be refunded; a settled
+   *  ACH charge has one and can. */
+  stripe_payment_intent_id?: string | null;
+  /** Refund rows against this payment. `amount` is CENTS. Used to show refunded
+   *  totals and cap the refundable remainder (pending + succeeded reduce it). */
+  refunds?: { amount: number; status: string }[];
   appointment: {
+    /** Only fetched by the infinite payments select (drives "View booking"). */
+    id?: string;
     scheduled_date: string;
     homeowner: {
       first_name: string;
@@ -519,11 +531,14 @@ export function useAdminPayments() {
           status,
           payment_type,
           payment_method,
+          charge_kind,
           reference,
           notes,
           paid_at,
           created_at,
           is_self_pay,
+          stripe_payment_intent_id,
+          refunds:refunds(amount, status),
           appointment:appointments(
             scheduled_date,
             homeowner:user_profiles!homeowner_id(
@@ -693,12 +708,16 @@ const PAYMENTS_INFINITE_SELECT = `
   status,
   payment_type,
   payment_method,
+  charge_kind,
   reference,
   notes,
   paid_at,
   created_at,
   is_self_pay,
+  stripe_payment_intent_id,
+  refunds:refunds(amount, status),
   appointment:appointments(
+    id,
     scheduled_date,
     homeowner:user_profiles!homeowner_id(
       first_name,
@@ -987,6 +1006,146 @@ export function usePaymentStats() {
 
   return {
     stats: query.data ?? { totalRevenue: 0, pendingPayouts: 0, thisMonthRevenue: 0 },
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
+/**
+ * A chargeback/dispute row (Stripe `charge.dispute.*`), joined to the payment it
+ * hit and that payment's appointment context (payer + service) so the operator
+ * surface can show who/what/how-much without a second fetch. `amount` is CENTS
+ * (bigint from Stripe), unlike `AdminPayment.amount` which is dollars.
+ */
+export interface AdminDispute {
+  id: string;
+  /** Disputed amount in CENTS (Stripe `dispute.amount`). */
+  amount: number;
+  /** Stripe dispute status: needs_response | warning_needs_response | under_review |
+   *  warning_under_review | warning_closed | won | lost | prevented. Untyped string
+   *  because the webhook writes it through verbatim. */
+  status: string;
+  /** Stripe dispute reason (e.g. 'fraudulent', 'product_not_received'), or null. */
+  reason: string | null;
+  /** Evidence submission deadline; null until Stripe sets one. */
+  evidence_due_by: string | null;
+  created_at: string;
+  updated_at?: string;
+  payment_id: string | null;
+  stripe_dispute_id: string;
+  stripe_charge_id: string;
+  payment: {
+    id: string;
+    /** Payment amount in DOLLARS. */
+    amount: number;
+    payment_method?: string;
+    is_self_pay?: boolean;
+    appointment: {
+      scheduled_date: string;
+      homeowner_id: string | null;
+      homeowner: { first_name: string; last_name: string } | null;
+      service_type: { name: string } | null;
+    } | null;
+  } | null;
+}
+
+const DISPUTES_SELECT = `
+  id,
+  amount,
+  status,
+  reason,
+  evidence_due_by,
+  created_at,
+  updated_at,
+  payment_id,
+  stripe_dispute_id,
+  stripe_charge_id,
+  payment:payments(
+    id,
+    amount,
+    payment_method,
+    is_self_pay,
+    appointment:appointments(
+      scheduled_date,
+      homeowner_id,
+      homeowner:user_profiles!homeowner_id(
+        first_name,
+        last_name
+      ),
+      service_type:service_types(
+        name
+      )
+    )
+  )
+`;
+
+/**
+ * Chargebacks for the org. Low-volume, so a plain (non-infinite) org query.
+ * The webhook (dispatchStripeEvent) is the only writer; RLS lets owner/admin/manager
+ * read. Ordered soonest-deadline-first so the response window is front-and-center.
+ * Owns its own realtime channel (distinct from the two payments-list disputes subs,
+ * which only invalidate payments keys) so a new/updated dispute refreshes THIS list.
+ */
+export function useAdminDisputes() {
+  const { currentOrganizationId } = useAuth();
+  const orgId = currentOrganizationId ?? '';
+
+  const query = useOrgQuery({
+    queryKey: keys.disputes.byOrg(orgId),
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from('disputes')
+        .select(DISPUTES_SELECT)
+        .eq('organization_id', orgId)
+        .order('evidence_due_by', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(dispute => {
+        const payment = Array.isArray(dispute.payment) ? dispute.payment[0] : dispute.payment;
+        const appointment = payment
+          ? Array.isArray(payment.appointment)
+            ? payment.appointment[0]
+            : payment.appointment
+          : null;
+        return {
+          ...dispute,
+          payment: payment
+            ? {
+                ...payment,
+                appointment: appointment
+                  ? {
+                      ...appointment,
+                      homeowner: Array.isArray(appointment.homeowner)
+                        ? appointment.homeowner[0]
+                        : appointment.homeowner,
+                      service_type: Array.isArray(appointment.service_type)
+                        ? appointment.service_type[0]
+                        : appointment.service_type,
+                    }
+                  : null,
+              }
+            : null,
+        };
+      }) as AdminDispute[];
+    },
+  });
+
+  useSupabaseRealtimeSync({
+    channelName: `disputes-list:${orgId}`,
+    table: 'disputes',
+    filter: orgId ? `organization_id=eq.${orgId}` : undefined,
+    enabled: !!orgId,
+    onEvent: () => ({
+      type: 'invalidate',
+      keys: [keys.disputes.byOrg(orgId)],
+    }),
+  });
+
+  return {
+    disputes: query.data ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,

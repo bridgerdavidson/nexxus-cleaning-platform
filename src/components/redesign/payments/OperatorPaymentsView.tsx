@@ -67,6 +67,7 @@ export type OperatorPaymentsViewProps = {
   canManagePayments: boolean;
   onRecordPayment?: () => void;
 
+  disputesBand?: ReactNode;
   triage?: ReactNode;
   kpis?: ReactNode;
   yourMoney?: ReactNode;
@@ -94,6 +95,7 @@ export function OperatorPaymentsView({
   onOpenRow,
   canManagePayments,
   onRecordPayment,
+  disputesBand,
   triage,
   kpis,
   yourMoney,
@@ -119,6 +121,7 @@ export function OperatorPaymentsView({
         ) : null}
       </header>
 
+      {disputesBand}
       {triage}
       {kpis}
       {yourMoney}

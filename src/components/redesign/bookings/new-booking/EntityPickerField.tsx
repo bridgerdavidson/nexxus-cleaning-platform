@@ -38,7 +38,9 @@ export function EntityPickerField({
   emptyText,
   disabled,
 }: {
-  label: string;
+  /** Omit to render the field without its own heading (e.g. when wrapped in a
+   *  surface that already supplies a label). */
+  label?: string;
   placeholder: string;
   value: string | null;
   items: PickerItem[];
@@ -53,7 +55,9 @@ export function EntityPickerField({
 
   return (
     <div className="space-y-1.5">
-      <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      {label ? (
+        <p className="px-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      ) : null}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild disabled={disabled}>
           <button

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
@@ -18,15 +19,30 @@ import { OperatorBookingsView } from "./OperatorBookingsView";
 import { useOpenOperatorBooking } from "./new-booking/useOpenOperatorBooking";
 import { deriveBookings, localISODate, segmentCounts } from "./deriveBookings";
 import { toRowVM } from "./booking-vm";
-import type {
-  BookingRowAction,
-  BookingRowVM,
-  BookingSegment,
-  StatusFilter,
+import {
+  BOOKING_SEGMENTS,
+  type BookingRowAction,
+  type BookingRowVM,
+  type BookingSegment,
+  type StatusFilter,
 } from "./bookings-types";
 
 type ConfirmKind = "cancel" | "delete" | "bulkCancel" | "bulkDelete";
 type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
+
+// Filters live in the URL (deep links + a Back button that restores them). The
+// defaults are omitted from the query string to keep clean URLs, mirroring how
+// Payments handles `?ledger=`.
+const DEFAULT_SEGMENT: BookingSegment = "upcoming";
+const VALID_SEGMENTS = new Set<string>(BOOKING_SEGMENTS.map((s) => s.id));
+const VALID_STATUSES = new Set<StatusFilter>([
+  "all",
+  "pending",
+  "confirmed",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
 
 /**
  * Hook-backed Operator Bookings. Consumes the existing headless admin hooks and
@@ -39,6 +55,8 @@ type ConfirmState = { kind: ConfirmKind; ids: string[] } | null;
  */
 export function OperatorBookings() {
   const openBooking = useOpenOperatorBooking();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentOrgRole } = useAuth();
   const { appointments, loading, error, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
@@ -51,13 +69,45 @@ export function OperatorBookings() {
   const canHandleRequests = privileged || !!permissions?.can_handle_requests;
   const canDelete = privileged;
 
-  const [segment, setSegment] = useState<BookingSegment>("upcoming");
+  // Segment / status / cleaner come from the URL (deep-linkable, Back-restorable).
+  // Search stays transient local state, so typing doesn't spam the history.
+  const segParam = searchParams.get("segment");
+  const segment: BookingSegment =
+    segParam && VALID_SEGMENTS.has(segParam) ? (segParam as BookingSegment) : DEFAULT_SEGMENT;
+  const statusParam = searchParams.get("status");
+  const statusFilter: StatusFilter =
+    statusParam && VALID_STATUSES.has(statusParam as StatusFilter) ? (statusParam as StatusFilter) : "all";
+  const cleanerFilter = searchParams.get("cleaner") || "all";
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [cleanerFilter, setCleanerFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [busy, setBusy] = useState(false);
+
+  // Write a filter to the URL (replace, so filter tweaks don't stack history),
+  // preserving sibling params like ?booking. Defaults are dropped for clean URLs.
+  const setFilterParam = useCallback(
+    (key: string, value: string, isDefault: boolean) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (isDefault) params.delete(key);
+      else params.set(key, value);
+      const qs = params.toString();
+      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+    },
+    [searchParams, router],
+  );
+  const setSegment = useCallback(
+    (v: BookingSegment) => setFilterParam("segment", v, v === DEFAULT_SEGMENT),
+    [setFilterParam],
+  );
+  const setStatusFilter = useCallback(
+    (v: StatusFilter) => setFilterParam("status", v, v === "all"),
+    [setFilterParam],
+  );
+  const setCleanerFilter = useCallback(
+    (v: string) => setFilterParam("cleaner", v, v === "all"),
+    [setFilterParam],
+  );
 
   const today = useMemo(() => localISODate(new Date()), []);
 
@@ -175,7 +225,7 @@ export function OperatorBookings() {
     const n = confirm.ids.length;
     switch (confirm.kind) {
       case "cancel":
-        return { title: "Cancel this booking?", description: "The customer and cleaner will be notified.", confirmLabel: "Cancel booking", destructive: false };
+        return { title: "Cancel this booking?", description: "This can't be undone.", confirmLabel: "Cancel booking", destructive: false };
       case "delete":
         return { title: "Delete this booking?", description: "This permanently removes the booking. This cannot be undone.", confirmLabel: "Delete", destructive: true };
       case "bulkCancel":

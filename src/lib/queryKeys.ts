@@ -32,6 +32,10 @@ export const keys = {
     infinite: (orgId: string) => ['payouts', 'infinite', orgId] as const,
     byCleaner: (cleanerId: string) => ['payouts', 'cleaner', cleanerId] as const,
   },
+  disputes: {
+    all: ['disputes'] as const,
+    byOrg: (orgId: string) => ['disputes', 'org', orgId] as const,
+  },
   invoices: {
     byOrg: (orgId: string) => ['invoices', 'org', orgId] as const,
   },
