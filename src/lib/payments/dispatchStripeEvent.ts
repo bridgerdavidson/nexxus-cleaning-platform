@@ -238,6 +238,7 @@ async function handlePaymentIntentSucceeded(
       appointmentId,
       (paymentIntent.latest_charge as string | null) ?? null,
       paymentIntent.amount_received ?? undefined,
+      paymentIntent.id,
     );
     console.log('Separate charges/transfers settlement:', result);
     return;
