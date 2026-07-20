@@ -88,6 +88,8 @@ export function CleanerTodayView({
     );
   }
 
+  const activeAddress = data.activeJob ? rowAddressLine(data.activeJob) : null;
+
   return (
     <div className="space-y-7 pt-2">
       {data.activeJob && (
@@ -96,8 +98,8 @@ export function CleanerTodayView({
             <div className="text-[10px] font-extrabold tracking-widest opacity-85">ACTIVE JOB</div>
             <div className="mt-0.5 text-lg font-extrabold">{propertyTitle(data.activeJob)}</div>
             <div className="text-xs opacity-90">{jobSubtitle(data.activeJob)}</div>
-            {rowAddressLine(data.activeJob) && (
-              <div className="mt-0.5 text-xs opacity-90">{rowAddressLine(data.activeJob)}</div>
+            {activeAddress && (
+              <div className="mt-0.5 text-xs opacity-90">{activeAddress}</div>
             )}
             <button
               onClick={onContinueActive}
@@ -167,6 +169,7 @@ export function CleanerTodayView({
             ))}
             {grouped.singles.map((o) => {
               const respondBy = formatRespondBy(o.response_deadline);
+              const offerAddress = rowAddressLine(o);
               return (
                 <div
                   key={o.id}
@@ -186,8 +189,8 @@ export function CleanerTodayView({
                     </div>
                     <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
                     <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>
-                    {rowAddressLine(o) && (
-                      <div className="text-xs text-muted-foreground">{rowAddressLine(o)}</div>
+                    {offerAddress && (
+                      <div className="text-xs text-muted-foreground">{offerAddress}</div>
                     )}
                   </button>
                   <OfferActionsBar
