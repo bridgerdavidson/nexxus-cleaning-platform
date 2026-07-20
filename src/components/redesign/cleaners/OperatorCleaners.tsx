@@ -514,7 +514,7 @@ export function OperatorCleanersData({
         onMessage={
           // detail.id is the cleaner_profiles id = the cleaner's user id, which
           // is exactly the ?to= the Messages screen resolves into a thread.
-          detail ? () => router.push(`/app/admin-dashboard/messages?to=${detail.id}`) : undefined
+          detail ? () => router.push(`/admin/messages?to=${detail.id}`) : undefined
         }
       />
 

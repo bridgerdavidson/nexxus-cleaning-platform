@@ -334,7 +334,7 @@ function OperatorCustomersData({
   }, [detailId, openNewBooking]);
 
   const handleMessageCustomer = useCallback(() => {
-    if (detailId) router.push(`/app/admin-dashboard/messages?to=${detailId}`);
+    if (detailId) router.push(`/admin/messages?to=${detailId}`);
   }, [detailId, router]);
 
   // Swap the customer sheet for the booking sheet in ONE navigation so they

@@ -67,7 +67,7 @@ export function DisputesBand() {
   if (rows.length === 0) return null;
 
   const handleMessage = (homeownerId: string) => {
-    router.push(`/app/admin-dashboard/messages?to=${homeownerId}`);
+    router.push(`/admin/messages?to=${homeownerId}`);
   };
 
   return (
