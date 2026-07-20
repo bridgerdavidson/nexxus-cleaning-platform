@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { SeriesOffer } from "./deriveSeriesOffers";
-import { propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
+import { propertyTitle, jobSubtitle, rowAddressLine, formatRespondBy } from "../shared/job-presenters";
 import { SeriesOfferSheet } from "./SeriesOfferSheet";
 
 /** "Jul 20" from a YYYY-MM-DD string (local, month + day). */
@@ -65,6 +65,9 @@ export function SeriesOfferCard({
           </div>
           <div className="mt-1 text-sm font-extrabold">{propertyTitle(series.first)}</div>
           <div className="text-xs text-muted-foreground">{jobSubtitle(series.first)}</div>
+          {rowAddressLine(series.first) && (
+            <div className="text-xs text-muted-foreground">{rowAddressLine(series.first)}</div>
+          )}
         </div>
         {respondBy && <Badge variant="caution"><Clock />{respondBy}</Badge>}
       </div>

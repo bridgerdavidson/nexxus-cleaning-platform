@@ -4,7 +4,7 @@ import { Play } from "lucide-react";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 import { Button } from "@/components/ui/button";
 import { CleanerDirectionsButton } from "../shared/CleanerDirectionsButton";
-import { propertyTitle, jobSubtitle, propertyAddress, formatTimeParts } from "../shared/job-presenters";
+import { propertyTitle, jobSubtitle, propertyAddress, rowAddressLine, formatTimeParts } from "../shared/job-presenters";
 
 /**
  * The cleaner's most-imminent not-yet-started job, lifted into a prominent card so
@@ -26,6 +26,7 @@ export function CleanerNextUpCard({
 }) {
   const { h, ap } = formatTimeParts(appointment.scheduled_time ?? "");
   const address = propertyAddress(appointment) ?? "";
+  const addressLine = rowAddressLine(appointment);
 
   return (
     <div className="rounded-card border-2 border-brand-600 bg-card p-4 shadow-soft-md">
@@ -39,6 +40,7 @@ export function CleanerNextUpCard({
         </div>
         <div className="mt-0.5 text-lg font-extrabold">{propertyTitle(appointment)}</div>
         <div className="text-xs text-muted-foreground">{jobSubtitle(appointment)}</div>
+        {addressLine && <div className="mt-0.5 text-xs text-muted-foreground">{addressLine}</div>}
       </button>
       <div className="mt-3 flex gap-2">
         <Button className="flex-1" onClick={() => onStart(appointment.id)} loading={starting}>

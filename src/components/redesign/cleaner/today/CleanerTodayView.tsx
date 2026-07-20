@@ -8,7 +8,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
-import { formatTimeParts, formatJobWhen, propertyTitle, jobSubtitle, formatRespondBy } from "../shared/job-presenters";
+import { formatTimeParts, formatJobWhen, propertyTitle, jobSubtitle, rowAddressLine, formatRespondBy } from "../shared/job-presenters";
 import { JobRow } from "../shared/JobRow";
 import { OfferActionsBar } from "../shared/OfferActionsBar";
 import { deriveSeriesOffers } from "./deriveSeriesOffers";
@@ -96,6 +96,9 @@ export function CleanerTodayView({
             <div className="text-[10px] font-extrabold tracking-widest opacity-85">ACTIVE JOB</div>
             <div className="mt-0.5 text-lg font-extrabold">{propertyTitle(data.activeJob)}</div>
             <div className="text-xs opacity-90">{jobSubtitle(data.activeJob)}</div>
+            {rowAddressLine(data.activeJob) && (
+              <div className="mt-0.5 text-xs opacity-90">{rowAddressLine(data.activeJob)}</div>
+            )}
             <button
               onClick={onContinueActive}
               className="mt-3 w-full rounded-pill bg-white py-3 text-sm font-extrabold text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-white"
@@ -183,6 +186,9 @@ export function CleanerTodayView({
                     </div>
                     <div className="mt-1 text-sm font-semibold">{propertyTitle(o)}</div>
                     <div className="text-xs text-muted-foreground">{jobSubtitle(o)}</div>
+                    {rowAddressLine(o) && (
+                      <div className="text-xs text-muted-foreground">{rowAddressLine(o)}</div>
+                    )}
                   </button>
                   <OfferActionsBar
                     appointment={o}
