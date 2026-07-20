@@ -21,10 +21,12 @@ const nextConfig: NextConfig = {
     // keep working:
     //   (1) prefix-era  /app/<role>-dashboard/*  → /<root>/*
     //   (2) legacy-era  /<role>-dashboard, /settings, ?tab= deep links → new roots
-    // All 307 (temporary) for now; step 4f graduates them to 308 once 4e has
-    // soaked. Permanent is safe only in THIS direction (pointing OUT of /app) —
-    // a cached 308 pointing INTO /app is why the old 307→308 graduation was
-    // cancelled. Next appends the original query string to the destination.
+    // All 308 (permanent) as of step 4f, now that 4e has soaked in prod. Every
+    // target below resolves to a live redesign route (verified in 4f), so
+    // permanent caching is safe. Permanent is correct only in THIS direction
+    // (pointing OUT of /app, at the final roots) — a cached 308 pointing INTO
+    // /app is why the old into-/app 307→308 graduation was cancelled. Next
+    // appends the original query string to the destination.
 
     // Legacy ?tab= ids → redesign sub-routes, per dashboard source. Mapping each
     // source's tabs (not just admin's) means a deep link like
@@ -75,19 +77,19 @@ const nextConfig: NextConfig = {
         source,
         has: [{ type: "query" as const, key: "tab", value: tab }],
         destination: `${base}${path}`,
-        permanent: false,
+        permanent: true,
       })),
-      { source, destination: base, permanent: false },
+      { source, destination: base, permanent: true },
     ];
 
     // Prefix-era bookmarks (the /app/* era, between the flip and 4e): strip the
     // /app prefix and the -dashboard suffix. `:path*` matches zero segments too,
     // so each rule also covers its bare root (e.g. /app/admin-dashboard → /admin).
     const prefixEraRedirects = [
-      { source: "/app/admin-dashboard/:path*", destination: "/admin/:path*", permanent: false },
-      { source: "/app/cleaner-dashboard/:path*", destination: "/cleaner/:path*", permanent: false },
-      { source: "/app/homeowner-dashboard/:path*", destination: "/homeowner/:path*", permanent: false },
-      { source: "/app/owner/:path*", destination: "/owner/:path*", permanent: false },
+      { source: "/app/admin-dashboard/:path*", destination: "/admin/:path*", permanent: true },
+      { source: "/app/cleaner-dashboard/:path*", destination: "/cleaner/:path*", permanent: true },
+      { source: "/app/homeowner-dashboard/:path*", destination: "/homeowner/:path*", permanent: true },
+      { source: "/app/owner/:path*", destination: "/owner/:path*", permanent: true },
     ];
 
     // Legacy-era bookmarks (pre-redesign URLs). Targets lose the -dashboard
@@ -99,8 +101,8 @@ const nextConfig: NextConfig = {
       ...tabRules("/manager-dashboard", "/admin", adminTabTargets),
       ...tabRules("/cleaner-dashboard", "/cleaner", cleanerTabTargets),
       ...tabRules("/homeowner-dashboard", "/homeowner", homeownerTabTargets),
-      { source: "/settings", destination: "/admin/settings", permanent: false },
-      { source: "/settings/:path*", destination: "/admin/settings", permanent: false },
+      { source: "/settings", destination: "/admin/settings", permanent: true },
+      { source: "/settings/:path*", destination: "/admin/settings", permanent: true },
     ];
 
     return [...prefixEraRedirects, ...legacyRedirects];
