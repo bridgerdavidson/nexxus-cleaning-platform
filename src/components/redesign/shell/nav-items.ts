@@ -28,8 +28,7 @@ export type NavItem = {
 };
 
 // Operator (admin + manager) destinations. Every screen is redesigned, so all
-// hrefs point at the /admin routes. Settings keeps activeFor: ["/settings"] only
-// as a nav-highlight alias while the legacy /settings redirect remains.
+// hrefs point at the /admin routes.
 //
 // Icons are lucide, chosen so each tab reads at a glance in the collapsed
 // rail: only Calendar gets a calendar glyph (Bookings is the work-order list,
@@ -47,7 +46,7 @@ export const OPERATOR_NAV: NavItem[] = [
   { id: "payments", label: "Payments & payouts", href: "/admin/payments", icon: CreditCard, requires: "can_view_payments" },
   { id: "analytics", label: "Analytics", href: "/admin/analytics", icon: BarChart3, requires: "can_view_analytics" },
   { id: "messages", label: "Messages", href: "/admin/messages", icon: MessageSquare, primary: true, requires: "can_view_messages" },
-  { id: "settings", label: "Settings", href: "/admin/settings", icon: Settings, activeFor: ["/settings"] },
+  { id: "settings", label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
 /**
