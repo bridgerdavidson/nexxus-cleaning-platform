@@ -5,7 +5,8 @@ import { Logo } from '@/components/ui/logo'
 import { Button } from '@/components/ui/button'
 
 const LINKS = [
-  { href: '#try-it', label: 'Product' },
+  { href: '#try-it', label: 'How it works' },
+  { href: '#live-tracking', label: 'Live tracking' },
   { href: '#pricing', label: 'Pricing' },
   { href: '#faq', label: 'FAQ' },
 ]

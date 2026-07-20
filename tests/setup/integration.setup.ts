@@ -55,25 +55,6 @@ vi.mock('@/lib/stripe', async (importOriginal) => {
         } as unknown as Stripe.Transfer;
       },
     ),
-    createPaymentIntent: vi.fn(
-      async (
-        customerId: string,
-        amount: number,
-        appointmentId: string,
-        paymentMethodId?: string,
-      ) => {
-        const state = getState();
-        state.paymentIntentCalls.push({ customerId, amount, appointmentId, paymentMethodId });
-        return {
-          id: `pi_test_${appointmentId}`,
-          object: 'payment_intent',
-          status: 'succeeded',
-          amount: Math.round(amount * 100),
-          latest_charge: `ch_test_${appointmentId}`,
-          metadata: { appointment_id: appointmentId },
-        } as unknown as Stripe.PaymentIntent;
-      },
-    ),
     getDefaultPaymentMethod: vi.fn(async () => 'pm_test_default'),
     getPayoutTransferIds: vi.fn(async () => []),
   };

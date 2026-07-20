@@ -20,7 +20,7 @@ import type {
 // TEMPORARY dev-only preview (gated by the (dev) layout) so the presentational
 // Payments View + detail Sheet can be iterated on without auth/hooks. The triage
 // band and the Stripe embed are hook-backed, so they are shown here as static
-// mocks. The live screen is at /app/admin-dashboard/payments.
+// mocks. The live screen is at /admin/payments.
 
 const TXN_ROWS: TransactionRowVM[] = [
   { id: "t1", dateLabel: "Jun 20, 2026", payer: "Jane Smith", selfPay: false, service: "Deep clean", amountLabel: "$240.00", method: "Card", badge: "paid", partiallyRefunded: true },

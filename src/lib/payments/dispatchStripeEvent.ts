@@ -238,6 +238,7 @@ async function handlePaymentIntentSucceeded(
       appointmentId,
       (paymentIntent.latest_charge as string | null) ?? null,
       paymentIntent.amount_received ?? undefined,
+      paymentIntent.id,
     );
     console.log('Separate charges/transfers settlement:', result);
     return;
@@ -713,6 +714,7 @@ async function handleChargeRefunded(
       stripeEventId,
       paymentId: payment.id,
       organizationId: payment.organization_id,
+      sourceChargeId: charge.id,
     });
   }
 

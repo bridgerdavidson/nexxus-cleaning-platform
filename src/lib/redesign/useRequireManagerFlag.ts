@@ -19,7 +19,7 @@ export function useRequireManagerFlag(flag: ManagerPermissionKey): 'checking' | 
   useEffect(() => {
     if (resolving) return;            // wait for auth + (managers) permissions
     if (privileged) return;           // owner/admin bypass
-    if (!permissions?.[flag]) router.replace('/app/admin-dashboard');
+    if (!permissions?.[flag]) router.replace('/admin');
   }, [resolving, privileged, permissions, flag, router]);
 
   if (resolving) return 'checking';

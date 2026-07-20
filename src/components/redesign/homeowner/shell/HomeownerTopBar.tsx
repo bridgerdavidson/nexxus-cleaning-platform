@@ -60,7 +60,7 @@ export function HomeownerTopBar() {
             <DropdownMenuLabel>{fullName}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/app/homeowner-dashboard/account">Account</Link>
+              <Link href="/homeowner/account">Account</Link>
             </DropdownMenuItem>
             <DropdownMenuItem destructive onClick={() => signOut()}>
               Sign out

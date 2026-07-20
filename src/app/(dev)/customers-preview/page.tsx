@@ -16,7 +16,7 @@ import type {
 
 // TEMPORARY dev-only preview (gated by the (dev) layout) so the presentational
 // Customers View + detail Sheet can be iterated on without auth/hooks. The live
-// screen is at /app/admin-dashboard/customers via the hook-backed
+// screen is at /admin/customers via the hook-backed
 // OperatorCustomers.
 
 type MockCustomer = CustomersCustomer & {

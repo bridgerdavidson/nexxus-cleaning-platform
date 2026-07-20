@@ -8,8 +8,8 @@ import {
 } from './deriveCommandResults';
 
 const NAV = [
-  { id: 'bookings', label: 'Bookings', href: '/app/admin-dashboard/bookings', icon: ArrowRight },
-  { id: 'payments', label: 'Payments & payouts', href: '/app/admin-dashboard/payments', icon: ArrowRight },
+  { id: 'bookings', label: 'Bookings', href: '/admin/bookings', icon: ArrowRight },
+  { id: 'payments', label: 'Payments & payouts', href: '/admin/payments', icon: ArrowRight },
 ];
 const ACTIONS = [{ id: 'new-booking', label: 'New booking', keywords: 'create add', icon: Plus }];
 
@@ -63,7 +63,7 @@ describe('deriveCommandResults', () => {
     const bookingsGroup = groups.find((g) => g.group === 'Bookings');
     expect(bookingsGroup).toBeDefined();
     expect(bookingsGroup!.items[0].key).toBe('booking:b1');
-    expect(bookingsGroup!.items[0].href).toBe('/app/admin-dashboard/bookings?booking=b1');
+    expect(bookingsGroup!.items[0].href).toBe('/admin/bookings?booking=b1');
     expect(bookingsGroup!.items[0].label).toBe('123 Oak St');
   });
 

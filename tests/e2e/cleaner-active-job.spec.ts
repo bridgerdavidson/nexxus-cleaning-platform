@@ -49,8 +49,8 @@ async function signInAsCleaner(page: Page): Promise<boolean> {
       .getByRole('button', { name: /sign in|log in|continue/i })
       .first()
       .click();
-    // Any dashboard landing is fine (legacy or redesign); we navigate explicitly after.
-    await page.waitForURL(/dashboard/, { timeout: 20_000 });
+    // Any role-root landing is fine; we navigate explicitly after.
+    await page.waitForURL(/\/(admin|cleaner|homeowner|owner)(?:\/|\?|$)/, { timeout: 20_000 });
     return true;
   } catch {
     return false;
@@ -61,8 +61,8 @@ async function signInAsCleaner(page: Page): Promise<boolean> {
 async function reachRedesignDashboard(page: Page): Promise<boolean> {
   if (!(await signInAsCleaner(page))) return false;
   try {
-    await page.goto('/app/cleaner-dashboard', { waitUntil: 'domcontentloaded' });
-    if (!page.url().includes('/app/cleaner-dashboard')) return false;
+    await page.goto('/cleaner', { waitUntil: 'domcontentloaded' });
+    if (!page.url().includes('/cleaner')) return false;
     // The redesign shell renders a primary bottom nav.
     await page.getByRole('navigation').first().waitFor({ state: 'visible', timeout: 10_000 });
     return true;
@@ -71,7 +71,7 @@ async function reachRedesignDashboard(page: Page): Promise<boolean> {
   }
 }
 
-test('redesign cleaner shell renders at /app/cleaner-dashboard', async ({ page }) => {
+test('redesign cleaner shell renders at /cleaner', async ({ page }) => {
   if (!(await reachRedesignDashboard(page))) {
     test.skip(true, 'Cleaner dashboard not reachable in this environment (auth, redesign flag, or data)');
     return;

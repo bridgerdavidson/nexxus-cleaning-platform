@@ -13,12 +13,12 @@ describe('HOMEOWNER_NAV', () => {
 
 describe('deriveHomeownerActive', () => {
   it('maps pathnames to the active nav id', () => {
-    expect(deriveHomeownerActive('/app/homeowner-dashboard')).toBe('home');
-    expect(deriveHomeownerActive('/app/homeowner-dashboard/cleanings')).toBe('cleanings');
-    expect(deriveHomeownerActive('/app/homeowner-dashboard/messages')).toBe('messages');
-    expect(deriveHomeownerActive('/app/homeowner-dashboard/account')).toBe('account');
+    expect(deriveHomeownerActive('/homeowner')).toBe('home');
+    expect(deriveHomeownerActive('/homeowner/cleanings')).toBe('cleanings');
+    expect(deriveHomeownerActive('/homeowner/messages')).toBe('messages');
+    expect(deriveHomeownerActive('/homeowner/account')).toBe('account');
   });
   it('defaults to home for unknown paths', () => {
-    expect(deriveHomeownerActive('/app/homeowner-dashboard/whatever')).toBe('home');
+    expect(deriveHomeownerActive('/homeowner/whatever')).toBe('home');
   });
 });

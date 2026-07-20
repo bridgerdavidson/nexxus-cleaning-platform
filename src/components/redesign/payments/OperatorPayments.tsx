@@ -377,8 +377,8 @@ function OperatorPaymentsData({
     async (cleanerId: string | null) => {
       router.push(
         cleanerId
-          ? `/app/admin-dashboard/messages?to=${cleanerId}`
-          : "/app/admin-dashboard/messages",
+          ? `/admin/messages?to=${cleanerId}`
+          : "/admin/messages",
       );
     },
     [router],

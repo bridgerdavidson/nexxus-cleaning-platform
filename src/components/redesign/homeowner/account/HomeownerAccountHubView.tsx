@@ -49,7 +49,7 @@ export function HomeownerAccountHubView({
             icon={User}
             title="Profile"
             subtitle="Name, photo, and password"
-            href="/app/homeowner-dashboard/account/profile"
+            href="/homeowner/account/profile"
           />
         </div>
       </section>
@@ -61,27 +61,27 @@ export function HomeownerAccountHubView({
             icon={Home}
             title="Properties"
             subtitle="Homes we clean for you"
-            href="/app/homeowner-dashboard/account/properties"
+            href="/homeowner/account/properties"
           />
           {showPaymentMethods && (
             <ProfileRow
               icon={CreditCard}
               title="Payment methods"
               subtitle="Saved cards"
-              href="/app/homeowner-dashboard/account/payment-methods"
+              href="/homeowner/account/payment-methods"
             />
           )}
           <ProfileRow
             icon={Receipt}
             title="Payment history"
             subtitle="Receipts for past cleanings"
-            href="/app/homeowner-dashboard/account/receipts"
+            href="/homeowner/account/receipts"
           />
           <ProfileRow
             icon={Sparkles}
             title="Browse services"
             subtitle="What we offer"
-            href="/app/homeowner-dashboard/account/services"
+            href="/homeowner/account/services"
           />
         </div>
       </section>

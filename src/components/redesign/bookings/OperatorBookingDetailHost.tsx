@@ -231,11 +231,11 @@ function HostInner({
         onDelete={() => setConfirm("delete")}
         onMessageCustomer={() => {
           if (detail?.customerId)
-            router.push(`/app/admin-dashboard/messages?to=${detail.customerId}&appointment=${detail.id}`);
+            router.push(`/admin/messages?to=${detail.customerId}&appointment=${detail.id}`);
         }}
         onMessageCleaner={() => {
           if (detail?.cleanerId)
-            router.push(`/app/admin-dashboard/messages?to=${detail.cleanerId}&appointment=${detail.id}`);
+            router.push(`/admin/messages?to=${detail.cleanerId}&appointment=${detail.id}`);
         }}
       />
       {raw ? (

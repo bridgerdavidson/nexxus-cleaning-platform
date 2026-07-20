@@ -123,37 +123,6 @@ export async function createSetupIntent(
   return setupIntent;
 }
 
-// Helper function to create a PaymentIntent to charge a customer
-export async function createPaymentIntent(
-  customerId: string,
-  amount: number, // Amount in cents
-  appointmentId: string,
-  paymentMethodId?: string
-): Promise<Stripe.PaymentIntent> {
-  const stripe = getStripe();
-
-  const paymentIntentData: Stripe.PaymentIntentCreateParams = {
-    amount: Math.round(amount * 100), // Convert dollars to cents
-    currency: 'usd',
-    customer: customerId,
-    off_session: true,
-    confirm: true,
-    metadata: {
-      appointment_id: appointmentId,
-      source: 'nexxus-cleaning-platform',
-    },
-  };
-
-  // If a specific payment method is provided, use it
-  if (paymentMethodId) {
-    paymentIntentData.payment_method = paymentMethodId;
-  }
-
-  const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
-
-  return paymentIntent;
-}
-
 // Helper function to get the default payment method for a customer
 export async function getDefaultPaymentMethod(
   customerId: string

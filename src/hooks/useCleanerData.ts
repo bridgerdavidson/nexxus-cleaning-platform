@@ -8,7 +8,6 @@ import { toast } from '../components/ui/toast';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
-import { stripeNewChargeFlowUiEnabled } from '../lib/stripe/flags';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
 import type { ChargeProjection, ChecklistItemCompletion } from '../types';
@@ -794,51 +793,8 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
         // the job is complete (the assigned cleaner is permitted). Non-fatal: a payment problem (no
         // card, declined, tenant not ready) still completes the job and surfaces in "Payments needing
         // attention" for follow-up.
-        if (stripeNewChargeFlowUiEnabled()) {
-          const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
-          return { success: true, ...result };
-        }
-
-        const response = await fetch('/api/stripe/create-payment-intent', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            appointment_id: appointmentId,
-            organization_id: appointment?.organization_id,
-          }),
-        });
-
-        let result;
-        try {
-          result = await response.json();
-        } catch (parseError) {
-          console.error('Payment response parse error:', parseError);
-          // Don't fail the status update, just log the payment error
-          return { 
-            success: true, 
-            paymentStatus: 'failed',
-            paymentError: 'Failed to parse payment response'
-          };
-        }
-
-        if (!response.ok) {
-          console.error('Payment failed:', result.error);
-          // Don't fail the status update, just log the payment error
-          // The payment can be retried manually
-          return { 
-            success: true, 
-            paymentStatus: 'failed',
-            paymentError: result.error || 'Payment processing failed'
-          };
-        }
-
-        return { 
-          success: true, 
-          paymentStatus: result.payment_intent_status === 'succeeded' ? 'paid' : 'pending',
-          paymentIntentId: result.payment_intent_id
-        };
+        const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
+        return { success: true, ...result };
       } catch (paymentError) {
         console.error('Error processing payment:', paymentError);
         // Don't fail the status update, just log the payment error

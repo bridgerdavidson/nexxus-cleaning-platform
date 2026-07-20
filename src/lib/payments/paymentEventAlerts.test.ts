@@ -11,6 +11,22 @@ describe('alertInputForPaymentEvent', () => {
     expect(alertInputForPaymentEvent({ eventType: 'cleaner_payout_held' })).toBeNull();
     // dispute lifecycle events already have their own admin bell notifications.
     expect(alertInputForPaymentEvent({ eventType: 'dispute_lost' })).toBeNull();
+    // T1-4: the fee-race deferral self-heals within one sweep, so it is a silent forensic marker.
+    expect(alertInputForPaymentEvent({ eventType: 'settlement_deferred_no_row' })).toBeNull();
+  });
+
+  it('T1-9: a failed tenant remainder transfer (org not paid) is a critical, org-scoped alert', () => {
+    const input = alertInputForPaymentEvent({
+      eventType: 'tenant_transfer_failed',
+      organizationId: 'org-7',
+      appointmentId: 'appt-3',
+      amount: 3900,
+      actor: 'webhook',
+    });
+    expect(input).not.toBeNull();
+    expect(input!.severity).toBe('critical');
+    expect(input!.alert_type).toBe('payment_tenant_transfer_failed:org-7');
+    expect(ALERTABLE_PAYMENT_EVENTS.tenant_transfer_failed?.severity).toBe('critical');
   });
 
   it('maps a critical money-loss event with the right severity and namespaced type', () => {
