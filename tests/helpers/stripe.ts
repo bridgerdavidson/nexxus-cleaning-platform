@@ -10,12 +10,6 @@ export interface StripeFakeTransferCall {
 
 export interface StripeFake {
   transferCalls: StripeFakeTransferCall[];
-  paymentIntentCalls: Array<{
-    customerId: string;
-    amount: number;
-    appointmentId: string;
-    paymentMethodId?: string;
-  }>;
   reset(): void;
 }
 
