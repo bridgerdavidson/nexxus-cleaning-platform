@@ -117,7 +117,7 @@ export function BookingPicksView({
                   type="button"
                   onClick={() => onRemoveTime(idx)}
                   aria-label={`Remove ${slotOrdinal(idx)} time`}
-                  className="grid size-8 place-items-center rounded-control text-muted-foreground hover:text-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="grid size-11 shrink-0 place-items-center rounded-control text-muted-foreground hover:text-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X className="size-4" aria-hidden />
                 </button>
@@ -127,7 +127,7 @@ export function BookingPicksView({
               <button
                 type="button"
                 onClick={onAddTime}
-                className="flex w-full items-center justify-center gap-2 rounded-card border border-dashed border-border py-3 text-sm font-bold text-brand-700 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-card border border-dashed border-border py-3 text-sm font-bold text-brand-700 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <Plus className="size-4" aria-hidden />
                 {state.slots.length === 0 ? 'Add a time' : 'Add a backup time'}
