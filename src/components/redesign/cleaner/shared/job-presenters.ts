@@ -35,6 +35,19 @@ export function propertyAddress(a: CleanerAppointment): string | null {
   return full || null;
 }
 
+/**
+ * The street line to show as a job row's secondary location text (so the cleaner
+ * knows where to go). Returns the property's street address only when a distinct
+ * property name is already the row title (propertyTitle) — when there is no name,
+ * propertyTitle already falls back to the street, so this returns null to avoid
+ * printing the same address twice. Null when there is no usable street.
+ */
+export function rowAddressLine(a: CleanerAppointment): string | null {
+  const p = a.property;
+  if (!p?.name || !p.address) return null;
+  return p.address;
+}
+
 /** A Google Maps search URL for a plain address string. */
 export function googleMapsUrl(address: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;

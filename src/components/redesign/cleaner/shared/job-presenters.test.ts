@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatTimeParts, propertyTitle, jobSubtitle, formatRespondBy,
-  customerLabel, propertyAddress, mapsUrl, googleMapsUrl, appleMapsUrl,
+  customerLabel, propertyAddress, rowAddressLine, mapsUrl, googleMapsUrl, appleMapsUrl,
   formatDateLong, formatDuration, formatCardDate, formatJobWhen, offerSlotChipLabels,
 } from "./job-presenters";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
@@ -45,6 +45,21 @@ describe("propertyAddress / mapsUrl", () => {
   it("builds a maps search url or null", () => {
     expect(mapsUrl(base)).toBe("https://www.google.com/maps/search/?api=1&query=123%20Main%20St%2C%20Austin%2C%20TX%2078701");
     expect(mapsUrl({ ...base, property: null } as unknown as CleanerAppointment)).toBeNull();
+  });
+});
+
+describe("rowAddressLine", () => {
+  it("shows the street when a distinct property name is the title", () => {
+    expect(rowAddressLine(base)).toBe("123 Main St");
+  });
+  it("returns null when there is no name (propertyTitle already shows the street)", () => {
+    expect(rowAddressLine({ ...base, property: { ...base.property!, name: "" } } as CleanerAppointment)).toBeNull();
+  });
+  it("returns null when there is no street address", () => {
+    expect(rowAddressLine({ ...base, property: { ...base.property!, address: "" } } as CleanerAppointment)).toBeNull();
+  });
+  it("returns null when there is no property", () => {
+    expect(rowAddressLine({ ...base, property: null } as unknown as CleanerAppointment)).toBeNull();
   });
 });
 

@@ -216,6 +216,21 @@ export function CleanerActiveJob({ appointmentId, onClose }: CleanerActiveJobPro
     context: { kind: 'job-photo', ctx: { appointmentId, photoType: 'after' } },
   });
 
+  // Auto-retry failed photo uploads when the device reconnects. The upload
+  // managers live here (so in-flight uploads survive sub-screen nav), so the
+  // reconnect listener does too. retryFailed() is stable and no-ops when
+  // nothing has failed, so this is safe to fire on every 'online' event.
+  const retryBefore = beforeUploader.retryFailed;
+  const retryAfter = afterUploader.retryFailed;
+  useEffect(() => {
+    function onOnline() {
+      retryBefore();
+      retryAfter();
+    }
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [retryBefore, retryAfter]);
+
   const { beforePhotos, afterPhotos, refetch: refetchPhotos } =
     useJobPhotosForAppointment(appointmentId);
 
