@@ -3,7 +3,6 @@
 import { SystemStatePage, type SystemStateAction } from '@/components/redesign/shared/SystemStatePage'
 import { useAuth } from '@/hooks/useAuth'
 import { getDashboardPath } from '@/lib/redesign/dashboardPath'
-import { redesignUiEnabled } from '@/lib/redesign/flags'
 
 export default function NotFound() {
   const { user } = useAuth()
@@ -11,7 +10,7 @@ export default function NotFound() {
   if (user?.role) {
     actions.push({
       label: 'Go to your dashboard',
-      href: getDashboardPath(user.role, { redesign: redesignUiEnabled() }),
+      href: getDashboardPath(user.role),
       variant: 'outline',
     })
   }

@@ -163,6 +163,9 @@ export default function CustomersPreviewPage() {
         onEditingChange={setEditing}
         onSave={async () => true}
         onDelete={() => {}}
+        onNewBooking={() => {}}
+        onMessage={() => {}}
+        onOpenBooking={() => {}}
       />
 
       <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onInvite={async () => true} />

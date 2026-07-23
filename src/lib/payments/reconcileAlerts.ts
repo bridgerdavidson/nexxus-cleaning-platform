@@ -15,7 +15,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { recordPlatformAlert, type PlatformAlertInput } from '@/lib/monitoring/platformAlert';
 
 export interface ReconcileSweepResults {
-  deadLetter?: { retried: number; recovered: number; stillFailed: number };
+  // `dead` (T1-10) is terminal-give-up count; it raises its own per-event critical alert at the sweep
+  // emit site (recordPlatformAlert in retryDeadLetterWebhooks), so it is NOT re-alerted here — this
+  // module only covers signals with no per-event emit site (see the module note above).
+  deadLetter?: { retried: number; recovered: number; stillFailed: number; dead?: number };
   [key: string]: unknown;
 }
 

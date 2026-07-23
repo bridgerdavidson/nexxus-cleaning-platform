@@ -12,11 +12,9 @@ vi.mock('@/lib/stripe', async (importOriginal) => {
     if (!(globalThis as { __stripeFake?: StripeFake }).__stripeFake) {
       (globalThis as { __stripeFake?: StripeFake }).__stripeFake = {
         transferCalls: [],
-        paymentIntentCalls: [],
         reset() {
           const s = (globalThis as { __stripeFake: StripeFake }).__stripeFake;
           s.transferCalls.length = 0;
-          s.paymentIntentCalls.length = 0;
         },
       };
     }
@@ -70,10 +68,8 @@ beforeAll(() => {
   if (!globalThis.__stripeFake) {
     globalThis.__stripeFake = {
       transferCalls: [],
-      paymentIntentCalls: [],
       reset() {
         this.transferCalls.length = 0;
-        this.paymentIntentCalls.length = 0;
       },
     };
   }

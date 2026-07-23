@@ -138,7 +138,7 @@ export function CancelBookingDialog({
         <DialogHeader>
           <DialogTitle>Cancel this booking?</DialogTitle>
           <DialogDescription>
-            {`${a.property?.name || a.property?.address || 'Property'} · ${monthDay(a.scheduled_date)} at ${fmtTime(a.scheduled_time)}. The customer and cleaner will be notified.`}
+            {`${a.property?.name || a.property?.address || 'Property'} · ${monthDay(a.scheduled_date)} at ${fmtTime(a.scheduled_time)}. This can't be undone.`}
           </DialogDescription>
         </DialogHeader>
 

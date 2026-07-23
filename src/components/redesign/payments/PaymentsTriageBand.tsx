@@ -30,7 +30,9 @@ export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: b
     );
   }
 
-  if (t.isEmpty) return null;
+  // Hide only when genuinely clean. A query error keeps the card so the error
+  // message below renders instead of the band silently reading as "all clear" (T2-8).
+  if (t.isEmpty && !t.error) return null;
 
   const total = t.charges.length + t.failedPayouts.length + t.heldPayouts.length;
 

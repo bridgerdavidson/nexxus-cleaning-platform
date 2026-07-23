@@ -44,6 +44,13 @@ describe('claimWebhookEvent', () => {
     expect(await claimWebhookEvent(failed, ev)).toBe('claimed');
   });
 
+  it('treats a DEAD row as a duplicate (terminally abandoned; a human replays it, not a live re-delivery)', async () => {
+    // T1-10: the dead-letter sweep marks a give-up row 'dead'. A live Stripe re-delivery must not
+    // silently reprocess it (which would resurrect it into the sweep and churn its critical alert).
+    const dead = makeSupabase({ insertError: { code: '23505', message: 'dup' }, existingStatus: 'dead' });
+    expect(await claimWebhookEvent(dead, ev)).toBe('duplicate');
+  });
+
   it('treats a RECENT received row as a duplicate (a concurrent delivery is in-flight)', async () => {
     const recent = makeSupabase({
       insertError: { code: '23505', message: 'dup' },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Mail, Phone, Home, CalendarDays, Pencil, Trash2, Building2 } from "lucide-react";
+import { Mail, Phone, Home, CalendarDays, Pencil, Trash2, Building2, CalendarPlus, MessageSquare } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -42,6 +42,12 @@ export type CustomerDetailSheetProps = {
   onDelete: () => void;
   /** When provided, property cards become clickable and deep-link into the Properties workspace. */
   onOpenProperty?: (propertyId: string) => void;
+  /** Seed a new booking for this customer. Omitted when the viewer can't create bookings. */
+  onNewBooking?: () => void;
+  /** Open a message thread with this customer. */
+  onMessage?: () => void;
+  /** When provided, booking-history rows become clickable and open that booking. */
+  onOpenBooking?: (appointmentId: string) => void;
 };
 
 function StatBox({ label, value }: { label: string; value: string }) {
@@ -78,6 +84,9 @@ export function CustomerDetailSheet({
   onSave,
   onDelete,
   onOpenProperty,
+  onNewBooking,
+  onMessage,
+  onOpenBooking,
 }: CustomerDetailSheetProps) {
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
 
@@ -197,6 +206,21 @@ export function CustomerDetailSheet({
                     </div>
                   </div>
 
+                  {onNewBooking || onMessage ? (
+                    <div className="flex flex-wrap gap-2">
+                      {onNewBooking ? (
+                        <Button variant="secondary" size="sm" onClick={onNewBooking}>
+                          <CalendarPlus /> New booking
+                        </Button>
+                      ) : null}
+                      {onMessage ? (
+                        <Button variant="outline" size="sm" onClick={onMessage}>
+                          <MessageSquare /> Message
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <Separator />
 
                   <section className="space-y-2">
@@ -250,26 +274,42 @@ export function CustomerDetailSheet({
                     ) : history.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No bookings yet.</p>
                     ) : (
-                      history.map((h) => (
-                        <div
-                          key={h.id}
-                          className="flex items-start justify-between gap-3 rounded-control border border-border bg-card px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-medium text-foreground">{h.service}</div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {h.dateLabel}
-                              {h.property ? ` · ${h.property}` : ""}
+                      history.map((h) => {
+                        const rowContent = (
+                          <>
+                            <div className="min-w-0">
+                              <div className="font-medium text-foreground">{h.service}</div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {h.dateLabel}
+                                {h.property ? ` · ${h.property}` : ""}
+                              </div>
                             </div>
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <HistoryStatusBadge status={h.status} />
+                              {h.priceLabel ? (
+                                <span className="text-xs font-semibold tnum text-foreground">{h.priceLabel}</span>
+                              ) : null}
+                            </div>
+                          </>
+                        );
+                        return onOpenBooking ? (
+                          <button
+                            key={h.id}
+                            type="button"
+                            onClick={() => onOpenBooking(h.id)}
+                            className="flex w-full items-start justify-between gap-3 rounded-control border border-border bg-card px-3 py-2 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {rowContent}
+                          </button>
+                        ) : (
+                          <div
+                            key={h.id}
+                            className="flex items-start justify-between gap-3 rounded-control border border-border bg-card px-3 py-2"
+                          >
+                            {rowContent}
                           </div>
-                          <div className="flex shrink-0 flex-col items-end gap-1">
-                            <HistoryStatusBadge status={h.status} />
-                            {h.priceLabel ? (
-                              <span className="text-xs font-semibold tnum text-foreground">{h.priceLabel}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </section>
 

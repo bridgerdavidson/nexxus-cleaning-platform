@@ -10,7 +10,6 @@ import { HomeownerCleaningDetailHost } from "@/components/redesign/homeowner/cle
 import { HomeownerMessageThreadHost } from "@/components/redesign/homeowner/messages/HomeownerMessageThreadHost";
 import { BookingFlowHost } from "@/components/redesign/homeowner/booking/BookingFlowHost";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 function Spinner() {
   return (
@@ -40,7 +39,7 @@ export default function HomeownerDashboardLayout({
     // Soft role guard: non-homeowners get redirected to their own dashboard so a
     // deep link does not strand them on the homeowner shell.
     if (user.role && user.role !== "homeowner") {
-      router.push(getDashboardPath(user.role, { redesign: redesignUiEnabled() }));
+      router.push(getDashboardPath(user.role));
     }
   }, [user, loading, router]);
 
