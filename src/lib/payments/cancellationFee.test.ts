@@ -13,16 +13,22 @@ const base = {
   windowHours: 24,
   scheduledDate: SCHEDULED_DATE,
   scheduledTime: SCHEDULED_TIME,
+  // Default both policies to "none"; each test sets the one it exercises. This mirrors the DB
+  // defaults and keeps tests explicit about which policy they mean.
+  feeType: 'none',
+  feeValue: 0,
+  noShowFeeType: 'none',
+  noShowFeeValue: 0,
 } as const;
 
 describe('computeCancellationFee', () => {
-  it('charges nothing for a cleaner-caused cancellation', () => {
+  it('charges nothing for a cleaner-caused cancellation (even with a no-show fee configured)', () => {
     const { feeCents } = computeCancellationFee({
       ...base,
       party: 'cleaner',
       noShow: true,
-      feeType: 'flat',
-      feeValue: 50,
+      noShowFeeType: 'flat',
+      noShowFeeValue: 50,
       now: scheduledMs - 1 * HOUR, // well inside the window
     });
     expect(feeCents).toBe(0);
@@ -33,20 +39,20 @@ describe('computeCancellationFee', () => {
       ...base,
       party: 'org',
       noShow: true,
-      feeType: 'percent',
-      feeValue: 100,
+      noShowFeeType: 'percent',
+      noShowFeeValue: 100,
       now: scheduledMs,
     });
     expect(feeCents).toBe(0);
   });
 
-  it('charges a flat fee for a homeowner no-show regardless of window', () => {
+  it('charges the flat NO-SHOW fee for a homeowner no-show regardless of window', () => {
     const { feeCents, insideWindow } = computeCancellationFee({
       ...base,
       party: 'homeowner',
       noShow: true,
-      feeType: 'flat',
-      feeValue: 50,
+      noShowFeeType: 'flat',
+      noShowFeeValue: 50,
       now: scheduledMs - 100 * HOUR, // far outside the window, but a no-show still bills
     });
     expect(feeCents).toBe(5000);
@@ -79,27 +85,71 @@ describe('computeCancellationFee', () => {
     expect(feeCents).toBe(0);
   });
 
-  it('charges nothing when the org policy is "none"', () => {
+  it('charges nothing when the no-show policy is "none"', () => {
     const { feeCents } = computeCancellationFee({
       ...base,
       party: 'homeowner',
       noShow: true,
-      feeType: 'none',
-      feeValue: 0,
+      noShowFeeType: 'none',
+      noShowFeeValue: 0,
       now: scheduledMs,
     });
     expect(feeCents).toBe(0);
   });
 
-  it('caps a flat fee at the gross amount', () => {
+  it('caps a flat no-show fee at the gross amount', () => {
     const { feeCents } = computeCancellationFee({
       ...base,
       party: 'homeowner',
       noShow: true,
-      feeType: 'flat',
-      feeValue: 200, // $200 flat on a $100 job
+      noShowFeeType: 'flat',
+      noShowFeeValue: 200, // $200 flat on a $100 job
       now: scheduledMs,
     });
     expect(feeCents).toBe(10000);
+  });
+
+  // ── T1-6: no-show fee is a SEPARATE policy from the late-cancel fee (decision B) ────────────────
+  it('T1-6 bug: "free cancels, $50 no-show" charges $50 on a no-show (was silently $0)', () => {
+    const { feeCents } = computeCancellationFee({
+      ...base,
+      party: 'homeowner',
+      noShow: true,
+      feeType: 'none', // free cancels
+      feeValue: 0,
+      noShowFeeType: 'flat', // but a $50 no-show fee
+      noShowFeeValue: 50,
+      now: scheduledMs,
+    });
+    expect(feeCents).toBe(5000);
+  });
+
+  it('strict independence: a no-show does NOT inherit the late-cancel fee', () => {
+    const { feeCents } = computeCancellationFee({
+      ...base,
+      party: 'homeowner',
+      noShow: true,
+      feeType: 'percent', // a 50% late-cancel fee that must NOT apply to a no-show
+      feeValue: 50,
+      noShowFeeType: 'none', // no-show is free
+      noShowFeeValue: 0,
+      now: scheduledMs,
+    });
+    expect(feeCents).toBe(0);
+  });
+
+  it('strict independence: a late (inside-window) cancel does NOT inherit the no-show fee', () => {
+    const { feeCents, insideWindow } = computeCancellationFee({
+      ...base,
+      party: 'homeowner',
+      noShow: false,
+      feeType: 'none', // free late cancels
+      feeValue: 0,
+      noShowFeeType: 'flat', // a $50 no-show fee that must NOT apply to a late cancel
+      noShowFeeValue: 50,
+      now: scheduledMs - 10 * HOUR, // inside the window
+    });
+    expect(insideWindow).toBe(true);
+    expect(feeCents).toBe(0);
   });
 });

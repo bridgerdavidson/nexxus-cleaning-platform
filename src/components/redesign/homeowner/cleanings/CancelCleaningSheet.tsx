@@ -38,10 +38,18 @@ export function CancelCleaningSheet({
   const [error, setError] = useState<string | null>(null);
   const [policyLoading, setPolicyLoading] = useState(true);
   const [policyError, setPolicyError] = useState(false);
-  const [policy, setPolicy] = useState<{ windowHours: number; feeType: FeeType; feeValue: number }>({
+  const [policy, setPolicy] = useState<{
+    windowHours: number;
+    feeType: FeeType;
+    feeValue: number;
+    noShowFeeType: FeeType;
+    noShowFeeValue: number;
+  }>({
     windowHours: 24,
     feeType: 'none',
     feeValue: 0,
+    noShowFeeType: 'none',
+    noShowFeeValue: 0,
   });
 
   // Load the org cancellation policy to preview the fee. Homeowners can read their own org row
@@ -55,7 +63,9 @@ export function CancelCleaningSheet({
       setPolicyLoading(true);
       const { data, error } = await supabase
         .from('organizations')
-        .select('cancellation_window_hours, cancellation_fee_type, cancellation_fee_value')
+        .select(
+          'cancellation_window_hours, cancellation_fee_type, cancellation_fee_value, no_show_fee_type, no_show_fee_value',
+        )
         .eq('id', currentOrganizationId)
         .maybeSingle();
       if (cancelled) return;
@@ -70,11 +80,15 @@ export function CancelCleaningSheet({
         cancellation_window_hours?: number;
         cancellation_fee_type?: FeeType;
         cancellation_fee_value?: number;
+        no_show_fee_type?: FeeType;
+        no_show_fee_value?: number;
       };
       setPolicy({
         windowHours: Number(row.cancellation_window_hours ?? 24),
         feeType: (row.cancellation_fee_type as FeeType) ?? 'none',
         feeValue: Number(row.cancellation_fee_value ?? 0),
+        noShowFeeType: (row.no_show_fee_type as FeeType) ?? 'none',
+        noShowFeeValue: Number(row.no_show_fee_value ?? 0),
       });
       setPolicyLoading(false);
     })();
@@ -87,11 +101,16 @@ export function CancelCleaningSheet({
     () =>
       computeCancellationFee({
         party: 'homeowner',
+        // A homeowner cancelling their own booking is never a no-show (that is operator-marked), so
+        // this always resolves via the late-cancel policy; the no-show policy is passed to satisfy the
+        // shared shape and stay correct if that ever changes.
         noShow: false,
         grossCents: Math.round(appointment.total_price * 100),
         windowHours: policy.windowHours,
         feeType: policy.feeType,
         feeValue: policy.feeValue,
+        noShowFeeType: policy.noShowFeeType,
+        noShowFeeValue: policy.noShowFeeValue,
         scheduledDate: appointment.scheduled_date,
         scheduledTime: appointment.scheduled_time,
       }),

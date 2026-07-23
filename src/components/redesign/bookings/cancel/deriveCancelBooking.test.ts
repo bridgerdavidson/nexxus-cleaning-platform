@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { previewCancelFee, feeLine, cancelToast, type CancelPolicy } from './deriveCancelBooking';
 
-const policy: CancelPolicy = { windowHours: 24, feeType: 'flat', feeValue: 25 };
+// Distinct late-cancel ($25) and no-show ($40) fees so the preview proves it threads the correct,
+// independent policy (T1-6 / decision B).
+const policy: CancelPolicy = {
+  windowHours: 24,
+  feeType: 'flat',
+  feeValue: 25,
+  noShowFeeType: 'flat',
+  noShowFeeValue: 40,
+};
 
 type CancelAppt = Parameters<typeof previewCancelFee>[0];
 
@@ -32,8 +40,9 @@ describe('previewCancelFee', () => {
     expect(previewCancelFee(appt(), policy, 'homeowner', false).feeCents).toBe(0);
   });
 
-  it('charges the flat fee for a customer no-show', () => {
-    expect(previewCancelFee(appt(), policy, 'homeowner', true).feeCents).toBe(2500);
+  it('charges the flat NO-SHOW fee (not the late-cancel fee) for a customer no-show', () => {
+    // Uses noShowFeeValue ($40 -> 4000), proving the preview reads the no-show policy, not feeValue.
+    expect(previewCancelFee(appt(), policy, 'homeowner', true).feeCents).toBe(4000);
   });
 
   it('never charges for cleaner- or company-caused cancels', () => {
