@@ -59,7 +59,13 @@ export function CancelBookingDialog({
   const [saving, setSaving] = useState(false);
   const [policyLoading, setPolicyLoading] = useState(true);
   const [policyError, setPolicyError] = useState(false);
-  const [policy, setPolicy] = useState<CancelPolicy>({ windowHours: 24, feeType: 'none', feeValue: 0 });
+  const [policy, setPolicy] = useState<CancelPolicy>({
+    windowHours: 24,
+    feeType: 'none',
+    feeValue: 0,
+    noShowFeeType: 'none',
+    noShowFeeValue: 0,
+  });
 
   // Self-pay has no customer to charge; a completed booking's money is owned
   // by the completion-refund flow. Either way the fee UI is meaningless.
@@ -76,7 +82,9 @@ export function CancelBookingDialog({
       setPolicyLoading(true);
       const { data, error } = await supabase
         .from('organizations')
-        .select('cancellation_window_hours, cancellation_fee_type, cancellation_fee_value')
+        .select(
+          'cancellation_window_hours, cancellation_fee_type, cancellation_fee_value, no_show_fee_type, no_show_fee_value',
+        )
         .eq('id', currentOrganizationId)
         .maybeSingle();
       if (stale) return;
@@ -90,11 +98,15 @@ export function CancelBookingDialog({
         cancellation_window_hours?: number;
         cancellation_fee_type?: FeeType;
         cancellation_fee_value?: number;
+        no_show_fee_type?: FeeType;
+        no_show_fee_value?: number;
       };
       setPolicy({
         windowHours: Number(row.cancellation_window_hours ?? 24),
         feeType: (row.cancellation_fee_type as FeeType) ?? 'none',
         feeValue: Number(row.cancellation_fee_value ?? 0),
+        noShowFeeType: (row.no_show_fee_type as FeeType) ?? 'none',
+        noShowFeeValue: Number(row.no_show_fee_value ?? 0),
       });
       setPolicyLoading(false);
     })();

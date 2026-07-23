@@ -51,7 +51,13 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
     await Promise.all([org.cleanup(), org2.cleanup()]);
   });
 
-  async function setPolicy(fields: { type: string; value: number; windowHours?: number }) {
+  async function setPolicy(fields: {
+    type: string;
+    value: number;
+    windowHours?: number;
+    noShowType?: string;
+    noShowValue?: number;
+  }) {
     const db = createTestSupabaseClient();
     await db
       .from('organizations')
@@ -59,6 +65,10 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
         cancellation_fee_type: fields.type,
         cancellation_fee_value: fields.value,
         cancellation_window_hours: fields.windowHours ?? 24,
+        // The no-show fee is a separate policy (T1-6); default it to mirror the late-cancel fee so the
+        // existing no-show tests keep charging, and let independence tests override it.
+        no_show_fee_type: fields.noShowType ?? fields.type,
+        no_show_fee_value: fields.noShowValue ?? fields.value,
       })
       .eq('id', org.organizationId);
   }
@@ -150,6 +160,39 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
 
     const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'cancellation_fee_charged')).toBe(true);
+  });
+
+  it('T1-6: a no-show is billed by the no-show policy, not the late-cancel policy (free cancels, $50 no-show)', async () => {
+    // The exact prod misconfig T1-6 fixes: cancellations are free, but a no-show should cost $50.
+    await setPolicy({ type: 'none', value: 0, noShowType: 'flat', noShowValue: 50 });
+    const appt = await seedAppointment();
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number; fee_outcome: string }>(
+      handlerFor(appt.id),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+      },
+    );
+    expect(status).toBe(200);
+    // Charged from no_show_fee_*, NOT the $0 cancellation policy (was silently $0 before T1-6).
+    expect(body.fee_captured_cents).toBe(5000);
+    expect(body.fee_outcome).toBe('charged');
+  });
+
+  it('T1-6: a late (inside-window) cancel is NOT billed the no-show fee', async () => {
+    // Inverse independence: free late-cancels, $50 no-show. A late cancel (not a no-show) charges $0.
+    await setPolicy({ type: 'none', value: 0, noShowType: 'flat', noShowValue: 50, windowHours: 24 });
+    const appt = await seedAppointment();
+
+    const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, party: 'homeowner', no_show: false },
+    });
+    expect(status).toBe(200);
+    expect(body.fee_captured_cents).toBe(0);
   });
 
   it('homeowner late-cancel inside window: charges a percent fee', async () => {

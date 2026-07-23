@@ -121,14 +121,23 @@ export async function POST(
     }
     const inflightDebit = payRow?.status === 'processing';
 
-    // Org cancellation policy.
+    // Org cancellation policy. The no-show fee is a SEPARATE policy from the late-cancel fee (T1-6):
+    // a no-show is billed by no_show_fee_*, an inside-window cancel by cancellation_fee_*.
     const { data: orgRow } = await supabaseAdmin
       .from('organizations')
-      .select('cancellation_window_hours, cancellation_fee_type, cancellation_fee_value')
+      .select(
+        'cancellation_window_hours, cancellation_fee_type, cancellation_fee_value, no_show_fee_type, no_show_fee_value',
+      )
       .eq('id', organization_id)
       .maybeSingle();
     const org = orgRow as
-      | { cancellation_window_hours: number; cancellation_fee_type: string; cancellation_fee_value: number | string }
+      | {
+          cancellation_window_hours: number;
+          cancellation_fee_type: string;
+          cancellation_fee_value: number | string;
+          no_show_fee_type: string;
+          no_show_fee_value: number | string;
+        }
       | null;
 
     const grossCents = Math.round(Number(appt.total_price) * 100);
@@ -147,6 +156,8 @@ export async function POST(
         windowHours: org?.cancellation_window_hours ?? 24,
         feeType: org?.cancellation_fee_type ?? 'none',
         feeValue: Number(org?.cancellation_fee_value ?? 0),
+        noShowFeeType: org?.no_show_fee_type ?? 'none',
+        noShowFeeValue: Number(org?.no_show_fee_value ?? 0),
         scheduledDate: appt.scheduled_date,
         scheduledTime: appt.scheduled_time,
       });

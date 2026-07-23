@@ -8,6 +8,9 @@ export interface CancelPolicy {
   windowHours: number;
   feeType: FeeType;
   feeValue: number;
+  // No-show fee policy, independent of the late-cancel fee (T1-6, decision B).
+  noShowFeeType: FeeType;
+  noShowFeeValue: number;
 }
 
 export function formatUsd(cents: number): string {
@@ -34,6 +37,8 @@ export function previewCancelFee(
     windowHours: policy.windowHours,
     feeType: policy.feeType,
     feeValue: policy.feeValue,
+    noShowFeeType: policy.noShowFeeType,
+    noShowFeeValue: policy.noShowFeeValue,
     scheduledDate: a.scheduled_date ?? null,
     scheduledTime: a.scheduled_time ?? null,
   });
