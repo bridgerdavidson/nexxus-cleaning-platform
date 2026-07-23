@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import { Progress } from '@/components/ui/progress';
 import { useHomeownerJobProgress } from '@/hooks/useHomeownerJobProgress';
@@ -15,9 +15,17 @@ export function LiveCleaningProgress({ appointment }: { appointment: Appointment
   );
   const { beforePhotos } = useHomeownerJobPhotos(appointment.id);
   const pct = progressPercent(doneCount, totalCount);
+  // Tick every 30s so the elapsed label counts up live. formatElapsed rounds to
+  // whole minutes, so a sub-minute cadence is enough to stay current without a
+  // per-second re-render. Without this the Date.now() snapshot froze at mount.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const elapsed = useMemo(
-    () => formatElapsed(appointment.started_at ?? null, Date.now()),
-    [appointment.started_at],
+    () => formatElapsed(appointment.started_at ?? null, nowMs),
+    [appointment.started_at, nowMs],
   );
 
   return (
