@@ -48,6 +48,10 @@ export async function claimWebhookEvent(
 
   // Conflict on the id — decide based on the existing row's state:
   //   processed            → true duplicate (skip)
+  //   dead                 → terminally abandoned by the dead-letter sweep (T1-10); a human replays it
+  //                          manually, so treat a live re-delivery as a duplicate rather than silently
+  //                          reprocessing it (which would resurrect the row into the sweep and churn
+  //                          its critical alert) — and never advance it back into a retryable state
   //   failed               → a prior attempt finished with an error; reclaim so a retry reprocesses
   //   received + recent    → a concurrent delivery is in-flight; skip to avoid PARALLEL double-processing
   //   received + stale     → the prior worker likely crashed mid-process; reclaim (dead-letter sweep also covers this)
@@ -59,6 +63,7 @@ export async function claimWebhookEvent(
   const row = data as { status: string; received_at: string } | null;
   if (!row) return 'claimed'; // row vanished between insert and lookup — safe to (re)claim
   if (row.status === 'processed') return 'duplicate';
+  if (row.status === 'dead') return 'duplicate';
   if (row.status === 'failed') return 'claimed';
 
   // status === 'received'
