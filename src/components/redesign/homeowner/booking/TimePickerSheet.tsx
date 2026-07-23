@@ -57,7 +57,7 @@ export function TimePickerSheet({ open, onOpenChange, onAdd }: TimePickerSheetPr
                       type="button"
                       onClick={() => setTime(t.value)}
                       className={
-                        'rounded-pill border px-3 py-2 text-xs font-bold transition-colors ' +
+                        'inline-flex min-h-11 items-center justify-center rounded-pill border px-3.5 text-xs font-bold transition-colors ' +
                         (on
                           ? 'border-brand-600 bg-brand-600 text-white'
                           : 'border-input bg-card text-foreground hover:bg-muted')
