@@ -1,4 +1,4 @@
-import { formatTimeParts, propertyTitle, jobSubtitle, formatCardDate } from "./job-presenters";
+import { formatTimeParts, propertyTitle, jobSubtitle, rowAddressLine, formatCardDate } from "./job-presenters";
 import { CleanerJobBadge } from "./CleanerJobBadge";
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
@@ -10,6 +10,7 @@ export function JobRow({
   todayStr?: string;
 }) {
   const t = formatTimeParts(appointment.scheduled_time);
+  const address = rowAddressLine(appointment);
   const dateLabel = todayStr ? formatCardDate(appointment.scheduled_date, todayStr) : null;
   return (
     <button
@@ -24,6 +25,7 @@ export function JobRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-bold">{propertyTitle(appointment)}</div>
         <div className="truncate text-xs text-muted-foreground">{jobSubtitle(appointment)}</div>
+        {address && <div className="truncate text-xs text-muted-foreground">{address}</div>}
         {dateLabel && <div className="mt-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">{dateLabel}</div>}
       </div>
       <CleanerJobBadge appointment={appointment} todayStr={todayStr} />

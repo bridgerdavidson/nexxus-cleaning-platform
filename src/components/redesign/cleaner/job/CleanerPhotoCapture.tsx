@@ -24,6 +24,7 @@ import {
   ImageIcon,
   Loader2,
   RefreshCw,
+  WifiOff,
   X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -118,6 +119,21 @@ export function CleanerPhotoCapture({
   const [pendingDelete, setPendingDelete] = useState<JobPhoto | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Track connectivity so we can reassure the cleaner that failed uploads will
+  // recover on their own. The container re-drives failed uploads on reconnect;
+  // this only powers the "will retry" hint. Init true to avoid a hydration flash.
+  const [online, setOnline] = useState(true);
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
 
   // Track done items and fire onPhotosChange per newly-completed upload so the
   // container can refetch useJobPhotosForAppointment without waiting for the
@@ -342,6 +358,18 @@ export function CleanerPhotoCapture({
                   <RefreshCw className="size-4" aria-hidden />
                   Retry all {failedCount} failed
                 </button>
+              )}
+
+              {/* Offline reassurance: the container auto-retries failed uploads
+                  the moment the connection is back, so the cleaner can move on. */}
+              {!online && failedCount > 0 && (
+                <div
+                  role="status"
+                  className="mt-2 flex items-start gap-2 rounded-card border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
+                >
+                  <WifiOff className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>You&apos;re offline. Failed uploads will retry automatically when you&apos;re back online.</span>
+                </div>
               )}
             </section>
           )}
