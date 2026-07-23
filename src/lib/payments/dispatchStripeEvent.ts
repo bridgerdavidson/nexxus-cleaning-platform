@@ -1031,6 +1031,23 @@ async function handlePayoutPaid(
     return;
   }
 
+  // Idempotent-replay guard: a payout.paid can be re-delivered (Stripe retries a 500) or replayed by
+  // the dead-letter sweep (T1-10). If THIS payout already settled rows for this cleaner, the precise
+  // update below would match 0 rows (they are 'bank_paid' now, not 'paid') and fall through to
+  // markOldestUnattributedPayout, mis-stamping an UNRELATED payout. Detect the prior settlement and
+  // no-op instead of mis-attributing.
+  const { data: alreadySettled } = await supabase
+    .from('payouts')
+    .select('id')
+    .eq('cleaner_id', cleaner.id)
+    .eq('stripe_payout_id', payout.id)
+    .eq('status', 'bank_paid')
+    .limit(1);
+  if (alreadySettled && alreadySettled.length > 0) {
+    console.log(`payout.paid ${payout.id}: already settled for cleaner ${cleaner.id} — idempotent replay, skipping`);
+    return;
+  }
+
   let transferIds: string[] = [];
   try {
     const { getPayoutTransferIds } = await import('@/lib/stripe');

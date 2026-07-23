@@ -21,7 +21,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type Stripe from 'stripe';
 import { dispatchStripeEvent } from './dispatchStripeEvent';
-import { markWebhookProcessed, markWebhookFailed } from './webhookIdempotency';
+import { markWebhookProcessed, markWebhookFailed, markWebhookDead } from './webhookIdempotency';
 import { settleCleanerPayout } from './settleCleanerPayout';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
@@ -44,6 +44,12 @@ const DEFAULT_STALE_MINUTES = 15;
 // "stuck" (a lost terminal webhook) well after settlement would have happened. ~6 days.
 const DEFAULT_ACH_STALE_MINUTES = 6 * 24 * 60;
 
+// T1-10: after this many failed dead-letter retries, terminalize a webhook_events row to 'dead' so a
+// permanently-unrecoverable event can't starve the ascending-FIFO batch forever. retry_count only
+// advances once per sweep, so at the 15-min cron cadence ~20 attempts is ~5h of transient-error grace
+// before we give up and page a human.
+const DEAD_LETTER_MAX_ATTEMPTS = 20;
+
 function staleCutoffIso(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
@@ -53,6 +59,7 @@ export interface DeadLetterResult {
   retried: number;
   recovered: number;
   stillFailed: number;
+  dead: number;
 }
 
 export async function retryDeadLetterWebhooks(
@@ -62,34 +69,92 @@ export async function retryDeadLetterWebhooks(
   const batch = opts.batch ?? DEFAULT_BATCH;
   const cutoff = staleCutoffIso(opts.staleMinutes ?? DEFAULT_STALE_MINUTES);
 
-  // Anything not yet 'processed' and older than the stale window: either a 'failed' attempt or
-  // a 'received' row whose live delivery never completed. The window gives the live webhook a
-  // chance to finish first; by the time Stripe gives up retrying, rows are well past it.
-  const { data: rows } = await supabase
+  // Retryable rows only: a 'failed' attempt or a 'received' row whose live delivery never completed,
+  // older than the stale window (which gives the live webhook a chance to finish first). 'dead' rows
+  // (T1-10: gave up after DEAD_LETTER_MAX_ATTEMPTS) are excluded so a permanently-unrecoverable event
+  // can never occupy a slot in this ascending-FIFO batch and starve newer recoverable dead-letters.
+  const { data: rows, error: selectError } = await supabase
     .from('webhook_events')
-    .select('id')
-    .neq('status', 'processed')
+    .select('id, type, account_id, retry_count')
+    .in('status', ['received', 'failed'])
     .lte('received_at', cutoff)
     .order('received_at', { ascending: true })
     .limit(batch);
 
-  const list = (rows ?? []) as Array<{ id: string }>;
+  if (selectError) {
+    // This sweep IS the backstop for lost Connect money events (payout.failed, transfer.reversed). If
+    // the query fails (e.g. migration 113 not yet applied, so retry_count is unknown; or a transient DB
+    // error), supabase-js returns data=null WITHOUT throwing — a silent zero-result would report a
+    // clean run while the backstop is down. Raise a critical alert (deduped by alert_type) and no-op
+    // this round rather than fake success. Mirrors the retryStrandedRefundUnwinds RPC-failure guard.
+    console.error('retryDeadLetterWebhooks: dead-letter query failed:', selectError.message);
+    try {
+      await recordPlatformAlert(supabase, {
+        alert_type: 'dead_letter_sweep_disabled',
+        severity: 'critical',
+        summary: 'Dead-letter retry sweep is disabled: the webhook_events query failed',
+        details: { error: selectError.message },
+      });
+    } catch (alertErr) {
+      console.error('retryDeadLetterWebhooks: failed to raise sweep-disabled alert:', alertErr);
+    }
+    return { retried: 0, recovered: 0, stillFailed: 0, dead: 0 };
+  }
+
+  const list = (rows ?? []) as Array<{
+    id: string;
+    type: string;
+    account_id: string | null;
+    retry_count: number | null;
+  }>;
   let recovered = 0;
   let stillFailed = 0;
+  let dead = 0;
 
   for (const row of list) {
     try {
-      const event = await retrieveStripeEvent(row.id);
+      // Pass the stored Connect account so Connect-delivered events (payout.paid/failed,
+      // account.updated, connected transfer.reversed) resolve instead of 404ing on the platform.
+      const event = await retrieveStripeEvent(row.id, { stripeAccount: row.account_id });
+      // An event re-fetched via the Stripe-Account header does NOT carry the top-level `account` field
+      // Stripe injects only on live Connect DELIVERY, yet the payout.* handlers derive the connected
+      // account from event.account. Without this, a replayed payout.paid/failed sees a null account and
+      // silently no-ops (then gets marked processed forever). Restore it from the stored account_id.
+      if (!event.account && row.account_id) {
+        (event as { account?: string | null }).account = row.account_id;
+      }
       await dispatchStripeEvent(supabase, event);
       await markWebhookProcessed(supabase, row.id);
       recovered++;
     } catch (err) {
-      await markWebhookFailed(supabase, row.id, err instanceof Error ? err.message : String(err));
-      stillFailed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      const attempts = (row.retry_count ?? 0) + 1;
+      if (attempts >= DEAD_LETTER_MAX_ATTEMPTS) {
+        // Give up: terminalize so the batch drains, and page a human — a dead Connect event is money
+        // state (a payout failure, a reversal) we could never process. Key the alert by event TYPE
+        // (not id) so a systemic Connect-retrieval outage folds into one incident per type via the 6h
+        // dedupe instead of flooding the channel with up to `batch` distinct criticals; the specific
+        // id is in the summary/details, and `webhook_events WHERE status='dead'` has the full list.
+        await markWebhookDead(supabase, row.id, msg, attempts);
+        try {
+          await recordPlatformAlert(supabase, {
+            alert_type: `webhook_dead_letter:${row.type}`,
+            severity: 'critical',
+            summary: `Webhook event ${row.id} (${row.type}) abandoned after ${attempts} failed dead-letter retries; replay manually (see webhook_events WHERE status='dead')`,
+            details: { event_id: row.id, event_type: row.type, account_id: row.account_id, attempts, last_error: msg },
+          });
+        } catch (alertErr) {
+          console.error('retryDeadLetterWebhooks: failed to raise dead-letter alert for', row.id, alertErr);
+        }
+        dead++;
+      } else {
+        await markWebhookFailed(supabase, row.id, msg, { retryCount: attempts });
+        stillFailed++;
+      }
     }
   }
 
-  return { retried: list.length, recovered, stillFailed };
+  return { retried: list.length, recovered, stillFailed, dead };
 }
 
 // ── 2) Stuck-payment reconcile ──────────────────────────────────────────────────
