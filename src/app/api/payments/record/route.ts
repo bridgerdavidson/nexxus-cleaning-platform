@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      const { data: liveRows } = await supabaseAdmin
+      const { data: liveRows, error: liveErr } = await supabaseAdmin
         .from('payments')
         .select('id')
         .eq('appointment_id', appointment_id)
@@ -80,6 +80,16 @@ export async function POST(request: NextRequest) {
         .not('stripe_payment_intent_id', 'is', null)
         .in('status', ['paid', 'processing'])
         .limit(1);
+      if (liveErr) {
+        // Fail CLOSED: this is a money-safety guard, so a transient read failure must never let the
+        // manual record through. Treating an errored lookup as "no live payment" would re-open the
+        // exact double-collection the guard exists to prevent. Refuse and let the operator retry.
+        console.error('record payment: live-charge guard lookup failed:', liveErr);
+        return NextResponse.json(
+          { error: 'Could not verify the payment state for this appointment. Try again in a moment.' },
+          { status: 503 }
+        );
+      }
       if (liveRows && liveRows.length > 0) {
         return NextResponse.json(
           {
