@@ -1,9 +1,6 @@
 /** Post-login destination for a user role. The redesign is the app now, so every
- *  role routes to its top-level shell (Phase 4, 4e removed the /app prefix). The
- *  `opts` param is kept for call-site compatibility (callers still pass
- *  `{ redesign: redesignUiEnabled() }`) but is ignored. */
-export function getDashboardPath(role: string, opts?: { redesign?: boolean }): string {
-  void opts; // kept for call-site compatibility; redesign is always on now
+ *  role routes to its top-level shell (Phase 4, 4e removed the /app prefix). */
+export function getDashboardPath(role: string): string {
   switch (role) {
     case "homeowner":
       return "/homeowner";

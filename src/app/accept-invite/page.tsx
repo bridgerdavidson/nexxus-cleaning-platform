@@ -11,7 +11,6 @@ import { AuthHeading, AuthError, TextField, PasswordField } from "@/components/a
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 type PageState = "loading" | "valid" | "expired" | "invalid";
 
@@ -250,7 +249,7 @@ function AcceptInviteContent() {
         return;
       }
 
-      router.push(getDashboardPath(result.role, { redesign: redesignUiEnabled() }));
+      router.push(getDashboardPath(result.role));
     } catch {
       setFormError("An unexpected error occurred. Please try again.");
     } finally {

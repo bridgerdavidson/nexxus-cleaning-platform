@@ -12,7 +12,6 @@ import { validatePassword, PASSWORD_HELPER_TEXT } from "../../lib/passwordValida
 import { checkPasswordNotBreached } from "@/lib/auth/breachedPassword";
 import { useToast } from "../../contexts/ToastContext";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 type PageState = "loading" | "expired" | "invalid" | "form" | "success";
 
@@ -141,7 +140,7 @@ function ResetPasswordContent() {
     showToast("Password updated. Welcome back.", { variant: "success" });
 
     setTimeout(() => {
-      router.push(role ? getDashboardPath(role, { redesign: redesignUiEnabled() }) : "/");
+      router.push(role ? getDashboardPath(role) : "/");
     }, 250);
   };
 
