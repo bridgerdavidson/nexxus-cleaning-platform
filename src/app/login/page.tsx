@@ -9,7 +9,6 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthHeading, AuthError, TextField, PasswordField } from "@/components/auth/authPrimitives";
 import { Button } from "@/components/ui/button";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 function LoginContent() {
   const [email, setEmail] = useState("");
@@ -23,16 +22,9 @@ function LoginContent() {
   useEffect(() => {
     // Redirect if already logged in. Wait for the platform-admin check to
     // resolve (non-null) so a platform admin lands on the owner back-office
-    // (the redesign one when the flag is on) instead of being briefly bounced
-    // to a tenant dashboard.
+    // instead of being briefly bounced to a tenant dashboard.
     if (user && isPlatformAdmin !== null) {
-      router.push(
-        isPlatformAdmin
-          ? redesignUiEnabled()
-            ? "/owner"
-            : "/owner"
-          : getDashboardPath(user.role, { redesign: redesignUiEnabled() }),
-      );
+      router.push(isPlatformAdmin ? "/owner" : getDashboardPath(user.role));
     }
   }, [user, isPlatformAdmin, router]);
 

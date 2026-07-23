@@ -10,7 +10,6 @@ import { CleanerJobDetailHost } from "@/components/redesign/cleaner/job/CleanerJ
 import { CleanerMessageThreadHost } from "@/components/redesign/cleaner/messages/CleanerMessageThreadHost";
 import { CleanerJobThreadHost } from "@/components/redesign/cleaner/messages/CleanerJobThreadHost";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 function Spinner() {
   return (
@@ -36,7 +35,7 @@ export default function CleanerDashboardLayout({ children }: { children: ReactNo
     // Soft role guard: non-cleaners get redirected to their own dashboard so a
     // deep link does not strand them on the cleaner shell.
     if (user.role && user.role !== "cleaner") {
-      router.push(getDashboardPath(user.role, { redesign: redesignUiEnabled() }));
+      router.push(getDashboardPath(user.role));
     }
   }, [user, loading, router]);
 

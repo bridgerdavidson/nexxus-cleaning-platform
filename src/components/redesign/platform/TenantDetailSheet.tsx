@@ -21,7 +21,6 @@ import {
 import { keys } from '@/lib/queryKeys';
 import { useAuth } from '@/hooks/useAuth';
 import { usePlatformOrganization } from '@/hooks/usePlatformOrganizations';
-import { redesignUiEnabled } from '@/lib/redesign/flags';
 import { Field } from '@/components/redesign/bookings/detail-atoms';
 import type { PlatformOrgMember } from '@/types/platform';
 import { SubscriptionPill, PaymentsPill } from './pills';
@@ -84,7 +83,7 @@ export function TenantDetailSheet({
         setImpersonationError("Couldn't start View as: the audit log entry failed. Please try again.");
         return;
       }
-      router.push(redesignUiEnabled() ? '/admin' : '/admin-dashboard');
+      router.push('/admin');
     } finally {
       setStarting(false);
     }

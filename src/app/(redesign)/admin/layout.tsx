@@ -7,7 +7,6 @@ import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-import { redesignUiEnabled } from "@/lib/redesign/flags";
 
 function Spinner() {
   return (
@@ -51,7 +50,7 @@ export default function OperatorDashboardLayout({ children }: { children: ReactN
       return;
     }
     if (wrongRole) {
-      router.push(getDashboardPath(user.role, { redesign: redesignUiEnabled() }));
+      router.push(getDashboardPath(user.role));
     }
   }, [user, loading, router, wrongRole]);
 
