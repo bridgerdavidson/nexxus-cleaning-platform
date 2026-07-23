@@ -197,16 +197,25 @@ async function alreadySettled(
   supabase: SupabaseClient,
   appointmentId: string,
 ): Promise<{ code: 'charged' | 'processing'; paymentIntentId?: string } | null> {
+  // Money-in-flight guard (T1-5). An appointment can carry MORE THAN ONE revenue row: the partial
+  // unique index (migration 088) only covers Stripe-backed rows, so an operator's manual cash record
+  // (payment_type='revenue', stripe_payment_intent_id NULL, status='paid') legitimately coexists with
+  // a Stripe row that may be `failed` from an earlier decline. An unordered `.limit(1)` could return
+  // the `failed` sibling and let a SECOND charge through, double-collecting money already taken in
+  // cash. So filter to paid/processing at the DB and prefer a `paid` row over a `processing` one — a
+  // settled charge (cash or card) always wins, and a coexisting `failed` row can never mask it.
   const { data: rows } = await supabase
     .from('payments')
     .select('status, stripe_payment_intent_id')
     .eq('appointment_id', appointmentId)
     .eq('payment_type', 'revenue')
-    .limit(1);
-  const row = rows && rows.length > 0 ? (rows[0] as { status: string; stripe_payment_intent_id: string | null }) : null;
-  if (!row) return null;
-  if (row.status === 'paid') return { code: 'charged', paymentIntentId: row.stripe_payment_intent_id ?? undefined };
-  if (row.status === 'processing') return { code: 'processing', paymentIntentId: row.stripe_payment_intent_id ?? undefined };
+    .in('status', ['paid', 'processing']);
+  const list = (rows ?? []) as Array<{ status: string; stripe_payment_intent_id: string | null }>;
+  if (list.length === 0) return null;
+  const paid = list.find((r) => r.status === 'paid');
+  if (paid) return { code: 'charged', paymentIntentId: paid.stripe_payment_intent_id ?? undefined };
+  const processing = list.find((r) => r.status === 'processing');
+  if (processing) return { code: 'processing', paymentIntentId: processing.stripe_payment_intent_id ?? undefined };
   return null;
 }
 

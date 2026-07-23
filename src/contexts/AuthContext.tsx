@@ -646,7 +646,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!userRef.current) return;
       if (typeof window !== 'undefined') {
         const path = window.location.pathname;
-        if (path === '/login' || path.startsWith('/signup')) return;
+        if (path === '/login') return;
       }
       const now = Date.now();
       if (now - lastVisibilityCheck < 2000) return;

@@ -9,6 +9,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useManagerPermissions } from '@/hooks/useManagerPermissions';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getUiPref, setUiPref } from '@/lib/uiPrefs';
 import type { ViewMode } from '@/lib/calendar/types';
 import type { CleanerOption } from '@/components/redesign/bookings/bookings-types';
 import { RescheduleDialog, type RescheduleInit } from '@/components/redesign/bookings/reschedule/RescheduleDialog';
@@ -28,6 +30,12 @@ import { MobileCalendarBar, type MobileCalendarView } from './MobileCalendarBar'
 import { MobileMonthView } from './MobileMonthView';
 import { CalendarFilterSheet } from './CalendarFilterSheet';
 
+const CALENDAR_VIEW_PREF = 'operator.calendar.view';
+
+function isViewMode(v: string | null): v is ViewMode {
+  return v === 'month' || v === 'week' || v === 'day' || v === 'agenda';
+}
+
 function rangeLabelFor(view: string, date: Date): string {
   if (view === 'month') return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   if (view === 'day') return date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
@@ -42,11 +50,27 @@ function rangeLabelFor(view: string, date: Date): string {
   return `${left} to ${right}`;
 }
 
+// First paint had no loading state, so an in-flight fetch showed an empty grid that
+// reads as "no jobs". A calendar-shaped skeleton makes loading legible instead.
+function CalendarSkeleton() {
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-7">
+      {Array.from({ length: 7 }).map((_, col) => (
+        <div key={col} className="space-y-2">
+          <Skeleton className="h-6 w-full rounded-control" />
+          <Skeleton className="h-24 w-full rounded-control" />
+          <Skeleton className="h-16 w-full rounded-control" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function OperatorCalendar() {
   const router = useRouter();
   const pathname = usePathname();
   const { currentOrgRole } = useAuth();
-  const { appointments, error, refetch } = useAdminAppointments();
+  const { appointments, loading, error, refetch } = useAdminAppointments();
   const { cleaners } = useAdminCleaners();
   const { permissions } = useManagerPermissions();
 
@@ -56,10 +80,19 @@ export function OperatorCalendar() {
 
   const isMobile = useIsMobile();
   const { view, focusedDate, setView, next, prev, today, goToDate } = useCalendarNavigation('week');
-  // Mobile (below md) defaults to the mini month, but never clobbers an explicit choice.
+  // An explicit pick is remembered device-locally so a return visit reopens on
+  // the same view instead of always snapping back to Week.
   const viewPicked = useRef(false);
-  const pickView = (v: ViewMode) => { viewPicked.current = true; setView(v); };
-  useEffect(() => { if (isMobile && !viewPicked.current) setView('month'); }, [isMobile, setView]);
+  const pickView = (v: ViewMode) => { viewPicked.current = true; setUiPref(CALENDAR_VIEW_PREF, v); setView(v); };
+  // Until the user picks: mobile (below md) defaults to the mini month; desktop
+  // restores the saved view. Reading the pref here (an effect, not render) keeps
+  // it off the server render so there's no hydration mismatch.
+  useEffect(() => {
+    if (viewPicked.current) return;
+    if (isMobile) { setView('month'); return; }
+    const saved = getUiPref(CALENDAR_VIEW_PREF);
+    if (isViewMode(saved)) setView(saved);
+  }, [isMobile, setView]);
   const [cleanerFilter, setCleanerFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDateKey(new Date()));
@@ -141,7 +174,9 @@ export function OperatorCalendar() {
           onToday={mobileToday}
           onOpenFilters={() => setFiltersOpen(true)}
         />
-        {mobileView === 'month' ? (
+        {loading ? (
+          <CalendarSkeleton />
+        ) : mobileView === 'month' ? (
           <MobileMonthView
             events={events}
             focusedDate={focusedDate}
@@ -186,12 +221,16 @@ export function OperatorCalendar() {
         onNewBooking={() => openNewBooking()}
       />
 
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        {view === 'week' && <WeekView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
-        {view === 'day' && <DayView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
-        {view === 'month' && <MonthView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={(d) => openNewBooking(d)} onPickDay={(d) => { goToDate(d); pickView('day'); }} />}
-        {view === 'agenda' && <AgendaView events={events} focusedDate={focusedDate} nowMs={nowMs} onOpen={openBooking} />}
-      </DndContext>
+      {loading ? (
+        <CalendarSkeleton />
+      ) : (
+        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+          {view === 'week' && <WeekView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
+          {view === 'day' && <DayView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={openNewBooking} />}
+          {view === 'month' && <MonthView events={events} focusedDate={focusedDate} nowMs={nowMs} canEdit={canEdit} onOpen={openBooking} onCreate={(d) => openNewBooking(d)} onPickDay={(d) => { goToDate(d); pickView('day'); }} />}
+          {view === 'agenda' && <AgendaView events={events} focusedDate={focusedDate} nowMs={nowMs} onOpen={openBooking} />}
+        </DndContext>
+      )}
 
       {reschedule ? (
         <RescheduleDialog

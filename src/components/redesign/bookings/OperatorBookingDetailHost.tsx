@@ -204,7 +204,7 @@ function HostInner({
   const confirmCopy =
     confirm === "delete"
       ? { title: "Delete this booking?", description: "This permanently removes the booking. This cannot be undone.", confirmLabel: "Delete", destructive: true }
-      : { title: "Cancel this booking?", description: "The customer and cleaner will be notified.", confirmLabel: "Cancel booking", destructive: false };
+      : { title: "Cancel this booking?", description: "This can't be undone.", confirmLabel: "Cancel booking", destructive: false };
 
   return (
     <>

@@ -48,6 +48,10 @@ export async function claimWebhookEvent(
 
   // Conflict on the id — decide based on the existing row's state:
   //   processed            → true duplicate (skip)
+  //   dead                 → terminally abandoned by the dead-letter sweep (T1-10); a human replays it
+  //                          manually, so treat a live re-delivery as a duplicate rather than silently
+  //                          reprocessing it (which would resurrect the row into the sweep and churn
+  //                          its critical alert) — and never advance it back into a retryable state
   //   failed               → a prior attempt finished with an error; reclaim so a retry reprocesses
   //   received + recent    → a concurrent delivery is in-flight; skip to avoid PARALLEL double-processing
   //   received + stale     → the prior worker likely crashed mid-process; reclaim (dead-letter sweep also covers this)
@@ -59,6 +63,7 @@ export async function claimWebhookEvent(
   const row = data as { status: string; received_at: string } | null;
   if (!row) return 'claimed'; // row vanished between insert and lookup — safe to (re)claim
   if (row.status === 'processed') return 'duplicate';
+  if (row.status === 'dead') return 'duplicate';
   if (row.status === 'failed') return 'claimed';
 
   // status === 'received'
@@ -83,12 +88,36 @@ export async function markWebhookFailed(
   supabase: SupabaseClient,
   id: string,
   error: string,
+  opts: { retryCount?: number } = {},
 ): Promise<void> {
   // Best-effort (already on the failure path). If even this write fails the row stays in its
   // prior non-'processed' state, so the reconciliation sweep remains the backstop — just log.
+  // `retryCount` is set by the dead-letter sweep (T1-10) to persist how many times IT has retried;
+  // the live webhook path omits it (Stripe still retries live deliveries, which don't count toward
+  // the give-up cap). retry_count is only ever advanced by the single serialized sweep, so a plain
+  // write (not an atomic increment) is race-free.
+  const patch: Record<string, unknown> = { status: 'failed', error: error.slice(0, 2000) };
+  if (opts.retryCount != null) patch.retry_count = opts.retryCount;
+  const { error: updateError } = await supabase.from('webhook_events').update(patch).eq('id', id);
+  if (updateError) console.error('markWebhookFailed: failed to record failure for', id, updateError.message);
+}
+
+/**
+ * Terminalize a webhook_events row the dead-letter sweep has given up on (T1-10). A `dead` row is
+ * excluded from the sweep's retry selection so a permanently-unrecoverable event (e.g. an event on a
+ * detached Connect account) can never starve the ascending-FIFO batch. The caller raises a critical
+ * platform alert alongside this, because a dead Connect event (a payout failure, a reversal) is money
+ * state we could not process and a human must replay or handle it manually.
+ */
+export async function markWebhookDead(
+  supabase: SupabaseClient,
+  id: string,
+  error: string,
+  retryCount: number,
+): Promise<void> {
   const { error: updateError } = await supabase
     .from('webhook_events')
-    .update({ status: 'failed', error: error.slice(0, 2000) })
+    .update({ status: 'dead', error: error.slice(0, 2000), retry_count: retryCount })
     .eq('id', id);
-  if (updateError) console.error('markWebhookFailed: failed to record failure for', id, updateError.message);
+  if (updateError) console.error('markWebhookDead: failed to mark', id, 'dead', updateError.message);
 }

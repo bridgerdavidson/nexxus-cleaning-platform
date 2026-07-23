@@ -14,24 +14,30 @@ import {
   useAdminPaymentsInfinite,
   useAdminPayoutsInfinite,
   usePaymentStats,
+  useAdminDisputes,
   type AdminPayment,
   type AdminPayout,
 } from "@/hooks/useAdminData";
 import { deriveTransactions, derivePayouts } from "./derivePayments";
 import { deriveTransactionBadge, derivePayoutBadge } from "./derivePaymentsBadges";
+import { openDisputedPaymentIds } from "./deriveDisputes";
 import { longDate, methodLabel, money2 } from "./payments-presenters";
 import { OperatorPaymentsView } from "./OperatorPaymentsView";
+import { DisputesBand } from "./DisputesBand";
 import { PaymentsTriageBand } from "./PaymentsTriageBand";
 import { PaymentsKpiStrip } from "./PaymentsKpiStrip";
 import { PaymentsYourMoney } from "./PaymentsYourMoney";
 import { PaymentDetailSheet } from "./PaymentDetailSheet";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
+import { RefundDialog } from "./RefundDialog";
+import { refundMath } from "./deriveRefunds";
 import type {
   PaymentLedger,
   PaymentSort,
   PayoutDetailVM,
   PayoutRowVM,
   PayoutStatusFilter,
+  RefundReason,
   TransactionDetailVM,
   TransactionRowVM,
   TxnStatusFilter,
@@ -52,17 +58,26 @@ function payerOf(p: AdminPayment, orgName: string): { payer: string; selfPay: bo
   return { payer: "Customer", selfPay: false };
 }
 
-function toTxnRow(p: AdminPayment, orgName: string): TransactionRowVM {
+// A cancellation/no-show fee isn't a cleaning, so label it as such — otherwise a
+// FAILED fee is indistinguishable from a failed job charge in the ledger (T2-7).
+function serviceLabel(p: AdminPayment): string {
+  if (p.charge_kind === "cancellation_fee") return "Cancellation fee";
+  return p.appointment?.service_type?.name || "Cleaning";
+}
+
+function toTxnRow(p: AdminPayment, orgName: string, disputedIds: Set<string>): TransactionRowVM {
   const { payer, selfPay } = payerOf(p, orgName);
   return {
     id: p.id,
     dateLabel: longDate(p.appointment?.scheduled_date || p.created_at),
     payer,
     selfPay,
-    service: p.appointment?.service_type?.name || "Cleaning",
+    service: serviceLabel(p),
     amountLabel: money2(p.amount),
     method: methodLabel(p.payment_method),
     badge: deriveTransactionBadge(p.status),
+    disputed: disputedIds.has(p.id),
+    partiallyRefunded: refundMath(p.amount, p.refunds).partiallyRefunded,
   };
 }
 
@@ -114,6 +129,7 @@ export function OperatorPayments() {
     <OperatorPaymentsData
       canManagePayments={privileged || !!permissions?.can_manage_payments}
       canRefund={privileged}
+      canViewBookings={privileged || !!permissions?.can_view_bookings}
     />
   );
 }
@@ -121,9 +137,11 @@ export function OperatorPayments() {
 function OperatorPaymentsData({
   canManagePayments,
   canRefund,
+  canViewBookings,
 }: {
   canManagePayments: boolean;
   canRefund: boolean;
+  canViewBookings: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -151,6 +169,10 @@ function OperatorPaymentsData({
     error: payoutsError,
   } = useAdminPayoutsInfinite();
   const { stats, loading: statsLoading, error: statsError, refetch: refetchStats } = usePaymentStats();
+  // Open chargebacks tag their payment's ledger row so a disputed charge no
+  // longer reads as a clean "Paid" (the DisputesBand owns the full surface).
+  const { disputes } = useAdminDisputes();
+  const openDisputedIds = useMemo(() => openDisputedPaymentIds(disputes), [disputes]);
 
   const hasError = Boolean(paymentsError || payoutsError || statsError);
   const onRetry = () => { void refetchPayments(); void refetchPayouts(); void refetchStats(); };
@@ -163,6 +185,7 @@ function OperatorPaymentsData({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<TransactionDetailVM | null>(null);
   const [busy, setBusy] = useState(false);
 
   const setLedger = useCallback(
@@ -191,8 +214,8 @@ function OperatorPaymentsData({
       statusFilter: statusFilter as TxnStatusFilter,
       sort,
       orgName,
-    }).map((p) => toTxnRow(p, orgName));
-  }, [ledger, payments, search, statusFilter, sort, orgName]);
+    }).map((p) => toTxnRow(p, orgName, openDisputedIds));
+  }, [ledger, payments, search, statusFilter, sort, orgName, openDisputedIds]);
 
   const payoutRows = useMemo<PayoutRowVM[]>(() => {
     if (ledger !== "payouts") return [];
@@ -208,22 +231,34 @@ function OperatorPaymentsData({
     const p = payments.find((x) => x.id === selectedRowId);
     if (!p) return null;
     const { payer, selfPay } = payerOf(p, orgName);
+    const rm = refundMath(p.amount, p.refunds);
     return {
       id: p.id,
+      appointmentId: p.appointment?.id ?? null,
       dateLabel: longDate(p.appointment?.scheduled_date || p.created_at),
       payer,
       selfPay,
-      service: p.appointment?.service_type?.name || "Cleaning",
+      service: serviceLabel(p),
       amountLabel: money2(p.amount),
       method: methodLabel(p.payment_method),
       badge: deriveTransactionBadge(p.status),
+      disputed: openDisputedIds.has(p.id),
+      partiallyRefunded: rm.partiallyRefunded,
       reference: p.reference ?? null,
       notes: p.notes ?? null,
       createdLabel: longDate(p.created_at),
       paidLabel: p.paid_at ? longDate(p.paid_at) : null,
-      refundable: canRefund && p.status === "paid" && p.payment_method === "card",
+      // Refundable derives from a PaymentIntent (not payment_method): a manual
+      // 'card' row has none and would 409; a settled ACH charge has one. Requires
+      // something still left to refund.
+      refundable:
+        canRefund && p.status === "paid" && !!p.stripe_payment_intent_id && rm.remainingCents > 0,
+      refundedLabel: rm.refundedCents > 0 ? money2(rm.refundedCents / 100) : null,
+      grossAmount: p.amount,
+      refundedAmount: rm.refundedCents / 100,
+      remainingRefundable: rm.remainingCents / 100,
     };
-  }, [ledger, selectedRowId, payments, orgName, canRefund]);
+  }, [ledger, selectedRowId, payments, orgName, canRefund, openDisputedIds]);
 
   const payoutDetail = useMemo<PayoutDetailVM | null>(() => {
     if (ledger !== "payouts" || !selectedRowId) return null;
@@ -256,21 +291,27 @@ function OperatorPaymentsData({
   }, []);
 
   const handleRefund = useCallback(
-    async (id: string) => {
+    async (id: string, amountDollars?: number, reason?: RefundReason) => {
       if (!currentOrganizationId) return;
       setBusy(true);
       try {
         const res = await fetch(`/api/payments/${id}/refund`, {
           method: "POST",
           headers: await authHeaders(),
-          body: JSON.stringify({ organization_id: currentOrganizationId }),
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            ...(typeof amountDollars === "number" ? { amount: amountDollars } : {}),
+            ...(reason ? { reason } : {}),
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Refund failed");
         toast.success(data.fully_refunded ? "Payment refunded" : "Partial refund issued");
         await refetchPayments();
+        setRefundTarget(null);
         setSelectedRowId(null);
       } catch (e) {
+        // Keep the dialog open so the operator can adjust the amount and retry.
         toast.error(e instanceof Error ? e.message : "Refund failed");
       } finally {
         setBusy(false);
@@ -343,6 +384,19 @@ function OperatorPaymentsData({
     [router],
   );
 
+  // Close the payment sheet (local state) and open the booking sheet via
+  // ?booking in one navigation; the global booking-detail host is mounted only
+  // when canViewBookings, so onViewBooking is passed only in that case.
+  const handleViewBooking = useCallback(
+    (appointmentId: string) => {
+      setSelectedRowId(null);
+      const sp = new URLSearchParams(window.location.search);
+      sp.set("booking", appointmentId);
+      router.replace(`?${sp.toString()}`, { scroll: false });
+    },
+    [router],
+  );
+
   return (
     <>
       <OperatorPaymentsView
@@ -369,6 +423,7 @@ function OperatorPaymentsData({
         onOpenRow={setSelectedRowId}
         canManagePayments={canManagePayments}
         onRecordPayment={() => setRecordOpen(true)}
+        disputesBand={<DisputesBand />}
         triage={<PaymentsTriageBand canManagePayments={canManagePayments} />}
         kpis={
           <PaymentsKpiStrip
@@ -390,10 +445,13 @@ function OperatorPaymentsData({
         payout={payoutDetail}
         canManagePayments={canManagePayments}
         busy={busy}
-        onRefund={handleRefund}
+        onRefund={() => {
+          if (txnDetail) setRefundTarget(txnDetail);
+        }}
         onRetry={handleRetry}
         onDismiss={handleDismiss}
         onMessage={handleMessage}
+        onViewBooking={canViewBookings ? handleViewBooking : undefined}
       />
 
       <RecordPaymentDialog
@@ -408,6 +466,21 @@ function OperatorPaymentsData({
               queryKey: keys.payments.statsByOrg(currentOrganizationId),
             });
           }
+        }}
+      />
+
+      <RefundDialog
+        open={!!refundTarget}
+        onOpenChange={(o) => {
+          if (!o) setRefundTarget(null);
+        }}
+        payer={refundTarget?.payer ?? ""}
+        grossLabel={refundTarget?.amountLabel ?? ""}
+        refundedLabel={refundTarget?.refundedLabel ?? null}
+        remaining={refundTarget?.remainingRefundable ?? 0}
+        busy={busy}
+        onConfirm={(amount, reason) => {
+          if (refundTarget) void handleRefund(refundTarget.id, amount, reason);
         }}
       />
     </>

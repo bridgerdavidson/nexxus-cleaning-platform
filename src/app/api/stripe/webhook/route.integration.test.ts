@@ -1393,6 +1393,88 @@ describe('POST /api/stripe/webhook', () => {
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
 
+  it('payout.paid replay of an already-settled payout does NOT mis-stamp an unrelated payout (T1-10 idempotency)', async () => {
+    const admin = createTestSupabaseClient();
+    // Unique connect account for this cleaner so the handler's `.single()` lookup resolves
+    // deterministically even on the shared local DB (many cleaners share 'acct_test_fake'), which
+    // otherwise makes the cleaner lookup error out and mask the guard under test.
+    const replayAcct = `acct_replay_${org.organizationId.slice(0, 8)}`;
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_account_id: replayAcct })
+      .eq('id', org.cleaner.userId);
+    const apptSettled = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const apptOther = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    // The first delivery already settled this payout's rows to bank_paid under po_replay_1.
+    await admin.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: apptSettled.id,
+      amount: 60,
+      status: 'bank_paid',
+      stripe_payout_id: 'po_replay_1',
+      bank_paid_at: new Date().toISOString(),
+    });
+    // An UNRELATED, still-unsettled payout for the same cleaner. The oldest-unattributed fallback
+    // would wrongly stamp THIS one on a naive replay; the idempotency guard must prevent that.
+    const { data: otherRow } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: apptOther.id,
+        amount: 70,
+        status: 'paid',
+      })
+      .select('id')
+      .single();
+
+    const eventId = `evt_payout_replay_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'payout.paid',
+      account: replayAcct,
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'po_replay_1', object: 'payout', amount: 6000, arrival_date: Math.floor(Date.now() / 1000) } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // The unrelated payout is left completely untouched (not mis-stamped with po_replay_1).
+    const { data: otherAfter } = await admin
+      .from('payouts')
+      .select('status, stripe_payout_id')
+      .eq('id', (otherRow as { id: string }).id)
+      .single();
+    expect((otherAfter as { status: string }).status).toBe('paid');
+    expect((otherAfter as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   // ── Phase 5: SaaS subscription state mirroring (Scenario 3) ───────────────────
   it('customer.subscription.updated mirrors subscription state onto the org', async () => {
     const admin = createTestSupabaseClient();

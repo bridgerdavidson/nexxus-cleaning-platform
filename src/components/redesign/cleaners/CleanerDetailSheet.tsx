@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   BadgeCheck,
   CheckCircle2,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sheet,
@@ -58,6 +59,8 @@ export type CleanerDetailSheetProps = {
   onDeactivate: () => void;
   onReactivate: () => void;
   onRemove: () => void;
+  /** Open a message thread with this cleaner. */
+  onMessage?: () => void;
 };
 
 function StatBox({ label, value }: { label: string; value: string }) {
@@ -116,6 +119,7 @@ export function CleanerDetailSheet({
   onDeactivate,
   onReactivate,
   onRemove,
+  onMessage,
 }: CleanerDetailSheetProps) {
   const [form, setForm] = useState({
     firstName: "",
@@ -312,6 +316,11 @@ export function CleanerDetailSheet({
                         </Badge>
                       )}
                     </div>
+                    {onMessage ? (
+                      <Button variant="outline" size="sm" className="mt-1" onClick={onMessage}>
+                        <MessageSquare /> Message
+                      </Button>
+                    ) : null}
                   </div>
 
                   <Separator />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveTransactionBadge, derivePayoutBadge } from "./derivePaymentsBadges";
+import { deriveTransactionBadge, derivePayoutBadge, deriveDisputeBadge } from "./derivePaymentsBadges";
 
 describe("deriveTransactionBadge", () => {
   it("maps each status, defaulting unknown to pending", () => {
@@ -21,5 +21,21 @@ describe("derivePayoutBadge", () => {
     expect(derivePayoutBadge("approved")).toBe("approved");
     expect(derivePayoutBadge("pending")).toBe("held");
     expect(derivePayoutBadge("weird")).toBe("held");
+  });
+});
+
+describe("deriveDisputeBadge", () => {
+  it("maps every Stripe dispute status to a badge key", () => {
+    expect(deriveDisputeBadge("needs_response")).toBe("needs_response");
+    expect(deriveDisputeBadge("warning_needs_response")).toBe("warning");
+    expect(deriveDisputeBadge("under_review")).toBe("under_review");
+    expect(deriveDisputeBadge("warning_under_review")).toBe("under_review");
+    expect(deriveDisputeBadge("won")).toBe("won");
+    expect(deriveDisputeBadge("prevented")).toBe("won");
+    expect(deriveDisputeBadge("lost")).toBe("lost");
+    expect(deriveDisputeBadge("warning_closed")).toBe("closed");
+  });
+  it("treats an unknown status as still-open (needs_response) so it never hides", () => {
+    expect(deriveDisputeBadge("brand_new_stripe_status")).toBe("needs_response");
   });
 });
