@@ -8,9 +8,23 @@
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
 
-/** Re-fetch a Stripe event so a failed/missed webhook can be re-dispatched. */
-export async function retrieveStripeEvent(eventId: string): Promise<Stripe.Event> {
-  return getStripe().events.retrieve(eventId);
+/**
+ * Re-fetch a Stripe event so a failed/missed webhook can be re-dispatched.
+ *
+ * T1-10: Connect-delivered events (payout.paid/failed, account.updated, and connected-account
+ * transfer.reversed) live on the CONNECTED account, not the platform. Retrieving them without the
+ * `Stripe-Account` header 404s, so a dead-lettered Connect event could never be recovered by the
+ * sweep. Pass the stored `account_id` as `stripeAccount` when present; platform events (no account)
+ * retrieve as before.
+ */
+export async function retrieveStripeEvent(
+  eventId: string,
+  opts?: { stripeAccount?: string | null },
+): Promise<Stripe.Event> {
+  const account = opts?.stripeAccount;
+  return account
+    ? getStripe().events.retrieve(eventId, {}, { stripeAccount: account })
+    : getStripe().events.retrieve(eventId);
 }
 
 /** Retrieve a PaymentIntent (latest_charge expanded) to reconcile our local record against. */
