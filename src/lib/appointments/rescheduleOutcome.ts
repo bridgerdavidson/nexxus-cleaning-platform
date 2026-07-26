@@ -70,8 +70,9 @@ export interface RescheduleDecisionInput {
   scheduledTime: string;
   targetCleanerId: string | null;
   currentCleanerId: string | null;
-  /** organizations.default_payout_model. Anything other than
-   *  'percentage_contractor' means employees: no offer loop, changes settle. */
+  /** organizations.default_payout_model. 'hourly_external' means employees:
+   *  no offer loop, changes settle. Every contractor-umbrella mode
+   *  (percentage/flat/request) keeps the offer loop. */
   orgDefaultPayoutModel: string | null | undefined;
   suggestions: SuggestionInputs;
 }
@@ -89,7 +90,7 @@ export function decideRescheduleOutcome(input: RescheduleDecisionInput): Resched
     return { kind: 'auto_approve', settled: true, status: 'confirmed', cleanerConfirmationStatus: 'approved', recomputeDeadline: false };
   }
   const model = input.orgDefaultPayoutModel;
-  if (model && model !== 'percentage_contractor') {
+  if (model === 'hourly_external') {
     return { kind: 'employee_settled', settled: true, status: 'confirmed', cleanerConfirmationStatus: 'approved', recomputeDeadline: false };
   }
   return { kind: 'reask', settled: false, status: 'pending', cleanerConfirmationStatus: 'awaiting', recomputeDeadline: true };

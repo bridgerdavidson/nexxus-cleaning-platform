@@ -148,21 +148,21 @@ describe('deriveReschedule', () => {
         ],
       });
       const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: 'cleaner-1' };
-      const outcome = outcomeFor(appt, sel, 'percentage_contractor');
+      const outcome = outcomeFor(appt, sel, 'percentage');
       expect(outcome.kind).toBe('auto_approve');
     });
 
     it('returns unassigned when the selection has no cleaner', () => {
       const appt = mkAppt({ cleaner_id: 'cleaner-1' });
       const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: null };
-      const outcome = outcomeFor(appt, sel, 'percentage_contractor');
+      const outcome = outcomeFor(appt, sel, 'percentage');
       expect(outcome.kind).toBe('unassigned');
     });
 
     it('returns reask for a contractor-model org when no suggestion matches', () => {
       const appt = mkAppt({ cleaner_id: 'cleaner-1', cleaner_availability_feedback: [] });
       const sel: RescheduleSelection = { date: '2026-03-07', time: '14:00', cleanerId: 'cleaner-1' };
-      const outcome = outcomeFor(appt, sel, 'percentage_contractor');
+      const outcome = outcomeFor(appt, sel, 'percentage');
       expect(outcome.kind).toBe('reask');
     });
 

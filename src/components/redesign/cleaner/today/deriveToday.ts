@@ -37,7 +37,7 @@ export function deriveToday(
     .sort(byTimeDesc);
 
   const offers =
-    payoutModel === "percentage_contractor"
+    payoutModel !== "hourly_external"
       ? appointments
           .filter((a) => a.status === "pending" && a.cleaner_confirmation_status === "awaiting")
           .sort(byTime)
@@ -73,7 +73,7 @@ export function deriveToday(
   const isEmpty =
     !activeJob && needsAttention.length === 0 && offers.length === 0 && todayConfirmed.length === 0 && tomorrowCount === 0;
 
-  const isEmployee = payoutModel !== "percentage_contractor";
+  const isEmployee = payoutModel === "hourly_external";
 
   return { activeJob, nextUp, needsAttention, offers, todayJobs, tomorrowCount, tomorrowFirstTime, isEmpty, isEmployee };
 }

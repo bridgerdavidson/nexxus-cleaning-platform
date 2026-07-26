@@ -58,7 +58,7 @@ export function useOperatorOnboarding(): OnboardingState {
       };
       return {
         chargesEnabled: !!org.stripe_connect_charges_enabled,
-        model: (org.default_payout_model ?? 'percentage_contractor') as OrgModel,
+        model: (org.default_payout_model ?? 'percentage') as OrgModel,
         payoutConfigured: !!org.payout_configured_at,
         hoursConfigured: !!org.hours_policy_configured_at,
         orgDismissed: !!org.setup_checklist_dismissed_at,
@@ -69,7 +69,7 @@ export function useOperatorOnboarding(): OnboardingState {
   });
 
   const data = orgQuery.data;
-  const model: OrgModel = data?.model ?? 'percentage_contractor';
+  const model: OrgModel = data?.model ?? 'percentage';
 
   const outstandingCleanerInvites = (invites ?? []).filter(
     (i) => i.role === 'cleaner' && (i.status === 'pending' || i.status === 'creating'),

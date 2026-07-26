@@ -1,5 +1,5 @@
 export type OnboardingRole = 'operator' | 'cleaner' | 'homeowner';
-export type OrgModel = 'percentage_contractor' | 'hourly_external';
+export type OrgModel = 'percentage' | 'flat' | 'request' | 'hourly_external';
 
 export interface SetupStepDef {
   key: string;
@@ -32,12 +32,13 @@ const HOMEOWNER_PERCENTAGE: SetupStepDef[] = [
 ];
 
 /**
- * Model-keyed setup step definitions. Only `percentage_contractor` is populated
- * today; other models (e.g. hourly_external, employee/availability) add their own
- * arrays here without touching the checklist machinery.
+ * Model-keyed setup step definitions. Every contractor-umbrella mode
+ * (percentage/flat/request) shares the same steps - they all pay cleaners via
+ * Connect. hourly_external (employee/availability) adds its own arrays here
+ * without touching the checklist machinery.
  */
 export function getSetupSteps(role: OnboardingRole, model: OrgModel): SetupStepDef[] {
-  if (model !== 'percentage_contractor') return [];
+  if (model === 'hourly_external') return [];
   switch (role) {
     case 'operator': return OPERATOR_PERCENTAGE;
     case 'cleaner': return CLEANER_PERCENTAGE;

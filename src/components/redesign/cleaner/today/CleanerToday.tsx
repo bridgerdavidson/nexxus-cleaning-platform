@@ -32,7 +32,7 @@ export function CleanerToday() {
   const startJob = useStartJob();
   const onboarding = useCleanerOnboarding();
 
-  const payoutModel = currentOrganization?.default_payout_model ?? "percentage_contractor";
+  const payoutModel = currentOrganization?.default_payout_model ?? "percentage";
   const now = new Date();
   const todayStr = ymd(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();

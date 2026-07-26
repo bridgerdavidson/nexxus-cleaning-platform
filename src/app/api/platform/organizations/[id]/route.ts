@@ -116,7 +116,7 @@ export async function GET(
     subscription_current_period_end:
       (orgRow.subscription_current_period_end as string | null) ?? null,
     platform_fee_bps: (orgRow.platform_fee_bps as number) ?? 0,
-    default_payout_model: (orgRow.default_payout_model as string) ?? 'percentage_contractor',
+    default_payout_model: (orgRow.default_payout_model as string) ?? 'percentage',
     stripe_connect_account_id: (orgRow.stripe_connect_account_id as string | null) ?? null,
     stripe_connect_charges_enabled: !!orgRow.stripe_connect_charges_enabled,
     stripe_connect_payouts_enabled: !!orgRow.stripe_connect_payouts_enabled,
