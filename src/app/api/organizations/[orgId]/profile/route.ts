@@ -99,7 +99,13 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      update.default_payout_model = m;
+      // TRANSITION (until migration 115, PR2 of the pay-request feature,
+      // backfills data and flips column defaults): write the LEGACY spelling,
+      // which both the pre-114 and post-114 constraints accept, so this route
+      // can never 500 in the deploy window where the new bundle is live but
+      // migrate-prod hasn't applied 114 yet. Readers treat both spellings
+      // identically. 115's PR flips this to write 'percentage'.
+      update.default_payout_model = m === 'percentage' ? 'percentage_contractor' : m;
     }
 
     if (Object.keys(update).length === 0) {

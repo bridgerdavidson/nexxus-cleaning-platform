@@ -642,6 +642,15 @@ export function isCleanerPayable(cleaner: CleanerPayoutFields | null | undefined
 
 Branch from master after PR1 merges: `git checkout -b feat/pay-request-lifecycle origin/master`.
 
+> **Added after the PR1 adversarial review:** PR1's migration 114 only WIDENS the payout-model
+> constraints; it deliberately does not backfill data or flip column defaults (deploy-window
+> safety: old equality-readers + old constraints). PR2 therefore ships **migration 115**:
+> `UPDATE organizations/cleaner_profiles SET ... 'percentage' WHERE ... 'percentage_contractor'`,
+> `ALTER COLUMN ... SET DEFAULT 'percentage'` on both tables, and in the same PR flips the
+> profile route's transition write (`update.default_payout_model = m === 'percentage' ?
+> 'percentage_contractor' : m` → `= m`). Safe by then: every reader deployed since PR1 treats
+> both spellings identically.
+
 ### Task 8: Submit route (cleaner + org-authored)
 
 **Files:**

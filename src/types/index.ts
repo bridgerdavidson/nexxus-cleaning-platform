@@ -149,7 +149,7 @@ export interface CleanerProfile {
   stripe_connect_account_id: string | null;
   stripe_connect_onboarding_complete: boolean; // default false
   payout_percent: number; // numeric(5,2), default 0.00
-  payout_model: PayoutModel; // default 'percentage'; drives settlement branching
+  payout_model: PayoutModel; // drives settlement branching; DB default flips to 'percentage' in migration 115 (legacy spelling until then, readers treat both identically)
   flat_rate_cents: number | null; // required when payout_model = 'flat'
   created_at: string;
   updated_at: string;
