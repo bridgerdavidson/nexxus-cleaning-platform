@@ -14,6 +14,7 @@ const EVENT_TYPES: NotificationEventType[] = [
   'chain_exhausted',
   'cleaner_response_overdue',
   'cleaner_paid',
+  'cleaner_payout_bank_failed',
   'job_started',
   'job_completed',
   'dispute_opened',
@@ -226,6 +227,26 @@ describe('describeNotification', () => {
     expect(cleaner.tone).toBe('error');
     // No cleaner name -> generic.
     expect(describeNotification('cleaner_not_payable').title).toBe('Cleaner payout setup incomplete');
+  });
+
+  it('words cleaner_payout_bank_failed per audience (T3-14 payout-failure visibility)', () => {
+    const cleaner = describeNotification('cleaner_payout_bank_failed', {
+      ...FULL_PAYLOAD,
+      audience: 'cleaner',
+    });
+    expect(cleaner.title).toBe('Your $42.00 payout failed');
+    expect(cleaner.detail).toContain('Update your bank details');
+    expect(cleaner.tone).toBe('error');
+
+    const admin = describeNotification('cleaner_payout_bank_failed', FULL_PAYLOAD);
+    expect(admin.title).toBe('Bank payout failed for Wanda Jones');
+    expect(admin.detail).toContain('Stripe balance');
+
+    // No names/amount -> generic copy, never the 'Update' fallback.
+    expect(describeNotification('cleaner_payout_bank_failed', { audience: 'cleaner' }).title).toBe(
+      'Your bank payout failed',
+    );
+    expect(describeNotification('cleaner_payout_bank_failed').title).toBe('A cleaner bank payout failed');
   });
 
   it('words cancellation_fee_failed by reason', () => {

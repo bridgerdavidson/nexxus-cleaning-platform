@@ -21,6 +21,7 @@ export type NotificationEventType =
   | 'chain_exhausted'               // recipient: admins (urgent, force-assign required)
   | 'cleaner_response_overdue'      // recipient: admins (SLA elapsed)
   | 'cleaner_paid'                  // recipient: cleaner (payout settled / bank_paid)
+  | 'cleaner_payout_bank_failed'    // recipient: cleaner + admins (bank-level payout failed after transfer; bank details need fixing)
   | 'job_started'                   // recipient: homeowner + admins
   | 'job_completed'                 // recipient: homeowner + admins
   | 'dispute_opened'                // recipient: admins (chargeback created)

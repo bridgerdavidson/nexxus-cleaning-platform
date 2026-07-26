@@ -8,6 +8,7 @@ import {
   chargeUncollectedCompletions,
   settleUnsettledCaptures,
   retryFailedPayouts,
+  reconcileBankPaidPayouts,
   retryStrandedClawbacks,
   retryStrandedRefundUnwinds,
   checkMoneyMathInvariants,
@@ -29,6 +30,7 @@ export const runtime = 'nodejs';
  *   2a) uncollected completions  — charge completed jobs whose completion charge never ran
  *   2b) unsettled-capture heal   — re-run settlement for captured charges whose funds never moved
  *   3) failed-payout retry       — re-run cleaner settlement for payouts left 'failed'
+ *   3a) bank-paid reconcile      — re-derive bank_paid from Stripe's payout list for stuck 'paid' rows
  *   3b) stranded-clawback retry  — re-attempt cleaner clawbacks that failed (cleaner_clawback_failed)
  *   3c) stranded refund-unwind   — re-run the refund transfer unwind for appointments stranded by a
  *                                  failed reversal (transfer_reversal_failed / refund_clawback_failed)
@@ -63,6 +65,7 @@ export async function POST(request: NextRequest) {
     const uncollectedCompletions = await chargeUncollectedCompletions(supabaseAdmin);
     const unsettledCaptures = await settleUnsettledCaptures(supabaseAdmin);
     const failedPayouts = await retryFailedPayouts(supabaseAdmin);
+    const bankPaidPayouts = await reconcileBankPaidPayouts(supabaseAdmin);
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
     const strandedRefundUnwinds = await retryStrandedRefundUnwinds(supabaseAdmin);
     const moneyMath = await checkMoneyMathInvariants(supabaseAdmin);
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
       uncollectedCompletions,
       unsettledCaptures,
       failedPayouts,
+      bankPaidPayouts,
       strandedClawbacks,
       strandedRefundUnwinds,
       moneyMath,

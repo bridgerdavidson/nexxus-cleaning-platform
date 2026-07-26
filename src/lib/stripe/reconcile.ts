@@ -48,3 +48,34 @@ export async function listRefundsForPaymentIntent(paymentIntentId: string): Prom
   const res = await getStripe().refunds.list({ payment_intent: paymentIntentId, limit: 100 });
   return res.data;
 }
+
+/**
+ * List a connected account's recent payouts (any status), newest first, single page. The
+ * bank-paid reconcile backstop (T1-3) uses this to discover payouts whose webhook delivery
+ * we missed; one bounded page keeps the sweep's Stripe cost fixed per cleaner.
+ */
+export async function listConnectedAccountPayouts(
+  connectedAccountId: string,
+  opts: { createdAfterEpochSec?: number; limit?: number } = {},
+): Promise<Stripe.Payout[]> {
+  const res = await getStripe().payouts.list(
+    {
+      limit: opts.limit ?? 100,
+      ...(opts.createdAfterEpochSec ? { created: { gte: opts.createdAfterEpochSec } } : {}),
+    },
+    { stripeAccount: connectedAccountId },
+  );
+  return res.data;
+}
+
+/**
+ * Retrieve a single payout on a connected account. The bank-bounce recheck (T1-3) uses this
+ * to notice a recently-stamped bank_paid payout flipping to failed/canceled at the bank,
+ * which otherwise only the (possibly unsubscribed) payout.failed webhook would report.
+ */
+export async function retrieveConnectedAccountPayout(
+  connectedAccountId: string,
+  payoutId: string,
+): Promise<Stripe.Payout> {
+  return getStripe().payouts.retrieve(payoutId, {}, { stripeAccount: connectedAccountId });
+}

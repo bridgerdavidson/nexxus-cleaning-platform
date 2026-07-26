@@ -20,6 +20,7 @@ import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback'
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
+import { formatUserName } from '@/lib/formatName';
 import { mapSubscriptionStatus } from '@/lib/payments/orgBilling';
 
 export async function dispatchStripeEvent(
@@ -446,13 +447,22 @@ async function handlePaymentIntentProcessing(
 
 /**
  * Handle payment_intent.canceled. With no upfront holds this is now rare (a PaymentIntent canceled
- * out-of-band); mirror the canceled status onto the payments row for the audit trail rather than
- * deleting it.
+ * out-of-band). T3-13: a still-pending/processing payments row must TERMINALIZE (status 'failed';
+ * the payment_status enum has no 'canceled', and payment_intent_status keeps the distinction) or
+ * reconcileStuckPayments re-selects it every sweep forever, appending a false drift_repaired row
+ * each time. Already-terminal rows just mirror the PI status for the audit trail.
  */
 async function handlePaymentIntentCanceled(
   supabase: SupabaseClient,
   paymentIntent: Stripe.PaymentIntent,
 ) {
+  const { error: termError } = await supabase
+    .from('payments')
+    .update({ status: 'failed', payment_intent_status: 'canceled' })
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .in('status', ['pending', 'processing']);
+  if (termError) console.error('payment_intent.canceled: failed to terminalize payment record:', termError);
+
   const { error } = await supabase
     .from('payments')
     .update({ payment_intent_status: 'canceled' })
@@ -946,11 +956,11 @@ async function handleApplicationFeeRefunded(
 }
 
 async function handleTransferReversed(supabase: SupabaseClient, transfer: Stripe.Transfer) {
-  console.log('Transfer reversed:', transfer.id);
+  console.log('Transfer reversed:', transfer.id, `(${transfer.amount_reversed ?? 0}/${transfer.amount})`);
 
   const { data: existingPayout, error: findError } = await supabase
     .from('payouts')
-    .select('id')
+    .select('id, status, appointment_id, organization_id')
     .eq('stripe_transfer_id', transfer.id)
     .single();
 
@@ -958,11 +968,46 @@ async function handleTransferReversed(supabase: SupabaseClient, transfer: Stripe
     console.log('No payout record found for reversed transfer:', transfer.id);
     return;
   }
+  const payout = existingPayout as {
+    id: string;
+    status: string;
+    appointment_id: string | null;
+    organization_id: string | null;
+  };
+
+  // T3-12: transfer.reversed also fires for PARTIAL reversals (our own partial-refund unwind
+  // reverses proportionally), and terminalizing the payout on one would silently block a later
+  // full clawback of the remaining cut. Mirror clawback's semantics: only a fully-reversed
+  // transfer retires the row to 'reversed'; a partial stamps reversed_at, appends a forensic
+  // ledger event, and keeps the status.
+  const fullyReversed = transfer.reversed === true || (transfer.amount_reversed ?? 0) >= transfer.amount;
+  if (!fullyReversed) {
+    const { error: partialError } = await supabase
+      .from('payouts')
+      .update({ reversed_at: new Date().toISOString() })
+      .eq('id', payout.id);
+    if (partialError) console.error('transfer.reversed: failed to stamp partial reversal:', partialError);
+    await recordPaymentEvent(supabase, {
+      appointmentId: payout.appointment_id,
+      organizationId: payout.organization_id,
+      eventType: 'transfer_partially_reversed',
+      actor: 'webhook',
+      amount: transfer.amount_reversed ?? 0,
+      payload: {
+        transfer_id: transfer.id,
+        amount: transfer.amount,
+        amount_reversed: transfer.amount_reversed ?? 0,
+        payout_status: payout.status,
+      },
+    });
+    console.log(`transfer.reversed ${transfer.id}: partial, payout ${payout.id} keeps status '${payout.status}'`);
+    return;
+  }
 
   const { error: updateError } = await supabase
     .from('payouts')
     .update({ status: 'reversed', reversed_at: new Date().toISOString() })
-    .eq('id', existingPayout.id);
+    .eq('id', payout.id);
 
   if (updateError) console.error('Error marking payout as reversed:', updateError);
   else console.log('Payout marked as reversed for transfer:', transfer.id);
@@ -990,10 +1035,13 @@ async function markOldestUnattributedPayout(
     .limit(1)
     .maybeSingle();
   if (!candidate) return 0;
+  // Re-assert status='paid' so a concurrent executor (live delivery vs the bank-paid sweep
+  // replaying the same payout) that already stamped or reverted this row wins the race.
   const { data: updated, error } = await supabase
     .from('payouts')
     .update(bankPaidUpdate)
     .eq('id', (candidate as { id: string }).id)
+    .eq('status', 'paid')
     .select('id');
   if (error) {
     console.error('payout.paid: DB error during narrowed fallback update:', error);
@@ -1054,7 +1102,12 @@ async function handlePayoutPaid(
     transferIds = await getPayoutTransferIds(connectedAccountId, payout.id);
     console.log(`payout.paid ${payout.id}: resolved ${transferIds.length} transfer(s)`);
   } catch (err) {
-    console.warn('payout.paid: could not fetch balance transactions, will use fallback:', err);
+    // A resolution ERROR is not knowledge: falling back here used to stamp the oldest
+    // unattributed row with an arbitrary payout id, and the bank-paid sweep multiplies
+    // executions of this path (one transient Stripe 5xx per sweep would eventually
+    // mis-stamp). Leave the rows for the next delivery / sweep cycle instead.
+    console.warn('payout.paid: could not fetch balance transactions; leaving rows for retry:', err);
+    return;
   }
 
   const bankPaidUpdate = {
@@ -1074,11 +1127,14 @@ async function handlePayoutPaid(
       .in('stripe_transfer_id', transferIds)
       .select('id');
 
+    // T3-15: when the transfer ids DID resolve, zero matches (or a DB error) means this payout
+    // covers nothing we still track as owed. Guessing via the oldest-unattributed fallback here
+    // could stamp the WRONG row, which a later payout.failed for this payout would then wrongly
+    // revert. The fallback is reserved for the branch where transfer ids could not be resolved.
     if (updateError) console.error('payout.paid: DB error during precise update:', updateError);
     else count = (updatedRows ?? []).length;
-
     if (count === 0) {
-      count = await markOldestUnattributedPayout(supabase, cleaner.id, bankPaidUpdate);
+      console.log(`payout.paid ${payout.id}: resolved transfers matched no local 'paid' rows; skipping fallback`);
     }
   } else {
     count = await markOldestUnattributedPayout(supabase, cleaner.id, bankPaidUpdate);
@@ -1120,6 +1176,9 @@ async function notifyCleanerPaid(
       appointment_id: r.appointment_id,
       organization_id: r.organization_id,
       recipient_user_id: cleanerId,
+      // The bank-paid sweep is a second concurrent invoker of handlePayoutPaid (besides live
+      // delivery + its retries), so this write must be idempotent per payout+job.
+      dedupe_key: `cleaner_paid:${payoutId}:${r.appointment_id}`,
       payload: {
         ...ctx,
         audience: 'cleaner',
@@ -1143,7 +1202,7 @@ async function handlePayoutFailed(
 
   const { data: cleaner, error: cleanerError } = await supabase
     .from('cleaner_profiles')
-    .select('id')
+    .select('id, organization_id')
     .eq('stripe_connect_account_id', connectedAccountId)
     .single();
 
@@ -1152,15 +1211,115 @@ async function handlePayoutFailed(
     return;
   }
 
+  // Only bank_paid rows revert: a row this payout once stamped that was since fully clawed
+  // back ('reversed') must NOT be resurrected to 'paid' (retryFailedPayouts would re-pay it).
   const { data: revertedRows, error: updateError } = await supabase
     .from('payouts')
     .update({ status: 'paid', stripe_payout_id: null, bank_paid_at: null })
     .eq('cleaner_id', cleaner.id)
     .eq('stripe_payout_id', payout.id)
-    .select('id');
+    .eq('status', 'bank_paid')
+    .select('id, appointment_id, organization_id, amount');
 
   if (updateError) console.error('Error reverting payouts after payout.failed:', updateError);
-  else console.log(`payout.failed: reverted ${(revertedRows ?? []).length} row(s) for cleaner ${cleaner.id}`);
+  const reverted = (revertedRows ?? []) as Array<{
+    id: string;
+    appointment_id: string | null;
+    organization_id: string | null;
+    amount: number | string | null;
+  }>;
+  console.log(`payout.failed: reverted ${reverted.length} row(s) for cleaner ${cleaner.id}`);
+
+  // T3-14: a bank-level payout failure used to be a silent revert — the cleaner with a closed
+  // bank account was told nothing and the org never knew payment was bouncing. Ledger each
+  // reverted row (org-scoped; alertable via paymentEventAlerts) and notify both sides, deduped
+  // by payout id. Gated on reverted > 0: the bank-paid sweep replays every terminal payout in
+  // its lookback, and a failure that reverted nothing we track (long-resolved history, or a
+  // re-delivery after the revert) must stay silent rather than alarm the cleaner about money
+  // that was re-paid weeks ago.
+  if (reverted.length === 0) {
+    console.log(`payout.failed ${payout.id}: no bank_paid rows to revert; staying silent`);
+    return;
+  }
+  for (const r of reverted) {
+    await recordPaymentEvent(supabase, {
+      appointmentId: r.appointment_id,
+      organizationId: r.organization_id,
+      eventType: 'cleaner_payout_bank_failed',
+      prevStatus: 'bank_paid',
+      newStatus: 'paid',
+      actor: 'webhook',
+      amount: Math.round(Number(r.amount ?? 0) * 100),
+      payload: {
+        payout_id: payout.id,
+        failure_code: payout.failure_code ?? null,
+        failure_message: payout.failure_message ?? null,
+      },
+    });
+  }
+  await notifyPayoutBankFailed(supabase, {
+    cleanerId: (cleaner as { id: string }).id,
+    organizationId:
+      reverted[0]?.organization_id ??
+      ((cleaner as { organization_id?: string | null }).organization_id ?? null),
+    payout,
+    revertedCount: reverted.length,
+  });
+}
+
+/**
+ * Notify the cleaner (their bank details need fixing) and the org admins after a bank-level
+ * payout failure (T3-14). Payout-level rather than per-appointment (one payout batches many
+ * jobs), deduped by payout id. Best-effort like every notification write.
+ */
+async function notifyPayoutBankFailed(
+  supabase: SupabaseClient,
+  p: {
+    cleanerId: string;
+    organizationId: string | null;
+    payout: Stripe.Payout;
+    revertedCount: number;
+  },
+): Promise<void> {
+  if (!p.organizationId) {
+    console.warn('payout.failed: no organization resolved for cleaner, skipping notifications:', p.cleanerId);
+    return;
+  }
+  let cleanerName: string | undefined;
+  try {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('first_name, last_name')
+      .eq('id', p.cleanerId)
+      .maybeSingle();
+    if (profile) {
+      const name = formatUserName(
+        (profile as { first_name: string | null }).first_name,
+        (profile as { last_name: string | null }).last_name,
+      );
+      if (name) cleanerName = name;
+    }
+  } catch {
+    // name is cosmetic; the label falls back to generic copy
+  }
+  const base = {
+    amount_cents: p.payout.amount,
+    failure_code: p.payout.failure_code ?? null,
+    reverted_count: p.revertedCount,
+  };
+  await recordNotificationEvent(supabase, {
+    event_type: 'cleaner_payout_bank_failed',
+    organization_id: p.organizationId,
+    recipient_user_id: p.cleanerId,
+    dedupe_key: `payout_bank_failed:${p.payout.id}`,
+    payload: { ...base, audience: 'cleaner' },
+  });
+  await recordNotificationEvent(supabase, {
+    event_type: 'cleaner_payout_bank_failed',
+    organization_id: p.organizationId,
+    dedupe_key: `payout_bank_failed:${p.payout.id}`,
+    payload: { ...base, audience: 'admin', cleaner_name: cleanerName },
+  });
 }
 
 /**

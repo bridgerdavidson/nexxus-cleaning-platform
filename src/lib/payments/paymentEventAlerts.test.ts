@@ -62,6 +62,7 @@ describe('alertInputForPaymentEvent', () => {
 
   it('classifies retryable / risk-signal events as warning, not critical', () => {
     expect(alertInputForPaymentEvent({ eventType: 'cleaner_transfer_failed' })!.severity).toBe('warning');
+    expect(alertInputForPaymentEvent({ eventType: 'cleaner_payout_bank_failed' })!.severity).toBe('warning');
     expect(alertInputForPaymentEvent({ eventType: 'unmatched_dispute' })!.severity).toBe('warning');
     expect(alertInputForPaymentEvent({ eventType: 'early_fraud_warning' })!.severity).toBe('warning');
     expect(alertInputForPaymentEvent({ eventType: 'radar_review_opened' })!.severity).toBe('warning');
@@ -73,6 +74,8 @@ describe('alertInputForPaymentEvent', () => {
     expect(alertInputForPaymentEvent({ eventType: 'duplicate_charge_detected' })).toBeNull();
     // review.closed maps to a benign event that must not page.
     expect(alertInputForPaymentEvent({ eventType: 'radar_review_closed' })).toBeNull();
+    // T3-12 forensic marker: our own partial-refund unwind emits it routinely.
+    expect(alertInputForPaymentEvent({ eventType: 'transfer_partially_reversed' })).toBeNull();
   });
 
   it('every alertable key produces a non-empty summary', () => {

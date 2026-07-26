@@ -23,6 +23,7 @@ vi.mock('@/lib/stripe/charges/refund', () => ({
 import { POST } from './route';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { createPlatformTransfer, reversePlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
+import { getPayoutTransferIds } from '@/lib/stripe';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -1236,7 +1237,7 @@ describe('POST /api/stripe/webhook', () => {
     });
     expect(res.status).toBe(200);
 
-    // With no holds, a canceled PI just mirrors the status onto the payments row; the appointment's
+    // With no holds, a canceled PI mirrors the status onto the payments row; the appointment's
     // authorization_status + reauth_count are left untouched (there is no re-authorization).
     const { data: a } = await admin
       .from('appointments')
@@ -1246,12 +1247,16 @@ describe('POST /api/stripe/webhook', () => {
     expect((a as { authorization_status: string }).authorization_status).toBe('authorized');
     expect((a as { reauth_count: number }).reauth_count).toBe(0);
 
+    // T3-13: the pending row TERMINALIZES (status 'failed'; the enum has no 'canceled') so
+    // reconcileStuckPayments stops re-selecting it every sweep; payment_intent_status keeps
+    // the canceled distinction for the audit trail.
     const { data: pay } = await admin
       .from('payments')
-      .select('payment_intent_status')
+      .select('status, payment_intent_status')
       .eq('stripe_payment_intent_id', piId)
       .single();
     expect((pay as { payment_intent_status: string }).payment_intent_status).toBe('canceled');
+    expect((pay as { status: string }).status).toBe('failed');
 
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
@@ -1473,6 +1478,328 @@ describe('POST /api/stripe/webhook', () => {
     expect((otherAfter as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
 
     await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('payout.paid with RESOLVED transfer ids matching nothing does NOT stamp the oldest row (T3-15)', async () => {
+    const admin = createTestSupabaseClient();
+    const acct = `acct_t315_${org.organizationId.slice(0, 8)}`;
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_account_id: acct })
+      .eq('id', org.cleaner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    // A still-owed 'paid' row whose transfer is NOT in this payout. The old fallback would have
+    // stamped it anyway; a later payout.failed for this payout would then wrongly revert it.
+    const { data: row } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: appt.id,
+        amount: 60,
+        status: 'paid',
+        stripe_transfer_id: 'tr_mine_t315',
+      })
+      .select('id')
+      .single();
+    vi.mocked(getPayoutTransferIds).mockResolvedValueOnce(['tr_not_ours_t315']);
+
+    const eventId = `evt_payout_t315_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'payout.paid',
+      account: acct,
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'po_t315', object: 'payout', amount: 6000, arrival_date: Math.floor(Date.now() / 1000) } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: after } = await admin
+      .from('payouts')
+      .select('status, stripe_payout_id')
+      .eq('id', (row as { id: string }).id)
+      .single();
+    expect((after as { status: string }).status).toBe('paid');
+    expect((after as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('payout.paid whose transfer resolution ERRORS stamps nothing (error is not knowledge)', async () => {
+    const admin = createTestSupabaseClient();
+    const acct = `acct_reserr_${org.organizationId.slice(0, 8)}`;
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_account_id: acct })
+      .eq('id', org.cleaner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const { data: row } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: appt.id,
+        amount: 60,
+        status: 'paid',
+        stripe_transfer_id: 'tr_reserr_1',
+      })
+      .select('id')
+      .single();
+    // A transient Stripe failure must NOT route to the oldest-unattributed guess: the bank-paid
+    // sweep multiplies executions of this path, so one 5xx per sweep would eventually mis-stamp.
+    vi.mocked(getPayoutTransferIds).mockRejectedValueOnce(new Error('stripe 500'));
+
+    const eventId = `evt_payout_reserr_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'payout.paid',
+      account: acct,
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'po_reserr', object: 'payout', amount: 6000, arrival_date: Math.floor(Date.now() / 1000) } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: after } = await admin
+      .from('payouts')
+      .select('status, stripe_payout_id')
+      .eq('id', (row as { id: string }).id)
+      .single();
+    expect((after as { status: string }).status).toBe('paid');
+    expect((after as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
+  it('transfer.reversed PARTIAL keeps the payout status; FULL terminalizes to reversed (T3-12)', async () => {
+    const admin = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const transferId = `tr_t312_${appt.id.slice(0, 8)}`;
+    const { data: row } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: appt.id,
+        amount: 60,
+        status: 'paid',
+        stripe_transfer_id: transferId,
+      })
+      .select('id')
+      .single();
+    const rowId = (row as { id: string }).id;
+
+    const sendReversal = async (suffix: string, amountReversed: number, reversed: boolean) => {
+      const eventId = `evt_trrev_${suffix}_${appt.id.slice(0, 8)}`;
+      const event = {
+        id: eventId,
+        object: 'event',
+        type: 'transfer.reversed',
+        api_version: '2025-12-15.clover',
+        created: Math.floor(Date.now() / 1000),
+        data: {
+          object: {
+            id: transferId,
+            object: 'transfer',
+            amount: 6000,
+            amount_reversed: amountReversed,
+            reversed,
+          },
+        },
+        livemode: false,
+        pending_webhooks: 0,
+        request: { id: null, idempotency_key: null },
+      };
+      const payload = JSON.stringify(event);
+      const res = await callRoute(POST, {
+        method: 'POST',
+        url: 'http://test.local/api/stripe/webhook',
+        headers: { 'stripe-signature': signWebhookPayload(payload) },
+        body: payload,
+      });
+      expect(res.status).toBe(200);
+      return eventId;
+    };
+
+    // Partial reversal (a partial-refund unwind): the payout must KEEP its status so a later
+    // full clawback of the remaining cut is not silently blocked, and a forensic ledger row lands.
+    const evt1 = await sendReversal('partial', 2000, false);
+    const { data: afterPartial } = await admin
+      .from('payouts')
+      .select('status, reversed_at')
+      .eq('id', rowId)
+      .single();
+    expect((afterPartial as { status: string }).status).toBe('paid');
+    expect((afterPartial as { reversed_at: string | null }).reversed_at).not.toBeNull();
+    const { data: ledger } = await admin
+      .from('payment_events')
+      .select('event_type, payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'transfer_partially_reversed');
+    expect((ledger ?? []).length).toBe(1);
+    expect(((ledger![0] as { payload: { amount_reversed: number } }).payload).amount_reversed).toBe(2000);
+
+    // Full reversal terminalizes exactly as before.
+    const evt2 = await sendReversal('full', 6000, true);
+    const { data: afterFull } = await admin
+      .from('payouts')
+      .select('status')
+      .eq('id', rowId)
+      .single();
+    expect((afterFull as { status: string }).status).toBe('reversed');
+
+    await admin.from('webhook_events').delete().in('id', [evt1, evt2]);
+  });
+
+  it('payout.failed reverts bank_paid, writes the ledger event, and notifies cleaner + admins once (T3-14)', async () => {
+    const admin = createTestSupabaseClient();
+    const acct = `acct_t314_${org.organizationId.slice(0, 8)}`;
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_account_id: acct })
+      .eq('id', org.cleaner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const payoutId = `po_t314_${org.organizationId.slice(0, 8)}`;
+    const { data: row } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: appt.id,
+        amount: 60,
+        status: 'bank_paid',
+        stripe_transfer_id: `tr_t314_${appt.id.slice(0, 8)}`,
+        stripe_payout_id: payoutId,
+        bank_paid_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    const sendFailure = async (suffix: string) => {
+      const eventId = `evt_pofail_${suffix}_${org.organizationId.slice(0, 8)}`;
+      const event = {
+        id: eventId,
+        object: 'event',
+        type: 'payout.failed',
+        account: acct,
+        api_version: '2025-12-15.clover',
+        created: Math.floor(Date.now() / 1000),
+        data: {
+          object: {
+            id: payoutId,
+            object: 'payout',
+            amount: 6000,
+            arrival_date: Math.floor(Date.now() / 1000),
+            failure_code: 'account_closed',
+            failure_message: 'The bank account has been closed.',
+          },
+        },
+        livemode: false,
+        pending_webhooks: 0,
+        request: { id: null, idempotency_key: null },
+      };
+      const payload = JSON.stringify(event);
+      const res = await callRoute(POST, {
+        method: 'POST',
+        url: 'http://test.local/api/stripe/webhook',
+        headers: { 'stripe-signature': signWebhookPayload(payload) },
+        body: payload,
+      });
+      expect(res.status).toBe(200);
+      return eventId;
+    };
+
+    const evt1 = await sendFailure('a');
+
+    // The row reverts to 'paid' with the payout stamp cleared (pre-existing behavior).
+    const { data: after } = await admin
+      .from('payouts')
+      .select('status, stripe_payout_id, bank_paid_at')
+      .eq('id', (row as { id: string }).id)
+      .single();
+    expect((after as { status: string }).status).toBe('paid');
+    expect((after as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
+    expect((after as { bank_paid_at: string | null }).bank_paid_at).toBeNull();
+
+    // T3-14: no longer silent. Forensic ledger row + cleaner and admin notifications.
+    const { data: ledger } = await admin
+      .from('payment_events')
+      .select('event_type, amount, payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'cleaner_payout_bank_failed');
+    expect((ledger ?? []).length).toBe(1);
+    expect(((ledger![0] as { payload: { failure_code: string } }).payload).failure_code).toBe('account_closed');
+
+    const notifQuery = () =>
+      admin
+        .from('notification_events')
+        .select('recipient_user_id, payload')
+        .eq('organization_id', org.organizationId)
+        .eq('event_type', 'cleaner_payout_bank_failed');
+    const { data: notifs } = await notifQuery();
+    const cleanerRows = (notifs ?? []).filter(
+      (n) => (n as { recipient_user_id: string }).recipient_user_id === org.cleaner.userId,
+    );
+    expect(cleanerRows.length).toBe(1);
+    expect(((cleanerRows[0] as { payload: { audience: string } }).payload).audience).toBe('cleaner');
+    // Fan-out reached at least one admin/owner recipient.
+    expect((notifs ?? []).length).toBeGreaterThan(1);
+    const countBefore = (notifs ?? []).length;
+
+    // A re-delivery (new event id, same payout) reverts nothing and must not double-notify:
+    // the notification is deduped by payout id.
+    const evt2 = await sendFailure('b');
+    const { data: notifsAfter } = await notifQuery();
+    expect((notifsAfter ?? []).length).toBe(countBefore);
+
+    await admin.from('webhook_events').delete().in('id', [evt1, evt2]);
   });
 
   // ── Phase 5: SaaS subscription state mirroring (Scenario 3) ───────────────────
