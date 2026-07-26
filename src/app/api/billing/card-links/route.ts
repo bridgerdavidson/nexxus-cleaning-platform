@@ -51,7 +51,7 @@ async function failedPaymentContext(
   if (!appointmentId) return null;
   const { data } = await supabaseAdmin
     .from('appointments')
-    .select('organization_id, homeowner_id, authorization_status, is_self_pay, total_price, scheduled_date')
+    .select('organization_id, homeowner_id, authorization_status, is_self_pay, total_price, scheduled_date, payment_method_id')
     .eq('id', appointmentId)
     .maybeSingle();
   const appt = data as {
@@ -61,6 +61,7 @@ async function failedPaymentContext(
     is_self_pay: boolean | null;
     total_price: number | null;
     scheduled_date: string | null;
+    payment_method_id: string | null;
   } | null;
   if (!appt || appt.organization_id !== organizationId || appt.homeowner_id !== homeownerId) return null;
   // A comped self-pay booking keeps homeowner_id, but its failed charge is the
@@ -68,8 +69,11 @@ async function failedPaymentContext(
   // an amount they don't owe) would be false; send the routine email instead.
   if (appt.is_self_pay) return null;
   if (appt.authorization_status !== 'failed' && appt.authorization_status !== 'requires_action') return null;
+  // 'failed' with NO payment method is the T1-7 no-card bail (the bail clears the dead id):
+  // nothing was declined, so the email must say "no card on file", not a false decline.
+  const failedReason = appt.payment_method_id ? 'declined' : 'no_card';
   return {
-    reason: appt.authorization_status === 'failed' ? 'declined' : 'verification',
+    reason: appt.authorization_status === 'failed' ? failedReason : 'verification',
     amountLabel: appt.total_price != null ? `$${Number(appt.total_price).toFixed(2)}` : null,
     dateLabel: scheduledDateLabel(appt.scheduled_date),
   };

@@ -22,7 +22,8 @@ import { POST } from './route';
 import { chargeCompletedAppointmentAuto } from '@/lib/payments/chargeCompletedAppointment';
 import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
-import { listSavedCards, getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
+import { listSavedCards, getPaymentMethodType, paymentMethodBelongsToCustomer } from '@/lib/stripe/customers/homeowner';
+import { getDefaultPaymentMethod } from '@/lib/stripe';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
 import { withTestOrg, addManagerToOrg, addHomeownerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient, createAnonClient } from '../../../../../../tests/helpers/supabase';
@@ -741,5 +742,243 @@ describe('claim_appointment_for_charge RPC (migration 109)', () => {
     const db = createTestSupabaseClient();
     const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
     expect((a as { authorization_status: string }).authorization_status).toBe('failed');
+  });
+});
+
+describe('T1-7: charge-precondition bail visibility', () => {
+  // A completed job whose charge bails BEFORE Stripe used to vanish: no status, no notification,
+  // no ledger row, and (for the no-card cases) no automated path could ever collect it. These pin
+  // the two bail treatments: no_card stamps `failed` (human recovery: triage band, card link,
+  // setup_intent self-heal, manual record), while tenant_not_ready / cleaner_not_payable keep
+  // authorization_status NULL (the reconcile sweep re-attempts, so collection resumes by itself
+  // once the org/cleaner finishes setup) and rely on the deduped admin notification + ledger.
+  let org: TestOrgFixture;
+  let originalFlag: string | undefined;
+
+  beforeEach(async () => {
+    originalFlag = process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED;
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'true';
+    process.env.STRIPE_ENABLED = 'true';
+    org = await withTestOrg();
+    vi.mocked(createDestinationCharge).mockClear();
+    vi.mocked(createSelfPayCharge).mockClear();
+    vi.mocked(paymentMethodBelongsToCustomer).mockClear();
+    vi.mocked(paymentMethodBelongsToCustomer).mockResolvedValue(true as never);
+    vi.mocked(getPaymentMethodType).mockResolvedValue('card' as never);
+  });
+
+  afterEach(async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = originalFlag;
+    await org.cleanup();
+  });
+
+  const postCharge = (apptId: string) =>
+    callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+  async function connectReadyOrgAndCustomer(): Promise<void> {
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({
+        stripe_connect_account_id: `acct_ready_${org.organizationId.slice(0, 12)}`,
+        stripe_connect_charges_enabled: true,
+      })
+      .eq('id', org.organizationId);
+    await db.from('user_profiles').update({ stripe_customer_id: 'cus_t17_homeowner' }).eq('id', org.homeowner.userId);
+  }
+
+  async function completedAppt(update: Record<string, unknown> = {}): Promise<string> {
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+    });
+    if (Object.keys(update).length > 0) {
+      await db.from('appointments').update(update).eq('id', appt.id);
+    }
+    return appt.id;
+  }
+
+  it('no_card (no saved payment method) stamps failed, notifies admin + homeowner, and ledgers', async () => {
+    await connectReadyOrgAndCustomer();
+    const apptId = await completedAppt(); // no payment_method_id at all
+
+    const { status, body } = await postCharge(apptId);
+    expect(status).toBe(409);
+    expect(body.code).toBe('no_card');
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+    const db = createTestSupabaseClient();
+    // The stamp: the job now lands in the operator triage band, the card-link route's
+    // failed/requires_action gate, and the setup_intent.succeeded self-heal selection.
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBe('failed');
+
+    // No revenue row: nothing was attempted at Stripe.
+    const { data: payRows } = await db.from('payments').select('id').eq('appointment_id', apptId);
+    expect(payRows ?? []).toHaveLength(0);
+
+    // Notifications: an admin fan-out row + a homeowner row, both reason no_card.
+    const { data: notifs } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_failed');
+    const rows = (notifs ?? []) as Array<{ recipient_user_id: string; payload: Record<string, unknown> }>;
+    expect(rows.some((r) => r.payload.audience === 'admin' && r.payload.reason === 'no_card')).toBe(true);
+    expect(rows.some((r) => r.recipient_user_id === org.homeowner.userId && r.payload.reason === 'no_card')).toBe(true);
+
+    // Forensic ledger row.
+    const { data: events } = await db
+      .from('payment_events')
+      .select('payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_precondition_failed');
+    expect((events ?? []).length).toBeGreaterThanOrEqual(1);
+    expect(((events![0] as { payload: Record<string, unknown> }).payload as Record<string, unknown>).code).toBe('no_card');
+
+    // A repeat bail (retry, sweep pass) must not stack bell rows: dedupe key is per appointment.
+    const before = rows.length;
+    const second = await postCharge(apptId);
+    expect(second.status).toBe(409);
+    const { data: after } = await db
+      .from('notification_events')
+      .select('id')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_failed');
+    expect((after ?? []).length).toBe(before);
+  });
+
+  it('no_card (saved card gone, no default to substitute) also stamps failed', async () => {
+    await connectReadyOrgAndCustomer();
+    const apptId = await completedAppt({ payment_method_id: 'pm_detached_card' });
+    // The saved card no longer belongs to the customer AND the customer has no default to
+    // substitute (the integration setup's fake normally supplies 'pm_test_default').
+    vi.mocked(paymentMethodBelongsToCustomer).mockResolvedValueOnce(false as never);
+    vi.mocked(getDefaultPaymentMethod).mockResolvedValueOnce(null as never);
+
+    const { status, body } = await postCharge(apptId);
+    expect(status).toBe(409);
+    expect(body.code).toBe('no_card');
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+    const db = createTestSupabaseClient();
+    const { data: a } = await db
+      .from('appointments')
+      .select('authorization_status, payment_method_id')
+      .eq('id', apptId)
+      .single();
+    const row = a as { authorization_status: string | null; payment_method_id: string | null };
+    expect(row.authorization_status).toBe('failed');
+    // The dead id is cleared so every surface (payment section, home alert, card-link email)
+    // reads this as "no card", not a false "card declined"; forensics keep it in the ledger.
+    expect(row.payment_method_id).toBeNull();
+    const { data: events } = await db
+      .from('payment_events')
+      .select('payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_precondition_failed');
+    const payloads = (events ?? []).map((e) => (e as { payload: Record<string, unknown> }).payload);
+    expect(payloads.some((p) => p.payment_method_id === 'pm_detached_card')).toBe(true);
+  });
+
+  it('tenant_not_ready keeps the row armed for the sweep (NULL) and notifies admins once', async () => {
+    // Homeowner + card are fine; the ORG's Stripe account is not ready. Deliberately NOT stamped
+    // failed: the sweep re-attempts NULL rows, so collection resumes the moment onboarding finishes.
+    const db = createTestSupabaseClient();
+    await db.from('user_profiles').update({ stripe_customer_id: 'cus_t17_homeowner' }).eq('id', org.homeowner.userId);
+    const apptId = await completedAppt({ payment_method_id: 'pm_test_card' });
+
+    const { status, body } = await postCharge(apptId);
+    expect(status).toBe(409);
+    expect(body.code).toBe('tenant_not_ready');
+    expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBeNull();
+
+    const { data: notifs } = await db
+      .from('notification_events')
+      .select('id, payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'tenant_payments_not_ready');
+    expect((notifs ?? []).length).toBeGreaterThanOrEqual(1);
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_precondition_failed');
+    expect(((events![0] as { payload: Record<string, unknown> }).payload as Record<string, unknown>).code).toBe(
+      'tenant_not_ready',
+    );
+
+    // Deduped on the repeat bail the sweep will inevitably produce; the forensic ledger is
+    // likewise bounded (a repeat of the SAME code appends nothing).
+    const before = (notifs ?? []).length;
+    await postCharge(apptId);
+    const { data: after } = await db
+      .from('notification_events')
+      .select('id')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'tenant_payments_not_ready');
+    expect((after ?? []).length).toBe(before);
+    const { data: eventsAfter } = await db
+      .from('payment_events')
+      .select('id')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charge_precondition_failed');
+    expect((eventsAfter ?? []).length).toBe(1);
+  });
+
+  it('cleaner_not_payable (self-pay) keeps NULL for the sweep and notifies admins', async () => {
+    // Company card exists, but the default test cleaner has no Connect account, so the self-pay
+    // charge bails before touching Stripe. NULL keeps the sweep re-attempting so collection
+    // resumes automatically once the cleaner finishes payout setup.
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ stripe_self_pay_customer_id: `cus_selfpay_${org.organizationId.slice(0, 12)}` })
+      .eq('id', org.organizationId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'completed',
+      orgOwnedProperty: true,
+      selfPay: true,
+    });
+
+    const { status, body } = await postCharge(appt.id);
+    expect(status).toBe(409);
+    expect(body.code).toBe('cleaner_not_payable');
+    expect(vi.mocked(createSelfPayCharge)).not.toHaveBeenCalled();
+
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', appt.id).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBeNull();
+
+    const { data: notifs } = await db
+      .from('notification_events')
+      .select('payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'cleaner_not_payable');
+    expect((notifs ?? []).length).toBeGreaterThanOrEqual(1);
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'charge_precondition_failed');
+    expect(((events![0] as { payload: Record<string, unknown> }).payload as Record<string, unknown>).code).toBe(
+      'cleaner_not_payable',
+    );
   });
 });

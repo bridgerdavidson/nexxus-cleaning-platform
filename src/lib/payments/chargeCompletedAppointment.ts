@@ -54,6 +54,14 @@ export interface ChargeNowOutcome {
   code: ChargeNowCode;
   message?: string;
   paymentIntentId?: string;
+  /**
+   * True when the path that produced this outcome wrote a terminal authorization_status itself
+   * (overwriting the 'charging' claim). The caller must then SKIP the claim release: once the row
+   * leaves 'charging' it is re-claimable, and a late release UPDATE (guarded only by
+   * .eq('authorization_status','charging')) would match a SUCCESSOR's live claim and could free an
+   * in-flight charge's sentinel (double-charge risk, see the T1-7 review's HIGH finding).
+   */
+  stamped?: boolean;
 }
 
 /**
@@ -68,6 +76,13 @@ export interface ChargeNowOutcome {
  * create a PaymentIntent and/or bump reauth_count, so it releases to NULL: restoring priorStatus there
  * would double-charge (a `failed` row makes nextReauthAttempt bump reauth_count → fresh idempotency
  * key → second PaymentIntent).
+ *
+ * T1-7: the homeowner-card `no_card` bails additionally stamp authorization_status='failed'
+ * themselves (recordNoCardBail) and return `stamped: true`, which routes them into the
+ * terminalWritten branch so the finally SKIPS the release entirely. Skipping (rather than relying
+ * on the `.eq('authorization_status','charging')` guard to no-op) is load-bearing: the stamp makes
+ * the row instantly re-claimable, and a late release UPDATE could otherwise match a SUCCESSOR's
+ * live 'charging' claim and free its in-flight sentinel. The other codes keep restore-to-prior.
  */
 const PRECONDITION_CODES: ReadonlySet<ChargeNowCode> = new Set([
   'no_card',
@@ -172,8 +187,16 @@ export async function chargeCompletedAppointmentAuto(
       ? await chargeSelfPayNow(supabase, appt, actor, actorRole)
       : await chargeHomeownerNow(supabase, appt, actor);
     // These are exactly the outcomes whose path wrote a non-'charging' terminal authorization_status
-    // (charged -> captured, requires_action -> requires_action, declined -> failed).
-    if (outcome.code === 'charged' || outcome.code === 'requires_action' || outcome.code === 'declined') {
+    // (charged -> captured, requires_action -> requires_action, declined -> failed), plus any outcome
+    // explicitly marked `stamped` (the T1-7 no_card bail, finishCharge's unexpected-status branch).
+    // Skipping the release for a stamped outcome is load-bearing: the stamp makes the row
+    // re-claimable immediately, so a late release could otherwise free a successor's live claim.
+    if (
+      outcome.code === 'charged' ||
+      outcome.code === 'requires_action' ||
+      outcome.code === 'declined' ||
+      outcome.stamped
+    ) {
       terminalWritten = true;
     } else if (PRECONDITION_CODES.has(outcome.code)) {
       // Pre-Stripe bail: release back to the pre-claim status, not NULL, so a `failed` /
@@ -301,7 +324,9 @@ async function chargeHomeownerNow(
   appt: AppointmentRow,
   actor: string,
 ): Promise<ChargeNowOutcome> {
-  if (!appt.payment_method_id) return { ok: false, code: 'no_card', message: 'No payment method on the appointment' };
+  if (!appt.payment_method_id) {
+    return recordNoCardBail(supabase, appt, actor, 'No payment method on the appointment');
+  }
 
   const { data: hoData } = await supabase
     .from('user_profiles')
@@ -309,7 +334,9 @@ async function chargeHomeownerNow(
     .eq('id', appt.homeowner_id)
     .maybeSingle();
   const customerId = (hoData as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null;
-  if (!customerId) return { ok: false, code: 'no_card', message: 'Homeowner has no saved payment profile' };
+  if (!customerId) {
+    return recordNoCardBail(supabase, appt, actor, 'Homeowner has no saved payment profile');
+  }
 
   // The saved payment method can be detached/deleted between booking and completion (the customer
   // rotated cards). Charging the dead id would surface as a confusing generic decline, so
@@ -324,7 +351,7 @@ async function chargeHomeownerNow(
       fallback = null;
     }
     if (!fallback) {
-      return { ok: false, code: 'no_card', message: 'The saved payment method is no longer available' };
+      return recordNoCardBail(supabase, appt, actor, 'The saved payment method is no longer available');
     }
     paymentMethodId = fallback;
     await supabase.from('appointments').update({ payment_method_id: fallback }).eq('id', appt.id);
@@ -355,7 +382,12 @@ async function chargeHomeownerNow(
     | { stripe_connect_account_id: string | null; stripe_connect_charges_enabled: boolean; platform_fee_bps: number }
     | null;
   if (!org?.stripe_connect_account_id || !org.stripe_connect_charges_enabled) {
-    return { ok: false, code: 'tenant_not_ready', message: 'Organization Stripe account is not ready to accept charges' };
+    return recordTenantNotReadyBail(
+      supabase,
+      appt,
+      actor,
+      'Organization Stripe account is not ready to accept charges',
+    );
   }
 
   const baseCents = Math.round(Number(appt.total_price) * 100);
@@ -457,11 +489,12 @@ async function chargeSelfPayNow(
     cleaner.stripe_connect_onboarding_complete &&
     Number(cleaner.payout_percent) > 0;
   if (!cleanerPayable) {
-    return {
-      ok: false,
-      code: 'cleaner_not_payable',
-      message: 'Self-pay requires a payout-capable cleaner (Connect onboarded, payout % > 0)',
-    };
+    return recordCleanerNotPayableBail(
+      supabase,
+      appt,
+      actor,
+      'Self-pay requires a payout-capable cleaner (Connect onboarded, payout % > 0)',
+    );
   }
 
   // Resolve the company method: default, else first. A bank default is debited via the existing
@@ -607,7 +640,9 @@ async function finishCharge(
     dedupeSuffix: pi.id,
     actor,
   });
-  return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${pi.status}`, paymentIntentId: pi.id };
+  // stamped: this branch wrote authorization_status='failed' above, so the claim release must be
+  // skipped (same successor-claim hazard as the no_card bail; pinned by the T1-7 review).
+  return { ok: false, code: 'error', message: `Unexpected PaymentIntent status: ${pi.status}`, paymentIntentId: pi.id, stamped: true };
 }
 
 /** Mirrors a charge decline into appointments/payments/ledger so the pill reads "Failed". */
@@ -672,7 +707,7 @@ async function notifyChargeFailed(
   appt: AppointmentRow,
   opts: {
     amountCents: number;
-    reason: 'declined' | 'authentication_required';
+    reason: 'declined' | 'authentication_required' | 'no_card';
     error?: string;
     selfPay?: boolean;
     dedupeSuffix: string;
@@ -716,6 +751,177 @@ async function notifyChargeFailed(
       },
     });
   }
+}
+
+/** The amount a completion charge would collect: gross, plus the processing fee when passthrough is on. */
+function wouldChargeCents(appt: AppointmentRow): number {
+  const baseCents = Math.round(Number(appt.total_price) * 100);
+  return stripeFeePassthroughEnabled() ? computeChargeBreakdown('card', baseCents).chargeCents : baseCents;
+}
+
+/**
+ * Bounds the forensic ledger for the keep-NULL bails: the sweep re-attempts them every ~30 minutes
+ * for as long as the org/cleaner setup is unfinished, and an unbounded stream of identical
+ * `charge_precondition_failed` rows would drown the drift signal payment_events exists for. Skip
+ * the append when the appointment's LATEST precondition event already carries the same code (a
+ * code CHANGE, e.g. tenant_not_ready -> no_card, still appends). Fails open: a read error records
+ * anyway, since an extra row is harmless and a missing first row is not.
+ */
+async function shouldAppendPreconditionEvent(
+  supabase: SupabaseClient,
+  appointmentId: string,
+  code: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('payment_events')
+    .select('payload')
+    .eq('appointment_id', appointmentId)
+    .eq('event_type', 'charge_precondition_failed')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return true;
+  const last = data as { payload: { code?: string } | null } | null;
+  return (last?.payload?.code ?? null) !== code;
+}
+
+/**
+ * T1-7: a homeowner-card charge that bails with `no_card` (no PM saved, no Stripe customer, or the
+ * saved card is gone with no default to substitute) is unrecoverable by anything automated: the
+ * NULL-PM subcase is excluded from the reconcile sweep outright, and the other two would bail again
+ * on every sweep pass forever. Recovery needs a human (a new card, a card link, or a manual cash
+ * record), so stamp authorization_status='failed'. That one write plugs the job into every existing
+ * recovery surface at once: the operator "Needs you now" triage band (with Send card link), the
+ * card-link route's failed/requires_action gate, the setup_intent.succeeded self-heal (re-points the
+ * new card and re-charges), the homeowner recovery card, and the manual-record captured flip. The
+ * returned `stamped: true` makes the caller skip its claim release (see ChargeNowOutcome.stamped).
+ * No revenue row is written: no charge was attempted, and a failed PI-less row would muddy the
+ * manual-record and T1-16 semantics.
+ */
+async function recordNoCardBail(
+  supabase: SupabaseClient,
+  appt: AppointmentRow,
+  actor: string,
+  message: string,
+): Promise<ChargeNowOutcome> {
+  // Money may have arrived since the entry alreadySettled check (a manual cash record racing into
+  // the claim window: its captured-flip matches 0 rows while we hold 'charging', so nothing else
+  // re-checks). Never stamp "failed" over a job that is actually collected; bail plainly and let
+  // the finally restore the pre-claim status.
+  const settled = await alreadySettled(supabase, appt.id);
+  if (settled) return { ok: false, code: 'no_card', message };
+
+  const amountCents = wouldChargeCents(appt);
+  // Clear the payment method along with the stamp: every no_card branch means the saved id is
+  // unusable (never set, customer profile missing, or detached at Stripe). A NULL PM lets every
+  // downstream surface (payment-section state, home alerts, the card-link email) distinguish
+  // "no card" from a real decline instead of showing false "card declined" copy. The dead id is
+  // preserved in the ledger payload below.
+  const { error: stampErr } = await supabase
+    .from('appointments')
+    .update({ authorization_status: 'failed', payment_method_id: null })
+    .eq('id', appt.id);
+  if (stampErr) {
+    // Fail plain (no ledger, no notifications, no `stamped`): announcing a failed state the row is
+    // not actually in would burn the dedupe keys and strand the job invisibly once the finally
+    // restores the pre-claim status. The next attempt (sweep, retry) re-runs this path.
+    console.error('recordNoCardBail: could not stamp authorization_status=failed:', stampErr);
+    return { ok: false, code: 'no_card', message };
+  }
+  await recordPaymentEvent(supabase, {
+    appointmentId: appt.id,
+    organizationId: appt.organization_id,
+    eventType: 'charge_precondition_failed',
+    prevStatus: appt.authorization_status,
+    newStatus: 'failed',
+    actor,
+    amount: amountCents,
+    payload: { code: 'no_card', message, payment_method_id: appt.payment_method_id },
+  });
+  await notifyChargeFailed(supabase, appt, {
+    amountCents,
+    reason: 'no_card',
+    // Stable per EPISODE, not forever: intra-episode re-bails (sweep passes, retries) never stack
+    // bell rows, but both card-reset paths (the payment-method route, the setup_intent self-heal)
+    // bump reauth_count, so a genuinely new no-card episode months later notifies again.
+    dedupeSuffix: `no_card:${appt.reauth_count ?? 0}`,
+    actor,
+  });
+  // stamped: the terminal 'failed' is written; the caller must skip the claim release (the row is
+  // re-claimable from this moment, and a late release could free a successor's live claim).
+  return { ok: false, code: 'no_card', message, stamped: true };
+}
+
+/**
+ * T1-7: an org whose Stripe account can't accept charges blocks EVERY completion charge, but the
+ * fix is one org-level action (finish Connect onboarding), not per-appointment surgery. The row
+ * deliberately KEEPS authorization_status NULL so the reconcile sweep re-attempts and collection
+ * resumes automatically the moment onboarding completes; a `failed` stamp here would instead park
+ * every job in triage demanding a manual retry each. Visibility comes from the per-appointment
+ * (deduped) admin notification + the forensic ledger.
+ */
+async function recordTenantNotReadyBail(
+  supabase: SupabaseClient,
+  appt: AppointmentRow,
+  actor: string,
+  message: string,
+): Promise<ChargeNowOutcome> {
+  const amountCents = wouldChargeCents(appt);
+  if (await shouldAppendPreconditionEvent(supabase, appt.id, 'tenant_not_ready')) {
+    await recordPaymentEvent(supabase, {
+      appointmentId: appt.id,
+      organizationId: appt.organization_id,
+      eventType: 'charge_precondition_failed',
+      actor,
+      amount: amountCents,
+      payload: { code: 'tenant_not_ready', message },
+    });
+  }
+  const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
+  await recordNotificationEvent(supabase, {
+    event_type: 'tenant_payments_not_ready',
+    appointment_id: appt.id,
+    organization_id: appt.organization_id,
+    dedupe_key: `tenant_payments_not_ready:${appt.id}`,
+    payload: { ...ctx, audience: 'admin', amount_cents: amountCents },
+  });
+  return { ok: false, code: 'tenant_not_ready', message };
+}
+
+/**
+ * T1-7: same shape as the tenant bail, for self-pay jobs blocked on the cleaner's payout setup
+ * (not Connect-onboarded, hourly-external model, or payout % of 0). Self-pay rows pass the
+ * reconcile sweep's filter, so leaving authorization_status NULL keeps auto-collection armed for
+ * the moment the cleaner becomes payable; the deduped admin notification supplies the visibility.
+ */
+async function recordCleanerNotPayableBail(
+  supabase: SupabaseClient,
+  appt: AppointmentRow,
+  actor: string,
+  message: string,
+): Promise<ChargeNowOutcome> {
+  // Job gross, not wouldChargeCents: the self-pay gross-up (computeSelfPayAmounts) needs the
+  // cleaner's payout %, which is exactly what's missing/zero on this bail.
+  const amountCents = Math.round(Number(appt.total_price) * 100);
+  if (await shouldAppendPreconditionEvent(supabase, appt.id, 'cleaner_not_payable')) {
+    await recordPaymentEvent(supabase, {
+      appointmentId: appt.id,
+      organizationId: appt.organization_id,
+      eventType: 'charge_precondition_failed',
+      actor,
+      amount: amountCents,
+      payload: { code: 'cleaner_not_payable', message },
+    });
+  }
+  const ctx = await loadNotificationContext(supabase, { appointmentId: appt.id, cleanerId: appt.cleaner_id });
+  await recordNotificationEvent(supabase, {
+    event_type: 'cleaner_not_payable',
+    appointment_id: appt.id,
+    organization_id: appt.organization_id,
+    dedupe_key: `cleaner_not_payable:${appt.id}`,
+    payload: { ...ctx, audience: 'admin', amount_cents: amountCents },
+  });
+  return { ok: false, code: 'cleaner_not_payable', message };
 }
 
 /** Ledger + admin notification for a self-pay completion with nothing to charge. */

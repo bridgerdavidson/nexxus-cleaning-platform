@@ -25,6 +25,11 @@ describe('derivePaymentSectionState', () => {
   it('no card', () => {
     expect(derivePaymentSectionState({ ...base, hasCard: false })).toBe('no_card');
   });
+  it('T1-7: a failed stamp WITHOUT a card presents as no_card, not a false decline', () => {
+    // The no_card bail stamps failed + clears payment_method_id; the panel must say "add a card"
+    // (Update card only), never "your card was declined" + a Pay now that would always 409.
+    expect(derivePaymentSectionState({ ...base, authorizationStatus: 'failed', hasCard: false, jobCompleted: true })).toBe('no_card');
+  });
   it('before charge (card on file, not completed)', () => {
     expect(derivePaymentSectionState({ ...base, hasCard: true, jobCompleted: false })).toBe('before_charge');
   });
