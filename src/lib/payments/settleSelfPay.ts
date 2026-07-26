@@ -11,13 +11,14 @@
  * only the cut is what RETAINS the platform fee (plus any gross-up overshoot) on the platform
  * balance; there is no separate fee transfer. Never short the cleaner, never overpay them.
  *
- * Idempotent (a `selfpay-cleaner-${id}` key + an existing-paid-payout guard) and best-effort:
- * a failed transfer records a `failed` payout row for the retry sweep and never throws into the
- * webhook.
+ * Idempotent (a `selfpay-cleaner-${id}` key — attempt-rotated after a failed create, T1-11 — plus
+ * an existing-paid-payout guard and an adopt-existing scan on retries) and best-effort: a failed
+ * transfer records a `failed` payout row for the retry sweep and never throws into the webhook.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computeSelfPayAmounts } from './selfPayMath';
-import { transferGroupFor, createPlatformTransfer } from '@/lib/stripe/transfers';
+import { transferGroupFor, createPlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
+import { transferIdempotencyKey } from '@/lib/stripe/idempotencyKeys';
 import { recordPaymentEvent } from './events';
 import { chargeAmountRefundedCents } from './refundGuards';
 
@@ -53,11 +54,13 @@ export async function settleSelfPay(
   // but a stored paid payout lets us short-circuit before re-deriving anything.
   const { data: existingPayout } = await supabase
     .from('payouts')
-    .select('id, status, stripe_transfer_id')
+    .select('id, status, stripe_transfer_id, transfer_attempt')
     .eq('appointment_id', appointmentId)
     .limit(1)
     .maybeSingle();
-  const already = existingPayout as { id: string; status: string; stripe_transfer_id: string | null } | null;
+  const already = existingPayout as
+    | { id: string; status: string; stripe_transfer_id: string | null; transfer_attempt: number | null }
+    | null;
   // 'paid'/'bank_paid' = settled; 'reversed' = clawed back, never re-paid.
   if (already?.stripe_transfer_id && ['paid', 'bank_paid', 'reversed'].includes(already.status)) {
     return { settled: true };
@@ -179,6 +182,52 @@ export async function settleSelfPay(
     }
   };
 
+  // T1-11: idempotency-key rotation counter (see settleCleanerPayout). First settlement has no
+  // row, so it always uses the historical unsuffixed key.
+  const attempt = Number(already?.transfer_attempt ?? 0);
+
+  // A prior attempt can create the transfer at Stripe but LOSE the response: the catch below then
+  // writes a 'failed' row with a NULL transfer_id and bumps the attempt, so the retry's ROTATED
+  // key would not collide with the transfer that actually landed — it would double-pay. On any
+  // retry (a prior row exists), adopt an existing cleaner transfer from the group instead of
+  // issuing a new one. (First settlement has no row, so the extra list is skipped there.)
+  if (already) {
+    let existingTransfer:
+      | Awaited<ReturnType<typeof listTransfersByGroup>>[number]
+      | null = null;
+    try {
+      const groupTransfers = await listTransfersByGroup(transferGroup);
+      existingTransfer =
+        groupTransfers.find((t) => {
+          const dest = typeof t.destination === 'string' ? t.destination : t.destination?.id ?? null;
+          return dest === cleaner!.stripe_connect_account_id;
+        }) ?? null;
+    } catch {
+      // Stripe unreadable — fall through; the constant per-attempt key still protects a
+      // same-attempt retry.
+    }
+    if (existingTransfer) {
+      await upsertPayout({
+        ...payoutBase,
+        amount: existingTransfer.amount / 100,
+        status: 'paid',
+        stripe_transfer_id: existingTransfer.id,
+        paid_at: new Date().toISOString(),
+      });
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'cleaner_payout_repaired',
+        prevStatus: already.status,
+        newStatus: 'paid',
+        actor: 'webhook',
+        amount: existingTransfer.amount,
+        payload: { transfer_id: existingTransfer.id, source: 'settle-adopt-existing', self_pay: true },
+      });
+      return { settled: true, reason: 'payout_adopted_existing' };
+    }
+  }
+
   let transfer;
   try {
     transfer = await createPlatformTransfer({
@@ -186,11 +235,13 @@ export async function settleSelfPay(
       amountCents: cleanerCutCents,
       sourceTransactionId: platformChargeId,
       transferGroup,
-      idempotencyKey: `selfpay-cleaner-${appointmentId}`,
+      idempotencyKey: transferIdempotencyKey(`selfpay-cleaner-${appointmentId}`, attempt),
       appointmentId,
     });
   } catch (err) {
-    await upsertPayout({ ...payoutBase, status: 'failed' });
+    // Rotate the key for the NEXT retry (T1-11); the adopt-existing scan above guards every
+    // rotated create against a lost-response transfer that actually landed.
+    await upsertPayout({ ...payoutBase, status: 'failed', transfer_attempt: attempt + 1 });
     await recordPaymentEvent(supabase, {
       appointmentId,
       organizationId: appt.organization_id,

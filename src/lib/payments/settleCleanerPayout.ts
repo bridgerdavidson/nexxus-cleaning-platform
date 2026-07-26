@@ -19,6 +19,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { transferGroupFor, createPlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
+import { transferIdempotencyKey } from '@/lib/stripe/idempotencyKeys';
 import { recordPaymentEvent } from './events';
 import { chargeAmountRefundedCents } from './refundGuards';
 
@@ -69,7 +70,9 @@ export async function settleCleanerPayout(
   // cleaner payout could never self-heal. Skip the tenant leg once it's already recorded.
   const { data: payRow } = await supabase
     .from('payments')
-    .select('amount, transfer_amount, processing_fee_cents, status, stripe_payment_intent_id')
+    .select(
+      'amount, transfer_amount, processing_fee_cents, status, stripe_payment_intent_id, tenant_transfer_attempt',
+    )
     .eq('appointment_id', appointmentId)
     .eq('payment_type', 'revenue')
     .order('created_at', { ascending: false })
@@ -80,6 +83,12 @@ export async function settleCleanerPayout(
     | null;
   const tenantAlreadyTransferred =
     (payRow as { transfer_amount: number | null } | null)?.transfer_amount != null;
+  // T1-11: idempotency-key rotation counter for the tenant leg. 0 = the historical unsuffixed
+  // key; bumped only in the create-failure catch below so the next retry escapes Stripe's ~24h
+  // cached-failure replay on the spent key.
+  const tenantAttempt = Number(
+    (payRow as { tenant_transfer_attempt?: number | null } | null)?.tenant_transfer_attempt ?? 0,
+  );
 
   // T1-4: the webhook (capturedCents != null, = amount_received) can process
   // payment_intent.succeeded BEFORE the charge route commits the revenue payments row — the only
@@ -223,34 +232,84 @@ export async function settleCleanerPayout(
   // 1) Tenant remainder → tenant connected account. This MUST happen or the tenant never gets
   //    paid (funds are stranded on the platform); on failure, record + bail before paying the cleaner.
   if (tenantRemainderCents > 0 && !tenantAlreadyTransferred) {
-    try {
-      await createPlatformTransfer({
-        destinationAccountId: org.stripe_connect_account_id,
-        amountCents: tenantRemainderCents,
-        sourceTransactionId: platformChargeId,
-        transferGroup,
-        idempotencyKey: `tenant-payout-${appointmentId}`,
-        appointmentId,
-      });
+    // A bumped attempt means a prior create FAILED and the key was rotated (T1-11). A rotated key
+    // no longer collides with a transfer whose create actually landed but whose response was lost
+    // (or that 400'd on a same-key params mismatch when the null-charge retry path re-used the
+    // spent key), so before any ROTATED create, adopt an existing tenant transfer from the group
+    // instead of issuing a second one.
+    let adoptedTenantTransfer:
+      | Awaited<ReturnType<typeof listTransfersByGroup>>[number]
+      | null = null;
+    if (tenantAttempt > 0) {
+      try {
+        const groupTransfers = await listTransfersByGroup(transferGroup);
+        adoptedTenantTransfer =
+          groupTransfers.find((t) => {
+            const dest = typeof t.destination === 'string' ? t.destination : t.destination?.id ?? null;
+            return dest === org.stripe_connect_account_id;
+          }) ?? null;
+      } catch {
+        // Stripe unreadable — fall through; the rotated key still protects a same-attempt retry.
+      }
+    }
+    if (adoptedTenantTransfer) {
       await supabase
         .from('payments')
         .update({
-          transfer_amount: tenantRemainderCents,
+          transfer_amount: adoptedTenantTransfer.amount,
           transfer_destination_account_id: org.stripe_connect_account_id,
         })
         .eq('appointment_id', appointmentId)
         .eq('payment_type', 'revenue');
-    } catch (err) {
       await recordPaymentEvent(supabase, {
         appointmentId,
         organizationId: appt.organization_id,
-        eventType: 'tenant_transfer_failed',
-        newStatus: 'failed',
+        eventType: 'tenant_transfer_repaired',
         actor: 'webhook',
-        amount: tenantRemainderCents,
-        payload: { error: err instanceof Error ? err.message : String(err) },
+        amount: adoptedTenantTransfer.amount,
+        payload: { transfer_id: adoptedTenantTransfer.id, source: 'settle-adopt-existing' },
       });
-      return { settled: false, reason: 'tenant_transfer_failed' };
+    } else {
+      try {
+        await createPlatformTransfer({
+          destinationAccountId: org.stripe_connect_account_id,
+          amountCents: tenantRemainderCents,
+          sourceTransactionId: platformChargeId,
+          transferGroup,
+          idempotencyKey: transferIdempotencyKey(`tenant-payout-${appointmentId}`, tenantAttempt),
+          appointmentId,
+        });
+        await supabase
+          .from('payments')
+          .update({
+            transfer_amount: tenantRemainderCents,
+            transfer_destination_account_id: org.stripe_connect_account_id,
+          })
+          .eq('appointment_id', appointmentId)
+          .eq('payment_type', 'revenue');
+      } catch (err) {
+        // Rotate the key for the NEXT retry (T1-11): Stripe replays this failure under the spent
+        // key for ~24h, which would otherwise lock out the admin Retry and the sweep until the key
+        // ages out. Absolute set (not increment) so a concurrent double-catch can't skip a key.
+        await supabase
+          .from('payments')
+          .update({ tenant_transfer_attempt: tenantAttempt + 1 })
+          .eq('appointment_id', appointmentId)
+          .eq('payment_type', 'revenue');
+        await recordPaymentEvent(supabase, {
+          appointmentId,
+          organizationId: appt.organization_id,
+          eventType: 'tenant_transfer_failed',
+          newStatus: 'failed',
+          actor: 'webhook',
+          amount: tenantRemainderCents,
+          payload: {
+            error: err instanceof Error ? err.message : String(err),
+            attempt: tenantAttempt,
+          },
+        });
+        return { settled: false, reason: 'tenant_transfer_failed' };
+      }
     }
   }
 
@@ -264,7 +323,7 @@ export async function settleCleanerPayout(
   // over/underpay the cleaner and strand funds (conservation breaks).
   const { data: priorPayoutRow } = await supabase
     .from('payouts')
-    .select('id, amount, payout_percent_snapshot, status, stripe_transfer_id')
+    .select('id, amount, payout_percent_snapshot, status, stripe_transfer_id, transfer_attempt')
     .eq('appointment_id', appointmentId)
     .limit(1)
     .maybeSingle();
@@ -275,8 +334,12 @@ export async function settleCleanerPayout(
         payout_percent_snapshot: number | string | null;
         status: string;
         stripe_transfer_id: string | null;
+        transfer_attempt: number | null;
       }
     | null;
+  // T1-11: idempotency-key rotation counter for the cleaner leg (see tenantAttempt above). First
+  // settlement has no row, so it always uses the historical unsuffixed key.
+  const cleanerAttempt = Number(priorPayout?.transfer_attempt ?? 0);
 
   // Terminal payout states end the cleaner leg here. 'paid'/'bank_paid' = settled (re-running the
   // transfer with a recomputed amount would collide with the spent idempotency key and falsely
@@ -411,9 +474,11 @@ export async function settleCleanerPayout(
     // NULL transfer_id, which the H4 repair above (transfer_id required) doesn't cover. Re-issuing
     // under the constant `cleaner-payout-${id}` key with a DIFFERENT amount — which a post-carve
     // refund now produces (T1-13) — would 400 on the spent key and loop forever, or double-pay after
-    // Stripe's ~24h key window. On a retry, adopt any cleaner transfer already in the group instead of
-    // issuing a new one; a post-carve refund already reversed it proportionally, so it carries the
-    // correct net amount. (First settlement has no priorPayout, so the extra list is skipped there.)
+    // Stripe's ~24h key window; and a ROTATED key (T1-11, the lost-response catch bumps
+    // transfer_attempt) would not collide at all and double-pay immediately. On a retry, adopt any
+    // cleaner transfer already in the group instead of issuing a new one; a post-carve refund
+    // already reversed it proportionally, so it carries the correct net amount. (First settlement
+    // has no priorPayout, so the extra list is skipped there — and its attempt is always 0.)
     if (priorPayout) {
       let existingCleanerTransfer:
         | Awaited<ReturnType<typeof listTransfersByGroup>>[number]
@@ -457,11 +522,13 @@ export async function settleCleanerPayout(
         amountCents: cleanerSettleCents,
         sourceTransactionId: platformChargeId,
         transferGroup,
-        idempotencyKey: `cleaner-payout-${appointmentId}`,
+        idempotencyKey: transferIdempotencyKey(`cleaner-payout-${appointmentId}`, cleanerAttempt),
         appointmentId,
       });
     } catch (err) {
-      await upsertPayout({ ...payoutBase, status: 'failed' });
+      // Rotate the key for the NEXT retry (T1-11); the adopt-existing scan above guards every
+      // rotated create against a lost-response transfer that actually landed.
+      await upsertPayout({ ...payoutBase, status: 'failed', transfer_attempt: cleanerAttempt + 1 });
       await recordPaymentEvent(supabase, {
         appointmentId,
         organizationId: appt.organization_id,
@@ -469,7 +536,10 @@ export async function settleCleanerPayout(
         newStatus: 'failed',
         actor: 'webhook',
         amount: cleanerSettleCents,
-        payload: { error: err instanceof Error ? err.message : String(err) },
+        payload: {
+          error: err instanceof Error ? err.message : String(err),
+          attempt: cleanerAttempt,
+        },
       });
       return { settled: false, reason: 'cleaner_transfer_failed' };
     }
