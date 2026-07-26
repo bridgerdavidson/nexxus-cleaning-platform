@@ -7,11 +7,17 @@ import { withTestOrg, addOwnerToOrg, type TestOrgFixture } from '../../../../../
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 /**
+<<<<<<< HEAD
  * Pins the payout-model value-space transition (migration 117 / PR1 of the
  * pay-request feature): the route accepts BOTH spellings of the percentage
  * model but writes the LEGACY one until migration 118 backfills the data.
  * When PR2 flips the write to 'percentage', the two write assertions here
  * flip with it - deliberately, not by accident.
+=======
+ * Pins the payout-model value space post-migration-117: the route accepts
+ * BOTH spellings of the percentage model (stale clients may still send the
+ * legacy one) and writes the unified 'percentage'.
+>>>>>>> df88529 (feat(payments): migration 115 - payout-model backfill + default flip + write cutover)
  */
 describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
   let org: TestOrgFixture;
@@ -38,7 +44,11 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
     );
   }
 
+<<<<<<< HEAD
   it("accepts 'percentage' and writes the legacy spelling (transition until migration 118)", async () => {
+=======
+  it("accepts and writes 'percentage'", async () => {
+>>>>>>> df88529 (feat(payments): migration 115 - payout-model backfill + default flip + write cutover)
     const res = await patch({ default_payout_model: 'percentage' }, owner.accessToken);
     expect(res.status).toBe(200);
     const admin = createTestSupabaseClient();
@@ -47,12 +57,19 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
       .select('default_payout_model')
       .eq('id', org.organizationId)
       .single();
-    expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage_contractor');
+    expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage');
   });
 
-  it("accepts the legacy 'percentage_contractor' spelling from stale clients", async () => {
+  it("accepts the legacy 'percentage_contractor' spelling from stale clients and writes 'percentage'", async () => {
     const res = await patch({ default_payout_model: 'percentage_contractor' }, owner.accessToken);
     expect(res.status).toBe(200);
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('organizations')
+      .select('default_payout_model')
+      .eq('id', org.organizationId)
+      .single();
+    expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage');
   });
 
   it('rejects not-yet-selectable models with the availability error', async () => {

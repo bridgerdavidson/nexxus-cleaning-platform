@@ -99,13 +99,10 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      // TRANSITION (until migration 118, PR2 of the pay-request feature,
-      // backfills data and flips column defaults): write the LEGACY spelling,
-      // which both the pre-117 and post-117 constraints accept, so this route
-      // can never 500 in the deploy window where the new bundle is live but
-      // migrate-prod hasn't applied 117 yet. Readers treat both spellings
-      // identically. 118's PR flips this to write 'percentage'.
-      update.default_payout_model = m === 'percentage' ? 'percentage_contractor' : m;
+      // Migration 118 (this PR) backfilled the data and flipped the column
+      // default, so the unified spelling is written directly. (117's PR wrote
+      // the legacy spelling through the constraint-widening deploy window.)
+      update.default_payout_model = m;
     }
 
     if (Object.keys(update).length === 0) {
