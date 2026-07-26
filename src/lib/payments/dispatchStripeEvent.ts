@@ -1035,10 +1035,13 @@ async function markOldestUnattributedPayout(
     .limit(1)
     .maybeSingle();
   if (!candidate) return 0;
+  // Re-assert status='paid' so a concurrent executor (live delivery vs the bank-paid sweep
+  // replaying the same payout) that already stamped or reverted this row wins the race.
   const { data: updated, error } = await supabase
     .from('payouts')
     .update(bankPaidUpdate)
     .eq('id', (candidate as { id: string }).id)
+    .eq('status', 'paid')
     .select('id');
   if (error) {
     console.error('payout.paid: DB error during narrowed fallback update:', error);
@@ -1099,7 +1102,12 @@ async function handlePayoutPaid(
     transferIds = await getPayoutTransferIds(connectedAccountId, payout.id);
     console.log(`payout.paid ${payout.id}: resolved ${transferIds.length} transfer(s)`);
   } catch (err) {
-    console.warn('payout.paid: could not fetch balance transactions, will use fallback:', err);
+    // A resolution ERROR is not knowledge: falling back here used to stamp the oldest
+    // unattributed row with an arbitrary payout id, and the bank-paid sweep multiplies
+    // executions of this path (one transient Stripe 5xx per sweep would eventually
+    // mis-stamp). Leave the rows for the next delivery / sweep cycle instead.
+    console.warn('payout.paid: could not fetch balance transactions; leaving rows for retry:', err);
+    return;
   }
 
   const bankPaidUpdate = {
@@ -1168,6 +1176,9 @@ async function notifyCleanerPaid(
       appointment_id: r.appointment_id,
       organization_id: r.organization_id,
       recipient_user_id: cleanerId,
+      // The bank-paid sweep is a second concurrent invoker of handlePayoutPaid (besides live
+      // delivery + its retries), so this write must be idempotent per payout+job.
+      dedupe_key: `cleaner_paid:${payoutId}:${r.appointment_id}`,
       payload: {
         ...ctx,
         audience: 'cleaner',
@@ -1200,11 +1211,14 @@ async function handlePayoutFailed(
     return;
   }
 
+  // Only bank_paid rows revert: a row this payout once stamped that was since fully clawed
+  // back ('reversed') must NOT be resurrected to 'paid' (retryFailedPayouts would re-pay it).
   const { data: revertedRows, error: updateError } = await supabase
     .from('payouts')
     .update({ status: 'paid', stripe_payout_id: null, bank_paid_at: null })
     .eq('cleaner_id', cleaner.id)
     .eq('stripe_payout_id', payout.id)
+    .eq('status', 'bank_paid')
     .select('id, appointment_id, organization_id, amount');
 
   if (updateError) console.error('Error reverting payouts after payout.failed:', updateError);
@@ -1218,9 +1232,15 @@ async function handlePayoutFailed(
 
   // T3-14: a bank-level payout failure used to be a silent revert — the cleaner with a closed
   // bank account was told nothing and the org never knew payment was bouncing. Ledger each
-  // reverted row (org-scoped; alertable via paymentEventAlerts) and notify both sides. The
-  // notification is payout-level and deduped by payout id, so a webhook re-delivery or a
-  // reconcile replay (which finds 0 rows to revert) never double-notifies.
+  // reverted row (org-scoped; alertable via paymentEventAlerts) and notify both sides, deduped
+  // by payout id. Gated on reverted > 0: the bank-paid sweep replays every terminal payout in
+  // its lookback, and a failure that reverted nothing we track (long-resolved history, or a
+  // re-delivery after the revert) must stay silent rather than alarm the cleaner about money
+  // that was re-paid weeks ago.
+  if (reverted.length === 0) {
+    console.log(`payout.failed ${payout.id}: no bank_paid rows to revert; staying silent`);
+    return;
+  }
   for (const r of reverted) {
     await recordPaymentEvent(supabase, {
       appointmentId: r.appointment_id,

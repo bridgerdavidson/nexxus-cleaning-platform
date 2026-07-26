@@ -1543,6 +1543,69 @@ describe('POST /api/stripe/webhook', () => {
     await admin.from('webhook_events').delete().eq('id', eventId);
   });
 
+  it('payout.paid whose transfer resolution ERRORS stamps nothing (error is not knowledge)', async () => {
+    const admin = createTestSupabaseClient();
+    const acct = `acct_reserr_${org.organizationId.slice(0, 8)}`;
+    await admin
+      .from('cleaner_profiles')
+      .update({ stripe_connect_account_id: acct })
+      .eq('id', org.cleaner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const { data: row } = await admin
+      .from('payouts')
+      .insert({
+        organization_id: org.organizationId,
+        cleaner_id: org.cleaner.userId,
+        appointment_id: appt.id,
+        amount: 60,
+        status: 'paid',
+        stripe_transfer_id: 'tr_reserr_1',
+      })
+      .select('id')
+      .single();
+    // A transient Stripe failure must NOT route to the oldest-unattributed guess: the bank-paid
+    // sweep multiplies executions of this path, so one 5xx per sweep would eventually mis-stamp.
+    vi.mocked(getPayoutTransferIds).mockRejectedValueOnce(new Error('stripe 500'));
+
+    const eventId = `evt_payout_reserr_${org.organizationId.slice(0, 8)}`;
+    const event = {
+      id: eventId,
+      object: 'event',
+      type: 'payout.paid',
+      account: acct,
+      api_version: '2025-12-15.clover',
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'po_reserr', object: 'payout', amount: 6000, arrival_date: Math.floor(Date.now() / 1000) } },
+      livemode: false,
+      pending_webhooks: 0,
+      request: { id: null, idempotency_key: null },
+    };
+    const payload = JSON.stringify(event);
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const { data: after } = await admin
+      .from('payouts')
+      .select('status, stripe_payout_id')
+      .eq('id', (row as { id: string }).id)
+      .single();
+    expect((after as { status: string }).status).toBe('paid');
+    expect((after as { stripe_payout_id: string | null }).stripe_payout_id).toBeNull();
+
+    await admin.from('webhook_events').delete().eq('id', eventId);
+  });
+
   it('transfer.reversed PARTIAL keeps the payout status; FULL terminalizes to reversed (T3-12)', async () => {
     const admin = createTestSupabaseClient();
     const appt = await createTestAppointment({

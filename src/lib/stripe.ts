@@ -355,8 +355,32 @@ export async function getConnectedAccountPayouts(
 }
 
 /**
+ * Resolve the PLATFORM transfer id (tr_...) behind one of a connected-account payout's
+ * balance transactions. On the connected account, a platform→connected Transfer
+ * materializes as a destination PAYMENT (a Charge with a py_... id), so the txn's raw
+ * `source` is that py_ id, NOT the tr_ id we store on the payouts row. With the source
+ * expanded, the Charge's `source_transfer` points back at the originating tr_ id.
+ * Falls back to the raw source id for txn shapes that already carry it directly.
+ * Pure and exported for unit tests.
+ */
+export function payoutTxnSourceTransferId(txn: Stripe.BalanceTransaction): string | null {
+  const source = txn.source;
+  if (!source) return null;
+  if (typeof source === 'string') return source;
+  const st = (source as { source_transfer?: string | Stripe.Transfer | null }).source_transfer;
+  if (typeof st === 'string') return st;
+  if (st && typeof st === 'object' && typeof (st as { id?: string }).id === 'string') {
+    return (st as { id: string }).id;
+  }
+  return typeof (source as { id?: string }).id === 'string' ? (source as { id: string }).id : null;
+}
+
+/**
  * Fetch balance transactions for a connected account's payout (bank transfer).
- * Returns the source transfer IDs that were batched into this Stripe payout.
+ * Returns the PLATFORM source transfer IDs (tr_...) that were batched into this
+ * Stripe payout, mapped from the connected-account destination payments via
+ * `source.source_transfer` (see payoutTxnSourceTransferId — the raw sources are
+ * py_ ids that would never match payouts.stripe_transfer_id).
  *
  * Tries `type: 'payment'` first, and if that yields nothing, retries without a
  * type filter so we catch transfers surfaced under other balance-transaction
@@ -377,6 +401,7 @@ export async function getPayoutTransferIds(
       const params: Stripe.BalanceTransactionListParams = {
         payout: stripePayoutId,
         limit: 100,
+        expand: ['data.source'],
         ...(typeFilter ? { type: typeFilter } : {}),
         ...(startingAfter ? { starting_after: startingAfter } : {}),
       };
@@ -386,9 +411,8 @@ export async function getPayoutTransferIds(
       });
 
       for (const txn of page.data) {
-        if (txn.source && typeof txn.source === 'string') {
-          ids.push(txn.source);
-        }
+        const id = payoutTxnSourceTransferId(txn);
+        if (id) ids.push(id);
       }
 
       hasMore = page.has_more;

@@ -67,3 +67,15 @@ export async function listConnectedAccountPayouts(
   );
   return res.data;
 }
+
+/**
+ * Retrieve a single payout on a connected account. The bank-bounce recheck (T1-3) uses this
+ * to notice a recently-stamped bank_paid payout flipping to failed/canceled at the bank,
+ * which otherwise only the (possibly unsubscribed) payout.failed webhook would report.
+ */
+export async function retrieveConnectedAccountPayout(
+  connectedAccountId: string,
+  payoutId: string,
+): Promise<Stripe.Payout> {
+  return getStripe().payouts.retrieve(payoutId, {}, { stripeAccount: connectedAccountId });
+}
