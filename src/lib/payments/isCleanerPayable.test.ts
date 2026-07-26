@@ -43,4 +43,20 @@ describe('isCleanerPayable', () => {
     expect(isCleanerPayable({ ...payable, payout_percent: '80' })).toBe(true);
     expect(isCleanerPayable({ ...payable, payout_percent: '0' })).toBe(false);
   });
+
+  it('request mode is payable once Connect-onboarded, regardless of percent', () => {
+    expect(isCleanerPayable({ ...payable, payout_model: 'request', payout_percent: 0 })).toBe(true);
+  });
+
+  it('request mode still requires Connect readiness', () => {
+    expect(
+      isCleanerPayable({ ...payable, payout_model: 'request', stripe_connect_onboarding_complete: false }),
+    ).toBe(false);
+  });
+
+  it('flat mode requires a positive flat rate', () => {
+    expect(isCleanerPayable({ ...payable, payout_model: 'flat', payout_percent: 0, flat_rate_cents: 9500 })).toBe(true);
+    expect(isCleanerPayable({ ...payable, payout_model: 'flat', payout_percent: 0, flat_rate_cents: 0 })).toBe(false);
+    expect(isCleanerPayable({ ...payable, payout_model: 'flat', payout_percent: 0, flat_rate_cents: null })).toBe(false);
+  });
 });
