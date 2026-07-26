@@ -116,7 +116,7 @@ This project uses a feature-branch + PR-to-master flow with automated checks in 
 - **Local**: `stripe listen` (T3 above) forwards test-mode events to `localhost:3000`. Required only while iterating on payment flows. The CLI's `whsec_...` is short-lived per session.
 - **Preview (dev branch only)**: a test-mode webhook in Stripe Dashboard points at `dev`'s stable URL with `?x-vercel-protection-bypass=...` to get past Vercel SSO.
 - **Other feature-branch previews**: not covered — Stripe events from preview deploys of feature branches fall on the floor unless you merge that branch to `dev` first.
-- **Production**: live-mode webhook configured in Stripe. **Missing 3 events today** (`transfer.reversed`, `payout.paid`, `payout.failed`) — add when ready so prod payouts auto-mark `bank_paid`.
+- **Production**: live-mode webhook configured in Stripe. **Missing 4 events today** (`transfer.reversed` on the platform endpoint; `payout.paid`, `payout.failed`, `payout.canceled` on the Connect endpoint) — the handlers are cutover-safe (audit T3-12/13/14/15 fixed) and the reconcile sweep's `reconcileBankPaidPayouts` job backstops missed deliveries, so adding them is pure config per `docs/redesign/cutover-runbook.md` §5.1.
 
 ### Things to never do
 

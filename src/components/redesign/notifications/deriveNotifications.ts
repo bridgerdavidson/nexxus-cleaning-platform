@@ -102,6 +102,7 @@ export function operatorNotificationHref(
     case 'authorization_failed':
     case 'authentication_required':
     case 'cancellation_fee_failed':
+    case 'cleaner_payout_bank_failed':
       return '/admin/payments';
     default:
       return '/admin';
@@ -121,7 +122,7 @@ function cleanerNotificationHref(
   if (item.appointment_id) {
     return `/cleaner?job=${item.appointment_id}`;
   }
-  if (item.event_type === 'cleaner_paid') {
+  if (item.event_type === 'cleaner_paid' || item.event_type === 'cleaner_payout_bank_failed') {
     return '/cleaner/earnings';
   }
   return '/cleaner';

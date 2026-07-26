@@ -9,7 +9,9 @@ export type NotificationRole = 'admin' | 'manager' | 'cleaner' | 'homeowner';
 
 export function notificationTab(eventType: string, role: NotificationRole): string {
   if (role === 'cleaner') {
-    return eventType === 'cleaner_paid' ? 'earnings' : 'jobs';
+    return eventType === 'cleaner_paid' || eventType === 'cleaner_payout_bank_failed'
+      ? 'earnings'
+      : 'jobs';
   }
   if (role === 'homeowner') {
     return 'home';
@@ -31,6 +33,7 @@ export function notificationTab(eventType: string, role: NotificationRole): stri
     case 'cancelled_job_refunded':
     case 'refund_failed':
     case 'clawback_blocked':
+    case 'cleaner_payout_bank_failed':
       return 'payments';
     default:
       // homeowner_request_submitted, cleaner_declined, chain_exhausted,

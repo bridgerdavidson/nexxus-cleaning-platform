@@ -209,6 +209,23 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: Banknote,
       };
 
+    case 'cleaner_payout_bank_failed': {
+      if (str(payload, 'audience') === 'cleaner') {
+        return {
+          title: amount ? `Your ${amount} payout failed` : 'Your bank payout failed',
+          detail: 'Update your bank details in Earnings to get paid',
+          tone: 'error',
+          icon: Banknote,
+        };
+      }
+      return {
+        title: cleaner ? `Bank payout failed for ${cleaner}` : 'A cleaner bank payout failed',
+        detail: joinDetail(amount, 'Funds returned to their Stripe balance'),
+        tone: 'error',
+        icon: Banknote,
+      };
+    }
+
     case 'job_started':
       return {
         title: cleaner ? `${cleaner} started the cleaning` : 'Cleaning started',
@@ -429,6 +446,7 @@ const KNOWN_TYPES = new Set<string>([
   'cleaner_counter_proposed',
   'cleaner_response_overdue',
   'cleaner_paid',
+  'cleaner_payout_bank_failed',
   'job_started',
   'job_completed',
   'dispute_opened',

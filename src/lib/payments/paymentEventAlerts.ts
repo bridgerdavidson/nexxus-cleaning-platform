@@ -32,12 +32,15 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   cleaner_clawback_failed: { severity: 'critical', label: 'Cleaner payout clawback failed' },
   // Warning: money is stuck or a platform-account risk signal fired, but it is retryable or non-loss.
   cleaner_transfer_failed: { severity: 'warning', label: 'Cleaner payout transfer failed' },
+  cleaner_payout_bank_failed: { severity: 'warning', label: 'A cleaner bank payout failed, funds returned to their Stripe balance' },
   unmatched_dispute: { severity: 'warning', label: 'A dispute could not be matched to a payment' },
   early_fraud_warning: { severity: 'warning', label: 'Stripe early fraud warning' },
   radar_review_opened: { severity: 'warning', label: 'Stripe Radar opened a review' },
   // Deliberately excluded: setup_intent_failed (a homeowner card-save issue → Tier 2, not
-  // owner-actionable) and duplicate_charge_detected (ACH-only + semantics reworked by T3-1;
-  // ACH alerting is handled in the Tier 3 ACH block, not here).
+  // owner-actionable), duplicate_charge_detected (ACH-only + semantics reworked by T3-1;
+  // ACH alerting is handled in the Tier 3 ACH block, not here), and
+  // transfer_partially_reversed (T3-12 forensic marker; our own partial-refund unwind emits it
+  // routinely, so alerting would page on normal operation).
 };
 
 export interface PaymentEventAlert {

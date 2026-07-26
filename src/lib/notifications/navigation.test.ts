@@ -6,6 +6,7 @@ describe('notificationTab', () => {
     expect(notificationTab('cleaner_assigned', 'cleaner')).toBe('jobs');
     expect(notificationTab('cleaner_force_assigned', 'cleaner')).toBe('jobs');
     expect(notificationTab('cleaner_paid', 'cleaner')).toBe('earnings');
+    expect(notificationTab('cleaner_payout_bank_failed', 'cleaner')).toBe('earnings');
   });
 
   it('always sends a homeowner home', () => {
@@ -44,6 +45,7 @@ describe('notificationTab', () => {
       expect(notificationTab('cancelled_job_refunded', role)).toBe('payments');
       expect(notificationTab('refund_failed', role)).toBe('payments');
       expect(notificationTab('clawback_blocked', role)).toBe('payments');
+      expect(notificationTab('cleaner_payout_bank_failed', role)).toBe('payments');
     }
   });
 });

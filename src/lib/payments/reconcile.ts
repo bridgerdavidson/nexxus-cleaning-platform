@@ -9,6 +9,9 @@
  *   2b. settleUnsettledCaptures      — settle captured charges whose funds never moved (refunds
  *                                      cancelled-job completion charges instead of settling them)
  *   3.  retryFailedPayouts           — re-run cleaner settlement for payouts left 'failed' or 'pending' (held)
+ *   3a. reconcileBankPaidPayouts     — re-derive bank_paid from Stripe's payout list for stuck 'paid'
+ *                                      rows (T1-3: the payout.* webhook events are an optimization,
+ *                                      not a dependency)
  *   3c. retryStrandedRefundUnwinds   — re-run the refund transfer unwind for appointments stranded
  *                                      by a failed reversal (transfer_reversal_failed /
  *                                      refund_clawback_failed / transfer_list_failed)
@@ -33,6 +36,7 @@ import {
   retrievePaymentIntent,
   retrieveCharge,
   listRefundsForPaymentIntent,
+  listConnectedAccountPayouts,
 } from '@/lib/stripe/reconcile';
 import { listTransfersByGroup, transferGroupFor } from '@/lib/stripe/transfers';
 import { stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
@@ -550,6 +554,114 @@ export async function retryFailedPayouts(
   }
 
   return { retried: list.length, settled };
+}
+
+// ── 3a) Bank-paid payout reconcile (T1-3) ───────────────────────────────────────
+export interface BankPaidReconcileResult {
+  cleanersChecked: number;
+  replayed: number;
+}
+
+// Stripe payouts arrive T+2, so give the live webhook first crack; below 3 days a 'paid' row is
+// normal in-flight state, not drift.
+const BANK_PAID_MIN_AGE_DAYS = 3;
+// A permanently-unmatchable row must not poll Stripe every sweep forever; outside the lookback it
+// stays visible as 'paid' in the ledger UI but is no longer polled.
+const BANK_PAID_LOOKBACK_DAYS = 45;
+const BANK_PAID_CLEANER_BATCH = 10;
+const BANK_PAID_PAYOUTS_PER_CLEANER = 20;
+
+/**
+ * T1-3: `bank_paid` must not depend on webhook delivery. A payouts row sits 'paid' (the transfer
+ * landed on the cleaner's connected balance) until a payout.paid event marks it bank_paid; if the
+ * event subscription is missing/misconfigured or a delivery is lost, the row lies at 'paid'
+ * forever and a bank-level payout failure changes nothing. This job re-derives the truth from
+ * Stripe: for cleaners with old-enough stuck 'paid' rows, list the connected account's recent
+ * payouts and replay each terminal one through the normal idempotent dispatcher as a synthetic
+ * payout.paid / payout.failed event (the same pattern reconcileStuckPayments uses for PI states).
+ * All matching, replay-guard, notification and dedupe logic lives in the handlers, so webhook
+ * delivery and reconcile discovery can never disagree.
+ */
+export async function reconcileBankPaidPayouts(
+  supabase: SupabaseClient,
+  opts: { minAgeDays?: number; lookbackDays?: number; cleanerBatch?: number } = {},
+): Promise<BankPaidReconcileResult> {
+  const minAgeDays = opts.minAgeDays ?? BANK_PAID_MIN_AGE_DAYS;
+  const lookbackDays = opts.lookbackDays ?? BANK_PAID_LOOKBACK_DAYS;
+  const cleanerBatch = opts.cleanerBatch ?? BANK_PAID_CLEANER_BATCH;
+  const minAgeCutoff = staleCutoffIso(minAgeDays * 24 * 60);
+  const lookbackCutoff = staleCutoffIso(lookbackDays * 24 * 60);
+
+  const { data: stuckRows, error: selectError } = await supabase
+    .from('payouts')
+    .select('cleaner_id')
+    .eq('status', 'paid')
+    .not('stripe_transfer_id', 'is', null)
+    .lte('paid_at', minAgeCutoff)
+    .gte('paid_at', lookbackCutoff)
+    .order('paid_at', { ascending: true })
+    .limit(200);
+  if (selectError) {
+    // A failing select silently disables the backstop (the T1-10 F3 lesson); no new columns are
+    // involved so this can only be transient, but say so loudly rather than returning "0 checked".
+    console.error('reconcileBankPaidPayouts: candidate select failed:', selectError);
+    return { cleanersChecked: 0, replayed: 0 };
+  }
+
+  // Oldest-first distinct cleaners so one busy cleaner can't starve the rest.
+  const cleanerIds: string[] = [];
+  for (const r of (stuckRows ?? []) as Array<{ cleaner_id: string }>) {
+    if (!cleanerIds.includes(r.cleaner_id)) cleanerIds.push(r.cleaner_id);
+    if (cleanerIds.length >= cleanerBatch) break;
+  }
+
+  let replayed = 0;
+  for (const cleanerId of cleanerIds) {
+    const { data: cleaner } = await supabase
+      .from('cleaner_profiles')
+      .select('stripe_connect_account_id')
+      .eq('id', cleanerId)
+      .maybeSingle();
+    const acct = (cleaner as { stripe_connect_account_id: string | null } | null)
+      ?.stripe_connect_account_id;
+    if (!acct) continue;
+
+    let payouts: Stripe.Payout[];
+    try {
+      payouts = await listConnectedAccountPayouts(acct, {
+        createdAfterEpochSec: Math.floor((Date.now() - lookbackDays * 24 * 60 * 60 * 1000) / 1000),
+      });
+    } catch (err) {
+      console.error('reconcileBankPaidPayouts: could not list payouts for', acct, err);
+      continue;
+    }
+
+    for (const po of payouts.slice(0, BANK_PAID_PAYOUTS_PER_CLEANER)) {
+      // Only terminal payout states are actionable; pending/in_transit resolve on their own.
+      const type =
+        po.status === 'paid'
+          ? 'payout.paid'
+          : po.status === 'failed' || po.status === 'canceled'
+            ? 'payout.failed'
+            : null;
+      if (!type) continue;
+      const synthetic = {
+        id: `reconcile_${po.id}_${po.status}`,
+        object: 'event',
+        type,
+        data: { object: po },
+        account: acct,
+      } as unknown as Stripe.Event;
+      try {
+        await dispatchStripeEvent(supabase, synthetic);
+        replayed++;
+      } catch (err) {
+        console.error('reconcileBankPaidPayouts: replay failed for payout', po.id, err);
+      }
+    }
+  }
+
+  return { cleanersChecked: cleanerIds.length, replayed };
 }
 
 // ── 4) Money-math invariant check ─────────────────────────────────────────────────

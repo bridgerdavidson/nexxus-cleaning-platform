@@ -139,6 +139,15 @@ describe('cleanerNotificationHref (via deriveNotificationGroups role="cleaner")'
     expect(g.latest.href).toBe('/cleaner/earnings');
   });
 
+  it('routes cleaner_payout_bank_failed (no appointment) to the earnings screen (T3-14)', () => {
+    const [g] = deriveNotificationGroups(
+      [item({ appointment_id: null, event_type: 'cleaner_payout_bank_failed' })],
+      NOW,
+      'cleaner',
+    );
+    expect(g.latest.href).toBe('/cleaner/earnings');
+  });
+
   it('falls back to cleaner dashboard home for non-appointment, non-paid events', () => {
     const [g] = deriveNotificationGroups(
       [item({ appointment_id: null, event_type: 'something_else' })],
