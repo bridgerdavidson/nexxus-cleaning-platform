@@ -22,6 +22,8 @@ const EVENT_TYPES: NotificationEventType[] = [
   'charge_failed',
   'cancellation_fee_failed',
   'self_pay_no_card',
+  'tenant_payments_not_ready',
+  'cleaner_not_payable',
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',
@@ -188,6 +190,42 @@ describe('describeNotification', () => {
     });
     expect(needsAuth.title).toBe('Confirm your payment');
     expect(needsAuth.tone).toBe('warning');
+  });
+
+  it('words charge_failed reason no_card for admin vs homeowner (T1-7)', () => {
+    const admin = describeNotification('charge_failed', { ...FULL_PAYLOAD, reason: 'no_card' });
+    expect(admin.title).toBe('No card on file for Jane Doe');
+    expect(admin.detail).toContain('Completed job not yet paid');
+    expect(admin.tone).toBe('error');
+
+    const homeowner = describeNotification('charge_failed', {
+      ...FULL_PAYLOAD,
+      audience: 'homeowner',
+      reason: 'no_card',
+    });
+    expect(homeowner.title).toBe('Add a card to pay for your cleaning');
+    expect(homeowner.detail).toContain('no card on file');
+    expect(homeowner.detail).toContain('$42.00');
+    expect(homeowner.tone).toBe('error');
+
+    // No customer name -> generic admin wording.
+    expect(describeNotification('charge_failed', { reason: 'no_card' }).title).toBe(
+      'No card on file for a completed job',
+    );
+  });
+
+  it('describes tenant_payments_not_ready and cleaner_not_payable (T1-7 bail visibility)', () => {
+    const tenant = describeNotification('tenant_payments_not_ready', FULL_PAYLOAD);
+    expect(tenant.title).toBe('Finish Stripe setup to collect payment');
+    expect(tenant.detail).toContain('cannot be charged until your Stripe account is ready');
+    expect(tenant.detail).toContain('$42.00');
+    expect(tenant.tone).toBe('error');
+
+    const cleaner = describeNotification('cleaner_not_payable', FULL_PAYLOAD);
+    expect(cleaner.title).toBe('Wanda Jones is not set up for payouts');
+    expect(cleaner.tone).toBe('error');
+    // No cleaner name -> generic.
+    expect(describeNotification('cleaner_not_payable').title).toBe('Cleaner payout setup incomplete');
   });
 
   it('words cancellation_fee_failed by reason', () => {

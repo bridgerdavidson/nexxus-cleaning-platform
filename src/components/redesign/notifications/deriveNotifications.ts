@@ -95,6 +95,8 @@ export function operatorNotificationHref(
     case 'refund_failed':
     case 'cancelled_job_refunded':
     case 'self_pay_no_card':
+    case 'tenant_payments_not_ready':
+    case 'cleaner_not_payable':
     case 'clawback_blocked':
     case 'charge_failed':
     case 'authorization_failed':

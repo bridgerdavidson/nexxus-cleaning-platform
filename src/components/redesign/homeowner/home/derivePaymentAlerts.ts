@@ -45,6 +45,16 @@ export function derivePaymentAlerts(appointments: Appointment[]): PaymentAlertVM
       const date = cleaningDateLabel(a.scheduled_date);
       const forCleaning = date ? `your cleaning on ${date}` : 'your recent cleaning';
       if (a.authorization_status === 'failed') {
+        // A failed stamp with NO saved card is the T1-7 no-card bail (the bail clears the dead
+        // payment_method_id): nothing was declined, so say "add a card", not a false decline.
+        if (!a.payment_method_id) {
+          return {
+            id: a.id,
+            tone: 'critical' as const,
+            title: 'Add a card to finish payment',
+            description: `There is no card on file for ${forCleaning}. Tap to add a card and finish payment.`,
+          };
+        }
         return {
           id: a.id,
           tone: 'critical' as const,

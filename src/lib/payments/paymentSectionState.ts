@@ -22,7 +22,10 @@ export function derivePaymentSectionState(input: {
 }): PaymentSectionState {
   const { authorizationStatus, paymentStatus, isSelfPay, jobCompleted, hasCard } = input;
   if (isSelfPay) return 'self_pay';
-  if (authorizationStatus === 'failed') return 'failed';
+  // A 'failed' stamp with NO card is the T1-7 no-card bail (never a decline: the bail clears the
+  // dead payment_method_id). Present it as no_card so the copy says "add a card" instead of a
+  // false "your card was declined", and so no dead-end Pay now (which would 409) is offered.
+  if (authorizationStatus === 'failed') return hasCard ? 'failed' : 'no_card';
   if (authorizationStatus === 'requires_action') return 'requires_action';
   if (paymentStatus === 'paid' || authorizationStatus === 'captured') return 'paid';
   if (paymentStatus === 'processing') return 'processing';

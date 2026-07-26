@@ -90,6 +90,21 @@ describe('cardLinkEmail', () => {
     expect(text).toContain('$100.00');
   });
 
+  it('T1-7: uses no-card wording (never a false "declined") for the no_card reason', () => {
+    const { subject, html, text } = cardLinkEmail({
+      homeownerName: 'John',
+      orgName: 'Sparkle Co',
+      url: URL,
+      failedPayment: { reason: 'no_card', amountLabel: '$100.00', dateLabel: 'June 24' },
+    });
+    expect(subject).toBe('Action needed: your payment to Sparkle Co did not go through');
+    expect(html).toContain('no card on file');
+    expect(html).toContain('has not been paid yet');
+    expect(html).not.toContain('was declined');
+    expect(text).toContain('no card on file');
+    expect(text).not.toContain('was declined');
+  });
+
   it('uses bank-verification wording for requires_action, and omits missing amount/date', () => {
     const { subject, html, text } = cardLinkEmail({
       homeownerName: 'John',

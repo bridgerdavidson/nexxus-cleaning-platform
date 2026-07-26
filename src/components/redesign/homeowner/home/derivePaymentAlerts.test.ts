@@ -14,12 +14,22 @@ function appt(overrides: Partial<Appointment>): Appointment {
 
 describe('derivePaymentAlerts', () => {
   it('creates a critical alert for a failed charge, including on completed cleanings', () => {
-    const alerts = derivePaymentAlerts([appt({ authorization_status: 'failed' })]);
+    // A real decline still has the card on file; the T1-7 no-card bail clears it (next test).
+    const alerts = derivePaymentAlerts([appt({ authorization_status: 'failed', payment_method_id: 'pm_1' })]);
     expect(alerts).toHaveLength(1);
     expect(alerts[0].tone).toBe('critical');
     expect(alerts[0].title).toBe('Payment failed');
     expect(alerts[0].description).toContain('June 24');
     expect(alerts[0].id).toBe('a1');
+  });
+
+  it('T1-7: a failed stamp with NO card says "add a card", never a false decline', () => {
+    const alerts = derivePaymentAlerts([appt({ authorization_status: 'failed', payment_method_id: null })]);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].tone).toBe('critical');
+    expect(alerts[0].title).toBe('Add a card to finish payment');
+    expect(alerts[0].description).toContain('no card on file');
+    expect(alerts[0].description).not.toContain("couldn't charge your card");
   });
 
   it('creates a caution alert for requires_action', () => {

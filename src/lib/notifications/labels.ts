@@ -272,7 +272,9 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
     }
 
     case 'charge_failed': {
-      const needsAuth = str(payload, 'reason') === 'authentication_required';
+      const reason = str(payload, 'reason');
+      const needsAuth = reason === 'authentication_required';
+      const noCard = reason === 'no_card';
       if (str(payload, 'audience') === 'homeowner') {
         if (needsAuth) {
           return {
@@ -280,6 +282,14 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
             detail: joinDetail('Your bank needs to verify your card', property, when),
             tone: 'warning',
             icon: ShieldAlert,
+          };
+        }
+        if (noCard) {
+          return {
+            title: 'Add a card to pay for your cleaning',
+            detail: joinDetail('Your cleaning is complete but there is no card on file', amount, when),
+            tone: 'error',
+            icon: CreditCard,
           };
         }
         return {
@@ -297,6 +307,14 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
           icon: ShieldAlert,
         };
       }
+      if (noCard) {
+        return {
+          title: customer ? `No card on file for ${customer}` : 'No card on file for a completed job',
+          detail: joinDetail('Completed job not yet paid', property, amount),
+          tone: 'error',
+          icon: CreditCard,
+        };
+      }
       return {
         title: customer ? `Payment failed for ${customer}` : 'Payment failed for a completed job',
         detail: joinDetail(property, amount),
@@ -304,6 +322,22 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: CreditCard,
       };
     }
+
+    case 'tenant_payments_not_ready':
+      return {
+        title: 'Finish Stripe setup to collect payment',
+        detail: joinDetail('A completed job cannot be charged until your Stripe account is ready', property, amount),
+        tone: 'error',
+        icon: CreditCard,
+      };
+
+    case 'cleaner_not_payable':
+      return {
+        title: cleaner ? `${cleaner} is not set up for payouts` : 'Cleaner payout setup incomplete',
+        detail: joinDetail('A self-pay job cannot be charged until payout setup is finished', property, amount),
+        tone: 'error',
+        icon: CreditCard,
+      };
 
     case 'cancellation_fee_failed': {
       const reason = str(payload, 'reason');
@@ -403,6 +437,8 @@ const KNOWN_TYPES = new Set<string>([
   'charge_failed',
   'cancellation_fee_failed',
   'self_pay_no_card',
+  'tenant_payments_not_ready',
+  'cleaner_not_payable',
   'cancelled_job_refunded',
   'refund_failed',
   'clawback_blocked',

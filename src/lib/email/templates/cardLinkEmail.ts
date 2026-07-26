@@ -13,8 +13,11 @@
  */
 
 export interface FailedPaymentContext {
-  /** 'declined' = the charge failed; 'verification' = the bank wants 3DS/extra confirmation. */
-  reason: 'declined' | 'verification';
+  /**
+   * 'declined' = the charge failed; 'verification' = the bank wants 3DS/extra confirmation;
+   * 'no_card' = a completed job has no usable card on file (T1-7 bail), so nothing was declined.
+   */
+  reason: 'declined' | 'verification' | 'no_card';
   /** Preformatted, e.g. "$100.00". Server-derived from the appointment, never client input. */
   amountLabel: string | null;
   /** Preformatted, e.g. "June 24". Server-derived from the appointment. */
@@ -83,13 +86,17 @@ export function cardLinkEmail({
       : `Update your payment method for ${orgName}`,
   );
   const preheader = failedPayment
-    ? 'Your card could not be charged for your recent cleaning. Update it to get this resolved.'
+    ? failedPayment.reason === 'no_card'
+      ? 'A card is needed to pay for your recent cleaning. Add one to get this resolved.'
+      : 'Your card could not be charged for your recent cleaning. Update it to get this resolved.'
     : 'Add or update the card on file for your cleanings. It takes about a minute.';
   const heading = failedPayment ? 'Your payment did not go through' : 'Update your card on file';
   const leadHtml = failedPayment
     ? failedPayment.reason === 'verification'
       ? `Your bank needs extra verification before the payment for ${escapeHtml(cleaningRef)} can go through, so ${safeOrg} has not been paid yet. Please update or re-confirm your card using the secure link below. If you have questions, contact ${safeOrg} directly.`
-      : `The card on file was declined for ${escapeHtml(cleaningRef)}, so ${safeOrg} has not been paid yet. Please update your card using the secure link below. If you have questions, contact ${safeOrg} directly.`
+      : failedPayment.reason === 'no_card'
+        ? `There is no card on file for ${escapeHtml(cleaningRef)}, so ${safeOrg} has not been paid yet. Please add a card using the secure link below. If you have questions, contact ${safeOrg} directly.`
+        : `The card on file was declined for ${escapeHtml(cleaningRef)}, so ${safeOrg} has not been paid yet. Please update your card using the secure link below. If you have questions, contact ${safeOrg} directly.`
     : `${safeOrg} keeps a card on file to pay for your cleanings. Use the secure link below to add or update your card. It takes about a minute.`;
 
   const fontStack =
@@ -143,7 +150,9 @@ export function cardLinkEmail({
   const leadText = failedPayment
     ? failedPayment.reason === 'verification'
       ? `Your bank needs extra verification before the payment for ${cleaningRef} can go through, so ${orgName} has not been paid yet. Update or re-confirm your card with this secure link, or contact ${orgName} if you have questions:`
-      : `The card on file was declined for ${cleaningRef}, so ${orgName} has not been paid yet. Update your card with this secure link, or contact ${orgName} if you have questions:`
+      : failedPayment.reason === 'no_card'
+        ? `There is no card on file for ${cleaningRef}, so ${orgName} has not been paid yet. Add a card with this secure link, or contact ${orgName} if you have questions:`
+        : `The card on file was declined for ${cleaningRef}, so ${orgName} has not been paid yet. Update your card with this secure link, or contact ${orgName} if you have questions:`
     : `${orgName} keeps a card on file to pay for your cleanings. Use this secure link to add or update your card:`;
 
   const text = [

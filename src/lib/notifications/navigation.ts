@@ -26,6 +26,8 @@ export function notificationTab(eventType: string, role: NotificationRole): stri
     case 'charge_failed':
     case 'cancellation_fee_failed':
     case 'self_pay_no_card':
+    case 'tenant_payments_not_ready':
+    case 'cleaner_not_payable':
     case 'cancelled_job_refunded':
     case 'refund_failed':
     case 'clawback_blocked':
