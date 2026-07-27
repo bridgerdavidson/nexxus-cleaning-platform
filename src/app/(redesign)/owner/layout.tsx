@@ -2,17 +2,9 @@
 
 import { type ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { PlatformShell } from '@/components/redesign/platform/PlatformShell';
-
-function Spinner() {
-  return (
-    <div className="grid min-h-dvh place-items-center bg-background">
-      <Loader2 className="h-8 w-8 animate-spin text-brand-600" aria-label="Loading" />
-    </div>
-  );
-}
+import { FullPageLoader } from '@/components/ui/nexxus-loader';
 
 /**
  * Platform-owner back-office layout. Owns the three-way access guard (mirrors the
@@ -39,7 +31,7 @@ export default function PlatformOwnerLayout({ children }: { children: ReactNode 
     }
   }, [user, loading, isPlatformAdmin, router]);
 
-  if (loading || !user || isPlatformAdmin !== true) return <Spinner />;
+  if (loading || !user || isPlatformAdmin !== true) return <FullPageLoader />;
 
   return <PlatformShell>{children}</PlatformShell>;
 }

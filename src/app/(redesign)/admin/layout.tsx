@@ -2,22 +2,11 @@
 
 import { type ReactNode, Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
+import { FullPageLoader } from "@/components/ui/nexxus-loader";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-
-function Spinner() {
-  return (
-    <div className="grid min-h-dvh place-items-center bg-background">
-      <div className="text-center">
-        <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-brand-600" />
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    </div>
-  );
-}
 
 /**
  * Operator (admin + manager) dashboard layout. Owns the auth/org guard and
@@ -54,12 +43,12 @@ export default function OperatorDashboardLayout({ children }: { children: ReactN
     }
   }, [user, loading, router, wrongRole]);
 
-  if (loading || !user || orgStatus === "idle" || orgStatus === "loading") return <Spinner />;
+  if (loading || !user || orgStatus === "idle" || orgStatus === "loading") return <FullPageLoader />;
   if (orgStatus === "error") return <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />;
-  if (wrongRole) return <Spinner />;
+  if (wrongRole) return <FullPageLoader />;
 
   return (
-    <Suspense fallback={<Spinner />}>
+    <Suspense fallback={<FullPageLoader />}>
       <OperatorShell>{children}</OperatorShell>
     </Suspense>
   );
