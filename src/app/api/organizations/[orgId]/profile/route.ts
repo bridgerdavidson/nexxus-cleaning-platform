@@ -83,7 +83,7 @@ export async function PATCH(
     }
 
     if (body.default_payout_model !== undefined) {
-      // 'percentage_contractor' was renamed to 'percentage' in migration 114;
+      // 'percentage_contractor' was renamed to 'percentage' in migration 116;
       // accept the old spelling from not-yet-redeployed clients, write the new one.
       const m =
         body.default_payout_model === 'percentage_contractor' ? 'percentage' : body.default_payout_model;
@@ -99,7 +99,7 @@ export async function PATCH(
           { status: 400 },
         );
       }
-      // TRANSITION (until migration 115, PR2 of the pay-request feature,
+      // TRANSITION (until migration 117, PR2 of the pay-request feature,
       // backfills data and flips column defaults): write the LEGACY spelling,
       // which both the pre-114 and post-114 constraints accept, so this route
       // can never 500 in the deploy window where the new bundle is live but

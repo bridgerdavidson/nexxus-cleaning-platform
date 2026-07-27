@@ -6,7 +6,7 @@
 --    deliberately does NOT backfill data or flip column defaults: old readers
 --    that compare against 'percentage_contractor' keep working until every
 --    server/bundle understands both spellings. The backfill + default flip +
---    write-side cutover ship together in migration 115 (PR 2 of this feature).
+--    write-side cutover ship together in migration 117 (PR 2 of this feature).
 -- 2) organizations.min_margin_bps  - request-mode auto-approve threshold.
 -- 3) cleaner_profiles.flat_rate_cents - flat-per-job mode parameter.
 -- 4) pay_requests + pay_request_offers - negotiation thread. Writes are
