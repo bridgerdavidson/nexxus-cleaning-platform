@@ -122,8 +122,21 @@ module.exports = {
         // nav's active-tab pip growing in. Both use the out-soft easing token.
         'page-in': 'pageIn 240ms cubic-bezier(0.16, 1, 0.3, 1)',
         'nav-pip-in': 'navPipIn 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        // NexxusLoader (see components/ui/nexxus-loader.tsx): reveal band
+        // traveling through a mask, and the one-shot ghost settle.
+        'nexxus-band': 'nexxusBand 1.6s linear infinite',
+        'nexxus-ghost': 'nexxusGhost 1.6s linear forwards',
       },
       keyframes: {
+        // Per-element travel vector comes from --band-tx/--band-ty custom props.
+        nexxusBand: {
+          '0%': { transform: 'translate(0, 0)' },
+          '100%': { transform: 'translate(var(--band-tx), var(--band-ty))' },
+        },
+        nexxusGhost: {
+          '0%, 50%': { opacity: '0' },
+          '68%, 100%': { opacity: '0.14' },
+        },
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },

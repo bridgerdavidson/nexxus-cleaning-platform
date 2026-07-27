@@ -17,6 +17,14 @@ import { cn } from '@/lib/utils'
  * deforms; colors are the design-system tokens brand-600 / sky-400, which are
  * the mark's own colors. Honors prefers-reduced-motion by showing the static
  * mark instead.
+ *
+ * The bands are driven by CSS animations (tailwind `animate-nexxus-band` /
+ * `animate-nexxus-ghost`), NOT SMIL: SMIL clocks run on the document timeline,
+ * which does not start until the document load event, so a loader mounted
+ * during hydration renders frozen until then (and rewinding the timeline via
+ * setCurrentTime before it starts freezes it permanently in some engines).
+ * CSS animations start when the element enters the document, so every mount
+ * deterministically begins at the draw-in.
  */
 
 const PATHS = {
@@ -47,26 +55,12 @@ const PIECES = [
   { d: PATHS.accTR, tone: 'fill-sky-400', band: 2 },
 ] as const
 
-const DUR = '1.6s'
-
 export function NexxusLoader({ className }: { className?: string }) {
   // useId can contain characters that are invalid inside url(#...) references.
   const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '')
-  const svgRef = React.useRef<SVGSVGElement>(null)
-
-  // SMIL clocks run on the document timeline, so a loader mounted mid-session
-  // would start mid-cycle. Rewind so every mount begins with the draw-in.
-  React.useEffect(() => {
-    svgRef.current?.setCurrentTime(0)
-  }, [])
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox="0 0 147.35 125.65"
-      className={cn('h-10 w-auto', className)}
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 147.35 125.65" className={cn('h-10 w-auto', className)} aria-hidden="true">
       <defs>
         {BANDS.map((b, i) => (
           <React.Fragment key={i}>
@@ -82,13 +76,6 @@ export function NexxusLoader({ className }: { className?: string }) {
               <stop offset="0.1" stopColor="#fff" />
               <stop offset="0.9" stopColor="#fff" />
               <stop offset="1" stopColor="#fff" stopOpacity="0" />
-              <animateTransform
-                attributeName="gradientTransform"
-                type="translate"
-                values={`0 0;${b.tx} ${b.ty}`}
-                dur={DUR}
-                repeatCount="indefinite"
-              />
             </linearGradient>
             <mask
               id={`${uid}-m${i}`}
@@ -98,7 +85,17 @@ export function NexxusLoader({ className }: { className?: string }) {
               width="280"
               height="270"
             >
-              <rect x="-60" y="-70" width="280" height="270" fill={`url(#${uid}-g${i})`} />
+              {/* Translating the rect moves its user space, and the
+                  userSpaceOnUse gradient fill travels with it. */}
+              <rect
+                x="-60"
+                y="-70"
+                width="280"
+                height="270"
+                fill={`url(#${uid}-g${i})`}
+                className="animate-nexxus-band"
+                style={{ '--band-tx': `${b.tx}px`, '--band-ty': `${b.ty}px` } as React.CSSProperties}
+              />
             </mask>
           </React.Fragment>
         ))}
@@ -113,15 +110,9 @@ export function NexxusLoader({ className }: { className?: string }) {
 
       <g className="motion-reduce:hidden">
         {/* Ghost: invisible during the first draw-in, fades up under the full
-            mark during the hold so the first drain-out reveals it, then stays. */}
-        <g opacity="0">
-          <animate
-            attributeName="opacity"
-            values="0;0;0.14;0.14"
-            keyTimes="0;0.5;0.68;1"
-            dur={DUR}
-            fill="freeze"
-          />
+            mark during the hold so the first drain-out reveals it, then stays
+            (animation-fill-mode: forwards). */}
+        <g opacity="0" className="animate-nexxus-ghost">
           {PIECES.map((p, i) => (
             <path key={i} d={p.d} className={p.tone} />
           ))}
