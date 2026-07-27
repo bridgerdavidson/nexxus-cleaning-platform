@@ -46,16 +46,15 @@ redirect block — land small before big).
 Source: `payments-audit-v4-backlog.md` Tier 1 (T1-1 … T1-11). CRITICAL/HIGH, all live in prod.
 Suggested internal order:
 
-- [ ] **T1-8 first** — wire `payment_events` + reconciler findings to real alerts. It is the
-      substrate several other fixes report through, and it IS the "balance-floor monitor"
-      already owed as a platform-fee follow-up. T1-9 depends on it.
-- [ ] T1-1 (CRITICAL: refund-unwind transfer-reversal failure = platform eats the money),
-      then T1-2, T1-4, T1-5, T1-6, T1-7, T1-9, T1-10, T1-11 per the backlog.
-- [ ] **T1-3 (bank_paid unreachable) is coupled to the webhook-events ops step**: fix
-      **T3-12 BEFORE** subscribing `transfer.reversed` in prod (partial-reversal
-      terminalization bug arms the moment the event is added), then add the 3 missing prod
-      webhook events (`transfer.reversed`, `payout.paid`, `payout.failed` — runbook §5.1
-      checklist), then the reconcile job. T3-13/14/15 are same-area cleanups to fold in.
+- [x] **TIER 1 COMPLETE (2026-07-26): all 18 items (T1-1 … T1-18) closed.** Final PRs:
+      #206 (T1-11, migration 114), #207 (T1-14/15/17/18 bundle, migration 115), #208 (T1-16,
+      migration 116), #211 (T1-12a, closing PR). Earlier: T1-8 (#177/#179), T1-1 (#187, m112),
+      T1-2/12b/13 (#192), T1-4/9 (#194), T1-5 (#199), T1-10 (#200, m113), T1-6 (#202),
+      T1-7 (#203), T1-3+T3-12/13/14/15 (#204 + the §5.1 Stripe Dashboard ops step, confirmed
+      done). All migrations (112-116) verified in prod. Per-item detail + adversarial-review
+      annotations: `payments-audit-v4-backlog.md`.
+      ⚠ Standing ops rule: never Vercel-rollback past `70adc1b` once any transfer_attempt
+      counter > 0; roll forward via a revert PR (see backlog T1-11/F8).
 
 ## 3. Payments audit Tier 2 — visibility & notification gaps (pre-MVP)
 
