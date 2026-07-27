@@ -103,6 +103,8 @@ export function operatorNotificationHref(
     case 'authentication_required':
     case 'cancellation_fee_failed':
     case 'cleaner_payout_bank_failed':
+    case 'pay_request_escalated':
+    case 'pay_request_accepted':
       return '/admin/payments';
     default:
       return '/admin';
@@ -119,6 +121,11 @@ export function operatorNotificationHref(
 function cleanerNotificationHref(
   item: Pick<NotificationItem, 'event_type' | 'appointment_id'>,
 ): string {
+  // Pay-request rounds live on the Earnings screen (the thread sheet opens
+  // there), so they route to Earnings even though they carry an appointment.
+  if (item.event_type === 'pay_request_countered' || item.event_type === 'pay_request_approved') {
+    return '/cleaner/earnings';
+  }
   if (item.appointment_id) {
     return `/cleaner?job=${item.appointment_id}`;
   }
