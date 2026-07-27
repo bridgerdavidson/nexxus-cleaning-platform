@@ -10,6 +10,15 @@ import { chargeCancellationFee } from '@/lib/payments/chargeCancellationFee';
 // headroom over the platform default so a slow Stripe call can't 504.
 export const maxDuration = 60;
 
+// T1-18(a): the cancel previews (CancelCleaningSheet / CancelBookingDialog) compute the
+// late-cancel window on the CLIENT clock while this route recomputes it on the server clock, so a
+// booking scheduled right at the window boundary could preview "$0, outside window" and then be
+// charged at submit purely from clock skew. Shifting the route's fee clock BACK by this grace
+// means a cancel previewed as outside the window can never flip to a charged fee (for skew below
+// the grace); the divergence that remains, a previewed fee charged as $0 just inside the
+// boundary, is customer-favorable. No-show fees are window-independent and unaffected.
+const CANCEL_WINDOW_SKEW_GRACE_MS = 5 * 60_000;
+
 /**
  * POST /api/appointments/:appointmentId/cancel
  *
@@ -123,7 +132,7 @@ export async function POST(
 
     // Org cancellation policy. The no-show fee is a SEPARATE policy from the late-cancel fee (T1-6):
     // a no-show is billed by no_show_fee_*, an inside-window cancel by cancellation_fee_*.
-    const { data: orgRow } = await supabaseAdmin
+    const { data: orgRow, error: orgPolicyError } = await supabaseAdmin
       .from('organizations')
       .select(
         'cancellation_window_hours, cancellation_fee_type, cancellation_fee_value, no_show_fee_type, no_show_fee_value',
@@ -149,20 +158,40 @@ export async function POST(
     let feeCents = 0;
     let insideWindow = false;
     if (!appt.is_self_pay && appt.status !== 'completed' && !inflightDebit) {
-      const fee = computeCancellationFee({
-        party: effectiveParty,
-        noShow: effectiveNoShow,
-        grossCents,
-        windowHours: org?.cancellation_window_hours ?? 24,
-        feeType: org?.cancellation_fee_type ?? 'none',
-        feeValue: Number(org?.cancellation_fee_value ?? 0),
-        noShowFeeType: org?.no_show_fee_type ?? 'none',
-        noShowFeeValue: Number(org?.no_show_fee_value ?? 0),
-        scheduledDate: appt.scheduled_date,
-        scheduledTime: appt.scheduled_time,
-      });
-      feeCents = fee.feeCents;
-      insideWindow = fee.insideWindow;
+      if (orgPolicyError || !org) {
+        // T1-18(b): both previews fail CLOSED (confirm disabled) when the policy read fails, but
+        // this route used to fall through to a $0 policy — a transient read error at submit
+        // cancelled for free after a fee had been disclosed. The cancellation itself must still
+        // succeed (the booking outcome can't hinge on a fee read), so keep the $0 outcome but
+        // record it forensically so the skipped fee is visible instead of silent.
+        await recordPaymentEvent(supabaseAdmin, {
+          appointmentId,
+          organizationId: organization_id,
+          eventType: 'cancellation_policy_read_failed',
+          actor: `user:${auth.userId}`,
+          payload: {
+            party: effectiveParty,
+            no_show: effectiveNoShow,
+            error: orgPolicyError?.message ?? 'organization row missing',
+          },
+        });
+      } else {
+        const fee = computeCancellationFee({
+          party: effectiveParty,
+          noShow: effectiveNoShow,
+          grossCents,
+          windowHours: org.cancellation_window_hours ?? 24,
+          feeType: org.cancellation_fee_type ?? 'none',
+          feeValue: Number(org.cancellation_fee_value ?? 0),
+          noShowFeeType: org.no_show_fee_type ?? 'none',
+          noShowFeeValue: Number(org.no_show_fee_value ?? 0),
+          scheduledDate: appt.scheduled_date,
+          scheduledTime: appt.scheduled_time,
+          now: Date.now() - CANCEL_WINDOW_SKEW_GRACE_MS,
+        });
+        feeCents = fee.feeCents;
+        insideWindow = fee.insideWindow;
+      }
     }
 
     // Mark cancelled BEFORE charging any fee so the fee charge's payment_intent.succeeded sees a

@@ -90,4 +90,65 @@ describe('alertInputForPaymentEvent', () => {
     const input = alertInputForPaymentEvent({ eventType: 'tenant_transfer_failed', organizationId: 'org-2' });
     expect(input!.summary).not.toContain('$');
   });
+
+  it('T1-14a: refund_ledger_write_failed is a critical, org-scoped alert', () => {
+    const input = alertInputForPaymentEvent({
+      eventType: 'refund_ledger_write_failed',
+      organizationId: 'org-4',
+      appointmentId: 'appt-1',
+      amount: 5000,
+      actor: 'user:admin-1',
+    });
+    expect(input).not.toBeNull();
+    expect(input!.severity).toBe('critical');
+    expect(input!.alert_type).toBe('payment_refund_ledger_write_failed:org-4');
+  });
+
+  it('T1-14a: late_payment_failure (settled ACH returned after payout) is critical', () => {
+    const input = alertInputForPaymentEvent({
+      eventType: 'late_payment_failure',
+      organizationId: 'org-4',
+      appointmentId: 'appt-2',
+      amount: 12000,
+      actor: 'webhook',
+    });
+    expect(input).not.toBeNull();
+    expect(input!.severity).toBe('critical');
+    expect(input!.alert_type).toBe('payment_late_payment_failure:org-4');
+  });
+
+  it('T1-15d: refund_unwind_manual_review keys per APPOINTMENT so two jobs cannot fold into one incident', () => {
+    const a = alertInputForPaymentEvent({
+      eventType: 'refund_unwind_manual_review',
+      organizationId: 'org-9',
+      appointmentId: 'appt-a',
+      amount: 4000,
+    });
+    const b = alertInputForPaymentEvent({
+      eventType: 'refund_unwind_manual_review',
+      organizationId: 'org-9',
+      appointmentId: 'appt-b',
+      amount: 4000,
+    });
+    expect(a!.alert_type).toBe('payment_refund_unwind_manual_review:org-9:appt_appt-a');
+    expect(b!.alert_type).toBe('payment_refund_unwind_manual_review:org-9:appt_appt-b');
+    expect(a!.alert_type).not.toBe(b!.alert_type);
+    // Same appointment re-emitted by the sweep still folds into one incident.
+    const aAgain = alertInputForPaymentEvent({
+      eventType: 'refund_unwind_manual_review',
+      organizationId: 'org-9',
+      appointmentId: 'appt-a',
+      amount: 4000,
+    });
+    expect(aAgain!.alert_type).toBe(a!.alert_type);
+  });
+
+  it('T1-15d: non-keyByAppointment events keep the org-scoped key even with an appointment', () => {
+    const input = alertInputForPaymentEvent({
+      eventType: 'tenant_transfer_failed',
+      organizationId: 'org-9',
+      appointmentId: 'appt-a',
+    });
+    expect(input!.alert_type).toBe('payment_tenant_transfer_failed:org-9');
+  });
 });

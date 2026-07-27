@@ -283,6 +283,7 @@ export interface Payment {
   stripe_payment_intent_id: string | null;
   stripe_setup_intent_id: string | null;
   tenant_transfer_attempt: number; // T1-11: tenant-transfer idempotency-key rotation counter (0 = unsuffixed key)
+  manual_record_key: string | null; // T1-17: per-form-session dedupe key for manual "Record payment" rows
   notes: string | null;
   reference: string | null;
   paid_at: string | null;

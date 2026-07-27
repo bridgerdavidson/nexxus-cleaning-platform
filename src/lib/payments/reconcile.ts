@@ -933,9 +933,15 @@ export interface StrandedUnwindResult {
   checked: number;
   recovered: number;
   stillFailed: number;
-  /** Routed to a terminal manual-review marker + critical alert instead of auto-reversing. */
+  /**
+   * Routed to a terminal manual-review marker + critical alert instead of auto-reversing —
+   * either an unsafe unwind shape (the three guards) or preflight stalls exhausted (T1-15a).
+   */
   manualReview: number;
-  /** Skipped this round (retry backoff, or a refund landed too recently). Still a candidate. */
+  /**
+   * Skipped this round (retry backoff, a refund landed too recently, a stale target at the
+   * pre-reversal recheck, or a bounded preflight stall). Still a candidate.
+   */
   deferred: number;
 }
 
@@ -950,6 +956,76 @@ export interface StrandedUnwindResult {
  */
 export const REFUND_UNWIND_RECOVERED_EVENT = 'refund_unwind_recovered';
 export const REFUND_UNWIND_MANUAL_REVIEW_EVENT = 'refund_unwind_manual_review';
+export const REFUND_UNWIND_PREFLIGHT_STALLED_EVENT = 'refund_unwind_preflight_stalled';
+
+/**
+ * T1-15(a): a preflight `continue` (no PaymentIntent, unreadable charge/refunds/transfers) writes
+ * no marker and no fresh failure event, so a permanently-unreadable appointment would hold a slot
+ * of the oldest-first candidate batch every sweep, forever, starving younger stranded ones. Each
+ * stall now appends a forensic `refund_unwind_preflight_stalled` event; once an appointment
+ * accumulates this many in one candidacy episode (since its newest failure event) it is
+ * terminalized to manual review (critical alert) instead of silently looping. 12 stalls at the
+ * 15-minute cron cadence is ~3h of grace for transient Stripe/DB unreadability.
+ */
+const UNWIND_PREFLIGHT_MAX_STALLS = 12;
+
+type PreflightStallOutcome = 'stalled' | 'terminalized';
+
+async function noteUnwindPreflightStall(
+  supabase: SupabaseClient,
+  c: StrandedUnwindCandidate,
+  reason: string,
+  ctx: { paymentId?: string | null; organizationId?: string | null; amountCents?: number },
+): Promise<PreflightStallOutcome> {
+  const common = {
+    paymentId: ctx.paymentId ?? c.payment_id ?? undefined,
+    appointmentId: c.appointment_id,
+    organizationId: ctx.organizationId ?? c.organization_id,
+    actor: 'reconciler',
+    amount: ctx.amountCents ?? 0,
+  };
+
+  const { data: stalls, error: stallError } = await supabase
+    .from('payment_events')
+    .select('id')
+    .eq('appointment_id', c.appointment_id)
+    .eq('event_type', REFUND_UNWIND_PREFLIGHT_STALLED_EVENT)
+    .gte('created_at', c.failed_at)
+    .limit(UNWIND_PREFLIGHT_MAX_STALLS);
+  if (stallError) {
+    // Unknown stall history: record this stall best-effort and keep the candidate — never
+    // terminalize money recovery on unknown state.
+    console.error('noteUnwindPreflightStall: stall-count read failed:', stallError);
+    await recordPaymentEvent(supabase, {
+      ...common,
+      eventType: REFUND_UNWIND_PREFLIGHT_STALLED_EVENT,
+      payload: { source: 'retry-stranded-refund-unwinds', stall_reason: reason },
+    });
+    return 'stalled';
+  }
+
+  const priorStalls = (stalls ?? []).length;
+  if (priorStalls >= UNWIND_PREFLIGHT_MAX_STALLS - 1) {
+    await recordPaymentEvent(supabase, {
+      ...common,
+      eventType: REFUND_UNWIND_MANUAL_REVIEW_EVENT,
+      payload: {
+        source: 'retry-stranded-refund-unwinds',
+        preflight_exhausted: true,
+        stall_reason: reason,
+        stalls: priorStalls + 1,
+      },
+    });
+    return 'terminalized';
+  }
+
+  await recordPaymentEvent(supabase, {
+    ...common,
+    eventType: REFUND_UNWIND_PREFLIGHT_STALLED_EVENT,
+    payload: { source: 'retry-stranded-refund-unwinds', stall_reason: reason },
+  });
+  return 'stalled';
+}
 
 /**
  * Pure: minutes a stranded unwind must sit since its LAST failure before the sweep retries it,
@@ -1077,7 +1153,17 @@ export async function retryStrandedRefundUnwinds(
           .limit(1);
         payment = ((data ?? [])[0] ?? null) as PaymentLookup;
       }
-      if (!payment?.stripe_payment_intent_id) continue; // nothing to re-derive from — manual review
+      if (!payment?.stripe_payment_intent_id) {
+        // Nothing to re-derive from. Bounded stall (T1-15a): terminalizes to manual review
+        // after UNWIND_PREFLIGHT_MAX_STALLS fruitless touches.
+        const outcome = await noteUnwindPreflightStall(supabase, c, 'no_payment_intent', {
+          paymentId: payment?.id,
+          organizationId: payment?.organization_id,
+        });
+        if (outcome === 'terminalized') manualReview++;
+        else deferred++;
+        continue;
+      }
 
       let charge: Stripe.Charge | null = null;
       try {
@@ -1089,9 +1175,17 @@ export async function retryStrandedRefundUnwinds(
               ? await retrieveCharge(pi.latest_charge)
               : null;
       } catch {
-        // Stripe unreadable — leave for the next sweep.
+        // Stripe unreadable — leave for the next sweep (bounded stall, T1-15a).
       }
-      if (!charge) continue;
+      if (!charge) {
+        const outcome = await noteUnwindPreflightStall(supabase, c, 'charge_unreadable', {
+          paymentId: payment.id,
+          organizationId: payment.organization_id,
+        });
+        if (outcome === 'terminalized') manualReview++;
+        else deferred++;
+        continue;
+      }
 
       const totalRefundedCents = charge.amount_refunded ?? 0;
       const grossCents = charge.amount;
@@ -1120,7 +1214,15 @@ export async function retryStrandedRefundUnwinds(
       try {
         refunds = await listRefundsForPaymentIntent(payment.stripe_payment_intent_id);
       } catch {
-        continue; // Stripe unreadable — leave for the next sweep.
+        // Stripe unreadable — leave for the next sweep (bounded stall, T1-15a).
+        const outcome = await noteUnwindPreflightStall(supabase, c, 'refunds_unreadable', {
+          paymentId: payment.id,
+          organizationId: orgId,
+          amountCents: totalRefundedCents,
+        });
+        if (outcome === 'terminalized') manualReview++;
+        else deferred++;
+        continue;
       }
       // A 'failed'/'canceled' refund returned no money: it never shrank a transfer and settlement
       // never netted it out, so its `created` time must not drive the guards below (an old failed
@@ -1128,7 +1230,18 @@ export async function retryStrandedRefundUnwinds(
       // would wrongly defer the sweep). `charge.amount_refunded` already counts only money that
       // actually moved. Mirrors the refund route's own status filter.
       refunds = refunds.filter((r) => r.status !== 'failed' && r.status !== 'canceled');
-      if (refunds.length === 0) continue; // amount_refunded > 0 but no live refunds listed — leave it.
+      if (refunds.length === 0) {
+        // amount_refunded > 0 but no live refunds listed — inconsistent Stripe state; bounded
+        // stall (T1-15a) so it can't occupy a batch slot forever.
+        const outcome = await noteUnwindPreflightStall(supabase, c, 'no_live_refunds', {
+          paymentId: payment.id,
+          organizationId: orgId,
+          amountCents: totalRefundedCents,
+        });
+        if (outcome === 'terminalized') manualReview++;
+        else deferred++;
+        continue;
+      }
 
       // A refund younger than the stale window means the live unwind (route or charge.refunded
       // webhook) may still be acting on a DIFFERENT cumulative target; two concurrent unwinds
@@ -1144,7 +1257,15 @@ export async function retryStrandedRefundUnwinds(
       try {
         transfers = await listTransfersByGroup(transferGroupFor(c.appointment_id));
       } catch {
-        continue; // Stripe unreadable — leave for the next sweep.
+        // Stripe unreadable — leave for the next sweep (bounded stall, T1-15a).
+        const outcome = await noteUnwindPreflightStall(supabase, c, 'transfers_unreadable', {
+          paymentId: payment.id,
+          organizationId: orgId,
+          amountCents: totalRefundedCents,
+        });
+        if (outcome === 'terminalized') manualReview++;
+        else deferred++;
+        continue;
       }
       if (transfers.length === 0) {
         // Nothing was ever distributed (the strand predates settlement). Settlement reads the
@@ -1221,6 +1342,30 @@ export async function retryStrandedRefundUnwinds(
           },
         });
         manualReview++;
+        continue;
+      }
+
+      // T1-15(b): several Stripe/DB reads have happened since totalRefundedCents was derived at
+      // the top of this iteration. If a NEW refund landed meanwhile, the live unwind path (route /
+      // charge.refunded webhook) owns the fresh cumulative target, and running our stale target
+      // concurrently could over-reverse (the reversal idempotency key only dedupes EQUAL targets).
+      // Re-read the authoritative total immediately before moving money; any change defers to the
+      // next sweep, which re-derives from scratch.
+      let freshRefundedCents: number;
+      try {
+        freshRefundedCents = (await retrieveCharge(charge.id)).amount_refunded ?? 0;
+      } catch {
+        const outcome = await noteUnwindPreflightStall(supabase, c, 'refund_recheck_unreadable', {
+          paymentId: payment.id,
+          organizationId: orgId,
+          amountCents: totalRefundedCents,
+        });
+        if (outcome === 'terminalized') manualReview++;
+        else deferred++;
+        continue;
+      }
+      if (freshRefundedCents !== totalRefundedCents) {
+        deferred++;
         continue;
       }
 

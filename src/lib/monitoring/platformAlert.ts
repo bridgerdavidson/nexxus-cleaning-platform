@@ -7,10 +7,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *
  * Channels today:
  *   - always:    console.error('[platform-alert] ...')  -> shows in Vercel logs
- *   - persisted: one row in public.platform_alerts (migration 085), de-duped per
- *                incident so a future channel can pick it up
+ *   - persisted: ONE OPEN incident row per alert_type in public.platform_alerts
+ *                (migration 085; unique partial index in 115). Repeat occurrences bump
+ *                `occurrences`/`last_seen_at` on the open row; resolving it via
+ *                /platform/alerts lets the next occurrence open a fresh row.
  *   - optional:  POST to process.env.ALERT_WEBHOOK_URL (Slack/Discord/generic JSON)
- *                when set — best-effort, never throws
+ *                when set — best-effort, never throws, fired once per NEW incident
+ *                (not per occurrence; the open row carries the occurrence count).
  *
  * TODO(SMS, later — do NOT build until asked): a dispatcher cron will
  *   SELECT * FROM platform_alerts WHERE sms_dispatched_at IS NULL AND severity = 'critical',
@@ -24,7 +27,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *   PLATFORM_OWNER_PHONE - future SMS recipient (not read yet)
  */
 
-const DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h: one row per incident, not per retry
+// This can run inline on money paths (webhook handlers, sweeps) — a hung sink must never
+// stall a Stripe webhook past its delivery deadline (T1-14).
+const WEBHOOK_TIMEOUT_MS = 5_000;
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
@@ -34,6 +39,8 @@ export interface PlatformAlertInput {
   severity?: AlertSeverity; // default 'critical'
   details?: Record<string, unknown>;
 }
+
+type PersistOutcome = 'inserted' | 'deduped' | 'error';
 
 /**
  * Record a platform-owner alert. Best-effort: never throws, so a broken alert path
@@ -51,58 +58,84 @@ export async function recordPlatformAlert(
     input.details ?? {},
   );
 
+  let outcome: PersistOutcome = 'error';
   try {
-    await upsertAlertRow(supabaseAdmin, input, severity);
+    outcome = await upsertAlertRow(supabaseAdmin, input, severity);
   } catch (err) {
     console.error('[platform-alert] failed to persist alert row:', err);
   }
 
-  await dispatchWebhook(input, severity);
+  // Webhook only for a NEW incident — firing on every occurrence spammed the sink while the
+  // open row already folds the occurrence count (T1-14). A failed persist means we can't know
+  // whether the incident is new, so send for visibility rather than stay silent.
+  if (outcome !== 'deduped') await dispatchWebhook(input, severity);
 }
 
 /**
- * Fold repeated occurrences of the same open incident into a single row (so an
- * outage where many users retry produces one alert, not hundreds — and a future
- * SMS dispatcher texts once per incident). Inserts a fresh row otherwise.
+ * One OPEN incident per alert_type: bump the open row if it exists, else insert. The unique
+ * partial index (migration 115) closes the select-then-insert race — a concurrent loser gets
+ * 23505 and folds its occurrence into the winner's row. Every persistence error is surfaced
+ * loudly (T1-14: they used to be silently ignored, so a failed persist looked like a recorded
+ * alert).
  */
 async function upsertAlertRow(
   supabaseAdmin: SupabaseClient,
   input: PlatformAlertInput,
   severity: AlertSeverity,
-): Promise<void> {
-  const nowIso = new Date().toISOString();
-  const since = new Date(Date.now() - DEDUPE_WINDOW_MS).toISOString();
+): Promise<PersistOutcome> {
+  if (await bumpOpenIncident(supabaseAdmin, input)) return 'deduped';
 
-  const { data: existing } = await supabaseAdmin
-    .from('platform_alerts')
-    .select('id, occurrences')
-    .eq('alert_type', input.alert_type)
-    .is('resolved_at', null)
-    .gte('last_seen_at', since)
-    .order('last_seen_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existing) {
-    const row = existing as { id: string; occurrences: number };
-    await supabaseAdmin
-      .from('platform_alerts')
-      .update({
-        occurrences: (row.occurrences ?? 1) + 1,
-        last_seen_at: nowIso,
-        summary: input.summary,
-        details: input.details ?? {},
-      })
-      .eq('id', row.id);
-    return;
-  }
-
-  await supabaseAdmin.from('platform_alerts').insert({
+  const { error: insertError } = await supabaseAdmin.from('platform_alerts').insert({
     alert_type: input.alert_type,
     severity,
     summary: input.summary,
     details: input.details ?? {},
   });
+  if (!insertError) return 'inserted';
+
+  if (insertError.code === '23505') {
+    // Lost a concurrent-insert race on the open-incident index — the other writer's row IS the
+    // incident; fold this occurrence into it.
+    if (await bumpOpenIncident(supabaseAdmin, input)) return 'deduped';
+  }
+  console.error('[platform-alert] alert row insert failed:', insertError);
+  return 'error';
+}
+
+/** Bump the open incident row for this alert_type; false when none exists or the read/write failed. */
+async function bumpOpenIncident(
+  supabaseAdmin: SupabaseClient,
+  input: PlatformAlertInput,
+): Promise<boolean> {
+  const { data: existing, error: selectError } = await supabaseAdmin
+    .from('platform_alerts')
+    .select('id, occurrences')
+    .eq('alert_type', input.alert_type)
+    .is('resolved_at', null)
+    .order('last_seen_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (selectError) {
+    console.error('[platform-alert] open-incident lookup failed:', selectError);
+    return false;
+  }
+  if (!existing) return false;
+
+  const row = existing as { id: string; occurrences: number };
+  const { error: updateError } = await supabaseAdmin
+    .from('platform_alerts')
+    .update({
+      occurrences: (row.occurrences ?? 1) + 1,
+      last_seen_at: new Date().toISOString(),
+      summary: input.summary,
+      details: input.details ?? {},
+    })
+    .eq('id', row.id);
+  if (updateError) {
+    console.error('[platform-alert] occurrence bump failed:', updateError);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -117,7 +150,7 @@ async function dispatchWebhook(
   if (!url) return;
 
   try {
-    await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -126,7 +159,11 @@ async function dispatchWebhook(
         severity,
         details: input.details ?? {},
       }),
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     });
+    if (!res.ok) {
+      console.error('[platform-alert] webhook sink returned', res.status);
+    }
   } catch (err) {
     console.error('[platform-alert] webhook dispatch failed:', err);
   }

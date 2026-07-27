@@ -4,6 +4,8 @@ import { requirePlatformAdmin } from '@/lib/auth/requirePlatformAdmin';
 
 export const runtime = 'nodejs';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * PATCH /api/platform/alerts/[id]  { resolved: boolean }
  *
@@ -19,20 +21,29 @@ export async function PATCH(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
+  // A non-UUID id would otherwise surface as a Postgres cast error (500); it's a caller bug (400).
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: 'Invalid alert id' }, { status: 400 });
+  }
 
-  let body: { resolved?: unknown };
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  if (typeof body.resolved !== 'boolean') {
+  // A literal `null` (or any non-object) parses as valid JSON — guard the shape, not just the parse.
+  if (body === null || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const { resolved } = body as { resolved?: unknown };
+  if (typeof resolved !== 'boolean') {
     return NextResponse.json({ error: '`resolved` must be a boolean' }, { status: 400 });
   }
 
   const { data, error } = await supabaseAdmin
     .from('platform_alerts')
-    .update({ resolved_at: body.resolved ? new Date().toISOString() : null })
+    .update({ resolved_at: resolved ? new Date().toISOString() : null })
     .eq('id', id)
     .select('id')
     .maybeSingle();

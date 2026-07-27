@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgPaymentsAuth } from '@/lib/auth/requireOrgPaymentsAuth';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -13,6 +15,7 @@ export async function POST(request: NextRequest) {
       payment_type,
       notes,
       reference,
+      idempotency_key,
     } = body;
 
     // ── Auth first: don't leak validation details to unauthenticated callers. Recording a
@@ -25,6 +28,21 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: appointment_id, amount, payment_method' },
         { status: 400 }
       );
+    }
+
+    // T1-17: optional client idempotency key, one per form session. Deliberate split/partial
+    // records send fresh keys and stay allowed (product decision 2026-07-26); a double-click or
+    // network retry of the SAME submission replays the first row instead of inserting a duplicate
+    // that double-counts revenue in reporting (payment_stats sums paid revenue rows per-row).
+    let manualRecordKey: string | null = null;
+    if (idempotency_key != null) {
+      if (typeof idempotency_key !== 'string' || !UUID_RE.test(idempotency_key)) {
+        return NextResponse.json(
+          { error: 'idempotency_key must be a UUID' },
+          { status: 400 }
+        );
+      }
+      manualRecordKey = idempotency_key.toLowerCase();
     }
 
     // Verify the appointment exists *and* belongs to caller's org.
@@ -111,6 +129,7 @@ export async function POST(request: NextRequest) {
       paid_at: new Date().toISOString(),
       notes,
       reference,
+      ...(manualRecordKey ? { manual_record_key: manualRecordKey } : {}),
     };
 
     const { data: payment, error: paymentError } = await supabaseAdmin
@@ -120,6 +139,24 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (paymentError) {
+      // T1-17: a 23505 with a key means THIS submission already landed (double-click / network
+      // retry) — manual rows carry no PaymentIntent, so the key's partial unique index is the only
+      // constraint they can hit. Return the first row as success instead of double-recording.
+      if (manualRecordKey && paymentError.code === '23505') {
+        const { data: existing } = await supabaseAdmin
+          .from('payments')
+          .select()
+          .eq('manual_record_key', manualRecordKey)
+          .maybeSingle();
+        if (existing) {
+          return NextResponse.json({
+            success: true,
+            payment: existing,
+            duplicate: true,
+            message: 'Payment already recorded',
+          });
+        }
+      }
       console.error('Error creating payment:', paymentError);
       return NextResponse.json(
         { error: 'Failed to create payment', details: paymentError.message },

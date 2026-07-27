@@ -166,4 +166,37 @@ describe('platform alerts routes', () => {
     });
     expect(forbidden.status).toBe(403);
   });
+
+  // T1-14 route lows: caller mistakes must be 400s, never unhandled 500s or silently-broadened
+  // reads.
+  it('PATCH 400s on a literal null JSON body (previously threw reading body.resolved)', async () => {
+    admin = await withPlatformAdmin();
+    const id = await seedAlert({ alert_type: `t_null_${Date.now()}`, summary: 'x', last_seen_at: '2099-01-01T00:00:00Z' });
+    const { status } = await callRoute(patchHandler(id), {
+      method: 'PATCH',
+      body: null as unknown as Record<string, unknown>,
+      headers: bearerHeader(admin.accessToken),
+    });
+    expect(status).toBe(400);
+  });
+
+  it('PATCH 400s on a non-UUID id (previously a Postgres cast 500)', async () => {
+    admin = await withPlatformAdmin();
+    const { status } = await callRoute(patchHandler('not-a-uuid'), {
+      method: 'PATCH',
+      body: { resolved: true },
+      headers: bearerHeader(admin.accessToken),
+    });
+    expect(status).toBe(400);
+  });
+
+  it('GET 400s on an unknown ?status= (previously silently returned ALL alerts)', async () => {
+    admin = await withPlatformAdmin();
+    const { status } = await callRoute(GET, {
+      method: 'GET',
+      url: `${BASE}?status=everything`,
+      headers: bearerHeader(admin.accessToken),
+    });
+    expect(status).toBe(400);
+  });
 });

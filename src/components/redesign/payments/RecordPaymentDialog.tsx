@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { supabase } from "@/lib/supabase";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
+import { uuidv4 } from "@/lib/uuid";
 
 type Homeowner = { id: string; first_name: string; last_name: string; email: string };
 type Appt = {
@@ -60,8 +61,13 @@ export function RecordPaymentDialog({ open, onOpenChange, onRecorded }: RecordPa
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // T1-17: one idempotency key per form session. A double-click or network retry of the same
+  // submission replays the first record server-side; reset() issues a fresh key so a deliberate
+  // second record (split/partial payment) is a new submission.
+  const [recordKey, setRecordKey] = useState(() => uuidv4());
 
   const reset = () => {
+    setRecordKey(uuidv4());
     setHomeownerSearch("");
     setHomeownerId(null);
     setAppts([]);
@@ -156,6 +162,7 @@ export function RecordPaymentDialog({ open, onOpenChange, onRecorded }: RecordPa
           payment_type: "revenue",
           notes: notes || null,
           reference: reference || null,
+          idempotency_key: recordKey,
         }),
       });
       const data = await res.json().catch(() => ({}));
