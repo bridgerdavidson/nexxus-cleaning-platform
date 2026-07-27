@@ -428,7 +428,10 @@ In `:root`, change these four lines to reference the ramp. Leave every other tok
   --ring: var(--brand-600);
 ```
 
-In `.dark`, change these. Note the lifted steps — this is what makes one ramp serve both themes.
+In `.dark`, change these. Note the lifted steps: this is what makes one ramp serve both themes. Each
+substitution below was verified to be an **exact** match for the literal it replaces, not an
+approximation (`.dark --primary` is precisely brand-500, `--ring` precisely brand-400,
+`--accent-foreground` precisely brand-100).
 
 ```css
   --primary: var(--brand-500);
@@ -982,15 +985,18 @@ Run: `npx vitest run src/lib/branding/brandCache.test.ts`. Expected: PASS.
 
 - [ ] **Step 4: Inject the script in the root layout**
 
-In `src/app/layout.tsx`, inside `<html>` and before `<body>`:
+In `src/app/layout.tsx`, as the **first child of `<body>`**:
 
 ```tsx
-      <head>
+      <body className="min-h-screen bg-white">
         <script dangerouslySetInnerHTML={{ __html: BRAND_BOOTSTRAP_SCRIPT }} />
-      </head>
+        <LayoutWrapper>
 ```
 
-`suppressHydrationWarning` is already on `<html>`, which is what makes this safe.
+Not a hand-written `<head>`: the App Router owns that element through the metadata API, and adding
+one manually is the documented way to get into trouble. A synchronous script as body's first child
+still executes before anything below it parses or paints, which is all this needs. `<html>` already
+carries `suppressHydrationWarning`, which is what keeps the mutated inline style from tripping React.
 
 - [ ] **Step 5: Commit**
 
