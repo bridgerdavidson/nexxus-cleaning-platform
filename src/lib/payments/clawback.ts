@@ -287,7 +287,7 @@ export function proportionalReversalCents(args: {
  * each leg down to that share:
  *
  *   B = max(0, captured − processingFee − totalRefunded)
- *   split = computePaymentSplit(B, payoutPercentSnapshot, platformFeeBpsSnapshot)
+ *   split = computePaymentSplit(B, payoutPercent, platformFeeBps)
  *   cleaner reverses down to split.cleanerCents; tenant legs down to split.tenantRemainderCents.
  *
  * The platform's fee share shrinks with B (Bridger 2026-07-26: the fee is given back
@@ -311,9 +311,9 @@ export function invariantReversalPlan(args: {
   processingFeeCents: number;
   totalRefundedCents: number;
   /** Locked cleaner percent (payouts.payout_percent_snapshot); 0 when no cleaner leg exists. */
-  payoutPercentSnapshot: number;
+  payoutPercent: number;
   /** Locked fee bps (payments.application_fee_bps_snapshot). */
-  platformFeeBpsSnapshot: number;
+  platformFeeBps: number;
   cleanerTransfer: ReversalLeg | null;
   tenantTransfers: ReversalLeg[];
 }): Map<string, number> {
@@ -323,8 +323,8 @@ export function invariantReversalPlan(args: {
   );
   const split = computePaymentSplit({
     grossCents: targetBase,
-    payoutPercent: args.payoutPercentSnapshot,
-    platformFeeBps: args.platformFeeBpsSnapshot,
+    payoutPercent: args.payoutPercent,
+    platformFeeBps: args.platformFeeBps,
   });
 
   const plan = new Map<string, number>();
@@ -419,11 +419,25 @@ export async function reverseJobTransfersForRefund(
   const payout = await loadCleanerPayout(supabase, p.appointmentId);
 
   // T1-12a: prefer the split-invariant plan (reverse each leg down to its share of the
-  // refund-shrunk base, using the LOCKED snapshots) over raw proportion-to-gross, which
-  // over-claws any leg that settlement split net of an earlier refund. The snapshots gate the
-  // switch: pre-snapshot legacy rows (fee bps null) were split from gross, where the two
-  // formulas agree, so they keep the proportional math. A failed snapshot read bails fail-closed
-  // (the refund stands; the stranded-unwind sweep retries this unwind with fresh state).
+  // refund-shrunk base) over raw proportion-to-gross, which over-claws any leg that settlement
+  // split net of an earlier refund. `application_fee_bps_snapshot` gates the ERA (pre-snapshot
+  // rows were split from gross, where the two formulas agree, so they keep the proportional
+  // math); the fee VALUE itself is the live org bps, because that is what settlement and the
+  // T1-13 carved-slice recompute actually split with. Every unreadable/invalid input bails
+  // fail-closed (the refund stands; the stranded-unwind sweep retries with fresh state).
+  const bailUnwind = async (reason: string, detail: string): Promise<RefundUnwindResult> => {
+    await recordPaymentEvent(supabase, {
+      paymentId: p.paymentId ?? null,
+      appointmentId: p.appointmentId,
+      organizationId: p.organizationId ?? null,
+      stripeEventId: p.stripeEventId ?? null,
+      eventType: 'transfer_list_failed',
+      actor: p.actor,
+      payload: { reason, error: detail },
+    });
+    return { reversedCents: 0, failures: 1 };
+  };
+
   let plan: Map<string, number> | null = null;
   if (p.paymentId) {
     const { data: snapRow, error: snapErr } = await supabase
@@ -431,45 +445,98 @@ export async function reverseJobTransfersForRefund(
       .select('processing_fee_cents, application_fee_bps_snapshot')
       .eq('id', p.paymentId)
       .maybeSingle();
-    if (snapErr) {
-      await recordPaymentEvent(supabase, {
-        paymentId: p.paymentId,
-        appointmentId: p.appointmentId,
-        organizationId: p.organizationId ?? null,
-        stripeEventId: p.stripeEventId ?? null,
-        eventType: 'transfer_list_failed',
-        actor: p.actor,
-        payload: { reason: 'split_snapshot_unreadable', error: snapErr.message },
-      });
-      return { reversedCents: 0, failures: 1 };
+    // A vanished row is as wrong as an unreadable one — never guess which formula applies.
+    if (snapErr || !snapRow) {
+      return bailUnwind('split_snapshot_unreadable', snapErr?.message ?? 'payment row missing');
     }
     const snap = snapRow as {
       processing_fee_cents: number | null;
       application_fee_bps_snapshot: number | null;
-    } | null;
-    const cleanerLeg =
-      payout?.stripe_transfer_id != null
-        ? transfers.find((t) => t.id === payout.stripe_transfer_id) ?? null
-        : null;
-    const percentSnapshot =
-      payout?.payout_percent_snapshot != null ? Number(payout.payout_percent_snapshot) : null;
-    // Snapshots complete for the era: fee bps on the payment row, and (only when a cleaner
-    // transfer exists) the locked percent on the payout row.
-    if (snap?.application_fee_bps_snapshot != null && (!cleanerLeg || percentSnapshot != null)) {
-      const asLeg = (t: (typeof transfers)[number]) => ({
-        id: t.id,
-        amount: t.amount,
-        amountReversed: t.amount_reversed ?? 0,
-      });
-      plan = invariantReversalPlan({
-        capturedCents: p.grossCents,
-        processingFeeCents: snap.processing_fee_cents ?? 0,
-        totalRefundedCents: p.totalRefundedCents,
-        payoutPercentSnapshot: cleanerLeg ? percentSnapshot! : 0,
-        platformFeeBpsSnapshot: snap.application_fee_bps_snapshot,
-        cleanerTransfer: cleanerLeg ? asLeg(cleanerLeg) : null,
-        tenantTransfers: transfers.filter((t) => t !== cleanerLeg).map(asLeg),
-      });
+    };
+    if (snap.application_fee_bps_snapshot != null) {
+      // The carved cleaner percent comes from ANY payout row for the appointment: a HELD or
+      // failed slice (stripe_transfer_id null — invisible to loadCleanerPayout above) still had
+      // its percent carved OUT of the tenant transfer at settlement, so planning with 0 would
+      // hand the cleaner's share to the tenant as keep-target and under-claw it. No payout row
+      // at all means no share was ever carved (hourly_external / percent 0), where 0 is right;
+      // a payout row without the snapshot is pre-snapshot-era → proportional fallback.
+      const { data: pctRows, error: pctErr } = await supabase
+        .from('payouts')
+        .select('payout_percent_snapshot')
+        .eq('appointment_id', p.appointmentId)
+        .limit(1);
+      if (pctErr) return bailUnwind('split_snapshot_unreadable', pctErr.message);
+      const pctRow = ((pctRows ?? [])[0] ?? null) as
+        | { payout_percent_snapshot: number | string | null }
+        | null;
+      const carvedPercent =
+        pctRow == null
+          ? 0
+          : pctRow.payout_percent_snapshot != null
+            ? Number(pctRow.payout_percent_snapshot)
+            : null;
+
+      // Mixed-charge ambiguity: the sourceChargeId filter deliberately KEEPS null-source legs
+      // (sweep-settled transfers carry none), but on an appointment with another live charge a
+      // null-source leg may belong to the SIBLING charge — and the aggregate tenant target would
+      // claw it in full. Fall back to the bounded per-leg proportional math there (the sweep's
+      // Guard 1 routes the same shape to manual review).
+      let ambiguous = false;
+      const hasNullSourceLeg = transfers.some((t) => typeof t.source_transaction !== 'string');
+      if (hasNullSourceLeg) {
+        const { data: otherCharged, error: otherErr } = await supabase
+          .from('payments')
+          .select('id')
+          .eq('appointment_id', p.appointmentId)
+          .neq('id', p.paymentId)
+          .or('charge_kind.eq.cancellation_fee,stripe_payment_intent_id.not.is.null')
+          .in('status', ['paid', 'processing'])
+          .limit(1);
+        if (otherErr) return bailUnwind('split_snapshot_unreadable', otherErr.message);
+        ambiguous = ((otherCharged ?? []) as Array<{ id: string }>).length > 0;
+      }
+
+      if (carvedPercent != null && !ambiguous) {
+        let liveBps: number | null = null;
+        if (p.organizationId) {
+          const { data: orgRow, error: orgErr } = await supabase
+            .from('organizations')
+            .select('platform_fee_bps')
+            .eq('id', p.organizationId)
+            .maybeSingle();
+          if (orgErr) return bailUnwind('split_snapshot_unreadable', orgErr.message);
+          const bps = (orgRow as { platform_fee_bps: number | null } | null)?.platform_fee_bps;
+          liveBps = bps != null ? Number(bps) : null;
+        }
+        const cleanerLeg =
+          payout?.stripe_transfer_id != null
+            ? transfers.find((t) => t.id === payout.stripe_transfer_id) ?? null
+            : null;
+        const asLeg = (t: (typeof transfers)[number]) => ({
+          id: t.id,
+          amount: t.amount,
+          amountReversed: t.amount_reversed ?? 0,
+        });
+        try {
+          plan = invariantReversalPlan({
+            capturedCents: p.grossCents,
+            processingFeeCents: snap.processing_fee_cents ?? 0,
+            totalRefundedCents: p.totalRefundedCents,
+            payoutPercent: carvedPercent,
+            platformFeeBps: liveBps ?? snap.application_fee_bps_snapshot,
+            cleanerTransfer: cleanerLeg ? asLeg(cleanerLeg) : null,
+            tenantTransfers: transfers.filter((t) => t !== cleanerLeg).map(asLeg),
+          });
+        } catch (err) {
+          // computePaymentSplit validates its inputs and THROWS on corrupt snapshots (percent
+          // outside 0..100, non-integer bps). This function's contract is never-throws, and a
+          // silent proportional fallback could be the exact over-claw this fix removes.
+          return bailUnwind(
+            'split_snapshot_invalid',
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
     }
   }
 
