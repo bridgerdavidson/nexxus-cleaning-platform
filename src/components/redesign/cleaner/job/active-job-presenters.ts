@@ -47,18 +47,44 @@ export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/** Outcome of the pay request a request-mode cleaner submitted at completion. */
+export interface PayRequestOutcome {
+  submitted: boolean;
+  autoApproved: boolean;
+  amountCents: number;
+}
+
 /**
  * Copy for the job-complete success state. Title is always "Job complete".
  * Body varies by chargeOutcome. Never blames the cleaner. No em dashes.
  *
  * Reachable outcomes from useCompleteJob: 'charged' | 'processing' | 'failed'.
  * Defensive extras: 'declined' | 'no_card' | 'requires_action'.
+ *
+ * When a pay request was submitted, ITS outcome is the story and takes
+ * precedence over the charge outcome: a request-mode cleaner's pay does not
+ * depend on whether the customer's card cleared (that is the operator's
+ * problem), so they must never see the payment-issue copy in its place.
  */
 export function completeSuccessCopy(
   outcome: string | undefined,
   cleanerCutCents: number,
+  opts?: { payRequest?: PayRequestOutcome },
 ): { title: string; body: string } {
   const title = 'Job complete';
+
+  const pr = opts?.payRequest;
+  if (pr?.submitted) {
+    return pr.autoApproved
+      ? {
+          title,
+          body: `You earned ${formatCents(pr.amountCents)}. It is on its way.`,
+        }
+      : {
+          title,
+          body: `Your request for ${formatCents(pr.amountCents)} was sent for approval. You'll get a notification when it's reviewed.`,
+        };
+  }
 
   switch (outcome) {
     case 'charged':

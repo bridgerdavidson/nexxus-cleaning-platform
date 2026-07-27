@@ -1,4 +1,4 @@
-import type { ChargeProjection } from '@/types';
+import type { ChargeProjection, PayoutModel } from '@/types';
 import type { FullChargeBreakdown } from './projectCompletionCharge';
 
 /**
@@ -11,21 +11,37 @@ import type { FullChargeBreakdown } from './projectCompletionCharge';
  * percentage would let the cleaner back-compute the customer charge, which
  * defeats the privacy goal, so both are dropped. Org staff (owner/admin/manager)
  * are never `isCleanerViewer`, so they always receive the full breakdown.
+ *
+ * PAY MODE: `payoutModel` tells the Complete sheet which flow to render. In
+ * `request` mode the cleaner's cut is OMITTED for cleaner viewers: the
+ * percentage projection is not what they will be paid (they name their own
+ * amount), so stating it would be wrong, not merely private. Org staff still
+ * receive it because they author the counter-offer against it.
  */
 export function presentChargeProjection(
   full: FullChargeBreakdown,
-  opts: { display: 'full' | 'payout_only'; isCleanerViewer: boolean },
+  opts: {
+    display: 'full' | 'payout_only';
+    isCleanerViewer: boolean;
+    /** The assigned cleaner's pay mode; defaults to the percentage path. */
+    payoutModel?: PayoutModel;
+  },
 ): ChargeProjection {
+  const payoutModel: PayoutModel = opts.payoutModel ?? 'percentage';
+  const hideCut = payoutModel === 'request' && opts.isCleanerViewer;
+
   if (opts.display === 'payout_only' && opts.isCleanerViewer) {
     return {
       display: 'payout_only',
-      cleanerCutCents: full.cleanerCutCents,
+      payoutModel,
+      ...(hideCut ? {} : { cleanerCutCents: full.cleanerCutCents }),
       isSelfPay: full.isSelfPay,
     };
   }
   return {
     display: 'full',
-    cleanerCutCents: full.cleanerCutCents,
+    payoutModel,
+    ...(hideCut ? {} : { cleanerCutCents: full.cleanerCutCents }),
     isSelfPay: full.isSelfPay,
     baseCents: full.baseCents,
     method: full.method,

@@ -10,6 +10,7 @@ import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
+import type { PayRequestOutcome } from '../components/redesign/cleaner/job/active-job-presenters';
 import type { ChargeProjection, ChecklistItemCompletion } from '../types';
 
 export interface CleanerAppointment {
@@ -1136,13 +1137,63 @@ export function useRespondToSeries() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Complete a job (status -> completed; triggers charge + lifecycle notification).
- * Returns { chargeOutcome } mapped from the completion charge paymentStatus. */
+ * Returns { chargeOutcome } mapped from the completion charge paymentStatus.
+ *
+ * For a REQUEST-mode cleaner, pass `requestAmountCents`: the pay request is
+ * POSTed BEFORE the status write, so a completed request-mode job can never
+ * exist without its pay thread. If the POST fails, completion is blocked and
+ * the error surfaces for a retry; a 409 duplicate (a retry whose earlier POST
+ * actually landed) counts as submitted and completion proceeds. */
 export function useCompleteJob() {
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
   const qc = useQueryClient();
   const userId = user?.id;
   return useMutation({
-    mutationFn: async (appointmentId: string): Promise<{ chargeOutcome?: string }> => {
+    mutationFn: async (
+      args: string | { appointmentId: string; requestAmountCents?: number; note?: string },
+    ): Promise<{ chargeOutcome?: string; payRequest?: PayRequestOutcome }> => {
+      const appointmentId = typeof args === 'string' ? args : args.appointmentId;
+      const requestAmountCents = typeof args === 'string' ? undefined : args.requestAmountCents;
+      const note = typeof args === 'string' ? undefined : args.note;
+
+      let payRequest: PayRequestOutcome | undefined;
+      if (requestAmountCents !== undefined) {
+        if (!currentOrganizationId) throw new Error('No organization');
+        const token = await getAccessToken();
+        const res = await fetch(`/api/appointments/${appointmentId}/pay-request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            amount_cents: requestAmountCents,
+            ...(note ? { note } : {}),
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+          autoApproved?: boolean;
+        };
+        if (res.ok) {
+          payRequest = {
+            submitted: true,
+            autoApproved: !!data.autoApproved,
+            amountCents: requestAmountCents,
+          };
+        } else if (res.status === 409 && data.code === 'duplicate') {
+          // An earlier attempt's POST landed; the thread exists, so completion
+          // may proceed. Its auto-approve outcome is unknown here, so show the
+          // conservative "sent for approval" branch rather than promising money.
+          payRequest = { submitted: true, autoApproved: false, amountCents: requestAmountCents };
+        } else {
+          // Blocked on purpose: never complete a request-mode job without a thread.
+          throw new Error(data.error || 'Could not send your pay request');
+        }
+      }
+
       const r = await updateAppointmentStatus(appointmentId, 'completed') as {
         success: boolean;
         error?: string;
@@ -1151,12 +1202,16 @@ export function useCompleteJob() {
       if (!r.success) throw new Error(r.error || 'Could not complete the job');
       // Map the paymentStatus ('paid'|'processing'|'failed') to the outcome-code
       // vocabulary the Complete sheet keys off ('charged'|'processing'|'failed').
-      return { chargeOutcome: r.paymentStatus === 'paid' ? 'charged' : r.paymentStatus };
+      return {
+        chargeOutcome: r.paymentStatus === 'paid' ? 'charged' : r.paymentStatus,
+        payRequest,
+      };
     },
     onSuccess: () => {
       if (userId) {
         qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
         qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+        qc.invalidateQueries({ queryKey: keys.payRequests.byCleaner(userId) });
       }
       toast.success('Job completed');
     },

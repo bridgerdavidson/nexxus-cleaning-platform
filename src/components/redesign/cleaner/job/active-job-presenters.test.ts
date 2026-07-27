@@ -28,6 +28,38 @@ describe('completeSuccessCopy', () => {
     expect(c.body).toContain('$48.00');
     expect(c.body).not.toContain('—');
   });
+
+  it('request auto-approved states the earned amount', () => {
+    const c = completeSuccessCopy('charged', 0, {
+      payRequest: { submitted: true, autoApproved: true, amountCents: 12000 },
+    });
+    expect(c.title).toBe('Job complete');
+    expect(c.body).toContain('$120.00');
+    expect(c.body.toLowerCase()).toContain('earned');
+    expect(c.body).not.toContain('—');
+  });
+
+  it('request escalated says it is awaiting review, with no amount promised', () => {
+    const c = completeSuccessCopy('charged', 0, {
+      payRequest: { submitted: true, autoApproved: false, amountCents: 30000 },
+    });
+    expect(c.title).toBe('Job complete');
+    expect(c.body.toLowerCase()).toContain('approval');
+    expect(c.body.toLowerCase()).toContain('notification');
+    // An escalated ask is not yet money, so it must not read as earned.
+    expect(c.body.toLowerCase()).not.toContain('earned');
+    expect(c.body).not.toContain('—');
+  });
+
+  it('request copy wins over the charge outcome (their pay does not depend on it)', () => {
+    // The customer's card failing is the operator's problem; the cleaner's
+    // request still stands, so they must not see the payment-issue copy.
+    const c = completeSuccessCopy('failed', 0, {
+      payRequest: { submitted: true, autoApproved: true, amountCents: 9000 },
+    });
+    expect(c.body).toContain('$90.00');
+    expect(c.body.toLowerCase()).not.toContain('payment issue');
+  });
   it('processing (ACH) body mentions processing', () => {
     expect(completeSuccessCopy('processing', 4800).body.toLowerCase()).toContain('processing');
   });

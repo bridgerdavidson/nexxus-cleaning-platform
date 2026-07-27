@@ -59,4 +59,53 @@ describe('presentChargeProjection', () => {
     expect(p.chargeCents).toBe(full.chargeCents);
     expect(p.payoutPercent).toBe(full.payoutPercent);
   });
+
+  it('carries the pay mode so the Complete sheet knows which flow to render', () => {
+    const pct = presentChargeProjection(full, { display: 'full', isCleanerViewer: true });
+    expect(pct.payoutModel).toBe('percentage');
+
+    const req = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: true,
+      payoutModel: 'request',
+    });
+    expect(req.payoutModel).toBe('request');
+  });
+
+  it('request mode omits cleanerCutCents: the percent-derived cut is not their pay', () => {
+    // A request-mode cleaner names their own amount, so a percentage projection
+    // would state a number that is not what they will actually be paid.
+    const p = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: true,
+      payoutModel: 'request',
+    });
+    expect(p.cleanerCutCents).toBeUndefined();
+    // The rest of the breakdown still follows the org's display setting.
+    expect(p.chargeCents).toBe(full.chargeCents);
+  });
+
+  it('request mode + payout_only cleaner: no cut AND no price signal', () => {
+    const p = presentChargeProjection(full, {
+      display: 'payout_only',
+      isCleanerViewer: true,
+      payoutModel: 'request',
+    });
+    expect(p.display).toBe('payout_only');
+    expect(p.cleanerCutCents).toBeUndefined();
+    expect(p.chargeCents).toBeUndefined();
+    expect(p.baseCents).toBeUndefined();
+    expect(p.payoutPercent).toBeUndefined();
+    expect(p.platformFeeCents).toBeUndefined();
+  });
+
+  it('request mode still shows org staff the projected cut (they author the offer)', () => {
+    const p = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: false,
+      payoutModel: 'request',
+    });
+    expect(p.payoutModel).toBe('request');
+    expect(p.cleanerCutCents).toBe(full.cleanerCutCents);
+  });
 });

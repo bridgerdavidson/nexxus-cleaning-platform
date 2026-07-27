@@ -15,6 +15,8 @@ import React, { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/ui/form-field';
 import {
   Drawer,
   DrawerContent,
@@ -25,7 +27,8 @@ import {
 } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import { useChargeProjection, useCompleteJob } from '@/hooks/useCleanerData';
-import { formatCents, completeSuccessCopy } from './active-job-presenters';
+import { useCleanerPayRequests } from '@/hooks/useCleanerPayRequests';
+import { formatCents, completeSuccessCopy, type PayRequestOutcome } from './active-job-presenters';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -101,20 +104,50 @@ export function CleanerCompleteSheet({
   const { projection, isLoading } = useChargeProjection(appointmentId, open);
   const completeJob = useCompleteJob();
 
+  // Request mode: the cleaner names their pay as a required completion step.
+  const isRequestMode = projection?.payoutModel === 'request';
+  // The anchor is their own approved history; the job price is hidden from them,
+  // so without it they would be naming a number with no reference at all.
+  const { anchor } = useCleanerPayRequests({
+    appointmentId,
+    enabled: open && isRequestMode,
+  });
+
   // Success state after job is confirmed
   const [successOutcome, setSuccessOutcome] = useState<string | undefined>(undefined);
+  const [payRequestOutcome, setPayRequestOutcome] = useState<PayRequestOutcome | undefined>(
+    undefined,
+  );
   const [didComplete, setDidComplete] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
 
   const isCompleting = completeJob.isPending;
 
   async function handleComplete() {
+    let requestAmountCents: number | undefined;
+    if (isRequestMode) {
+      const dollars = parseFloat(amount);
+      if (!Number.isFinite(dollars) || dollars < 0) {
+        setAmountError('Enter the amount you want to be paid for this job.');
+        return;
+      }
+      requestAmountCents = Math.round(dollars * 100);
+      setAmountError(null);
+    }
+
     try {
-      const result = await completeJob.mutateAsync(appointmentId);
+      const result = await completeJob.mutateAsync(
+        requestAmountCents === undefined ? appointmentId : { appointmentId, requestAmountCents },
+      );
       setSuccessOutcome(result.chargeOutcome);
+      setPayRequestOutcome(result.payRequest);
       setDidComplete(true);
     } catch {
       // useCompleteJob already shows a toast on error; sheet stays open so
-      // the cleaner can retry or close.
+      // the cleaner can retry or close. In request mode the completion is
+      // deliberately blocked when the request POST fails, so retrying here
+      // resends it.
     }
   }
 
@@ -123,6 +156,9 @@ export function CleanerCompleteSheet({
       // Reset local state when the drawer closes
       setDidComplete(false);
       setSuccessOutcome(undefined);
+      setPayRequestOutcome(undefined);
+      setAmount('');
+      setAmountError(null);
       if (didComplete) {
         onCompleted();
       } else {
@@ -134,6 +170,9 @@ export function CleanerCompleteSheet({
   function handleDone() {
     setDidComplete(false);
     setSuccessOutcome(undefined);
+    setPayRequestOutcome(undefined);
+    setAmount('');
+    setAmountError(null);
     onCompleted();
   }
 
@@ -142,10 +181,9 @@ export function CleanerCompleteSheet({
   }
 
   // Derive success copy (only relevant when didComplete)
-  const successCopy = completeSuccessCopy(
-    successOutcome,
-    projection?.cleanerCutCents ?? 0,
-  );
+  const successCopy = completeSuccessCopy(successOutcome, projection?.cleanerCutCents ?? 0, {
+    payRequest: payRequestOutcome,
+  });
 
   // ---------------------------------------------------------------------------
   // Render: success state
@@ -190,40 +228,80 @@ export function CleanerCompleteSheet({
         <DrawerHeader>
           <DrawerTitle>Complete this job?</DrawerTitle>
           <DrawerDescription>
-            The job will be marked complete and the customer will be charged.
+            {isRequestMode
+              ? "Tell us what you want to be paid for this job. If it fits your company's range it's approved right away, otherwise they'll review it."
+              : 'The job will be marked complete and the customer will be charged.'}
           </DrawerDescription>
         </DrawerHeader>
 
-        {/* Charge breakdown */}
-        <div
-          aria-label="Charge breakdown"
-          className="mx-5 rounded-card border border-border bg-card px-4 divide-y divide-border"
-        >
-          {isLoading ? (
-            <>
-              <SkeletonRow />
-              <SkeletonRow />
-            </>
-          ) : projection ? (
-            <>
-              {projection.display === 'full' && projection.chargeCents != null && (
-                <BreakdownRow
-                  label="Customer is charged"
-                  value={formatCents(projection.chargeCents)}
-                />
-              )}
-              <BreakdownRow
-                label="Your cut"
-                value={formatCents(projection.cleanerCutCents)}
-                emphasis
+        {/* Charge breakdown. In request mode there is no cut to show: the
+            cleaner's pay is whatever they ask for below. */}
+        {isLoading || !projection || !isRequestMode ? (
+          <div
+            aria-label="Charge breakdown"
+            className="mx-5 rounded-card border border-border bg-card px-4 divide-y divide-border"
+          >
+            {isLoading ? (
+              <>
+                <SkeletonRow />
+                <SkeletonRow />
+              </>
+            ) : projection ? (
+              <>
+                {projection.display === 'full' && projection.chargeCents != null && (
+                  <BreakdownRow
+                    label="Customer is charged"
+                    value={formatCents(projection.chargeCents)}
+                  />
+                )}
+                {projection.cleanerCutCents != null && (
+                  <BreakdownRow
+                    label="Your cut"
+                    value={formatCents(projection.cleanerCutCents)}
+                    emphasis
+                  />
+                )}
+              </>
+            ) : (
+              <p className="py-3 text-sm text-muted-foreground">
+                Could not load payment details.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        {/* Request mode: naming the pay IS the completion step. */}
+        {isRequestMode && !isLoading ? (
+          <div className="mx-5">
+            <FormField
+              label="Request your pay"
+              htmlFor="cl-request-amount"
+              error={amountError ?? undefined}
+              helper={
+                anchor
+                  ? anchor.samePlace
+                    ? `Last time here you were paid ${formatCents(anchor.amountCents)}.`
+                    : `You were last paid ${formatCents(anchor.amountCents)}.`
+                  : 'Enter what you want to be paid for this job.'
+              }
+            >
+              <Input
+                id="cl-request-amount"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="1"
+                placeholder="0"
+                value={amount}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setAmountError(null);
+                }}
+                className="min-h-[44px] text-base"
               />
-            </>
-          ) : (
-            <p className="py-3 text-sm text-muted-foreground">
-              Could not load payment details.
-            </p>
-          )}
-        </div>
+            </FormField>
+          </div>
+        ) : null}
 
         <DrawerFooter>
           <Button
@@ -233,7 +311,13 @@ export function CleanerCompleteSheet({
             loading={isCompleting}
             className="w-full min-h-[44px]"
           >
-            {isCompleting ? 'Completing...' : 'Complete job'}
+            {isCompleting
+              ? isRequestMode
+                ? 'Sending...'
+                : 'Completing...'
+              : isRequestMode
+                ? 'Send request and complete'
+                : 'Complete job'}
           </Button>
           <Button
             variant="ghost"

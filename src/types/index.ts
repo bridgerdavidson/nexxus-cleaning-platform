@@ -692,7 +692,13 @@ export interface ChecklistItemCompletion {
 // they are optional here. Org staff always receive the full ('full') shape.
 export interface ChargeProjection {
   display: 'full' | 'payout_only';
-  cleanerCutCents: number;
+  /** The assigned cleaner's pay mode; drives which completion flow renders. */
+  payoutModel: PayoutModel;
+  /**
+   * Omitted for a request-mode CLEANER viewer: they name their own amount, so
+   * the percentage-derived cut is not what they will be paid.
+   */
+  cleanerCutCents?: number;
   isSelfPay: boolean;
   // present only when display === 'full':
   baseCents?: number;
