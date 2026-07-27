@@ -26,7 +26,7 @@ export function PayoutSettingsSection() {
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    // Rows written before migration 116 may still carry the old spelling;
+    // Rows written before migration 117 may still carry the old spelling;
     // normalize for display so the radio group always has a selected item.
     const raw = (data?.default_payout_model as string | null) ?? "percentage";
     return {

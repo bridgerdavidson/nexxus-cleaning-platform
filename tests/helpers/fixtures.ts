@@ -76,7 +76,7 @@ export interface WithTestOrgOptions {
   /** cleaner_profiles.flat_rate_cents (only meaningful with cleanerPayoutModel 'flat'). */
   flatRateCents?: number;
   /**
-   * organizations.min_margin_bps (request-mode auto-approve threshold, migration 116).
+   * organizations.min_margin_bps (request-mode auto-approve threshold, migration 117).
    * Tests asserting auto-approve vs escalate should PIN this instead of inheriting
    * the DB default (2000).
    */

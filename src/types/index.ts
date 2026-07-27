@@ -13,7 +13,7 @@ export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'refu
 export type PaymentType = 'revenue' | 'expense' | 'refund';
 export type PaymentMethod = 'card' | 'ach' | 'manual';
 export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed' | 'reversed' | 'bank_paid';
-// Per-cleaner pay mode (flexible contractor umbrella, migration 116). The org's
+// Per-cleaner pay mode (flexible contractor umbrella, migration 117). The org's
 // default_payout_model shares this value space and is only what new cleaners
 // start as. 'percentage_contractor' was renamed to 'percentage' in 114; the DB
 // constraint stays permissive for the old spelling, so read sites must never
@@ -106,7 +106,7 @@ export interface Organization {
   // Platform fee + per-org policy.
   platform_fee_bps?: number; // basis points (100 = 1%), default 0
   default_payout_model?: PayoutModel;
-  // Request-mode auto-approve threshold (migration 116): the org must keep at
+  // Request-mode auto-approve threshold (migration 117): the org must keep at
   // least this share of the job price for a pay request to approve automatically.
   min_margin_bps?: number; // basis points (2000 = 20%), default 2000
   cancellation_window_hours?: number; // default 24
@@ -149,7 +149,7 @@ export interface CleanerProfile {
   stripe_connect_account_id: string | null;
   stripe_connect_onboarding_complete: boolean; // default false
   payout_percent: number; // numeric(5,2), default 0.00
-  payout_model: PayoutModel; // drives settlement branching; DB default flips to 'percentage' in migration 117 (legacy spelling until then, readers treat both identically)
+  payout_model: PayoutModel; // drives settlement branching; DB default flips to 'percentage' in migration 118 (legacy spelling until then, readers treat both identically)
   flat_rate_cents: number | null; // required when payout_model = 'flat'
   created_at: string;
   updated_at: string;
@@ -316,7 +316,7 @@ export interface Payout {
   payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time; null for flat/request payouts
   is_self_pay: boolean; // true → cleaner payout funded by an org self-pay charge
   pay_request_id: string | null; // set when payout_model_snapshot = 'request'
-  payout_model_snapshot: PayoutModel | null; // which pay mode produced `amount` (migration 116)
+  payout_model_snapshot: PayoutModel | null; // which pay mode produced `amount` (migration 117)
   notes: string | null;
   approved_at: string | null;
   paid_at: string | null;
@@ -325,7 +325,7 @@ export interface Payout {
   created_at: string;
 }
 
-// PAY REQUESTS (migration 116) — one negotiation thread per appointment for
+// PAY REQUESTS (migration 117) — one negotiation thread per appointment for
 // request-mode cleaners. State machine: src/lib/payments/payRequests/transitions.ts.
 export interface PayRequest {
   id: string;
