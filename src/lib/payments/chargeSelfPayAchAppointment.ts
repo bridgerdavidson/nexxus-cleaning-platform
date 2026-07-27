@@ -17,7 +17,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createSelfPayAchCharge } from '@/lib/stripe/charges/chargeSelfPayAch';
 import { listSavedCards } from '@/lib/stripe/customers/homeowner';
-import { computeSelfPayAmounts } from './selfPayMath';
+import { computeSelfPayAmountsFromCents } from './selfPayMath';
+import { resolveSelfPayCutCents } from './payRequests/selfPayCut';
+import { isCleanerPayable } from './isCleanerPayable';
 import { recordPaymentEvent } from './events';
 import { upsertAchPaymentRow } from './chargeAchAppointment';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
@@ -28,6 +30,7 @@ export type SelfPayAchChargeCode =
   | 'no_org_card'
   | 'no_org_bank'
   | 'cleaner_not_payable'
+  | 'pay_request_pending'
   | 'not_chargeable'
   | 'failed'
   | 'error';
@@ -89,6 +92,7 @@ export async function chargeSelfPayAchAppointment(
     stripe_connect_account_id: string | null;
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
+    flat_rate_cents: number | null;
   };
   const [orgRes, cleanerRes] = await Promise.all([
     supabase
@@ -99,7 +103,7 @@ export async function chargeSelfPayAchAppointment(
     appt.cleaner_id
       ? supabase
           .from('cleaner_profiles')
-          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
           .eq('id', appt.cleaner_id)
           .maybeSingle()
       : Promise.resolve({ data: null as CleanerRow | null }),
@@ -112,20 +116,23 @@ export async function chargeSelfPayAchAppointment(
     return { ok: false, code: 'no_org_card', message: 'Organization has no company payment method on file' };
   }
 
-  // The assigned cleaner must be payout-capable (the charge amount depends on their %).
+  // The assigned cleaner must be payout-capable (the charge amount depends on their cut).
   const cleaner = cleanerRes.data as CleanerRow | null;
-  const cleanerPayable =
-    !!cleaner &&
-    cleaner.payout_model !== 'hourly_external' &&
-    !!cleaner.stripe_connect_account_id &&
-    cleaner.stripe_connect_onboarding_complete &&
-    Number(cleaner.payout_percent) > 0;
-  if (!cleanerPayable) {
+  if (!cleaner || !isCleanerPayable(cleaner)) {
     return {
       ok: false,
       code: 'cleaner_not_payable',
-      message: 'Self-pay requires a payout-capable cleaner (Connect onboarded, payout % > 0)',
+      message: 'Self-pay requires a payout-capable cleaner (Connect onboarded with pay set up)',
     };
+  }
+
+  // Request mode: the debit amount is the approved pay-request cut, so nothing
+  // can be charged until the thread approves. Precondition bail; the approve
+  // trigger / reconcile sweep re-collects once approved.
+  const jobGrossCents = Math.round(Number(appt.total_price) * 100);
+  const cut = await resolveSelfPayCutCents(supabase, { appointmentId: appt.id, cleaner, jobGrossCents });
+  if (!cut.ok) {
+    return { ok: false, code: 'pay_request_pending', message: 'Waiting for the pay request to be approved' };
   }
 
   // Resolve the company payment method: the default, else the first saved. Must be a bank account —
@@ -141,11 +148,10 @@ export async function chargeSelfPayAchAppointment(
     return { ok: false, code: 'no_org_bank', message: 'Company default payment method is not a bank account' };
   }
 
-  const jobGrossCents = Math.round(Number(appt.total_price) * 100);
   const platformFeeBps = orgRow?.platform_fee_bps ?? 0;
-  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmounts({
+  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmountsFromCents({
     jobGrossCents,
-    payoutPercent: Number(cleaner!.payout_percent),
+    cleanerCutCents: cut.cutCents,
     platformFeeBps,
     method: 'us_bank_account',
   });

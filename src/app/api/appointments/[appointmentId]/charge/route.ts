@@ -29,6 +29,7 @@ const HTTP_BY_CODE: Record<ChargeNowCode, number> = {
   no_org_bank: 409,
   tenant_not_ready: 409,
   cleaner_not_payable: 409,
+  pay_request_pending: 409,
   not_chargeable: 409,
   // Another charge for this appointment won the atomic claim and is in flight (operator + homeowner
   // retry, or a double-click). The loser bows out here so only one real charge is created.

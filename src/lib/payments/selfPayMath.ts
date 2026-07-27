@@ -84,17 +84,47 @@ export function computeSelfPayAmounts({
   // the homeowner split caps the fee at the tenant remainder, but self-pay has no remainder, so
   // we only read cleanerCents and derive the UNCAPPED fee below (single formula, different cap).
   const { cleanerCents } = computePaymentSplit({ grossCents: jobGrossCents, payoutPercent, platformFeeBps: 0 });
+  return {
+    ...computeSelfPayAmountsFromCents({ jobGrossCents, cleanerCutCents: cleanerCents, platformFeeBps, method }),
+    payoutPercent,
+  };
+}
+
+export interface SelfPayAmountsFromCentsParams {
+  jobGrossCents: number;
+  /** The cleaner's already-resolved cut in cents (flat rate or approved pay request). */
+  cleanerCutCents: number;
+  platformFeeBps?: number;
+  method?: PaymentMethodKind;
+}
+
+/**
+ * The cents-based sibling of computeSelfPayAmounts for pay modes whose cleaner
+ * cut is an absolute amount (flat / request). Identical fee + gross-up rules:
+ * the platform fee is bps of the notional job GROSS (same basis regardless of
+ * who pays or how the cut was set), a zero cut charges nothing at all, and the
+ * charge is cut + fee grossed up for the method's Stripe fee.
+ */
+export function computeSelfPayAmountsFromCents({
+  jobGrossCents,
+  cleanerCutCents,
+  platformFeeBps = 0,
+  method = 'card',
+}: SelfPayAmountsFromCentsParams): SelfPayAmounts {
+  if (!Number.isInteger(cleanerCutCents) || cleanerCutCents < 0) {
+    throw new Error('computeSelfPayAmountsFromCents: cleanerCutCents must be a non-negative integer');
+  }
   // Always derive (validates bps even on a zero cut); a zero cut then zeroes the fee.
   const rawPlatformFeeCents = platformFeeCentsFor(jobGrossCents, platformFeeBps);
-  const platformFeeCents = cleanerCents > 0 ? rawPlatformFeeCents : 0;
+  const platformFeeCents = cleanerCutCents > 0 ? rawPlatformFeeCents : 0;
   // Gross up cut + fee for the chosen method's real Stripe fee so the platform nets ≥ both.
-  const chargeCents = grossUpForFee(method, cleanerCents + platformFeeCents);
+  const chargeCents = grossUpForFee(method, cleanerCutCents + platformFeeCents);
   return {
     jobGrossCents,
-    payoutPercent,
-    cleanerCutCents: cleanerCents,
+    payoutPercent: 0,
+    cleanerCutCents,
     platformFeeCents,
     chargeCents,
-    estimatedFeeCents: chargeCents - cleanerCents - platformFeeCents,
+    estimatedFeeCents: chargeCents - cleanerCutCents - platformFeeCents,
   };
 }
