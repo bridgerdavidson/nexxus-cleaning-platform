@@ -210,6 +210,56 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect((events ?? []).length).toBe(1);
   });
 
+  it('T1-12a: a second refund after a NET-split settlement tops up only the delta (no over-claw)', async () => {
+    // $100 job, $40 refunded BEFORE settlement: settleCleanerPayout split the transfers from the
+    // $60 net base (cleaner 3600, tenant 2400). A later $30 refund (cumulative $70) must reverse
+    // each leg down to its share of the $30 target base (cleaner 1800, tenant 1200) — the old
+    // proportional-to-gross math demanded 2520/1680, over-clawing money settlement already
+    // withheld (the live-path half of audit T1-12; the sweep guards were already in place).
+    const db = createTestSupabaseClient();
+    const { appt, paymentId } = await seedPaidPayment();
+    // Activate the invariant path: the locked snapshots settlement actually writes.
+    await db
+      .from('payments')
+      .update({ application_fee_bps_snapshot: 0, processing_fee_cents: null })
+      .eq('id', paymentId);
+    await db
+      .from('payouts')
+      .update({ amount: 36, payout_percent_snapshot: 60 })
+      .eq('appointment_id', appt.id);
+    // The pre-settlement refund, already on the ledger (cents).
+    await db.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      appointment_id: appt.id,
+      stripe_refund_id: `re_prior_${appt.id}`,
+      amount: 4000,
+      status: 'succeeded',
+    });
+    // Transfers as settlement actually sized them: from the $60 net base.
+    vi.mocked(listTransfersByGroup).mockResolvedValueOnce([
+      { id: 'tr_x', amount: 3600, amount_reversed: 0 },
+      { id: 'tr_tenant', amount: 2400, amount_reversed: 0 },
+    ] as never);
+    vi.mocked(reversePlatformTransfer).mockClear();
+
+    const { status, body } = await callRoute<{ fully_refunded: boolean; amount_cents: number }>(
+      handlerFor(paymentId),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, amount: 30 },
+      },
+    );
+    expect(status).toBe(200);
+    expect(body.fully_refunded).toBe(false);
+    expect(body.amount_cents).toBe(3000);
+
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 1800, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1200, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledTimes(2);
+  });
+
   it('partial refund: reverses proportional cleaner amount, payment stays paid', async () => {
     const { paymentId } = await seedPaidPayment();
     const { status, body } = await callRoute<{ fully_refunded: boolean; amount_cents: number }>(

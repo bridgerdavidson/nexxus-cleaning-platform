@@ -28,6 +28,7 @@ import {
 } from '@/lib/stripe/transfers';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
+import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { loadNotificationContext } from '@/lib/notifications/context';
 
 export type ClawbackReason =
@@ -49,6 +50,8 @@ interface PayoutRow {
   amount: number | string;
   stripe_transfer_id: string | null;
   status: string;
+  /** Locked cleaner percent frozen at charge time (T1-13); null on pre-snapshot legacy rows. */
+  payout_percent_snapshot: number | string | null;
 }
 
 export interface ClawbackCleanerParams {
@@ -81,7 +84,7 @@ async function loadCleanerPayout(
 ): Promise<PayoutRow | null> {
   const { data } = await supabase
     .from('payouts')
-    .select('id, amount, stripe_transfer_id, status')
+    .select('id, amount, stripe_transfer_id, status, payout_percent_snapshot')
     .eq('appointment_id', appointmentId)
     .not('stripe_transfer_id', 'is', null)
     .limit(1);
@@ -273,6 +276,84 @@ export function proportionalReversalCents(args: {
   return toReverse > 0 ? toReverse : 0;
 }
 
+/**
+ * T1-12a: per-leg reversal plan from the SPLIT INVARIANT rather than raw proportion. Settlement
+ * splits transfers from `splitBase = captured − processingFee − refundedAtSettlement`
+ * (settleCleanerPayout), so a transfer's size says nothing about what fraction of the CURRENT
+ * cumulative refund it owes — proportional-to-gross over-claws every leg that was split net of an
+ * earlier refund. Instead, recompute the split each party would hold if the FULL cumulative
+ * refund had preceded settlement (the same formula T1-13 locked for late-settled held slices,
+ * making refund-then-settle and settle-then-refund converge on identical end states) and reverse
+ * each leg down to that share:
+ *
+ *   B = max(0, captured − processingFee − totalRefunded)
+ *   split = computePaymentSplit(B, payoutPercentSnapshot, platformFeeBpsSnapshot)
+ *   cleaner reverses down to split.cleanerCents; tenant legs down to split.tenantRemainderCents.
+ *
+ * The platform's fee share shrinks with B (Bridger 2026-07-26: the fee is given back
+ * proportionally on refunds), and the platform recovers the processing-fee share from the org
+ * side (Stripe keeps its fee on refunds; pre-T1-12a the platform silently absorbed it, which
+ * also broke order-independence with T1-13).
+ *
+ * Pure. Cumulative + clamped, so replays and partial-refund series top up exactly like the
+ * proportional math did. Multiple tenant legs (rare retry-created siblings) allocate the
+ * aggregate target deterministically (sorted by transfer id) so a replay recomputes the
+ * identical plan and the idempotency keys line up.
+ */
+export interface ReversalLeg {
+  id: string;
+  amount: number;
+  amountReversed: number;
+}
+
+export function invariantReversalPlan(args: {
+  capturedCents: number;
+  processingFeeCents: number;
+  totalRefundedCents: number;
+  /** Locked cleaner percent (payouts.payout_percent_snapshot); 0 when no cleaner leg exists. */
+  payoutPercentSnapshot: number;
+  /** Locked fee bps (payments.application_fee_bps_snapshot). */
+  platformFeeBpsSnapshot: number;
+  cleanerTransfer: ReversalLeg | null;
+  tenantTransfers: ReversalLeg[];
+}): Map<string, number> {
+  const targetBase = Math.max(
+    0,
+    args.capturedCents - args.processingFeeCents - args.totalRefundedCents,
+  );
+  const split = computePaymentSplit({
+    grossCents: targetBase,
+    payoutPercent: args.payoutPercentSnapshot,
+    platformFeeBps: args.platformFeeBpsSnapshot,
+  });
+
+  const plan = new Map<string, number>();
+
+  if (args.cleanerTransfer) {
+    const t = args.cleanerTransfer;
+    const targetReversed = Math.min(t.amount, Math.max(0, t.amount - split.cleanerCents));
+    const toReverse = targetReversed - Math.max(0, t.amountReversed);
+    plan.set(t.id, toReverse > 0 ? toReverse : 0);
+  }
+
+  const tenantLegs = [...args.tenantTransfers].sort((a, b) => a.id.localeCompare(b.id));
+  const tenantAmountTotal = tenantLegs.reduce((s, t) => s + t.amount, 0);
+  const tenantAlreadyTotal = tenantLegs.reduce((s, t) => s + Math.max(0, t.amountReversed), 0);
+  const tenantTargetReversed = Math.min(
+    tenantAmountTotal,
+    Math.max(0, tenantAmountTotal - split.tenantRemainderCents),
+  );
+  let tenantToReverse = Math.max(0, tenantTargetReversed - tenantAlreadyTotal);
+  for (const t of tenantLegs) {
+    const capacity = Math.max(0, t.amount - Math.max(0, t.amountReversed));
+    const take = Math.min(capacity, tenantToReverse);
+    plan.set(t.id, take);
+    tenantToReverse -= take;
+  }
+
+  return plan;
+}
+
 export interface RefundUnwindParams {
   appointmentId: string;
   /** CUMULATIVE refunded cents for the job (prior refunds + this one). */
@@ -337,16 +418,74 @@ export async function reverseJobTransfersForRefund(
 
   const payout = await loadCleanerPayout(supabase, p.appointmentId);
 
+  // T1-12a: prefer the split-invariant plan (reverse each leg down to its share of the
+  // refund-shrunk base, using the LOCKED snapshots) over raw proportion-to-gross, which
+  // over-claws any leg that settlement split net of an earlier refund. The snapshots gate the
+  // switch: pre-snapshot legacy rows (fee bps null) were split from gross, where the two
+  // formulas agree, so they keep the proportional math. A failed snapshot read bails fail-closed
+  // (the refund stands; the stranded-unwind sweep retries this unwind with fresh state).
+  let plan: Map<string, number> | null = null;
+  if (p.paymentId) {
+    const { data: snapRow, error: snapErr } = await supabase
+      .from('payments')
+      .select('processing_fee_cents, application_fee_bps_snapshot')
+      .eq('id', p.paymentId)
+      .maybeSingle();
+    if (snapErr) {
+      await recordPaymentEvent(supabase, {
+        paymentId: p.paymentId,
+        appointmentId: p.appointmentId,
+        organizationId: p.organizationId ?? null,
+        stripeEventId: p.stripeEventId ?? null,
+        eventType: 'transfer_list_failed',
+        actor: p.actor,
+        payload: { reason: 'split_snapshot_unreadable', error: snapErr.message },
+      });
+      return { reversedCents: 0, failures: 1 };
+    }
+    const snap = snapRow as {
+      processing_fee_cents: number | null;
+      application_fee_bps_snapshot: number | null;
+    } | null;
+    const cleanerLeg =
+      payout?.stripe_transfer_id != null
+        ? transfers.find((t) => t.id === payout.stripe_transfer_id) ?? null
+        : null;
+    const percentSnapshot =
+      payout?.payout_percent_snapshot != null ? Number(payout.payout_percent_snapshot) : null;
+    // Snapshots complete for the era: fee bps on the payment row, and (only when a cleaner
+    // transfer exists) the locked percent on the payout row.
+    if (snap?.application_fee_bps_snapshot != null && (!cleanerLeg || percentSnapshot != null)) {
+      const asLeg = (t: (typeof transfers)[number]) => ({
+        id: t.id,
+        amount: t.amount,
+        amountReversed: t.amount_reversed ?? 0,
+      });
+      plan = invariantReversalPlan({
+        capturedCents: p.grossCents,
+        processingFeeCents: snap.processing_fee_cents ?? 0,
+        totalRefundedCents: p.totalRefundedCents,
+        payoutPercentSnapshot: cleanerLeg ? percentSnapshot! : 0,
+        platformFeeBpsSnapshot: snap.application_fee_bps_snapshot,
+        cleanerTransfer: cleanerLeg ? asLeg(cleanerLeg) : null,
+        tenantTransfers: transfers.filter((t) => t !== cleanerLeg).map(asLeg),
+      });
+    }
+  }
+
   let reversedCents = 0;
   let failures = 0;
   for (const t of transfers) {
     const already = t.amount_reversed ?? 0;
-    const reversalCents = proportionalReversalCents({
-      transferAmount: t.amount,
-      transferAmountReversed: already,
-      totalRefundedCents: p.totalRefundedCents,
-      grossCents: p.grossCents,
-    });
+    const reversalCents =
+      plan != null
+        ? plan.get(t.id) ?? 0
+        : proportionalReversalCents({
+            transferAmount: t.amount,
+            transferAmountReversed: already,
+            totalRefundedCents: p.totalRefundedCents,
+            grossCents: p.grossCents,
+          });
     if (reversalCents <= 0) continue;
     const isCleanerTransfer = !!payout && t.id === payout.stripe_transfer_id;
 
