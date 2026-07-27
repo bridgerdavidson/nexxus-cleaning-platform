@@ -26,6 +26,7 @@ import { createRefund } from '@/lib/stripe/charges/refund';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
+import { notifyHomeownerRefundIssued } from './homeownerMoneyEvents';
 
 export interface CancelledRefundResult {
   refunded: boolean;
@@ -123,6 +124,16 @@ export async function refundCancelledInflightCharge(
     organization_id: payment.organization_id,
     dedupe_key: `cancelled_job_refunded:${p.appointmentId}`,
     payload: { ...ctx, audience: 'admin', amount_cents: amountCents, refund_id: refund.id },
+  });
+
+  // T2-1: the payer's own copy. Keyed on the Stripe refund id, so a retry that creates a NEW
+  // refund object (fresh attempt counter) correctly notifies again, while a replay of this one
+  // does not.
+  await notifyHomeownerRefundIssued(supabase, {
+    appointmentId: p.appointmentId,
+    organizationId: payment.organization_id,
+    refundId: refund.id,
+    amountCents,
   });
 
   return { refunded: true };

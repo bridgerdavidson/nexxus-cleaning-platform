@@ -24,6 +24,7 @@ import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
+import { notifyHomeownerCancellationFeeCharged } from './homeownerMoneyEvents';
 
 export type CancellationFeeCode = 'charged' | 'uncollectable' | 'failed';
 
@@ -119,10 +120,11 @@ export async function chargeCancellationFee(
 
   const { data: hoData } = await supabase
     .from('user_profiles')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, email')
     .eq('id', appt.homeowner_id)
     .maybeSingle();
-  const customerId = (hoData as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null;
+  const homeowner = hoData as { stripe_customer_id: string | null; email: string | null } | null;
+  const customerId = homeowner?.stripe_customer_id ?? null;
   if (!customerId) {
     await ledger('cancellation_fee_uncollectable', { reason: 'no_customer' });
     await notifyFeeFailed('no_customer');
@@ -152,6 +154,8 @@ export async function chargeCancellationFee(
       organizationId: appt.organization_id,
       keyPrefix: 'cancelfee',
       reauthAttempt,
+      // T2-1: Stripe's own emailed receipt for a fee the payer did not initiate.
+      receiptEmail: homeowner?.email?.trim() || undefined,
     });
   } catch (err) {
     // Persist a FAILED revenue row even on a thrown decline: the retry-bump above keys off it
@@ -210,6 +214,17 @@ export async function chargeCancellationFee(
     const now = new Date().toISOString();
     const paymentId = await upsertRow({ ...baseRow, status: 'paid', authorized_at: now, captured_at: now, paid_at: now });
     await ledger('cancellation_fee_charged', { payment_intent_id: pi.id, pi_status: pi.status }, paymentId);
+    // T2-1: the homeowner's record of a fee charged off-session, so it isn't first seen on a
+    // bank statement. Only the charging path notifies; the paid-row short-circuit above is a
+    // re-entry of an attempt that already sent it.
+    await notifyHomeownerCancellationFeeCharged(supabase, {
+      appointmentId: appt.id,
+      organizationId: appt.organization_id,
+      homeownerId: appt.homeowner_id,
+      paymentIntentId: pi.id,
+      amountCents: feeCents,
+      noShow: context.noShow,
+    });
     return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: pi.id };
   }
 

@@ -538,4 +538,30 @@ describe('POST /api/payments/:paymentId/refund', () => {
     // The cancellation fee's transfer (different source charge) is never touched.
     expect(vi.mocked(reversePlatformTransfer)).not.toHaveBeenCalledWith('tr_fee', expect.anything(), expect.anything());
   });
+
+  it('T2-1: notifies the homeowner that a refund is on the way (this refund amount, not the cumulative)', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+
+    const { status } = await callRoute(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, amount: 30 },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_issued');
+    const rows = (data ?? []) as Array<{
+      recipient_user_id: string;
+      payload: Record<string, unknown>;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].recipient_user_id).toBe(org.homeowner.userId);
+    expect(rows[0].payload.amount_cents).toBe(3000);
+    expect(rows[0].payload.audience).toBe('homeowner');
+  });
 });

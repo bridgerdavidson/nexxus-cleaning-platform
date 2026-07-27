@@ -16,6 +16,7 @@ import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { settleSelfPay } from '@/lib/payments/settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
+import { notifyHomeownerChargeSucceeded } from './homeownerMoneyEvents';
 import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
@@ -198,12 +199,18 @@ async function handlePaymentIntentSucceeded(
   // appointment (it settles to the tenant below), so only `charge_kind === 'completion'` routes
   // here; legacy charges (no charge_kind metadata) keep their existing behavior.
   if (paymentIntent.metadata?.charge_kind === 'completion') {
-    const { data: statusRow } = await supabase
+    const { data: apptRow } = await supabase
       .from('appointments')
-      .select('status')
+      .select('status, homeowner_id, is_self_pay, organization_id')
       .eq('id', appointmentId)
       .maybeSingle();
-    if ((statusRow as { status: string } | null)?.status === 'cancelled') {
+    const appt = apptRow as {
+      status: string;
+      homeowner_id: string | null;
+      is_self_pay: boolean | null;
+      organization_id: string | null;
+    } | null;
+    if (appt?.status === 'cancelled') {
       const result = await refundCancelledInflightCharge(supabase, {
         appointmentId,
         paymentIntentId: paymentIntent.id,
@@ -211,6 +218,18 @@ async function handlePaymentIntentSucceeded(
       });
       console.log('Cancelled-job debit refunded instead of settled:', result);
       return;
+    }
+    // T2-1: the homeowner's receipt. Emitted only here — the webhook (or the sweep's synthetic
+    // replay of a missed one), so the bell row appears once Stripe has confirmed the capture and
+    // covers card + ACH uniformly; the dedupe key absorbs redeliveries.
+    if (appt?.organization_id && appt.homeowner_id && !appt.is_self_pay) {
+      await notifyHomeownerChargeSucceeded(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        homeownerId: appt.homeowner_id,
+        paymentIntentId: paymentIntent.id,
+        amountCents: paymentIntent.amount_received ?? paymentIntent.amount ?? 0,
+      });
     }
   }
 
