@@ -10,8 +10,18 @@ import type { NavItem } from "./nav-items";
  * mark + icons; expands to 248px on hover to reveal the wordmark + labels.
  * One clean surface (no divider between brand and nav). Settings pinned bottom.
  * `nav` is the viewer's permission-filtered item list (see useOperatorNav).
+ * `badges` maps item ids to waiting-item counts (e.g. payments -> pending pay
+ * requests); rendered as the icon-corner count pill the cleaner shell uses.
  */
-export function OperatorRail({ activeId, nav }: { activeId?: string; nav: NavItem[] }) {
+export function OperatorRail({
+  activeId,
+  nav,
+  badges,
+}: {
+  activeId?: string;
+  nav: NavItem[];
+  badges?: Record<string, number>;
+}) {
   return (
     <aside
       className={cn(
@@ -54,6 +64,7 @@ export function OperatorRail({ activeId, nav }: { activeId?: string; nav: NavIte
         {nav.map((item) => {
           const Icon = item.icon;
           const active = item.id === activeId;
+          const badge = badges?.[item.id] ?? 0;
           return (
             <Link
               key={item.id}
@@ -67,10 +78,21 @@ export function OperatorRail({ activeId, nav }: { activeId?: string; nav: NavIte
                 active && "bg-brand-600 text-white hover:bg-brand-600 hover:text-white"
               )}
             >
-              <Icon className="h-6 w-6 flex-none" aria-hidden />
+              <span className="relative flex-none">
+                <Icon className="h-6 w-6" aria-hidden />
+                {badge > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute -right-2 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card bg-brand-600 px-1 text-[10px] font-bold leading-none tabular-nums text-white"
+                  >
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                )}
+              </span>
               <span className="whitespace-nowrap text-[13px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {item.label}
               </span>
+              {badge > 0 && <span className="sr-only">{badge} waiting</span>}
             </Link>
           );
         })}

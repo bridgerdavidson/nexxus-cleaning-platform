@@ -69,6 +69,7 @@ export type OperatorPaymentsViewProps = {
 
   disputesBand?: ReactNode;
   triage?: ReactNode;
+  payRequests?: ReactNode;
   kpis?: ReactNode;
   yourMoney?: ReactNode;
 };
@@ -97,6 +98,7 @@ export function OperatorPaymentsView({
   onRecordPayment,
   disputesBand,
   triage,
+  payRequests,
   kpis,
   yourMoney,
 }: OperatorPaymentsViewProps) {
@@ -123,6 +125,7 @@ export function OperatorPaymentsView({
 
       {disputesBand}
       {triage}
+      {payRequests}
       {kpis}
       {yourMoney}
 

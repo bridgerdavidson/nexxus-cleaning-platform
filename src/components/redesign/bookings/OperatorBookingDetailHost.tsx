@@ -23,6 +23,7 @@ import { toDetailVM } from "./booking-vm";
 import { RescheduleDialog, type RescheduleInit } from "./reschedule/RescheduleDialog";
 import { useRescheduleBooking } from "./reschedule/useRescheduleBooking";
 import { CancelBookingDialog } from "./cancel/CancelBookingDialog";
+import { CompleteRequestPayDialog } from "./CompleteRequestPayDialog";
 
 /**
  * Shell-level `?booking=<id>` host: opens the booking detail sheet in place on
@@ -81,9 +82,20 @@ function HostInner({
   const [busy, setBusy] = useState(false);
   const [reschedInit, setReschedInit] = useState<RescheduleInit | null>(null);
   const [feeCancelOpen, setFeeCancelOpen] = useState(false);
+  const [payOfferOpen, setPayOfferOpen] = useState(false);
 
   const raw = useMemo(() => appointments.find((x) => x.id === appointmentId) ?? null, [appointments, appointmentId]);
   const detail = useMemo(() => (raw ? toDetailVM(raw, canViewPayments) : null), [raw, canViewPayments]);
+
+  // Completing a request-mode cleaner's job routes through the pay-offer
+  // dialog (the cleaner names their pay; here the org opens with an offer).
+  // Only operators who can manage payments may author an offer; anyone else
+  // completes plainly and the cleaner opens the thread from their side.
+  const assignedCleaner = useMemo(
+    () => (raw?.cleaner_id ? cleaners.find((c) => c.id === raw.cleaner_id) ?? null : null),
+    [cleaners, raw?.cleaner_id],
+  );
+  const completionNeedsPayOffer = assignedCleaner?.payout_model === "request" && canManagePayments;
 
   // The dialog's own open state derives from reschedInit (init !== null), so
   // reset it whenever the sheet's open prop goes false: otherwise browser
@@ -93,6 +105,7 @@ function HostInner({
     if (!open) {
       setReschedInit(null);
       setFeeCancelOpen(false);
+      setPayOfferOpen(false);
     }
   }, [open]);
 
@@ -124,6 +137,40 @@ function HostInner({
       }
     },
     [appointmentId, refetch],
+  );
+
+  // POST-first ordering (mirrors the cleaner completion step): the offer is
+  // created before the status write so a completed request-mode job can never
+  // exist without its pay thread. A 409 means the thread already exists (the
+  // cleaner asked first); completion proceeds and it's handled from Payments.
+  const sendPayOfferAndComplete = useCallback(
+    async (amountCents: number, note: string | null): Promise<string | null> => {
+      if (!currentOrganizationId) return "No organization";
+      try {
+        const res = await fetch(`/api/appointments/${appointmentId}/pay-request`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            amount_cents: amountCents,
+            ...(note ? { note } : {}),
+          }),
+        });
+        if (!res.ok && res.status !== 409) {
+          const data = await res.json().catch(() => ({}));
+          return (data as { error?: string }).error || "Could not send the pay offer";
+        }
+      } catch {
+        return "Could not send the pay offer";
+      }
+      setPayOfferOpen(false);
+      await runStatus("completed");
+      return null;
+    },
+    [appointmentId, currentOrganizationId, accessToken, runStatus],
   );
 
   const handleAssign = useCallback(
@@ -225,7 +272,7 @@ function HostInner({
         onAssign={handleAssign}
         onAcceptCounter={handleAcceptCounter}
         onStart={() => runStatus("in_progress")}
-        onComplete={() => runStatus("completed")}
+        onComplete={() => (completionNeedsPayOffer ? setPayOfferOpen(true) : runStatus("completed"))}
         onOpenReschedule={(init) => setReschedInit(init ?? {})}
         onCancel={() => (feeCancel && raw ? setFeeCancelOpen(true) : setConfirm("cancel"))}
         onDelete={() => setConfirm("delete")}
@@ -264,6 +311,18 @@ function HostInner({
             await refetch();
             onClose();
           }}
+        />
+      ) : null}
+      {completionNeedsPayOffer && raw ? (
+        <CompleteRequestPayDialog
+          open={payOfferOpen}
+          onOpenChange={setPayOfferOpen}
+          cleanerName={
+            `${assignedCleaner?.user_profile?.first_name ?? ""} ${assignedCleaner?.user_profile?.last_name ?? ""}`.trim() ||
+            "This cleaner"
+          }
+          jobPriceCents={raw.total_price != null ? Math.round(Number(raw.total_price) * 100) : null}
+          onSubmit={sendPayOfferAndComplete}
         />
       ) : null}
       <ConfirmDialog
