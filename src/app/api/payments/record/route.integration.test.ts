@@ -277,6 +277,37 @@ describe('POST /api/payments/record — refuses to double-collect a live card ch
     expect(await revenueRowCount(db, apptId)).toBe(1);
   });
 
+  // T1-16: an unknown-outcome card attempt (failed, NO PaymentIntent, unverified) may actually be
+  // a capture whose response was lost — cash on top of it is a double-collect, and settlement
+  // would later read the wrong (newest/manual) revenue row.
+  it('409s while an unknown-outcome card attempt is unverified, then allows once verified absent', async () => {
+    const { db, apptId } = await seedAppt('failed');
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: apptId,
+      amount: 120,
+      status: 'failed',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      charge_kind: 'completion',
+      // stripe_payment_intent_id NULL + unverified = the unknown-outcome shape.
+    });
+
+    const blocked = await record(apptId);
+    expect(blocked.status).toBe(409);
+    expect(await revenueRowCount(db, apptId)).toBe(1);
+
+    // The sweep delivers its verdict: Stripe has no charge. Cash recording unblocks.
+    await db
+      .from('payments')
+      .update({ charge_outcome_verified_at: new Date().toISOString() })
+      .eq('appointment_id', apptId)
+      .eq('payment_type', 'revenue');
+    const allowed = await record(apptId);
+    expect(allowed.status).toBe(200);
+    expect(await revenueRowCount(db, apptId)).toBe(2);
+  });
+
   it('ALLOWS recording cash after the card DECLINED (failed Stripe row does not block)', async () => {
     const { db, apptId } = await seedAppt('failed');
     await seedStripeRevenueRow(db, apptId, 'failed');

@@ -8,6 +8,8 @@ vi.mock('@/lib/stripe/reconcile', () => ({
   retrievePaymentIntent: vi.fn(),
   retrieveCharge: vi.fn(),
   listRefundsForPaymentIntent: vi.fn(async () => []),
+  searchPaymentIntentsByAppointment: vi.fn(async () => []),
+  listRecentPaymentIntentsForCustomer: vi.fn(async () => []),
 }));
 
 // Failed-payout retry → settleCleanerPayout → @/lib/stripe/transfers (getStripe()). Mock it.

@@ -26,6 +26,7 @@ import type Stripe from 'stripe';
 import { dispatchStripeEvent } from './dispatchStripeEvent';
 import { markWebhookProcessed, markWebhookFailed, markWebhookDead } from './webhookIdempotency';
 import { settleCleanerPayout } from './settleCleanerPayout';
+import { settleSelfPay } from './settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
 import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback';
@@ -38,6 +39,8 @@ import {
   listRefundsForPaymentIntent,
   listConnectedAccountPayouts,
   retrieveConnectedAccountPayout,
+  searchPaymentIntentsByAppointment,
+  listRecentPaymentIntentsForCustomer,
 } from '@/lib/stripe/reconcile';
 import { listTransfersByGroup, transferGroupFor } from '@/lib/stripe/transfers';
 import { stripeNewChargeFlowEnabled } from '@/lib/stripe/flags';
@@ -427,6 +430,400 @@ export async function chargeUncollectedCompletions(
   }
 
   return { checked: candidates.length - settled.size, charged };
+}
+
+// ── 2b-pre) Unknown charge-outcome verification (T1-16) ─────────────────────────
+export interface UnknownOutcomeResult {
+  checked: number;
+  /** Rows re-linked to a live PaymentIntent found at Stripe (succeeded rows also flip to paid). */
+  repaired: number;
+  /** Rows Stripe confirmed have no charge — verification stamped, fresh retries unblocked. */
+  verifiedAbsent: number;
+  /** Left for the next sweep (search unavailable, row too young for an absence verdict). */
+  deferred: number;
+}
+
+// Must outlive Stripe's search-indexing lag (~1 minute) with a wide margin before we conclude
+// "no charge exists" and unblock a fresh (fresh-key) charge attempt.
+const VERIFY_ABSENT_MIN_MINUTES = 20;
+
+/**
+ * T1-16: a completion charge whose create THREW WITHOUT a PaymentIntent attached (lost response,
+ * SDK retries exhausted) is recorded as a `failed` revenue row with no PI — but Stripe may have
+ * captured it. That money would sit stranded on the platform balance, and an operator Retry would
+ * mint a fresh idempotency key and charge a SECOND time. chargeCompletedAppointment blocks fresh
+ * charges while such a row is unverified; this job resolves each one against Stripe by metadata
+ * search:
+ *   - a live PI found → re-link the row (succeeded → paid + captured_at, so settleUnsettledCaptures
+ *     / settleSelfPay move the money) + critical per-appointment alert (`charge_outcome_recovered`);
+ *   - no charge exists (row old enough for search indexing) → stamp charge_outcome_verified_at so
+ *     retries unblock;
+ *   - Stripe unreadable / row too young → leave for the next sweep (retries stay blocked — the
+ *     safe direction).
+ */
+export async function verifyUnknownChargeOutcomes(
+  supabase: SupabaseClient,
+  opts: { batch?: number } = {},
+): Promise<UnknownOutcomeResult> {
+  const batch = opts.batch ?? DEFAULT_BATCH;
+
+  const { data: rows, error } = await supabase
+    .from('payments')
+    .select('id, appointment_id, organization_id, amount, is_self_pay, created_at, charge_outcome_unknown_since')
+    .eq('status', 'failed')
+    .eq('payment_type', 'revenue')
+    .eq('charge_kind', 'completion')
+    .eq('payment_method', 'card')
+    .is('stripe_payment_intent_id', null)
+    .is('charge_outcome_verified_at', null)
+    .order('created_at', { ascending: true })
+    .limit(batch);
+  if (error) {
+    // The fresh-charge guard is blocking retries on exactly these rows, so a silently-disabled
+    // sweep would leave them blocked forever (migration 116 lag, grant drift). Alert + no-op —
+    // the T1-10-F3 pattern.
+    console.error('verifyUnknownChargeOutcomes: select failed:', error);
+    await recordPlatformAlert(supabase, {
+      alert_type: 'charge_outcome_sweep_disabled',
+      severity: 'critical',
+      summary: 'Unknown-charge-outcome verification sweep is disabled: candidate select failed (is migration 116 applied?)',
+      details: { error: error.message },
+    });
+    return { checked: 0, repaired: 0, verifiedAbsent: 0, deferred: 0 };
+  }
+
+  const list = (rows ?? []) as Array<{
+    id: string;
+    appointment_id: string;
+    organization_id: string | null;
+    amount: number | string;
+    is_self_pay: boolean | null;
+    created_at: string;
+    charge_outcome_unknown_since: string | null;
+  }>;
+
+  let checked = 0;
+  let repaired = 0;
+  let verifiedAbsent = 0;
+  let deferred = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const row of list) {
+    checked++;
+    try {
+      // The grace anchor is the LATEST unknown attempt, not the row's insert time: the revenue
+      // row is upserted in place across attempts, so created_at can be days old the moment a
+      // retry loses its response (which would collapse the indexing-lag grace to zero).
+      // created_at is only the fallback for rows written before the column existed.
+      const unknownSinceIso = row.charge_outcome_unknown_since ?? row.created_at;
+      const unknownSinceMs = Date.parse(unknownSinceIso);
+
+      let searched: Stripe.PaymentIntent[];
+      try {
+        searched = await searchPaymentIntentsByAppointment(row.appointment_id);
+      } catch (err) {
+        // Stripe unreadable: retries stay blocked (safe), try again next sweep.
+        console.error('verifyUnknownChargeOutcomes: search failed for', row.appointment_id, err);
+        deferred++;
+        continue;
+      }
+
+      // Corroborate with the strongly-consistent LIST endpoint: search alone can miss a
+      // seconds-old capture (indexing lag, unbounded during a Stripe backlog), and can't be the
+      // sole basis for an "absent" verdict that re-arms a fresh-key charge. The customer id also
+      // pins the payer. A capture found here repairs immediately instead of waiting out the lag.
+      const rowSelfPay = !!row.is_self_pay;
+      let listed: Stripe.PaymentIntent[] = [];
+      let corroborated = false;
+      const customer = await resolveCompletionCustomerId(supabase, row.appointment_id, rowSelfPay);
+      if (!customer.ok) {
+        // A DB read error is not "no customer exists" — defer rather than weaken corroboration.
+        deferred++;
+        continue;
+      }
+      if (customer.customerId) {
+        try {
+          listed = await listRecentPaymentIntentsForCustomer(
+            customer.customerId,
+            Math.floor(unknownSinceMs / 1000) - 3600,
+          );
+          corroborated = true;
+        } catch (err) {
+          console.error('verifyUnknownChargeOutcomes: customer list failed for', row.appointment_id, err);
+          deferred++;
+          continue;
+        }
+      }
+
+      // Merge, then scope: this appointment's completion PIs only, on the row's leg (homeowner
+      // and self-pay completions share charge_kind; a homeowner row must never adopt a self-pay
+      // PI and vice versa).
+      const byId = new Map<string, Stripe.PaymentIntent>();
+      for (const pi of [...searched, ...listed]) byId.set(pi.id, pi);
+      const scoped = [...byId.values()].filter(
+        (pi) =>
+          pi.metadata?.appointment_id === row.appointment_id &&
+          pi.metadata?.charge_kind === 'completion' &&
+          (pi.metadata?.self_pay === 'true') === rowSelfPay,
+      );
+      const newestFirst = [...scoped].sort((a, b) => (b.created ?? 0) - (a.created ?? 0));
+      const succeeded = newestFirst.find((pi) => pi.status === 'succeeded');
+      // Only an in-flight PI plausibly created BY the unknown attempt resolves the verdict: an
+      // old requires_action PI from a PRIOR attempt (off-session 3DS stays live indefinitely)
+      // must not be adopted while the real capture may still be un-indexed — adoption exits the
+      // sweep shape forever.
+      const inFlight = newestFirst.find(
+        (pi) =>
+          (pi.status === 'processing' || pi.status === 'requires_action') &&
+          (pi.created ?? 0) * 1000 >= unknownSinceMs - 10 * 60_000,
+      );
+
+      if (succeeded) {
+        // Two adopt refusals, both fail-CLOSED (retries stay blocked, a human is paged):
+        // an amount that doesn't match what this row recorded (stale processing_fee_cents would
+        // mis-split settlement), and a PI that has already been refunded (out-of-band Dashboard
+        // refund leaves no local trace on a PI-less row; repairing to paid would re-arm
+        // settlement on returned money).
+        if (succeeded.amount !== Math.round(Number(row.amount) * 100)) {
+          await recordPaymentEvent(supabase, {
+            paymentId: row.id,
+            appointmentId: row.appointment_id,
+            organizationId: row.organization_id,
+            eventType: 'charge_outcome_adopt_blocked',
+            actor: 'reconciler',
+            amount: succeeded.amount,
+            payload: {
+              reason: 'amount_mismatch',
+              payment_intent_id: succeeded.id,
+              row_amount_cents: Math.round(Number(row.amount) * 100),
+              self_pay: rowSelfPay,
+            },
+          });
+          deferred++;
+          continue;
+        }
+        let refundedCents = 0;
+        try {
+          const refunds = await listRefundsForPaymentIntent(succeeded.id);
+          refundedCents = refunds
+            .filter((r) => r.status !== 'failed' && r.status !== 'canceled')
+            .reduce((sum, r) => sum + (r.amount ?? 0), 0);
+        } catch (err) {
+          console.error('verifyUnknownChargeOutcomes: refund check failed:', err);
+          deferred++;
+          continue;
+        }
+        if (refundedCents > 0) {
+          await recordPaymentEvent(supabase, {
+            paymentId: row.id,
+            appointmentId: row.appointment_id,
+            organizationId: row.organization_id,
+            eventType: 'charge_outcome_adopt_blocked',
+            actor: 'reconciler',
+            amount: succeeded.amount,
+            payload: {
+              reason: 'already_refunded',
+              payment_intent_id: succeeded.id,
+              refunded_cents: refundedCents,
+              self_pay: rowSelfPay,
+            },
+          });
+          deferred++;
+          continue;
+        }
+
+        const chargeId =
+          typeof succeeded.latest_charge === 'string'
+            ? succeeded.latest_charge
+            : succeeded.latest_charge?.id ?? null;
+        // .eq(status,'failed') + the unknown_since token: a racing repair, manual fix, or a NEW
+        // unknown attempt (which re-arms with a fresh timestamp) makes this match 0 rows.
+        const { data: repairedRows, error: repairErr } = await supabase
+          .from('payments')
+          .update({
+            status: 'paid',
+            stripe_payment_intent_id: succeeded.id,
+            payment_intent_status: succeeded.status,
+            amount: succeeded.amount / 100,
+            captured_at: new Date((succeeded.created ?? 0) * 1000).toISOString(),
+            charge_outcome_verified_at: nowIso,
+          })
+          .eq('id', row.id)
+          .eq('status', 'failed')
+          .select('id');
+        if (repairErr || !repairedRows || repairedRows.length === 0) {
+          if (repairErr) console.error('verifyUnknownChargeOutcomes: repair failed:', repairErr);
+          deferred++;
+          continue;
+        }
+        // NULL covers the card-link self-heal reset; a paid row must always leave triage.
+        const { error: flipErr } = await supabase
+          .from('appointments')
+          .update({ authorization_status: 'captured' })
+          .eq('id', row.appointment_id)
+          .or('authorization_status.in.(failed,requires_action),authorization_status.is.null');
+        if (flipErr) {
+          console.error('verifyUnknownChargeOutcomes: triage flip failed:', flipErr);
+        }
+        let selfPaySettled: boolean | null = null;
+        if (rowSelfPay && chargeId) {
+          // Self-pay rows are excluded from settleUnsettledCaptures; settle the recovered charge
+          // directly (idempotent). The outcome rides in the alert payload so the owner's
+          // "verify settlement" instruction has the answer attached.
+          try {
+            const settle = await settleSelfPay(supabase, row.appointment_id, chargeId);
+            selfPaySettled = settle.settled;
+          } catch (err) {
+            console.error('verifyUnknownChargeOutcomes: self-pay settle failed:', err);
+            selfPaySettled = false;
+          }
+        }
+        await recordPaymentEvent(supabase, {
+          paymentId: row.id,
+          appointmentId: row.appointment_id,
+          organizationId: row.organization_id,
+          eventType: 'charge_outcome_recovered',
+          actor: 'reconciler',
+          amount: succeeded.amount,
+          payload: {
+            payment_intent_id: succeeded.id,
+            candidate_count: scoped.length,
+            self_pay: rowSelfPay,
+            ...(selfPaySettled != null ? { self_pay_settled: selfPaySettled } : {}),
+          },
+        });
+        repaired++;
+        continue;
+      }
+
+      if (inFlight) {
+        // Link the row so the normal machinery owns it: 'processing' rows are
+        // reconcileStuckPayments territory; requires_action stays failed for the card-recovery
+        // surfaces. Either way the outcome is now KNOWN.
+        const { data: linkedRows, error: linkErr } = await supabase
+          .from('payments')
+          .update({
+            stripe_payment_intent_id: inFlight.id,
+            payment_intent_status: inFlight.status,
+            ...(inFlight.status === 'processing' ? { status: 'processing' } : {}),
+            charge_outcome_verified_at: nowIso,
+          })
+          .eq('id', row.id)
+          .eq('status', 'failed')
+          .select('id');
+        if (linkErr || !linkedRows || linkedRows.length === 0) {
+          if (linkErr) console.error('verifyUnknownChargeOutcomes: link failed:', linkErr);
+          deferred++;
+          continue;
+        }
+        await recordPaymentEvent(supabase, {
+          paymentId: row.id,
+          appointmentId: row.appointment_id,
+          organizationId: row.organization_id,
+          eventType: 'charge_outcome_recovered',
+          actor: 'reconciler',
+          amount: inFlight.amount,
+          payload: {
+            payment_intent_id: inFlight.id,
+            payment_intent_status: inFlight.status,
+            candidate_count: scoped.length,
+            self_pay: rowSelfPay,
+          },
+        });
+        repaired++;
+        continue;
+      }
+
+      // No live PI. Conclude "no charge exists" only when the LATEST unknown attempt comfortably
+      // outlives search-indexing lag AND the strongly-consistent customer list corroborated the
+      // absence (search alone can return empty for hours during a Stripe indexing backlog, and
+      // this stamp is exactly what re-arms a fresh-key charge). No resolvable customer means no
+      // charge could have been created off-session either, so grace alone suffices there.
+      if (Date.now() - unknownSinceMs < VERIFY_ABSENT_MIN_MINUTES * 60_000) {
+        deferred++;
+        continue;
+      }
+      const stampQuery = supabase
+        .from('payments')
+        .update({ charge_outcome_verified_at: nowIso })
+        .eq('id', row.id)
+        .eq('status', 'failed');
+      // Optimistic-concurrency token: a NEW unknown attempt re-arms with a fresh timestamp, so a
+      // verdict computed against the OLD attempt (overlapping sweep run) matches 0 rows.
+      const { data: stampedRows, error: stampErr } = await (row.charge_outcome_unknown_since
+        ? stampQuery.eq('charge_outcome_unknown_since', row.charge_outcome_unknown_since)
+        : stampQuery.is('charge_outcome_unknown_since', null)
+      ).select('id');
+      if (stampErr || !stampedRows || stampedRows.length === 0) {
+        if (stampErr) {
+          console.error('verifyUnknownChargeOutcomes: verify-absent stamp failed:', stampErr);
+        }
+        deferred++;
+        continue;
+      }
+      await recordPaymentEvent(supabase, {
+        paymentId: row.id,
+        appointmentId: row.appointment_id,
+        organizationId: row.organization_id,
+        eventType: 'charge_outcome_verified_absent',
+        actor: 'reconciler',
+        amount: Math.round(Number(row.amount) * 100),
+        payload: { candidate_count: scoped.length, self_pay: rowSelfPay, corroborated },
+      });
+      verifiedAbsent++;
+    } catch (err) {
+      console.error('verifyUnknownChargeOutcomes failed for', row.appointment_id, err);
+      deferred++;
+    }
+  }
+
+  return { checked, repaired, verifiedAbsent, deferred };
+}
+
+/**
+ * The Stripe Customer a completion charge for this appointment would have been created against:
+ * the homeowner's platform Customer, or the org's self-pay Customer. `customerId: null` with
+ * `ok: true` means no customer EXISTS (the charge could not have been created off-session without
+ * one); `ok: false` means a read failed and the caller must defer, not weaken corroboration.
+ */
+async function resolveCompletionCustomerId(
+  supabase: SupabaseClient,
+  appointmentId: string,
+  selfPay: boolean,
+): Promise<{ ok: boolean; customerId: string | null }> {
+  const { data: apptRow, error: apptErr } = await supabase
+    .from('appointments')
+    .select('homeowner_id, organization_id')
+    .eq('id', appointmentId)
+    .maybeSingle();
+  if (apptErr) return { ok: false, customerId: null };
+  const appt = apptRow as { homeowner_id: string | null; organization_id: string | null } | null;
+  if (!appt) return { ok: true, customerId: null };
+  if (selfPay) {
+    if (!appt.organization_id) return { ok: true, customerId: null };
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('stripe_self_pay_customer_id')
+      .eq('id', appt.organization_id)
+      .maybeSingle();
+    if (error) return { ok: false, customerId: null };
+    return {
+      ok: true,
+      customerId:
+        (data as { stripe_self_pay_customer_id: string | null } | null)?.stripe_self_pay_customer_id ?? null,
+    };
+  }
+  if (!appt.homeowner_id) return { ok: true, customerId: null };
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('stripe_customer_id')
+    .eq('id', appt.homeowner_id)
+    .maybeSingle();
+  if (error) return { ok: false, customerId: null };
+  return {
+    ok: true,
+    customerId: (data as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null,
+  };
 }
 
 // ── 2b) Captured-but-unsettled self-heal ────────────────────────────────────────
