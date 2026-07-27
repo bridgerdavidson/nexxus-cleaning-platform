@@ -1093,9 +1093,11 @@ describe('POST /api/cron/reconcile-payments', () => {
     expect((await markerEvents(db, appt.id, 'refund_unwind_manual_review')).length).toBe(0);
   });
 
-  it('stranded refund-unwind: preflight stalls exhaust to a terminal manual review (T1-15a starvation bound)', async () => {
+  it('stranded refund-unwind: a DB-shape stall (no PI) exhausts to a terminal manual review (T1-15a starvation bound)', async () => {
     const { db, appt, paymentId, piId } = await seedStrandedUnwind();
-    stranded.unreadablePis.add(piId);
+    // No PaymentIntent anywhere on the appointment: nothing to re-derive from, ever — the one
+    // stall class that cannot self-heal and must eventually terminalize.
+    await db.from('payments').update({ stripe_payment_intent_id: null }).eq('id', paymentId);
     // 11 prior stalls in this candidacy episode (all newer than the hour-old failure event); the
     // 12th touch must terminalize instead of stalling again.
     await db.from('payment_events').insert(
@@ -1106,7 +1108,7 @@ describe('POST /api/cron/reconcile-payments', () => {
         event_type: 'refund_unwind_preflight_stalled',
         actor: 'reconciler',
         amount: 0,
-        payload: { source: 'retry-stranded-refund-unwinds', stall_reason: 'charge_unreadable' },
+        payload: { source: 'retry-stranded-refund-unwinds', stall_reason: 'no_payment_intent' },
         created_at: new Date(Date.now() - (12 - i) * 60 * 1000).toISOString(),
       })),
     );
@@ -1121,7 +1123,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       const manualEvents = await markerEvents(db, appt.id, 'refund_unwind_manual_review');
       expect(manualEvents.length).toBe(1);
       expect(manualEvents[0].payload.preflight_exhausted).toBe(true);
-      expect(manualEvents[0].payload.stall_reason).toBe('charge_unreadable');
+      expect(manualEvents[0].payload.stall_reason).toBe('no_payment_intent');
 
       // The terminal marker pages the owner, keyed per APPOINTMENT (T1-15d).
       const { data: alerts } = await db
@@ -1131,18 +1133,70 @@ describe('POST /api/cron/reconcile-payments', () => {
         .is('resolved_at', null);
       expect((alerts ?? []).length).toBe(1);
 
-      // Terminal for real: the next sweep never touches this PI again.
-      const callsFor = () =>
-        vi.mocked(retrievePaymentIntent).mock.calls.filter((c) => c[0] === piId).length;
-      const before = callsFor();
+      // Terminal for real: the marker is newer than the failure, so the appointment leaves the
+      // candidate set (no new stall events on the next sweep).
+      const stallCount = async () =>
+        (await markerEvents(db, appt.id, 'refund_unwind_preflight_stalled')).length;
+      const before = await stallCount();
       const second = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
       expect(second.status).toBe(200);
-      expect(callsFor()).toBe(before);
+      expect(await stallCount()).toBe(before);
+      expect(vi.mocked(retrievePaymentIntent).mock.calls.filter((c) => c[0] === piId).length).toBe(0);
     } finally {
       await db
         .from('platform_alerts')
         .delete()
         .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`);
+    }
+  });
+
+  it('stranded refund-unwind: a Stripe-READ stall past the budget alerts but NEVER terminalizes (money is never abandoned)', async () => {
+    // A transport outage hits every candidate at once; terminalizing would permanently end
+    // auto-recovery for money that heals itself when Stripe comes back.
+    const { db, appt, paymentId, piId, cleanerTransferId } = await seedStrandedUnwind();
+    stranded.unreadablePis.add(piId);
+    await db.from('payment_events').insert(
+      Array.from({ length: 11 }, (_, i) => ({
+        appointment_id: appt.id,
+        organization_id: org.organizationId,
+        payment_id: paymentId,
+        event_type: 'refund_unwind_preflight_stalled',
+        actor: 'reconciler',
+        amount: 0,
+        payload: { source: 'retry-stranded-refund-unwinds', stall_reason: 'charge_unreadable' },
+        created_at: new Date(Date.now() - (12 - i) * 60 * 1000).toISOString(),
+      })),
+    );
+
+    try {
+      const first = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(first.status).toBe(200);
+
+      // No terminal marker; a deduped per-appointment critical alert pages a human instead, and
+      // no 12th stall event is appended (ledger growth is bounded while the outage lasts).
+      expect((await markerEvents(db, appt.id, 'refund_unwind_manual_review')).length).toBe(0);
+      expect((await markerEvents(db, appt.id, 'refund_unwind_preflight_stalled')).length).toBe(11);
+      const { data: alerts } = await db
+        .from('platform_alerts')
+        .select('severity')
+        .eq('alert_type', `refund_unwind_preflight_blocked:${appt.id}`)
+        .is('resolved_at', null);
+      expect((alerts ?? []).length).toBe(1);
+      expect((alerts![0] as { severity: string }).severity).toBe('critical');
+
+      // Stripe heals: the SAME candidate recovers on the next sweep — candidacy was never lost.
+      stranded.unreadablePis.delete(piId);
+      const second = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(second.status).toBe(200);
+      expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(1);
+      expect(
+        vi.mocked(reversePlatformTransfer).mock.calls.find((c) => c[0] === cleanerTransferId)?.[1],
+      ).toBe(6000);
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `refund_unwind_preflight_blocked:${appt.id}`);
     }
   });
 

@@ -91,7 +91,7 @@ describe('alertInputForPaymentEvent', () => {
     expect(input!.summary).not.toContain('$');
   });
 
-  it('T1-14a: refund_ledger_write_failed is a critical, org-scoped alert', () => {
+  it('T1-14a: refund_ledger_write_failed is critical and keyed per APPOINTMENT (one-shot loss)', () => {
     const input = alertInputForPaymentEvent({
       eventType: 'refund_ledger_write_failed',
       organizationId: 'org-4',
@@ -101,10 +101,10 @@ describe('alertInputForPaymentEvent', () => {
     });
     expect(input).not.toBeNull();
     expect(input!.severity).toBe('critical');
-    expect(input!.alert_type).toBe('payment_refund_ledger_write_failed:org-4');
+    expect(input!.alert_type).toBe('payment_refund_ledger_write_failed:org-4:appt_appt-1');
   });
 
-  it('T1-14a: late_payment_failure (settled ACH returned after payout) is critical', () => {
+  it('T1-14a: late_payment_failure (settled ACH returned after payout) is critical, keyed per APPOINTMENT', () => {
     const input = alertInputForPaymentEvent({
       eventType: 'late_payment_failure',
       organizationId: 'org-4',
@@ -114,7 +114,7 @@ describe('alertInputForPaymentEvent', () => {
     });
     expect(input).not.toBeNull();
     expect(input!.severity).toBe('critical');
-    expect(input!.alert_type).toBe('payment_late_payment_failure:org-4');
+    expect(input!.alert_type).toBe('payment_late_payment_failure:org-4:appt_appt-2');
   });
 
   it('T1-15d: refund_unwind_manual_review keys per APPOINTMENT so two jobs cannot fold into one incident', () => {

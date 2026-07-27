@@ -41,6 +41,11 @@ export interface PlatformAlertInput {
 }
 
 type PersistOutcome = 'inserted' | 'deduped' | 'error';
+interface PersistResult {
+  outcome: PersistOutcome;
+  /** The open row's occurrence count after a 'deduped' bump. */
+  occurrences?: number;
+}
 
 /**
  * Record a platform-owner alert. Best-effort: never throws, so a broken alert path
@@ -58,17 +63,23 @@ export async function recordPlatformAlert(
     input.details ?? {},
   );
 
-  let outcome: PersistOutcome = 'error';
+  let persisted: PersistResult = { outcome: 'error' };
   try {
-    outcome = await upsertAlertRow(supabaseAdmin, input, severity);
+    persisted = await upsertAlertRow(supabaseAdmin, input, severity);
   } catch (err) {
     console.error('[platform-alert] failed to persist alert row:', err);
   }
 
-  // Webhook only for a NEW incident — firing on every occurrence spammed the sink while the
-  // open row already folds the occurrence count (T1-14). A failed persist means we can't know
-  // whether the incident is new, so send for visibility rather than stay silent.
-  if (outcome !== 'deduped') await dispatchWebhook(input, severity);
+  // Webhook for a NEW incident — firing on every occurrence spammed the sink while the open row
+  // already folds the occurrence count (T1-14). Two deliberate extra sends: a failed persist
+  // means we can't know whether the incident is new (send for visibility), and power-of-two
+  // occurrence counts re-notify at an exponentially decaying cadence, so one lost dispatch at
+  // incident-open (sink blip/timeout) can't silence a still-recurring incident forever.
+  const renotify =
+    persisted.outcome === 'deduped' &&
+    persisted.occurrences != null &&
+    Number.isInteger(Math.log2(persisted.occurrences));
+  if (persisted.outcome !== 'deduped' || renotify) await dispatchWebhook(input, severity);
 }
 
 /**
@@ -82,8 +93,9 @@ async function upsertAlertRow(
   supabaseAdmin: SupabaseClient,
   input: PlatformAlertInput,
   severity: AlertSeverity,
-): Promise<PersistOutcome> {
-  if (await bumpOpenIncident(supabaseAdmin, input)) return 'deduped';
+): Promise<PersistResult> {
+  const bumped = await bumpOpenIncident(supabaseAdmin, input);
+  if (bumped) return bumped;
 
   const { error: insertError } = await supabaseAdmin.from('platform_alerts').insert({
     alert_type: input.alert_type,
@@ -91,22 +103,23 @@ async function upsertAlertRow(
     summary: input.summary,
     details: input.details ?? {},
   });
-  if (!insertError) return 'inserted';
+  if (!insertError) return { outcome: 'inserted' };
 
   if (insertError.code === '23505') {
     // Lost a concurrent-insert race on the open-incident index — the other writer's row IS the
     // incident; fold this occurrence into it.
-    if (await bumpOpenIncident(supabaseAdmin, input)) return 'deduped';
+    const rebumped = await bumpOpenIncident(supabaseAdmin, input);
+    if (rebumped) return rebumped;
   }
   console.error('[platform-alert] alert row insert failed:', insertError);
-  return 'error';
+  return { outcome: 'error' };
 }
 
-/** Bump the open incident row for this alert_type; false when none exists or the read/write failed. */
+/** Bump the open incident row for this alert_type; null when none exists or the read/write failed. */
 async function bumpOpenIncident(
   supabaseAdmin: SupabaseClient,
   input: PlatformAlertInput,
-): Promise<boolean> {
+): Promise<PersistResult | null> {
   const { data: existing, error: selectError } = await supabaseAdmin
     .from('platform_alerts')
     .select('id, occurrences')
@@ -117,25 +130,32 @@ async function bumpOpenIncident(
     .maybeSingle();
   if (selectError) {
     console.error('[platform-alert] open-incident lookup failed:', selectError);
-    return false;
+    return null;
   }
-  if (!existing) return false;
+  if (!existing) return null;
 
   const row = existing as { id: string; occurrences: number };
-  const { error: updateError } = await supabaseAdmin
+  const nextOccurrences = (row.occurrences ?? 1) + 1;
+  // The update re-checks resolved_at: if the owner resolved the row between our select and this
+  // update, folding into it would swallow the occurrence into a CLOSED incident (no open row, no
+  // webhook). Zero rows matched → report no-bump so the caller inserts a fresh incident.
+  const { data: updated, error: updateError } = await supabaseAdmin
     .from('platform_alerts')
     .update({
-      occurrences: (row.occurrences ?? 1) + 1,
+      occurrences: nextOccurrences,
       last_seen_at: new Date().toISOString(),
       summary: input.summary,
       details: input.details ?? {},
     })
-    .eq('id', row.id);
+    .eq('id', row.id)
+    .is('resolved_at', null)
+    .select('id');
   if (updateError) {
     console.error('[platform-alert] occurrence bump failed:', updateError);
-    return false;
+    return null;
   }
-  return true;
+  if (!updated || updated.length === 0) return null;
+  return { outcome: 'deduped', occurrences: nextOccurrences };
 }
 
 /**

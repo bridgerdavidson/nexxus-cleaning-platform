@@ -132,23 +132,69 @@ export async function POST(request: NextRequest) {
       ...(manualRecordKey ? { manual_record_key: manualRecordKey } : {}),
     };
 
-    const { data: payment, error: paymentError } = await supabaseAdmin
+    let { data: payment, error: paymentError } = await supabaseAdmin
       .from('payments')
       .insert([paymentData])
       .select()
       .single();
 
+    // Migration-lag fallback (T1-11-F2 class): if this code deploys before migration 115 adds
+    // manual_record_key, the insert fails with undefined-column (42703) / schema-cache (PGRST204)
+    // instead of blocking every manual record until migrate-prod lands. Retry once WITHOUT the
+    // key — only the double-submit dedupe degrades, not the money route.
+    if (
+      paymentError &&
+      manualRecordKey &&
+      (paymentError.code === '42703' || paymentError.code === 'PGRST204') &&
+      paymentError.message?.includes('manual_record_key')
+    ) {
+      console.error(
+        'record payment: manual_record_key column missing (migration 115 not applied yet); retrying without dedupe:',
+        paymentError.message,
+      );
+      delete paymentData.manual_record_key;
+      ({ data: payment, error: paymentError } = await supabaseAdmin
+        .from('payments')
+        .insert([paymentData])
+        .select()
+        .single());
+    }
+
     if (paymentError) {
-      // T1-17: a 23505 with a key means THIS submission already landed (double-click / network
-      // retry) — manual rows carry no PaymentIntent, so the key's partial unique index is the only
-      // constraint they can hit. Return the first row as success instead of double-recording.
+      // T1-17: a 23505 with a key means a row from THIS form session already landed — manual rows
+      // carry no PaymentIntent, so the key's partial unique index is the only constraint they can
+      // hit. Replay it as success ONLY when it is the SAME submission (org + appointment + amount
+      // + type all match): an idempotency key must never acknowledge a submission it didn't
+      // record (the dialog keeps its key across a failed submit, so an EDITED resubmit can carry
+      // the old key), and the org scope keeps another tenant's row out of the response entirely.
       if (manualRecordKey && paymentError.code === '23505') {
         const { data: existing } = await supabaseAdmin
           .from('payments')
           .select()
           .eq('manual_record_key', manualRecordKey)
+          .eq('organization_id', organization_id)
           .maybeSingle();
-        if (existing) {
+        const row = existing as
+          | { appointment_id: string; amount: number | string; payment_type: string | null }
+          | null;
+        const sameSubmission =
+          row != null &&
+          row.appointment_id === appointment_id &&
+          Number(row.amount) === Number(amount) &&
+          (row.payment_type ?? 'revenue') === resolvedType;
+        if (sameSubmission) {
+          // The first request may have died between its insert and the triage flip below — the
+          // flip is idempotent and state-filtered, so run it on the replay too before returning.
+          if (resolvedType === 'revenue') {
+            const { error: replayFlipError } = await supabaseAdmin
+              .from('appointments')
+              .update({ authorization_status: 'captured' })
+              .eq('id', appointment_id)
+              .in('authorization_status', ['failed', 'requires_action']);
+            if (replayFlipError) {
+              console.error('record payment: replay triage flip failed:', replayFlipError);
+            }
+          }
           return NextResponse.json({
             success: true,
             payment: existing,
@@ -156,6 +202,15 @@ export async function POST(request: NextRequest) {
             message: 'Payment already recorded',
           });
         }
+        // Same key, different payload (edited resubmit) or a cross-org key collision: refuse
+        // rather than silently drop the new submission or leak the other row.
+        return NextResponse.json(
+          {
+            error:
+              'A payment was already recorded from this form session, possibly with different details. Check the payments list, then close and reopen the dialog to record another payment.',
+          },
+          { status: 409 }
+        );
       }
       console.error('Error creating payment:', paymentError);
       return NextResponse.json(

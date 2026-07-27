@@ -962,12 +962,22 @@ export const REFUND_UNWIND_PREFLIGHT_STALLED_EVENT = 'refund_unwind_preflight_st
  * T1-15(a): a preflight `continue` (no PaymentIntent, unreadable charge/refunds/transfers) writes
  * no marker and no fresh failure event, so a permanently-unreadable appointment would hold a slot
  * of the oldest-first candidate batch every sweep, forever, starving younger stranded ones. Each
- * stall now appends a forensic `refund_unwind_preflight_stalled` event; once an appointment
- * accumulates this many in one candidacy episode (since its newest failure event) it is
- * terminalized to manual review (critical alert) instead of silently looping. 12 stalls at the
- * 15-minute cron cadence is ~3h of grace for transient Stripe/DB unreadability.
+ * stall appends a forensic `refund_unwind_preflight_stalled` event; once an appointment
+ * accumulates this many in one candidacy episode (since its newest failure event) the stall
+ * budget is exhausted. 12 stalls at the 15-minute cron cadence is ~3h of grace.
+ *
+ * What exhaustion does depends on the stall CLASS:
+ *   - DB-shape reasons (no PI to re-derive from, refund state inconsistent) are per-appointment
+ *     and cannot self-heal → terminalize to manual review (critical alert, leaves the sweep).
+ *   - Stripe-READ reasons (charge/refunds/transfers/recheck unreadable) are usually a transport
+ *     outage hitting every candidate at once. Terminalizing would end auto-recovery for money
+ *     that recovers by itself the moment Stripe heals ("money is never abandoned"), so instead
+ *     the appointment STAYS a candidate, stops accruing stall events (bounding ledger growth),
+ *     and raises a deduped per-appointment critical alert so a human sees a persistently
+ *     unreadable job while the sweep keeps trying.
  */
 const UNWIND_PREFLIGHT_MAX_STALLS = 12;
+const TERMINAL_STALL_REASONS = new Set(['no_payment_intent', 'no_live_refunds']);
 
 type PreflightStallOutcome = 'stalled' | 'terminalized';
 
@@ -1006,17 +1016,33 @@ async function noteUnwindPreflightStall(
 
   const priorStalls = (stalls ?? []).length;
   if (priorStalls >= UNWIND_PREFLIGHT_MAX_STALLS - 1) {
-    await recordPaymentEvent(supabase, {
-      ...common,
-      eventType: REFUND_UNWIND_MANUAL_REVIEW_EVENT,
-      payload: {
-        source: 'retry-stranded-refund-unwinds',
-        preflight_exhausted: true,
+    if (TERMINAL_STALL_REASONS.has(reason)) {
+      await recordPaymentEvent(supabase, {
+        ...common,
+        eventType: REFUND_UNWIND_MANUAL_REVIEW_EVENT,
+        payload: {
+          source: 'retry-stranded-refund-unwinds',
+          preflight_exhausted: true,
+          stall_reason: reason,
+          stalls: priorStalls + 1,
+        },
+      });
+      return 'terminalized';
+    }
+    // Stripe-read stall past the budget: keep candidacy, page a human, append nothing more
+    // (the open-incident dedupe folds this into one alert per appointment).
+    await recordPlatformAlert(supabase, {
+      alert_type: `refund_unwind_preflight_blocked:${c.appointment_id}`,
+      severity: 'critical',
+      summary: `Stranded refund unwind cannot read Stripe state (${reason}); still retrying every sweep`,
+      details: {
+        appointment_id: c.appointment_id,
+        organization_id: common.organizationId ?? null,
         stall_reason: reason,
-        stalls: priorStalls + 1,
+        stalls: priorStalls,
       },
     });
-    return 'terminalized';
+    return 'stalled';
   }
 
   await recordPaymentEvent(supabase, {

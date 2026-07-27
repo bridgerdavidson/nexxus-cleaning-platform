@@ -37,12 +37,14 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   refund_unwind_manual_review: { severity: 'critical', label: 'Refund unwind needs a manual decision (mixed charges or refund absorbed at settlement), auto-retry stopped', keyByAppointment: true },
   cleaner_clawback_failed: { severity: 'critical', label: 'Cleaner payout clawback failed' },
   // T1-14(a): the Stripe refund SUCCEEDED but the local refunds-ledger insert failed, so later
-  // refundable-amount math can over-refund until the ledger is reconciled.
-  refund_ledger_write_failed: { severity: 'critical', label: 'Stripe refund succeeded but the local refund ledger write failed, refundable-amount math may over-refund' },
+  // refundable-amount math can over-refund until the ledger is reconciled. One-shot per
+  // appointment, so keyed per appointment: two distinct losses in one org must not fold.
+  refund_ledger_write_failed: { severity: 'critical', label: 'Stripe refund succeeded but the local refund ledger write failed, refundable-amount math may over-refund', keyByAppointment: true },
   // T1-14(a): a settled bank debit (ACH) was returned AFTER the tenant/cleaner transfers were
   // paid — the platform is out the distributed funds until the org re-collects (the cleaner
-  // slice auto-claws back; the tenant remainder does not). Latent until ACH ships.
-  late_payment_failure: { severity: 'critical', label: 'A settled bank payment was returned after payout, the platform is out the distributed funds' },
+  // slice auto-claws back; the tenant remainder does not). Latent until ACH ships. One-shot per
+  // appointment → keyed per appointment for the same reason.
+  late_payment_failure: { severity: 'critical', label: 'A settled bank payment was returned after payout, the platform is out the distributed funds', keyByAppointment: true },
   // Warning: money is stuck or a platform-account risk signal fired, but it is retryable or non-loss.
   cleaner_transfer_failed: { severity: 'warning', label: 'Cleaner payout transfer failed' },
   cleaner_payout_bank_failed: { severity: 'warning', label: 'A cleaner bank payout failed, funds returned to their Stripe balance' },

@@ -199,4 +199,28 @@ describe('platform alerts routes', () => {
     });
     expect(status).toBe(400);
   });
+
+  it('PATCH reopen 409s (not 500) when a newer open incident of the same type exists', async () => {
+    admin = await withPlatformAdmin();
+    const alertType = `t_reopen_${Date.now()}`;
+    const resolvedRow = await seedAlert({
+      alert_type: alertType,
+      summary: 'old incident',
+      last_seen_at: '2099-01-01T00:00:00Z',
+      resolved_at: '2099-01-02T00:00:00Z',
+    });
+    await seedAlert({
+      alert_type: alertType,
+      summary: 'current open incident',
+      last_seen_at: '2099-02-01T00:00:00Z',
+    });
+
+    const { status, body } = await callRoute<{ error?: string }>(patchHandler(resolvedRow), {
+      method: 'PATCH',
+      body: { resolved: false },
+      headers: bearerHeader(admin.accessToken),
+    });
+    expect(status).toBe(409);
+    expect(body.error).toContain('open incident');
+  });
 });

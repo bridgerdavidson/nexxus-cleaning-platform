@@ -49,6 +49,14 @@ export async function PATCH(
     .maybeSingle();
 
   if (error) {
+    // Reopening collides with the open-incident unique index (migration 115) when a newer open
+    // row of the same alert_type already exists — a caller conflict, not a server failure.
+    if (!resolved && error.code === '23505') {
+      return NextResponse.json(
+        { error: 'An open incident of this type already exists. Resolve it before reopening this one.' },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { error: 'Failed to update alert', details: error.message },
       { status: 500 },
