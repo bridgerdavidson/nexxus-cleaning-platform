@@ -35,11 +35,6 @@ export interface ChargeParams {
    * key never collides with the completion charge for the same appointment.
    */
   keyPrefix?: string;
-  /**
-   * Payer's email, so Stripe sends its own emailed receipt for this charge (audit T2-1). Omitted
-   * when the payer has no email on file; the in-app notification is the primary record either way.
-   */
-  receiptEmail?: string;
 }
 
 export async function createDestinationCharge(p: ChargeParams): Promise<Stripe.PaymentIntent> {
@@ -57,7 +52,6 @@ export async function createDestinationCharge(p: ChargeParams): Promise<Stripe.P
     // transfers after the charge succeeds (see settleCleanerPayout).
     on_behalf_of: p.tenantAccountId,
     transfer_group: transferGroupFor(p.appointmentId),
-    ...(p.receiptEmail ? { receipt_email: p.receiptEmail } : {}),
     metadata: {
       appointment_id: p.appointmentId,
       organization_id: p.organizationId,

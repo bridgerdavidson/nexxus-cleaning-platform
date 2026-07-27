@@ -386,16 +386,13 @@ async function chargeHomeownerNow(
 
   const { data: hoData } = await supabase
     .from('user_profiles')
-    .select('stripe_customer_id, email')
+    .select('stripe_customer_id')
     .eq('id', appt.homeowner_id)
     .maybeSingle();
-  const homeowner = hoData as { stripe_customer_id: string | null; email: string | null } | null;
-  const customerId = homeowner?.stripe_customer_id ?? null;
+  const customerId = (hoData as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null;
   if (!customerId) {
     return recordNoCardBail(supabase, appt, actor, 'Homeowner has no saved payment profile');
   }
-  // T2-1: Stripe emails its own receipt for the completion charge alongside the in-app bell row.
-  const receiptEmail = homeowner?.email?.trim() || undefined;
 
   // The saved payment method can be detached/deleted between booking and completion (the customer
   // rotated cards). Charging the dead id would surface as a confusing generic decline, so
@@ -469,7 +466,6 @@ async function chargeHomeownerNow(
       appointmentId: appt.id,
       organizationId: appt.organization_id,
       reauthAttempt,
-      receiptEmail,
     });
   } catch (err) {
     return recordChargeDecline(supabase, appt, actor, {

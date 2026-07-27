@@ -226,11 +226,68 @@ describe('T2-1 cancellation_fee_charged — the off-session fee record', () => {
     expect(rows[0].recipient_user_id).toBe(org.homeowner.userId);
     expect(rows[0].payload.amount_cents).toBe(4000);
     expect(rows[0].payload.reason).toBe('no_show');
+  });
 
-    // The one-field half of T2-1: Stripe's own emailed receipt for the same charge.
-    expect(vi.mocked(createDestinationCharge).mock.calls[0][0].receiptEmail).toBe(
-      org.homeowner.email,
+  it('re-notifies on a retry that short-circuits on the captured fee row (crash-before-notify recovery)', async () => {
+    const appt = await seedFeeChargeable();
+    const feeArgs = {
+      id: appt.id,
+      organization_id: org.organizationId,
+      homeowner_id: org.homeowner.userId,
+      payment_method_id: 'pm_t21',
+      reauth_count: 0,
+    };
+    await chargeCancellationFee(db, feeArgs, 4000, 'user:tester', {
+      party: 'homeowner',
+      noShow: false,
+      insideWindow: true,
+    });
+    // Simulate the crash-before-notify window: the fee row is captured, the bell row is not there.
+    await db.from('notification_events').delete().eq('appointment_id', appt.id);
+
+    const retry = await chargeCancellationFee(db, feeArgs, 4000, 'user:tester', {
+      party: 'homeowner',
+      noShow: false,
+      insideWindow: true,
+    });
+
+    expect(retry.code).toBe('charged');
+    // No second card charge, and the missing notification is recovered.
+    expect(vi.mocked(createDestinationCharge)).toHaveBeenCalledTimes(1);
+    expect(await notificationsFor(appt.id, 'cancellation_fee_charged')).toHaveLength(1);
+  });
+
+  it('does not announce a paid COMPLETION charge as a cancellation fee', async () => {
+    const appt = await seedFeeChargeable();
+    // A captured completion charge is the newest revenue row, so the fee helper short-circuits on
+    // it. That must not tell the homeowner they were charged a fee.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 120,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      charge_kind: 'completion',
+      stripe_payment_intent_id: `pi_completion_${crypto.randomUUID()}`,
+    });
+
+    const outcome = await chargeCancellationFee(
+      db,
+      {
+        id: appt.id,
+        organization_id: org.organizationId,
+        homeowner_id: org.homeowner.userId,
+        payment_method_id: 'pm_t21',
+        reauth_count: 0,
+      },
+      4000,
+      'user:tester',
+      { party: 'homeowner', noShow: true, insideWindow: true },
     );
+
+    expect(outcome.code).toBe('charged');
+    expect(await notificationsFor(appt.id, 'cancellation_fee_charged')).toHaveLength(0);
   });
 
   it('uses the cancellation wording for a late cancel, and does not notify on a decline', async () => {

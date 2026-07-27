@@ -78,16 +78,40 @@ export async function chargeCancellationFee(
   // webhook). Don't charge again. Reuse the row for any later status write.
   const { data: existingRows } = await supabase
     .from('payments')
-    .select('id, status, stripe_payment_intent_id')
+    .select('id, status, stripe_payment_intent_id, charge_kind')
     .eq('appointment_id', appt.id)
     .eq('payment_type', 'revenue')
     .order('created_at', { ascending: false })
     .limit(1);
   const existing =
     existingRows && existingRows.length > 0
-      ? (existingRows[0] as { id: string; status: string; stripe_payment_intent_id: string | null })
+      ? (existingRows[0] as {
+          id: string;
+          status: string;
+          stripe_payment_intent_id: string | null;
+          charge_kind: string | null;
+        })
       : null;
   if (existing && (existing.status === 'paid' || existing.status === 'processing')) {
+    // T2-1 recovery: a crash between the paid-row write below and its notification would otherwise
+    // leave that fee permanently un-notified, since every retry lands here. Re-emitting is free
+    // (same dedupe key). Narrowed to a CAPTURED FEE row so a paid completion charge can never be
+    // announced as a cancellation fee.
+    if (
+      existing.status === 'paid' &&
+      existing.charge_kind === 'cancellation_fee' &&
+      existing.stripe_payment_intent_id &&
+      appt.homeowner_id
+    ) {
+      await notifyHomeownerCancellationFeeCharged(supabase, {
+        appointmentId: appt.id,
+        organizationId: appt.organization_id,
+        homeownerId: appt.homeowner_id,
+        paymentIntentId: existing.stripe_payment_intent_id,
+        amountCents: feeCents,
+        noShow: context.noShow,
+      });
+    }
     return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: existing.stripe_payment_intent_id ?? undefined };
   }
 
@@ -120,11 +144,10 @@ export async function chargeCancellationFee(
 
   const { data: hoData } = await supabase
     .from('user_profiles')
-    .select('stripe_customer_id, email')
+    .select('stripe_customer_id')
     .eq('id', appt.homeowner_id)
     .maybeSingle();
-  const homeowner = hoData as { stripe_customer_id: string | null; email: string | null } | null;
-  const customerId = homeowner?.stripe_customer_id ?? null;
+  const customerId = (hoData as { stripe_customer_id: string | null } | null)?.stripe_customer_id ?? null;
   if (!customerId) {
     await ledger('cancellation_fee_uncollectable', { reason: 'no_customer' });
     await notifyFeeFailed('no_customer');
@@ -154,8 +177,6 @@ export async function chargeCancellationFee(
       organizationId: appt.organization_id,
       keyPrefix: 'cancelfee',
       reauthAttempt,
-      // T2-1: Stripe's own emailed receipt for a fee the payer did not initiate.
-      receiptEmail: homeowner?.email?.trim() || undefined,
     });
   } catch (err) {
     // Persist a FAILED revenue row even on a thrown decline: the retry-bump above keys off it
