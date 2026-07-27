@@ -78,7 +78,7 @@ export async function chargeCancellationFee(
   // webhook). Don't charge again. Reuse the row for any later status write.
   const { data: existingRows } = await supabase
     .from('payments')
-    .select('id, status, stripe_payment_intent_id, charge_kind')
+    .select('id, status, stripe_payment_intent_id, charge_kind, amount')
     .eq('appointment_id', appt.id)
     .eq('payment_type', 'revenue')
     .order('created_at', { ascending: false })
@@ -90,6 +90,7 @@ export async function chargeCancellationFee(
           status: string;
           stripe_payment_intent_id: string | null;
           charge_kind: string | null;
+          amount: number | string | null;
         })
       : null;
   if (existing && (existing.status === 'paid' || existing.status === 'processing')) {
@@ -100,15 +101,16 @@ export async function chargeCancellationFee(
     if (
       existing.status === 'paid' &&
       existing.charge_kind === 'cancellation_fee' &&
-      existing.stripe_payment_intent_id &&
-      appt.homeowner_id
+      existing.stripe_payment_intent_id
     ) {
+      // Quote the CAPTURED row, not this call's recomputed fee: a retry can arrive with a
+      // different policy amount (the org edited the fee schedule in between), and the homeowner
+      // must be told what actually hit their card.
       await notifyHomeownerCancellationFeeCharged(supabase, {
         appointmentId: appt.id,
         organizationId: appt.organization_id,
-        homeownerId: appt.homeowner_id,
         paymentIntentId: existing.stripe_payment_intent_id,
-        amountCents: feeCents,
+        amountCents: Math.round(Number(existing.amount) * 100),
         noShow: context.noShow,
       });
     }
@@ -241,7 +243,6 @@ export async function chargeCancellationFee(
     await notifyHomeownerCancellationFeeCharged(supabase, {
       appointmentId: appt.id,
       organizationId: appt.organization_id,
-      homeownerId: appt.homeowner_id,
       paymentIntentId: pi.id,
       amountCents: feeCents,
       noShow: context.noShow,

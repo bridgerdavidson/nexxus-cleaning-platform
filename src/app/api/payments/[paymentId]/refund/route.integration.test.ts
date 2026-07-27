@@ -539,29 +539,63 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(vi.mocked(reversePlatformTransfer)).not.toHaveBeenCalledWith('tr_fee', expect.anything(), expect.anything());
   });
 
-  it('T2-1: notifies the homeowner that a refund is on the way (this refund amount, not the cumulative)', async () => {
+  it('T2-1: each partial refund notifies the homeowner with ITS OWN amount, not the cumulative', async () => {
     const { appt, paymentId } = await seedPaidPayment();
+    const db = createTestSupabaseClient();
+
+    // Two equal partials on the same payment. With one refund, per-refund and cumulative are the
+    // same number and a cumulative-reporting bug (or an appointment-scoped dedupe key) would pass
+    // unnoticed; the second refund separates them (3000 vs 6000, one row vs two).
+    for (let i = 0; i < 2; i++) {
+      const { status } = await callRoute(handlerFor(paymentId), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, amount: 30 },
+      });
+      expect(status).toBe(200);
+    }
+
+    const { data } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload, created_at')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_issued')
+      .order('created_at', { ascending: true });
+    const rows = (data ?? []) as Array<{
+      recipient_user_id: string;
+      payload: Record<string, unknown>;
+    }>;
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.payload.amount_cents)).toEqual([3000, 3000]);
+    expect(rows[0].recipient_user_id).toBe(org.homeowner.userId);
+    expect(rows[0].payload.audience).toBe('homeowner');
+  });
+
+  it('T2-1: reports what STRIPE refunded when it differs from the requested amount', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+    // A prior out-of-band Dashboard refund leaves no local `refunds` row, so the route computes a
+    // full refund of $100 while Stripe only has $20 left to give back. The homeowner must be told
+    // $20.
+    vi.mocked(createRefund).mockResolvedValueOnce({
+      id: `re_oob_${crypto.randomUUID()}`,
+      amount: 2000,
+    } as never);
 
     const { status } = await callRoute(handlerFor(paymentId), {
       method: 'POST',
       headers: bearerHeader(org.admin.accessToken),
-      body: { organization_id: org.organizationId, amount: 30 },
+      body: { organization_id: org.organizationId },
     });
     expect(status).toBe(200);
 
     const db = createTestSupabaseClient();
     const { data } = await db
       .from('notification_events')
-      .select('recipient_user_id, payload')
+      .select('payload')
       .eq('appointment_id', appt.id)
       .eq('event_type', 'refund_issued');
-    const rows = (data ?? []) as Array<{
-      recipient_user_id: string;
-      payload: Record<string, unknown>;
-    }>;
+    const rows = (data ?? []) as Array<{ payload: Record<string, unknown> }>;
     expect(rows).toHaveLength(1);
-    expect(rows[0].recipient_user_id).toBe(org.homeowner.userId);
-    expect(rows[0].payload.amount_cents).toBe(3000);
-    expect(rows[0].payload.audience).toBe('homeowner');
+    expect(rows[0].payload.amount_cents).toBe(2000);
   });
 });

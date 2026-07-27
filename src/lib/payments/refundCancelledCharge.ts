@@ -129,11 +129,14 @@ export async function refundCancelledInflightCharge(
   // T2-1: the payer's own copy. Keyed on the Stripe refund id, so a retry that creates a NEW
   // refund object (fresh attempt counter) correctly notifies again, while a replay of this one
   // does not.
+  // Quote what STRIPE refunded: this is a no-amount full refund, so Stripe returns whatever was
+  // still refundable on the charge, which is less than the row's amount if money already came back
+  // out of band.
   await notifyHomeownerRefundIssued(supabase, {
     appointmentId: p.appointmentId,
     organizationId: payment.organization_id,
     refundId: refund.id,
-    amountCents,
+    amountCents: typeof refund.amount === 'number' ? refund.amount : amountCents,
   });
 
   return { refunded: true };

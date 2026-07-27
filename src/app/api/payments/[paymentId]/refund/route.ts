@@ -150,11 +150,14 @@ export async function POST(
     // T2-1: tell the payer their money is coming back. Emitted on the Stripe refund succeeding,
     // NOT on the ledger row landing: the refund is real either way, and the ledger-gap branch
     // above is exactly when a silent homeowner is worst. Skipped for self-pay by the helper.
+    // Quote what STRIPE refunded, not `refundCents`: a full refund sends no amount, so Stripe
+    // returns whatever was still refundable, which is less than our figure when money already came
+    // back out of band (a Dashboard refund leaves no local row for `alreadyRefunded` to see).
     await notifyHomeownerRefundIssued(supabaseAdmin, {
       appointmentId: payment.appointment_id,
       organizationId: payment.organization_id,
       refundId: refund.id,
-      amountCents: refundCents,
+      amountCents: typeof refund.amount === 'number' ? refund.amount : refundCents,
     });
 
     // 2) Reclaim the platform's outbound transfers (tenant remainder AND cleaner payout) to match

@@ -145,7 +145,7 @@ describe('T2-1 charge_succeeded — the completion-charge receipt', () => {
     expect(await notificationsFor(appt.id, 'charge_succeeded')).toHaveLength(0);
   });
 
-  it('does not notify when the charge settled after a cancel (it gets refunded, not receipted)', async () => {
+  it('does not receipt a charge that settled after a cancel, it announces the refund instead', async () => {
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
       cleanerId: org.cleaner.userId,
@@ -153,8 +153,52 @@ describe('T2-1 charge_succeeded — the completion-charge receipt', () => {
       status: 'cancelled',
       totalPrice: 120,
     });
+    const event = succeededIntent(appt.id, org.organizationId);
+    const piId = (event.data.object as { id: string }).id;
+    // Seed the captured row so the cancelled branch actually runs its auto-refund end to end,
+    // rather than bailing on 'no_payment_row' and passing the assertion for the wrong reason.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 120,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: piId,
+    });
 
-    await dispatchStripeEvent(db, succeededIntent(appt.id, org.organizationId));
+    await dispatchStripeEvent(db, event);
+
+    expect(await notificationsFor(appt.id, 'charge_succeeded')).toHaveLength(0);
+    // The payer is told about the money coming back.
+    const refunds = await notificationsFor(appt.id, 'refund_issued');
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0].recipient_user_id).toBe(org.homeowner.userId);
+  });
+
+  it('does not receipt a charge whose row is already refunded (out-of-order delivery)', async () => {
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 120,
+    });
+    const event = succeededIntent(appt.id, org.organizationId);
+    const piId = (event.data.object as { id: string }).id;
+    // charge.refunded landed first and already marked the row refunded (audit H2). The late
+    // success delivery must not tell the homeowner they paid for a job they were refunded for.
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 120,
+      status: 'refunded',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: piId,
+    });
+
+    await dispatchStripeEvent(db, event);
 
     expect(await notificationsFor(appt.id, 'charge_succeeded')).toHaveLength(0);
   });

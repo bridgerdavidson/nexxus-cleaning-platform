@@ -16,7 +16,7 @@ import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { settleSelfPay } from '@/lib/payments/settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
-import { notifyHomeownerChargeSucceeded } from './homeownerMoneyEvents';
+import { notifyHomeownerChargeSucceeded, notifyHomeownerRefundIssued } from './homeownerMoneyEvents';
 import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
@@ -219,14 +219,14 @@ async function handlePaymentIntentSucceeded(
       console.log('Cancelled-job debit refunded instead of settled:', result);
       return;
     }
-    // T2-1: the homeowner's receipt. Emitted only here — the webhook (or the sweep's synthetic
-    // replay of a missed one), so the bell row appears once Stripe has confirmed the capture and
-    // covers card + ACH uniformly; the dedupe key absorbs redeliveries.
-    if (appt?.organization_id && appt.homeowner_id && !appt.is_self_pay) {
+    // T2-1: the homeowner's receipt, on the delivery that confirms the capture (card and ACH
+    // alike). The reconcile sweeps that repair a capture this webhook never reported emit the
+    // same event, so the receipt doesn't hang on one delivery; the dedupe key makes the overlap
+    // free. The helper skips self-pay and no-homeowner appointments.
+    if (appt?.organization_id) {
       await notifyHomeownerChargeSucceeded(supabase, {
         appointmentId,
         organizationId: appt.organization_id,
-        homeownerId: appt.homeowner_id,
         paymentIntentId: paymentIntent.id,
         amountCents: paymentIntent.amount_received ?? paymentIntent.amount ?? 0,
       });
@@ -758,6 +758,21 @@ async function handleChargeRefunded(
     amount: charge.amount_refunded,
     payload: { charge_id: charge.id, fully_refunded: fullyRefunded },
   });
+
+  // T2-1: a refund the app did NOT originate (issued straight from the Stripe Dashboard, the
+  // documented fallback when the in-app route fails) has no creation site to notify from, so
+  // without this the payer only ever finds out from their statement. Keyed per refund object, so
+  // it's a no-op for the app-originated refunds that already notified at creation.
+  if (payment) {
+    for (const r of refundList) {
+      await notifyHomeownerRefundIssued(supabase, {
+        appointmentId: payment.appointment_id,
+        organizationId: payment.organization_id,
+        refundId: r.id,
+        amountCents: r.amount,
+      });
+    }
+  }
 }
 
 /**
