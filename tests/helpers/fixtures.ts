@@ -360,6 +360,72 @@ export async function withPlatformAdmin(): Promise<PlatformAdminFixture> {
  *     `orgOwnedProperty`, homeowner_id is set to null too (the org pays, there is no homeowner).
  *     The DB CHECK `is_self_pay = true OR homeowner_id IS NOT NULL` stays satisfied either way.
  */
+
+/**
+ * Seeds a pay-request thread (migration 114) directly, bypassing the submit
+ * route, so route/settlement tests can start from any thread state. Offers get
+ * explicit second-spaced created_at values so "latest offer" ordering is
+ * deterministic. Status 'approved' requires approvedAmountCents (the DB
+ * approved_shape CHECK enforces the full approval triple).
+ */
+export async function createTestPayRequest(args: {
+  organizationId: string;
+  appointmentId: string;
+  cleanerId: string;
+  status: 'pending_org' | 'pending_cleaner' | 'approved';
+  jobPriceCents: number;
+  offers?: Array<{
+    actor: 'cleaner' | 'org';
+    actorUserId: string;
+    amountCents: number;
+    autoApproved?: boolean;
+    minMarginBpsSnapshot?: number | null;
+    note?: string | null;
+  }>;
+  approvedAmountCents?: number;
+  approvedVia?: 'auto' | 'org' | 'cleaner_accept';
+  approvedBy?: string | null;
+}): Promise<{ id: string }> {
+  const admin = createTestSupabaseClient();
+  const { data: pr, error } = await admin
+    .from('pay_requests')
+    .insert({
+      organization_id: args.organizationId,
+      appointment_id: args.appointmentId,
+      cleaner_id: args.cleanerId,
+      status: args.status,
+      job_price_cents_snapshot: args.jobPriceCents,
+      ...(args.status === 'approved'
+        ? {
+            approved_amount_cents: args.approvedAmountCents,
+            approved_via: args.approvedVia ?? 'org',
+            approved_by: args.approvedBy ?? null,
+            approved_at: new Date().toISOString(),
+          }
+        : {}),
+    })
+    .select('id')
+    .single();
+  if (error || !pr) throw new Error(`pay_requests insert failed: ${error?.message}`);
+  const payRequestId = (pr as { id: string }).id;
+
+  const base = Date.now() - (args.offers?.length ?? 0) * 1000;
+  for (const [i, offer] of (args.offers ?? []).entries()) {
+    const { error: offerErr } = await admin.from('pay_request_offers').insert({
+      pay_request_id: payRequestId,
+      actor: offer.actor,
+      actor_user_id: offer.actorUserId,
+      amount_cents: offer.amountCents,
+      note: offer.note ?? null,
+      min_margin_bps_snapshot: offer.minMarginBpsSnapshot ?? null,
+      auto_approved: offer.autoApproved ?? false,
+      created_at: new Date(base + i * 1000).toISOString(),
+    });
+    if (offerErr) throw new Error(`pay_request_offers insert failed: ${offerErr.message}`);
+  }
+  return { id: payRequestId };
+}
+
 export async function createTestAppointment(args: {
   organizationId: string;
   cleanerId: string | null;
