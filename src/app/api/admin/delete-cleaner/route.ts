@@ -98,11 +98,27 @@ export async function DELETE(request: NextRequest) {
 
     if (activeAppointments && activeAppointments.length > 0) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: `Cannot delete cleaner with ${activeAppointments.length} active appointment(s). Please cancel or complete appointments first.` 
+        {
+          success: false,
+          error: `Cannot delete cleaner with ${activeAppointments.length} active appointment(s). Please cancel or complete appointments first.`
         },
         { status: 400 }
+      );
+    }
+
+    // An open pay-request thread is money not yet agreed; deleting the cleaner would
+    // cascade the thread away (migration 114 FK) and orphan the negotiation. Resolve
+    // it first. Approved threads are fine: the payout machinery owns them from there.
+    const { data: openThreads } = await supabaseAdmin
+      .from('pay_requests')
+      .select('id')
+      .eq('cleaner_id', cleanerId)
+      .neq('status', 'approved')
+      .limit(1);
+    if (openThreads && openThreads.length > 0) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete a cleaner with an open pay request. Resolve it first.' },
+        { status: 400 },
       );
     }
 

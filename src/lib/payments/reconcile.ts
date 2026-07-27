@@ -45,6 +45,27 @@ import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 const DEFAULT_BATCH = 100;
 const DEFAULT_STALE_MINUTES = 15;
+
+/**
+ * Appointments whose pay-request thread exists and is NOT approved: request-mode
+ * money that is deliberately waiting on a human decision (spec §6, migration 114).
+ * Sweeps must treat these as normal business state, never as stuck money — the
+ * approve/respond routes trigger charge/settlement inline at approval, and the
+ * sweeps take over as backstop only from that point on.
+ */
+async function pendingPayRequestAppointments(
+  supabase: SupabaseClient,
+  appointmentIds: string[],
+): Promise<Set<string>> {
+  const ids = appointmentIds.filter(Boolean);
+  if (ids.length === 0) return new Set();
+  const { data } = await supabase
+    .from('pay_requests')
+    .select('appointment_id')
+    .in('appointment_id', ids)
+    .neq('status', 'approved');
+  return new Set(((data ?? []) as Array<{ appointment_id: string }>).map((r) => r.appointment_id));
+}
 // ACH debits legitimately sit 'processing' for several business days, so a 'processing' row is only
 // "stuck" (a lost terminal webhook) well after settlement would have happened. ~6 days.
 const DEFAULT_ACH_STALE_MINUTES = 6 * 24 * 60;
@@ -406,9 +427,17 @@ export async function chargeUncollectedCompletions(
     ((payRows ?? []) as Array<{ appointment_id: string }>).map((r) => r.appointment_id),
   );
 
+  // An unapproved pay-request thread is NORMAL BUSINESS STATE, not stuck money: a self-pay
+  // request-mode charge is derived from the approved amount and legitimately waits
+  // (pay_request_pending precondition). Skip rather than invoking the charge orchestrator
+  // (claim RPC + bail) every sweep pass; the approve route triggers collection the moment
+  // the thread approves, and the NEXT sweep is the backstop after that.
+  const waitingOnApproval = await pendingPayRequestAppointments(supabase, candidates);
+
   let charged = 0;
   for (const id of candidates) {
     if (settled.has(id)) continue;
+    if (waitingOnApproval.has(id)) continue;
     try {
       const outcome = await chargeCompletedAppointmentAuto(supabase, id, 'reconciler');
       if (outcome.ok) {
@@ -476,9 +505,17 @@ export async function settleUnsettledCaptures(
     charge_kind: string | null;
     stripe_payment_intent_id: string | null;
   }>;
+  // Captured-but-unapproved request threads are waiting on a human decision, not stuck:
+  // settlement defers both legs until the thread approves (the approve/respond routes
+  // trigger it inline; this sweep remains the backstop for approved-but-unsettled rows).
+  const waitingOnApproval = await pendingPayRequestAppointments(
+    supabase,
+    list.map((p) => p.appointment_id),
+  );
   let settled = 0;
 
   for (const p of list) {
+    if (waitingOnApproval.has(p.appointment_id)) continue;
     // A COMPLETION charge on a since-cancelled appointment must be refunded, never settled (the
     // payer owes nothing for a cancelled job). This is the backstop for a lost
     // payment_intent.succeeded whose live delivery would have issued the refund. A cancellation
@@ -534,14 +571,15 @@ export async function retryFailedPayouts(
   // the cleaner once they've onboarded, or re-holds otherwise. No other flow writes a 'pending' payout.
   // A retryable row that already carries a stripe_transfer_id (money moved, possibly under a legacy
   // `payout-{id}` idempotency key) is deliberately INCLUDED: settle's repair path marks it paid
-  // without re-transferring (audit H4), so the sweep self-heals it. Rows with no
-  // payout_percent_snapshot are excluded — re-settling those would recompute from the CURRENT
-  // percent, which conservation forbids.
+  // without re-transferring (audit H4), so the sweep self-heals it. Rows with NEITHER a
+  // payout_percent_snapshot NOR a cents-basis payout_model_snapshot (request/flat, whose carved
+  // amount IS the locked snapshot) are excluded — re-settling those would recompute from the
+  // CURRENT percent, which conservation forbids.
   const { data: rows } = await supabase
     .from('payouts')
     .select('id, appointment_id')
     .in('status', ['failed', 'pending'])
-    .not('payout_percent_snapshot', 'is', null)
+    .or('payout_percent_snapshot.not.is.null,payout_model_snapshot.in.(request,flat)')
     .not('appointment_id', 'is', null)
     .limit(batch);
 
@@ -869,7 +907,54 @@ export async function checkMoneyMathInvariants(
     }
   }
 
-  return { checked: list.length, violations };
+  // Request-mode payouts carry no percent to validate; their locked truth is the
+  // thread's approved amount. Refunds legitimately shrink the paid amount BELOW
+  // the approval (min(approved, remaining base)), so the only red flag is an
+  // OVERPAY: settlement moved money nobody agreed to. Flat payouts are skipped -
+  // the rate is org-editable after the fact, so the carved amount is its own truth.
+  const { data: reqRows } = await supabase
+    .from('payouts')
+    .select('id, appointment_id, organization_id, amount, pay_request_id')
+    .eq('status', 'paid')
+    .eq('payout_model_snapshot', 'request')
+    .not('pay_request_id', 'is', null)
+    .limit(batch);
+  const reqList = (reqRows ?? []) as Array<{
+    id: string;
+    appointment_id: string | null;
+    organization_id: string | null;
+    amount: number | string;
+    pay_request_id: string;
+  }>;
+  for (const row of reqList) {
+    const { data: prRow } = await supabase
+      .from('pay_requests')
+      .select('approved_amount_cents')
+      .eq('id', row.pay_request_id)
+      .maybeSingle();
+    const approved = (prRow as { approved_amount_cents: number | null } | null)?.approved_amount_cents;
+    if (approved == null) continue;
+    const recordedCleanerCents = Math.round(Number(row.amount) * 100);
+    if (recordedCleanerCents > approved) {
+      violations++;
+      await recordPaymentEvent(supabase, {
+        appointmentId: row.appointment_id,
+        organizationId: row.organization_id,
+        eventType: 'money_math_violation',
+        actor: 'reconciler',
+        amount: recordedCleanerCents,
+        payload: {
+          payout_id: row.id,
+          basis: 'request',
+          approved_amount_cents: approved,
+          recorded_cleaner_cents: recordedCleanerCents,
+          drift_cents: recordedCleanerCents - approved,
+        },
+      });
+    }
+  }
+
+  return { checked: list.length + reqList.length, violations };
 }
 
 // ── 5) Stranded-clawback retry ──────────────────────────────────────────────────
