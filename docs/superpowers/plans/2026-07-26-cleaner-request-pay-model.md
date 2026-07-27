@@ -1064,6 +1064,28 @@ if (openThreads && openThreads.length > 0) {
 
 ---
 
+> **Amendments after the PR2 adversarial review (9 confirmed findings, all fixed in PR2):**
+> 1. **Migration 116**: `pay_requests.current_offer_cents` carries the live offer so every
+>    transition is one atomic UPDATE; the CAS guards `(status, updated_at)` (ABA-safe). Terminal
+>    actions approve the row's own current offer, never a separately-loaded offer list.
+> 2. **The cleaner has NO direct RLS read on pay_requests / pay_request_offers** (the row carries
+>    `job_price_cents_snapshot`; a direct PostgREST read leaked the hidden price). **PR4 change:**
+>    `useCleanerPayRequests` reads a new service-role GET route
+>    (`GET /api/pay-requests/mine`, added in Task 19) that shapes a price-free payload
+>    (`presentChargeProjection` pattern); cleaner realtime on pay_requests is gone - refresh on
+>    notifications + focus instead.
+> 3. `triggerPayRequestSettlement` is capture-gated (status='paid' + captured_at, the sweep's
+>    filter) - approving a thread whose charge declined must never move pooled platform funds.
+> 4. Settlement/self-pay gates key on thread EXISTENCE and an approved thread stays the basis
+>    (mode flips mid-flight can't change the amount).
+> 5. Org-authored submit amounts are price-capped; escalations/acceptances also notify
+>    `can_manage_payments` managers; delete-cleaner blocks until threads are SETTLED
+>    (paid/bank_paid/reversed), not just approved.
+> 6. **Accepted + documented:** a lost `charge.dispute.closed` (won) leaves the dispute interlock
+>    blocking settlement until the local disputes row updates; the recurring
+>    `settlement_blocked_dispute_open` warning alert (6h dedupe) is the surface, manual dispute-row
+>    fix is the remedy. Follow-up candidate: live dispute re-derivation in the sweep.
+
 ## Phase 3 — PR3 `feat/pay-request-org-ui`
 
 > Gate: run the `ui-feature-workflow` skill FIRST (ask Bridger: browser companion? mobile or desktop?), then `ui-ux-pro-max` at design AND implementation. Final visual shaping happens in that workflow with Bridger; the tasks below fix the data plumbing, structure, and behavior contracts.

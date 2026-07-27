@@ -151,6 +151,29 @@ describe('DELETE /api/admin/delete-cleaner (authorization)', () => {
       })
       .eq('id', pr.id);
 
+    // Approved but UNSETTLED still blocks (review finding 2: deletion would
+    // cascade the payout basis away while money is carved/held).
+    const unsettled = await callRoute<{ error: string }>(DELETE, {
+      method: 'DELETE',
+      url: url(org.cleaner.userId),
+      headers: bearerHeader(org.admin.accessToken),
+    });
+    expect(unsettled.status).toBe(400);
+    expect(unsettled.body.error).toBe(
+      'Cannot delete a cleaner with an unsettled pay request. Wait for the payout to finish first.',
+    );
+
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 90,
+      status: 'paid',
+      payout_model_snapshot: 'request',
+      pay_request_id: pr.id,
+      paid_at: new Date().toISOString(),
+    });
+
     const allowed = await callRoute<{ success: boolean }>(DELETE, {
       method: 'DELETE',
       url: url(org.cleaner.userId),

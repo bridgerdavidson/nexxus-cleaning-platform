@@ -39,24 +39,31 @@ export async function resolveSelfPayCutCents(
 ): Promise<SelfPayCutResult> {
   const model = args.cleaner.payout_model ?? 'percentage';
 
+  // Keyed on THREAD EXISTENCE, mirroring settleCleanerPayout (review finding
+  // 4): an unapproved thread blocks the charge no matter the current mode, and
+  // an approved thread stays the basis even after a mode flip (closes the
+  // mid-flight flip overpay: an approved $50 can never become "90% of gross"
+  // because the org edited the cleaner between charge and settle).
   let approvedRequestCents: number | null = null;
   let payRequestId: string | null = null;
-  if (model === 'request') {
-    const { data: prRow } = await supabase
-      .from('pay_requests')
-      .select('id, status, approved_amount_cents')
-      .eq('appointment_id', args.appointmentId)
-      .maybeSingle();
-    const pr = prRow as { id: string; status: string; approved_amount_cents: number | null } | null;
-    if (!pr || pr.status !== 'approved') {
-      return { ok: false, code: 'pay_request_pending', threadStatus: pr?.status ?? 'missing' };
-    }
+  let threadApproved = false;
+  const { data: prRow } = await supabase
+    .from('pay_requests')
+    .select('id, status, approved_amount_cents')
+    .eq('appointment_id', args.appointmentId)
+    .maybeSingle();
+  const pr = prRow as { id: string; status: string; approved_amount_cents: number | null } | null;
+  if ((pr && pr.status !== 'approved') || (!pr && model === 'request')) {
+    return { ok: false, code: 'pay_request_pending', threadStatus: pr?.status ?? 'missing' };
+  }
+  if (pr) {
+    threadApproved = true;
     approvedRequestCents = pr.approved_amount_cents;
     payRequestId = pr.id;
   }
 
   const share = resolveCleanerShareCents({
-    payoutModel: model,
+    payoutModel: threadApproved ? 'request' : model,
     payoutPercent: args.cleaner.payout_percent,
     flatRateCents: args.cleaner.flat_rate_cents ?? null,
     approvedRequestCents,

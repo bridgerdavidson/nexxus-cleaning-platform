@@ -9,7 +9,7 @@ import {
   createTestAppointment,
   type TestOrgFixture,
 } from '../../../../../../tests/helpers/fixtures';
-import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
+import { createTestSupabaseClient, createUserClient } from '../../../../../../tests/helpers/supabase';
 
 /** Request-mode org: $350 job, 20% min margin -> auto-approve max $280.00. */
 async function requestOrg(opts: Record<string, unknown> = {}) {
@@ -253,6 +253,44 @@ describe('POST /api/appointments/[appointmentId]/pay-request', () => {
     const yes = await submit(appt.id, { organization_id: org.organizationId, amount_cents: 20000 }, allowed.accessToken);
     expect(yes.status).toBe(200);
     expect((yes.body as { status: string }).status).toBe('pending_cleaner');
+  });
+
+  it('caps org-authored amounts at the job price (review finding 6)', async () => {
+    org = await requestOrg();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 350,
+      status: 'in_progress',
+    });
+    const res = await submit(appt.id, { organization_id: org.organizationId, amount_cents: 40000 }, org.admin.accessToken);
+    expect(res.status).toBe(400);
+    expect((res.body as { error: string }).error).toBe('Amount cannot exceed the job price.');
+  });
+
+  it('RLS: the cleaner cannot read pay_requests rows directly (price stays hidden at the data layer)', async () => {
+    org = await requestOrg();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 350,
+      status: 'in_progress',
+    });
+    const submitted = await submit(appt.id, { organization_id: org.organizationId, amount_cents: 34000 }, org.cleaner.accessToken);
+    expect(submitted.status).toBe(200);
+
+    const cleanerClient = createUserClient(org.cleaner.accessToken);
+    const { data: rows } = await cleanerClient.from('pay_requests').select('*').eq('appointment_id', appt.id);
+    expect(rows ?? []).toHaveLength(0);
+    const { data: offerRows } = await cleanerClient.from('pay_request_offers').select('*');
+    expect(offerRows ?? []).toHaveLength(0);
+
+    // Org staff still read the row (the queue needs price + margin).
+    const adminClient = createUserClient(org.admin.accessToken);
+    const { data: adminRows } = await adminClient.from('pay_requests').select('*').eq('appointment_id', appt.id);
+    expect(adminRows).toHaveLength(1);
   });
 
   it('400s invalid amounts', async () => {

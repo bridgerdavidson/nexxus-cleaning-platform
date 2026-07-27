@@ -106,20 +106,39 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // An open pay-request thread is money not yet agreed; deleting the cleaner would
-    // cascade the thread away (migration 114 FK) and orphan the negotiation. Resolve
-    // it first. Approved threads are fine: the payout machinery owns them from there.
-    const { data: openThreads } = await supabaseAdmin
+    // A pay-request thread whose money hasn't SETTLED blocks deletion (review
+    // finding 2): deleting the cleaner cascades pay_requests AND payouts away,
+    // so an unapproved thread would orphan the negotiation, and an
+    // approved-but-unsettled one (trigger died, sweep pending, or a HELD slice
+    // waiting on Connect onboarding) would erase the carved money's basis -
+    // held funds become untracked platform balance. Terminal payout states
+    // (paid / bank_paid / reversed) mean the machinery is done with it.
+    const { data: threads } = await supabaseAdmin
       .from('pay_requests')
-      .select('id')
-      .eq('cleaner_id', cleanerId)
-      .neq('status', 'approved')
-      .limit(1);
-    if (openThreads && openThreads.length > 0) {
+      .select('id, appointment_id, status')
+      .eq('cleaner_id', cleanerId);
+    const threadRows = (threads ?? []) as Array<{ id: string; appointment_id: string; status: string }>;
+    if (threadRows.some((t) => t.status !== 'approved')) {
       return NextResponse.json(
         { success: false, error: 'Cannot delete a cleaner with an open pay request. Resolve it first.' },
         { status: 400 },
       );
+    }
+    if (threadRows.length > 0) {
+      const { data: settledPayouts } = await supabaseAdmin
+        .from('payouts')
+        .select('appointment_id')
+        .in('appointment_id', threadRows.map((t) => t.appointment_id))
+        .in('status', ['paid', 'bank_paid', 'reversed']);
+      const settledSet = new Set(
+        ((settledPayouts ?? []) as Array<{ appointment_id: string }>).map((p) => p.appointment_id),
+      );
+      if (threadRows.some((t) => !settledSet.has(t.appointment_id))) {
+        return NextResponse.json(
+          { success: false, error: 'Cannot delete a cleaner with an unsettled pay request. Wait for the payout to finish first.' },
+          { status: 400 },
+        );
+      }
     }
 
     // Look up the cleaner's email so we can clean up matching invite records.

@@ -1,7 +1,13 @@
 # Cleaner-request pay model (flexible contractor umbrella) — design spec
 
 - **Date:** 2026-07-26
-- **Status:** Approved design, pending implementation plan
+- **Status:** Approved design; implementation in progress. **Amended during PR2's adversarial
+  review:** the live offer amount rides `pay_requests.current_offer_cents` (migration 116) and
+  transitions CAS on `(status, updated_at)`; the cleaner has NO direct RLS read on the thread
+  tables (the row carries the price snapshot) - cleaner surfaces read a service-role route that
+  shapes a price-free payload; org-authored amounts are price-capped at submission; settlement
+  triggers are capture-gated; the settlement gate keys on thread existence and an approved thread
+  stays the basis across later mode edits. See the plan's Phase 3 amendment block for details.
 - **Origin:** MASTER-TODO §8 ("payout models", Task #3). Brainstormed with Bridger 2026-07-23/26;
   Q&A log in `brainstorming/2026-07-23-cleaner-decides-payout-model.md`.
 - **Scope:** design only. No code ships from this document; an implementation plan follows.

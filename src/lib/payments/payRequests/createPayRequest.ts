@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isAutoApproved } from './threshold';
 import { initialStatus } from './transitions';
+import { paymentManagerRecipients } from './notifyRecipients';
 import { recordPaymentEvent } from '@/lib/payments/events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
@@ -33,7 +34,11 @@ export interface CreatePayRequestArgs {
 
 export type CreatePayRequestResult =
   | { ok: true; payRequestId: string; status: string; autoApproved: boolean }
-  | { ok: false; code: 'not_found' | 'wrong_mode' | 'duplicate' | 'invalid_amount' | 'cancelled'; message: string };
+  | {
+      ok: false;
+      code: 'not_found' | 'wrong_mode' | 'duplicate' | 'invalid_amount' | 'cancelled' | 'over_price';
+      message: string;
+    };
 
 export async function createPayRequest(
   supabase: SupabaseClient,
@@ -77,6 +82,14 @@ export async function createPayRequest(
   const minMarginBps = (org as { min_margin_bps?: number } | null)?.min_margin_bps ?? 2000;
   const priceCents = Math.round(Number(a.total_price) * 100);
 
+  // Org-authored amounts obey the same job-price cap as counters and approvals
+  // (review finding 6: without this, an operator-entered amount above the price
+  // could be cleaner-accepted into an over-price approval). Cleaner asks stay
+  // uncapped and escalate - a cap error would leak the hidden price.
+  if (args.actorKind === 'org' && args.amountCents > priceCents) {
+    return { ok: false, code: 'over_price', message: 'Amount cannot exceed the job price.' };
+  }
+
   const auto = args.actorKind === 'cleaner' && isAutoApproved(args.amountCents, priceCents, minMarginBps);
   const status = initialStatus(args.actorKind, auto);
 
@@ -88,6 +101,7 @@ export async function createPayRequest(
       cleaner_id: a.cleaner_id,
       status,
       job_price_cents_snapshot: priceCents,
+      current_offer_cents: args.amountCents,
       ...(auto
         ? {
             approved_amount_cents: args.amountCents,
@@ -144,14 +158,28 @@ export async function createPayRequest(
       payload: { min_margin_bps: minMarginBps },
     });
     const ctx = await loadNotificationContext(supabase, { appointmentId: a.id, cleanerId: a.cleaner_id });
+    const payload = { ...ctx, amount_cents: args.amountCents };
     await recordNotificationEvent(supabase, {
       event_type: 'pay_request_escalated',
       appointment_id: a.id,
       organization_id: a.organization_id,
       dedupe_key: `pay_request_escalated:${payRequestId}`,
       exclude_user_ids: [args.actorUserId],
-      payload: { ...ctx, amount_cents: args.amountCents },
+      payload,
     });
+    // Payment managers are first-class approvers; the default fan-out only
+    // reaches owners/admins (review finding 8).
+    for (const managerId of await paymentManagerRecipients(supabase, a.organization_id)) {
+      if (managerId === args.actorUserId) continue;
+      await recordNotificationEvent(supabase, {
+        event_type: 'pay_request_escalated',
+        appointment_id: a.id,
+        organization_id: a.organization_id,
+        recipient_user_id: managerId,
+        dedupe_key: `pay_request_escalated:${payRequestId}`,
+        payload,
+      });
+    }
   } else {
     // Org-authored offer awaiting the cleaner's accept.
     const ctx = await loadNotificationContext(supabase, { appointmentId: a.id, cleanerId: a.cleaner_id });

@@ -246,20 +246,26 @@ export async function settleCleanerPayout(
   }
   const payoutModel = cleaner?.payout_model ?? 'percentage';
 
-  // Request-mode gate: NO transfers fire until the pay request approves (spec §6).
-  // The tenant remainder depends on the cleaner amount, so both legs wait. The
-  // sweep excludes pending-thread rows; the forensic marker writes only on the
-  // webhook path so a repeated sweep pass can't spam the ledger.
+  // Pay-request gate, keyed on THREAD EXISTENCE, not the cleaner's current
+  // payout_model (review finding 4): the sweep's skip-set is existence-keyed,
+  // and an approved thread is a number both sides touched - it stays the
+  // settlement basis even if the org later flips the cleaner's mode or edits
+  // their percent (also closes the mid-flight mode-swap overpay). An
+  // unapproved thread defers BOTH legs (the tenant remainder depends on the
+  // cleaner amount); a request-mode job with NO thread defers until one exists.
+  // The forensic marker writes only on the webhook path so a repeated sweep
+  // pass can't spam the ledger.
   let approvedRequestCents: number | null = null;
   let payRequestId: string | null = null;
-  if (cleaner && payoutModel === 'request') {
+  let threadApproved = false;
+  if (cleaner) {
     const { data: prRow } = await supabase
       .from('pay_requests')
       .select('id, status, approved_amount_cents')
       .eq('appointment_id', appointmentId)
       .maybeSingle();
     const pr = prRow as { id: string; status: string; approved_amount_cents: number | null } | null;
-    if (!pr || pr.status !== 'approved') {
+    if ((pr && pr.status !== 'approved') || (!pr && payoutModel === 'request')) {
       if (capturedCents != null) {
         await recordPaymentEvent(supabase, {
           appointmentId,
@@ -272,8 +278,11 @@ export async function settleCleanerPayout(
       }
       return { settled: false, reason: 'pay_request_pending' };
     }
-    approvedRequestCents = pr.approved_amount_cents;
-    payRequestId = pr.id;
+    if (pr) {
+      threadApproved = true;
+      approvedRequestCents = pr.approved_amount_cents;
+      payRequestId = pr.id;
+    }
   }
 
   // Dispute interlock: settlement historically ran seconds after capture, long
@@ -311,7 +320,8 @@ export async function settleCleanerPayout(
   // silently folded into the tenant payout.
   const share = cleaner
     ? resolveCleanerShareCents({
-        payoutModel,
+        // An approved thread is the basis regardless of the CURRENT mode.
+        payoutModel: threadApproved ? 'request' : payoutModel,
         payoutPercent: cleaner.payout_percent,
         flatRateCents: cleaner.flat_rate_cents,
         approvedRequestCents,

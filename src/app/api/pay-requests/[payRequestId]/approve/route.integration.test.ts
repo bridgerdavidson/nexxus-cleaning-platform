@@ -111,6 +111,49 @@ describe('POST /api/pay-requests/[payRequestId]/approve', () => {
     expect((data as { status: string }).status).toBe('pending_org');
   });
 
+  it('CAPTURE GATE: never settles off a failed charge - approval defers with no transfer attempt', async () => {
+    // The PR2 review's critical finding: a declined completion charge leaves a
+    // status='failed' revenue row; approving the thread must NOT move money.
+    const { appt, pr } = await seed();
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('organizations')
+      .update({
+        stripe_connect_account_id: `acct_tenant_${org!.organizationId.slice(0, 12)}`,
+        stripe_connect_charges_enabled: true,
+      })
+      .eq('id', org!.organizationId);
+    await admin.from('cleaner_profiles')
+      .update({ stripe_connect_account_id: 'acct_test', stripe_connect_onboarding_complete: true })
+      .eq('id', org!.cleaner.userId);
+    await admin.from('payments').insert({
+      organization_id: org!.organizationId,
+      appointment_id: appt.id,
+      amount: 350,
+      status: 'failed',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      stripe_payment_intent_id: `pi_declined_${appt.id}`,
+    });
+
+    const res = await approve(pr.id, org!.organizationId, org!.admin.accessToken);
+    expect(res.status).toBe(200);
+    expect((res.body as { status: string }).status).toBe('approved');
+    expect((res.body as { settlement: string }).settlement).toBe('deferred');
+
+    // Deferred BEFORE any transfer attempt: a gate-less path would have tried
+    // the tenant leg and recorded tenant_transfer_failed (stubbed Stripe throws).
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    const types = (events as { event_type: string }[]).map((e) => e.event_type);
+    expect(types).not.toContain('tenant_transfer_failed');
+    expect(types).not.toContain('cleaner_paid');
+    const { data: payouts } = await admin.from('payouts').select('id').eq('appointment_id', appt.id);
+    expect(payouts ?? []).toHaveLength(0);
+  });
+
   it('403s a manager without the Manage Payments permission', async () => {
     const { pr } = await seed();
     const denied = await addManagerToOrg(org!.organizationId, {});

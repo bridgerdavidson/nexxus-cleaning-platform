@@ -385,8 +385,12 @@ export async function createTestPayRequest(args: {
   approvedAmountCents?: number;
   approvedVia?: 'auto' | 'org' | 'cleaner_accept';
   approvedBy?: string | null;
+  /** The live offer riding the row (migration 116). Defaults to the last offer's amount, else approvedAmountCents. */
+  currentOfferCents?: number;
 }): Promise<{ id: string }> {
   const admin = createTestSupabaseClient();
+  const currentOffer =
+    args.currentOfferCents ?? args.offers?.at(-1)?.amountCents ?? args.approvedAmountCents ?? null;
   const { data: pr, error } = await admin
     .from('pay_requests')
     .insert({
@@ -395,6 +399,7 @@ export async function createTestPayRequest(args: {
       cleaner_id: args.cleanerId,
       status: args.status,
       job_price_cents_snapshot: args.jobPriceCents,
+      current_offer_cents: currentOffer,
       ...(args.status === 'approved'
         ? {
             approved_amount_cents: args.approvedAmountCents,

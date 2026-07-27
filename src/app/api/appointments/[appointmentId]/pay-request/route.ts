@@ -85,6 +85,8 @@ export async function POST(
     });
 
     if (!result.ok) {
+      // 'over_price' only ever reaches org actors (cleaner asks are uncapped
+      // and escalate), so its copy cannot leak the price to a cleaner.
       const status =
         result.code === 'not_found' ? 404
         : result.code === 'duplicate' ? 409
