@@ -389,18 +389,31 @@ Insert immediately after `--shadow-rgb` in `:root`. These are today's hex conver
 ```css
   /* brand ramp — overridden per organization at runtime (docs/white-label-branding.md) */
   --brand-50: 221 100% 97%;        /* #EFF4FF */
-  --brand-100: 222 100% 93%;       /* #DCE6FF */
-  --brand-200: 220 100% 88%;       /* #C0D2FF */
-  --brand-300: 224 100% 79%;       /* #93AEFF */
-  --brand-400: 224 100% 68%;       /* #5C84FF */
+  --brand-100: 223 100% 93%;       /* #DCE6FF */
+  --brand-200: 223 100% 88%;       /* #C0D2FF */
+  --brand-300: 225 100% 79%;       /* #93AEFF */
+  --brand-400: 225 100% 68%;       /* #5C84FF */
   --brand-500: 225 100% 59%;       /* #2E62FF */
   --brand-600: 221 99% 50%;        /* #0150FC */
   --brand-700: 221 99% 40%;        /* #0140CC */
-  --brand-800: 220 87% 31%;        /* #0A2F95 */
-  --brand-900: 226 74% 25%;        /* #102A6E */
+  --brand-800: 224 87% 31%;        /* #0A2F95 */
+  --brand-900: 223 75% 25%;        /* #102A6E */
   --brand-950: 224 75% 16%;        /* #0A1A47 */
   --brand-fg-600: 0 0% 100%;       /* white on brand-600 */
   --brand-fg-500: 0 0% 100%;       /* white on brand-500 */
+```
+
+These values were machine-verified against the hex they replace (2026-07-27). Do not hand-edit them:
+a few degrees of hue drift is invisible in isolation but shows up as a palette shift, and this PR's
+whole verification story is "nothing changed." If you need to re-derive them:
+
+```bash
+node -e '
+const h={50:"#EFF4FF",100:"#DCE6FF",200:"#C0D2FF",300:"#93AEFF",400:"#5C84FF",500:"#2E62FF",600:"#0150FC",700:"#0140CC",800:"#0A2F95",900:"#102A6E",950:"#0A1A47"};
+for(const k in h){const x=h[k],r=parseInt(x.slice(1,3),16)/255,g=parseInt(x.slice(3,5),16)/255,b=parseInt(x.slice(5,7),16)/255;
+const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let hu=0,s=0;
+if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);hu=60*(mx===r?(g-b)/d+(g<b?6:0):mx===g?(b-r)/d+2:(r-g)/d+4);}
+console.log(`  --brand-${k}: ${Math.round(hu)} ${Math.round(s*100)}% ${Math.round(l*100)}%;  /* ${x} */`);}'
 ```
 
 - [ ] **Step 3: Repoint the semantic tokens that derive from brand**
