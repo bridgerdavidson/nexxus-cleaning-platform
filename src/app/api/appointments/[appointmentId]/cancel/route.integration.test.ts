@@ -597,4 +597,49 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
       expect(status).toBe(200);
     });
   });
+
+  // T1-18(a): the previews compute the late-cancel window on the client clock; the route shifts
+  // its own clock BACK by a 5-minute skew grace so a cancel previewed as "outside the window"
+  // can never flip to a charged fee at submit purely from clock skew. The grace must not swallow
+  // genuinely-late cancels beyond it.
+  describe('window-boundary skew grace (T1-18a)', () => {
+    function localParts(msFromNow: number) {
+      const d = new Date(Date.now() + msFromNow);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return {
+        date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+        time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+      };
+    }
+
+    it('charges NO fee just inside the boundary (within the skew grace)', async () => {
+      await setPolicy({ type: 'flat', value: 50, windowHours: 24 });
+      // Scheduled 23h58m out: nominally 2 minutes inside the 24h window (a client clock 2 minutes
+      // behind previewed this as outside → $0), within the 5-minute grace.
+      const { date, time } = localParts(24 * 60 * 60_000 - 2 * 60_000);
+      const appt = await seedAppointment({ scheduledDate: date, scheduledTime: time });
+      const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner' },
+      });
+      expect(status).toBe(200);
+      expect(body.fee_captured_cents).toBe(0);
+      expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+    });
+
+    it('still charges the fee for a late cancel beyond the grace', async () => {
+      await setPolicy({ type: 'flat', value: 50, windowHours: 24 });
+      // Scheduled 23h50m out: 10 minutes inside the window, beyond the 5-minute grace.
+      const { date, time } = localParts(24 * 60 * 60_000 - 10 * 60_000);
+      const appt = await seedAppointment({ scheduledDate: date, scheduledTime: time });
+      const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner' },
+      });
+      expect(status).toBe(200);
+      expect(body.fee_captured_cents).toBe(5000);
+    });
+  });
 });

@@ -51,11 +51,29 @@ export async function createPlatformTransfer(p: PlatformTransferParams): Promise
   return stripe.transfers.create(params, { idempotencyKey: p.idempotencyKey });
 }
 
-/** Every transfer Stripe created for a job (by transfer_group) — used to unwind on refund. */
+/**
+ * Every transfer Stripe created for a job (by transfer_group) — used to unwind on refund and by
+ * the adopt-existing scans before a rotated-key transfer create. Follows pagination (T1-15e): a
+ * truncated first page could hide exactly the transfer a scan needs to see, and every caller
+ * treats a throw as fail-closed, so a pathologically oversized group throws rather than
+ * silently truncating.
+ */
 export async function listTransfersByGroup(transferGroup: string): Promise<Stripe.Transfer[]> {
   const stripe = getStripe();
-  const res = await stripe.transfers.list({ transfer_group: transferGroup, limit: 100 });
-  return res.data;
+  const out: Stripe.Transfer[] = [];
+  let startingAfter: string | undefined;
+  // A job's group holds a handful of transfers; 10 pages (1,000) is already pathological.
+  for (let page = 0; page < 10; page++) {
+    const res = await stripe.transfers.list({
+      transfer_group: transferGroup,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    out.push(...res.data);
+    if (!res.has_more || res.data.length === 0) return out;
+    startingAfter = res.data[res.data.length - 1].id;
+  }
+  throw new Error(`listTransfersByGroup: group ${transferGroup} exceeded the pagination cap`);
 }
 
 /**
