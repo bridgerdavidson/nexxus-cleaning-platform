@@ -9,9 +9,11 @@ import { cn } from '@/lib/utils'
  * Motion: each stroke is revealed by a soft-edged band traveling along its own
  * axis. The two dark pipelines draw from the top-left; the two light dashes
  * share ONE band running bottom-left -> top-right, so they read as a single
- * continuous line passing behind the pipelines at the crossing. The first
- * cycle draws in from blank; its drain-out leaves a faint ghost of the full
- * mark behind (fill="freeze"), so the mark never blanks again while looping.
+ * continuous line passing behind the pipelines at the crossing. Each cycle:
+ * draw in (0-40%), hold the fully built mark (40-60%), drain out (60-100%).
+ * The first cycle starts from blank; its drain-out leaves a faint ghost of
+ * the full mark behind (animation-fill-mode: forwards), so the mark never
+ * blanks again while looping.
  *
  * Geometry is the real brand mark (public/brand/icon-color.svg) and never
  * deforms; colors are the design-system tokens brand-600 / sky-400, which are
@@ -38,14 +40,24 @@ const PATHS = {
     'M52.31,94.29c-.33-.33-3.12-3.03-6.66-2.78-.63.04-2.69.19-4.34,1.65-.15.13-.26.24-.34.32l-12.36,11.84c-.2.22-.38.39-.54.52-1.13.92-2.37,1.07-2.81,1.1-.29.02-.53.01-.71,0H7.49s-.4,0-.4,0c-.23.03-.58.09-.99.21-2.83.82-4.4,3.25-4.95,4.27C-.01,113.57,0,115.56,0,116.35c.02,1.44.34,2.59.57,3.27.93,2.69,3.27,5.93,6.05,6.03.12,0,.22,0,.29,0h22.74c1.74-.12,4.71-.61,7.21-2.77.41-.35.76-.71,1.08-1.08l15.4-15.42c.4-.58.81-1.31,1.11-2.19.12-.36,1.04-3.14,0-6.04-.33-.91-.84-1.81-1.07-2.2-.4-.71-.79-1.27-1.08-1.66Z',
 } as const
 
-// Reveal bands. Each gradient is a soft-edged band laid just before its
-// stroke's start point (x1,y1 -> x2,y2, along the draw axis); the translate
-// carries it fully past the far end. The two accents share band index 2
-// (bottom-left -> top-right), which creates the behind-the-pipelines pass.
+// Reveal bands. Each gradient is a soft-edged band laid entirely before its
+// stroke (x1,y1 -> x2,y2 along the draw axis, endpoint at the stroke's near
+// edge); the translate carries it fully past the far end. The two accents
+// share band index 2 (bottom-left -> top-right), which creates the
+// behind-the-pipelines pass.
+//
+// Sizing invariants (breaking either reintroduces a visible hard cutoff):
+// - The white plateau (8%..92% of the gradient) must be LONGER than the
+//   mark's extent projected on the band axis (~190 units), so there is a
+//   phase where the whole mark is lit at once. Current numbers give
+//   draw 0-40%, fully-built hold 40-60%, drain 60-100% of the cycle.
+// - Only the gradient edges may ever cross the mark: the rect's own edges
+//   are hard lines, so the rect must outsize the mask region by more than
+//   the travel distance in every direction.
 const BANDS = [
-  { x1: -189, y1: -96, x2: 7, y2: 9, tx: 336, ty: 180 },
-  { x1: -205, y1: -67, x2: 0, y2: 42, tx: 352, ty: 187 },
-  { x1: -205.7, y1: 302.4, x2: 0, y2: 126, tx: 353, ty: -303 },
+  { x1: -317.3, y1: -170, x2: 0, y2: 0, tx: 485, ty: 260 },
+  { x1: -317, y1: -168.5, x2: 0, y2: 0, tx: 484, ty: 257 },
+  { x1: -277.8, y1: 363.9, x2: 0, y2: 125.65, tx: 425, ty: -365 },
 ] as const
 
 const PIECES = [
@@ -73,25 +85,27 @@ export function NexxusLoader({ className }: { className?: string }) {
               y2={b.y2}
             >
               <stop offset="0" stopColor="#fff" stopOpacity="0" />
-              <stop offset="0.1" stopColor="#fff" />
-              <stop offset="0.9" stopColor="#fff" />
+              <stop offset="0.08" stopColor="#fff" />
+              <stop offset="0.92" stopColor="#fff" />
               <stop offset="1" stopColor="#fff" stopOpacity="0" />
             </linearGradient>
             <mask
               id={`${uid}-m${i}`}
               maskUnits="userSpaceOnUse"
-              x="-60"
-              y="-70"
-              width="280"
-              height="270"
+              x="-200"
+              y="-200"
+              width="550"
+              height="550"
             >
               {/* Translating the rect moves its user space, and the
-                  userSpaceOnUse gradient fill travels with it. */}
+                  userSpaceOnUse gradient fill travels with it. The rect
+                  outsizes the mask region by more than the travel distance
+                  so its hard edges never enter the visible area. */}
               <rect
-                x="-60"
-                y="-70"
-                width="280"
-                height="270"
+                x="-1200"
+                y="-1200"
+                width="2400"
+                height="2400"
                 fill={`url(#${uid}-g${i})`}
                 className="animate-nexxus-band"
                 style={{ '--band-tx': `${b.tx}px`, '--band-ty': `${b.ty}px` } as React.CSSProperties}
@@ -127,14 +141,13 @@ export function NexxusLoader({ className }: { className?: string }) {
 
 /**
  * Full-screen loading state shared by the dashboard layout auth guards.
+ * The animated mark carries the message on its own; screen readers get
+ * the aria-label.
  */
-export function FullPageLoader({ label = 'Loading...' }: { label?: string }) {
+export function FullPageLoader() {
   return (
-    <div role="status" className="grid min-h-dvh place-items-center bg-background">
-      <div className="text-center">
-        <NexxusLoader className="mx-auto mb-4 h-12" />
-        <p className="text-muted-foreground">{label}</p>
-      </div>
+    <div role="status" aria-label="Loading" className="grid min-h-dvh place-items-center bg-background">
+      <NexxusLoader className="h-12" />
     </div>
   )
 }

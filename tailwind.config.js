@@ -134,8 +134,8 @@ module.exports = {
           '100%': { transform: 'translate(var(--band-tx), var(--band-ty))' },
         },
         nexxusGhost: {
-          '0%, 50%': { opacity: '0' },
-          '68%, 100%': { opacity: '0.14' },
+          '0%, 40%': { opacity: '0' },
+          '58%, 100%': { opacity: '0.14' },
         },
         fadeIn: {
           '0%': { opacity: '0' },
