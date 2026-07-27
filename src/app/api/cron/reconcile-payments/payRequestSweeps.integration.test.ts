@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
- * Pay-request awareness of the reconcile sweeps (migration 114): an unapproved
+ * Pay-request awareness of the reconcile sweeps (migration 116): an unapproved
  * thread is normal business state, never "stuck money".
  *   - settleUnsettledCaptures skips captured rows whose thread is pending and
  *     settles them once approved.

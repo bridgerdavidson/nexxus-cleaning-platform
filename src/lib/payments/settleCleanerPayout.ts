@@ -16,7 +16,7 @@
  * failed cleaner transfer records a `failed` payout row for the retry job. Never throws into the
  * webhook.
  *
- * Pay modes (migration 114): the cleaner's share is resolved per their
+ * Pay modes (migration 116): the cleaner's share is resolved per their
  * payout_model. percentage = % of the split base (unchanged); flat =
  * min(flat_rate_cents, base); request = the APPROVED pay-request amount -
  * settlement DEFERS entirely (both legs - the tenant remainder depends on the

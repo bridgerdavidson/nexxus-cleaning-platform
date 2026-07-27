@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-26
 - **Status:** Approved design; implementation in progress. **Amended during PR2's adversarial
-  review:** the live offer amount rides `pay_requests.current_offer_cents` (migration 116) and
+  review:** the live offer amount rides `pay_requests.current_offer_cents` (migration 118) and
   transitions CAS on `(status, updated_at)`; the cleaner has NO direct RLS read on the thread
   tables (the row carries the price snapshot) - cleaner surfaces read a service-role route that
   shapes a price-free payload; org-authored amounts are price-capped at submission; settlement

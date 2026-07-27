@@ -12,7 +12,7 @@ import { chargeCompletedAppointmentAuto } from '@/lib/payments/chargeCompletedAp
  * Shared engine for the pay-request thread routes (spec §5/§8).
  *
  * Amount-safety (PR2 review findings 1/7): the LIVE offer amount rides the
- * pay_requests row itself (current_offer_cents, migration 116), so every
+ * pay_requests row itself (current_offer_cents, migration 118), so every
  * transition is ONE atomic UPDATE of {status, current_offer_cents}, and the
  * terminal actions approve exactly `current_offer_cents` as read in the same
  * load the CAS guards. The CAS matches BOTH the expected status AND the loaded

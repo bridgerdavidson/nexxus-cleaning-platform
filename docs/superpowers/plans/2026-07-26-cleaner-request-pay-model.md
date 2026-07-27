@@ -6,7 +6,7 @@
 
 **Architecture:** Four sequential PRs off `origin/master`: (1) schema + pure logic (inert), (2) request lifecycle backend + settlement integration (the money core), (3) org UI, (4) cleaner UI + E2E. New state lives in `pay_requests` (one per appointment) + `pay_request_offers` (history); settlement resolves the cleaner's cents per mode via a new pure resolver and a cents-based split function; the existing charge path is untouched except a self-pay precondition bail.
 
-**Tech Stack:** Next.js 16 App Router routes, Supabase (Postgres migration 114+, RLS, realtime), Stripe via existing `settleCleanerPayout`/`chargeCompletedAppointment` orchestration, Vitest integration tests with `tests/helpers/`, TanStack Query v5 + `useSupabaseRealtimeSync` on the client.
+**Tech Stack:** Next.js 16 App Router routes, Supabase (Postgres migration 116+, RLS, realtime), Stripe via existing `settleCleanerPayout`/`chargeCompletedAppointment` orchestration, Vitest integration tests with `tests/helpers/`, TanStack Query v5 + `useSupabaseRealtimeSync` on the client.
 
 ## Global Constraints
 
@@ -208,7 +208,7 @@ Expected: same pass rate as detached `origin/master` baseline (no new failures).
 
 ```bash
 git add supabase/migrations/114_pay_requests.sql
-git commit -m "feat(payments): migration 114 - pay_requests, pay mode value space, min_margin_bps"
+git commit -m "feat(payments): migration 116 - pay_requests, pay mode value space, min_margin_bps"
 ```
 
 ### Task 3: Types + value-space write sweep + test-helper extension
@@ -642,9 +642,9 @@ export function isCleanerPayable(cleaner: CleanerPayoutFields | null | undefined
 
 Branch from master after PR1 merges: `git checkout -b feat/pay-request-lifecycle origin/master`.
 
-> **Added after the PR1 adversarial review:** PR1's migration 114 only WIDENS the payout-model
+> **Added after the PR1 adversarial review:** PR1's migration 116 only WIDENS the payout-model
 > constraints; it deliberately does not backfill data or flip column defaults (deploy-window
-> safety: old equality-readers + old constraints). PR2 therefore ships **migration 115**:
+> safety: old equality-readers + old constraints). PR2 therefore ships **migration 117**:
 > `UPDATE organizations/cleaner_profiles SET ... 'percentage' WHERE ... 'percentage_contractor'`,
 > `ALTER COLUMN ... SET DEFAULT 'percentage'` on both tables, and in the same PR flips the
 > profile route's transition write (`update.default_payout_model = m === 'percentage' ?
