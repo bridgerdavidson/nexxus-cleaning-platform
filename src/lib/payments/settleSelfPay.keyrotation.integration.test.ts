@@ -133,8 +133,15 @@ describe('settleSelfPay — idempotency-key rotation (T1-11)', () => {
       is_self_pay: true,
     });
     if (error) throw new Error(`payout seed failed: ${error.message}`);
+    // Partially reversed before adoption (a refund clawed $15 back): the adopted amount must be
+    // what the cleaner actually NETTED, not the gross Transfer.amount.
     vi.mocked(listTransfersByGroup).mockResolvedValue([
-      { id: 'tr_selfpay_existing', amount: 6000, destination: CLEANER_ACCT } as unknown as Stripe.Transfer,
+      {
+        id: 'tr_selfpay_existing',
+        amount: 6000,
+        amount_reversed: 1500,
+        destination: CLEANER_ACCT,
+      } as unknown as Stripe.Transfer,
     ]);
 
     const res = await settleSelfPay(db, apptId, `ch_${apptId}`);
@@ -146,12 +153,40 @@ describe('settleSelfPay — idempotency-key rotation (T1-11)', () => {
       .select('status, stripe_transfer_id, amount')
       .eq('appointment_id', apptId)
       .single();
-    expect(payout).toMatchObject({ status: 'paid', stripe_transfer_id: 'tr_selfpay_existing', amount: 60 });
+    expect(payout).toMatchObject({ status: 'paid', stripe_transfer_id: 'tr_selfpay_existing', amount: 45 });
 
     const { data: events } = await db
       .from('payment_events')
       .select('event_type')
       .eq('appointment_id', apptId);
     expect((events ?? []).map((e) => e.event_type)).toContain('cleaner_payout_repaired');
+  });
+
+  it('fails CLOSED when the group scan is unavailable before a rotated create', async () => {
+    const { db, apptId } = await seedSelfPayJob();
+    const { error } = await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: apptId,
+      amount: 60,
+      status: 'failed',
+      transfer_attempt: 1,
+      payout_percent_snapshot: 60,
+      is_self_pay: true,
+    });
+    if (error) throw new Error(`payout seed failed: ${error.message}`);
+    vi.mocked(listTransfersByGroup).mockRejectedValue(new Error('stripe 429'));
+
+    const res = await settleSelfPay(db, apptId, `ch_${apptId}`);
+    expect(res).toMatchObject({ settled: false, reason: 'cleaner_adopt_scan_unavailable' });
+    expect(cleanerCalls()).toHaveLength(0);
+
+    // Row untouched: still failed at attempt 1 for the next sweep.
+    const { data: row } = await db
+      .from('payouts')
+      .select('status, transfer_attempt')
+      .eq('appointment_id', apptId)
+      .single();
+    expect(row).toMatchObject({ status: 'failed', transfer_attempt: 1 });
   });
 });

@@ -15,3 +15,16 @@
 export function transferIdempotencyKey(base: string, attempt: number): string {
   return attempt > 0 ? `${base}-${attempt}` : base;
 }
+
+/**
+ * True when a Stripe error is the CONCURRENT idempotency conflict ("a request with the same
+ * idempotency key is currently in flight", code `idempotency_key_in_use`). Stripe does NOT cache
+ * these — the in-flight winner's result becomes the key's cached response — so the caller must
+ * NOT rotate on this error: bumping would let an immediate rotated retry race the still-running
+ * winner into a second transfer. (The OTHER idempotency failure, a same-key params-mismatch
+ * `idempotency_error`, IS pinned to the spent key, and rotation is exactly the cure.)
+ */
+export function isIdempotencyConflictInFlight(err: unknown): boolean {
+  const e = err as { code?: string; raw?: { code?: string } } | null;
+  return e?.code === 'idempotency_key_in_use' || e?.raw?.code === 'idempotency_key_in_use';
+}
