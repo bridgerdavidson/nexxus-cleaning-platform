@@ -134,6 +134,8 @@ export interface AdminCleaner {
   background_check_verified: boolean;
   insurance_verified: boolean;
   payout_percent: number;
+  /** Unified pay mode ('percentage' | 'flat' | 'request' | 'hourly_external'). */
+  payout_model: string;
   stripe_connect_account_id: string | null;
   stripe_connect_onboarding_complete: boolean;
 }
@@ -417,6 +419,7 @@ export function useAdminCleaners() {
           background_check_verified,
           insurance_verified,
           payout_percent,
+          payout_model,
           stripe_connect_account_id,
           stripe_connect_onboarding_complete,
           user_profile:user_profiles!id(
@@ -2351,6 +2354,9 @@ export interface AdminCleanerScorecard {
   phone: string | null;
   avatar_url: string | null;
   payout_percent: number;
+  /** Unified pay mode ('percentage' | 'flat' | 'request' | 'hourly_external'). */
+  payout_model: string;
+  flat_rate_cents: number | null;
   hourly_rate: number | null;
   experience_years: number | null;
   bio: string | null;
@@ -2391,6 +2397,8 @@ export function useAdminCleanerScorecards() {
         phone: (row.phone ?? null) as string | null,
         avatar_url: (row.avatar_url ?? null) as string | null,
         payout_percent: Number(row.payout_percent ?? 0),
+        payout_model: (row.payout_model as string | null) ?? 'percentage',
+        flat_rate_cents: row.flat_rate_cents == null ? null : Number(row.flat_rate_cents),
         hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate),
         experience_years: row.experience_years == null ? null : Number(row.experience_years),
         bio: (row.bio ?? null) as string | null,
@@ -2500,7 +2508,14 @@ export function useCleanerWorkload(cleanerId: string | null) {
 export interface UpdateCleanerPayload {
   cleanerId: string;
   profile?: { first_name?: string; last_name?: string; email?: string; phone?: string };
-  cleaner?: { payout_percent?: number; hourly_rate?: number; experience_years?: number; bio?: string };
+  cleaner?: {
+    payout_percent?: number;
+    payout_model?: 'percentage' | 'flat' | 'request';
+    flat_rate_cents?: number | null;
+    hourly_rate?: number;
+    experience_years?: number;
+    bio?: string;
+  };
   deactivated?: boolean;
 }
 

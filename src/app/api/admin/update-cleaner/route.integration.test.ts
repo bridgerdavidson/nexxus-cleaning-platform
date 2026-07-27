@@ -98,4 +98,92 @@ describe('POST /api/admin/update-cleaner', () => {
       .single();
     expect(r.data?.deactivated_at).toBeNull();
   });
+
+  it("admin switches a cleaner to 'flat' with a rate and both persist", async () => {
+    const { status, body } = await callRoute<{ success: boolean }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: {
+        cleanerId: org.cleaner.userId,
+        cleaner: { payout_model: 'flat', flat_rate_cents: 8000 },
+      },
+    });
+    expect(status).toBe(200);
+    expect(body.success).toBe(true);
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('cleaner_profiles')
+      .select('payout_model, flat_rate_cents')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect(data?.payout_model).toBe('flat');
+    expect(Number(data?.flat_rate_cents)).toBe(8000);
+  });
+
+  it("admin switches a cleaner to 'request'", async () => {
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { cleanerId: org.cleaner.userId, cleaner: { payout_model: 'request' } },
+    });
+    expect(status).toBe(200);
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('cleaner_profiles')
+      .select('payout_model')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect(data?.payout_model).toBe('request');
+  });
+
+  it("normalizes the legacy 'percentage_contractor' spelling to 'percentage'", async () => {
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { cleanerId: org.cleaner.userId, cleaner: { payout_model: 'percentage_contractor' } },
+    });
+    expect(status).toBe(200);
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('cleaner_profiles')
+      .select('payout_model')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect(data?.payout_model).toBe('percentage');
+  });
+
+  it("rejects the not-yet-built 'hourly_external' with the availability error", async () => {
+    const { status, body } = await callRoute<{ error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { cleanerId: org.cleaner.userId, cleaner: { payout_model: 'hourly_external' } },
+    });
+    expect(status).toBe(400);
+    expect(body.error).toBe('That payout model is not yet available');
+  });
+
+  it('rejects unknown payout models with the value-space error', async () => {
+    const { status, body } = await callRoute<{ error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { cleanerId: org.cleaner.userId, cleaner: { payout_model: 'commission' } },
+    });
+    expect(status).toBe(400);
+    expect(body.error).toBe('payout_model must be percentage, flat, request, or hourly_external');
+  });
+
+  it('rejects negative and fractional flat_rate_cents', async () => {
+    for (const bad of [-1, 1000.5]) {
+      const { status, body } = await callRoute<{ error: string }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { cleanerId: org.cleaner.userId, cleaner: { flat_rate_cents: bad } },
+      });
+      expect(status).toBe(400);
+      expect(body.error).toBe('flat_rate_cents must be a non-negative integer');
+    }
+  });
 });

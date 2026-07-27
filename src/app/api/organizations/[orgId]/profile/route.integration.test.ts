@@ -60,12 +60,24 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
     expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage');
   });
 
-  it('rejects not-yet-selectable models with the availability error', async () => {
-    for (const model of ['flat', 'request', 'hourly_external']) {
+  it("accepts and writes 'flat' and 'request' (selectable since the org settings UI shipped)", async () => {
+    const admin = createTestSupabaseClient();
+    for (const model of ['flat', 'request']) {
       const res = await patch({ default_payout_model: model }, owner.accessToken);
-      expect(res.status).toBe(400);
-      expect((res.body as { error: string }).error).toBe('That payout model is not yet available');
+      expect(res.status).toBe(200);
+      const { data } = await admin
+        .from('organizations')
+        .select('default_payout_model')
+        .eq('id', org.organizationId)
+        .single();
+      expect((data as { default_payout_model: string }).default_payout_model).toBe(model);
     }
+  });
+
+  it("rejects the not-yet-built 'hourly_external' with the availability error", async () => {
+    const res = await patch({ default_payout_model: 'hourly_external' }, owner.accessToken);
+    expect(res.status).toBe(400);
+    expect((res.body as { error: string }).error).toBe('That payout model is not yet available');
   });
 
   it('rejects unknown models with the value-space error', async () => {

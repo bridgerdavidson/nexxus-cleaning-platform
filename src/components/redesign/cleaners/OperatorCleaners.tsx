@@ -83,6 +83,15 @@ function completionRateLabel(completed: number, cancelled: number): string {
 function thisWeekLabel(n: number): string {
   return n === 0 ? "No jobs this week" : `${n} this week`;
 }
+/** The pre-118 legacy spelling falls through to the percentage default branch by design. */
+function payLabelOf(c: AdminCleanerScorecard): string {
+  if (c.payout_model === "request") return "Names their pay";
+  if (c.payout_model === "flat") {
+    return c.flat_rate_cents == null ? "Flat rate not set" : `${money0(c.flat_rate_cents / 100)} per job`;
+  }
+  if (c.payout_model === "hourly_external") return "Paid off platform";
+  return `${Math.round(c.payout_percent)}% cut`;
+}
 
 function toRowVM(c: AdminCleanerScorecard, canViewPayments: boolean): CleanerRowVM {
   const name = nameOf(c);
@@ -101,7 +110,7 @@ function toRowVM(c: AdminCleanerScorecard, canViewPayments: boolean): CleanerRow
     thisWeekLabel: thisWeekLabel(c.upcoming_this_week),
     upcomingCount: c.upcoming_jobs,
     earningsLabel: canViewPayments ? money0(c.cleaner_earnings) : null,
-    payoutPercentLabel: `${Math.round(c.payout_percent)}%`,
+    payLabel: payLabelOf(c),
   };
 }
 
@@ -124,6 +133,8 @@ function toDetailVM(c: AdminCleanerScorecard, canViewPayments: boolean): Cleaner
     firstName: c.first_name ?? "",
     lastName: c.last_name ?? "",
     payoutPercent: c.payout_percent,
+    payoutModel: c.payout_model === "percentage_contractor" ? "percentage" : c.payout_model,
+    flatRateCents: c.flat_rate_cents,
     hourlyRate: c.hourly_rate,
     experienceYears: c.experience_years,
     scorecard: {
@@ -313,6 +324,8 @@ export function OperatorCleanersData({
           },
           cleaner: {
             payout_percent: fields.payout_percent,
+            payout_model: fields.payout_model,
+            flat_rate_cents: fields.flat_rate_cents,
             hourly_rate: fields.hourly_rate ?? undefined,
             experience_years: fields.experience_years ?? undefined,
           },

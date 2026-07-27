@@ -6,18 +6,16 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
  * PATCH /api/organizations/:orgId/profile
  *
  * Owner-only org-profile editor: name, logo_url, billing_email, default_payout_model.
- * default_payout_model is constrained to 'percentage' until the flat/request
- * pickers ship (UI also locks the toggle); we still validate server-side so a
- * flag flip on the UI doesn't write a model the rest of the system can't honor.
+ * default_payout_model is validated server-side so a stale or hand-rolled
+ * client can't write a model the rest of the system can't honor.
  *
  * Body (all optional, at least one required): { name, logo_url, billing_email, default_payout_model }.
  */
 const PAYOUT_MODELS = ['percentage', 'flat', 'request', 'hourly_external'] as const;
 type PayoutModel = (typeof PAYOUT_MODELS)[number];
 
-// Only the percentage flow is selectable today. flat/request become selectable
-// with the pay-request UI PRs; hourly's payment pipeline isn't built yet.
-const ENABLED_PAYOUT_MODELS: PayoutModel[] = ['percentage'];
+// hourly_external stays unselectable: its payment pipeline isn't built yet.
+const ENABLED_PAYOUT_MODELS: PayoutModel[] = ['percentage', 'flat', 'request'];
 
 export async function PATCH(
   request: NextRequest,

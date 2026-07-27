@@ -71,6 +71,34 @@ export async function POST(request: NextRequest) {
       for (const k of ['payout_percent', 'hourly_rate', 'experience_years', 'bio'] as const) {
         if (cleaner[k] !== undefined) cleanerUpdate[k] = cleaner[k];
       }
+      if (cleaner.payout_model !== undefined) {
+        // Accept the pre-118 spelling from stale clients; write the unified one.
+        const m =
+          cleaner.payout_model === 'percentage_contractor' ? 'percentage' : cleaner.payout_model;
+        if (!['percentage', 'flat', 'request', 'hourly_external'].includes(m)) {
+          return NextResponse.json(
+            { success: false, error: 'payout_model must be percentage, flat, request, or hourly_external' },
+            { status: 400 },
+          );
+        }
+        if (m === 'hourly_external') {
+          return NextResponse.json(
+            { success: false, error: 'That payout model is not yet available' },
+            { status: 400 },
+          );
+        }
+        cleanerUpdate.payout_model = m;
+      }
+      if (cleaner.flat_rate_cents !== undefined) {
+        const v = cleaner.flat_rate_cents;
+        if (v !== null && (!Number.isInteger(v) || v < 0)) {
+          return NextResponse.json(
+            { success: false, error: 'flat_rate_cents must be a non-negative integer' },
+            { status: 400 },
+          );
+        }
+        cleanerUpdate.flat_rate_cents = v;
+      }
     }
     if (deactivated !== undefined) {
       cleanerUpdate.deactivated_at = deactivated ? new Date().toISOString() : null;

@@ -30,6 +30,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CleanerStatusBadge, ConnectBadge } from "./cleaners-presenters";
 import type { CleanerDetailVM, CleanerUpcomingVM, ConnectState } from "./cleaners-types";
 
@@ -39,9 +41,16 @@ export type CleanerSaveFields = {
   email: string;
   phone: string;
   payout_percent: number;
+  payout_model: "percentage" | "flat" | "request";
+  /** Only sent in flat mode; undefined leaves the stored rate untouched. */
+  flat_rate_cents?: number;
   hourly_rate: number | null;
   experience_years: number | null;
 };
+
+type EditablePayoutModel = CleanerSaveFields["payout_model"];
+
+const EDITABLE_MODELS: EditablePayoutModel[] = ["percentage", "flat", "request"];
 
 export type CleanerDetailSheetProps = {
   open: boolean;
@@ -88,6 +97,20 @@ const CONNECT_LINE: Record<ConnectState, string> = {
   none: "No Stripe payout account yet",
 };
 
+function payModeLine(d: CleanerDetailVM): string {
+  if (d.payoutModel === "request") return "Names their pay per job";
+  if (d.payoutModel === "flat") {
+    if (d.flatRateCents == null) return "Flat rate not set";
+    const dollars = d.flatRateCents / 100;
+    return `$${dollars.toLocaleString("en-US", {
+      minimumFractionDigits: d.flatRateCents % 100 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    })} per job`;
+  }
+  if (d.payoutModel === "hourly_external") return "Paid off platform";
+  return `${Math.round(d.payoutPercent)}% of each job`;
+}
+
 function VerificationBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
     <Badge variant={ok ? "positive" : "secondary"} className="whitespace-nowrap">
@@ -126,10 +149,13 @@ export function CleanerDetailSheet({
     lastName: "",
     email: "",
     phone: "",
+    payoutModel: "percentage" as EditablePayoutModel,
     payoutPercent: "",
+    flatRate: "",
     hourlyRate: "",
     experienceYears: "",
   });
+  const [payError, setPayError] = useState<string | null>(null);
 
   // Reset the edit form whenever a different cleaner opens or edit mode begins.
   useEffect(() => {
@@ -139,21 +165,47 @@ export function CleanerDetailSheet({
         lastName: detail.lastName,
         email: detail.email,
         phone: detail.phone ?? "",
+        // hourly_external has no write path today; if a row somehow carries it,
+        // the picker falls back to percentage (visible before any save).
+        payoutModel: EDITABLE_MODELS.includes(detail.payoutModel as EditablePayoutModel)
+          ? (detail.payoutModel as EditablePayoutModel)
+          : "percentage",
         payoutPercent: String(detail.payoutPercent ?? ""),
+        flatRate: detail.flatRateCents == null ? "" : String(detail.flatRateCents / 100),
         hourlyRate: detail.hourlyRate == null ? "" : String(detail.hourlyRate),
         experienceYears: detail.experienceYears == null ? "" : String(detail.experienceYears),
       });
+      setPayError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail?.id, editing]);
 
   const save = async () => {
+    // Validate the active mode's parameter before any network write.
+    let flatCents: number | undefined;
+    if (form.payoutModel === "percentage") {
+      const pct = num(form.payoutPercent);
+      if (pct == null || pct < 0 || pct > 100) {
+        setPayError("Enter a payout percent between 0 and 100.");
+        return;
+      }
+    } else if (form.payoutModel === "flat") {
+      const dollars = num(form.flatRate);
+      if (dollars == null || dollars < 0) {
+        setPayError("Enter a flat rate of $0 or more.");
+        return;
+      }
+      flatCents = Math.round(dollars * 100);
+    }
+    setPayError(null);
     const ok = await onSave({
       first_name: form.firstName.trim(),
       last_name: form.lastName.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
       payout_percent: num(form.payoutPercent) ?? 0,
+      payout_model: form.payoutModel,
+      ...(flatCents !== undefined ? { flat_rate_cents: flatCents } : {}),
       hourly_rate: num(form.hourlyRate),
       experience_years: num(form.experienceYears),
     });
@@ -221,26 +273,92 @@ export function CleanerDetailSheet({
                       onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                     />
                   </FormField>
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField label="Payout %" htmlFor="cl-payout" helper="Cut of each job">
+                  <div className="space-y-2">
+                    <Label>How they&apos;re paid</Label>
+                    <RadioGroup
+                      value={form.payoutModel}
+                      onValueChange={(m) => {
+                        setForm((f) => ({ ...f, payoutModel: m as EditablePayoutModel }));
+                        setPayError(null);
+                      }}
+                      className="gap-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem id="cl-pm-pct" value="percentage" />
+                        <Label htmlFor="cl-pm-pct" className="font-normal">
+                          Percentage of each job
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem id="cl-pm-flat" value="flat" />
+                        <Label htmlFor="cl-pm-flat" className="font-normal">
+                          Flat amount per job
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem id="cl-pm-req" value="request" />
+                        <Label htmlFor="cl-pm-req" className="font-normal">
+                          Requests their pay
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                  {form.payoutModel === "percentage" ? (
+                    <FormField
+                      label="Payout %"
+                      htmlFor="cl-payout"
+                      helper="Cut of each job"
+                      error={payError ?? undefined}
+                    >
                       <Input
                         id="cl-payout"
                         type="number"
                         inputMode="decimal"
+                        min={0}
+                        max={100}
                         value={form.payoutPercent}
-                        onChange={(e) => setForm((f) => ({ ...f, payoutPercent: e.target.value }))}
+                        onChange={(e) => {
+                          setForm((f) => ({ ...f, payoutPercent: e.target.value }));
+                          setPayError(null);
+                        }}
                       />
                     </FormField>
-                    <FormField label="Hourly rate" htmlFor="cl-rate" helper="Optional">
+                  ) : form.payoutModel === "flat" ? (
+                    <FormField
+                      label="Flat rate per job"
+                      htmlFor="cl-flat"
+                      helper="Dollars per completed job, capped at the job price."
+                      error={payError ?? undefined}
+                    >
                       <Input
-                        id="cl-rate"
+                        id="cl-flat"
                         type="number"
                         inputMode="decimal"
-                        value={form.hourlyRate}
-                        onChange={(e) => setForm((f) => ({ ...f, hourlyRate: e.target.value }))}
+                        min={0}
+                        step="0.01"
+                        value={form.flatRate}
+                        onChange={(e) => {
+                          setForm((f) => ({ ...f, flatRate: e.target.value }));
+                          setPayError(null);
+                        }}
                       />
                     </FormField>
-                  </div>
+                  ) : (
+                    <div className="rounded-control border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      This cleaner names their pay on each job. Requests within your auto-approve
+                      margin are approved automatically; the rest come to you for review. Set the
+                      margin in Settings, under Payout settings.
+                    </div>
+                  )}
+                  <FormField label="Hourly rate" htmlFor="cl-rate" helper="Optional">
+                    <Input
+                      id="cl-rate"
+                      type="number"
+                      inputMode="decimal"
+                      value={form.hourlyRate}
+                      onChange={(e) => setForm((f) => ({ ...f, hourlyRate: e.target.value }))}
+                    />
+                  </FormField>
                   <FormField label="Experience (years)" htmlFor="cl-exp" helper="Optional">
                     <Input
                       id="cl-exp"
@@ -331,6 +449,10 @@ export function CleanerDetailSheet({
                       <CreditCard className="size-3.5" /> Payouts
                     </h3>
                     <div className="space-y-1 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">How they&apos;re paid</span>
+                        <span className="text-foreground">{payModeLine(detail)}</span>
+                      </div>
                       {canViewPayments ? (
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Owed now</span>
