@@ -75,6 +75,20 @@ The tenant picks one color. Neutrals (`warm-*`) and status ramps (`positive` / `
 `--primary-foreground` to near-black. Silently turning a chosen yellow into brown is dishonest; the
 live preview shows them the consequence and lets *them* decide to change it. (Bridger, 2026-07-27.)
 
+**Brand-colored text is a separate problem from text on brand.** `--primary-foreground` only fixes
+what sits *on* a brand fill. The codebase also has **52 `text-brand-600` usages across 42 files** —
+brand-colored text on a neutral surface. Because step 600 is the tenant's exact color, a pale brand
+makes every one of them unreadable, which is what "honor it exactly" would otherwise cost us.
+
+Resolved with a dedicated token, `--brand-ink`: the step used for brand-colored text on neutral
+surfaces. It resolves to the lightest of steps 600, 700, or 800 that clears 4.5:1 against the
+background, per theme (against warm-50 in light, against the dark card in dark). Steps 700 and up
+have fixed lightness targets regardless of input, so a readable option always exists. Its default
+is today's brand-600 exactly, so adopting it changes nothing for Nexxus.
+
+The rule that follows: **`brand-600` is a fill color, `brand-ink` is a text color.** Never
+`text-brand-600` on a neutral surface.
+
 **Green-branded tenants** blur the brand/`in progress` versus `done` distinction, since `--primary`
 serves both. Accepted: status ramps stay fixed because semantic colors must stay semantic, and the
 design system already mandates that color is always accompanied by an icon and label. Status hue

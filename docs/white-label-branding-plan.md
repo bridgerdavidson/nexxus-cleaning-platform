@@ -31,8 +31,9 @@
 | `src/lib/branding/palette.ts` | Create | Pure: hex → 11-step ramp + 2 foreground values |
 | `src/lib/branding/palette.test.ts` | Create | Unit tests incl. contrast and gamut guarantees |
 | `src/lib/branding/tokens.ts` | Create | Shared constants: step list, CSS var names, Nexxus defaults |
-| `tailwind.config.js` | Modify | `brand.*` hex → `hsl(var(--brand-N) / <alpha-value>)` |
-| `src/app/globals.css` | Modify | Add `--brand-50..950`, `--brand-fg-500/600` defaults; repoint `--primary`, `--ring`, `--accent*` at them |
+| `tailwind.config.js` | Modify | `brand.*` hex → `hsl(var(--brand-N) / <alpha-value>)`, plus `brand.ink` |
+| `src/app/globals.css` | Modify | Add `--brand-50..950`, `--brand-fg-500/600`, `--brand-ink*` defaults; repoint `--primary`, `--ring`, `--accent*` at them |
+| 42 `.tsx` files | Modify | Mechanical `text-brand-600` → `text-brand-ink` sweep (no visual change) |
 | `src/types/index.ts` | Modify | Branding columns on the `Organization` type |
 
 **PR 2 — Org selection**
@@ -124,6 +125,20 @@ export function brandVarName(step: BrandStep): string {
 export const BRAND_FG_600_VAR = "--brand-fg-600";
 export const BRAND_FG_500_VAR = "--brand-fg-500";
 
+/**
+ * Brand-colored TEXT on a neutral surface, per theme.
+ *
+ * Distinct from the foregrounds above, which colour text sitting ON a brand
+ * fill. Step 600 is the tenant's exact color, so `text-brand-600` on a card is
+ * unreadable for any pale brand. See docs/white-label-branding.md decision 3.
+ */
+export const BRAND_INK_ON_LIGHT_VAR = "--brand-ink-on-light";
+export const BRAND_INK_ON_DARK_VAR = "--brand-ink-on-dark";
+
+/** Neutral surfaces the ink must stay readable against: warm-50 and the dark card. */
+export const LIGHT_SURFACE_HEX = "#F7F6F3";
+export const DARK_SURFACE_HEX = "#24211B";
+
 /** localStorage key holding the last resolved ramp, replayed before first paint. */
 export const BRAND_CACHE_KEY = "nexxus.brand.v1";
 ```
@@ -207,12 +222,33 @@ describe("deriveBrandRamp", () => {
     expect(deriveBrandRamp("not-a-color").steps[600]).toBe(deriveBrandRamp(NEXXUS_BRAND_HEX).steps[600]);
   });
 
-  it("emits one CSS variable per step plus both foregrounds", () => {
+  it("emits one CSS variable per step, both foregrounds, and both inks", () => {
     const vars = rampToCssVars(deriveBrandRamp(NEXXUS_BRAND_HEX));
-    expect(Object.keys(vars)).toHaveLength(BRAND_STEPS.length + 2);
-    expect(vars["--brand-600"]).toBeDefined();
-    expect(vars["--brand-fg-600"]).toBeDefined();
-    expect(vars["--brand-fg-500"]).toBeDefined();
+    expect(Object.keys(vars)).toHaveLength(BRAND_STEPS.length + 4);
+    for (const name of ["--brand-600", "--brand-fg-600", "--brand-fg-500", "--brand-ink-on-light", "--brand-ink-on-dark"]) {
+      expect(vars[name], name).toBeDefined();
+    }
+  });
+
+  it("keeps brand-colored text readable on neutral surfaces at any brand", () => {
+    // The failure this guards: 52 `text-brand-600` usages across 42 files go
+    // unreadable the moment a tenant picks a pale color.
+    for (const hex of ["#0150FC", "#FFE24D", "#7CFF6B", "#F4A0C0"]) {
+      const ramp = deriveBrandRamp(hex);
+      expect(
+        wcagContrast(channelsToRgb(ramp.inkOnLight), parse("#F7F6F3")!),
+        `${hex} on warm-50`,
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        wcagContrast(channelsToRgb(ramp.inkOnDark), parse("#24211B")!),
+        `${hex} on the dark card`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("uses the tenant's own color as ink when it is already legible", () => {
+    const ramp = deriveBrandRamp("#0150FC");
+    expect(ramp.inkOnLight).toBe(ramp.steps[600]);
   });
 });
 ```
@@ -232,6 +268,10 @@ import {
   brandVarName,
   BRAND_FG_500_VAR,
   BRAND_FG_600_VAR,
+  BRAND_INK_ON_LIGHT_VAR,
+  BRAND_INK_ON_DARK_VAR,
+  LIGHT_SURFACE_HEX,
+  DARK_SURFACE_HEX,
   type BrandStep,
 } from "./tokens";
 
@@ -272,6 +312,10 @@ export interface BrandRamp {
   foreground600: string;
   /** Readable foreground against steps[500]. Used by the dark theme. */
   foreground500: string;
+  /** Brand-colored text on a light neutral surface. One of steps 600/700/800. */
+  inkOnLight: string;
+  /** Brand-colored text on a dark neutral surface. One of steps 500/400/300. */
+  inkOnDark: string;
 }
 
 /** Format an Oklch color as the "H S% L%" channel triplet shadcn expects. */
@@ -324,7 +368,29 @@ export function deriveBrandRamp(hex: string): BrandRamp {
     steps,
     foreground600: readableForeground(steps[600]),
     foreground500: readableForeground(steps[500]),
+    inkOnLight: pickInk(steps, [600, 700, 800], LIGHT_SURFACE_HEX),
+    inkOnDark: pickInk(steps, [500, 400, 300], DARK_SURFACE_HEX),
   };
+}
+
+/**
+ * The first candidate step that clears AA against `surfaceHex`, else the last.
+ *
+ * Candidates run from the tenant's own color outward, so we use their actual
+ * brand whenever it is legible and only step away when it is not. Steps 700+
+ * (light) and 300+ (dark) have fixed lightness targets regardless of input, so
+ * a readable option always exists.
+ */
+function pickInk(
+  steps: Record<BrandStep, string>,
+  candidates: BrandStep[],
+  surfaceHex: string,
+): string {
+  const surface = parse(surfaceHex)!;
+  for (const step of candidates) {
+    if (wcagContrast(parse(`hsl(${steps[step]})`)!, surface) >= 4.5) return steps[step];
+  }
+  return steps[candidates[candidates.length - 1]];
 }
 
 /** The ramp as the exact CSS custom properties the provider and bootstrap set. */
@@ -333,6 +399,8 @@ export function rampToCssVars(ramp: BrandRamp): Record<string, string> {
   for (const step of BRAND_STEPS) vars[brandVarName(step)] = ramp.steps[step];
   vars[BRAND_FG_600_VAR] = ramp.foreground600;
   vars[BRAND_FG_500_VAR] = ramp.foreground500;
+  vars[BRAND_INK_ON_LIGHT_VAR] = ramp.inkOnLight;
+  vars[BRAND_INK_ON_DARK_VAR] = ramp.inkOnDark;
   return vars;
 }
 ```
@@ -379,6 +447,10 @@ Replace the hardcoded `brand` block. The `<alpha-value>` form is required — it
           800: 'hsl(var(--brand-800) / <alpha-value>)',
           900: 'hsl(var(--brand-900) / <alpha-value>)',
           950: 'hsl(var(--brand-950) / <alpha-value>)',
+          // Brand-colored TEXT on a neutral surface. Resolves to whichever of
+          // 600/700/800 stays legible, so a pale brand cannot produce unreadable
+          // text. `brand-600` is a fill color; `brand-ink` is a text color.
+          ink: 'hsl(var(--brand-ink) / <alpha-value>)',
         },
 ```
 
@@ -401,6 +473,10 @@ Insert immediately after `--shadow-rgb` in `:root`. These are today's hex conver
   --brand-950: 224 75% 16%;        /* #0A1A47 */
   --brand-fg-600: 0 0% 100%;       /* white on brand-600 */
   --brand-fg-500: 0 0% 100%;       /* white on brand-500 */
+  /* brand-colored text on a neutral surface, per theme; --brand-ink selects one */
+  --brand-ink-on-light: 221 99% 50%;  /* = brand-600, today's value: adopting this changes nothing */
+  --brand-ink-on-dark: 225 100% 68%;  /* = brand-400; brand-500 fails AA on the dark card */
+  --brand-ink: var(--brand-ink-on-light);
 ```
 
 These values were machine-verified against the hex they replace (2026-07-27). Do not hand-edit them:
@@ -438,9 +514,30 @@ approximation (`.dark --primary` is precisely brand-500, `--ring` precisely bran
   --primary-foreground: var(--brand-fg-500);
   --accent-foreground: var(--brand-100);
   --ring: var(--brand-400);
+  --brand-ink: var(--brand-ink-on-dark);
 ```
 
 Leave `.dark`'s `--accent: 33 11% 15%` as-is: dark mode's accent surface is a warm neutral, not a brand tint.
+
+- [ ] **Step 3b: Sweep brand-colored text onto the ink token**
+
+```bash
+grep -rl "text-brand-600" src --include="*.tsx" | xargs sed -i '' 's/text-brand-600/text-brand-ink/g'
+```
+
+52 occurrences across 42 files. **Zero visual change today** because `--brand-ink-on-light` defaults
+to exactly today's brand-600. Without this, every one of those goes unreadable the moment a tenant
+picks a pale color, and no amount of foreground-flipping fixes it because these sit on neutral
+surfaces, not on a brand fill.
+
+Then check what the sweep did **not** catch, and convert any that are text on a neutral surface:
+
+```bash
+grep -rn "text-brand-[0-9]" src --include="*.tsx"
+```
+
+Leave `text-brand-100` and similar alone where they sit on a brand fill: those are foreground cases,
+already handled, and swapping them would break contrast in the other direction.
 
 - [ ] **Step 4: Verify the values round-trip**
 
