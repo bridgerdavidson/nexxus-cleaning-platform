@@ -74,7 +74,7 @@ export function PayRequestsBand({ canManagePayments }: { canManagePayments: bool
                           <Button
                             size="sm"
                             loading={q.busyId === r.id}
-                            onClick={() => void q.approve(r.id)}
+                            onClick={() => void q.approve(r.id, r.latestAmountCents)}
                           >
                             Approve {money2(r.latestAmountCents / 100)}
                           </Button>
@@ -145,7 +145,7 @@ function PayRequestRow({
   const askLabel =
     row.latestActor === "cleaner"
       ? `asked ${money2(row.latestAmountCents / 100)}`
-      : `your counter ${money2(row.latestAmountCents / 100)}`;
+      : `${row.latestIsCounter ? "your counter" : "your offer"} ${money2(row.latestAmountCents / 100)}`;
   return (
     <div className="flex flex-col gap-3 rounded-control border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
       <button

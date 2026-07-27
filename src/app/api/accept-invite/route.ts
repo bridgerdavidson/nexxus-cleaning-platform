@@ -186,13 +186,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If the invited user is a cleaner, create their cleaner profile
+    // If the invited user is a cleaner, create their cleaner profile stamped
+    // with the org's configured default pay mode (spec §4: default_payout_model
+    // is the value stamped onto newly added cleaners; the column default only
+    // covers orgs that never touched payout settings).
     if (role === 'cleaner') {
+      const { data: orgDefaults } = await supabaseAdmin
+        .from('organizations')
+        .select('default_payout_model')
+        .eq('id', organizationId)
+        .maybeSingle();
+      const rawModel =
+        (orgDefaults as { default_payout_model?: string | null } | null)?.default_payout_model ??
+        null;
+      const defaultModel = rawModel === 'percentage_contractor' ? 'percentage' : rawModel;
+
       const { error: cleanerProfileError } = await supabaseAdmin
         .from('cleaner_profiles')
         .insert({
           id: verified.userId,
           organization_id: organizationId,
+          ...(defaultModel ? { payout_model: defaultModel } : {}),
         });
 
       if (cleanerProfileError) {

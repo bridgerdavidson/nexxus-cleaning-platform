@@ -40,8 +40,15 @@ export type CleanerSaveFields = {
   last_name: string;
   email: string;
   phone: string;
-  payout_percent: number;
-  payout_model: "percentage" | "flat" | "request";
+  /**
+   * Omitted when the stored mode is not editable here (hourly_external) and
+   * the operator never touched the picker, so an unrelated edit (fixing a
+   * phone number) can never silently move an off-platform cleaner onto
+   * platform payouts.
+   */
+  payout_model?: "percentage" | "flat" | "request";
+  /** Only sent in percentage mode; other modes leave the stored percent untouched. */
+  payout_percent?: number;
   /** Only sent in flat mode; undefined leaves the stored rate untouched. */
   flat_rate_cents?: number;
   hourly_rate: number | null;
@@ -150,6 +157,7 @@ export function CleanerDetailSheet({
     email: "",
     phone: "",
     payoutModel: "percentage" as EditablePayoutModel,
+    payoutModelTouched: false,
     payoutPercent: "",
     flatRate: "",
     hourlyRate: "",
@@ -165,11 +173,13 @@ export function CleanerDetailSheet({
         lastName: detail.lastName,
         email: detail.email,
         phone: detail.phone ?? "",
-        // hourly_external has no write path today; if a row somehow carries it,
-        // the picker falls back to percentage (visible before any save).
+        // hourly_external isn't pickable here; the picker DISPLAYS percentage
+        // as a starting point, but save() omits payout_model until the
+        // operator actually touches the picker (payoutModelTouched).
         payoutModel: EDITABLE_MODELS.includes(detail.payoutModel as EditablePayoutModel)
           ? (detail.payoutModel as EditablePayoutModel)
           : "percentage",
+        payoutModelTouched: false,
         payoutPercent: String(detail.payoutPercent ?? ""),
         flatRate: detail.flatRateCents == null ? "" : String(detail.flatRateCents / 100),
         hourlyRate: detail.hourlyRate == null ? "" : String(detail.hourlyRate),
@@ -180,16 +190,26 @@ export function CleanerDetailSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail?.id, editing]);
 
+  // Pay-config fields ride along only when the stored mode is one the picker
+  // can express, or the operator explicitly picked a mode; otherwise (an
+  // hourly_external row) an unrelated edit must leave pay config untouched.
+  const storedModelEditable = EDITABLE_MODELS.includes(
+    (detail?.payoutModel ?? "percentage") as EditablePayoutModel,
+  );
+  const includePayConfig = storedModelEditable || form.payoutModelTouched;
+
   const save = async () => {
     // Validate the active mode's parameter before any network write.
     let flatCents: number | undefined;
-    if (form.payoutModel === "percentage") {
+    let pctValue: number | undefined;
+    if (includePayConfig && form.payoutModel === "percentage") {
       const pct = num(form.payoutPercent);
       if (pct == null || pct < 0 || pct > 100) {
         setPayError("Enter a payout percent between 0 and 100.");
         return;
       }
-    } else if (form.payoutModel === "flat") {
+      pctValue = pct;
+    } else if (includePayConfig && form.payoutModel === "flat") {
       const dollars = num(form.flatRate);
       if (dollars == null || dollars < 0) {
         setPayError("Enter a flat rate of $0 or more.");
@@ -203,8 +223,8 @@ export function CleanerDetailSheet({
       last_name: form.lastName.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
-      payout_percent: num(form.payoutPercent) ?? 0,
-      payout_model: form.payoutModel,
+      ...(includePayConfig ? { payout_model: form.payoutModel } : {}),
+      ...(pctValue !== undefined ? { payout_percent: pctValue } : {}),
       ...(flatCents !== undefined ? { flat_rate_cents: flatCents } : {}),
       hourly_rate: num(form.hourlyRate),
       experience_years: num(form.experienceYears),
@@ -278,7 +298,11 @@ export function CleanerDetailSheet({
                     <RadioGroup
                       value={form.payoutModel}
                       onValueChange={(m) => {
-                        setForm((f) => ({ ...f, payoutModel: m as EditablePayoutModel }));
+                        setForm((f) => ({
+                          ...f,
+                          payoutModel: m as EditablePayoutModel,
+                          payoutModelTouched: true,
+                        }));
                         setPayError(null);
                       }}
                       className="gap-2"
@@ -303,7 +327,12 @@ export function CleanerDetailSheet({
                       </div>
                     </RadioGroup>
                   </div>
-                  {form.payoutModel === "percentage" ? (
+                  {!includePayConfig ? (
+                    <div className="rounded-control border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      This cleaner is paid off platform (hourly). Their pay settings stay unchanged
+                      unless you pick a mode above.
+                    </div>
+                  ) : form.payoutModel === "percentage" ? (
                     <FormField
                       label="Payout %"
                       htmlFor="cl-payout"

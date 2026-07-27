@@ -83,6 +83,10 @@ function HostInner({
   const [reschedInit, setReschedInit] = useState<RescheduleInit | null>(null);
   const [feeCancelOpen, setFeeCancelOpen] = useState(false);
   const [payOfferOpen, setPayOfferOpen] = useState(false);
+  // Set once this job's pay thread exists (we created it, or a duplicate told
+  // us so). A completion retry then skips the dialog instead of asking for an
+  // amount it would silently discard.
+  const [payOfferSent, setPayOfferSent] = useState(false);
 
   const raw = useMemo(() => appointments.find((x) => x.id === appointmentId) ?? null, [appointments, appointmentId]);
   const detail = useMemo(() => (raw ? toDetailVM(raw, canViewPayments) : null), [raw, canViewPayments]);
@@ -141,8 +145,10 @@ function HostInner({
 
   // POST-first ordering (mirrors the cleaner completion step): the offer is
   // created before the status write so a completed request-mode job can never
-  // exist without its pay thread. A 409 means the thread already exists (the
-  // cleaner asked first); completion proceeds and it's handled from Payments.
+  // exist without its pay thread. A 409 'duplicate' means the thread already
+  // exists (the cleaner asked first, or a prior attempt's POST landed);
+  // completion proceeds and the thread is handled from Payments. A 409
+  // 'cancelled' must NOT complete the job.
   const sendPayOfferAndComplete = useCallback(
     async (amountCents: number, note: string | null): Promise<string | null> => {
       if (!currentOrganizationId) return "No organization";
@@ -159,13 +165,22 @@ function HostInner({
             ...(note ? { note } : {}),
           }),
         });
-        if (!res.ok && res.status !== 409) {
-          const data = await res.json().catch(() => ({}));
-          return (data as { error?: string }).error || "Could not send the pay offer";
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+          if (res.status === 409 && data.code === "cancelled") {
+            return data.error || "This job was cancelled.";
+          }
+          if (res.status !== 409) {
+            return data.error || "Could not send the pay offer";
+          }
+          // duplicate: the entered amount was NOT used; say so instead of
+          // silently discarding it.
+          toast.info("This job already has a pay request. Review it under Payments.");
         }
       } catch {
         return "Could not send the pay offer";
       }
+      setPayOfferSent(true);
       setPayOfferOpen(false);
       await runStatus("completed");
       return null;
@@ -272,7 +287,9 @@ function HostInner({
         onAssign={handleAssign}
         onAcceptCounter={handleAcceptCounter}
         onStart={() => runStatus("in_progress")}
-        onComplete={() => (completionNeedsPayOffer ? setPayOfferOpen(true) : runStatus("completed"))}
+        onComplete={() =>
+          completionNeedsPayOffer && !payOfferSent ? setPayOfferOpen(true) : runStatus("completed")
+        }
         onOpenReschedule={(init) => setReschedInit(init ?? {})}
         onCancel={() => (feeCancel && raw ? setFeeCancelOpen(true) : setConfirm("cancel"))}
         onDelete={() => setConfirm("delete")}

@@ -39,7 +39,7 @@ export type PayRequestDetailSheetProps = {
   request: PayRequestVM | null;
   canManagePayments: boolean;
   busy: boolean;
-  onApprove: (payRequestId: string) => Promise<boolean>;
+  onApprove: (payRequestId: string, expectedAmountCents: number) => Promise<boolean>;
   onCounter: (payRequestId: string, amountCents: number, note: string | null) => Promise<boolean>;
 };
 
@@ -62,6 +62,10 @@ export function PayRequestDetailSheet({
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [amountError, setAmountError] = useState<string | null>(null);
+  // Retain the last row after the band clears its selection so the sheet keeps
+  // its content through the exit animation instead of blanking mid-close.
+  const [lastRequest, setLastRequest] = useState<PayRequestVM | null>(null);
+  if (request && request !== lastRequest) setLastRequest(request);
 
   // A fresh thread gets a fresh form; also covers reopening on another row.
   useEffect(() => {
@@ -72,11 +76,10 @@ export function PayRequestDetailSheet({
     setAmountError(null);
   }, [open, request?.id]);
 
-  if (!request) {
+  const r = request ?? lastRequest;
+  if (!r) {
     return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md" /></Sheet>;
   }
-
-  const r = request;
   const margin = marginLine(r);
   const yourTurn = r.status === "pending_org";
 
@@ -117,7 +120,13 @@ export function PayRequestDetailSheet({
         <div className="flex-1 space-y-1 overflow-y-auto px-6 py-4">
           <Field label="Job price" value={<span className="font-semibold tnum">{money2(r.jobPriceCents / 100)}</span>} />
           <Field
-            label={r.latestActor === "cleaner" ? "Their ask" : "Your counter"}
+            label={
+              r.latestActor === "cleaner"
+                ? "Their ask"
+                : r.latestIsCounter
+                  ? "Your counter"
+                  : "Your offer"
+            }
             value={<span className="font-semibold tnum">{money2(r.latestAmountCents / 100)}</span>}
           />
           <Field
@@ -130,16 +139,25 @@ export function PayRequestDetailSheet({
             Offer history
           </p>
           <div className="space-y-2">
-            {r.offers.map((o) => (
-              <div key={o.id} className="rounded-control border border-border bg-muted/40 p-3">
-                <p className="text-sm font-medium text-foreground">
-                  {o.actor === "cleaner" ? `${r.cleaner} asked` : "You countered"}{" "}
-                  <span className="font-semibold tnum">{money2(o.amountCents / 100)}</span>
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">{o.atLabel}</span>
-                </p>
-                {o.note ? <p className="mt-1 text-sm text-muted-foreground">{o.note}</p> : null}
-              </div>
-            ))}
+            {r.offers.map((o, idx) => {
+              // An org offer only reads as a "counter" when a cleaner ask
+              // precedes it; the thread-opening org offer is an "offer".
+              const orgCountered = r.offers.slice(0, idx).some((p) => p.actor === "cleaner");
+              return (
+                <div key={o.id} className="rounded-control border border-border bg-muted/40 p-3">
+                  <p className="text-sm font-medium text-foreground">
+                    {o.actor === "cleaner"
+                      ? `${r.cleaner} asked`
+                      : orgCountered
+                        ? "You countered"
+                        : "You offered"}{" "}
+                    <span className="font-semibold tnum">{money2(o.amountCents / 100)}</span>
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">{o.atLabel}</span>
+                  </p>
+                  {o.note ? <p className="mt-1 text-sm text-muted-foreground">{o.note}</p> : null}
+                </div>
+              );
+            })}
           </div>
 
           {yourTurn && canManagePayments ? (
@@ -187,7 +205,7 @@ export function PayRequestDetailSheet({
                   <Button
                     loading={busy}
                     onClick={() => {
-                      void onApprove(r.id).then((ok) => {
+                      void onApprove(r.id, r.latestAmountCents).then((ok) => {
                         if (ok) onOpenChange(false);
                       });
                     }}
@@ -206,8 +224,8 @@ export function PayRequestDetailSheet({
             <>
               <Separator className="my-3" />
               <div className="rounded-control border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-                {r.cleaner} is deciding on your counter. They can accept it or counter back; you&apos;ll
-                see it here when they do.
+                {r.cleaner} is deciding on your {r.latestIsCounter ? "counter" : "offer"}. They can
+                accept it or counter back; you&apos;ll see it here when they do.
               </div>
             </>
           ) : null}

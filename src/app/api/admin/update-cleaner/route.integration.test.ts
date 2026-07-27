@@ -175,15 +175,27 @@ describe('POST /api/admin/update-cleaner', () => {
     expect(body.error).toBe('payout_model must be percentage, flat, request, or hourly_external');
   });
 
-  it('rejects negative and fractional flat_rate_cents', async () => {
-    for (const bad of [-1, 1000.5]) {
+  it('rejects negative, fractional, and absurdly large flat_rate_cents', async () => {
+    for (const bad of [-1, 1000.5, 100_000_001]) {
       const { status, body } = await callRoute<{ error: string }>(POST, {
         method: 'POST',
         headers: bearerHeader(org.admin.accessToken),
         body: { cleanerId: org.cleaner.userId, cleaner: { flat_rate_cents: bad } },
       });
       expect(status).toBe(400);
-      expect(body.error).toBe('flat_rate_cents must be a non-negative integer');
+      expect(body.error).toBe('flat_rate_cents must be an integer between 0 and 100000000');
+    }
+  });
+
+  it('rejects an out-of-range payout_percent before any field writes', async () => {
+    for (const bad of [-1, 150]) {
+      const { status, body } = await callRoute<{ error: string }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { cleanerId: org.cleaner.userId, cleaner: { payout_percent: bad } },
+      });
+      expect(status).toBe(400);
+      expect(body.error).toBe('payout_percent must be between 0 and 100');
     }
   });
 });

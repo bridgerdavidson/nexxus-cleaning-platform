@@ -11,7 +11,10 @@ import {
  * POST /api/pay-requests/:payRequestId/approve
  * Org approves the latest cleaner offer as-is. Idempotent: re-approving an
  * approved thread is a 200 no-op (and still nudges settlement, which is
- * itself idempotent). Body: { organization_id }.
+ * itself idempotent). Body: { organization_id, expected_amount_cents? };
+ * when expected_amount_cents is present and the live offer differs, the
+ * approval is rejected 409 so a stale tab can never move a different amount
+ * than the operator saw.
  */
 export const maxDuration = 60; // Stripe transfer latency headroom on the settlement trigger
 
@@ -21,7 +24,10 @@ export async function POST(
 ) {
   try {
     const { payRequestId } = await params;
-    const body = (await request.json().catch(() => ({}))) as { organization_id?: string };
+    const body = (await request.json().catch(() => ({}))) as {
+      organization_id?: string;
+      expected_amount_cents?: number;
+    };
 
     const auth = await requireOrgPaymentsAuth(request, body.organization_id, supabaseAdmin);
     if (!auth.ok) return auth.response;
@@ -36,6 +42,9 @@ export async function POST(
       payRequestId,
       action: 'org_approve',
       actorUserId: auth.userId,
+      ...(Number.isInteger(body.expected_amount_cents)
+        ? { expectedAmountCents: body.expected_amount_cents as number }
+        : {}),
     });
 
     if (!result.ok) {

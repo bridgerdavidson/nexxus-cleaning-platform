@@ -146,6 +146,29 @@ describe('POST /api/appointments/[appointmentId]/pay-request', () => {
     expect(first.status).toBe(200);
     const second = await submit(appt.id, { organization_id: org.organizationId, amount_cents: 26000 }, org.cleaner.accessToken);
     expect(second.status).toBe(409);
+    // The org completion flow proceeds on 'duplicate' but must NOT proceed on
+    // 'cancelled', so the two 409s carry a machine-readable discriminator
+    // rather than only human copy.
+    expect((second.body as { code: string }).code).toBe('duplicate');
+  });
+
+  it("409s a cancelled job with code 'cancelled' (never conflated with a duplicate)", async () => {
+    org = await requestOrg();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 350,
+      status: 'cancelled',
+    });
+
+    const res = await submit(
+      appt.id,
+      { organization_id: org.organizationId, amount_cents: 25000 },
+      org.admin.accessToken,
+    );
+    expect(res.status).toBe(409);
+    expect((res.body as { code: string }).code).toBe('cancelled');
   });
 
   it('rejects non-request-mode cleaners with 400', async () => {

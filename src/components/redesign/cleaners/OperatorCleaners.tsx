@@ -87,7 +87,13 @@ function thisWeekLabel(n: number): string {
 function payLabelOf(c: AdminCleanerScorecard): string {
   if (c.payout_model === "request") return "Names their pay";
   if (c.payout_model === "flat") {
-    return c.flat_rate_cents == null ? "Flat rate not set" : `${money0(c.flat_rate_cents / 100)} per job`;
+    if (c.flat_rate_cents == null) return "Flat rate not set";
+    // Cents-aware (matches the detail sheet): $80.50 must not round to $81.
+    const dollars = c.flat_rate_cents / 100;
+    return `$${dollars.toLocaleString("en-US", {
+      minimumFractionDigits: c.flat_rate_cents % 100 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    })} per job`;
   }
   if (c.payout_model === "hourly_external") return "Paid off platform";
   return `${Math.round(c.payout_percent)}% cut`;

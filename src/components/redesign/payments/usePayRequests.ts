@@ -51,6 +51,9 @@ export type PayRequestVM = {
   /** The offer currently on the table (last in the thread). */
   latestAmountCents: number;
   latestActor: "cleaner" | "org";
+  /** True when a cleaner offer precedes the latest org offer; an org offer
+   *  that OPENED the thread is an "offer", not a "counter". */
+  latestIsCounter: boolean;
   latestNote: string | null;
   ageLabel: string;
   /** jobPrice - latest ask. Negative = the ask is above the job price. */
@@ -66,6 +69,7 @@ type RawRow = {
   appointment_id: string;
   cleaner_id: string;
   job_price_cents_snapshot: number;
+  current_offer_cents: number | null;
   updated_at: string;
   cleaner: unknown;
   appointment: unknown;
@@ -84,9 +88,11 @@ function toVM(row: RawRow, now: number): PayRequestVM | null {
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
   const latest = offers[offers.length - 1];
-  // A thread always opens with an offer; a row without one is mid-insert or
-  // corrupt, so skip it rather than render a zero-dollar card.
-  if (!latest) return null;
+  // A thread always opens with an offer AND a live amount on the row. A row
+  // missing either is mid-insert or malformed: skip it rather than render a
+  // card whose Approve button would be refused (the actions bind to
+  // current_offer_cents, so what we show and what we'd approve must agree).
+  if (!latest || row.current_offer_cents == null) return null;
 
   const cleanerJoin = firstOf(row.cleaner as { user_profile?: NamePair | NamePair[] } | null);
   const cleanerName = fullName(firstOf(cleanerJoin?.user_profile)) || "Cleaner";
@@ -106,7 +112,10 @@ function toVM(row: RawRow, now: number): PayRequestVM | null {
     : "";
 
   const price = Number(row.job_price_cents_snapshot ?? 0);
-  const amount = Number(latest.amount_cents ?? 0);
+  // The row's current_offer_cents is the CAS-guarded live amount every action
+  // binds to; the offers list is only labels/history (its last INSERT is not
+  // atomic with the row UPDATE, so it can briefly trail).
+  const amount = Number(row.current_offer_cents);
   const margin = price - amount;
 
   return {
@@ -120,6 +129,8 @@ function toVM(row: RawRow, now: number): PayRequestVM | null {
     jobPriceCents: price,
     latestAmountCents: amount,
     latestActor: latest.actor === "org" ? "org" : "cleaner",
+    latestIsCounter:
+      latest.actor === "org" && offers.slice(0, -1).some((o) => o.actor === "cleaner"),
     latestNote: latest.note ?? null,
     ageLabel: agoLabel(latest.created_at, now),
     marginCents: margin,
@@ -145,7 +156,7 @@ export type PayRequestsQueue = {
   waitingOnCleaner: PayRequestVM[];
   isEmpty: boolean;
   busyId: string | null;
-  approve: (payRequestId: string) => Promise<boolean>;
+  approve: (payRequestId: string, expectedAmountCents: number) => Promise<boolean>;
   counter: (payRequestId: string, amountCents: number, note: string | null) => Promise<boolean>;
   refresh: () => void;
 };
@@ -162,7 +173,7 @@ export function usePayRequests(): PayRequestsQueue {
       const { data, error } = await supabase
         .from("pay_requests")
         .select(
-          `id, status, appointment_id, cleaner_id, job_price_cents_snapshot, updated_at,
+          `id, status, appointment_id, cleaner_id, job_price_cents_snapshot, current_offer_cents, updated_at,
            cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles(first_name, last_name)),
            appointment:appointments!appointment_id(scheduled_date, service_type:service_types(name)),
            offers:pay_request_offers(id, actor, amount_cents, note, auto_approved, created_at)`,
@@ -224,8 +235,12 @@ export function usePayRequests(): PayRequestsQueue {
   );
 
   const approve = useCallback(
-    async (payRequestId: string) => {
-      const err = await act(payRequestId, "approve", {});
+    async (payRequestId: string, expectedAmountCents: number) => {
+      // Pin the approval to the rendered amount: a stale tab gets a 409 and a
+      // refetch instead of approving money the operator never saw.
+      const err = await act(payRequestId, "approve", {
+        expected_amount_cents: expectedAmountCents,
+      });
       if (err) {
         toast.error(err);
         return false;
