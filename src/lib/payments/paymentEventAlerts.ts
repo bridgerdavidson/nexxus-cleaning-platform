@@ -40,6 +40,10 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   // refundable-amount math can over-refund until the ledger is reconciled. One-shot per
   // appointment, so keyed per appointment: two distinct losses in one org must not fold.
   refund_ledger_write_failed: { severity: 'critical', label: 'Stripe refund succeeded but the local refund ledger write failed, refundable-amount math may over-refund', keyByAppointment: true },
+  // T1-16: a completion charge Stripe CAPTURED had been recorded as failed (lost response); the
+  // sweep found and re-linked it. Money self-heals, but the shape means an operator saw "failed"
+  // for a charge that succeeded — the owner should sanity-check settlement + any communication.
+  charge_outcome_recovered: { severity: 'critical', label: 'A captured charge was recorded as failed and has been recovered, verify settlement', keyByAppointment: true },
   // T1-14(a): a settled bank debit (ACH) was returned AFTER the tenant/cleaner transfers were
   // paid — the platform is out the distributed funds until the org re-collects (the cleaner
   // slice auto-claws back; the tenant remainder does not). Latent until ACH ships. One-shot per

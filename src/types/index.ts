@@ -284,6 +284,7 @@ export interface Payment {
   stripe_setup_intent_id: string | null;
   tenant_transfer_attempt: number; // T1-11: tenant-transfer idempotency-key rotation counter (0 = unsuffixed key)
   manual_record_key: string | null; // T1-17: per-form-session dedupe key for manual "Record payment" rows
+  charge_outcome_verified_at: string | null; // T1-16: sweep verification stamp for failed PI-less completion rows
   notes: string | null;
   reference: string | null;
   paid_at: string | null;

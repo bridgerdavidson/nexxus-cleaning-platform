@@ -46,6 +46,7 @@ export type ChargeNowCode =
   | 'cleaner_not_payable'
   | 'not_chargeable'
   | 'charge_in_progress'
+  | 'outcome_verification_pending'
   | 'failed'
   | 'error';
 
@@ -140,6 +141,51 @@ export async function chargeCompletedAppointmentAuto(
   // double-submit, a prior capture, or the webhook). Don't charge twice.
   const settled = await alreadySettled(supabase, appt.id);
   if (settled) return { ok: true, code: settled.code, message: 'Already charged', paymentIntentId: settled.paymentIntentId };
+
+  // T1-16: a prior completion attempt whose OUTCOME IS UNKNOWN — the create threw with no
+  // PaymentIntent attached (lost response after Stripe may have captured), recorded as a failed
+  // PI-less revenue row — blocks fresh charges until the verifyUnknownChargeOutcomes sweep has
+  // checked Stripe. A fresh attempt would mint a fresh idempotency key and could charge a SECOND
+  // time on top of a capture we never saw. Two-step read so the migration-116 lag window blocks
+  // only appointments actually in the suspicious shape, never all charges.
+  const { data: unknownRows, error: unknownErr } = await supabase
+    .from('payments')
+    .select('id')
+    .eq('appointment_id', appt.id)
+    .eq('payment_type', 'revenue')
+    .eq('charge_kind', 'completion')
+    .eq('payment_method', 'card')
+    .eq('status', 'failed')
+    .is('stripe_payment_intent_id', null)
+    .limit(1);
+  if (unknownErr) {
+    // A double-charge guard fails CLOSED on an unreadable state.
+    return {
+      ok: false,
+      code: 'outcome_verification_pending',
+      message: 'Could not verify the previous charge attempt. Try again in a few minutes.',
+    };
+  }
+  if (unknownRows && unknownRows.length > 0) {
+    const unknownRowId = (unknownRows[0] as { id: string }).id;
+    const { data: verifyRow, error: verifyErr } = await supabase
+      .from('payments')
+      .select('charge_outcome_verified_at')
+      .eq('id', unknownRowId)
+      .maybeSingle();
+    const verifiedAt = verifyErr
+      ? null
+      : ((verifyRow as { charge_outcome_verified_at: string | null } | null)
+          ?.charge_outcome_verified_at ?? null);
+    if (!verifiedAt) {
+      return {
+        ok: false,
+        code: 'outcome_verification_pending',
+        message:
+          'The previous charge attempt is being verified with Stripe. Try again in about 15 minutes.',
+      };
+    }
+  }
 
   // Atomic per-appointment charge claim. R7 adds a homeowner "Pay now" alongside the operator
   // "Retry charge", so two humans (or a double-click) can fire a retry for the same completed job
@@ -668,8 +714,33 @@ async function recordChargeDecline(
   if (failedPi?.id) {
     row.stripe_payment_intent_id = failedPi.id;
     row.payment_intent_status = failedPi.status ?? 'requires_payment_method';
+  } else {
+    // T1-16: no PaymentIntent on the error means the OUTCOME IS UNKNOWN — Stripe may have
+    // captured before the response was lost. Null the PI columns explicitly (upsertRevenueRow
+    // updates in place, so a PRIOR attempt's failed PI would otherwise mask this shape from the
+    // verification sweep and the fresh-charge guard).
+    row.stripe_payment_intent_id = null;
+    row.payment_intent_status = null;
   }
   const paymentId = await upsertRevenueRow(supabase, appt.id, row);
+  if (!failedPi && paymentId) {
+    // Re-arm verification for THIS unknown outcome: a previous sweep pass may have stamped the
+    // row verified-absent, which would let a fresh charge through before the sweep checks Stripe
+    // for this attempt. Migration-116 lag is benign here (nothing could have stamped it yet).
+    const { error: rearmErr } = await supabase
+      .from('payments')
+      .update({ charge_outcome_verified_at: null })
+      .eq('id', paymentId);
+    if (
+      rearmErr &&
+      !(
+        (rearmErr.code === '42703' || rearmErr.code === 'PGRST204') &&
+        rearmErr.message?.includes('charge_outcome_verified_at')
+      )
+    ) {
+      console.error('recordChargeDecline: could not re-arm outcome verification:', rearmErr);
+    }
+  }
   await recordPaymentEvent(supabase, {
     paymentId,
     appointmentId: appt.id,
@@ -683,6 +754,9 @@ async function recordChargeDecline(
       error: opts.err instanceof Error ? opts.err.message : String(opts.err),
       payment_intent_id: failedPi?.id ?? null,
       self_pay: opts.isSelfPay,
+      // T1-16: flags the unknown-outcome shape for forensics (no PI on the error, so the charge
+      // may actually have captured; the verification sweep resolves it).
+      outcome_unknown: !failedPi,
     },
   });
   await notifyChargeFailed(supabase, appt, {
