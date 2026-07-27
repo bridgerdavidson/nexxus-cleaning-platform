@@ -28,6 +28,7 @@ import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createTestAppointment,
+  createTestPayRequest,
   buildPaymentIntentSucceededEvent,
   type TestOrgFixture,
 } from '../../../../../tests/helpers/fixtures';
@@ -465,6 +466,175 @@ describe('POST /api/stripe/webhook', () => {
     const admin = createTestSupabaseClient();
     const { data: payouts } = await admin.from('payouts').select('id').eq('appointment_id', appt.id);
     expect(payouts ?? []).toHaveLength(0);
+  });
+
+  // ── Pay-request + flat settlement (migration 114): the cleaner amount comes
+  // from the approved thread / flat rate instead of a percent, and settlement
+  // DEFERS entirely while a request thread is unapproved. ──
+
+  it('request mode: an APPROVED thread settles at the approved amount with provenance columns', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    const { appt, tenantAccount } = await seedForSettlement();
+    const pr = await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: appt.id,
+      cleanerId: org.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 10000,
+      approvedAmountCents: 7200,
+      approvedVia: 'org',
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 7200, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 100, tenantAccount));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls).toHaveLength(2);
+    expect(calls.find((c) => c.destinationAccountId === 'acct_test_fake')?.amountCents).toBe(7200);
+    expect(calls.find((c) => c.destinationAccountId === tenantAccount)?.amountCents).toBe(2800); // fee pinned 0
+
+    const { data: payouts } = await admin
+      .from('payouts')
+      .select('amount, status, payout_percent_snapshot, payout_model_snapshot, pay_request_id')
+      .eq('appointment_id', appt.id);
+    expect(payouts).toHaveLength(1);
+    const payout = payouts![0] as Record<string, unknown>;
+    expect(Number(payout.amount)).toBe(72);
+    expect(payout.status).toBe('paid');
+    expect(payout.payout_percent_snapshot).toBeNull();
+    expect(payout.payout_model_snapshot).toBe('request');
+    expect(payout.pay_request_id).toBe(pr.id);
+  });
+
+  it('request mode: a PENDING thread defers BOTH legs, then settles once approved', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    const { appt, tenantAccount } = await seedForSettlement();
+    const pr = await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: appt.id,
+      cleanerId: org.cleaner.userId,
+      status: 'pending_org',
+      jobPriceCents: 10000,
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 9500, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 100, tenantAccount));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    // No money moved - not even the tenant leg (its remainder depends on the cleaner amount).
+    expect(vi.mocked(createPlatformTransfer).mock.calls).toHaveLength(0);
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect((events as { event_type: string }[]).map((e) => e.event_type)).toContain(
+      'settlement_deferred_pay_request',
+    );
+
+    // Approve at $85 and re-settle the reconcile way (no capturedCents).
+    await admin
+      .from('pay_requests')
+      .update({
+        status: 'approved',
+        approved_amount_cents: 8500,
+        approved_via: 'org',
+        approved_by: org.admin.userId,
+        approved_at: new Date().toISOString(),
+      })
+      .eq('id', pr.id);
+    const result = await settleCleanerPayout(admin, appt.id, null);
+    expect(result.settled).toBe(true);
+
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls.find((c) => c.destinationAccountId === 'acct_test_fake')?.amountCents).toBe(8500);
+    expect(calls.find((c) => c.destinationAccountId === tenantAccount)?.amountCents).toBe(1500);
+  });
+
+  it('flat mode: pays min(flat rate, base) and records payout_flat_capped when the rate exceeds the job', async () => {
+    const admin = createTestSupabaseClient();
+    await admin
+      .from('cleaner_profiles')
+      .update({ payout_model: 'flat', flat_rate_cents: 9500, payout_percent: 0 })
+      .eq('id', org.cleaner.userId);
+    const { appt, tenantAccount } = await seedForSettlement();
+    // Shrink the job under the flat rate: captured $80.
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 80, tenantAccount));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    const calls = vi.mocked(createPlatformTransfer).mock.calls.map((c) => c[0]);
+    expect(calls.find((c) => c.destinationAccountId === 'acct_test_fake')?.amountCents).toBe(8000);
+
+    const { data: payouts } = await admin
+      .from('payouts')
+      .select('amount, payout_model_snapshot, payout_percent_snapshot')
+      .eq('appointment_id', appt.id);
+    const payout = (payouts ?? [])[0] as Record<string, unknown>;
+    expect(Number(payout.amount)).toBe(80);
+    expect(payout.payout_model_snapshot).toBe('flat');
+    expect(payout.payout_percent_snapshot).toBeNull();
+
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect((events as { event_type: string }[]).map((e) => e.event_type)).toContain('payout_flat_capped');
+  });
+
+  it('never settles into an open dispute (deferred-approval window)', async () => {
+    const admin = createTestSupabaseClient();
+    const { appt, tenantAccount } = await seedForSettlement();
+    const { data: payRow } = await admin
+      .from('payments')
+      .select('id')
+      .eq('appointment_id', appt.id)
+      .single();
+    await admin.from('disputes').insert({
+      organization_id: org.organizationId,
+      payment_id: (payRow as { id: string }).id,
+      stripe_dispute_id: `dp_test_${appt.id}`,
+      stripe_charge_id: `ch_test_${appt.id}`,
+      amount: 10000,
+      status: 'needs_response',
+    });
+
+    const payload = JSON.stringify(buildSeparateChargeEvent(appt.id, 100, tenantAccount));
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    expect(vi.mocked(createPlatformTransfer).mock.calls).toHaveLength(0);
+    const { data: events } = await admin
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect((events as { event_type: string }[]).map((e) => e.event_type)).toContain(
+      'settlement_blocked_dispute_open',
+    );
   });
 
   it('fee passthrough: settles on the SERVICE PRICE, not the captured amount that includes the fee', async () => {
