@@ -48,7 +48,7 @@ const DEFAULT_STALE_MINUTES = 15;
 
 /**
  * Appointments whose pay-request thread exists and is NOT approved: request-mode
- * money that is deliberately waiting on a human decision (spec §6, migration 116).
+ * money that is deliberately waiting on a human decision (spec §6, migration 117).
  * Sweeps must treat these as normal business state, never as stuck money — the
  * approve/respond routes trigger charge/settlement inline at approval, and the
  * sweeps take over as backstop only from that point on.

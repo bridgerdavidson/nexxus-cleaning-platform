@@ -468,7 +468,7 @@ describe('POST /api/stripe/webhook', () => {
     expect(payouts ?? []).toHaveLength(0);
   });
 
-  // ── Pay-request + flat settlement (migration 116): the cleaner amount comes
+  // ── Pay-request + flat settlement (migration 117): the cleaner amount comes
   // from the approved thread / flat rate instead of a percent, and settlement
   // DEFERS entirely while a request thread is unapproved. ──
 

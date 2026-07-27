@@ -1,4 +1,4 @@
--- Migration 117: payout-model rename backfill + default flip (phase 2 of the
+-- Migration 118: payout-model rename backfill + default flip (phase 2 of the
 -- two-step rename started in 116).
 --
 -- 116 widened the constraints so both spellings are legal and shipped readers

@@ -1,4 +1,4 @@
--- Migration 118: pay-request hardening (PR2 adversarial-review findings).
+-- Migration 119: pay-request hardening (PR2 adversarial-review findings).
 --
 -- 1) current_offer_cents: the LIVE offer amount rides the pay_requests row so
 --    every negotiation transition is ONE atomic UPDATE (status + amount

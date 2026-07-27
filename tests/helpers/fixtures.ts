@@ -362,7 +362,7 @@ export async function withPlatformAdmin(): Promise<PlatformAdminFixture> {
  */
 
 /**
- * Seeds a pay-request thread (migration 116) directly, bypassing the submit
+ * Seeds a pay-request thread (migration 117) directly, bypassing the submit
  * route, so route/settlement tests can start from any thread state. Offers get
  * explicit second-spaced created_at values so "latest offer" ordering is
  * deterministic. Status 'approved' requires approvedAmountCents (the DB
@@ -385,7 +385,7 @@ export async function createTestPayRequest(args: {
   approvedAmountCents?: number;
   approvedVia?: 'auto' | 'org' | 'cleaner_accept';
   approvedBy?: string | null;
-  /** The live offer riding the row (migration 118). Defaults to the last offer's amount, else approvedAmountCents. */
+  /** The live offer riding the row (migration 119). Defaults to the last offer's amount, else approvedAmountCents. */
   currentOfferCents?: number;
 }): Promise<{ id: string }> {
   const admin = createTestSupabaseClient();
