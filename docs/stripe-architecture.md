@@ -63,7 +63,13 @@ CONNECTED ACCOUNTS (type=express, under the platform)
 homeowner card → on completion, an auto-capturing PaymentIntent (`on_behalf_of` tenant, no
 transfer_data) → **platform** balance +$100 → platform creates two Transfers from its balance (idempotency
 `tenant-payout-${appointmentId}` and `cleaner-payout-${appointmentId}`, each `source_transaction`
-= the charge): cleaner +$80, tenant +$20. Platform keeps the fee ($0 today).
+= the charge): cleaner +$80, tenant +$20. Platform keeps the fee ($0 today). After a FAILED
+Transfer create the keys rotate to `<base>-<attempt>` (T1-11, migration 114: Stripe replays a
+key's first result — success or business error — for ~24h, which locked failed payouts out of
+every retry); a persisted counter (`payouts.transfer_attempt` / `payments.tenant_transfer_attempt`)
+bumps only in the create-failure catch, and every rotated create is preceded by an adopt-existing
+scan of the job's `transfer_group` so a lost-response transfer that actually landed is adopted,
+never double-paid. The self-pay leg (`selfpay-cleaner-${appointmentId}`) rotates the same way.
 
 **Scenario 2 — hourly_external cleaner:** same charge; settlement makes a single platform Transfer
 of the whole $100 to the tenant; **no** cleaner Transfer (the tenant pays the cleaner outside the app).

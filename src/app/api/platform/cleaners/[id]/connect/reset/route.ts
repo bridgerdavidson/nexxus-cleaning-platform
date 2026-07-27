@@ -93,12 +93,19 @@ export async function POST(
   //                                     later payout.paid webhook can't find
   //                                     the cleaner and the row stays at
   //                                     'paid' until manual reconcile.
+  //   - 'failed'                      — a create may have LANDED at Stripe with
+  //                                     the response lost (row has no transfer
+  //                                     id); settlement's adopt-existing scan
+  //                                     matches by the CURRENT account id, so
+  //                                     re-provisioning the account here would
+  //                                     defeat adoption and let a rotated
+  //                                     retry (T1-11) pay the cut twice.
   // Block unless the caller explicitly accepts the risk via force:true.
   const { count: inFlightPayoutCount, error: payoutErr } = await supabaseAdmin
     .from('payouts')
     .select('id', { count: 'exact', head: true })
     .eq('cleaner_id', cleanerId)
-    .in('status', ['pending', 'approved', 'paid']);
+    .in('status', ['pending', 'approved', 'paid', 'failed']);
   if (payoutErr) {
     return NextResponse.json(
       { error: 'Failed to check in-flight payouts', details: payoutErr.message },

@@ -282,6 +282,7 @@ export interface Payment {
   payment_method: PaymentMethod;
   stripe_payment_intent_id: string | null;
   stripe_setup_intent_id: string | null;
+  tenant_transfer_attempt: number; // T1-11: tenant-transfer idempotency-key rotation counter (0 = unsuffixed key)
   notes: string | null;
   reference: string | null;
   paid_at: string | null;
@@ -298,6 +299,7 @@ export interface Payout {
   status: PayoutStatus;
   stripe_transfer_id: string | null;
   stripe_payout_id: string | null;
+  transfer_attempt: number; // T1-11: transfer idempotency-key rotation counter (0 = unsuffixed key)
   payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time
   is_self_pay: boolean; // true → cleaner payout funded by an org self-pay charge
   notes: string | null;
