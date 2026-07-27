@@ -217,8 +217,8 @@ Editing branding is **owner + admin** (today's org-profile route is owner-only).
 
 ## Module boundaries
 
-- `src/lib/branding/palette.ts` — pure. Hex in; one 11-step ramp plus the two foreground values out.
-  No React, no DB, fully unit-testable.
+- `src/lib/branding/palette.ts` — pure. Hex in; one 11-step ramp, the two foreground values, and the
+  two ink values out. No React, no DB, fully unit-testable.
 - `src/lib/branding/monogram.ts` — pure. Org name in, initials out.
 - `BrandProvider` — reads the org's brand, writes CSS variables, maintains the `localStorage` cache.
 - The pre-paint inline script — reads the cache and sets variables before hydration.
@@ -242,4 +242,6 @@ Editing branding is **owner + admin** (today's org-profile route is owner-only).
 3. An org with no logo and no color still looks intentional (Nexxus defaults), and an org with a color
    but no logo looks like theirs (monogram).
 4. A user in two orgs sees the right brand, deterministically.
-5. Nothing about the palette can produce unreadable text, at any brand color.
+5. Nothing about the palette can produce unreadable text, at any brand color. Both cases are covered:
+   text on a brand fill (via `--primary-foreground`) and brand-colored text on a neutral surface
+   (via `--brand-ink`). Unit tests in `palette.test.ts` are what hold this true.
