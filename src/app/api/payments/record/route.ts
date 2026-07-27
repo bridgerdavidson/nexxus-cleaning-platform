@@ -117,6 +117,52 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
+
+      // T1-16: an unknown-outcome card attempt (failed row, no PaymentIntent, verification not
+      // yet delivered by the sweep) may actually BE a capture whose response was lost. Recording
+      // cash on top of it is the same double-collect this guard exists for — and worse, once the
+      // sweep repairs the card row to paid, settlement would read the NEWER manual row. Refuse
+      // until the sweep's verdict lands (about 15 minutes); a verified-absent stamp unblocks.
+      const { data: unknownRows, error: unknownErr } = await supabaseAdmin
+        .from('payments')
+        .select('id')
+        .eq('appointment_id', appointment_id)
+        .eq('payment_type', 'revenue')
+        .eq('charge_kind', 'completion')
+        .eq('payment_method', 'card')
+        .eq('status', 'failed')
+        .is('stripe_payment_intent_id', null)
+        .limit(1);
+      if (unknownErr) {
+        // Same fail-closed posture as the live-charge guard above. The two-step read keeps the
+        // migration-116 column out of this first select, so a deploy-before-migrate window only
+        // ever blocks appointments actually in the suspicious shape.
+        console.error('record payment: unknown-outcome guard lookup failed:', unknownErr);
+        return NextResponse.json(
+          { error: 'Could not verify the payment state for this appointment. Try again in a moment.' },
+          { status: 503 }
+        );
+      }
+      if (unknownRows && unknownRows.length > 0) {
+        const { data: verifyRow, error: verifyErr } = await supabaseAdmin
+          .from('payments')
+          .select('charge_outcome_verified_at')
+          .eq('id', (unknownRows[0] as { id: string }).id)
+          .maybeSingle();
+        const verifiedAt = verifyErr
+          ? null
+          : ((verifyRow as { charge_outcome_verified_at: string | null } | null)
+              ?.charge_outcome_verified_at ?? null);
+        if (!verifiedAt) {
+          return NextResponse.json(
+            {
+              error:
+                'A recent card attempt for this appointment is being verified with Stripe. Try again in about 15 minutes.',
+            },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     const paymentData: Record<string, unknown> = {

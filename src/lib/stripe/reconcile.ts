@@ -57,6 +57,25 @@ export async function searchPaymentIntentsByAppointment(
 }
 
 /**
+ * Recent PaymentIntents for a Customer via the LIST endpoint, which unlike search is strongly
+ * consistent (read-after-write). The unknown-outcome sweep merges this with the search results so
+ * a capture created seconds ago is found immediately, and requires it as corroboration before
+ * concluding that NO charge exists — search alone can return an empty result set for hours during
+ * a Stripe indexing backlog, and a false "absent" verdict is what re-arms a fresh-key charge.
+ */
+export async function listRecentPaymentIntentsForCustomer(
+  customerId: string,
+  createdAfterEpochSec: number,
+): Promise<Stripe.PaymentIntent[]> {
+  const res = await getStripe().paymentIntents.list({
+    customer: customerId,
+    created: { gte: createdAfterEpochSec },
+    limit: 100,
+  });
+  return res.data;
+}
+
+/**
  * List a PaymentIntent's refunds — the authoritative refund history including out-of-band
  * Dashboard refunds (the local `refunds` ledger can miss those). The retry sweep uses the
  * `created` timestamps for its safety guards. 100 covers any realistic refund count per charge.

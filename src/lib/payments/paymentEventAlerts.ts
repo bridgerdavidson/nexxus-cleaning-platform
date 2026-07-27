@@ -44,6 +44,14 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   // sweep found and re-linked it. Money self-heals, but the shape means an operator saw "failed"
   // for a charge that succeeded — the owner should sanity-check settlement + any communication.
   charge_outcome_recovered: { severity: 'critical', label: 'A captured charge was recorded as failed and has been recovered, verify settlement', keyByAppointment: true },
+  // T1-16: the sweep found a capture for an unknown-outcome row but refused to auto-adopt it
+  // (amount mismatch, or the PI was already refunded). Retries stay blocked; a human must
+  // reconcile the row by hand.
+  charge_outcome_adopt_blocked: { severity: 'critical', label: 'A captured charge needs manual reconciliation (amount mismatch or already refunded), retries stay blocked', keyByAppointment: true },
+  // T1-16: clearing a stale verified-absent stamp for a NEW unknown-outcome attempt failed, so
+  // the fresh-charge guard may pass on stale evidence — the one write in this mechanism whose
+  // failure is fail-open, hence the page.
+  charge_outcome_rearm_failed: { severity: 'critical', label: 'Could not re-arm charge-outcome verification, a retry may run on stale evidence', keyByAppointment: true },
   // T1-14(a): a settled bank debit (ACH) was returned AFTER the tenant/cleaner transfers were
   // paid — the platform is out the distributed funds until the org re-collects (the cleaner
   // slice auto-claws back; the tenant remainder does not). Latent until ACH ships. One-shot per

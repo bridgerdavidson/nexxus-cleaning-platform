@@ -13,6 +13,7 @@ vi.mock('@/lib/stripe/reconcile', () => ({
   retrieveCharge: vi.fn(async () => ({ amount_refunded: 0 })),
   listRefundsForPaymentIntent: vi.fn(async () => []),
   searchPaymentIntentsByAppointment: vi.fn(async () => []),
+  listRecentPaymentIntentsForCustomer: vi.fn(async () => []),
   listConnectedAccountPayouts: vi.fn(async () => []),
   retrieveConnectedAccountPayout: vi.fn(),
 }));
@@ -31,7 +32,12 @@ vi.mock('@/lib/stripe/transfers', () => ({
 }));
 
 import { POST } from './route';
-import { retrievePaymentIntent, searchPaymentIntentsByAppointment } from '@/lib/stripe/reconcile';
+import {
+  retrievePaymentIntent,
+  searchPaymentIntentsByAppointment,
+  listRecentPaymentIntentsForCustomer,
+  listRefundsForPaymentIntent,
+} from '@/lib/stripe/reconcile';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
@@ -78,6 +84,10 @@ describe('POST /api/cron/reconcile-payments — verifyUnknownChargeOutcomes (T1-
     vi.mocked(retrievePaymentIntent).mockResolvedValue({
       status: 'processing',
     } as Stripe.PaymentIntent);
+    vi.mocked(listRecentPaymentIntentsForCustomer).mockReset();
+    vi.mocked(listRecentPaymentIntentsForCustomer).mockResolvedValue([]);
+    vi.mocked(listRefundsForPaymentIntent).mockReset();
+    vi.mocked(listRefundsForPaymentIntent).mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -269,5 +279,138 @@ describe('POST /api/cron/reconcile-payments — verifyUnknownChargeOutcomes (T1-
     expect(row.stripe_payment_intent_id).toBeNull();
     expect(row.status).toBe('failed');
     expect(row.charge_outcome_verified_at).not.toBeNull();
+  });
+
+  // Review F1 (HIGH): the grace must anchor to the LATEST unknown attempt, never the row's
+  // created_at — the row is upserted in place, so created_at can be arbitrarily old the moment a
+  // retry loses its response.
+  it('a FRESH unknown attempt on an OLD row defers, never verifies absent (grace anchors to unknown_since)', async () => {
+    const { db, rowId } = await seedUnknownRow({ minutesOld: 30 });
+    await db
+      .from('payments')
+      .update({ charge_outcome_unknown_since: new Date(Date.now() - 2 * 60_000).toISOString() })
+      .eq('id', rowId);
+
+    const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+
+    const row = await paymentRow(db, rowId);
+    expect(row.status).toBe('failed');
+    expect(row.charge_outcome_verified_at).toBeNull();
+  });
+
+  // Review F2: search is eventually consistent; the strongly-consistent customer LIST both
+  // corroborates absence and finds a seconds-old capture immediately.
+  it('repairs from the customer LIST when the search index has not caught up yet', async () => {
+    const { db, apptId, rowId } = await seedUnknownRow({ minutesOld: 30 });
+    const customerId = `cus_t116_${apptId.slice(0, 8)}`;
+    await db
+      .from('user_profiles')
+      .update({ stripe_customer_id: customerId })
+      .eq('id', org.homeowner.userId);
+    // Search: blind. List: sees the capture.
+    vi.mocked(listRecentPaymentIntentsForCustomer).mockImplementation(async (cus: string) =>
+      cus === customerId ? [succeededPi(apptId)] : [],
+    );
+
+    try {
+      const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(status).toBe(200);
+      const row = await paymentRow(db, rowId);
+      expect(row).toMatchObject({ status: 'paid', stripe_payment_intent_id: `pi_t116_${apptId}` });
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_charge_outcome_recovered:${org.organizationId}:appt_${apptId}`);
+    }
+  });
+
+  // Review F5-class: adoption refusals fail CLOSED with a paged human.
+  it('refuses to adopt a capture whose amount mismatches the row (adopt_blocked, retries stay blocked)', async () => {
+    const { db, apptId, rowId } = await seedUnknownRow({ minutesOld: 30 });
+    searchResults.set(apptId, [succeededPi(apptId, { amount: 9950 })]);
+
+    try {
+      const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(status).toBe(200);
+
+      const row = await paymentRow(db, rowId);
+      expect(row.status).toBe('failed');
+      expect(row.stripe_payment_intent_id).toBeNull();
+      expect(row.charge_outcome_verified_at).toBeNull();
+
+      const { data: events } = await db
+        .from('payment_events')
+        .select('payload')
+        .eq('appointment_id', apptId)
+        .eq('event_type', 'charge_outcome_adopt_blocked');
+      expect((events ?? []).length).toBe(1);
+      expect(((events ?? [])[0].payload as { reason: string }).reason).toBe('amount_mismatch');
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_charge_outcome_adopt_blocked:${org.organizationId}:appt_${apptId}`);
+    }
+  });
+
+  it('refuses to adopt an already-refunded capture (adopt_blocked, no settlement re-arm)', async () => {
+    const { db, apptId, rowId } = await seedUnknownRow({ minutesOld: 30 });
+    const pi = succeededPi(apptId);
+    searchResults.set(apptId, [pi]);
+    vi.mocked(listRefundsForPaymentIntent).mockImplementation(async (piId: string) =>
+      piId === pi.id
+        ? ([{ id: `re_${apptId}`, amount: 10000, status: 'succeeded' }] as never)
+        : [],
+    );
+
+    try {
+      const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(status).toBe(200);
+
+      const row = await paymentRow(db, rowId);
+      expect(row.status).toBe('failed');
+      expect(row.stripe_payment_intent_id).toBeNull();
+
+      const { data: events } = await db
+        .from('payment_events')
+        .select('payload')
+        .eq('appointment_id', apptId)
+        .eq('event_type', 'charge_outcome_adopt_blocked');
+      expect(((events ?? [])[0]?.payload as { reason?: string })?.reason).toBe('already_refunded');
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_charge_outcome_adopt_blocked:${org.organizationId}:appt_${apptId}`);
+    }
+  });
+
+  // Review F8 (HIGH): an in-flight PI from a PRIOR attempt (off-session 3DS stays live forever)
+  // must not resolve the verdict while the real capture may still be un-indexed.
+  it('does not adopt a STALE requires_action PI from a prior attempt', async () => {
+    const { db, apptId, rowId } = await seedUnknownRow();
+    await db
+      .from('payments')
+      .update({ charge_outcome_unknown_since: new Date().toISOString() })
+      .eq('id', rowId);
+    searchResults.set(apptId, [
+      {
+        ...succeededPi(apptId),
+        id: `pi_stale3ds_${apptId}`,
+        status: 'requires_action',
+        created: Math.floor(Date.now() / 1000) - 3 * 24 * 3600,
+      } as unknown as Stripe.PaymentIntent,
+    ]);
+
+    const { status } = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+
+    // Neither adopted nor verified absent (row too young): still a candidate.
+    const row = await paymentRow(db, rowId);
+    expect(row.stripe_payment_intent_id).toBeNull();
+    expect(row.status).toBe('failed');
+    expect(row.charge_outcome_verified_at).toBeNull();
   });
 });

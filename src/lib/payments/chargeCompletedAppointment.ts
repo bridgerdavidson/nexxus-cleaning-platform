@@ -170,14 +170,24 @@ export async function chargeCompletedAppointmentAuto(
     const unknownRowId = (unknownRows[0] as { id: string }).id;
     const { data: verifyRow, error: verifyErr } = await supabase
       .from('payments')
-      .select('charge_outcome_verified_at')
+      .select('status, charge_outcome_verified_at')
       .eq('id', unknownRowId)
       .maybeSingle();
-    const verifiedAt = verifyErr
+    const verify = verifyErr
       ? null
-      : ((verifyRow as { charge_outcome_verified_at: string | null } | null)
-          ?.charge_outcome_verified_at ?? null);
-    if (!verifiedAt) {
+      : (verifyRow as { status: string; charge_outcome_verified_at: string | null } | null);
+    // Status re-check closes the TOCTOU with a concurrent sweep repair: the verified stamp is
+    // ALSO written when the sweep repairs the row to paid (a capture exists), and the claim RPC
+    // can still succeed in the instant before the sweep's triage flip lands. A row that left
+    // 'failed' between our two reads means the state just changed under us — bail, never charge.
+    if (verify && verify.status !== 'failed') {
+      return {
+        ok: false,
+        code: 'charge_in_progress',
+        message: 'The payment state for this appointment just changed. Refresh and try again.',
+      };
+    }
+    if (!verify?.charge_outcome_verified_at) {
       return {
         ok: false,
         code: 'outcome_verification_pending',
@@ -724,21 +734,37 @@ async function recordChargeDecline(
   }
   const paymentId = await upsertRevenueRow(supabase, appt.id, row);
   if (!failedPi && paymentId) {
-    // Re-arm verification for THIS unknown outcome: a previous sweep pass may have stamped the
-    // row verified-absent, which would let a fresh charge through before the sweep checks Stripe
-    // for this attempt. Migration-116 lag is benign here (nothing could have stamped it yet).
+    // Re-arm verification for THIS unknown outcome: clear any verified-absent stamp a previous
+    // sweep pass left (it would let a fresh charge through before the sweep checks Stripe for
+    // this attempt) and stamp unknown_since, the sweep's grace anchor + concurrency token — the
+    // row's created_at is the FIRST attempt's time and can't anchor the current attempt. One
+    // statement so the two can never diverge. Migration-116 lag is benign (nothing could have
+    // stamped it yet); any OTHER failure leaves a possibly-stale stamp armed, so it pages the
+    // owner via the alertable rearm-failed event rather than being swallowed.
     const { error: rearmErr } = await supabase
       .from('payments')
-      .update({ charge_outcome_verified_at: null })
+      .update({
+        charge_outcome_verified_at: null,
+        charge_outcome_unknown_since: new Date().toISOString(),
+      })
       .eq('id', paymentId);
     if (
       rearmErr &&
       !(
         (rearmErr.code === '42703' || rearmErr.code === 'PGRST204') &&
-        rearmErr.message?.includes('charge_outcome_verified_at')
+        rearmErr.message?.includes('charge_outcome_')
       )
     ) {
       console.error('recordChargeDecline: could not re-arm outcome verification:', rearmErr);
+      await recordPaymentEvent(supabase, {
+        paymentId,
+        appointmentId: appt.id,
+        organizationId: appt.organization_id,
+        eventType: 'charge_outcome_rearm_failed',
+        actor,
+        amount: opts.amountCents,
+        payload: { error: rearmErr.message, self_pay: opts.isSelfPay },
+      });
     }
   }
   await recordPaymentEvent(supabase, {
