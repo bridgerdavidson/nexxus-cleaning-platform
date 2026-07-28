@@ -26,9 +26,15 @@ ALTER TABLE public.organizations
 
 -- Public bucket: logos are also embedded in transactional email, where a signed URL would
 -- expire before the recipient opens the message.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('org-branding', 'org-branding', true)
-ON CONFLICT (id) DO UPDATE SET public = true;
+-- PNG/WebP only, enforced server-side: SVG in public storage is an XSS vector when navigated
+-- to directly (docs/white-label-branding.md), and client-side validation alone would not stop
+-- a direct-upload of arbitrary content served from our storage origin.
+INSERT INTO storage.buckets (id, name, public, allowed_mime_types, file_size_limit)
+VALUES ('org-branding', 'org-branding', true, ARRAY['image/png', 'image/webp'], 2097152)
+ON CONFLICT (id) DO UPDATE
+  SET public = true,
+      allowed_mime_types = ARRAY['image/png', 'image/webp'],
+      file_size_limit = 2097152;
 
 -- Path layout is `<orgId>/<icon|full>-<uuid>.<ext>`, so split_part(name,'/',1) is the org id.
 -- Mirrors the property-photos policies (migrations 054/077/079).
@@ -71,10 +77,9 @@ CREATE POLICY "Org owner or admin can delete org branding"
     )
   );
 
--- Anyone can read: logos appear on the homeowner and cleaner apps and in email.
-DROP POLICY IF EXISTS "Org branding is publicly readable" ON storage.objects;
-CREATE POLICY "Org branding is publicly readable"
-  ON storage.objects FOR SELECT TO public
-  USING (bucket_id = 'org-branding');
+-- Deliberately NO SELECT policy: public reads ride on storage.buckets.public = true, which
+-- serves individual objects via /storage/v1/object/public/ without consulting RLS. A SELECT
+-- policy would additionally grant the anonymous LIST API (enumerating every org's uploads),
+-- which nothing needs. Matches the property-photos precedent (no SELECT policy there either).
 
 COMMIT;
