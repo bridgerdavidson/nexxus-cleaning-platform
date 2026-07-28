@@ -1184,10 +1184,12 @@ export function useCompleteJob() {
             amountCents: requestAmountCents,
           };
         } else if (res.status === 409 && data.code === 'duplicate') {
-          // An earlier attempt's POST landed; the thread exists, so completion
-          // may proceed. Its auto-approve outcome is unknown here, so show the
-          // conservative "sent for approval" branch rather than promising money.
-          payRequest = { submitted: true, autoApproved: false, amountCents: requestAmountCents };
+          // A thread already exists for this job (an earlier attempt landed, or
+          // the org opened one). The amount just typed was NOT applied, so the
+          // completion proceeds but the success copy must not quote it back as
+          // though it had been sent. `amountCents: null` selects the
+          // amount-free branch.
+          payRequest = { submitted: true, autoApproved: false, amountCents: null };
         } else {
           // Blocked on purpose: never complete a request-mode job without a thread.
           throw new Error(data.error || 'Could not send your pay request');
@@ -1333,6 +1335,48 @@ export function useToggleChecklistItem() {
 
 /** Fetch the charge projection for the active-job completion summary.
  * Lazy: only fetches when `enabled` (e.g. the completion sheet is open). */
+/**
+ * The signed-in cleaner's own pay mode, read straight from their
+ * cleaner_profiles row (which they can already read, same as payout_percent).
+ *
+ * Deliberately NOT derived from the charge projection: that route 404s whenever
+ * the Stripe flags are off and throws on any transient failure, and a
+ * request-mode cleaner who silently fell back to the plain completion path
+ * would complete a job with no pay thread, which is the one thing this feature
+ * must never allow. `status` lets the caller fail closed instead of guessing.
+ */
+export function useCleanerPayoutModel(): {
+  payoutModel: 'percentage' | 'flat' | 'request' | 'hourly_external' | null;
+  status: 'loading' | 'ready' | 'error';
+} {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const query = useQuery({
+    queryKey: keys.cleanerProfiles.detail(userId ?? 'anon'),
+    enabled: !!userId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cleaner_profiles')
+        .select('payout_model')
+        .eq('id', userId as string)
+        .maybeSingle();
+      if (error) throw error;
+      const raw = (data as { payout_model: string | null } | null)?.payout_model ?? 'percentage';
+      // The pre-118 spelling normalizes to the percentage default branch.
+      return (raw === 'percentage_contractor' ? 'percentage' : raw) as
+        | 'percentage'
+        | 'flat'
+        | 'request'
+        | 'hourly_external';
+    },
+  });
+  return {
+    payoutModel: query.data ?? null,
+    status: query.isPending ? 'loading' : query.isError ? 'error' : 'ready',
+  };
+}
+
 export function useChargeProjection(appointmentId: string | null, enabled: boolean) {
   const { currentOrganizationId } = useAuth();
   // Org in the key so a switch refetches; the route requires organization_id via

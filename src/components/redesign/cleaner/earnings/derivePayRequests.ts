@@ -29,6 +29,11 @@ export interface PayRequestRow {
 export interface PayRequestBuckets {
   awaiting: PayRequestRow[];
   yourTurn: PayRequestRow[];
+  /**
+   * Agreed, not yet paid out. Bridges the window between approval and the
+   * payout row appearing, so just-agreed pay is never invisible.
+   */
+  agreed: PayRequestRow[];
 }
 
 /** Coarse waiting label; this queue moves on a scale of hours and days. */
@@ -47,7 +52,9 @@ function toRow(t: CleanerPayThread, now: number): PayRequestRow {
   return {
     id: t.id,
     appointmentId: t.appointmentId,
-    amountCents: t.currentOfferCents,
+    // Once agreed, the approved amount is the money; before that it is
+    // whatever is currently on the table.
+    amountCents: t.approvedAmountCents ?? t.currentOfferCents,
     offeredBy: latest?.actor === "org" ? "org" : "cleaner",
     jobLabel: t.jobLabel,
     propertyLabel: t.propertyLabel,
@@ -64,5 +71,6 @@ export function derivePayRequests(
   return {
     awaiting: all.filter((t) => t.status === "pending_org").map((t) => toRow(t, now)),
     yourTurn: all.filter((t) => t.status === "pending_cleaner").map((t) => toRow(t, now)),
+    agreed: all.filter((t) => t.status === "approved").map((t) => toRow(t, now)),
   };
 }

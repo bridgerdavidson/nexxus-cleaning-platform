@@ -94,7 +94,7 @@ describe('GET /api/pay-requests/mine', () => {
     expect(raw).not.toContain('job_price');
   });
 
-  it('omits approved threads (they settle into earnings, not the queue)', async () => {
+  it('includes a recently-approved thread with its approved amount, still price-free', async () => {
     org = await withTestOrg({ cleanerPayoutModel: 'request' });
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
@@ -115,7 +115,13 @@ describe('GET /api/pay-requests/mine', () => {
 
     const res = await get({ organization_id: org.organizationId }, org.cleaner.accessToken);
     expect(res.status).toBe(200);
-    expect((res.body as { threads: unknown[] }).threads).toHaveLength(0);
+    // An approved thread stays visible until the payout row exists, otherwise
+    // just-agreed pay is briefly visible nowhere on the cleaner's screens.
+    const body = res.body as { threads: { status: string; approvedAmountCents: number }[] };
+    expect(body.threads).toHaveLength(1);
+    expect(body.threads[0].status).toBe('approved');
+    expect(body.threads[0].approvedAmountCents).toBe(28000);
+    expect(JSON.stringify(body)).not.toContain('35000');
   });
 
   it('anchors off the cleaner\'s own approved history at the same property', async () => {

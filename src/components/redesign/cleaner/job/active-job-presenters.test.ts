@@ -51,6 +51,16 @@ describe('completeSuccessCopy', () => {
     expect(c.body).not.toContain('—');
   });
 
+  it('a duplicate thread does not quote back the amount that was discarded', () => {
+    const c = completeSuccessCopy('charged', 0, {
+      payRequest: { submitted: true, autoApproved: false, amountCents: null },
+    });
+    expect(c.title).toBe('Job complete');
+    expect(c.body).not.toContain('$');
+    expect(c.body.toLowerCase()).toContain('already had a pay request');
+    expect(c.body).not.toContain('—');
+  });
+
   it('request copy wins over the charge outcome (their pay does not depend on it)', () => {
     // The customer's card failing is the operator's problem; the cleaner's
     // request still stands, so they must not see the payment-issue copy.

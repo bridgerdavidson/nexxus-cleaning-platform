@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     const { data: rows, error } = await supabaseAdmin
       .from('pay_requests')
       .select(
-        `id, status, appointment_id, current_offer_cents, updated_at,
+        `id, status, appointment_id, current_offer_cents, approved_amount_cents, updated_at,
          appointment:appointments!appointment_id(
            scheduled_date, property_id,
            service_type:service_types(name),
@@ -70,8 +70,14 @@ export async function GET(request: NextRequest) {
       )
       .eq('organization_id', organizationId!)
       .eq('cleaner_id', auth.userId)
-      .in('status', ['pending_org', 'pending_cleaner'])
-      .order('updated_at', { ascending: false });
+      // Recently-approved threads ride along: a thread leaves this list the
+      // moment it is agreed, but the payout row that replaces it on the
+      // Earnings screen only appears once settlement runs. Without this the
+      // cleaner's just-agreed pay is visible NOWHERE in between, which reads
+      // as "it disappeared" right after they were told they earned it.
+      .in('status', ['pending_org', 'pending_cleaner', 'approved'])
+      .order('updated_at', { ascending: false })
+      .limit(50);
 
     if (error) {
       console.error('pay-requests/mine load failed:', error);
@@ -88,7 +94,9 @@ export async function GET(request: NextRequest) {
         return {
           id: r.id as string,
           appointmentId: r.appointment_id as string,
-          status: r.status as 'pending_org' | 'pending_cleaner',
+          status: r.status as 'pending_org' | 'pending_cleaner' | 'approved',
+          approvedAmountCents:
+            r.approved_amount_cents == null ? null : Number(r.approved_amount_cents),
           // The live amount on the table. Never the job price.
           currentOfferCents: r.current_offer_cents == null ? null : Number(r.current_offer_cents),
           jobLabel: firstOf(appt?.service_type)?.name ?? 'Cleaning',

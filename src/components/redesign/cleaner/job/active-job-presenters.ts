@@ -47,11 +47,13 @@ export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/** Outcome of the pay request a request-mode cleaner submitted at completion. */
+/** Outcome of the pay request a request-mode cleaner submitted at completion.
+ *  `amountCents` is null when a thread already existed, so the amount they
+ *  typed was not the one on the table and must not be quoted back to them. */
 export interface PayRequestOutcome {
   submitted: boolean;
   autoApproved: boolean;
-  amountCents: number;
+  amountCents: number | null;
 }
 
 /**
@@ -75,6 +77,12 @@ export function completeSuccessCopy(
 
   const pr = opts?.payRequest;
   if (pr?.submitted) {
+    if (pr.amountCents == null) {
+      return {
+        title,
+        body: `This job already had a pay request, so your amount was not sent. Check Earnings to see where it stands.`,
+      };
+    }
     return pr.autoApproved
       ? {
           title,

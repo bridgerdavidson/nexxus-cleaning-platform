@@ -4,6 +4,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getAccessToken } from "@/lib/auth/clientAccessToken";
@@ -84,14 +85,23 @@ export function CleanerPayRequestSections() {
         </CardHeader>
         <CardContent>
           <p role="alert" className="text-sm text-critical-700">
-            Couldn&apos;t load your pay requests. Pull to refresh or try again shortly.
+            Couldn&apos;t load your pay requests.
           </p>
+          <Button
+            variant="outline"
+            className="mt-3 min-h-[44px]"
+            onClick={() => void refetch()}
+          >
+            Try again
+          </Button>
         </CardContent>
       </Card>
     );
   }
 
-  if (loading || (buckets.awaiting.length === 0 && buckets.yourTurn.length === 0)) return null;
+  const isEmpty =
+    buckets.awaiting.length === 0 && buckets.yourTurn.length === 0 && buckets.agreed.length === 0;
+  if (loading || isEmpty) return null;
 
   return (
     <>
@@ -133,6 +143,29 @@ export function CleanerPayRequestSections() {
                 <div key={r.id} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <RowText row={r} subtitle="Your company is reviewing this." />
+                    <span className="shrink-0 tabular-nums text-sm font-semibold text-foreground">
+                      {money2(r.amountCents / 100)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {buckets.agreed.length > 0 && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Agreed</CardTitle>
+            <Badge variant="positive">{buckets.agreed.length}</Badge>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border">
+              {buckets.agreed.map((r) => (
+                <div key={r.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <RowText row={r} subtitle="Agreed. Being sent to your bank." />
                     <span className="shrink-0 tabular-nums text-sm font-semibold text-foreground">
                       {money2(r.amountCents / 100)}
                     </span>

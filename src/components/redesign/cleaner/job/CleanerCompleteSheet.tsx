@@ -26,7 +26,7 @@ import {
   DrawerFooter,
 } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
-import { useChargeProjection, useCompleteJob } from '@/hooks/useCleanerData';
+import { useChargeProjection, useCleanerPayoutModel, useCompleteJob } from '@/hooks/useCleanerData';
 import { useCleanerPayRequests } from '@/hooks/useCleanerPayRequests';
 import { formatCents, completeSuccessCopy, type PayRequestOutcome } from './active-job-presenters';
 
@@ -105,7 +105,16 @@ export function CleanerCompleteSheet({
   const completeJob = useCompleteJob();
 
   // Request mode: the cleaner names their pay as a required completion step.
-  const isRequestMode = projection?.payoutModel === 'request';
+  //
+  // The mode comes from the cleaner's OWN profile, not the charge projection:
+  // that route 404s whenever the Stripe flags are off and throws on any
+  // transient failure, and falling back to the plain path would complete the
+  // job with no pay thread. While the mode is unknown we block completion
+  // rather than guess (fail closed), because guessing wrong in the request
+  // direction costs the cleaner their pay.
+  const { payoutModel, status: payoutModelStatus } = useCleanerPayoutModel();
+  const isRequestMode = payoutModel === 'request';
+  const modeUnknown = payoutModelStatus !== 'ready';
   // The anchor is their own approved history; the job price is hidden from them,
   // so without it they would be naming a number with no reference at all.
   const { anchor } = useCleanerPayRequests({
@@ -270,8 +279,14 @@ export function CleanerCompleteSheet({
           </div>
         ) : null}
 
+        {payoutModelStatus === 'error' ? (
+          <p role="alert" className="mx-5 text-sm text-destructive">
+            Couldn&apos;t load your pay details. Close this and try again in a moment.
+          </p>
+        ) : null}
+
         {/* Request mode: naming the pay IS the completion step. */}
-        {isRequestMode && !isLoading ? (
+        {isRequestMode ? (
           <div className="mx-5">
             <FormField
               label="Request your pay"
@@ -307,7 +322,7 @@ export function CleanerCompleteSheet({
           <Button
             size="lg"
             onClick={handleComplete}
-            disabled={isCompleting || isLoading}
+            disabled={isCompleting || isLoading || modeUnknown}
             loading={isCompleting}
             className="w-full min-h-[44px]"
           >

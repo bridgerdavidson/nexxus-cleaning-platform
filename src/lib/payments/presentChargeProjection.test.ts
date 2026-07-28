@@ -72,16 +72,32 @@ describe('presentChargeProjection', () => {
     expect(req.payoutModel).toBe('request');
   });
 
-  it('request mode omits cleanerCutCents: the percent-derived cut is not their pay', () => {
-    // A request-mode cleaner names their own amount, so a percentage projection
-    // would state a number that is not what they will actually be paid.
+  it("request mode seals the price even when the org's display is 'full'", () => {
+    // Hiding the job price is intrinsic to request mode, not an org display
+    // preference: a cleaner who sees it can compute the auto-approve cap.
     const p = presentChargeProjection(full, {
       display: 'full',
       isCleanerViewer: true,
       payoutModel: 'request',
     });
     expect(p.cleanerCutCents).toBeUndefined();
-    // The rest of the breakdown still follows the org's display setting.
+    expect(p.chargeCents).toBeUndefined();
+    expect(p.baseCents).toBeUndefined();
+    expect(p.feeCents).toBeUndefined();
+    expect(p.platformFeeCents).toBeUndefined();
+    expect(p.payoutPercent).toBeUndefined();
+    expect(JSON.stringify(p)).not.toContain('12000');
+    expect(JSON.stringify(p)).not.toContain('12500');
+  });
+
+  it('flat mode omits the cut: their pay is min(flat_rate, gross), not a percentage', () => {
+    const p = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: true,
+      payoutModel: 'flat',
+    });
+    expect(p.cleanerCutCents).toBeUndefined();
+    // Flat mode has no price-secrecy requirement, so the org's display governs.
     expect(p.chargeCents).toBe(full.chargeCents);
   });
 

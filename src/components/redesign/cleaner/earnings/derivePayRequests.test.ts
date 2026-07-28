@@ -10,6 +10,7 @@ function thread(over: Partial<CleanerPayThread> = {}): CleanerPayThread {
     appointmentId: 'appt1',
     status: 'pending_org',
     currentOfferCents: 12000,
+    approvedAmountCents: null,
     jobLabel: 'Standard clean',
     propertyLabel: 'Maple House',
     scheduledDate: '2026-07-27',
@@ -54,8 +55,8 @@ describe('derivePayRequests', () => {
   });
 
   it('handles no threads', () => {
-    expect(derivePayRequests(undefined, NOW)).toEqual({ awaiting: [], yourTurn: [] });
-    expect(derivePayRequests([], NOW)).toEqual({ awaiting: [], yourTurn: [] });
+    expect(derivePayRequests(undefined, NOW)).toEqual({ awaiting: [], yourTurn: [], agreed: [] });
+    expect(derivePayRequests([], NOW)).toEqual({ awaiting: [], yourTurn: [], agreed: [] });
   });
 
   it('reports the live amount and who offered it', () => {
@@ -90,6 +91,16 @@ describe('derivePayRequests', () => {
     expect(row.latestNote).toBe('Standard rate for this size');
     // Age comes off the LATEST offer, not the thread's first.
     expect(row.ageLabel).toBe('2h ago');
+  });
+
+  it('an agreed thread reports the APPROVED amount, not the last offer', () => {
+    const b = derivePayRequests(
+      [thread({ status: 'approved', currentOfferCents: 14000, approvedAmountCents: 14000 })],
+      NOW,
+    );
+    expect(b.agreed).toHaveLength(1);
+    expect(b.agreed[0].amountCents).toBe(14000);
+    expect(b.awaiting).toHaveLength(0);
   });
 
   it('never surfaces a job price (the shape has no field for one)', () => {
