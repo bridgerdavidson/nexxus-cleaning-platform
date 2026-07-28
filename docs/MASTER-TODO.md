@@ -46,16 +46,41 @@ redirect block — land small before big).
 Source: `payments-audit-v4-backlog.md` Tier 1 (T1-1 … T1-11). CRITICAL/HIGH, all live in prod.
 Suggested internal order:
 
-- [ ] **T1-8 first** — wire `payment_events` + reconciler findings to real alerts. It is the
-      substrate several other fixes report through, and it IS the "balance-floor monitor"
-      already owed as a platform-fee follow-up. T1-9 depends on it.
-- [ ] T1-1 (CRITICAL: refund-unwind transfer-reversal failure = platform eats the money),
-      then T1-2, T1-4, T1-5, T1-6, T1-7, T1-9, T1-10, T1-11 per the backlog.
-- [ ] **T1-3 (bank_paid unreachable) is coupled to the webhook-events ops step**: fix
-      **T3-12 BEFORE** subscribing `transfer.reversed` in prod (partial-reversal
-      terminalization bug arms the moment the event is added), then add the 3 missing prod
-      webhook events (`transfer.reversed`, `payout.paid`, `payout.failed` — runbook §5.1
-      checklist), then the reconcile job. T3-13/14/15 are same-area cleanups to fold in.
+- [x] **TIER 1 COMPLETE (2026-07-26): all 18 items (T1-1 … T1-18) closed.** Final PRs:
+      #206 (T1-11, migration 114), #207 (T1-14/15/17/18 bundle, migration 115), #208 (T1-16,
+      migration 116), #211 (T1-12a, closing PR). Earlier: T1-8 (#177/#179), T1-1 (#187, m112),
+      T1-2/12b/13 (#192), T1-4/9 (#194), T1-5 (#199), T1-10 (#200, m113), T1-6 (#202),
+      T1-7 (#203), T1-3+T3-12/13/14/15 (#204 + the §5.1 Stripe Dashboard ops step, confirmed
+      done). All migrations (112-116) verified in prod. Per-item detail + adversarial-review
+      annotations: `payments-audit-v4-backlog.md`.
+      ⚠ Standing ops rule: never Vercel-rollback past `70adc1b` once any transfer_attempt
+      counter > 0; roll forward via a revert PR (see backlog T1-11/F8).
+
+## 2.5. White-label branding — Phase 0 of the go-to-market roadmap (BUILD-READY)
+
+Source: `docs/white-label-branding.md` (spec) + `docs/white-label-branding-plan.md` (5-PR plan).
+Strategy origin: Phase 0 of `2026-07-26-build-roadmap.md` in the brain. Scoped and planned
+2026-07-27; **nothing built yet**. Trigger: "let's build white-label" → open the plan, start PR 1.
+
+Every cleaning company sets one brand color and two logos, and their whole app becomes theirs.
+This is the first build of the go-to-market sequence (it gates the signup wizard's magic moment and
+is the pre-sell demo), and white-label is included at every tier per the locked pricing decision.
+
+- [ ] PR 1 `feat/branding-foundation` — OKLCH palette module, Tailwind brand ramp tokenized to CSS
+      vars, migration 120 (columns + `org-branding` bucket). **Invisible; defaults reproduce today's
+      palette exactly.**
+- [ ] PR 2 `fix/org-selection` — AuthContext picks the org deterministically (it currently takes an
+      arbitrary membership row) + switcher for multi-org users. Isolated: that file holds the
+      sign-in/out race invariants.
+- [ ] PR 3 `feat/branding-runtime` — BrandProvider, pre-paint bootstrap (no flash of default blue),
+      branding API route, settings section with live preview. **Demoable at this point.**
+- [ ] PR 4 `feat/branding-surfaces` — rail two-asset crossfade + monogram fallback + sidebar
+      expansion preference, homeowner/cleaner headers carry the logo (greetings promoted to real
+      `<h1>`s in the body), tenant loader, favicon/title/theme-color. **UI-heavy: `ui-feature-workflow`
+      + `ui-ux-pro-max` required.**
+- [ ] PR 5 `feat/branding-email` — branded card-collection email and the `/billing/add-card` page.
+
+Estimate 5 to 7 sessions. Next in the roadmap after this: Phase 1, SaaS billing.
 
 ## 3. Payments audit Tier 2 — visibility & notification gaps (pre-MVP)
 

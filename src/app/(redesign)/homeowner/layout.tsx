@@ -2,25 +2,14 @@
 
 import { type ReactNode, Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { HomeownerShell } from "@/components/redesign/homeowner/shell/HomeownerShell";
 import { HomeownerCleaningDetailHost } from "@/components/redesign/homeowner/cleanings/HomeownerCleaningDetailHost";
 import { HomeownerMessageThreadHost } from "@/components/redesign/homeowner/messages/HomeownerMessageThreadHost";
 import { BookingFlowHost } from "@/components/redesign/homeowner/booking/BookingFlowHost";
+import { FullPageLoader } from "@/components/ui/nexxus-loader";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
-
-function Spinner() {
-  return (
-    <div className="grid min-h-dvh place-items-center bg-background">
-      <div className="text-center">
-        <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-brand-600" />
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    </div>
-  );
-}
 
 export default function HomeownerDashboardLayout({
   children,
@@ -44,12 +33,12 @@ export default function HomeownerDashboardLayout({
   }, [user, loading, router]);
 
   if (loading || !user || orgStatus === "idle" || orgStatus === "loading")
-    return <Spinner />;
+    return <FullPageLoader />;
   if (orgStatus === "error")
     return (
       <WorkspaceErrorScreen onRetry={() => void reloadOrganization()} />
     );
-  if (user.role && user.role !== "homeowner") return <Spinner />;
+  if (user.role && user.role !== "homeowner") return <FullPageLoader />;
 
   return (
     <>

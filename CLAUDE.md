@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Strategy layer (read before feature work)
+
+Business strategy for this product lives in Bridger's second brain, not in this repo: `/Users/bridgerdavidson/ai-os/projects/nexxus-service-solutions/`. The docs that drive the current build (all dated 2026-07-26, in `strategy-decisions/`):
+
+- **`2026-07-26-build-roadmap.md`** — the phased build plan, verified against this codebase. Start here to see what to build next and what already exists.
+- **`2026-07-26-pricing-decision.md`** — locked pricing: tiers, seat rules, feature gates, full fee schedule, trial/billing mechanics.
+- **`2026-07-26-onboarding-design.md`** — signup, wizard, activation checklist, and trial-conversion design.
+
+Pricing and fee numbers are OWNED by those brain docs. The tiers hardcoded in `src/components/marketing/PricingSection.tsx` are stale placeholders; never treat them (or any in-repo number) as the source of truth for pricing.
+
+Once a roadmap phase is scoped, its spec and plan live **in this repo** and become the source of truth for building it. Phase 0 (white-label org branding) is scoped: `docs/white-label-branding.md` (spec) and `docs/white-label-branding-plan.md` (5-PR plan).
+
 ## Skills
 
 - **Grilling**: When the user says "grill me", asks to be grilled, or wants a plan/design stress-tested, ALWAYS use the project skill at `.claude/skills/grill-me` (invocable as `/grill-me`). NEVER use `context-mode:grill-me` for this. The two share a name, but only the project skill has the session-log step (it records every Q&A to a per-session file under `brainstorming/` so early answers survive long interviews). The context-mode copy lacks this and must not be used.
