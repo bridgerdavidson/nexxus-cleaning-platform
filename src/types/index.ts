@@ -81,6 +81,13 @@ export interface Organization {
   id: string;
   name: string;
   logo_url?: string | null;
+  /** One hex the tenant picks; null falls back to the Nexxus brand. See docs/white-label-branding.md. */
+  brand_color?: string | null;
+  /** Square-ish mark: collapsed rail, mobile nav, favicon, email. Null renders an initials monogram. */
+  logo_icon_url?: string | null;
+  /** Lockup or wordmark: expanded rail, drawer header. Null renders the icon plus the org name. */
+  logo_full_url?: string | null;
+  brand_updated_at?: string | null;
   created_at: string;
   created_by: string | null;
   // Stripe tenant Connect (merchant of record) — added in migration 065_stripe_restructure.
