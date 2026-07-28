@@ -24,6 +24,7 @@ import { getPaymentMethodType } from '@/lib/stripe/customers/homeowner';
 import { recordPaymentEvent } from './events';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
+import { notifyHomeownerCancellationFeeCharged } from './homeownerMoneyEvents';
 
 export type CancellationFeeCode = 'charged' | 'uncollectable' | 'failed';
 
@@ -77,16 +78,42 @@ export async function chargeCancellationFee(
   // webhook). Don't charge again. Reuse the row for any later status write.
   const { data: existingRows } = await supabase
     .from('payments')
-    .select('id, status, stripe_payment_intent_id')
+    .select('id, status, stripe_payment_intent_id, charge_kind, amount')
     .eq('appointment_id', appt.id)
     .eq('payment_type', 'revenue')
     .order('created_at', { ascending: false })
     .limit(1);
   const existing =
     existingRows && existingRows.length > 0
-      ? (existingRows[0] as { id: string; status: string; stripe_payment_intent_id: string | null })
+      ? (existingRows[0] as {
+          id: string;
+          status: string;
+          stripe_payment_intent_id: string | null;
+          charge_kind: string | null;
+          amount: number | string | null;
+        })
       : null;
   if (existing && (existing.status === 'paid' || existing.status === 'processing')) {
+    // T2-1 recovery: a crash between the paid-row write below and its notification would otherwise
+    // leave that fee permanently un-notified, since every retry lands here. Re-emitting is free
+    // (same dedupe key). Narrowed to a CAPTURED FEE row so a paid completion charge can never be
+    // announced as a cancellation fee.
+    if (
+      existing.status === 'paid' &&
+      existing.charge_kind === 'cancellation_fee' &&
+      existing.stripe_payment_intent_id
+    ) {
+      // Quote the CAPTURED row, not this call's recomputed fee: a retry can arrive with a
+      // different policy amount (the org edited the fee schedule in between), and the homeowner
+      // must be told what actually hit their card.
+      await notifyHomeownerCancellationFeeCharged(supabase, {
+        appointmentId: appt.id,
+        organizationId: appt.organization_id,
+        paymentIntentId: existing.stripe_payment_intent_id,
+        amountCents: Math.round(Number(existing.amount) * 100),
+        noShow: context.noShow,
+      });
+    }
     return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: existing.stripe_payment_intent_id ?? undefined };
   }
 
@@ -210,6 +237,16 @@ export async function chargeCancellationFee(
     const now = new Date().toISOString();
     const paymentId = await upsertRow({ ...baseRow, status: 'paid', authorized_at: now, captured_at: now, paid_at: now });
     await ledger('cancellation_fee_charged', { payment_intent_id: pi.id, pi_status: pi.status }, paymentId);
+    // T2-1: the homeowner's record of a fee charged off-session, so it isn't first seen on a
+    // bank statement. Only the charging path notifies; the paid-row short-circuit above is a
+    // re-entry of an attempt that already sent it.
+    await notifyHomeownerCancellationFeeCharged(supabase, {
+      appointmentId: appt.id,
+      organizationId: appt.organization_id,
+      paymentIntentId: pi.id,
+      amountCents: feeCents,
+      noShow: context.noShow,
+    });
     return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: pi.id };
   }
 
