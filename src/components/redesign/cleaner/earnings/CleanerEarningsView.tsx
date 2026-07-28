@@ -11,6 +11,7 @@ import PayoutTimingNotice from "@/components/PayoutTimingNotice";
 import { money2, PayoutStatusBadge, TxnStatusBadge } from "@/components/redesign/payments/payments-presenters";
 import { formatCardDate } from "@/components/redesign/cleaner/shared/job-presenters";
 import { ErrorState } from "@/components/ui/error-state";
+import { CleanerPayRequestSections } from "./CleanerPayRequestSections";
 import type {
   ClearingRow,
   ClearingSettleKind,
@@ -93,6 +94,11 @@ export function CleanerEarningsView({
       {owedLabel && <OwedSummary owedLabel={owedLabel} count={owedCount} setUp={setUp} />}
 
       <PayoutTimingNotice />
+
+      {/* Open pay negotiations (request-mode cleaners only; hides itself
+          otherwise). Above the payout buckets because it is the only part of
+          this screen the cleaner can act on. */}
+      <CleanerPayRequestSections />
 
       <PayoutsSection
         mode={data.mode}
