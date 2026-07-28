@@ -56,6 +56,32 @@ Suggested internal order:
       ⚠ Standing ops rule: never Vercel-rollback past `70adc1b` once any transfer_attempt
       counter > 0; roll forward via a revert PR (see backlog T1-11/F8).
 
+## 2.5. White-label branding — Phase 0 of the go-to-market roadmap (BUILD-READY)
+
+Source: `docs/white-label-branding.md` (spec) + `docs/white-label-branding-plan.md` (5-PR plan).
+Strategy origin: Phase 0 of `2026-07-26-build-roadmap.md` in the brain. Scoped and planned
+2026-07-27; **nothing built yet**. Trigger: "let's build white-label" → open the plan, start PR 1.
+
+Every cleaning company sets one brand color and two logos, and their whole app becomes theirs.
+This is the first build of the go-to-market sequence (it gates the signup wizard's magic moment and
+is the pre-sell demo), and white-label is included at every tier per the locked pricing decision.
+
+- [ ] PR 1 `feat/branding-foundation` — OKLCH palette module, Tailwind brand ramp tokenized to CSS
+      vars, migration 120 (columns + `org-branding` bucket). **Invisible; defaults reproduce today's
+      palette exactly.**
+- [ ] PR 2 `fix/org-selection` — AuthContext picks the org deterministically (it currently takes an
+      arbitrary membership row) + switcher for multi-org users. Isolated: that file holds the
+      sign-in/out race invariants.
+- [ ] PR 3 `feat/branding-runtime` — BrandProvider, pre-paint bootstrap (no flash of default blue),
+      branding API route, settings section with live preview. **Demoable at this point.**
+- [ ] PR 4 `feat/branding-surfaces` — rail two-asset crossfade + monogram fallback + sidebar
+      expansion preference, homeowner/cleaner headers carry the logo (greetings promoted to real
+      `<h1>`s in the body), tenant loader, favicon/title/theme-color. **UI-heavy: `ui-feature-workflow`
+      + `ui-ux-pro-max` required.**
+- [ ] PR 5 `feat/branding-email` — branded card-collection email and the `/billing/add-card` page.
+
+Estimate 5 to 7 sessions. Next in the roadmap after this: Phase 1, SaaS billing.
+
 ## 3. Payments audit Tier 2 — visibility & notification gaps (pre-MVP)
 
 Source: backlog Tier 2 (T2-1 … T2-18). Silent failures + operator/homeowner blind spots.
