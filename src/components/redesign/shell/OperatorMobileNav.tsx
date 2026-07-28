@@ -61,7 +61,7 @@ export function OperatorMobileNav({
               aria-current={active ? "page" : undefined}
               className={cn(
                 "group relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors duration-fast",
-                active ? "font-semibold text-brand-600" : "text-muted-foreground"
+                active ? "font-semibold text-brand-ink" : "text-muted-foreground"
               )}
             >
               {active && (

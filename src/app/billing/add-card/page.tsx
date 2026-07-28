@@ -129,7 +129,7 @@ function AddCardInner() {
   if (loading) {
     return (
       <div className="flex flex-col items-center py-12">
-        <Loader2 className="w-7 h-7 animate-spin text-brand-600 mb-3" />
+        <Loader2 className="w-7 h-7 animate-spin text-brand-ink mb-3" />
         <p className="text-muted-foreground">Loading…</p>
       </div>
     );
@@ -171,7 +171,7 @@ export default function AddCardPage() {
         <Suspense
           fallback={
             <div className="flex justify-center py-12">
-              <Loader2 className="w-7 h-7 animate-spin text-brand-600" />
+              <Loader2 className="w-7 h-7 animate-spin text-brand-ink" />
             </div>
           }
         >

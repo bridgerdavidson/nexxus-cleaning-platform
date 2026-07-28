@@ -103,7 +103,7 @@ export function CleanerTodayView({
             )}
             <button
               onClick={onContinueActive}
-              className="mt-3 w-full rounded-pill bg-white py-3 text-sm font-extrabold text-brand-600 outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="mt-3 w-full rounded-pill bg-white py-3 text-sm font-extrabold text-brand-ink outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               Continue job
             </button>

@@ -30,7 +30,7 @@ export function ServicesList({
                 !r.isActive && "opacity-60",
               )}
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-600">
+              <span className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-ink">
                 <Sparkles className="size-5" aria-hidden />
               </span>
               <div className="min-w-0 flex-1">

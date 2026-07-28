@@ -262,7 +262,7 @@ function AcceptInviteContent() {
     return (
       <AuthShell {...INVITE_PANEL}>
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
           <p className="text-sm font-medium text-muted-foreground">Verifying your invite...</p>
         </div>
       </AuthShell>
@@ -365,7 +365,7 @@ export default function AcceptInvitePage() {
     <Suspense
       fallback={
         <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
         </div>
       }
     >
