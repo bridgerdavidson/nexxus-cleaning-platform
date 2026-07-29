@@ -62,8 +62,8 @@ export interface WithTestOrgOptions {
   payoutPercent?: number;
   stripeConnectOnboardingComplete?: boolean;
   stripeConnectAccountId?: string;
-  /** organizations.default_payout_model (default 'percentage_contractor'). */
-  defaultPayoutModel?: 'percentage_contractor' | 'hourly_external';
+  /** organizations.default_payout_model (default 'percentage'). */
+  defaultPayoutModel?: 'percentage' | 'flat' | 'request' | 'hourly_external';
   /**
    * organizations.platform_fee_bps. Tests that assert split/charge amounts should PIN this
    * explicitly (0 for pure-split mechanics, 100 for fee behavior) instead of inheriting the
@@ -71,6 +71,16 @@ export interface WithTestOrgOptions {
    * database and CI.
    */
   platformFeeBps?: number;
+  /** cleaner_profiles.payout_model for the fixture cleaner (default 'percentage'). */
+  cleanerPayoutModel?: 'percentage' | 'flat' | 'request' | 'hourly_external';
+  /** cleaner_profiles.flat_rate_cents (only meaningful with cleanerPayoutModel 'flat'). */
+  flatRateCents?: number;
+  /**
+   * organizations.min_margin_bps (request-mode auto-approve threshold, migration 117).
+   * Tests asserting auto-approve vs escalate should PIN this instead of inheriting
+   * the DB default (2000).
+   */
+  minMarginBps?: number;
 }
 
 /**
@@ -91,6 +101,7 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
       name: orgName,
       ...(opts.defaultPayoutModel ? { default_payout_model: opts.defaultPayoutModel } : {}),
       ...(opts.platformFeeBps !== undefined ? { platform_fee_bps: opts.platformFeeBps } : {}),
+      ...(opts.minMarginBps !== undefined ? { min_margin_bps: opts.minMarginBps } : {}),
     })
     .select('id')
     .single();
@@ -139,6 +150,8 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
     payout_percent: opts.payoutPercent ?? 60,
     stripe_connect_account_id: opts.stripeConnectAccountId ?? null,
     stripe_connect_onboarding_complete: opts.stripeConnectOnboardingComplete ?? false,
+    payout_model: opts.cleanerPayoutModel ?? 'percentage',
+    flat_rate_cents: opts.flatRateCents ?? null,
   });
   if (cleanerProfileError) {
     throw new Error(`failed to insert cleaner_profile: ${cleanerProfileError.message}`);

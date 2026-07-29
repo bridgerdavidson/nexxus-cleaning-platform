@@ -45,7 +45,7 @@ export function CleanerEarnings() {
 
   const data = deriveEarnings({
     stripeEnabled,
-    payoutModel: currentOrganization?.default_payout_model ?? "percentage_contractor",
+    payoutModel: currentOrganization?.default_payout_model ?? "percentage",
     connectKind,
     awaiting,
     heldPayouts,

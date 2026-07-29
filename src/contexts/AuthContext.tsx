@@ -325,8 +325,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 cleaner_pay_display:
                   (org as { cleaner_pay_display?: 'full' | 'payout_only' }).cleaner_pay_display ?? 'full',
                 default_payout_model:
-                  (org as { default_payout_model?: 'percentage_contractor' | 'hourly_external' })
-                    .default_payout_model ?? 'percentage_contractor',
+                  (org as { default_payout_model?: 'percentage' | 'flat' | 'request' | 'hourly_external' })
+                    .default_payout_model ?? 'percentage',
               }
             : null,
         );

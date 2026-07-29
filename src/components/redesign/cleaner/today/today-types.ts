@@ -1,6 +1,6 @@
 import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
-export type CleanerPayoutModel = "percentage_contractor" | "hourly_external";
+export type CleanerPayoutModel = "percentage" | "flat" | "request" | "hourly_external";
 
 export interface TodayData {
   /** First in-progress job scheduled today or later, pinned at the top. */

@@ -12,7 +12,7 @@ import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
 import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
-type PayoutModel = "percentage_contractor" | "hourly_external";
+type PayoutModel = "percentage" | "flat" | "request" | "hourly_external";
 interface PayoutForm { model: PayoutModel; defaultPct: string }
 
 export function PayoutSettingsSection() {
@@ -26,8 +26,11 @@ export function PayoutSettingsSection() {
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
+    // Rows written before migration 117 may still carry the old spelling;
+    // normalize for display so the radio group always has a selected item.
+    const raw = (data?.default_payout_model as string | null) ?? "percentage";
     return {
-      model: (data?.default_payout_model as PayoutModel) ?? "percentage_contractor",
+      model: (raw === "percentage_contractor" ? "percentage" : raw) as PayoutModel,
       defaultPct: String(data?.default_cleaner_payout_percent ?? 50),
     };
   }, [currentOrganizationId]);
@@ -54,7 +57,7 @@ export function PayoutSettingsSection() {
       <SettingRow label="Payout model" helper="Only percentage payouts are available today.">
         <RadioGroup value={value.model} onValueChange={(m) => setValue({ ...value, model: m as PayoutModel })} className="gap-3">
           <div className="flex items-center gap-2">
-            <RadioGroupItem id="pm-pct" value="percentage_contractor" />
+            <RadioGroupItem id="pm-pct" value="percentage" />
             <Label htmlFor="pm-pct" className="font-medium">Percentage of each job</Label>
           </div>
           <div className="flex items-center gap-2 opacity-50">

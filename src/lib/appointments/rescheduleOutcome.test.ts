@@ -24,7 +24,7 @@ function decide(overrides: Partial<Parameters<typeof decideRescheduleOutcome>[0]
     scheduledTime: '09:00',
     targetCleanerId: CLEANER,
     currentCleanerId: CLEANER,
-    orgDefaultPayoutModel: 'percentage_contractor',
+    orgDefaultPayoutModel: 'percentage',
     suggestions,
     ...overrides,
   });

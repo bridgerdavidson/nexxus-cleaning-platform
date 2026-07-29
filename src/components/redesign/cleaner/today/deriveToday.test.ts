@@ -25,7 +25,7 @@ describe("deriveToday", () => {
   it("pins the first in-progress job as active", () => {
     const r = deriveToday(
       [appt({ id: "a", status: "in_progress" }), appt({ id: "b" })],
-      TODAY, TOMORROW, GRACE, "percentage_contractor"
+      TODAY, TOMORROW, GRACE, "percentage"
     );
     expect(r.activeJob?.id).toBe("a");
   });
@@ -36,7 +36,7 @@ describe("deriveToday", () => {
         appt({ id: "late", status: "pending", cleaner_confirmation_status: "awaiting", scheduled_time: "15:00:00" }),
         appt({ id: "early", status: "pending", cleaner_confirmation_status: "awaiting", scheduled_time: "09:00:00" }),
       ],
-      TODAY, TOMORROW, GRACE, "percentage_contractor"
+      TODAY, TOMORROW, GRACE, "percentage"
     );
     expect(r.offers.map((o) => o.id)).toEqual(["early", "late"]);
   });
@@ -50,7 +50,7 @@ describe("deriveToday", () => {
   });
 
   it("flags isEmployee from the payout model", () => {
-    expect(deriveToday([], TODAY, TOMORROW, GRACE, "percentage_contractor").isEmployee).toBe(false);
+    expect(deriveToday([], TODAY, TOMORROW, GRACE, "percentage").isEmployee).toBe(false);
     expect(deriveToday([], TODAY, TOMORROW, GRACE, "hourly_external").isEmployee).toBe(true);
   });
 
@@ -61,7 +61,7 @@ describe("deriveToday", () => {
         appt({ id: "am", scheduled_time: "08:00:00" }),
         appt({ id: "done", status: "completed", scheduled_time: "07:00:00" }),
       ],
-      TODAY, TOMORROW, GRACE, "percentage_contractor"
+      TODAY, TOMORROW, GRACE, "percentage"
     );
     expect(r.nextUp?.id).toBe("am");
     expect(r.todayJobs.map((j) => j.id)).toEqual(["pm"]);
@@ -73,14 +73,14 @@ describe("deriveToday", () => {
         appt({ scheduled_date: TOMORROW, scheduled_time: "13:00:00" }),
         appt({ scheduled_date: TOMORROW, scheduled_time: "09:00:00" }),
       ],
-      TODAY, TOMORROW, GRACE, "percentage_contractor"
+      TODAY, TOMORROW, GRACE, "percentage"
     );
     expect(r.tomorrowCount).toBe(2);
     expect(r.tomorrowFirstTime).toBe("09:00:00");
   });
 
   it("reports empty when nothing is actionable", () => {
-    const r = deriveToday([], TODAY, TOMORROW, GRACE, "percentage_contractor");
+    const r = deriveToday([], TODAY, TOMORROW, GRACE, "percentage");
     expect(r.isEmpty).toBe(true);
   });
 
@@ -91,7 +91,7 @@ describe("deriveToday", () => {
         appt({ id: "overdue", status: "confirmed", scheduled_date: "2026-06-24" }), // 2 days ago, never started
         appt({ id: "today", status: "confirmed", scheduled_date: TODAY }),
       ],
-      TODAY, TOMORROW, GRACE, "percentage_contractor"
+      TODAY, TOMORROW, GRACE, "percentage"
     );
     expect(r.activeJob).toBeNull();
     expect(r.needsAttention.map((j) => j.id).sort()).toEqual(["overdue", "stale"]);
@@ -103,7 +103,7 @@ describe("deriveToday", () => {
   it("an in-progress job scheduled today still pins as active and is not double-listed in todayJobs", () => {
     const r = deriveToday(
       [appt({ id: "live", status: "in_progress", scheduled_date: TODAY })],
-      TODAY, TOMORROW, GRACE, "percentage_contractor"
+      TODAY, TOMORROW, GRACE, "percentage"
     );
     expect(r.activeJob?.id).toBe("live");
     expect(r.needsAttention).toHaveLength(0);
@@ -119,7 +119,7 @@ describe("deriveToday", () => {
           appt({ id: "early", scheduled_time: "09:00:00" }),
           appt({ id: "mid", scheduled_time: "11:00:00" }),
         ],
-        TODAY, TOMORROW, GRACE, "percentage_contractor"
+        TODAY, TOMORROW, GRACE, "percentage"
       );
       expect(r.nextUp?.id).toBe("early");
       expect(r.todayJobs.map((j) => j.id)).toEqual(["mid", "late"]);
@@ -132,7 +132,7 @@ describe("deriveToday", () => {
           appt({ id: "t1", scheduled_time: "09:00:00" }),
           appt({ id: "t2", scheduled_time: "13:00:00" }),
         ],
-        TODAY, TOMORROW, GRACE, "percentage_contractor"
+        TODAY, TOMORROW, GRACE, "percentage"
       );
       expect(r.activeJob?.id).toBe("active");
       expect(r.nextUp).toBeNull();
@@ -146,7 +146,7 @@ describe("deriveToday", () => {
           appt({ id: "soon", scheduled_time: "10:00:00" }), // 120 min out, within 180
           appt({ id: "late", scheduled_time: "17:00:00" }), // 540 min out, beyond
         ],
-        TODAY, TOMORROW, GRACE, "percentage_contractor",
+        TODAY, TOMORROW, GRACE, "percentage",
         8 * 60 // now = 08:00
       );
       expect(r.activeJob?.id).toBe("active");
@@ -160,7 +160,7 @@ describe("deriveToday", () => {
           appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
           appt({ id: "far", scheduled_time: "17:00:00" }),
         ],
-        TODAY, TOMORROW, GRACE, "percentage_contractor",
+        TODAY, TOMORROW, GRACE, "percentage",
         8 * 60 // now = 08:00, far is 540 min out
       );
       expect(r.nextUp).toBeNull();
@@ -173,7 +173,7 @@ describe("deriveToday", () => {
           appt({ id: "active", status: "in_progress", scheduled_date: TODAY }),
           appt({ id: "past", scheduled_time: "07:00:00" }),
         ],
-        TODAY, TOMORROW, GRACE, "percentage_contractor",
+        TODAY, TOMORROW, GRACE, "percentage",
         9 * 60 // now = 09:00, past is -120 min
       );
       expect(r.nextUp).toBeNull();
@@ -183,7 +183,7 @@ describe("deriveToday", () => {
     it("is null when nothing is confirmed for today", () => {
       const r = deriveToday(
         [appt({ scheduled_date: TOMORROW })],
-        TODAY, TOMORROW, GRACE, "percentage_contractor"
+        TODAY, TOMORROW, GRACE, "percentage"
       );
       expect(r.nextUp).toBeNull();
     });
@@ -191,7 +191,7 @@ describe("deriveToday", () => {
     it("makes a lone confirmed today job the nextUp with an empty today list", () => {
       const r = deriveToday(
         [appt({ id: "only", scheduled_time: "10:00:00" })],
-        TODAY, TOMORROW, GRACE, "percentage_contractor"
+        TODAY, TOMORROW, GRACE, "percentage"
       );
       expect(r.nextUp?.id).toBe("only");
       expect(r.todayJobs).toHaveLength(0);

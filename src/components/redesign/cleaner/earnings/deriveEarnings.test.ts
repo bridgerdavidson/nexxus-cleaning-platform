@@ -51,7 +51,7 @@ function stats(over: Partial<CleanerStats> = {}): CleanerStats {
 function input(over: Partial<DeriveEarningsInput> = {}): DeriveEarningsInput {
   return {
     stripeEnabled: true,
-    payoutModel: "percentage_contractor",
+    payoutModel: "percentage",
     connectKind: "active",
     awaiting: [awaiting()],
     heldPayouts: [],
