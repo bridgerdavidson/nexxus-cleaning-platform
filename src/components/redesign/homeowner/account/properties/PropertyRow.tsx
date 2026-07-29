@@ -13,7 +13,7 @@ export function PropertyRow({ property, onOpen }: { property: Property; onOpen: 
       onClick={onOpen}
       className="flex w-full items-center gap-3 rounded-card border border-border bg-card p-3.5 text-left shadow-soft-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-control bg-brand-50 text-brand-600">
+      <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-control bg-brand-50 text-brand-ink">
         {property.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={property.photo_url} alt="" className="size-full object-cover" />

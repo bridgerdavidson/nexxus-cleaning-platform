@@ -91,7 +91,7 @@ export function CardPickerSheet({ open, onOpenChange, selectedId, onSelect }: Ca
                     <div className="truncate text-sm font-bold text-foreground">{paymentMethodTitle(pm)}</div>
                     <div className="truncate text-xs text-muted-foreground">{paymentMethodSubtitle(pm)}</div>
                   </div>
-                  {on && <Check className="size-5 shrink-0 text-brand-600" aria-hidden />}
+                  {on && <Check className="size-5 shrink-0 text-brand-ink" aria-hidden />}
                 </button>
               );
             })

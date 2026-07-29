@@ -20,7 +20,7 @@ export function KpiRail({ kpis }: { kpis: Kpi[] }) {
           <Card key={k.key} className="flex flex-col p-5">
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-semibold text-muted-foreground">{k.label}</p>
-              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950">
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-ink dark:bg-brand-950">
                 <Icon className="size-4" />
               </span>
             </div>

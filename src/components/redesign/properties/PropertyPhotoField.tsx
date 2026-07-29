@@ -67,7 +67,7 @@ export function PropertyPhotoField({
 
   return (
     <div className="flex items-center gap-3">
-      <span className="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-control bg-brand-50 text-brand-600">
+      <span className="relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-control bg-brand-50 text-brand-ink">
         {displayUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={displayUrl} alt="" className="size-full object-cover" />

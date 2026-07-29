@@ -136,7 +136,7 @@ export function AvatarEditor({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="rounded-control text-sm font-semibold text-brand-600 outline-none transition-colors hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-control text-sm font-semibold text-brand-ink outline-none transition-colors hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-ring"
           >
             {currentAvatarUrl ? "Change photo" : "Add photo"}
           </button>
