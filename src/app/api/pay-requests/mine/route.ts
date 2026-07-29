@@ -74,7 +74,8 @@ export async function GET(request: NextRequest) {
       // moment it is agreed, but the payout row that replaces it on the
       // Earnings screen only appears once settlement runs. Without this the
       // cleaner's just-agreed pay is visible NOWHERE in between, which reads
-      // as "it disappeared" right after they were told they earned it.
+      // as "it disappeared" right after they were told they earned it. The
+      // ride-along ENDS at the payout-row handoff below.
       .in('status', ['pending_org', 'pending_cleaner', 'approved'])
       .order('updated_at', { ascending: false })
       .limit(50);
@@ -115,6 +116,37 @@ export async function GET(request: NextRequest) {
       // A thread whose live amount never landed is malformed; omitting it keeps
       // the cleaner's view consistent with what the respond route would act on.
       .filter((t) => t.currentOfferCents != null);
+
+    // The agreed ride-along's exit: once a payout row exists for the job, the
+    // Earnings screen's own payout surfaces (the held section, the Stripe
+    // embed) carry the money and its real status, so keeping the thread here
+    // would stack a second, staler card on top of them. A payouts read failure
+    // fails OPEN (the thread stays visible): showing agreed pay twice is
+    // noise, hiding it reads as "my money disappeared".
+    const approvedApptIds = threads
+      .filter((t) => t.status === 'approved')
+      .map((t) => t.appointmentId);
+    let handedOffApptIds = new Set<string>();
+    if (approvedApptIds.length > 0) {
+      const { data: payoutRows, error: payoutError } = await supabaseAdmin
+        .from('payouts')
+        .select('appointment_id')
+        .eq('organization_id', organizationId!)
+        .eq('cleaner_id', auth.userId)
+        .in('appointment_id', approvedApptIds);
+      if (payoutError) {
+        console.error('pay-requests/mine payout handoff check failed:', payoutError);
+      } else {
+        handedOffApptIds = new Set(
+          ((payoutRows ?? []) as { appointment_id: string | null }[])
+            .map((r) => r.appointment_id)
+            .filter((id): id is string => !!id),
+        );
+      }
+    }
+    const visibleThreads = threads.filter(
+      (t) => t.status !== 'approved' || !handedOffApptIds.has(t.appointmentId),
+    );
 
     // Anchor: the cleaner's own approved history, property-first.
     let anchor: { amountCents: number; samePlace: boolean } | null = null;
@@ -157,7 +189,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ threads, anchor });
+    return NextResponse.json({ threads: visibleThreads, anchor });
   } catch (err) {
     console.error('pay-requests/mine failed:', err);
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });

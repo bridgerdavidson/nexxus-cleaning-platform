@@ -16,10 +16,13 @@ import { PayRequestThreadSheet } from "./PayRequestThreadSheet";
 /**
  * The request-mode cleaner's open pay negotiations on the Earnings screen.
  *
- * Two buckets: "Waiting on you" (the org countered; tap to accept or counter
+ * Three buckets: "Waiting on you" (the org countered; tap to accept or counter
  * back) comes first because it is the only one they can act on, then
- * "Awaiting approval" (their ask is with the org). Both hide when empty, so a
- * percentage-mode cleaner never sees this at all.
+ * "Awaiting approval" (their ask is with the org), then a short-lived
+ * "Agreed" bucket that bridges approval to settlement — the /mine route drops
+ * an approved thread once its payout row exists, so the payout surfaces take
+ * over from there. All hide when empty, so a percentage-mode cleaner never
+ * sees this at all.
  */
 export function CleanerPayRequestSections() {
   const { currentOrganizationId } = useAuth();
@@ -165,7 +168,7 @@ export function CleanerPayRequestSections() {
               {buckets.agreed.map((r) => (
                 <div key={r.id} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-3">
-                    <RowText row={r} subtitle="Agreed. Being sent to your bank." />
+                    <RowText row={r} subtitle="Agreed. Your pay is being processed." />
                     <span className="shrink-0 tabular-nums text-sm font-semibold text-foreground">
                       {money2(r.amountCents / 100)}
                     </span>

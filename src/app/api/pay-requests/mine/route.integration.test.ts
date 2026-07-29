@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 
 import { GET } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
+import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 import {
   withTestOrg,
   createTestAppointment,
@@ -122,6 +123,81 @@ describe('GET /api/pay-requests/mine', () => {
     expect(body.threads[0].status).toBe('approved');
     expect(body.threads[0].approvedAmountCents).toBe(28000);
     expect(JSON.stringify(body)).not.toContain('35000');
+  });
+
+  it('hands an approved thread off once its payout row exists', async () => {
+    org = await withTestOrg({ cleanerPayoutModel: 'request' });
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 350,
+      status: 'completed',
+    });
+    await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: appt.id,
+      cleanerId: org.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 35000,
+      approvedAmountCents: 28000,
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 28000 }],
+    });
+    // Settlement ran: the payout row now owns this money on the Earnings
+    // screen, so the thread must leave the list instead of stacking on top.
+    const db = createTestSupabaseClient();
+    const { error: payoutError } = await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 280,
+      status: 'paid',
+      payout_model_snapshot: 'request',
+    });
+    expect(payoutError).toBeNull();
+
+    const res = await get({ organization_id: org.organizationId }, org.cleaner.accessToken);
+    expect(res.status).toBe(200);
+    expect((res.body as { threads: unknown[] }).threads).toHaveLength(0);
+  });
+
+  it('a payout on one job does not hide a different open thread', async () => {
+    // Regression guard for the handoff filter's scoping: the exclusion is by
+    // appointment, never "this cleaner has some payout somewhere".
+    const { appt: openAppt } = await seedThread({ status: 'pending_cleaner' });
+    const settled = await createTestAppointment({
+      organizationId: org!.organizationId,
+      cleanerId: org!.cleaner.userId,
+      homeownerId: org!.homeowner.userId,
+      totalPrice: 200,
+      status: 'completed',
+    });
+    await createTestPayRequest({
+      organizationId: org!.organizationId,
+      appointmentId: settled.id,
+      cleanerId: org!.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 20000,
+      approvedAmountCents: 15000,
+      offers: [{ actor: 'cleaner', actorUserId: org!.cleaner.userId, amountCents: 15000 }],
+    });
+    const db = createTestSupabaseClient();
+    const { error: payoutError } = await db.from('payouts').insert({
+      organization_id: org!.organizationId,
+      cleaner_id: org!.cleaner.userId,
+      appointment_id: settled.id,
+      amount: 150,
+      status: 'paid',
+      payout_model_snapshot: 'request',
+    });
+    expect(payoutError).toBeNull();
+
+    const res = await get({ organization_id: org!.organizationId }, org!.cleaner.accessToken);
+    expect(res.status).toBe(200);
+    const threads = (res.body as { threads: { appointmentId: string; status: string }[] }).threads;
+    expect(threads).toHaveLength(1);
+    expect(threads[0].appointmentId).toBe(openAppt.id);
+    expect(threads[0].status).toBe('pending_cleaner');
   });
 
   it('anchors off the cleaner\'s own approved history at the same property', async () => {
