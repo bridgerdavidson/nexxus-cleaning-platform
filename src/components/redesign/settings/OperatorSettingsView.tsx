@@ -54,7 +54,7 @@ function SettingsIndex({
                         active ? "bg-brand-50 text-brand-700" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
-                      <Icon className={cn("size-4 shrink-0", active ? "text-brand-600" : "text-muted-foreground")} />
+                      <Icon className={cn("size-4 shrink-0", active ? "text-brand-ink" : "text-muted-foreground")} />
                       <span className="truncate">{section.label}</span>
                     </button>
                   </li>

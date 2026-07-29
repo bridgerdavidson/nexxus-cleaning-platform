@@ -124,7 +124,7 @@ export function PhoneFrame({
             {i === 0 ? (
               <span className="absolute left-1/2 top-0 h-0.5 w-4 -translate-x-1/2 rounded-pill bg-brand-600" />
             ) : null}
-            <Icon className={cn('size-3.5', i === 0 ? 'text-brand-600' : 'text-muted-foreground')} />
+            <Icon className={cn('size-3.5', i === 0 ? 'text-brand-ink' : 'text-muted-foreground')} />
           </span>
         ))}
       </nav>

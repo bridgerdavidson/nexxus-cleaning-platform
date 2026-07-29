@@ -92,7 +92,7 @@ export function EntityPickerField({
                       {i.sublabel && <div className="truncate text-xs text-muted-foreground">{i.sublabel}</div>}
                     </div>
                     {i.badge}
-                    {value === i.id && <Check className="ml-2 size-4 shrink-0 text-brand-600" aria-hidden />}
+                    {value === i.id && <Check className="ml-2 size-4 shrink-0 text-brand-ink" aria-hidden />}
                   </CommandItem>
                 ))}
               </CommandGroup>

@@ -86,7 +86,7 @@ export function OrgPaymentMethodsView({
       </div>
       {stripeAchUiEnabled() && !hasBank ? (
         <p className="flex items-start gap-1.5 px-0.5 pt-1 text-xs leading-relaxed text-muted-foreground">
-          <Landmark className="mt-0.5 size-3.5 shrink-0 text-brand-600" aria-hidden />
+          <Landmark className="mt-0.5 size-3.5 shrink-0 text-brand-ink" aria-hidden />
           Paying by bank account costs less than a card. Add one to save on processing fees.
         </p>
       ) : (

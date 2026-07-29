@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { toast } from '../components/ui/toast';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
+import { readCleanerApptCache, writeCleanerApptCache } from './cleanerApptCache';
 import { keys } from '../lib/queryKeys';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
@@ -124,8 +125,16 @@ export function useCleanerAppointments() {
   const queryClient = useQueryClient();
   const queryKey = keys.appointments.byCleaner(userId);
 
+  // Seed from the last-known offline snapshot so a cold open on no signal shows
+  // real jobs/addresses instead of skeleton then error. initialData makes the
+  // query "success" with stale data, so an online mount refetches in the
+  // background while an offline mount just keeps showing it (a failed background
+  // refetch never flips it to an error while data is present).
+  const cachedSnapshot = useMemo(() => readCleanerApptCache<CleanerAppointment>(userId), [userId]);
+
   const query = useOrgQuery({
     queryKey,
+    ...(cachedSnapshot ? { initialData: cachedSnapshot.data, initialDataUpdatedAt: cachedSnapshot.ts } : {}),
     queryFn: async ({ orgId, userId }) => {
       const { data: cleanerProfile, error: profileError } = await supabase
         .from('cleaner_profiles')
@@ -258,6 +267,16 @@ export function useCleanerAppointments() {
     [queryClient, queryKey]
   );
   void _setQuery;
+
+  // Persist each successfully-loaded list for the next offline open. Keyed off the
+  // query's own dataUpdatedAt: re-persisting the seeded snapshot on mount writes
+  // back the same data + ts (idempotent, never extends its life), and a failed
+  // refetch (which doesn't advance dataUpdatedAt) writes nothing.
+  useEffect(() => {
+    if (query.isSuccess && query.data && query.dataUpdatedAt) {
+      writeCleanerApptCache(userId, query.data, query.dataUpdatedAt);
+    }
+  }, [query.isSuccess, query.data, query.dataUpdatedAt, userId]);
 
   return {
     appointments: query.data ?? [],

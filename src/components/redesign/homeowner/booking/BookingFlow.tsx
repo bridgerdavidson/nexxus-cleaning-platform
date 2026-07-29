@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
 import { toast } from '@/components/ui/toast';
 import { homeownerCardPickerAvailable } from '@/components/HomeownerCardPicker';
-import { useHomeownerProperties } from '@/hooks/useHomeownerData';
+import { useHomeownerProperties, useHomeownerAppointments } from '@/hooks/useHomeownerData';
 import { useServices } from '@/hooks/useServices';
+import { pickBookingDefaults } from './deriveBookingDefaults';
 import { useSavedPaymentMethods } from '../account/payment-methods/useSavedPaymentMethods';
 import { EMPTY_BOOKING, type BookingState } from './booking-types';
 import { addSlot, removeSlotAt } from './deriveBooking';
@@ -45,6 +46,7 @@ export function BookingFlow({
 
   const { properties, loading: propertiesLoading } = useHomeownerProperties();
   const { services, loading: servicesLoading } = useServices();
+  const { appointments } = useHomeownerAppointments();
   const { cards } = useSavedPaymentMethods();
 
   const paymentRequired = homeownerCardPickerAvailable();
@@ -58,6 +60,28 @@ export function BookingFlow({
       setState((s) => ({ ...s, propertyId: properties[0].id }));
     }
   }, [properties, state.propertyId]);
+
+  // Opened with no explicit prefill (the plain "Request a cleaning" CTA, not
+  // "Book again")? Default the home + service from the most recent cleaning so a
+  // repeat booking is one tap. Seeds once, fills only empty fields, and defers to
+  // an explicit prefill; the stale-prefill guards below still drop a seeded id
+  // that's since been deactivated/deleted.
+  const seededDefaults = useRef(false);
+  useEffect(() => {
+    if (seededDefaults.current) return;
+    if (initialServiceTypeId || initialPropertyId) {
+      seededDefaults.current = true;
+      return;
+    }
+    const defaults = pickBookingDefaults(appointments);
+    if (!defaults) return;
+    seededDefaults.current = true;
+    setState((s) => ({
+      ...s,
+      propertyId: s.propertyId ?? defaults.propertyId,
+      serviceTypeId: s.serviceTypeId ?? defaults.serviceTypeId,
+    }));
+  }, [appointments, initialServiceTypeId, initialPropertyId]);
 
   // Drop a stale prefill (e.g. Book again on a since-deactivated service or a deleted home)
   // so the flow falls back to unselected instead of carrying an invalid id to submit.

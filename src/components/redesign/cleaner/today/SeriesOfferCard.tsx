@@ -61,7 +61,7 @@ export function SeriesOfferCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <CalendarClock className="size-4 text-brand-600" aria-hidden />
+            <CalendarClock className="size-4 text-brand-ink" aria-hidden />
             <span className="text-[11px] font-extrabold uppercase tracking-widest text-brand-700">Repeating cleaning</span>
           </div>
           <div className="mt-1 text-sm font-extrabold">{propertyTitle(series.first)}</div>

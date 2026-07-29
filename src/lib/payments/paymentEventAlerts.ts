@@ -19,6 +19,12 @@ import type { PaymentEventInput } from './events';
 interface AlertableSpec {
   severity: AlertSeverity;
   label: string;
+  /**
+   * Include the appointment id in the dedupe key. For terminal per-appointment decisions an
+   * org-scoped key folds two different appointments into one open incident — the second one
+   * overwrites the first's details and never alerts on its own (audit T1-15d).
+   */
+  keyByAppointment?: boolean;
 }
 
 export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
@@ -28,8 +34,29 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   transfer_reversal_failed: { severity: 'critical', label: 'Transfer reversal failed during a refund, platform out the money' },
   refund_clawback_failed: { severity: 'critical', label: 'Cleaner clawback failed during a refund, platform out the money' },
   transfer_list_failed: { severity: 'critical', label: 'Could not list transfers to reverse for a refund' },
-  refund_unwind_manual_review: { severity: 'critical', label: 'Refund unwind needs a manual decision (mixed charges or refund absorbed at settlement), auto-retry stopped' },
+  refund_unwind_manual_review: { severity: 'critical', label: 'Refund unwind needs a manual decision (mixed charges or refund absorbed at settlement), auto-retry stopped', keyByAppointment: true },
   cleaner_clawback_failed: { severity: 'critical', label: 'Cleaner payout clawback failed' },
+  // T1-14(a): the Stripe refund SUCCEEDED but the local refunds-ledger insert failed, so later
+  // refundable-amount math can over-refund until the ledger is reconciled. One-shot per
+  // appointment, so keyed per appointment: two distinct losses in one org must not fold.
+  refund_ledger_write_failed: { severity: 'critical', label: 'Stripe refund succeeded but the local refund ledger write failed, refundable-amount math may over-refund', keyByAppointment: true },
+  // T1-16: a completion charge Stripe CAPTURED had been recorded as failed (lost response); the
+  // sweep found and re-linked it. Money self-heals, but the shape means an operator saw "failed"
+  // for a charge that succeeded — the owner should sanity-check settlement + any communication.
+  charge_outcome_recovered: { severity: 'critical', label: 'A captured charge was recorded as failed and has been recovered, verify settlement', keyByAppointment: true },
+  // T1-16: the sweep found a capture for an unknown-outcome row but refused to auto-adopt it
+  // (amount mismatch, or the PI was already refunded). Retries stay blocked; a human must
+  // reconcile the row by hand.
+  charge_outcome_adopt_blocked: { severity: 'critical', label: 'A captured charge needs manual reconciliation (amount mismatch or already refunded), retries stay blocked', keyByAppointment: true },
+  // T1-16: clearing a stale verified-absent stamp for a NEW unknown-outcome attempt failed, so
+  // the fresh-charge guard may pass on stale evidence — the one write in this mechanism whose
+  // failure is fail-open, hence the page.
+  charge_outcome_rearm_failed: { severity: 'critical', label: 'Could not re-arm charge-outcome verification, a retry may run on stale evidence', keyByAppointment: true },
+  // T1-14(a): a settled bank debit (ACH) was returned AFTER the tenant/cleaner transfers were
+  // paid — the platform is out the distributed funds until the org re-collects (the cleaner
+  // slice auto-claws back; the tenant remainder does not). Latent until ACH ships. One-shot per
+  // appointment → keyed per appointment for the same reason.
+  late_payment_failure: { severity: 'critical', label: 'A settled bank payment was returned after payout, the platform is out the distributed funds', keyByAppointment: true },
   // Warning: money is stuck or a platform-account risk signal fired, but it is retryable or non-loss.
   cleaner_transfer_failed: { severity: 'warning', label: 'Cleaner payout transfer failed' },
   cleaner_payout_bank_failed: { severity: 'warning', label: 'A cleaner bank payout failed, funds returned to their Stripe balance' },
@@ -52,9 +79,10 @@ export interface PaymentEventAlert {
 
 /**
  * Pure decision: given a payment event, return the platform-alert to raise, or null if
- * the event is not owner-actionable. `alert_type` is namespaced and org-scoped so the
- * 6h de-dupe window in recordPlatformAlert folds the reconciler's 15-minute re-emits of
- * the *same* incident into one row, while keeping two different orgs distinct.
+ * the event is not owner-actionable. `alert_type` is namespaced and org-scoped (plus
+ * appointment-scoped for keyByAppointment events) so recordPlatformAlert's open-incident
+ * dedupe folds the reconciler's 15-minute re-emits of the *same* incident into one row,
+ * while keeping two different orgs (or appointments) distinct.
  */
 export function alertInputForPaymentEvent(ev: PaymentEventInput): PaymentEventAlert | null {
   const spec = ALERTABLE_PAYMENT_EVENTS[ev.eventType];
@@ -67,8 +95,10 @@ export function alertInputForPaymentEvent(ev: PaymentEventInput): PaymentEventAl
   if (typeof ev.amount === 'number') scope.push(`$${(ev.amount / 100).toFixed(2)}`);
   const suffix = scope.length ? ` (${scope.join(', ')})` : '';
 
+  const apptScope = spec.keyByAppointment && ev.appointmentId ? `:appt_${ev.appointmentId}` : '';
+
   return {
-    alert_type: `payment_${ev.eventType}:${ev.organizationId ?? 'platform'}`,
+    alert_type: `payment_${ev.eventType}:${ev.organizationId ?? 'platform'}${apptScope}`,
     severity: spec.severity,
     summary: `${spec.label}${suffix}`,
     details: {

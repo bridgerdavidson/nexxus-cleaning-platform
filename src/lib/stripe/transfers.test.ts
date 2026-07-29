@@ -92,4 +92,38 @@ describe('stripe/transfers (separate charges and transfers)', () => {
     await listTransfersByGroup('appt_x');
     expect(transfersList).toHaveBeenCalledWith({ transfer_group: 'appt_x', limit: 100 });
   });
+
+  // T1-15(e): pagination. A truncated first page could hide exactly the transfer an
+  // adopt-existing scan or refund unwind needs, and every caller treats a throw as fail-closed,
+  // so a pathological group throws rather than silently truncating.
+  it('listTransfersByGroup follows has_more with starting_after and concatenates in order', async () => {
+    transfersList
+      .mockResolvedValueOnce({ data: [{ id: 'tr_1' }, { id: 'tr_2' }], has_more: true } as never)
+      .mockResolvedValueOnce({ data: [{ id: 'tr_3' }], has_more: false } as never);
+    const out = await listTransfersByGroup('appt_x');
+    expect(out.map((t) => t.id)).toEqual(['tr_1', 'tr_2', 'tr_3']);
+    expect(transfersList).toHaveBeenCalledTimes(2);
+    expect(transfersList).toHaveBeenLastCalledWith({
+      transfer_group: 'appt_x',
+      limit: 100,
+      starting_after: 'tr_2',
+    });
+  });
+
+  it('listTransfersByGroup treats a missing has_more (test fakes) as done', async () => {
+    transfersList.mockResolvedValueOnce({ data: [{ id: 'tr_1' }] } as never);
+    const out = await listTransfersByGroup('appt_x');
+    expect(out.map((t) => t.id)).toEqual(['tr_1']);
+    expect(transfersList).toHaveBeenCalledTimes(1);
+  });
+
+  it('listTransfersByGroup throws (fail closed) past the pagination cap instead of truncating', async () => {
+    transfersList.mockImplementation(
+      async () => ({ data: [{ id: 'tr_more' }], has_more: true }) as never,
+    );
+    await expect(listTransfersByGroup('appt_x')).rejects.toThrow(/pagination cap/);
+    expect(transfersList).toHaveBeenCalledTimes(10);
+    // clearAllMocks clears calls, not implementations — restore the default for later tests.
+    transfersList.mockImplementation(async () => ({ data: [] }));
+  });
 });

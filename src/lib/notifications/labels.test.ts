@@ -328,6 +328,64 @@ describe('appointment_rescheduled variants', () => {
   });
 });
 
+describe('homeowner money receipts (T2-1 render half)', () => {
+  // These three types are worded for the homeowner and are deliberately not in
+  // the NotificationEventType union / KNOWN_TYPES (the union + emits are Lane B).
+  // describeNotification must still render real copy, never the 'Update' fallback.
+  const BASE = {
+    audience: 'homeowner',
+    property_label: '123 Oak St',
+    scheduled_date: '2026-06-06',
+    scheduled_time: '14:30',
+    amount_cents: 4200,
+  };
+
+  it('charge_succeeded reads as a homeowner receipt', () => {
+    const d = describeNotification('charge_succeeded', BASE);
+    expect(d.title).toBe('Paid $42.00 for your cleaning');
+    expect(d.detail).toContain('123 Oak St');
+    expect(d.tone).toBe('success');
+    expect(d.icon).toBeTruthy();
+    // No amount -> generic copy, never the 'Update' fallback.
+    expect(describeNotification('charge_succeeded').title).toBe('Your cleaning payment went through');
+  });
+
+  it('refund_issued tells the homeowner money is coming back', () => {
+    const d = describeNotification('refund_issued', BASE);
+    expect(d.title).toBe('Refund of $42.00 on the way');
+    expect(d.detail).toContain('Back to your card in 5 to 10 days');
+    expect(d.tone).toBe('success');
+    expect(describeNotification('refund_issued').title).toBe('Your refund is on the way');
+  });
+
+  it('cancellation_fee_charged distinguishes a no-show from a cancellation', () => {
+    const noShow = describeNotification('cancellation_fee_charged', { ...BASE, reason: 'no_show' });
+    expect(noShow.title).toBe('You were charged a $42.00 no-show fee');
+    expect(noShow.tone).toBe('warning');
+
+    const cancel = describeNotification('cancellation_fee_charged', { ...BASE, reason: 'cancellation' });
+    expect(cancel.title).toBe('You were charged a $42.00 cancellation fee');
+
+    // Missing reason defaults to a cancellation fee; missing amount stays generic.
+    expect(describeNotification('cancellation_fee_charged', { reason: 'no_show' }).title).toBe(
+      'A no-show fee was charged',
+    );
+    expect(describeNotification('cancellation_fee_charged').title).toBe('A cancellation fee was charged');
+  });
+
+  it('uses no em dashes and never the unknown fallback (generic and enriched)', () => {
+    for (const t of ['charge_succeeded', 'refund_issued', 'cancellation_fee_charged']) {
+      const generic = describeNotification(t);
+      const enriched = describeNotification(t, { ...BASE, reason: 'no_show' });
+      for (const d of [generic, enriched]) {
+        expect(d.title).not.toContain('—');
+        expect(d.detail ?? '').not.toContain('—');
+        expect(d.title).not.toBe('Update');
+      }
+    }
+  });
+});
+
 describe('toastVariantForTone', () => {
   it('maps tones to toast variants (warning collapses to info)', () => {
     expect(toastVariantForTone('success')).toBe('success');

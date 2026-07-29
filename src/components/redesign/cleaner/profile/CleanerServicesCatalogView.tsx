@@ -48,7 +48,7 @@ export function CleanerServicesCatalogView({
               href={`/cleaner/profile/services/${r.id}`}
               className="flex items-center gap-3 rounded-card border border-border bg-card p-3.5 shadow-soft-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-600">
+              <span className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-ink">
                 <ClipboardList className="size-5" aria-hidden />
               </span>
               <div className="min-w-0 flex-1">

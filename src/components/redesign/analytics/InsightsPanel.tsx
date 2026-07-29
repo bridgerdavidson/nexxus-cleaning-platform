@@ -5,7 +5,7 @@ import type { InsightVM } from "./analytics-types";
 
 const TONE: Record<InsightVM["tone"], string> = {
   pos: "bg-positive-50 text-positive-700", warn: "bg-caution-50 text-caution-700",
-  crit: "bg-critical-50 text-critical-700", brand: "bg-brand-50 text-brand-600",
+  crit: "bg-critical-50 text-critical-700", brand: "bg-brand-50 text-brand-ink",
 };
 
 function renderBold(text: string) {

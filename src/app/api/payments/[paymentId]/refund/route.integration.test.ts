@@ -210,6 +210,181 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect((events ?? []).length).toBe(1);
   });
 
+  it('T1-12a: a second refund after a NET-split settlement tops up only the delta (no over-claw)', async () => {
+    // $100 job, $40 refunded BEFORE settlement: settleCleanerPayout split the transfers from the
+    // $60 net base (cleaner 3600, tenant 2400). A later $30 refund (cumulative $70) must reverse
+    // each leg down to its share of the $30 target base (cleaner 1800, tenant 1200) — the old
+    // proportional-to-gross math demanded 2520/1680, over-clawing money settlement already
+    // withheld (the live-path half of audit T1-12; the sweep guards were already in place).
+    const db = createTestSupabaseClient();
+    const { appt, paymentId } = await seedPaidPayment();
+    // Activate the invariant path: the locked snapshots settlement actually writes. The fee
+    // VALUE read is the LIVE org bps (what settlement splits with), so pin it to match the
+    // seeded transfer shapes.
+    await db.from('organizations').update({ platform_fee_bps: 0 }).eq('id', org.organizationId);
+    await db
+      .from('payments')
+      .update({ application_fee_bps_snapshot: 0, processing_fee_cents: null })
+      .eq('id', paymentId);
+    await db
+      .from('payouts')
+      .update({ amount: 36, payout_percent_snapshot: 60 })
+      .eq('appointment_id', appt.id);
+    // The pre-settlement refund, already on the ledger (cents).
+    await db.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      appointment_id: appt.id,
+      stripe_refund_id: `re_prior_${appt.id}`,
+      amount: 4000,
+      status: 'succeeded',
+    });
+    // Transfers as settlement actually sized them: from the $60 net base.
+    vi.mocked(listTransfersByGroup).mockResolvedValueOnce([
+      { id: 'tr_x', amount: 3600, amount_reversed: 0 },
+      { id: 'tr_tenant', amount: 2400, amount_reversed: 0 },
+    ] as never);
+    vi.mocked(reversePlatformTransfer).mockClear();
+
+    const { status, body } = await callRoute<{ fully_refunded: boolean; amount_cents: number }>(
+      handlerFor(paymentId),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, amount: 30 },
+      },
+    );
+    expect(status).toBe(200);
+    expect(body.fully_refunded).toBe(false);
+    expect(body.amount_cents).toBe(3000);
+
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 1800, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1200, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledTimes(2);
+  });
+
+  // Review F1 (HIGH): a HELD cleaner slice (payout row with no transfer) still had its percent
+  // carved OUT of the tenant transfer; planning with percent 0 would hand that share to the
+  // tenant as keep-target and under-claw it (silent platform loss).
+  it('T1-12a: a held cleaner slice keeps its carved percent in the plan (tenant not under-clawed)', async () => {
+    const db = createTestSupabaseClient();
+    const { appt, paymentId } = await seedPaidPayment();
+    await db.from('organizations').update({ platform_fee_bps: 0 }).eq('id', org.organizationId);
+    await db
+      .from('payments')
+      .update({ application_fee_bps_snapshot: 0, processing_fee_cents: null })
+      .eq('id', paymentId);
+    // Cleaner slice carved ($60) but HELD: no transfer; only the tenant leg exists at Stripe.
+    await db
+      .from('payouts')
+      .update({ stripe_transfer_id: null, status: 'pending', payout_percent_snapshot: 60 })
+      .eq('appointment_id', appt.id);
+    vi.mocked(listTransfersByGroup).mockResolvedValueOnce([
+      { id: 'tr_tenant', amount: 4000, amount_reversed: 0 },
+    ] as never);
+    vi.mocked(reversePlatformTransfer).mockClear();
+
+    const { status } = await callRoute(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, amount: 50 },
+    });
+    expect(status).toBe(200);
+
+    // Target base $50: cleaner keeps 3000 (held, adjusted by T1-13 at settle time), tenant keeps
+    // 2000 → reverse 4000-2000=2000. Percent-0 wiring would have computed keep-target 5000 > 4000
+    // and reversed NOTHING.
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 2000, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledTimes(1);
+  });
+
+  // Review F3/F8: corrupt snapshots must bail fail-closed (never-throws contract; a silent
+  // proportional fallback could be the exact over-claw this fix removes).
+  it('T1-12a: a corrupt percent snapshot bails fail-closed instead of throwing or guessing', async () => {
+    const db = createTestSupabaseClient();
+    const { appt, paymentId } = await seedPaidPayment();
+    await db.from('organizations').update({ platform_fee_bps: 0 }).eq('id', org.organizationId);
+    await db
+      .from('payments')
+      .update({ application_fee_bps_snapshot: 0 })
+      .eq('id', paymentId);
+    await db
+      .from('payouts')
+      .update({ payout_percent_snapshot: 150 })
+      .eq('appointment_id', appt.id);
+    vi.mocked(reversePlatformTransfer).mockClear();
+
+    const { status, body } = await callRoute<{
+      transfer_unwind: { reversed_cents: number; failures: number };
+    }>(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    // The refund itself stands; the unwind defers to the stranded-unwind sweep.
+    expect(status).toBe(200);
+    expect(body.transfer_unwind).toEqual({ reversed_cents: 0, failures: 1 });
+    expect(vi.mocked(reversePlatformTransfer)).not.toHaveBeenCalled();
+
+    const { data: events } = await db
+      .from('payment_events')
+      .select('payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'transfer_list_failed');
+    expect(
+      (events ?? []).some(
+        (e) => (e.payload as { reason?: string }).reason === 'split_snapshot_invalid',
+      ),
+    ).toBe(true);
+  });
+
+  // Review F5: on a mixed-charge appointment a null-source leg may belong to the SIBLING charge;
+  // the aggregate tenant target could claw it in full. Fall back to bounded per-leg proportion.
+  it('T1-12a: mixed charges with a null-source leg fall back to the proportional math', async () => {
+    const db = createTestSupabaseClient();
+    const { appt, paymentId } = await seedPaidPayment();
+    await db.from('organizations').update({ platform_fee_bps: 0 }).eq('id', org.organizationId);
+    await db
+      .from('payments')
+      .update({ application_fee_bps_snapshot: 0 })
+      .eq('id', paymentId);
+    await db.from('payouts').update({ payout_percent_snapshot: 60 }).eq('appointment_id', appt.id);
+    await db.from('payments').insert({
+      organization_id: org.organizationId,
+      appointment_id: appt.id,
+      amount: 30,
+      status: 'paid',
+      payment_method: 'card',
+      payment_type: 'revenue',
+      charge_kind: 'cancellation_fee',
+    });
+    // The default group mock's legs carry no source_transaction → ambiguous with a sibling charge.
+    vi.mocked(listTransfersByGroup).mockResolvedValueOnce([
+      { id: 'tr_x', amount: 3600, amount_reversed: 0 },
+      { id: 'tr_tenant', amount: 2400, amount_reversed: 0 },
+    ] as never);
+    await db.from('refunds').insert({
+      organization_id: org.organizationId,
+      payment_id: paymentId,
+      appointment_id: appt.id,
+      stripe_refund_id: `re_prior_mixed_${appt.id}`,
+      amount: 4000,
+      status: 'succeeded',
+    });
+    vi.mocked(reversePlatformTransfer).mockClear();
+
+    const { status } = await callRoute(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, amount: 30 },
+    });
+    expect(status).toBe(200);
+
+    // Proportional-to-gross (cumulative 7000/10000), NOT the invariant plan (1800/1200).
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_x', 2520, expect.any(String));
+    expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 1680, expect.any(String));
+  });
+
   it('partial refund: reverses proportional cleaner amount, payment stays paid', async () => {
     const { paymentId } = await seedPaidPayment();
     const { status, body } = await callRoute<{ fully_refunded: boolean; amount_cents: number }>(
@@ -362,5 +537,65 @@ describe('POST /api/payments/:paymentId/refund', () => {
     expect(vi.mocked(reversePlatformTransfer)).toHaveBeenCalledWith('tr_tenant', 4000, expect.any(String));
     // The cancellation fee's transfer (different source charge) is never touched.
     expect(vi.mocked(reversePlatformTransfer)).not.toHaveBeenCalledWith('tr_fee', expect.anything(), expect.anything());
+  });
+
+  it('T2-1: each partial refund notifies the homeowner with ITS OWN amount, not the cumulative', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+    const db = createTestSupabaseClient();
+
+    // Two equal partials on the same payment. With one refund, per-refund and cumulative are the
+    // same number and a cumulative-reporting bug (or an appointment-scoped dedupe key) would pass
+    // unnoticed; the second refund separates them (3000 vs 6000, one row vs two).
+    for (let i = 0; i < 2; i++) {
+      const { status } = await callRoute(handlerFor(paymentId), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, amount: 30 },
+      });
+      expect(status).toBe(200);
+    }
+
+    const { data } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload, created_at')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_issued')
+      .order('created_at', { ascending: true });
+    const rows = (data ?? []) as Array<{
+      recipient_user_id: string;
+      payload: Record<string, unknown>;
+    }>;
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.payload.amount_cents)).toEqual([3000, 3000]);
+    expect(rows[0].recipient_user_id).toBe(org.homeowner.userId);
+    expect(rows[0].payload.audience).toBe('homeowner');
+  });
+
+  it('T2-1: reports what STRIPE refunded when it differs from the requested amount', async () => {
+    const { appt, paymentId } = await seedPaidPayment();
+    // A prior out-of-band Dashboard refund leaves no local `refunds` row, so the route computes a
+    // full refund of $100 while Stripe only has $20 left to give back. The homeowner must be told
+    // $20.
+    vi.mocked(createRefund).mockResolvedValueOnce({
+      id: `re_oob_${crypto.randomUUID()}`,
+      amount: 2000,
+    } as never);
+
+    const { status } = await callRoute(handlerFor(paymentId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('notification_events')
+      .select('payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'refund_issued');
+    const rows = (data ?? []) as Array<{ payload: Record<string, unknown> }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload.amount_cents).toBe(2000);
   });
 });

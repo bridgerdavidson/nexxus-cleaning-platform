@@ -232,7 +232,7 @@ function EarningsSetupCard({
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-ink">
           <Landmark className="h-6 w-6" />
         </div>
         <div className="space-y-1">

@@ -47,7 +47,7 @@ export function HomeownerRepeatingCard({
       >
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <CalendarClock className="size-4 text-brand-600" aria-hidden />
+            <CalendarClock className="size-4 text-brand-ink" aria-hidden />
             <span className="text-[11px] font-extrabold uppercase tracking-wide text-brand-700">Repeating cleaning</span>
           </div>
           <div className="mt-1 text-sm font-bold">{service}</div>

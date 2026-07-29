@@ -68,7 +68,7 @@ function PropertyThumbnail({ photoUrl }: { photoUrl: string | null }) {
     );
   }
   return (
-    <div className="grid size-11 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-600">
+    <div className="grid size-11 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-ink">
       <Building2 className="size-5" aria-hidden />
     </div>
   );

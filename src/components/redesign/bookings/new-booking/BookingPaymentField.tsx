@@ -47,7 +47,7 @@ function CardRow({
         <div className="truncate text-sm font-semibold">{paymentMethodTitle(pm)}</div>
         <div className="truncate text-xs text-muted-foreground">{paymentMethodSubtitle(pm)}</div>
       </div>
-      {selected && <Check className="size-4 shrink-0 text-brand-600" aria-hidden />}
+      {selected && <Check className="size-4 shrink-0 text-brand-ink" aria-hidden />}
     </>
   );
   if (!onSelect) return <div className={baseClass}>{inner}</div>;
@@ -193,7 +193,7 @@ export function BookingPaymentField({
           <div className="text-sm font-semibold">Collect later</div>
           <div className="text-xs text-muted-foreground">Add a card before the job is charged.</div>
         </div>
-        {value === DEFER_PAYMENT && <Check className="size-4 shrink-0 text-brand-600" aria-hidden />}
+        {value === DEFER_PAYMENT && <Check className="size-4 shrink-0 text-brand-ink" aria-hidden />}
       </button>
 
       {adding ? (
