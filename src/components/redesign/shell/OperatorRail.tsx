@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "./nav-items";
+import { NavMessagesBadge } from "./NavMessagesBadge";
 
 /**
  * Desktop-only full-height brand rail. Collapsed to 64px showing the Nexxus
@@ -11,7 +12,15 @@ import type { NavItem } from "./nav-items";
  * One clean surface (no divider between brand and nav). Settings pinned bottom.
  * `nav` is the viewer's permission-filtered item list (see useOperatorNav).
  */
-export function OperatorRail({ activeId, nav }: { activeId?: string; nav: NavItem[] }) {
+export function OperatorRail({
+  activeId,
+  nav,
+  messagesUnread = 0,
+}: {
+  activeId?: string;
+  nav: NavItem[];
+  messagesUnread?: number;
+}) {
   return (
     <aside
       className={cn(
@@ -67,7 +76,10 @@ export function OperatorRail({ activeId, nav }: { activeId?: string; nav: NavIte
                 active && "bg-brand-600 text-white hover:bg-brand-600 hover:text-white"
               )}
             >
-              <Icon className="h-6 w-6 flex-none" aria-hidden />
+              <span className="relative flex-none">
+                <Icon className="h-6 w-6 flex-none" aria-hidden />
+                {item.id === "messages" && <NavMessagesBadge count={messagesUnread} />}
+              </span>
               <span className="whitespace-nowrap text-[13px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {item.label}
               </span>

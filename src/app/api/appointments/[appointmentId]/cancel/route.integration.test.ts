@@ -160,6 +160,23 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
 
     const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'cancellation_fee_charged')).toBe(true);
+
+    // T2-1: the homeowner is told, through the real route wiring. `reason` has to come from the
+    // same no-show flag the fee was billed under, so an inversion between the route and the fee
+    // helper would show up here and nowhere else.
+    const { data: notes } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'cancellation_fee_charged');
+    const noteRows = (notes ?? []) as Array<{
+      recipient_user_id: string;
+      payload: Record<string, unknown>;
+    }>;
+    expect(noteRows).toHaveLength(1);
+    expect(noteRows[0].recipient_user_id).toBe(org.homeowner.userId);
+    expect(noteRows[0].payload.amount_cents).toBe(5000);
+    expect(noteRows[0].payload.reason).toBe('no_show');
   });
 
   it('T1-6: a no-show is billed by the no-show policy, not the late-cancel policy (free cancels, $50 no-show)', async () => {

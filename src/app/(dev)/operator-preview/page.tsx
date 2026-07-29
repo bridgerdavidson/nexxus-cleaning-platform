@@ -19,6 +19,7 @@ export default function OperatorPreviewPage() {
           awaitingApproval: 4,
           revenueThisMonth: 12845,
           canViewPayments: true,
+          canViewBookings: true,
         }}
         unassigned={[
           { id: "u1", title: "Maple Ave · Deep clean", subtitle: "Thu Jun 25 · 10:30am" },
