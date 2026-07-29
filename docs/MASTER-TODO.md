@@ -56,12 +56,56 @@ Suggested internal order:
       ⚠ Standing ops rule: never Vercel-rollback past `70adc1b` once any transfer_attempt
       counter > 0; roll forward via a revert PR (see backlog T1-11/F8).
 
+## 2.5. White-label branding — Phase 0 of the go-to-market roadmap (BUILD-READY)
+
+Source: `docs/white-label-branding.md` (spec) + `docs/white-label-branding-plan.md` (5-PR plan).
+Strategy origin: Phase 0 of `2026-07-26-build-roadmap.md` in the brain. Scoped and planned
+2026-07-27; **nothing built yet**. Trigger: "let's build white-label" → open the plan, start PR 1.
+
+Every cleaning company sets one brand color and two logos, and their whole app becomes theirs.
+This is the first build of the go-to-market sequence (it gates the signup wizard's magic moment and
+is the pre-sell demo), and white-label is included at every tier per the locked pricing decision.
+
+- [ ] PR 1 `feat/branding-foundation` — OKLCH palette module, Tailwind brand ramp tokenized to CSS
+      vars, migration 120 (columns + `org-branding` bucket). **Invisible; defaults reproduce today's
+      palette exactly.**
+- [ ] PR 2 `fix/org-selection` — AuthContext picks the org deterministically (it currently takes an
+      arbitrary membership row) + switcher for multi-org users. Isolated: that file holds the
+      sign-in/out race invariants.
+- [ ] PR 3 `feat/branding-runtime` — BrandProvider, pre-paint bootstrap (no flash of default blue),
+      branding API route, settings section with live preview. **Demoable at this point.**
+- [ ] PR 4 `feat/branding-surfaces` — rail two-asset crossfade + monogram fallback + sidebar
+      expansion preference, homeowner/cleaner headers carry the logo (greetings promoted to real
+      `<h1>`s in the body), tenant loader, favicon/title/theme-color. **UI-heavy: `ui-feature-workflow`
+      + `ui-ux-pro-max` required.**
+- [ ] PR 5 `feat/branding-email` — branded card-collection email and the `/billing/add-card` page.
+
+Estimate 5 to 7 sessions. Next in the roadmap after this: Phase 1, SaaS billing.
+
 ## 3. Payments audit Tier 2 — visibility & notification gaps (pre-MVP)
 
 Source: backlog Tier 2 (T2-1 … T2-18). Silent failures + operator/homeowner blind spots.
-Biggest first: homeowner money notifications + `receipt_email` (T2-1 — re-check master, PR
-#161 may cover part), disputes surface (T2-2), refunds visibility + confirm/partial-refund
-dialog (T2-3/T2-4), then the rest.
+T2-1 (homeowner money notifications) is **DONE** — #213 render + #214 emit, merged 2026-07-28.
+Next biggest: **T2-1b emailed receipt** (see below), disputes surface (T2-2), refunds visibility
++ confirm/partial-refund dialog (T2-3/T2-4), then the rest.
+
+### 3a. T2-1b — emailed money receipts (next up in this block)
+
+Homeowners now get an in-app bell for charges, fees, and refunds, but **no email**, so a
+quarterly booker gets nothing at all. Their card statement shows the tenant's business name
+(`on_behalf_of`), so an unrecognized charge with no receipt makes calling the bank the cheapest
+path. Each dispute costs $15 + the amount, and it lands on the tenant.
+
+- **Interim, Bridger-manual, no code:** turn on Stripe Dashboard → Settings → Customer emails →
+  Successful payments. Nexxus-branded, but it stops charges going out unreceipted. Tracked in
+  Ops loose ends below.
+- **Real fix:** our own branded email, drained from the `notification_events` outbox that T2-1
+  already fills (it has `dedupe_key` and an unread `send_after` column; `.select('id')` on the
+  upsert yields exactly-once sends). Transport already exists at `src/lib/email/**`.
+- ⚠ **Never deliver this with `receipt_email`** on the PaymentIntent. It mutates the request body
+  under an unchanged idempotency key; the cancellation-fee path has no verification sweep behind
+  it and double-charges undetected. Full reasoning in the backlog under T2-1 / T2-1b.
+- **Prerequisite:** confirm the five SMTP vars are actually set in prod (they degrade silently).
 
 ## 4. Gap scan §2 — UX quick wins (interleave anytime)
 
@@ -105,6 +149,7 @@ queued questions. Do not start or re-raise unprompted.
 - [ ] Live-test PR #161 on dev preview (0341 decline → bell + badge + banner; hard-refresh stale tabs).
 - [ ] Stripe live-webhook checklist (runbook §5.1) — sequenced inside block 2 / T1-3 above.
 - [ ] Stripe Dashboard branding checklist for hosted onboarding (manual, in redesign-audit memory).
+- [ ] **Turn on Stripe automatic receipts** (Settings → Customer emails → Successful payments). The interim half of T2-1b: zero code, no money risk, but Nexxus-branded on every tenant's charge (separate charges and transfers use the platform's branding), so it gets revisited when the branded email lands. Note receipts never send in test mode.
 - [ ] Verify prod platform balance heals ≥ $0 after the 1% fee (platform-fee follow-up).
 - [ ] Flip the CI lint/tsc `continue-on-error` gates once pre-existing errors are cleaned (tsc already blocking; lint remains).
 - [ ] Sweep the ping-dot idiom out of cleaner/homeowner/StatTile (Today-card restyle follow-up).

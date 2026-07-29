@@ -1,4 +1,5 @@
 import * as React from 'react'
+import Link from 'next/link'
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { Card } from './card'
 import { cn } from '@/lib/utils'
@@ -9,12 +10,15 @@ export interface StatTileProps {
   unit?: string
   icon?: React.ReactNode
   trend?: { direction: 'up' | 'down'; label: string }
+  /** When set, the whole tile becomes a link to this route (KPI click-through).
+   *  Adds a hover lift + focus ring so it reads as interactive. */
+  href?: string
 }
 
-export function StatTile({ label, value, unit, icon, trend }: StatTileProps) {
+export function StatTile({ label, value, unit, icon, trend, href }: StatTileProps) {
   const up = trend?.direction === 'up'
-  return (
-    <Card className="p-4 lg:p-6">
+  const body = (
+    <>
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</p>
         {icon ? <span className="text-muted-foreground [&_svg]:size-5">{icon}</span> : null}
@@ -28,6 +32,21 @@ export function StatTile({ label, value, unit, icon, trend }: StatTileProps) {
           {trend.label}
         </p>
       ) : null}
-    </Card>
+    </>
   )
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="block rounded-card outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Card className="p-4 transition-shadow duration-fast hover:shadow-soft-md motion-reduce:transition-none lg:p-6">
+          {body}
+        </Card>
+      </Link>
+    )
+  }
+
+  return <Card className="p-4 lg:p-6">{body}</Card>
 }

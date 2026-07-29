@@ -466,6 +466,69 @@ const KNOWN_TYPES = new Set<string>([
 ]);
 
 /**
+ * Homeowner-facing money receipts (audit T2-1). Three proactive notices a
+ * homeowner should get: a completion charge landed, a refund is on its way, and
+ * a post-hoc cancellation/no-show fee was charged. Worded ONLY for the homeowner
+ * (the org already gets the admin-side `charge_failed` / `refund_failed` /
+ * `cancellation_fee_failed`, and sees settled money in the ledger).
+ *
+ * Rendered ahead of the main `build()` catalog and deliberately kept out of the
+ * `NotificationEventType` union and `KNOWN_TYPES`: that union and the emit sites
+ * live in `notifications/eventTypes.ts` + `src/lib/payments/**` (Lane B), which
+ * this change does not touch. The money PR that adds `receipt_email` and emits
+ * these rows to the homeowner (contract:
+ * docs/redesign/2026-07-27-t2-1-homeowner-money-events-contract.md) lights up
+ * the bell + live toast with no further UI change; until then these branches are
+ * dormant because nothing emits them. No em dashes (user-facing copy).
+ */
+const HOMEOWNER_MONEY_TYPES = new Set<string>([
+  'charge_succeeded',
+  'refund_issued',
+  'cancellation_fee_charged',
+]);
+
+function describeHomeownerMoneyEvent(
+  eventType: string,
+  payload: Payload,
+): NotificationDescriptor | null {
+  if (!HOMEOWNER_MONEY_TYPES.has(eventType)) return null;
+  const property = str(payload, 'property_label');
+  const when = whenLabel(str(payload, 'scheduled_date'), str(payload, 'scheduled_time'));
+  const amount = money(num(payload, 'amount_cents'));
+
+  switch (eventType) {
+    case 'charge_succeeded':
+      return {
+        title: amount ? `Paid ${amount} for your cleaning` : 'Your cleaning payment went through',
+        detail: joinDetail(property, when),
+        tone: 'success',
+        icon: CreditCard,
+      };
+
+    case 'refund_issued':
+      return {
+        title: amount ? `Refund of ${amount} on the way` : 'Your refund is on the way',
+        detail: joinDetail('Back to your card in 5 to 10 days', property),
+        tone: 'success',
+        icon: Banknote,
+      };
+
+    case 'cancellation_fee_charged': {
+      const kind = str(payload, 'reason') === 'no_show' ? 'no-show fee' : 'cancellation fee';
+      return {
+        title: amount ? `You were charged a ${amount} ${kind}` : `A ${kind} was charged`,
+        detail: joinDetail(property, when),
+        tone: 'warning',
+        icon: CreditCard,
+      };
+    }
+
+    default:
+      return null;
+  }
+}
+
+/**
  * Describe a notification for display. Unknown/future event types get a safe
  * fallback so an unrecognized row never crashes the bell.
  */
@@ -473,6 +536,8 @@ export function describeNotification(
   eventType: string,
   payload?: Payload,
 ): NotificationDescriptor {
+  const homeownerMoney = describeHomeownerMoneyEvent(eventType, payload);
+  if (homeownerMoney) return homeownerMoney;
   if (!KNOWN_TYPES.has(eventType)) return FALLBACK;
   return build(eventType as NotificationEventType, payload);
 }

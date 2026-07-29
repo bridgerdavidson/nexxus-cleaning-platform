@@ -30,6 +30,7 @@ import { settleSelfPay } from './settleSelfPay';
 import { chargeCompletedAppointmentAuto } from './chargeCompletedAppointment';
 import { refundCancelledInflightCharge } from './refundCancelledCharge';
 import { clawbackCleanerPayout, reverseJobTransfersForRefund } from './clawback';
+import { notifyHomeownerChargeSucceeded } from './homeownerMoneyEvents';
 import { recordPaymentEvent } from './events';
 import { checkSplitInvariant, type SplitInvariantResult } from './moneyMath';
 import {
@@ -678,6 +679,17 @@ export async function verifyUnknownChargeOutcomes(
             selfPaySettled = false;
           }
         }
+        // T2-1: this row was recorded FAILED, which already told the homeowner their payment did
+        // not go through (the T1-7 homeowner branch of charge_failed). Now that the charge is
+        // confirmed captured, send the receipt so that false notice is not the last word.
+        if (row.organization_id) {
+          await notifyHomeownerChargeSucceeded(supabase, {
+            appointmentId: row.appointment_id,
+            organizationId: row.organization_id,
+            paymentIntentId: succeeded.id,
+            amountCents: succeeded.amount,
+          });
+        }
         await recordPaymentEvent(supabase, {
           paymentId: row.id,
           appointmentId: row.appointment_id,
@@ -856,7 +868,7 @@ export async function settleUnsettledCaptures(
 
   const { data: rows } = await supabase
     .from('payments')
-    .select('id, appointment_id, organization_id, charge_kind, stripe_payment_intent_id')
+    .select('id, appointment_id, organization_id, charge_kind, stripe_payment_intent_id, amount')
     .eq('status', 'paid')
     .eq('payment_type', 'revenue')
     .is('transfer_amount', null)
@@ -872,6 +884,7 @@ export async function settleUnsettledCaptures(
     organization_id: string | null;
     charge_kind: string | null;
     stripe_payment_intent_id: string | null;
+    amount: number | string | null;
   }>;
   let settled = 0;
 
@@ -895,6 +908,19 @@ export async function settleUnsettledCaptures(
         });
         continue;
       }
+    }
+
+    // T2-1: this sweep exists because `payment_intent.succeeded` can be lost, and the receipt that
+    // rides on that delivery is lost with it. A card completion row is written 'paid' inline, so
+    // it never enters the synthetic-replay sweep and this is its only repair path. Same dedupe key
+    // as the webhook, so the normal case is a no-op.
+    if (p.charge_kind === 'completion' && p.stripe_payment_intent_id && p.organization_id) {
+      await notifyHomeownerChargeSucceeded(supabase, {
+        appointmentId: p.appointment_id,
+        organizationId: p.organization_id,
+        paymentIntentId: p.stripe_payment_intent_id,
+        amountCents: Math.round(Number(p.amount) * 100),
+      });
     }
 
     const result = await settleCleanerPayout(supabase, p.appointment_id, null);
