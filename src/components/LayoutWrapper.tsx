@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AuthProvider } from '../contexts/AuthContext';
+import { BrandProvider } from './branding/BrandProvider';
 import { ToastProvider } from '../contexts/ToastContext';
 import AuthQueryBridge from './AuthQueryBridge';
 import AuthDebugOverlay from './AuthDebugOverlay';
@@ -59,10 +60,12 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     <ToastProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <AuthQueryBridge />
-          <AuthDebugOverlay />
-          <ImpersonationBanner />
-          {children}
+          <BrandProvider>
+            <AuthQueryBridge />
+            <AuthDebugOverlay />
+            <ImpersonationBanner />
+            {children}
+          </BrandProvider>
         </AuthProvider>
         {process.env.NODE_ENV === 'development' && (
           <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
