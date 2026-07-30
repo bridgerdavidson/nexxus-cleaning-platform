@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { User, OrgRole, Organization } from '../types';
 import type { AuthState, AuthActions } from '../hooks/useAuth';
+import { selectOrganization } from '../lib/auth/selectOrganization';
 import { authDebug, tokenTail } from '../lib/authDebug';
 import {
   type OrgStatus,
@@ -17,6 +18,8 @@ export const AuthContext = React.createContext<(AuthState & AuthActions) | null>
 
 const IMPERSONATION_KEY = 'nexxus_impersonation';
 const PLATFORM_ADMIN_CACHE_PREFIX = 'nexxus_is_platform_admin:';
+// Remembered org for multi-org users (docs/white-label-branding.md decision 7).
+const CURRENT_ORG_KEY = 'nexxus.currentOrg';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -26,6 +29,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentOrganizationId, setCurrentOrganizationId] = useState<string | null>(null);
   const [currentOrgRole, setCurrentOrgRole] = useState<OrgRole | null>(null);
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
+  // Every membership of the signed-in user, for the settings org switcher.
+  // Loaded together with the current-org pick so the two can never disagree.
+  const [memberships, setMemberships] = useState<
+    { organization_id: string; role: string; name: string }[]
+  >([]);
   // Lifecycle of the org-context load. 'error' is a transient/retryable failure
   // (kept distinct from 'no-org') so a recoverable blip never silently disables
   // every org-scoped query and blanks the dashboard.
@@ -240,10 +248,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isStale = () => seq !== orgLoadSeqRef.current || isSigningOutRef.current;
     const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-    type OrgJoinRow = { id: string; name: string; logo_url: string | null };
+    type OrgJoinRow = {
+      id: string;
+      name: string;
+      logo_url: string | null;
+      brand_color?: string | null;
+      logo_icon_url?: string | null;
+      logo_full_url?: string | null;
+      brand_updated_at?: string | null;
+    };
     type OrgMembershipRow = {
       organization_id: string;
       role: string;
+      created_at: string | null;
       organizations: OrgJoinRow | OrgJoinRow[] | null;
     };
 
@@ -272,11 +289,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       orgLoadAbortRef.current = ac;
       const timeoutId = setTimeout(() => ac.abort(), 5000);
 
+      // All memberships, deterministically ordered. The DB ORDER BY and
+      // selectOrganization's sort agree deliberately: the query keeps the
+      // payload stable, the pure function is what the tests pin.
       const query = supabase
         .from('organization_members')
-        .select('organization_id, role, organizations ( id, name, logo_url, default_payout_model )')
+        .select(
+          'organization_id, role, created_at, organizations ( id, name, logo_url, default_payout_model, brand_color, logo_icon_url, logo_full_url, brand_updated_at )'
+        )
         .eq('user_id', currentUser.id)
-        .limit(1);
+        .order('created_at', { ascending: true })
+        .order('organization_id', { ascending: true });
 
       const abortPromise = new Promise<never>((_, reject) => {
         ac.signal.addEventListener('abort', () => reject(new Error('Org query aborted')));
@@ -308,9 +331,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authDebug('org-load', { attempt, result: outcome });
 
       if (outcome === 'rows') {
-        const membership = result.data![0];
+        const rows = result.data!;
+        const remembered =
+          typeof window !== 'undefined' ? window.localStorage.getItem(CURRENT_ORG_KEY) : null;
+        // Non-null: rows is never empty on the 'rows' outcome, and the helper
+        // returns one of the rows it was given.
+        const membership = (selectOrganization(rows, remembered) ?? rows[0]) as OrgMembershipRow;
         const orgData = membership.organizations;
         const org = Array.isArray(orgData) ? orgData[0] : orgData;
+        setMemberships(
+          rows.map((r) => {
+            const o = Array.isArray(r.organizations) ? r.organizations[0] : r.organizations;
+            return { organization_id: r.organization_id, role: r.role, name: o?.name ?? 'Organization' };
+          }),
+        );
         setCurrentOrganizationId(membership.organization_id);
         setCurrentOrgRole(membership.role as OrgRole);
         setCurrentOrganization(
@@ -319,6 +353,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 id: org.id,
                 name: org.name,
                 logo_url: org.logo_url || undefined,
+                brand_color: org.brand_color ?? null,
+                logo_icon_url: org.logo_icon_url ?? null,
+                logo_full_url: org.logo_full_url ?? null,
+                brand_updated_at: org.brand_updated_at ?? null,
                 created_at: new Date().toISOString(),
                 created_by: null,
                 require_job_photos: (org as { require_job_photos?: boolean }).require_job_photos ?? true,
@@ -349,6 +387,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setMemberships([]);
     }
     setOrgStatus(terminal.status);
     authDebug('org-load:terminal', { lastOutcome, hadOrg, status: terminal.status });
@@ -362,6 +401,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setMemberships([]);
       setOrgStatus('idle');
       lastOrgUserIdRef.current = null;
       lastOrgTokenRef.current = undefined;
@@ -812,9 +852,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setMemberships([]);
       setOrgStatus('idle');
       clearImpersonation();
       setLoading(false);
+      // Forget the remembered org so the next user on a shared device does not
+      // inherit it.
+      try {
+        window.localStorage.removeItem(CURRENT_ORG_KEY);
+      } catch {
+        /* private mode */
+      }
 
       // Default to local scope so logging out on one device no longer revokes a
       // shared account's sessions on every other device — Supabase's signOut
@@ -849,9 +897,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setCurrentOrganizationId(null);
       setCurrentOrgRole(null);
       setCurrentOrganization(null);
+      setMemberships([]);
       setOrgStatus('idle');
       clearImpersonation();
       setLoading(false);
+      try {
+        window.localStorage.removeItem(CURRENT_ORG_KEY);
+      } catch {
+        /* private mode */
+      }
       isSigningOutRef.current = false;
       isSigningInRef.current = false;
     }
@@ -893,6 +947,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const accessToken = session?.access_token || null;
 
+  const availableOrganizations = useMemo(
+    () => memberships.map((m) => ({ id: m.organization_id, name: m.name, role: m.role })),
+    [memberships],
+  );
+
+  const switchOrganization = useCallback((orgId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(CURRENT_ORG_KEY, orgId);
+    } catch {
+      /* private mode: the switch still happens for this load via the reload */
+    }
+    // Full reload rather than in-place swap: every org-scoped query, realtime
+    // channel, and brand variable is keyed on the current org, and a reload is
+    // the one path guaranteed to rebuild all three consistently. Switching is
+    // rare (only users in 2+ orgs ever see the control).
+    window.location.assign('/');
+  }, []);
+
   useEffect(() => {
     return () => {
       if (cleanupTimeoutRef.current) {
@@ -920,6 +993,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentOrganizationId: impersonation ? impersonation.orgId : currentOrganizationId,
     currentOrgRole: impersonation ? 'admin' : currentOrgRole,
     currentOrganization,
+    availableOrganizations,
+    switchOrganization,
     orgStatus: impersonation ? 'loaded' : orgStatus,
     isPlatformAdmin,
     impersonatingOrgId: impersonation?.orgId ?? null,
