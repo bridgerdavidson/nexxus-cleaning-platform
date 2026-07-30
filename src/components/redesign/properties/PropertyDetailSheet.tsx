@@ -287,7 +287,7 @@ export function PropertyDetailSheet({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={photoUrl} alt="" className="h-40 w-full rounded-card object-cover" />
                 ) : (
-                  <div className="grid h-40 w-full place-items-center rounded-card bg-brand-50 text-brand-600">
+                  <div className="grid h-40 w-full place-items-center rounded-card bg-brand-50 text-brand-ink">
                     <Building2 className="size-10" aria-hidden />
                   </div>
                 )}

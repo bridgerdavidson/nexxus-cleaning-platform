@@ -60,7 +60,7 @@ export function NotificationPanel({
           <button
             type="button"
             onClick={onMarkAllRead}
-            className="inline-flex items-center gap-1 rounded-control text-xs font-semibold text-brand-600 outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex items-center gap-1 rounded-control text-xs font-semibold text-brand-ink outline-none hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-ring"
           >
             <CheckCheck className="h-3.5 w-3.5" aria-hidden />
             Mark all read

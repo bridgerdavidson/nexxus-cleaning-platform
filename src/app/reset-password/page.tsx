@@ -149,7 +149,7 @@ function ResetPasswordContent() {
     return (
       <AuthShell>
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
           <p className="text-sm font-medium text-muted-foreground">Verifying your reset link...</p>
         </div>
       </AuthShell>
@@ -173,7 +173,7 @@ function ResetPasswordContent() {
           <Button asChild size="lg" className="w-full">
             <Link href="/forgot-password">Request a new link</Link>
           </Button>
-          <Link href="/login" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+          <Link href="/login" className="text-sm font-semibold text-brand-ink hover:text-brand-700">
             Back to sign in
           </Link>
         </div>
@@ -186,7 +186,7 @@ function ResetPasswordContent() {
     return (
       <AuthShell>
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
           <p className="text-sm font-medium text-muted-foreground">Password updated. Redirecting...</p>
         </div>
       </AuthShell>
@@ -233,7 +233,7 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
         </div>
       }
     >

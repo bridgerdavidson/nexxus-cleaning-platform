@@ -160,6 +160,23 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
 
     const { data: events } = await db.from('payment_events').select('event_type').eq('appointment_id', appt.id);
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'cancellation_fee_charged')).toBe(true);
+
+    // T2-1: the homeowner is told, through the real route wiring. `reason` has to come from the
+    // same no-show flag the fee was billed under, so an inversion between the route and the fee
+    // helper would show up here and nowhere else.
+    const { data: notes } = await db
+      .from('notification_events')
+      .select('recipient_user_id, payload')
+      .eq('appointment_id', appt.id)
+      .eq('event_type', 'cancellation_fee_charged');
+    const noteRows = (notes ?? []) as Array<{
+      recipient_user_id: string;
+      payload: Record<string, unknown>;
+    }>;
+    expect(noteRows).toHaveLength(1);
+    expect(noteRows[0].recipient_user_id).toBe(org.homeowner.userId);
+    expect(noteRows[0].payload.amount_cents).toBe(5000);
+    expect(noteRows[0].payload.reason).toBe('no_show');
   });
 
   it('T1-6: a no-show is billed by the no-show policy, not the late-cancel policy (free cancels, $50 no-show)', async () => {
@@ -595,6 +612,51 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
       });
       expect(status).not.toBe(403);
       expect(status).toBe(200);
+    });
+  });
+
+  // T1-18(a): the previews compute the late-cancel window on the client clock; the route shifts
+  // its own clock BACK by a 5-minute skew grace so a cancel previewed as "outside the window"
+  // can never flip to a charged fee at submit purely from clock skew. The grace must not swallow
+  // genuinely-late cancels beyond it.
+  describe('window-boundary skew grace (T1-18a)', () => {
+    function localParts(msFromNow: number) {
+      const d = new Date(Date.now() + msFromNow);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return {
+        date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+        time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+      };
+    }
+
+    it('charges NO fee just inside the boundary (within the skew grace)', async () => {
+      await setPolicy({ type: 'flat', value: 50, windowHours: 24 });
+      // Scheduled 23h58m out: nominally 2 minutes inside the 24h window (a client clock 2 minutes
+      // behind previewed this as outside → $0), within the 5-minute grace.
+      const { date, time } = localParts(24 * 60 * 60_000 - 2 * 60_000);
+      const appt = await seedAppointment({ scheduledDate: date, scheduledTime: time });
+      const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner' },
+      });
+      expect(status).toBe(200);
+      expect(body.fee_captured_cents).toBe(0);
+      expect(vi.mocked(createDestinationCharge)).not.toHaveBeenCalled();
+    });
+
+    it('still charges the fee for a late cancel beyond the grace', async () => {
+      await setPolicy({ type: 'flat', value: 50, windowHours: 24 });
+      // Scheduled 23h50m out: 10 minutes inside the window, beyond the 5-minute grace.
+      const { date, time } = localParts(24 * 60 * 60_000 - 10 * 60_000);
+      const appt = await seedAppointment({ scheduledDate: date, scheduledTime: time });
+      const { status, body } = await callRoute<{ fee_captured_cents: number }>(handlerFor(appt.id), {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner' },
+      });
+      expect(status).toBe(200);
+      expect(body.fee_captured_cents).toBe(5000);
     });
   });
 });

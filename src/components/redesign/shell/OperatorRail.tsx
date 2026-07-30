@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "./nav-items";
+import { NavMessagesBadge } from "./NavMessagesBadge";
 
 /**
  * Desktop-only full-height brand rail. Collapsed to 64px showing the Nexxus
@@ -17,10 +18,12 @@ export function OperatorRail({
   activeId,
   nav,
   badges,
+  messagesUnread = 0,
 }: {
   activeId?: string;
   nav: NavItem[];
   badges?: Record<string, number>;
+  messagesUnread?: number;
 }) {
   return (
     <aside
@@ -79,7 +82,7 @@ export function OperatorRail({
               )}
             >
               <span className="relative flex-none">
-                <Icon className="h-6 w-6" aria-hidden />
+                <Icon className="h-6 w-6 flex-none" aria-hidden />
                 {badge > 0 && (
                   <span
                     aria-hidden
@@ -88,6 +91,7 @@ export function OperatorRail({
                     {badge > 99 ? "99+" : badge}
                   </span>
                 )}
+                {item.id === "messages" && <NavMessagesBadge count={messagesUnread} />}
               </span>
               <span className="whitespace-nowrap text-[13px] font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                 {item.label}

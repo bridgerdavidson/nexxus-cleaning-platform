@@ -445,23 +445,42 @@ nav.sticky {
   /* shadow base (warm near-black, light theme) */
   --shadow-rgb: 20 18 15;
 
+  /* brand ramp — overridden per organization at runtime (docs/white-label-branding.md) */
+  --brand-50: 221 100% 97%;        /* #EFF4FF */
+  --brand-100: 223 100% 93%;       /* #DCE6FF */
+  --brand-200: 223 100% 88%;       /* #C0D2FF */
+  --brand-300: 225 100% 79%;       /* #93AEFF */
+  --brand-400: 225 100% 68%;       /* #5C84FF */
+  --brand-500: 225 100% 59%;       /* #2E62FF */
+  --brand-600: 221 99% 50%;        /* #0150FC */
+  --brand-700: 221 99% 40%;        /* #0140CC */
+  --brand-800: 224 87% 31%;        /* #0A2F95 */
+  --brand-900: 223 75% 25%;        /* #102A6E */
+  --brand-950: 224 75% 16%;        /* #0A1A47 */
+  --brand-fg-600: 0 0% 100%;       /* white on brand-600 */
+  --brand-fg-500: 0 0% 100%;       /* white on brand-500 */
+  /* brand-colored text on a neutral surface, per theme; --brand-ink selects one */
+  --brand-ink-on-light: 221 99% 50%;  /* = brand-600, today's value: adopting this changes nothing */
+  --brand-ink-on-dark: 225 100% 68%;  /* = brand-400; brand-500 fails AA on the dark card */
+  --brand-ink: var(--brand-ink-on-light);
+
   --background: 45 20% 96%;        /* #F7F6F3 warm-50 */
   --foreground: 34 12% 12%;        /* #211E1A warm-900 */
   --card: 0 0% 100%;               /* #FFFFFF */
   --card-foreground: 34 12% 12%;   /* #211E1A */
   --popover: 0 0% 100%;            /* #FFFFFF */
   --popover-foreground: 34 12% 12%;/* #211E1A */
-  --primary: 221 99% 50%;          /* #0150FC brand-600 */
-  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --primary: var(--brand-600);
+  --primary-foreground: var(--brand-fg-600);
   --secondary: 43 18% 92%;         /* #EFEDE8 warm-100 */
   --secondary-foreground: 34 12% 12%;/* #211E1A */
   --muted: 43 18% 92%;             /* #EFEDE8 */
   --muted-foreground: 37 9% 38%;   /* #6B6459 warm-600 */
-  --accent: 221 100% 97%;          /* #EFF4FF brand-50 */
-  --accent-foreground: 221 99% 40%;/* #0140CC brand-700 */
+  --accent: var(--brand-50);
+  --accent-foreground: var(--brand-700);
   --border: 38 18% 88%;            /* #E6E2DB warm-200 */
   --input: 38 18% 88%;             /* #E6E2DB */
-  --ring: 221 99% 50%;             /* #0150FC brand-600 */
+  --ring: var(--brand-600);
   --destructive: 0 72% 51%;        /* #DC2626 danger (darkened for WCAG AA: white-on label 4.83:1) */
   --destructive-foreground: 0 0% 100%;/* #FFFFFF */
   --chart-1: hsl(221 99% 50%);
@@ -481,17 +500,18 @@ nav.sticky {
   --card-foreground: 40 23% 95%;   /* #F5F3EF */
   --popover: 40 14% 12%;           /* #24211B */
   --popover-foreground: 40 23% 95%;/* #F5F3EF */
-  --primary: 225 100% 59%;         /* #2E62FF brand-500 (lifted) */
-  --primary-foreground: 0 0% 100%; /* #FFFFFF */
+  --primary: var(--brand-500);     /* lifted a step: one ramp serves both themes */
+  --primary-foreground: var(--brand-fg-500);
   --secondary: 33 11% 15%;         /* #2C2823 */
   --secondary-foreground: 40 23% 95%;/* #F5F3EF */
   --muted: 33 11% 15%;             /* #2C2823 */
   --muted-foreground: 38 13% 68%;  /* #B8B0A2 */
-  --accent: 33 11% 15%;            /* #2C2823 */
-  --accent-foreground: 223 100% 93%;/* #DCE6FF brand-100 */
+  --accent: 33 11% 15%;            /* #2C2823 — warm neutral, deliberately not a brand tint */
+  --accent-foreground: var(--brand-100);
   --border: 37 13% 19%;            /* #38332B */
   --input: 37 13% 19%;             /* #38332B */
-  --ring: 225 100% 68%;            /* #5C84FF brand-400 */
+  --ring: var(--brand-400);
+  --brand-ink: var(--brand-ink-on-dark);
   --destructive: 358 86% 64%;      /* #F2555A */
   --destructive-foreground: 36 11% 9%;/* #1A1815 */
   --chart-1: hsl(221 99% 63%);

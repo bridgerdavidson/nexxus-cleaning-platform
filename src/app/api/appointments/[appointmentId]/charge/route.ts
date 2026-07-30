@@ -34,6 +34,9 @@ const HTTP_BY_CODE: Record<ChargeNowCode, number> = {
   // Another charge for this appointment won the atomic claim and is in flight (operator + homeowner
   // retry, or a double-click). The loser bows out here so only one real charge is created.
   charge_in_progress: 409,
+  // T1-16: a prior attempt's outcome is unknown (lost response; Stripe may have captured) and the
+  // verification sweep hasn't confirmed it yet. A fresh key here could double-charge.
+  outcome_verification_pending: 409,
   // A genuine Stripe failure from the ACH fallback (created+confirm threw), not a precondition.
   failed: 502,
   error: 500,

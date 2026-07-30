@@ -73,7 +73,7 @@ function TenantCell({
     <button
       type="button"
       onClick={() => onOpen(entry.target_org_id as string)}
-      className="text-left font-medium text-brand-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="text-left font-medium text-brand-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {entry.target_org_name ?? 'View tenant'}
     </button>

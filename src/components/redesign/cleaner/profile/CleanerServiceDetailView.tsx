@@ -85,7 +85,7 @@ export function CleanerServiceDetailView({
                       <ul className="space-y-2">
                         {tier.tasks.map((task) => (
                           <li key={task.id} className="flex items-start gap-2.5 text-sm text-foreground/90">
-                            <Check className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />
+                            <Check className="mt-0.5 size-4 shrink-0 text-brand-ink" aria-hidden />
                             <span>{task.task}</span>
                           </li>
                         ))}

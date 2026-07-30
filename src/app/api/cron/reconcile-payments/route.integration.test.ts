@@ -8,6 +8,8 @@ vi.mock('@/lib/stripe/reconcile', () => ({
   retrievePaymentIntent: vi.fn(),
   retrieveCharge: vi.fn(),
   listRefundsForPaymentIntent: vi.fn(async () => []),
+  searchPaymentIntentsByAppointment: vi.fn(async () => []),
+  listRecentPaymentIntentsForCustomer: vi.fn(async () => []),
 }));
 
 // Failed-payout retry → settleCleanerPayout → @/lib/stripe/transfers (getStripe()). Mock it.
@@ -800,7 +802,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(0);
 
       // The manual-review marker is itself a critical owner alert.
-      const alertType = `payment_refund_unwind_manual_review:${org.organizationId}`;
+      const alertType = `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`;
       const { data: alerts } = await db
         .from('platform_alerts')
         .select('severity')
@@ -812,7 +814,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       await db
         .from('platform_alerts')
         .delete()
-        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}`);
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`);
     }
   });
 
@@ -837,7 +839,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       await db
         .from('platform_alerts')
         .delete()
-        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}`);
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`);
     }
   });
 
@@ -907,7 +909,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       await db
         .from('platform_alerts')
         .delete()
-        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}`);
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`);
     }
   });
 
@@ -933,7 +935,7 @@ describe('POST /api/cron/reconcile-payments', () => {
       await db
         .from('platform_alerts')
         .delete()
-        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}`);
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`);
     }
   });
 
@@ -1003,5 +1005,225 @@ describe('POST /api/cron/reconcile-payments', () => {
     expect(oldIdx).toBeLessThan(noisyIdx); // oldest strand first
     expect(rows.filter((r) => r.appointment_id === apptNoisy.id).length).toBe(1); // deduped
     expect(rows[noisyIdx].reconciler_attempts).toBe(2); // backoff input: sweep-actor failures
+  });
+
+  it('stranded_refund_unwind_candidates RPC v2: a FRESH failure defers the whole appointment (T1-15c)', async () => {
+    // v1 picked "newest failure older than the cutoff", so an appointment whose live unwind
+    // failed again seconds ago was still retried this sweep against a stale timestamp, racing
+    // the live path. v2 keys candidacy on the ABSOLUTE newest failure.
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const failureRow = (minutesAgo: number) => ({
+      appointment_id: appt.id,
+      organization_id: org.organizationId,
+      event_type: 'transfer_reversal_failed',
+      actor: 'webhook',
+      amount: 1000,
+      payload: {},
+      created_at: new Date(Date.now() - minutesAgo * 60 * 1000).toISOString(),
+    });
+    await db.from('payment_events').insert([failureRow(120), failureRow(1)]);
+
+    const { data, error } = await db.rpc('stranded_refund_unwind_candidates', {
+      p_cutoff: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+      p_batch: 1000,
+    });
+    expect(error).toBeNull();
+    const rows = (data ?? []) as Array<{ appointment_id: string }>;
+    expect(rows.find((r) => r.appointment_id === appt.id)).toBeUndefined();
+  });
+
+  it('stranded_refund_unwind_candidates RPC v2: attempts count the worst TYPE, not all failure legs (T1-15c)', async () => {
+    // One sweep failing both legs appends one event per type; a flat count read that as 2
+    // attempts and double-advanced the exponential backoff.
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const failureRow = (type: string, minutesAgo: number) => ({
+      appointment_id: appt.id,
+      organization_id: org.organizationId,
+      event_type: type,
+      actor: 'reconciler',
+      amount: 1000,
+      payload: {},
+      created_at: new Date(Date.now() - minutesAgo * 60 * 1000).toISOString(),
+    });
+    // Two sweeps, each failing both legs: 4 events, 2 per type => 2 attempts.
+    await db.from('payment_events').insert([
+      failureRow('transfer_reversal_failed', 120),
+      failureRow('refund_clawback_failed', 120),
+      failureRow('transfer_reversal_failed', 60),
+      failureRow('refund_clawback_failed', 60),
+    ]);
+
+    const { data, error } = await db.rpc('stranded_refund_unwind_candidates', {
+      p_cutoff: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+      p_batch: 1000,
+    });
+    expect(error).toBeNull();
+    const rows = (data ?? []) as Array<{ appointment_id: string; reconciler_attempts: number }>;
+    const mine = rows.find((r) => r.appointment_id === appt.id);
+    expect(mine).toBeDefined();
+    expect(mine!.reconciler_attempts).toBe(2);
+  });
+
+  it('stranded refund-unwind: an unreadable preflight records a bounded stall event (T1-15a)', async () => {
+    const { db, appt, piId } = await seedStrandedUnwind();
+    stranded.unreadablePis.add(piId);
+
+    const { status, body } = await callRoute<{
+      strandedRefundUnwinds: { deferred: number };
+    }>(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+    expect(body.strandedRefundUnwinds.deferred).toBeGreaterThanOrEqual(1);
+
+    const stalls = await markerEvents(db, appt.id, 'refund_unwind_preflight_stalled');
+    expect(stalls.length).toBe(1);
+    expect(stalls[0].payload.stall_reason).toBe('charge_unreadable');
+    // Not terminalized: still a candidate.
+    expect((await markerEvents(db, appt.id, 'refund_unwind_manual_review')).length).toBe(0);
+  });
+
+  it('stranded refund-unwind: a DB-shape stall (no PI) exhausts to a terminal manual review (T1-15a starvation bound)', async () => {
+    const { db, appt, paymentId, piId } = await seedStrandedUnwind();
+    // No PaymentIntent anywhere on the appointment: nothing to re-derive from, ever — the one
+    // stall class that cannot self-heal and must eventually terminalize.
+    await db.from('payments').update({ stripe_payment_intent_id: null }).eq('id', paymentId);
+    // 11 prior stalls in this candidacy episode (all newer than the hour-old failure event); the
+    // 12th touch must terminalize instead of stalling again.
+    await db.from('payment_events').insert(
+      Array.from({ length: 11 }, (_, i) => ({
+        appointment_id: appt.id,
+        organization_id: org.organizationId,
+        payment_id: paymentId,
+        event_type: 'refund_unwind_preflight_stalled',
+        actor: 'reconciler',
+        amount: 0,
+        payload: { source: 'retry-stranded-refund-unwinds', stall_reason: 'no_payment_intent' },
+        created_at: new Date(Date.now() - (12 - i) * 60 * 1000).toISOString(),
+      })),
+    );
+
+    try {
+      const first = await callRoute<{
+        strandedRefundUnwinds: { manualReview: number };
+      }>(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(first.status).toBe(200);
+      expect(first.body.strandedRefundUnwinds.manualReview).toBeGreaterThanOrEqual(1);
+
+      const manualEvents = await markerEvents(db, appt.id, 'refund_unwind_manual_review');
+      expect(manualEvents.length).toBe(1);
+      expect(manualEvents[0].payload.preflight_exhausted).toBe(true);
+      expect(manualEvents[0].payload.stall_reason).toBe('no_payment_intent');
+
+      // The terminal marker pages the owner, keyed per APPOINTMENT (T1-15d).
+      const { data: alerts } = await db
+        .from('platform_alerts')
+        .select('severity')
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`)
+        .is('resolved_at', null);
+      expect((alerts ?? []).length).toBe(1);
+
+      // Terminal for real: the marker is newer than the failure, so the appointment leaves the
+      // candidate set (no new stall events on the next sweep).
+      const stallCount = async () =>
+        (await markerEvents(db, appt.id, 'refund_unwind_preflight_stalled')).length;
+      const before = await stallCount();
+      const second = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(second.status).toBe(200);
+      expect(await stallCount()).toBe(before);
+      expect(vi.mocked(retrievePaymentIntent).mock.calls.filter((c) => c[0] === piId).length).toBe(0);
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `payment_refund_unwind_manual_review:${org.organizationId}:appt_${appt.id}`);
+    }
+  });
+
+  it('stranded refund-unwind: a Stripe-READ stall past the budget alerts but NEVER terminalizes (money is never abandoned)', async () => {
+    // A transport outage hits every candidate at once; terminalizing would permanently end
+    // auto-recovery for money that heals itself when Stripe comes back.
+    const { db, appt, paymentId, piId, cleanerTransferId } = await seedStrandedUnwind();
+    stranded.unreadablePis.add(piId);
+    await db.from('payment_events').insert(
+      Array.from({ length: 11 }, (_, i) => ({
+        appointment_id: appt.id,
+        organization_id: org.organizationId,
+        payment_id: paymentId,
+        event_type: 'refund_unwind_preflight_stalled',
+        actor: 'reconciler',
+        amount: 0,
+        payload: { source: 'retry-stranded-refund-unwinds', stall_reason: 'charge_unreadable' },
+        created_at: new Date(Date.now() - (12 - i) * 60 * 1000).toISOString(),
+      })),
+    );
+
+    try {
+      const first = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(first.status).toBe(200);
+
+      // No terminal marker; a deduped per-appointment critical alert pages a human instead, and
+      // no 12th stall event is appended (ledger growth is bounded while the outage lasts).
+      expect((await markerEvents(db, appt.id, 'refund_unwind_manual_review')).length).toBe(0);
+      expect((await markerEvents(db, appt.id, 'refund_unwind_preflight_stalled')).length).toBe(11);
+      const { data: alerts } = await db
+        .from('platform_alerts')
+        .select('severity')
+        .eq('alert_type', `refund_unwind_preflight_blocked:${appt.id}`)
+        .is('resolved_at', null);
+      expect((alerts ?? []).length).toBe(1);
+      expect((alerts![0] as { severity: string }).severity).toBe('critical');
+
+      // Stripe heals: the SAME candidate recovers on the next sweep — candidacy was never lost.
+      stranded.unreadablePis.delete(piId);
+      const second = await callRoute(POST, { method: 'POST', headers: cronHeaders, body: {} });
+      expect(second.status).toBe(200);
+      expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(1);
+      expect(
+        vi.mocked(reversePlatformTransfer).mock.calls.find((c) => c[0] === cleanerTransferId)?.[1],
+      ).toBe(6000);
+    } finally {
+      await db
+        .from('platform_alerts')
+        .delete()
+        .eq('alert_type', `refund_unwind_preflight_blocked:${appt.id}`);
+    }
+  });
+
+  it('stranded refund-unwind: a refund landing mid-iteration defers instead of reversing a stale target (T1-15b)', async () => {
+    const { db, appt, chargeId } = await seedStrandedUnwind({ amountRefunded: 5000 });
+    // The pre-reversal recheck re-reads the charge; a different cumulative refunded total means
+    // the live unwind owns a fresh target — the sweep must defer, not reverse the stale one.
+    stranded.charges.set(chargeId, {
+      id: chargeId,
+      object: 'charge',
+      amount: 10000,
+      amount_refunded: 6500,
+    });
+
+    const { status, body } = await callRoute<{
+      strandedRefundUnwinds: { deferred: number };
+    }>(POST, { method: 'POST', headers: cronHeaders, body: {} });
+    expect(status).toBe(200);
+    expect(body.strandedRefundUnwinds.deferred).toBeGreaterThanOrEqual(1);
+
+    // No money moved, no markers of any kind: still a candidate for the next sweep.
+    const reversals = vi.mocked(reversePlatformTransfer).mock.calls;
+    expect(reversals.find((c) => String(c[0]).includes(appt.id))).toBeUndefined();
+    expect((await markerEvents(db, appt.id, 'refund_unwind_recovered')).length).toBe(0);
+    expect((await markerEvents(db, appt.id, 'refund_unwind_manual_review')).length).toBe(0);
+    expect((await markerEvents(db, appt.id, 'refund_unwind_preflight_stalled')).length).toBe(0);
   });
 });
