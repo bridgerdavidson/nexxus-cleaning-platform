@@ -7,6 +7,7 @@ import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 import { settleCleanerPayout } from '@/lib/payments/settleCleanerPayout';
 import { chargeCompletedAppointmentAuto } from '@/lib/payments/chargeCompletedAppointment';
+import { retrievePaymentIntent } from '@/lib/stripe/reconcile';
 
 /**
  * Shared engine for the pay-request thread routes (spec §5/§8).
@@ -368,14 +369,38 @@ export async function triggerPayRequestSettlement(
     }
     const { data: captured } = await supabase
       .from('payments')
-      .select('id')
+      .select('id, stripe_payment_intent_id')
       .eq('appointment_id', appointmentId)
       .eq('payment_type', 'revenue')
       .eq('status', 'paid')
       .not('captured_at', 'is', null)
+      .order('created_at', { ascending: false })
       .limit(1);
     if (!captured || captured.length === 0) return 'deferred';
-    const result = await settleCleanerPayout(supabase, appointmentId, null);
+    // Ride the charge, not the platform balance: a transfer created with
+    // source_transaction draws on the captured charge even while its funds are
+    // still pending, whereas a source-less transfer needs AVAILABLE platform
+    // balance - which is only the accumulated platform fees, so a negotiated
+    // payout approved after capture would bounce with insufficient_funds until
+    // the charge cleared (T+2). The webhook path already passes latest_charge;
+    // this funds the deferred-approval path the same way. Resolution failure
+    // falls back to the balance-funded create rather than blocking settlement.
+    let platformChargeId: string | null = null;
+    const piId =
+      (captured[0] as { stripe_payment_intent_id: string | null }).stripe_payment_intent_id ?? null;
+    if (piId) {
+      try {
+        const pi = await retrievePaymentIntent(piId);
+        const latest = pi.latest_charge;
+        platformChargeId = typeof latest === 'string' ? latest : latest?.id ?? null;
+      } catch {
+        console.error(
+          'triggerPayRequestSettlement: could not resolve the platform charge, settling from balance',
+          appointmentId,
+        );
+      }
+    }
+    const result = await settleCleanerPayout(supabase, appointmentId, platformChargeId);
     return result.settled ? 'settled' : 'deferred';
   } catch (err) {
     console.error('triggerPayRequestSettlement failed (sweep will retry):', err);
