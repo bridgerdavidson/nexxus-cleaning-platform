@@ -333,8 +333,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (outcome === 'rows') {
         const rows = result.data!;
-        const remembered =
-          typeof window !== 'undefined' ? window.localStorage.getItem(CURRENT_ORG_KEY) : null;
+        let remembered: string | null = null;
+        try {
+          if (typeof window !== 'undefined') remembered = window.localStorage.getItem(CURRENT_ORG_KEY);
+        } catch {
+          /* blocked storage (SecurityError): fall through to the oldest membership */
+        }
         // Non-null: rows is never empty on the 'rows' outcome, and the helper
         // returns one of the rows it was given.
         const membership = (selectOrganization(rows, remembered) ?? rows[0]) as OrgMembershipRow;
@@ -600,10 +604,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setCurrentOrganizationId(null);
           setCurrentOrgRole(null);
           setCurrentOrganization(null);
+          setMemberships([]);
           setOrgStatus('idle');
           clearImpersonation();
           setLoading(false);
           isSigningInRef.current = false;
+          // Same contract as performSignOut: a session that ends remotely (revocation,
+          // expiry) must not leave the remembered org for the next user on the device.
+          try {
+            window.localStorage.removeItem(CURRENT_ORG_KEY);
+          } catch {
+            /* blocked storage */
+          }
         };
 
         // A sign-out we initiated locally clears immediately and unconditionally.
@@ -953,26 +965,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [memberships],
   );
 
-  const switchOrganization = useCallback(
-    (orgId: string) => {
-      if (typeof window === 'undefined') return;
-      try {
-        window.localStorage.setItem(CURRENT_ORG_KEY, orgId);
-      } catch {
-        /* private mode: the switch still happens for this load via the reload */
-      }
-      // Full reload rather than in-place swap: every org-scoped query, realtime
-      // channel, and brand variable is keyed on the current org, and a reload is
-      // the one path guaranteed to rebuild all three consistently. Switching is
-      // rare (only users in 2+ orgs ever see the control). Land on the role root
-      // for the TARGET org ('/' is the marketing page, even signed in), mapping
-      // org 'owner' to the operator shell since UserRole has no owner.
-      const target = memberships.find((m) => m.organization_id === orgId);
-      const role = target?.role === 'owner' ? 'admin' : (target?.role ?? '');
-      window.location.assign(getDashboardPath(role));
-    },
-    [memberships],
-  );
+  const switchOrganization = useCallback((orgId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(CURRENT_ORG_KEY, orgId);
+    } catch {
+      /* Blocked storage: the selection cannot persist across the reload, so the
+       * app comes back on the previous org. Accepted: the storage-less case is
+       * vanishingly rare and every other remembered-org feature degrades the
+       * same way. */
+    }
+    // Full reload rather than in-place swap: every org-scoped query, realtime
+    // channel, and brand variable is keyed on the current org, and a reload is
+    // the one path guaranteed to rebuild all three consistently. Switching is
+    // rare (only users in 2+ orgs ever see the control). Land on the GLOBAL
+    // role's root: the role layouts gate on user.role, so any other target
+    // just bounces ('/' is the marketing page, even signed in).
+    window.location.assign(getDashboardPath(userRef.current?.role ?? ''));
+  }, []);
 
   useEffect(() => {
     return () => {

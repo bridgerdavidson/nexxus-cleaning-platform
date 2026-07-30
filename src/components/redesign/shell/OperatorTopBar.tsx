@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
+import { OrgSwitcherMenuItems } from "@/components/redesign/shared/OrgSwitcherMenuItems";
 
 type Profile = { firstName?: string; lastName?: string; avatarUrl?: string };
 
@@ -100,6 +101,7 @@ export function OperatorTopBar({
             <DropdownMenuItem asChild>
               <Link href="/admin/settings">Settings</Link>
             </DropdownMenuItem>
+            <OrgSwitcherMenuItems />
             <DropdownMenuItem destructive onClick={() => signOut()}>
               Sign out
             </DropdownMenuItem>
