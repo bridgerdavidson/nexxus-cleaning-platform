@@ -89,6 +89,13 @@ export interface Organization {
   id: string;
   name: string;
   logo_url?: string | null;
+  /** One hex the tenant picks; null falls back to the Nexxus brand. See docs/white-label-branding.md. */
+  brand_color?: string | null;
+  /** Square-ish mark: collapsed rail, mobile nav, favicon, email. Null renders an initials monogram. */
+  logo_icon_url?: string | null;
+  /** Lockup or wordmark: expanded rail, drawer header. Null renders the icon plus the org name. */
+  logo_full_url?: string | null;
+  brand_updated_at?: string | null;
   created_at: string;
   created_by: string | null;
   // Stripe tenant Connect (merchant of record) — added in migration 065_stripe_restructure.
@@ -296,6 +303,9 @@ export interface Payment {
   stripe_payment_intent_id: string | null;
   stripe_setup_intent_id: string | null;
   tenant_transfer_attempt: number; // T1-11: tenant-transfer idempotency-key rotation counter (0 = unsuffixed key)
+  manual_record_key: string | null; // T1-17: per-form-session dedupe key for manual "Record payment" rows
+  charge_outcome_verified_at: string | null; // T1-16: sweep verification stamp for failed PI-less completion rows
+  charge_outcome_unknown_since: string | null; // T1-16: latest unknown-outcome attempt time (grace anchor + concurrency token)
   notes: string | null;
   reference: string | null;
   paid_at: string | null;

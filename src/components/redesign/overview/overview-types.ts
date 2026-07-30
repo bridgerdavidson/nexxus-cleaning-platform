@@ -10,6 +10,9 @@ export type OverviewKpis = {
    *  tile is dropped entirely (the strip reflows to 3 tiles, no substitute). */
   revenueThisMonth: number | null;
   canViewPayments: boolean;
+  /** Gates the operational tiles' click-through to /admin/bookings (mirrors the
+   *  can_view_bookings route gate). When false the tiles render non-clickable. */
+  canViewBookings: boolean;
 };
 
 export type QueueItem = {

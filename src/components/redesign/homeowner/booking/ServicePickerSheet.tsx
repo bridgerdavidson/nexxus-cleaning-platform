@@ -76,7 +76,7 @@ export function ServicePickerSheet({ open, onOpenChange, selectedId, onSelect }:
                       {serviceMetaLabel(s.base_price, s.duration_minutes)}
                     </div>
                   </div>
-                  {on && <Check className="size-5 shrink-0 text-brand-600" aria-hidden />}
+                  {on && <Check className="size-5 shrink-0 text-brand-ink" aria-hidden />}
                 </button>
               );
             })

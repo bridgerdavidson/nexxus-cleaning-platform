@@ -20,6 +20,14 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
   const status = params.get('status') ?? 'open';
+  // An unknown status used to silently fall through to "all" — reject it instead so a typo can't
+  // read as a broader result set.
+  if (status !== 'open' && status !== 'resolved' && status !== 'all') {
+    return NextResponse.json(
+      { error: '`status` must be open, resolved, or all' },
+      { status: 400 },
+    );
+  }
   const limit = Math.min(Math.max(Number(params.get('limit')) || 50, 1), 100);
   const offset = Math.max(Number(params.get('offset')) || 0, 0);
 

@@ -73,7 +73,7 @@ function LoginContent() {
           placeholder="Enter your password"
         />
         <div className="flex justify-end">
-          <Link href="/forgot-password" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+          <Link href="/forgot-password" className="text-sm font-semibold text-brand-ink hover:text-brand-700">
             Forgot your password?
           </Link>
         </div>
@@ -90,7 +90,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
         </div>
       }
     >

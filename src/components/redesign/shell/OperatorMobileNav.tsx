@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { OPERATOR_NAV, type NavItem } from "./nav-items";
+import { NavMessagesBadge } from "./NavMessagesBadge";
 
 const SETTINGS = OPERATOR_NAV.find((i) => i.id === "settings")!;
 
@@ -30,12 +31,14 @@ export function OperatorMobileNav({
   primary,
   secondary,
   badges,
+  messagesUnread = 0,
 }: {
   activeId?: string;
   onNewBooking?: () => void;
   primary: NavItem[];
   secondary: NavItem[];
   badges?: Record<string, number>;
+  messagesUnread?: number;
 }) {
   const drawerHasBadge = secondary.some((i) => (badges?.[i.id] ?? 0) > 0);
   return (
@@ -67,14 +70,14 @@ export function OperatorMobileNav({
               aria-current={active ? "page" : undefined}
               className={cn(
                 "group relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors duration-fast",
-                active ? "font-semibold text-brand-600" : "text-muted-foreground"
+                active ? "font-semibold text-brand-ink" : "text-muted-foreground"
               )}
             >
               {active && (
                 <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-7 rounded-full bg-brand-600 animate-nav-pip-in motion-reduce:animate-none" aria-hidden />
               )}
-              <span className="relative transition-transform duration-fast group-active:scale-90">
-                <Icon className="h-6 w-6" aria-hidden />
+              <span className="relative">
+                <Icon className="h-6 w-6 transition-transform duration-fast group-active:scale-90" aria-hidden />
                 {badge > 0 && (
                   <span
                     aria-hidden
@@ -83,6 +86,7 @@ export function OperatorMobileNav({
                     {badge > 99 ? "99+" : badge}
                   </span>
                 )}
+                {item.id === "messages" && <NavMessagesBadge count={messagesUnread} />}
               </span>
               {item.label}
               {badge > 0 && <span className="sr-only">{badge} waiting</span>}

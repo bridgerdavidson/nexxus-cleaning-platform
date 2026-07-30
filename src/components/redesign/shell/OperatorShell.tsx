@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { usePayRequestsPendingCount } from "@/hooks/usePayRequestsPendingCount";
+import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
 import { OperatorMobileNav } from "./OperatorMobileNav";
@@ -62,8 +63,12 @@ export function OperatorShell({
   // global affordance every Operator surface shares, so it is gated once here rather than
   // in each consumer. A manager without can_edit_bookings gets `undefined`, which each
   // consumer already treats as "hide the trigger" (see OperatorTopBar/OperatorMobileNav).
-  const { currentOrgRole } = useAuth();
+  const { currentOrgRole, user } = useAuth();
   const { permissions } = useManagerPermissions();
+  // Unread count for the Messages nav badge (rail + mobile), mirroring the
+  // cleaner/homeowner shells. 'office' scope matches the operator inbox, which
+  // shows the org's office threads (job threads are a read-only optional section).
+  const messagesUnread = useUnreadMessageCount(user?.id, "office");
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
   const canCreateBooking = privileged || !!permissions?.can_edit_bookings;
   const onNewBooking = canCreateBooking ? openBooking : undefined;
@@ -87,7 +92,7 @@ export function OperatorShell({
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background text-foreground">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
-        <OperatorRail activeId={activeId} nav={nav} badges={navBadges} />
+        <OperatorRail activeId={activeId} nav={nav} badges={navBadges} messagesUnread={messagesUnread} />
         <div className="lg:pl-16">
           <RedesignImpersonationBanner />
           <OperatorTopBar
@@ -103,7 +108,7 @@ export function OperatorShell({
             </div>
           </main>
         </div>
-        <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} badges={navBadges} />
+        <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} badges={navBadges} messagesUnread={messagesUnread} />
         <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />
         {canCreateBooking ? (
           <Suspense fallback={null}>

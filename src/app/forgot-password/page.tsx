@@ -53,7 +53,7 @@ function ForgotPasswordContent() {
     return (
       <AuthShell>
         <div className="flex flex-col items-center gap-4 py-2 text-center">
-          <div className="grid size-12 place-items-center rounded-full bg-brand-50 text-brand-600">
+          <div className="grid size-12 place-items-center rounded-full bg-brand-50 text-brand-ink">
             <Mail className="size-6" aria-hidden />
           </div>
           <div>
@@ -63,7 +63,7 @@ function ForgotPasswordContent() {
               <span className="font-semibold text-foreground">{email.trim()}</span>, we sent a password reset link. Check your inbox (and spam), it expires in 1 hour.
             </p>
           </div>
-          <Link href="/login" className="mt-1 text-sm font-semibold text-brand-600 hover:text-brand-700">
+          <Link href="/login" className="mt-1 text-sm font-semibold text-brand-ink hover:text-brand-700">
             Back to sign in
           </Link>
         </div>
@@ -92,7 +92,7 @@ function ForgotPasswordContent() {
           {status === "submitting" ? "Sending..." : "Send reset link"}
         </Button>
         <div className="text-center">
-          <Link href="/login" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+          <Link href="/login" className="text-sm font-semibold text-brand-ink hover:text-brand-700">
             Back to sign in
           </Link>
         </div>
@@ -106,7 +106,7 @@ export default function ForgotPasswordPage() {
     <Suspense
       fallback={
         <div className="redesign font-jakarta grid min-h-screen place-items-center bg-background">
-          <Loader2 className="size-8 animate-spin text-brand-600" />
+          <Loader2 className="size-8 animate-spin text-brand-ink" />
         </div>
       }
     >

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { NexxusLoader } from '@/components/ui/nexxus-loader'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { Section, Specimen } from './section'
@@ -50,6 +51,15 @@ export function FeedbackSection() {
             {/* Text line */}
             <Skeleton className="h-3 w-28" />
           </div>
+        </div>
+      </Specimen>
+
+      {/* NexxusLoader */}
+      <Specimen label="Nexxus loader (auth / full-page waits)">
+        <div className="flex items-end gap-10">
+          <NexxusLoader className="h-8" />
+          <NexxusLoader className="h-12" />
+          <NexxusLoader className="h-20" />
         </div>
       </Specimen>
 

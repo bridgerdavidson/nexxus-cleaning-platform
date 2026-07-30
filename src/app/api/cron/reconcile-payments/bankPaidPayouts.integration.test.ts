@@ -15,6 +15,8 @@ vi.mock('@/lib/stripe/reconcile', () => ({
   retrievePaymentIntent: vi.fn(),
   retrieveCharge: vi.fn(),
   listRefundsForPaymentIntent: vi.fn(async () => []),
+  searchPaymentIntentsByAppointment: vi.fn(async () => []),
+  listRecentPaymentIntentsForCustomer: vi.fn(async () => []),
   listConnectedAccountPayouts: vi.fn(async () => []),
   retrieveConnectedAccountPayout: vi.fn(async () => {
     throw new Error('retrieveConnectedAccountPayout not stubbed for this test');
