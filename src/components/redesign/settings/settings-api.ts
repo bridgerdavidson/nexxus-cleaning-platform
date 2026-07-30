@@ -14,6 +14,8 @@ async function patch(path: string, body: unknown): Promise<unknown> {
 
 export const updateOrgProfile = (orgId: string, body: Record<string, unknown>) =>
   patch(`/api/organizations/${orgId}/profile`, body);
+export const updateOrgBranding = (orgId: string, body: Record<string, unknown>) =>
+  patch(`/api/organizations/${orgId}/branding`, body);
 export const updateOrgPaymentSettings = (orgId: string, body: Record<string, unknown>) =>
   patch(`/api/organizations/${orgId}/payment-settings`, body);
 export const updateOrgBusinessHours = (orgId: string, body: Record<string, unknown>) =>
