@@ -9,7 +9,7 @@ import { Loader2 } from "lucide-react";
 export function ContentLoading() {
   return (
     <div role="status" className="grid min-h-[50dvh] place-items-center">
-      <Loader2 className="h-8 w-8 animate-spin text-brand-600" aria-hidden />
+      <Loader2 className="h-8 w-8 animate-spin text-brand-ink" aria-hidden />
       <span className="sr-only">Loading</span>
     </div>
   );

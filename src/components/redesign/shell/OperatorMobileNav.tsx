@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { OPERATOR_NAV, type NavItem } from "./nav-items";
+import { NavMessagesBadge } from "./NavMessagesBadge";
 
 const SETTINGS = OPERATOR_NAV.find((i) => i.id === "settings")!;
 
@@ -27,11 +28,13 @@ export function OperatorMobileNav({
   onNewBooking,
   primary,
   secondary,
+  messagesUnread = 0,
 }: {
   activeId?: string;
   onNewBooking?: () => void;
   primary: NavItem[];
   secondary: NavItem[];
+  messagesUnread?: number;
 }) {
   return (
     <>
@@ -61,13 +64,16 @@ export function OperatorMobileNav({
               aria-current={active ? "page" : undefined}
               className={cn(
                 "group relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors duration-fast",
-                active ? "font-semibold text-brand-600" : "text-muted-foreground"
+                active ? "font-semibold text-brand-ink" : "text-muted-foreground"
               )}
             >
               {active && (
                 <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-7 rounded-full bg-brand-600 animate-nav-pip-in motion-reduce:animate-none" aria-hidden />
               )}
-              <Icon className="h-6 w-6 transition-transform duration-fast group-active:scale-90" aria-hidden />
+              <span className="relative">
+                <Icon className="h-6 w-6 transition-transform duration-fast group-active:scale-90" aria-hidden />
+                {item.id === "messages" && <NavMessagesBadge count={messagesUnread} />}
+              </span>
               {item.label}
             </Link>
           );

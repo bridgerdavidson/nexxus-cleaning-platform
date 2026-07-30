@@ -75,7 +75,7 @@ export function PropertyPickerSheet({ open, onOpenChange, selectedId, onSelect }
                       <div className="truncate text-sm font-bold text-foreground">{p.name}</div>
                       <div className="truncate text-xs text-muted-foreground">{p.address}</div>
                     </div>
-                    {active && <Check className="size-5 shrink-0 text-brand-600" aria-hidden />}
+                    {active && <Check className="size-5 shrink-0 text-brand-ink" aria-hidden />}
                   </button>
                 );
               })

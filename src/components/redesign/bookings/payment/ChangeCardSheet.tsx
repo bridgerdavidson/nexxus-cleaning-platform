@@ -153,7 +153,7 @@ export function ChangeCardSheet({
                   {busy ? (
                     <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
                   ) : isCurrent ? (
-                    <Check className="size-5 shrink-0 text-brand-600" aria-hidden />
+                    <Check className="size-5 shrink-0 text-brand-ink" aria-hidden />
                   ) : null}
                 </button>
               );

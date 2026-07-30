@@ -27,7 +27,7 @@ export function HomeownerBottomNav({
             aria-current={active ? "page" : undefined}
             className={cn(
               "group relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium outline-none transition-colors duration-fast focus-visible:ring-2 focus-visible:ring-ring",
-              active ? "font-semibold text-brand-600" : "text-muted-foreground"
+              active ? "font-semibold text-brand-ink" : "text-muted-foreground"
             )}
           >
             {active && (

@@ -23,7 +23,7 @@ export function ProfileRow({
 }) {
   const inner = (
     <>
-      <span className="grid size-9 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-600">
+      <span className="grid size-9 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-ink">
         <Icon className="size-[18px]" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">

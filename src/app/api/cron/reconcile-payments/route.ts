@@ -6,6 +6,7 @@ import {
   reconcileStuckPayments,
   recoverStuckCharging,
   chargeUncollectedCompletions,
+  verifyUnknownChargeOutcomes,
   settleUnsettledCaptures,
   retryFailedPayouts,
   reconcileBankPaidPayouts,
@@ -28,6 +29,7 @@ export const runtime = 'nodejs';
  *   2) stuck-payment reconcile   — replay the true Stripe PI status for pending payments past SLA
  *   2a-pre) stuck-charging heal  : release appointments orphaned in the transient 'charging' claim
  *   2a) uncollected completions  — charge completed jobs whose completion charge never ran
+ *   2a-post) unknown-outcome verify — resolve failed PI-less completion rows against Stripe (T1-16)
  *   2b) unsettled-capture heal   — re-run settlement for captured charges whose funds never moved
  *   3) failed-payout retry       — re-run cleaner settlement for payouts left 'failed'
  *   3a) bank-paid reconcile      — re-derive bank_paid from Stripe's payout list for stuck 'paid' rows
@@ -63,6 +65,9 @@ export async function POST(request: NextRequest) {
     // the normal NULL recovery path (the reset bumps updated_at, so they clear on a later cycle).
     const stuckCharging = await recoverStuckCharging(supabaseAdmin);
     const uncollectedCompletions = await chargeUncollectedCompletions(supabaseAdmin);
+    // T1-16: resolve unknown-outcome failed rows BEFORE the unsettled-capture heal so a repaired
+    // (captured-at-Stripe) row can settle in this same run.
+    const unknownChargeOutcomes = await verifyUnknownChargeOutcomes(supabaseAdmin);
     const unsettledCaptures = await settleUnsettledCaptures(supabaseAdmin);
     const failedPayouts = await retryFailedPayouts(supabaseAdmin);
     const bankPaidPayouts = await reconcileBankPaidPayouts(supabaseAdmin);
@@ -81,6 +86,7 @@ export async function POST(request: NextRequest) {
       stuckPayments,
       stuckCharging,
       uncollectedCompletions,
+      unknownChargeOutcomes,
       unsettledCaptures,
       failedPayouts,
       bankPaidPayouts,

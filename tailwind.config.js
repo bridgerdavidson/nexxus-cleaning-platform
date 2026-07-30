@@ -46,10 +46,24 @@ module.exports = {
         },
 
         // ---- redesign ramps (NEW) ----
+        // Values live in CSS variables (globals.css) so an org's derived ramp can
+        // override them at runtime. Defaults reproduce the Nexxus palette exactly.
         brand: {
-          50: '#EFF4FF', 100: '#DCE6FF', 200: '#C0D2FF', 300: '#93AEFF',
-          400: '#5C84FF', 500: '#2E62FF', 600: '#0150FC', 700: '#0140CC',
-          800: '#0A2F95', 900: '#102A6E', 950: '#0A1A47',
+          50: 'hsl(var(--brand-50) / <alpha-value>)',
+          100: 'hsl(var(--brand-100) / <alpha-value>)',
+          200: 'hsl(var(--brand-200) / <alpha-value>)',
+          300: 'hsl(var(--brand-300) / <alpha-value>)',
+          400: 'hsl(var(--brand-400) / <alpha-value>)',
+          500: 'hsl(var(--brand-500) / <alpha-value>)',
+          600: 'hsl(var(--brand-600) / <alpha-value>)',
+          700: 'hsl(var(--brand-700) / <alpha-value>)',
+          800: 'hsl(var(--brand-800) / <alpha-value>)',
+          900: 'hsl(var(--brand-900) / <alpha-value>)',
+          950: 'hsl(var(--brand-950) / <alpha-value>)',
+          // Brand-colored TEXT on a neutral surface. Resolves to whichever of
+          // 600/700/800 stays legible, so a pale brand cannot produce unreadable
+          // text. `brand-600` is a fill color; `brand-ink` is a text color.
+          ink: 'hsl(var(--brand-ink) / <alpha-value>)',
         },
         sky: { 300: '#9CD0FD', 400: '#68B6FA', 500: '#3F9DF5' },
         warm: {
@@ -122,8 +136,21 @@ module.exports = {
         // nav's active-tab pip growing in. Both use the out-soft easing token.
         'page-in': 'pageIn 240ms cubic-bezier(0.16, 1, 0.3, 1)',
         'nav-pip-in': 'navPipIn 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        // NexxusLoader (see components/ui/nexxus-loader.tsx): reveal band
+        // traveling through a mask, and the one-shot ghost settle.
+        'nexxus-band': 'nexxusBand 1.6s linear infinite',
+        'nexxus-ghost': 'nexxusGhost 1.6s linear forwards',
       },
       keyframes: {
+        // Per-element travel vector comes from --band-tx/--band-ty custom props.
+        nexxusBand: {
+          '0%': { transform: 'translate(0, 0)' },
+          '100%': { transform: 'translate(var(--band-tx), var(--band-ty))' },
+        },
+        nexxusGhost: {
+          '0%, 40%': { opacity: '0' },
+          '58%, 100%': { opacity: '0.14' },
+        },
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
