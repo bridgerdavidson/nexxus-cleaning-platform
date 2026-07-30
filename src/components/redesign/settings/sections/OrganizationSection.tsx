@@ -8,6 +8,7 @@ import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
 import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
+import { OrgSwitcher } from "./OrgSwitcher";
 
 interface OrgForm { name: string; logoUrl: string; billingEmail: string }
 
@@ -48,6 +49,7 @@ export function OrganizationSection() {
   return (
     <div>
       <SectionHeader title="Organization" lead="How your cleaning company shows up across the app." />
+      <OrgSwitcher />
       <SettingRow label="Company name" htmlFor="org-name" helper="Shown to customers and on invoices.">
         <Input id="org-name" className="sm:w-72" maxLength={200} value={value.name}
           onChange={(e) => setValue({ ...value, name: e.target.value })} />

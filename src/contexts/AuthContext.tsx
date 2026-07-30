@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { User, OrgRole, Organization } from '../types';
 import type { AuthState, AuthActions } from '../hooks/useAuth';
 import { selectOrganization } from '../lib/auth/selectOrganization';
+import { getDashboardPath } from '../lib/redesign/dashboardPath';
 import { authDebug, tokenTail } from '../lib/authDebug';
 import {
   type OrgStatus,
@@ -952,19 +953,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [memberships],
   );
 
-  const switchOrganization = useCallback((orgId: string) => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(CURRENT_ORG_KEY, orgId);
-    } catch {
-      /* private mode: the switch still happens for this load via the reload */
-    }
-    // Full reload rather than in-place swap: every org-scoped query, realtime
-    // channel, and brand variable is keyed on the current org, and a reload is
-    // the one path guaranteed to rebuild all three consistently. Switching is
-    // rare (only users in 2+ orgs ever see the control).
-    window.location.assign('/');
-  }, []);
+  const switchOrganization = useCallback(
+    (orgId: string) => {
+      if (typeof window === 'undefined') return;
+      try {
+        window.localStorage.setItem(CURRENT_ORG_KEY, orgId);
+      } catch {
+        /* private mode: the switch still happens for this load via the reload */
+      }
+      // Full reload rather than in-place swap: every org-scoped query, realtime
+      // channel, and brand variable is keyed on the current org, and a reload is
+      // the one path guaranteed to rebuild all three consistently. Switching is
+      // rare (only users in 2+ orgs ever see the control). Land on the role root
+      // for the TARGET org ('/' is the marketing page, even signed in), mapping
+      // org 'owner' to the operator shell since UserRole has no owner.
+      const target = memberships.find((m) => m.organization_id === orgId);
+      const role = target?.role === 'owner' ? 'admin' : (target?.role ?? '');
+      window.location.assign(getDashboardPath(role));
+    },
+    [memberships],
+  );
 
   useEffect(() => {
     return () => {
