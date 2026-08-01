@@ -8,6 +8,8 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DeclineReason } from "@/hooks/useCleanerData";
 import type { TodayData } from "./today-types";
+import type { PayRequestRow } from "../earnings/derivePayRequests";
+import { money2 } from "@/components/redesign/payments/payments-presenters";
 import { formatTimeParts, formatJobWhen, propertyTitle, jobSubtitle, rowAddressLine, formatRespondBy } from "../shared/job-presenters";
 import { JobRow } from "../shared/JobRow";
 import { OfferActionsBar } from "../shared/OfferActionsBar";
@@ -21,6 +23,53 @@ function SectionHeader({ title, trailing }: { title: string; trailing?: React.Re
       <h2 className="text-sm font-bold">{title}</h2>
       {trailing}
     </div>
+  );
+}
+
+/**
+ * Money waiting on the cleaner: the org countered their pay request and the
+ * thread cannot move until they respond. The full negotiation UI lives on
+ * Earnings, but a cleaner who opens the app to "Nothing scheduled" has no
+ * reason to go there, so Today carries the nudge. Renders in the empty state
+ * too, for exactly that reason.
+ */
+function PayOffersSection({ rows, onOpen }: { rows: PayRequestRow[]; onOpen: () => void }) {
+  return (
+    <section>
+      <SectionHeader
+        title="Pay waiting on you"
+        trailing={
+          <span className="rounded-pill bg-caution-50 px-2 py-0.5 text-[11px] font-extrabold text-caution-700">
+            {rows.length}
+          </span>
+        }
+      />
+      <div className="space-y-2.5">
+        {rows.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            onClick={onOpen}
+            className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-card border border-border bg-card p-4 text-left shadow-soft-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">
+                {r.propertyLabel ?? r.jobLabel}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                Your company offered a different amount. Tap to respond. · {r.ageLabel}
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <span className="tabular-nums text-sm font-extrabold text-foreground">
+                {money2(r.amountCents / 100)}
+              </span>
+              <ChevronRight aria-hidden className="h-4 w-4 text-muted-foreground" />
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -40,6 +89,8 @@ export function CleanerTodayView({
   onSeeTomorrow,
   todayStr,
   checklist,
+  payOffers,
+  onOpenPayOffers,
 }: {
   data: TodayData;
   loading: boolean;
@@ -56,9 +107,16 @@ export function CleanerTodayView({
   onSeeTomorrow: () => void;
   todayStr: string;
   checklist?: React.ReactNode;
+  /** Org counters waiting on this cleaner (derivePayRequests yourTurn). */
+  payOffers?: PayRequestRow[];
+  onOpenPayOffers?: () => void;
 }) {
   const grouped = useMemo(() => deriveSeriesOffers(data.offers), [data.offers]);
   const offerCount = grouped.singles.length + grouped.series.length;
+  const payOffersSection =
+    payOffers && payOffers.length > 0 && onOpenPayOffers ? (
+      <PayOffersSection rows={payOffers} onOpen={onOpenPayOffers} />
+    ) : null;
   if (error) {
     return <ErrorState title="Couldn't load your day" onRetry={onRetry} />;
   }
@@ -73,8 +131,11 @@ export function CleanerTodayView({
   }
 
   if (data.isEmpty) {
+    // A pay offer must survive the empty state: "Nothing scheduled" is exactly
+    // when the cleaner has no reason to wander to Earnings and find it.
     return (
-      <div className="pt-10">
+      <div className={payOffersSection ? "space-y-7 pt-2" : "pt-10"}>
+        {payOffersSection}
         <EmptyState
           icon={<Sparkles />}
           title="Nothing scheduled"
@@ -124,6 +185,8 @@ export function CleanerTodayView({
           />
         </section>
       )}
+
+      {payOffersSection}
 
       {checklist}
 
