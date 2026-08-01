@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 
 const MESSAGES_PATH = "/cleaner/messages";
 
@@ -11,7 +12,8 @@ const MESSAGES_PATH = "/cleaner/messages";
  * - `openWith(userId)`                 -> `?to=<userId>` (start/open a thread with a specific office person)
  * - `openThreadFromJob(userId, jobId)` -> `?to=<userId>&appointment=<jobId>&from=<jobId>`
  *   (from the active-job "Message office" sheet: stage the job + enable a "Back to job" return)
- * On the Messages page we replace (no history spam); from elsewhere we push to navigate there.
+ * On the Messages page we replace in place (shallow, no history spam); from
+ * elsewhere we push to navigate there.
  * Reads no search params, so callers need no Suspense boundary (matches useOpenJob).
  */
 export function useOpenOfficeThread() {
@@ -21,7 +23,7 @@ export function useOpenOfficeThread() {
   const go = useCallback(
     (qs: string) => {
       const url = `${MESSAGES_PATH}?${qs}`;
-      if (pathname === MESSAGES_PATH) router.replace(url, { scroll: false });
+      if (pathname === MESSAGES_PATH) replaceSearchShallow(url);
       else router.push(url);
     },
     [router, pathname],

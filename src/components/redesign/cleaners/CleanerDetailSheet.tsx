@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CleanerStatusBadge, ConnectBadge } from "./cleaners-presenters";
+import { CleanerStatusBadge, ConnectBadge, PayNotSetBadge } from "./cleaners-presenters";
 import type { CleanerDetailVM, CleanerUpcomingVM, ConnectState } from "./cleaners-types";
 
 export type CleanerSaveFields = {
@@ -77,6 +77,11 @@ export type CleanerDetailSheetProps = {
   onRemove: () => void;
   /** Open a message thread with this cleaner. */
   onMessage?: () => void;
+  /**
+   * Org-level percent used ONLY to prefill the percent field the first time an
+   * unconfigured cleaner's pay is set. Never applied on its own.
+   */
+  percentPrefill?: number | null;
 };
 
 function StatBox({ label, value }: { label: string; value: string }) {
@@ -105,6 +110,9 @@ const CONNECT_LINE: Record<ConnectState, string> = {
 };
 
 function payModeLine(d: CleanerDetailVM): string {
+  // Unconfigured wins over every mode branch: the stored mode is only the column
+  // default and must never read as a pay decision.
+  if (!d.payConfigured) return "Pay not set";
   if (d.payoutModel === "request") return "Names their pay per job";
   if (d.payoutModel === "flat") {
     if (d.flatRateCents == null) return "Flat rate not set";
@@ -150,6 +158,7 @@ export function CleanerDetailSheet({
   onReactivate,
   onRemove,
   onMessage,
+  percentPrefill,
 }: CleanerDetailSheetProps) {
   const [form, setForm] = useState({
     firstName: "",
@@ -180,7 +189,13 @@ export function CleanerDetailSheet({
           ? (detail.payoutModel as EditablePayoutModel)
           : "percentage",
         payoutModelTouched: false,
-        payoutPercent: String(detail.payoutPercent ?? ""),
+        // Unconfigured: the stored 0% is the column default, not a decision. Start
+        // the percent field from the org's prefill (or blank), never from that 0.
+        payoutPercent: detail.payConfigured
+          ? String(detail.payoutPercent ?? "")
+          : percentPrefill != null
+            ? String(percentPrefill)
+            : "",
         flatRate: detail.flatRateCents == null ? "" : String(detail.flatRateCents / 100),
         hourlyRate: detail.hourlyRate == null ? "" : String(detail.hourlyRate),
         experienceYears: detail.experienceYears == null ? "" : String(detail.experienceYears),
@@ -197,8 +212,15 @@ export function CleanerDetailSheet({
     (detail?.payoutModel ?? "percentage") as EditablePayoutModel,
   );
   const includePayConfig = storedModelEditable || form.payoutModelTouched;
+  // Unconfigured cleaner + untouched picker = no mode is selected yet. The radio
+  // shows nothing checked and save blocks until the operator makes the decision.
+  const modeSelected = (detail?.payConfigured ?? true) || form.payoutModelTouched;
 
   const save = async () => {
+    if (includePayConfig && !modeSelected) {
+      setPayError("Choose how this cleaner is paid.");
+      return;
+    }
     // Validate the active mode's parameter before any network write.
     let flatCents: number | undefined;
     let pctValue: number | undefined;
@@ -252,6 +274,7 @@ export function CleanerDetailSheet({
                   <SheetDescription>Cleaner</SheetDescription>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <CleanerStatusBadge status={detail.status} />
+                    <PayNotSetBadge configured={detail.payConfigured} />
                     <ConnectBadge state={detail.connect} />
                   </div>
                 </div>
@@ -296,7 +319,7 @@ export function CleanerDetailSheet({
                   <div className="space-y-2">
                     <Label>How they&apos;re paid</Label>
                     <RadioGroup
-                      value={form.payoutModel}
+                      value={modeSelected ? (form.payoutModel ?? "") : ""}
                       onValueChange={(m) => {
                         setForm((f) => ({
                           ...f,
@@ -332,6 +355,21 @@ export function CleanerDetailSheet({
                       This cleaner is paid off platform (hourly). Their pay settings stay unchanged
                       unless you pick a mode above.
                     </div>
+                  ) : !modeSelected ? (
+                    <>
+                      <div className="flex items-start gap-2 rounded-control border border-caution-700/30 bg-caution-50 px-3 py-2 text-xs text-caution-700">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          This cleaner has no pay set. Pick how they are paid above; they will not
+                          be paid for jobs until this is set.
+                        </span>
+                      </div>
+                      {payError ? (
+                        <p role="alert" className="text-sm font-medium text-destructive">
+                          {payError}
+                        </p>
+                      ) : null}
+                    </>
                   ) : form.payoutModel === "percentage" ? (
                     <FormField
                       label="Payout %"

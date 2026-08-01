@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -163,6 +163,12 @@ export function OperatorBookingForm({
   });
 
   const total = effectiveTotalUsd(state, service, checklist);
+
+  // Assigning an unconfigured cleaner is ALLOWED (warned, not blocked): the
+  // operator hits this at scheduling time instead of the cleaner mid-job. Their
+  // settlement defers until pay is set, so nothing silently pays a default.
+  const selectedCleaner = state.cleanerId ? cleaners.find((c) => c.id === state.cleanerId) ?? null : null;
+  const selectedCleanerPayNotSet = !!selectedCleaner && selectedCleaner.payout_configured_at == null;
 
   const recurring = isRecurring(state);
   const primarySlot = state.slots[0] ?? null;
@@ -372,6 +378,15 @@ export function OperatorBookingForm({
                 <p className="mt-1 px-0.5 text-xs text-muted-foreground">
                   We will offer this to the cleaner. If they decline, it routes to the next one.
                 </p>
+              )}
+              {selectedCleanerPayNotSet && (
+                <div className="mt-2 flex items-start gap-2 rounded-control border border-caution-700/30 bg-caution-50 px-3 py-2 text-xs text-caution-700">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>
+                    This cleaner has no pay set, so they will not be paid for this job until you
+                    set it in Cleaners &amp; team. You can still book the job.
+                  </span>
+                </div>
               )}
             </div>
 

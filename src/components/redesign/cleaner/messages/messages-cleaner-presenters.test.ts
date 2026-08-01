@@ -11,7 +11,6 @@ function appt(over: Partial<CleanerAppointment> = {}): CleanerAppointment {
     scheduled_date: "2026-06-27",
     scheduled_time: "14:00",
     status: "confirmed",
-    total_price: 120,
     cleaner_confirmation_status: "approved",
     homeowner: null,
     property: { name: "Maple House", address: "1 Maple St", city: "Boise", state: "ID", zip_code: "83702" },
@@ -40,7 +39,7 @@ describe("cleanerApptToInlineBookingVM", () => {
   });
 
   it("falls back service to checklist name then 'Cleaning'", () => {
-    expect(cleanerApptToInlineBookingVM(appt({ service_type: null, checklist: { name: "Move-out", price_adder: 0 } }), "a").service).toBe("Move-out");
+    expect(cleanerApptToInlineBookingVM(appt({ service_type: null, checklist: { name: "Move-out" } }), "a").service).toBe("Move-out");
     expect(cleanerApptToInlineBookingVM(appt({ service_type: null, checklist: null }), "a").service).toBe("Cleaning");
   });
 });

@@ -83,17 +83,21 @@ describe('regression: appointments UPDATE still works for admin, assigned cleane
     expect(data ?? []).toHaveLength(1);
   });
 
-  it('the assigned cleaner updates their own appointment under RLS (cleaner_id self branch)', async () => {
+  it('the assigned cleaner can no longer update directly (sealed; route write path)', async () => {
     org = await withTestOrg();
     const apptId = await seedAppointment(org.organizationId, org.cleaner.userId, org.homeowner.userId);
     const db = createUserClient(org.cleaner.accessToken);
-    const { data, error } = await db
+    // The price-seal migration sealed the cleaner's SELECT arm, and an UPDATE's WHERE
+    // clause needs SELECT rights on the row, so this is a silent zero-row
+    // no-op. Cleaner status writes now go through
+    // POST /api/cleaner/appointments/[id]/status (see its test file).
+    const { error } = await db
       .from('appointments')
       .update({ status: 'in_progress' })
-      .eq('id', apptId)
-      .select('id');
+      .eq('id', apptId);
     expect(error).toBeNull();
-    expect(data ?? []).toHaveLength(1);
+    const { data: after } = await admin.from('appointments').select('status').eq('id', apptId).single();
+    expect((after as { status: string } | null)?.status).toBe('pending');
   });
 
   it('the homeowner updates their own appointment under RLS (homeowner_id self branch)', async () => {

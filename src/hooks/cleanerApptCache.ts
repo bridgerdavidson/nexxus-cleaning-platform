@@ -16,7 +16,11 @@
  * device. SSR-safe and fully best-effort: any storage error degrades to "no
  * cache", never a throw.
  */
-const PREFIX = 'nexxus.cleanerAppointments.v1.';
+// v2: the price-seal migration removed price fields from the cleaner's appointment payload.
+// Bumping the key discards v1 snapshots, which persisted total_price verbatim on
+// the cleaner's device; the stale key is also actively cleaned up on write.
+const PREFIX = 'nexxus.cleanerAppointments.v2.';
+const LEGACY_PREFIX = 'nexxus.cleanerAppointments.v1.';
 // Don't seed a list older than this; beyond it, prefer an honest skeleton/refetch.
 const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
@@ -44,6 +48,8 @@ export function writeCleanerApptCache<T>(userId: string, data: T[], ts: number):
   try {
     const snapshot: Snapshot<T> = { ts, data };
     window.localStorage.setItem(PREFIX + userId, JSON.stringify(snapshot));
+    // Drop the pre-seal snapshot, which carried total_price.
+    window.localStorage.removeItem(LEGACY_PREFIX + userId);
   } catch {
     // Quota exceeded / storage disabled: the offline cache is best-effort.
   }

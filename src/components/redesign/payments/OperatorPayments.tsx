@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { keys } from "@/lib/queryKeys";
@@ -195,9 +196,9 @@ function OperatorPaymentsData({
       if (l === "payouts") params.set("ledger", "payouts");
       else params.delete("ledger");
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      replaceSearchShallow(qs ? `?${qs}` : "?");
     },
-    [router, searchParams],
+    [searchParams],
   );
 
   // Switching ledgers clears the search, status filter, and any open row so a
@@ -393,9 +394,9 @@ function OperatorPaymentsData({
       setSelectedRowId(null);
       const sp = new URLSearchParams(window.location.search);
       sp.set("booking", appointmentId);
-      router.replace(`?${sp.toString()}`, { scroll: false });
+      replaceSearchShallow(`?${sp.toString()}`);
     },
-    [router],
+    [],
   );
 
   return (

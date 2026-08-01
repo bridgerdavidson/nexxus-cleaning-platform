@@ -15,27 +15,27 @@ const ids = (role?: string, orgRole?: string, p?: ManagerPermissions) =>
   deriveSettingsSections(role, orgRole, p).map((s) => s.id);
 
 describe("deriveSettingsSections", () => {
-  it("owner sees all eight sections", () => {
+  it("owner sees all nine sections", () => {
     expect(ids("admin", "owner")).toEqual([
-      "profile", "organization", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
+      "profile", "appearance", "organization", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
     ]);
   });
   it("admin sees owner+admin sections but not owner-only (organization, payout)", () => {
     expect(ids("admin", "admin")).toEqual([
-      "profile", "branding", "payments", "cancellation", "cleaner-experience", "business-hours",
+      "profile", "appearance", "branding", "payments", "cancellation", "cleaner-experience", "business-hours",
     ]);
   });
-  it("manager with no permissions sees only Profile", () => {
-    expect(ids("manager", "manager", perms())).toEqual(["profile"]);
+  it("manager with no permissions sees only Profile and Appearance", () => {
+    expect(ids("manager", "manager", perms())).toEqual(["profile", "appearance"]);
   });
   it("manager with can_manage_payments sees payments only (cancellation is owner/admin-only)", () => {
     expect(ids("manager", "manager", perms({ can_manage_payments: true }))).toEqual([
-      "profile", "payments",
+      "profile", "appearance", "payments",
     ]);
   });
-  it("manager with can_manage_cleaners sees profile only (business-hours is owner/admin-only)", () => {
+  it("manager with can_manage_cleaners sees profile + appearance only (business-hours is owner/admin-only)", () => {
     expect(ids("manager", "manager", perms({ can_manage_cleaners: true }))).toEqual([
-      "profile",
+      "profile", "appearance",
     ]);
   });
   it("groups every section as account or business", () => {

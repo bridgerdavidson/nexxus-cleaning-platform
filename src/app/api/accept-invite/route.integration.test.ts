@@ -155,13 +155,17 @@ describe('POST /api/accept-invite (owner role mapping)', () => {
 
     const { data: cleanerProfile } = await db
       .from('cleaner_profiles')
-      .select('id')
+      .select('id, payout_configured_at')
       .eq('id', seed.userId)
       .maybeSingle();
     expect(cleanerProfile).not.toBeNull();
+    // A newly accepted cleaner has NO pay configured: the operator sets it per cleaner.
+    expect((cleanerProfile as { payout_configured_at: string | null }).payout_configured_at).toBeNull();
   });
 
-  it("stamps the org's default payout model onto the new cleaner profile", async () => {
+  it('leaves the new cleaner unconfigured even when the org has a stored payout model', async () => {
+    // The org-level model used to be stamped onto new cleaners; it no longer is —
+    // the stored value must not leak into the cleaner profile as a pay decision.
     const seed = await seedInvite('cleaner', null, 'request');
     cleanup = seed.cleanup;
 
@@ -180,35 +184,13 @@ describe('POST /api/accept-invite (owner role mapping)', () => {
     const db = createTestSupabaseClient();
     const { data } = await db
       .from('cleaner_profiles')
-      .select('payout_model')
+      .select('payout_model, payout_configured_at')
       .eq('id', seed.userId)
       .single();
-    expect((data as { payout_model: string }).payout_model).toBe('request');
-  });
-
-  it("normalizes a legacy 'percentage_contractor' org default to 'percentage' when stamping", async () => {
-    const seed = await seedInvite('cleaner', null, 'percentage_contractor');
-    cleanup = seed.cleanup;
-
-    const { status } = await callRoute<{ success: boolean }>(POST, {
-      method: 'POST',
-      body: {
-        accessToken: seed.accessToken,
-        inviteId: seed.inviteId,
-        firstName: 'Perry',
-        lastName: 'Percent',
-        password: 'CleanerPass123!',
-      },
-    });
-    expect(status).toBe(200);
-
-    const db = createTestSupabaseClient();
-    const { data } = await db
-      .from('cleaner_profiles')
-      .select('payout_model')
-      .eq('id', seed.userId)
-      .single();
-    expect((data as { payout_model: string }).payout_model).toBe('percentage');
+    const row = data as { payout_model: string; payout_configured_at: string | null };
+    // The column default, not the org's 'request' — and explicitly unconfigured.
+    expect(row.payout_model).toBe('percentage');
+    expect(row.payout_configured_at).toBeNull();
   });
 });
 

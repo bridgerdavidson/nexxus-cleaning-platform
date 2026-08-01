@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
@@ -55,7 +56,6 @@ const VALID_STATUSES = new Set<StatusFilter>([
  */
 export function OperatorBookings() {
   const openBooking = useOpenOperatorBooking();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { currentOrgRole } = useAuth();
   const { appointments, loading, error, refetch } = useAdminAppointments();
@@ -84,17 +84,18 @@ export function OperatorBookings() {
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [busy, setBusy] = useState(false);
 
-  // Write a filter to the URL (replace, so filter tweaks don't stack history),
-  // preserving sibling params like ?booking. Defaults are dropped for clean URLs.
+  // Write a filter to the URL in place (shallow, so filter tweaks don't stack
+  // history), preserving sibling params like ?booking. Defaults are dropped for
+  // clean URLs.
   const setFilterParam = useCallback(
     (key: string, value: string, isDefault: boolean) => {
       const params = new URLSearchParams(searchParams.toString());
       if (isDefault) params.delete(key);
       else params.set(key, value);
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      replaceSearchShallow(qs ? `?${qs}` : "?");
     },
-    [searchParams, router],
+    [searchParams],
   );
   const setSegment = useCallback(
     (v: BookingSegment) => setFilterParam("segment", v, v === DEFAULT_SEGMENT),

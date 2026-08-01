@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversations } from "@/hooks/useConversations";
 import { useOrganizationMembers } from "@/hooks/useOrganizationMembers";
@@ -107,9 +108,9 @@ function ThreadHostInner({
     sp.delete("appointment");
     sp.delete("from");
     const qs = sp.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    replaceSearchShallow(qs ? `${pathname}?${qs}` : pathname);
     setArmedConsumed(false);
-  }, [router, pathname, searchParams]);
+  }, [pathname, searchParams]);
 
   // Opened from the active job (?from=<jobId>): the thread's back returns to that job.
   // REPLACE (not push) so the dismissed /messages?to=...&from=... entry is collapsed off
@@ -122,8 +123,8 @@ function ThreadHostInner({
     setArmedConsumed(true);
     const sp = new URLSearchParams(searchParams.toString());
     sp.delete("appointment");
-    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
-  }, [router, pathname, searchParams]);
+    replaceSearchShallow(`${pathname}?${sp.toString()}`);
+  }, [pathname, searchParams]);
 
   return (
     <MobileTakeover

@@ -7,7 +7,6 @@ function offer(p: Partial<CleanerAppointment> & { id: string }): CleanerAppointm
     scheduled_date: "2026-07-20",
     scheduled_time: "10:00",
     status: "pending",
-    total_price: 80,
     cleaner_confirmation_status: "awaiting",
     homeowner: { first_name: "John", last_name: "Doe", email: "j@x.com" },
     property: { name: "Maple", address: "1 A St", city: "Reno", state: "NV", zip_code: "89501" },

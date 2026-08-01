@@ -1,8 +1,10 @@
 // src/components/redesign/settings/sections/PayoutSettingsSection.tsx
 "use client";
 import { useCallback } from "react";
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { useOrgQuery } from "@/lib/useOrgQuery";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -12,30 +14,32 @@ import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
 import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
-type PayoutModel = "percentage" | "flat" | "request" | "hourly_external";
-interface PayoutForm { model: PayoutModel; defaultPct: string; marginPct: string }
+// The org level answers ONE question: are cleaners paid per job through Nexxus,
+// or hourly outside it. Every per-job specific (percentage / flat / requests
+// their pay) is set per cleaner, on that cleaner. The old four-mode picker here
+// only stamped a default onto later invites, which read as an org-wide switch
+// but wasn't one; per-cleaner modes replaced it.
+type PayCategory = "per_job" | "hourly";
+interface PayoutForm {
+  category: PayCategory;
+  /** The raw stored default_payout_model at load time, so save() knows whether
+   *  picking "per job" is a real category change (hourly org) or a no-op. */
+  storedModel: string;
+  defaultPct: string;
+  marginPct: string;
+}
 
-const MODEL_OPTIONS: { value: PayoutModel; label: string; description: string; disabled?: boolean }[] = [
+const CATEGORY_OPTIONS: { value: PayCategory; label: string; description: string; disabled?: boolean }[] = [
   {
-    value: "percentage",
-    label: "Percentage of each job",
-    description: "Each cleaner takes a set percent of every job.",
-  },
-  {
-    value: "flat",
-    label: "Flat amount per job",
-    description: "Each cleaner earns a set dollar amount per completed job.",
-  },
-  {
-    value: "request",
-    label: "Cleaner requests their pay",
+    value: "per_job",
+    label: "Paid per job, through Nexxus",
     description:
-      "Cleaners name their pay after each job. Requests within your margin approve automatically; the rest come to you.",
+      "For teams paid per completed job: contractor-based cleaning companies, property managers, short-term rental operators, offices, anyone who needs cleaning managed. Each cleaner's pay (a percent, a flat rate, or naming their pay) is set on that cleaner, in Cleaners & team.",
   },
   {
-    value: "hourly_external",
-    label: "Hourly (coming soon)",
-    description: "Hourly pay runs outside the platform for now.",
+    value: "hourly",
+    label: "Hourly, paid outside Nexxus (coming soon)",
+    description: "For companies that run their own payroll. Cleaners get assigned jobs and set availability; pay stays off the platform.",
     disabled: true,
   },
 ];
@@ -56,6 +60,22 @@ function marginExample(marginPct: number): string | null {
 export function PayoutSettingsSection() {
   const { currentOrganizationId } = useAuth();
 
+  // Cleaners with no pay decision yet (active only). Drives the nudge row below;
+  // disappears once every cleaner is configured.
+  const { data: unconfiguredCount } = useOrgQuery({
+    queryKey: ["settings", "payout", "unconfigured-count", currentOrganizationId ?? ""],
+    queryFn: async ({ orgId }) => {
+      const { count, error } = await supabase
+        .from("cleaner_profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .is("payout_configured_at", null)
+        .is("deactivated_at", null);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
   const load = useCallback(async (): Promise<PayoutForm> => {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
@@ -64,11 +84,10 @@ export function PayoutSettingsSection() {
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    // Rows written before migration 118 may still carry the old spelling;
-    // normalize for display so the radio group always has a selected item.
-    const raw = (data?.default_payout_model as string | null) ?? "percentage";
+    const storedModel = (data?.default_payout_model as string | null) ?? "percentage";
     return {
-      model: (raw === "percentage_contractor" ? "percentage" : raw) as PayoutModel,
+      category: storedModel === "hourly_external" ? "hourly" : "per_job",
+      storedModel,
       defaultPct: String(data?.default_cleaner_payout_percent ?? 50),
       marginPct: String((Number(data?.min_margin_bps ?? 2000)) / 100),
     };
@@ -76,13 +95,17 @@ export function PayoutSettingsSection() {
 
   const save = useCallback(async (v: PayoutForm) => {
     if (!currentOrganizationId) throw new Error("No organization");
-    // Validate before any network write so an invalid number never half-persists a model change.
+    // Validate before any network write so an invalid number never half-persists.
     const pct = parseFloat(v.defaultPct);
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new Error("Default payout % must be between 0 and 100");
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new Error("Percent prefill must be between 0 and 100");
     const margin = parseFloat(v.marginPct);
     if (!Number.isFinite(margin) || margin < 0 || margin > 100)
       throw new Error("Auto-approve margin must be between 0 and 100");
-    await updateOrgProfile(currentOrganizationId, { default_payout_model: v.model });
+    // The category writes only on a REAL change (an hourly org picking per-job);
+    // for a per-job org it is already true and nothing model-shaped is sent.
+    if (v.category === "per_job" && v.storedModel === "hourly_external") {
+      await updateOrgProfile(currentOrganizationId, { default_payout_model: "percentage" });
+    }
     await updateOrgCleanerPayouts(currentOrganizationId, {
       default_cleaner_payout_percent: pct,
       min_margin_bps: Math.round(margin * 100),
@@ -100,14 +123,20 @@ export function PayoutSettingsSection() {
 
   return (
     <div>
-      <SectionHeader title="Payout settings" lead="How your cleaners get paid. Per-cleaner overrides live in the Cleaners screen." />
-      <SettingRow label="Payout model" helper="The default for new cleaners. Change any one cleaner's mode from their profile.">
+      <SectionHeader
+        title="Payout settings"
+        lead="How your cleaners get paid. Each cleaner's own pay is set on that cleaner, in Cleaners & team."
+      />
+      <SettingRow
+        label="How cleaners are paid"
+        helper="The one org-wide choice. Everything else about pay lives on each cleaner."
+      >
         <RadioGroup
-          value={value.model}
-          onValueChange={(m) => setValue({ ...value, model: m as PayoutModel })}
+          value={value.category}
+          onValueChange={(m) => setValue({ ...value, category: m as PayCategory })}
           className="gap-3 sm:w-80"
         >
-          {MODEL_OPTIONS.map((opt) => (
+          {CATEGORY_OPTIONS.map((opt) => (
             <div key={opt.value} className={`flex items-start gap-2 ${opt.disabled ? "opacity-50" : ""}`}>
               <RadioGroupItem id={`pm-${opt.value}`} value={opt.value} disabled={opt.disabled} className="mt-0.5" />
               <div className="space-y-0.5">
@@ -118,7 +147,26 @@ export function PayoutSettingsSection() {
           ))}
         </RadioGroup>
       </SettingRow>
-      <SettingRow label="Default cleaner payout %" htmlFor="pm-default" helper="Applied to new percentage-mode cleaners unless overridden.">
+      {unconfiguredCount ? (
+        <SettingRow
+          label="Cleaners without pay set"
+          helper="They cannot be paid for a job until it is set."
+        >
+          <p className="text-sm text-foreground">
+            {unconfiguredCount === 1
+              ? "1 cleaner still needs their pay set."
+              : `${unconfiguredCount} cleaners still need their pay set.`}{" "}
+            <Link href="/admin/cleaners" className="font-medium text-foreground hover:underline">
+              Set it in Cleaners &amp; team
+            </Link>
+          </p>
+        </SettingRow>
+      ) : null}
+      <SettingRow
+        label="Percent prefill for new cleaners"
+        htmlFor="pm-default"
+        helper="Prefills the percent field the first time you set a cleaner to percentage pay. It never pays anyone on its own."
+      >
         <Input id="pm-default" className="sm:w-28" type="number" min={0} max={100} value={value.defaultPct}
           onChange={(e) => setValue({ ...value, defaultPct: e.target.value })} />
       </SettingRow>

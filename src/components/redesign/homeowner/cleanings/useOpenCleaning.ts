@@ -1,16 +1,16 @@
 'use client';
 
 import { useCallback } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 
 /** Open the cleaning-detail takeover by setting `?appointment=<id>` on the
- * current path. Uses router.replace (no scroll) so closing restores list state;
+ * current path. Shallow in-place URL update so closing restores list state;
  * reads no search params, so callers need no Suspense boundary (matches useOpenJob). */
 export function useOpenCleaning(): (id: string) => void {
-  const router = useRouter();
   const pathname = usePathname();
   return useCallback(
-    (id: string) => router.replace(`${pathname}?appointment=${id}`, { scroll: false }),
-    [router, pathname],
+    (id: string) => replaceSearchShallow(`${pathname}?appointment=${id}`),
+    [pathname],
   );
 }
