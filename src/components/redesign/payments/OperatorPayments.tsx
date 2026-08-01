@@ -25,6 +25,7 @@ import { longDate, methodLabel, money2 } from "./payments-presenters";
 import { OperatorPaymentsView } from "./OperatorPaymentsView";
 import { DisputesBand } from "./DisputesBand";
 import { PaymentsTriageBand } from "./PaymentsTriageBand";
+import { PayRequestsBand } from "./PayRequestsBand";
 import { PaymentsKpiStrip } from "./PaymentsKpiStrip";
 import { PaymentsYourMoney } from "./PaymentsYourMoney";
 import { PaymentDetailSheet } from "./PaymentDetailSheet";
@@ -425,6 +426,7 @@ function OperatorPaymentsData({
         onRecordPayment={() => setRecordOpen(true)}
         disputesBand={<DisputesBand />}
         triage={<PaymentsTriageBand canManagePayments={canManagePayments} />}
+        payRequests={<PayRequestsBand canManagePayments={canManagePayments} />}
         kpis={
           <PaymentsKpiStrip
             totalRevenue={stats?.totalRevenue ?? 0}

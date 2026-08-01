@@ -77,6 +77,15 @@ describe('operatorNotificationHref', () => {
       operatorNotificationHref({ event_type: 'something_new', appointment_id: null }),
     ).toBe('/admin');
   });
+
+  it('routes pay-request events to the payments screen (with or without an appointment)', () => {
+    expect(
+      operatorNotificationHref({ event_type: 'pay_request_escalated', appointment_id: 'a9' }),
+    ).toBe('/admin/payments');
+    expect(
+      operatorNotificationHref({ event_type: 'pay_request_accepted', appointment_id: null }),
+    ).toBe('/admin/payments');
+  });
 });
 
 describe('bookingId (in-place booking open)', () => {

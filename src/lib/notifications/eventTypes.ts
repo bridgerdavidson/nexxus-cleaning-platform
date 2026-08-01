@@ -22,6 +22,10 @@ export type NotificationEventType =
   | 'cleaner_response_overdue'      // recipient: admins (SLA elapsed)
   | 'cleaner_paid'                  // recipient: cleaner (payout settled / bank_paid)
   | 'cleaner_payout_bank_failed'    // recipient: cleaner + admins (bank-level payout failed after transfer; bank details need fixing)
+  | 'pay_request_escalated'         // recipient: admins + payment managers (cleaner asked above the auto-approve margin)
+  | 'pay_request_countered'         // recipient: cleaner (org countered, or an org-authored amount awaits their accept)
+  | 'pay_request_approved'          // recipient: cleaner (their pay request was approved; payout on the way)
+  | 'pay_request_accepted'          // recipient: admins + payment managers (cleaner accepted the org's counter)
   | 'job_started'                   // recipient: homeowner + admins
   | 'job_completed'                 // recipient: homeowner + admins
   | 'dispute_opened'                // recipient: admins (chargeback created)

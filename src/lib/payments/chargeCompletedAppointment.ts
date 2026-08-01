@@ -19,7 +19,9 @@ import { createDestinationCharge } from '@/lib/stripe/charges/charge';
 import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { computePaymentSplit } from '@/lib/stripe/charges/splits';
 import { computeChargeBreakdown } from './processingFee';
-import { computeSelfPayAmounts } from './selfPayMath';
+import { computeSelfPayAmountsFromCents } from './selfPayMath';
+import { resolveSelfPayCutCents } from './payRequests/selfPayCut';
+import { isCleanerPayable } from './isCleanerPayable';
 import { stripeFeePassthroughEnabled, stripeAchEnabled, stripeSelfPayEnabled } from '@/lib/stripe/flags';
 import {
   getPaymentMethodType,
@@ -44,6 +46,7 @@ export type ChargeNowCode =
   | 'no_org_bank'
   | 'tenant_not_ready'
   | 'cleaner_not_payable'
+  | 'pay_request_pending'
   | 'not_chargeable'
   | 'charge_in_progress'
   | 'outcome_verification_pending'
@@ -91,6 +94,7 @@ const PRECONDITION_CODES: ReadonlySet<ChargeNowCode> = new Set([
   'no_org_bank',
   'tenant_not_ready',
   'cleaner_not_payable',
+  'pay_request_pending', // self-pay: the charge amount IS the approved request; waits like tenant_not_ready
   'not_chargeable',
 ]);
 
@@ -514,6 +518,7 @@ async function chargeSelfPayNow(
     stripe_connect_account_id: string | null;
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
+    flat_rate_cents: number | null;
   };
   const [orgRes, cleanerRes] = await Promise.all([
     supabase
@@ -524,7 +529,7 @@ async function chargeSelfPayNow(
     appt.cleaner_id
       ? supabase
           .from('cleaner_profiles')
-          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
           .eq('id', appt.cleaner_id)
           .maybeSingle()
       : Promise.resolve({ data: null as CleanerRow | null }),
@@ -538,19 +543,26 @@ async function chargeSelfPayNow(
   }
 
   const cleaner = cleanerRes.data as CleanerRow | null;
-  const cleanerPayable =
-    !!cleaner &&
-    cleaner.payout_model !== 'hourly_external' &&
-    !!cleaner.stripe_connect_account_id &&
-    cleaner.stripe_connect_onboarding_complete &&
-    Number(cleaner.payout_percent) > 0;
-  if (!cleanerPayable) {
+  // Mode-aware payability (isCleanerPayable): percentage needs % > 0, flat
+  // needs a positive rate, request needs only Connect readiness.
+  if (!cleaner || !isCleanerPayable(cleaner)) {
     return recordCleanerNotPayableBail(
       supabase,
       appt,
       actor,
-      'Self-pay requires a payout-capable cleaner (Connect onboarded, payout % > 0)',
+      'Self-pay requires a payout-capable cleaner (Connect onboarded with pay set up)',
     );
+  }
+
+  // Request mode defers the CHARGE itself: the org's charge amount is derived
+  // from the cleaner's cut, which does not exist until the pay request
+  // approves. Precondition bail (non-stamping, authorization_status untouched)
+  // so the approve trigger / reconcile sweep collects once approved. Gated
+  // BEFORE the method lookup so the card and ACH paths wait identically.
+  const jobGrossCents = Math.round(Number(appt.total_price) * 100);
+  const cut = await resolveSelfPayCutCents(supabase, { appointmentId: appt.id, cleaner, jobGrossCents });
+  if (!cut.ok) {
+    return { ok: false, code: 'pay_request_pending', message: 'Waiting for the pay request to be approved' };
   }
 
   // Resolve the company method: default, else first. A bank default is debited via the existing
@@ -567,11 +579,10 @@ async function chargeSelfPayNow(
     return outcome;
   }
 
-  const jobGrossCents = Math.round(Number(appt.total_price) * 100);
   const platformFeeBps = orgRow?.platform_fee_bps ?? 0;
-  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmounts({
+  const { chargeCents, cleanerCutCents, platformFeeCents, estimatedFeeCents } = computeSelfPayAmountsFromCents({
     jobGrossCents,
-    payoutPercent: Number(cleaner!.payout_percent),
+    cleanerCutCents: cut.cutCents,
     platformFeeBps,
   });
 

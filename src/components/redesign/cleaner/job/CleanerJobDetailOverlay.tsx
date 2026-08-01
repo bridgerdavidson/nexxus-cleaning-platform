@@ -75,7 +75,16 @@ export function CleanerJobDetailOverlay({
     try { await onStart(); close(); } catch { /* toast handled by hook */ }
   }
 
-  const mode = appointment ? deriveJobActionMode(appointment) : "none";
+  const derivedMode = appointment ? deriveJobActionMode(appointment) : "none";
+  // Latch the active-job flow open. Completing a job flips its status, which
+  // would otherwise re-derive mode to "done" and unmount CleanerActiveJob
+  // mid-flow, yanking away the success state before the cleaner has read it
+  // (in request mode that state carries their pay-request outcome, which they
+  // have no other way to see at that moment). Once the flow has started for
+  // this appointment it stays mounted until the overlay closes.
+  const inActiveFlowRef = useRef(false);
+  if (derivedMode === "continue") inActiveFlowRef.current = true;
+  const mode = inActiveFlowRef.current ? "continue" : derivedMode;
   const addr = appointment ? propertyAddress(appointment) : null;
   const duration = appointment ? formatDuration(appointment.service_type?.duration_minutes) : null;
 

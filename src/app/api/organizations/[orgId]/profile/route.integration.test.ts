@@ -7,11 +7,9 @@ import { withTestOrg, addOwnerToOrg, type TestOrgFixture } from '../../../../../
 import { createTestSupabaseClient } from '../../../../../../tests/helpers/supabase';
 
 /**
- * Pins the payout-model value-space transition (migration 117 / PR1 of the
- * pay-request feature): the route accepts BOTH spellings of the percentage
- * model but writes the LEGACY one until migration 118 backfills the data.
- * When PR2 flips the write to 'percentage', the two write assertions here
- * flip with it - deliberately, not by accident.
+ * Pins the payout-model value space post-migration-118: the route accepts
+ * BOTH spellings of the percentage model (stale clients may still send the
+ * legacy one) and writes the unified 'percentage'.
  */
 describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
   let org: TestOrgFixture;
@@ -38,7 +36,7 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
     );
   }
 
-  it("accepts 'percentage' and writes the legacy spelling (transition until migration 118)", async () => {
+  it("accepts and writes 'percentage'", async () => {
     const res = await patch({ default_payout_model: 'percentage' }, owner.accessToken);
     expect(res.status).toBe(200);
     const admin = createTestSupabaseClient();
@@ -47,20 +45,39 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
       .select('default_payout_model')
       .eq('id', org.organizationId)
       .single();
-    expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage_contractor');
+    expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage');
   });
 
-  it("accepts the legacy 'percentage_contractor' spelling from stale clients", async () => {
+  it("accepts the legacy 'percentage_contractor' spelling from stale clients and writes 'percentage'", async () => {
     const res = await patch({ default_payout_model: 'percentage_contractor' }, owner.accessToken);
     expect(res.status).toBe(200);
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('organizations')
+      .select('default_payout_model')
+      .eq('id', org.organizationId)
+      .single();
+    expect((data as { default_payout_model: string }).default_payout_model).toBe('percentage');
   });
 
-  it('rejects not-yet-selectable models with the availability error', async () => {
-    for (const model of ['flat', 'request', 'hourly_external']) {
+  it("accepts and writes 'flat' and 'request' (selectable since the org settings UI shipped)", async () => {
+    const admin = createTestSupabaseClient();
+    for (const model of ['flat', 'request']) {
       const res = await patch({ default_payout_model: model }, owner.accessToken);
-      expect(res.status).toBe(400);
-      expect((res.body as { error: string }).error).toBe('That payout model is not yet available');
+      expect(res.status).toBe(200);
+      const { data } = await admin
+        .from('organizations')
+        .select('default_payout_model')
+        .eq('id', org.organizationId)
+        .single();
+      expect((data as { default_payout_model: string }).default_payout_model).toBe(model);
     }
+  });
+
+  it("rejects the not-yet-built 'hourly_external' with the availability error", async () => {
+    const res = await patch({ default_payout_model: 'hourly_external' }, owner.accessToken);
+    expect(res.status).toBe(400);
+    expect((res.body as { error: string }).error).toBe('That payout model is not yet available');
   });
 
   it('rejects unknown models with the value-space error', async () => {

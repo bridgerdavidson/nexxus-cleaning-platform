@@ -25,8 +25,9 @@ import { createSelfPayCharge } from '@/lib/stripe/charges/chargeSelfPay';
 import { listSavedCards, getPaymentMethodType, paymentMethodBelongsToCustomer } from '@/lib/stripe/customers/homeowner';
 import { getDefaultPaymentMethod } from '@/lib/stripe';
 import { callRoute, bearerHeader } from '../../../../../../tests/helpers/auth';
-import { withTestOrg, addManagerToOrg, addHomeownerToOrg, createTestAppointment, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, addHomeownerToOrg, createTestAppointment, createTestPayRequest, type TestOrgFixture } from '../../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient, createAnonClient } from '../../../../../../tests/helpers/supabase';
+import { computeSelfPayAmountsFromCents } from '@/lib/payments/selfPayMath';
 
 const handlerFor = (appointmentId: string) => (req: NextRequest) =>
   POST(req, { params: Promise.resolve({ appointmentId }) });
@@ -577,6 +578,68 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     expect(pay.status).toBe('paid');
     expect(pay.is_self_pay).toBe(true);
     expect(pay.stripe_payment_intent_id).toBe('pi_selfpay_charge_now');
+  });
+
+  it('self-pay + request mode: a pending thread blocks the CHARGE itself (pay_request_pending, no stamp)', async () => {
+    const db = createTestSupabaseClient();
+    await db.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    const apptId = await completedSelfPayAppt();
+    await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: apptId,
+      cleanerId: org.cleaner.userId,
+      status: 'pending_org',
+      jobPriceCents: 10000,
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 9500, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    expect(status).toBe(409);
+    expect(body.code).toBe('pay_request_pending');
+    expect(vi.mocked(createSelfPayCharge)).not.toHaveBeenCalled();
+
+    // Precondition bail: the claim released back to the PRE-CLAIM status
+    // ('failed' from the seed), never stamped and never erased to NULL.
+    const { data: a } = await db.from('appointments').select('authorization_status').eq('id', apptId).single();
+    expect((a as { authorization_status: string | null }).authorization_status).toBe('failed');
+  });
+
+  it('self-pay + request mode: an approved thread charges approved + fee(gross) grossed up', async () => {
+    const db = createTestSupabaseClient();
+    await db.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    await db.from('organizations').update({ platform_fee_bps: 100 }).eq('id', org.organizationId);
+    const apptId = await completedSelfPayAppt();
+    await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: apptId,
+      cleanerId: org.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 10000,
+      approvedAmountCents: 7200,
+      approvedVia: 'org',
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 7200, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    expect(status).toBe(200);
+    expect(body.code).toBe('charged');
+    expect(vi.mocked(createSelfPayCharge)).toHaveBeenCalledTimes(1);
+    const expected = computeSelfPayAmountsFromCents({
+      jobGrossCents: 10000,
+      cleanerCutCents: 7200,
+      platformFeeBps: 100,
+    });
+    expect(vi.mocked(createSelfPayCharge).mock.calls[0][0].chargeCents).toBe(expected.chargeCents);
   });
 
   it('a declined SELF-PAY charge never notifies the comped homeowner', async () => {

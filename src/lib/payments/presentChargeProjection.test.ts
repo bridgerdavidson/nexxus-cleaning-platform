@@ -59,4 +59,69 @@ describe('presentChargeProjection', () => {
     expect(p.chargeCents).toBe(full.chargeCents);
     expect(p.payoutPercent).toBe(full.payoutPercent);
   });
+
+  it('carries the pay mode so the Complete sheet knows which flow to render', () => {
+    const pct = presentChargeProjection(full, { display: 'full', isCleanerViewer: true });
+    expect(pct.payoutModel).toBe('percentage');
+
+    const req = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: true,
+      payoutModel: 'request',
+    });
+    expect(req.payoutModel).toBe('request');
+  });
+
+  it("request mode seals the price even when the org's display is 'full'", () => {
+    // Hiding the job price is intrinsic to request mode, not an org display
+    // preference: a cleaner who sees it can compute the auto-approve cap.
+    const p = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: true,
+      payoutModel: 'request',
+    });
+    expect(p.cleanerCutCents).toBeUndefined();
+    expect(p.chargeCents).toBeUndefined();
+    expect(p.baseCents).toBeUndefined();
+    expect(p.feeCents).toBeUndefined();
+    expect(p.platformFeeCents).toBeUndefined();
+    expect(p.payoutPercent).toBeUndefined();
+    expect(JSON.stringify(p)).not.toContain('12000');
+    expect(JSON.stringify(p)).not.toContain('12500');
+  });
+
+  it('flat mode omits the cut: their pay is min(flat_rate, gross), not a percentage', () => {
+    const p = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: true,
+      payoutModel: 'flat',
+    });
+    expect(p.cleanerCutCents).toBeUndefined();
+    // Flat mode has no price-secrecy requirement, so the org's display governs.
+    expect(p.chargeCents).toBe(full.chargeCents);
+  });
+
+  it('request mode + payout_only cleaner: no cut AND no price signal', () => {
+    const p = presentChargeProjection(full, {
+      display: 'payout_only',
+      isCleanerViewer: true,
+      payoutModel: 'request',
+    });
+    expect(p.display).toBe('payout_only');
+    expect(p.cleanerCutCents).toBeUndefined();
+    expect(p.chargeCents).toBeUndefined();
+    expect(p.baseCents).toBeUndefined();
+    expect(p.payoutPercent).toBeUndefined();
+    expect(p.platformFeeCents).toBeUndefined();
+  });
+
+  it('request mode still shows org staff the projected cut (they author the offer)', () => {
+    const p = presentChargeProjection(full, {
+      display: 'full',
+      isCleanerViewer: false,
+      payoutModel: 'request',
+    });
+    expect(p.payoutModel).toBe('request');
+    expect(p.cleanerCutCents).toBe(full.cleanerCutCents);
+  });
 });

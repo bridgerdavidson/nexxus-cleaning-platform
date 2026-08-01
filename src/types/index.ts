@@ -344,6 +344,7 @@ export interface PayRequest {
   cleaner_id: string; // References cleaner_profiles(id) = the auth user id
   status: PayRequestStatus;
   job_price_cents_snapshot: number; // appointments.total_price at submission, in cents
+  current_offer_cents: number | null; // the live offer (pending_org = cleaner's ask, pending_cleaner = org's counter)
   approved_amount_cents: number | null;
   approved_via: PayRequestApprovedVia | null;
   approved_by: string | null; // user id for 'org'/'cleaner_accept'; null for 'auto'
@@ -701,7 +702,13 @@ export interface ChecklistItemCompletion {
 // they are optional here. Org staff always receive the full ('full') shape.
 export interface ChargeProjection {
   display: 'full' | 'payout_only';
-  cleanerCutCents: number;
+  /** The assigned cleaner's pay mode; drives which completion flow renders. */
+  payoutModel: PayoutModel;
+  /**
+   * Omitted for a request-mode CLEANER viewer: they name their own amount, so
+   * the percentage-derived cut is not what they will be paid.
+   */
+  cleanerCutCents?: number;
   isSelfPay: boolean;
   // present only when display === 'full':
   baseCents?: number;

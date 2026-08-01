@@ -23,6 +23,7 @@ import { toDetailVM } from "./booking-vm";
 import { RescheduleDialog, type RescheduleInit } from "./reschedule/RescheduleDialog";
 import { useRescheduleBooking } from "./reschedule/useRescheduleBooking";
 import { CancelBookingDialog } from "./cancel/CancelBookingDialog";
+import { CompleteRequestPayDialog } from "./CompleteRequestPayDialog";
 
 /**
  * Shell-level `?booking=<id>` host: opens the booking detail sheet in place on
@@ -81,9 +82,24 @@ function HostInner({
   const [busy, setBusy] = useState(false);
   const [reschedInit, setReschedInit] = useState<RescheduleInit | null>(null);
   const [feeCancelOpen, setFeeCancelOpen] = useState(false);
+  const [payOfferOpen, setPayOfferOpen] = useState(false);
+  // Set once this job's pay thread exists (we created it, or a duplicate told
+  // us so). A completion retry then skips the dialog instead of asking for an
+  // amount it would silently discard.
+  const [payOfferSent, setPayOfferSent] = useState(false);
 
   const raw = useMemo(() => appointments.find((x) => x.id === appointmentId) ?? null, [appointments, appointmentId]);
   const detail = useMemo(() => (raw ? toDetailVM(raw, canViewPayments) : null), [raw, canViewPayments]);
+
+  // Completing a request-mode cleaner's job routes through the pay-offer
+  // dialog (the cleaner names their pay; here the org opens with an offer).
+  // Only operators who can manage payments may author an offer; anyone else
+  // completes plainly and the cleaner opens the thread from their side.
+  const assignedCleaner = useMemo(
+    () => (raw?.cleaner_id ? cleaners.find((c) => c.id === raw.cleaner_id) ?? null : null),
+    [cleaners, raw?.cleaner_id],
+  );
+  const completionNeedsPayOffer = assignedCleaner?.payout_model === "request" && canManagePayments;
 
   // The dialog's own open state derives from reschedInit (init !== null), so
   // reset it whenever the sheet's open prop goes false: otherwise browser
@@ -93,6 +109,7 @@ function HostInner({
     if (!open) {
       setReschedInit(null);
       setFeeCancelOpen(false);
+      setPayOfferOpen(false);
     }
   }, [open]);
 
@@ -124,6 +141,51 @@ function HostInner({
       }
     },
     [appointmentId, refetch],
+  );
+
+  // POST-first ordering (mirrors the cleaner completion step): the offer is
+  // created before the status write so a completed request-mode job can never
+  // exist without its pay thread. A 409 'duplicate' means the thread already
+  // exists (the cleaner asked first, or a prior attempt's POST landed);
+  // completion proceeds and the thread is handled from Payments. A 409
+  // 'cancelled' must NOT complete the job.
+  const sendPayOfferAndComplete = useCallback(
+    async (amountCents: number, note: string | null): Promise<string | null> => {
+      if (!currentOrganizationId) return "No organization";
+      try {
+        const res = await fetch(`/api/appointments/${appointmentId}/pay-request`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            amount_cents: amountCents,
+            ...(note ? { note } : {}),
+          }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+          if (res.status === 409 && data.code === "cancelled") {
+            return data.error || "This job was cancelled.";
+          }
+          if (res.status !== 409) {
+            return data.error || "Could not send the pay offer";
+          }
+          // duplicate: the entered amount was NOT used; say so instead of
+          // silently discarding it.
+          toast.info("This job already has a pay request. Review it under Payments.");
+        }
+      } catch {
+        return "Could not send the pay offer";
+      }
+      setPayOfferSent(true);
+      setPayOfferOpen(false);
+      await runStatus("completed");
+      return null;
+    },
+    [appointmentId, currentOrganizationId, accessToken, runStatus],
   );
 
   const handleAssign = useCallback(
@@ -225,7 +287,9 @@ function HostInner({
         onAssign={handleAssign}
         onAcceptCounter={handleAcceptCounter}
         onStart={() => runStatus("in_progress")}
-        onComplete={() => runStatus("completed")}
+        onComplete={() =>
+          completionNeedsPayOffer && !payOfferSent ? setPayOfferOpen(true) : runStatus("completed")
+        }
         onOpenReschedule={(init) => setReschedInit(init ?? {})}
         onCancel={() => (feeCancel && raw ? setFeeCancelOpen(true) : setConfirm("cancel"))}
         onDelete={() => setConfirm("delete")}
@@ -264,6 +328,18 @@ function HostInner({
             await refetch();
             onClose();
           }}
+        />
+      ) : null}
+      {completionNeedsPayOffer && raw ? (
+        <CompleteRequestPayDialog
+          open={payOfferOpen}
+          onOpenChange={setPayOfferOpen}
+          cleanerName={
+            `${assignedCleaner?.user_profile?.first_name ?? ""} ${assignedCleaner?.user_profile?.last_name ?? ""}`.trim() ||
+            "This cleaner"
+          }
+          jobPriceCents={raw.total_price != null ? Math.round(Number(raw.total_price) * 100) : null}
+          onSubmit={sendPayOfferAndComplete}
         />
       ) : null}
       <ConfirmDialog

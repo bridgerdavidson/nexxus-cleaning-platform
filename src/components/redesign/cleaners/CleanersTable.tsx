@@ -109,7 +109,7 @@ export function CleanersTable({
             <TableHead>Cleaner</TableHead>
             <TableHead className="text-right">This week</TableHead>
             {canViewPayments ? <TableHead className="text-right">Earnings</TableHead> : null}
-            <TableHead className="text-right">Cut</TableHead>
+            <TableHead className="text-right">Pay</TableHead>
             <TableHead className="w-12 text-right" aria-label="Actions" />
           </TableRow>
         </TableHeader>
@@ -156,7 +156,7 @@ export function CleanersTable({
                     <span className="font-semibold tnum text-foreground">{row.earningsLabel ?? "$0"}</span>
                   </TableCell>
                 ) : null}
-                <TableCell className="text-right tnum text-muted-foreground">{row.payoutPercentLabel}</TableCell>
+                <TableCell className="whitespace-nowrap text-right tnum text-muted-foreground">{row.payLabel}</TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <RowMenu row={row} canEdit={canEdit} onAction={onRowAction} />
                 </TableCell>

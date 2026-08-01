@@ -68,8 +68,50 @@ export async function POST(request: NextRequest) {
     // Cleaner-specific fields + the soft-bench flag live on cleaner_profiles.
     const cleanerUpdate: Record<string, unknown> = {};
     if (cleaner && typeof cleaner === 'object') {
+      if (cleaner.payout_percent !== undefined) {
+        const p = cleaner.payout_percent;
+        // Range-checked here, not just in the DB constraint: a constraint
+        // violation would fail the whole update with a raw error AFTER the
+        // profile fields already wrote.
+        if (typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 100) {
+          return NextResponse.json(
+            { success: false, error: 'payout_percent must be between 0 and 100' },
+            { status: 400 },
+          );
+        }
+      }
       for (const k of ['payout_percent', 'hourly_rate', 'experience_years', 'bio'] as const) {
         if (cleaner[k] !== undefined) cleanerUpdate[k] = cleaner[k];
+      }
+      if (cleaner.payout_model !== undefined) {
+        // Accept the pre-118 spelling from stale clients; write the unified one.
+        const m =
+          cleaner.payout_model === 'percentage_contractor' ? 'percentage' : cleaner.payout_model;
+        if (!['percentage', 'flat', 'request', 'hourly_external'].includes(m)) {
+          return NextResponse.json(
+            { success: false, error: 'payout_model must be percentage, flat, request, or hourly_external' },
+            { status: 400 },
+          );
+        }
+        if (m === 'hourly_external') {
+          return NextResponse.json(
+            { success: false, error: 'That payout model is not yet available' },
+            { status: 400 },
+          );
+        }
+        cleanerUpdate.payout_model = m;
+      }
+      if (cleaner.flat_rate_cents !== undefined) {
+        const v = cleaner.flat_rate_cents;
+        // Upper bound keeps absurd values a clean 400 instead of an int4
+        // overflow 500 from Postgres ($1,000,000 per job is already absurd).
+        if (v !== null && (!Number.isInteger(v) || v < 0 || v > 100_000_000)) {
+          return NextResponse.json(
+            { success: false, error: 'flat_rate_cents must be an integer between 0 and 100000000' },
+            { status: 400 },
+          );
+        }
+        cleanerUpdate.flat_rate_cents = v;
       }
     }
     if (deactivated !== undefined) {

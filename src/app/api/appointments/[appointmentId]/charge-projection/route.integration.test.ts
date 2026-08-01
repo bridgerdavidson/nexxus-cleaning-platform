@@ -227,6 +227,98 @@ describe('GET /api/appointments/:appointmentId/charge-projection', () => {
     expect(body.projection.payoutPercent).toBeDefined();
   });
 
+  // --- pay mode: request-mode cleaners name their own amount ---
+
+  it("request-mode cleaner gets payoutModel:'request' and NO cut (the percent is not their pay)", async () => {
+    const apptId = await seedAppt({ totalPrice: 150 });
+    const db = createTestSupabaseClient();
+    await db
+      .from('cleaner_profiles')
+      .update({ payout_model: 'request' })
+      .eq('id', org.cleaner.userId);
+
+    const { status, body } = await callRoute<{
+      projection: { payoutModel: string; cleanerCutCents?: number; chargeCents?: number };
+    }>(handlerFor(apptId), {
+      method: 'GET',
+      url: urlFor(apptId, org.organizationId),
+      headers: bearerHeader(org.cleaner.accessToken),
+    });
+
+    expect(status).toBe(200);
+    expect(body.projection.payoutModel).toBe('request');
+    // Stating a percentage-derived cut would name a number that is not what
+    // they will be paid, so it is omitted rather than shown.
+    expect(body.projection.cleanerCutCents).toBeUndefined();
+  });
+
+  it('request-mode + payout_only cleaner: no cut AND no price signal at all', async () => {
+    const apptId = await seedAppt({ totalPrice: 150 });
+    const db = createTestSupabaseClient();
+    await db
+      .from('cleaner_profiles')
+      .update({ payout_model: 'request' })
+      .eq('id', org.cleaner.userId);
+    await db
+      .from('organizations')
+      .update({ cleaner_pay_display: 'payout_only' })
+      .eq('id', org.organizationId);
+
+    const { status, body } = await callRoute<{ projection: Record<string, unknown> }>(
+      handlerFor(apptId),
+      {
+        method: 'GET',
+        url: urlFor(apptId, org.organizationId),
+        headers: bearerHeader(org.cleaner.accessToken),
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.projection.payoutModel).toBe('request');
+    expect(body.projection.cleanerCutCents).toBeUndefined();
+    expect(body.projection.chargeCents).toBeUndefined();
+    expect(body.projection.baseCents).toBeUndefined();
+    expect(body.projection.payoutPercent).toBeUndefined();
+    // 150 dollars = 15000 cents must not survive anywhere in the payload.
+    expect(JSON.stringify(body)).not.toContain('15000');
+  });
+
+  it('request-mode org staff still receive the projected cut (they author the offer)', async () => {
+    const apptId = await seedAppt({ totalPrice: 150 });
+    const db = createTestSupabaseClient();
+    await db
+      .from('cleaner_profiles')
+      .update({ payout_model: 'request' })
+      .eq('id', org.cleaner.userId);
+
+    const { status, body } = await callRoute<{
+      projection: { payoutModel: string; cleanerCutCents?: number };
+    }>(handlerFor(apptId), {
+      method: 'GET',
+      url: urlFor(apptId, org.organizationId),
+      headers: bearerHeader(org.admin.accessToken),
+    });
+
+    expect(status).toBe(200);
+    expect(body.projection.payoutModel).toBe('request');
+    expect(body.projection.cleanerCutCents).toBeDefined();
+  });
+
+  it("percentage cleaners keep payoutModel:'percentage' and their cut", async () => {
+    const apptId = await seedAppt({ totalPrice: 150 });
+    const { status, body } = await callRoute<{
+      projection: { payoutModel: string; cleanerCutCents?: number };
+    }>(handlerFor(apptId), {
+      method: 'GET',
+      url: urlFor(apptId, org.organizationId),
+      headers: bearerHeader(org.cleaner.accessToken),
+    });
+
+    expect(status).toBe(200);
+    expect(body.projection.payoutModel).toBe('percentage');
+    expect(body.projection.cleanerCutCents).toBe(6000); // 40% of $150
+  });
+
   // --- (b) non-members and unassigned cleaners are rejected ---
 
   it('403 for a cleaner not assigned to the appointment', async () => {

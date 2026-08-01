@@ -48,7 +48,8 @@ export type CleanerRowVM = {
   upcomingCount: number;
   /** "$1,240" lifetime cleaner earnings, gated by canViewPayments; null when hidden. */
   earningsLabel: string | null;
-  payoutPercentLabel: string; // "60%"
+  /** Mode-aware pay chip: "60% cut" / "$80 per job" / "Names their pay". */
+  payLabel: string;
 };
 
 export type PendingInviteRowVM = {
@@ -102,6 +103,9 @@ export type CleanerDetailVM = {
   firstName: string;
   lastName: string;
   payoutPercent: number;
+  /** 'percentage' | 'flat' | 'request' | 'hourly_external' (legacy spelling normalized upstream). */
+  payoutModel: string;
+  flatRateCents: number | null;
   hourlyRate: number | null;
   experienceYears: number | null;
   scorecard: CleanerScorecardVM;

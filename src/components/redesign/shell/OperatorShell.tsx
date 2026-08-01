@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
+import { usePayRequestsPendingCount } from "@/hooks/usePayRequestsPendingCount";
 import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
 import { OperatorRail } from "./OperatorRail";
 import { OperatorTopBar } from "./OperatorTopBar";
@@ -81,12 +82,17 @@ export function OperatorShell({
   // ?property=<id>). Gated like the properties workspace itself
   // (can_view_properties); nav/route are added by a later task.
   const canViewProperties = privileged || !!permissions?.can_view_properties;
+  // Pay requests waiting on the org surface as a count on the Payments nav
+  // item, gated like the Payments screen itself (can_view_payments).
+  const canViewPayments = privileged || !!permissions?.can_view_payments;
+  const payRequestsPending = usePayRequestsPendingCount(canViewPayments);
+  const navBadges = payRequestsPending > 0 ? { payments: payRequestsPending } : undefined;
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background text-foreground">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
-        <OperatorRail activeId={activeId} nav={nav} messagesUnread={messagesUnread} />
+        <OperatorRail activeId={activeId} nav={nav} badges={navBadges} messagesUnread={messagesUnread} />
         <div className="lg:pl-16">
           <RedesignImpersonationBanner />
           <OperatorTopBar
@@ -102,7 +108,7 @@ export function OperatorShell({
             </div>
           </main>
         </div>
-        <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} messagesUnread={messagesUnread} />
+        <OperatorMobileNav activeId={activeId} onNewBooking={onNewBooking} primary={primary} secondary={secondary} badges={navBadges} messagesUnread={messagesUnread} />
         <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} onNewBooking={onNewBooking} />
         {canCreateBooking ? (
           <Suspense fallback={null}>
