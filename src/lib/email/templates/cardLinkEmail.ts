@@ -5,10 +5,12 @@
  * mirrored here as inline styles (neutrals: warm-50 canvas #F7F6F3, warm-900
  * text #211E1A, warm-600 muted #6B6459, warm-200 border #E6E2DB; source of
  * truth: src/app/globals.css + tailwind.config.js). The BRAND color is the
- * org's own when provided (white-label PR 5), derived through the same
- * AA-guarded ramp the app uses: the button fill honors the tenant color
- * exactly, its label flips white/near-black, and link/eyebrow ink steps darker
- * when the tenant color is not legible on white. Nexxus blue when absent.
+ * org's own when provided (white-label PR 5), derived through the same ramp
+ * the app uses: the button fill honors the tenant color exactly with a
+ * max-contrast white/near-black label (AA for all but mid-lightness brands,
+ * the spec-accepted tradeoff of decision 3, matching the in-app primary
+ * button), and link/eyebrow ink steps darker whenever the tenant color is not
+ * AA-legible on white. Nexxus blue when absent.
  *
  * Every interpolated dynamic value is escaped: homeowner and org names are
  * operator-settable input, not self-owned. Only the server-built `url` carries
@@ -87,7 +89,8 @@ export function cardLinkEmail({
   logoUrl,
 }: CardLinkEmailInput): { subject: string; html: string; text: string } {
   // The tenant's exact color fills the button (spec decision 3); the derived
-  // ramp supplies an AA-passing label and a link ink that stays readable on
+  // ramp supplies a max-contrast label (sub-AA is possible for mid-lightness
+  // brands, accepted per decision 3) and a link ink GUARANTEED readable on
   // white. Using the raw accent hex when it IS the legible ink keeps the
   // default output byte-identical to the pre-branding template.
   const accent = brandColor && HEX_RE.test(brandColor) ? brandColor.toUpperCase() : NEXXUS_BRAND_HEX;
@@ -143,7 +146,12 @@ export function cardLinkEmail({
               <td style="padding:32px 32px 24px 32px;font-family:${fontStack};">
                 ${
                   safeLogoUrl
-                    ? `<img src="${safeLogoUrl}" alt="${safeOrg}" height="32" style="display:block;height:32px;max-width:200px;margin:0 0 24px 0;" />`
+                    ? // Both width AND height attrs, hard-bounded: Outlook's Word engine
+                      // ignores CSS max-width and scales from attributes at natural
+                      // aspect, so an attr-less wide icon would overflow the card.
+                      // object-fit letterboxes in standards clients; Outlook shows a
+                      // bounded (worst case mildly squashed) 32x32, never an overflow.
+                      `<img src="${safeLogoUrl}" alt="${safeOrg}" width="32" height="32" style="display:block;width:32px;height:32px;object-fit:contain;margin:0 0 24px 0;" />`
                     : `<p style="margin:0 0 24px 0;font-size:14px;font-weight:700;color:${ink};">${safeOrg}</p>`
                 }
                 <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;font-weight:700;color:#211E1A;">${heading}</h1>

@@ -187,7 +187,7 @@ function AddCardInner() {
   if (loading) {
     return (
       <div className="flex flex-col items-center py-12">
-        <Loader2 className="w-7 h-7 animate-spin text-brand-ink mb-3" />
+        <Loader2 className="w-7 h-7 animate-spin text-muted-foreground mb-3" />
         <p className="text-muted-foreground">Loading…</p>
       </div>
     );
@@ -215,8 +215,9 @@ function AddCardInner() {
         stripe={stripePromise}
         options={{
           clientSecret: link.clientSecret,
-          // Public page has no theme provider; always the light brand appearance.
-          appearance: getRedesignConnectAppearance(false),
+          // Public page has no theme provider; light appearance with the link
+          // org's accent so Stripe's focus borders and tabs match the page.
+          appearance: getRedesignConnectAppearance(false, link.brandColor ?? undefined),
         }}
       >
         <CardForm />
@@ -232,7 +233,7 @@ export default function AddCardPage() {
         <Suspense
           fallback={
             <div className="flex justify-center py-12">
-              <Loader2 className="w-7 h-7 animate-spin text-brand-ink" />
+              <Loader2 className="w-7 h-7 animate-spin text-muted-foreground" />
             </div>
           }
         >

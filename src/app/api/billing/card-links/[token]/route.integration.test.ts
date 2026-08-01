@@ -80,6 +80,30 @@ describe('GET /api/billing/card-links/:token', () => {
     expect(body.status).toBe('pending');
   });
 
+  it('returns null branding for an org that set none', async () => {
+    await seedLink('tok_plain');
+    const { status, body } = await callRoute<{ brand_color: string | null; logo_icon_url: string | null }>(
+      handlerFor('tok_plain'),
+      { method: 'GET' },
+    );
+    expect(status).toBe(200);
+    expect(body.brand_color).toBeNull();
+    expect(body.logo_icon_url).toBeNull();
+  });
+
+  it('does not leak branding on inactive links (the 410 body carries no org fields)', async () => {
+    const db = createTestSupabaseClient();
+    await db.from('organizations').update({ brand_color: '#B5179E' }).eq('id', org.organizationId);
+    await seedLink('tok_expired_branded', { expired: true });
+    const { status, body } = await callRoute<Record<string, unknown>>(
+      handlerFor('tok_expired_branded'),
+      { method: 'GET' },
+    );
+    expect(status).toBe(410);
+    expect(body.brand_color).toBeUndefined();
+    expect(body.org_name).toBeUndefined();
+  });
+
   it("returns the link org's branding so the page can theme itself (white-label PR 5)", async () => {
     const db = createTestSupabaseClient();
     await db
