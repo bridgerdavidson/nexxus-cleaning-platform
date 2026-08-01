@@ -1,18 +1,18 @@
 'use client';
 
 import { useCallback } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 
 /**
  * Open a homeowner message thread by setting URL params on the CURRENT path, so
  * the thread takeover (mounted in the layout) opens over whatever view is showing
- * (inbox or a cleaning detail). Mirrors useOpenCleaning's set-param-and-replace.
+ * (inbox or a cleaning detail). Mirrors useOpenCleaning's set-param-in-place.
  * - openOffice(userId)       -> ?to=<userId>     (start/open the office thread)
  * - openOfficeThread(convId) -> ?thread=<convId> (open an existing office row)
  * - openJob(appointmentId)   -> ?job=<appointmentId>
  */
 export function useOpenMessageThread() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -23,9 +23,9 @@ export function useOpenMessageThread() {
       sp.delete('thread');
       sp.delete('job');
       sp.set(key, value);
-      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+      replaceSearchShallow(`${pathname}?${sp.toString()}`);
     },
-    [router, pathname, searchParams],
+    [pathname, searchParams],
   );
 
   return {

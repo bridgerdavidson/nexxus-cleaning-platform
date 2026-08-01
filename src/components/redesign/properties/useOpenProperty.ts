@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 
 /**
  * Open/close the operator property-detail sheet via `?property=<id>` (and,
@@ -9,15 +10,14 @@ import { usePathname, useRouter } from "next/navigation";
  * Mirrors useOpenBookingDetail: reads the current query string from
  * window.location inside each handler (never during render) so sibling
  * params (e.g. a Messages `?c=` thread selection) survive, and callers need no
- * Suspense boundary (unlike useSearchParams). Uses router.replace (no scroll)
- * so closing restores list state.
+ * Suspense boundary (unlike useSearchParams). Shallow in-place URL update (no
+ * scroll) so closing restores list state.
  */
 export function useOpenProperty(): {
   open: (id: string) => void;
   openForEdit: (id: string) => void;
   close: () => void;
 } {
-  const router = useRouter();
   const pathname = usePathname();
 
   const open = useCallback(
@@ -25,9 +25,9 @@ export function useOpenProperty(): {
       const sp = new URLSearchParams(window.location.search);
       sp.set("property", id);
       sp.delete("propertyEdit");
-      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+      replaceSearchShallow(`${pathname}?${sp.toString()}`);
     },
-    [router, pathname],
+    [pathname],
   );
 
   const openForEdit = useCallback(
@@ -35,9 +35,9 @@ export function useOpenProperty(): {
       const sp = new URLSearchParams(window.location.search);
       sp.set("property", id);
       sp.set("propertyEdit", "1");
-      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+      replaceSearchShallow(`${pathname}?${sp.toString()}`);
     },
-    [router, pathname],
+    [pathname],
   );
 
   const close = useCallback(() => {
@@ -45,8 +45,8 @@ export function useOpenProperty(): {
     sp.delete("property");
     sp.delete("propertyEdit");
     const qs = sp.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [router, pathname]);
+    replaceSearchShallow(qs ? `${pathname}?${qs}` : pathname);
+  }, [pathname]);
 
   return { open, openForEdit, close };
 }

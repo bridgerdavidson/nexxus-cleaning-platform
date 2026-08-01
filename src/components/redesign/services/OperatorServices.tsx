@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -130,7 +131,6 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
   const orgId = currentOrganizationId ?? "";
   const queryClient = useQueryClient();
 
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("service");
@@ -159,16 +159,16 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     (id: string) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("service", id);
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      replaceSearchShallow(`${pathname}?${params.toString()}`);
     },
-    [searchParams, router, pathname],
+    [searchParams, pathname],
   );
   const clearSelection = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("service");
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [searchParams, router, pathname]);
+    replaceSearchShallow(qs ? `${pathname}?${qs}` : pathname);
+  }, [searchParams, pathname]);
 
   // --- toolbar state ---
   const [search, setSearch] = useState("");

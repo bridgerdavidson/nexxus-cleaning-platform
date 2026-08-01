@@ -1,7 +1,8 @@
 'use client';
 
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useDetailParam } from '@/hooks/useDetailParam';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 import { BookingFlow } from './BookingFlow';
 
 /**
@@ -12,14 +13,13 @@ import { BookingFlow } from './BookingFlow';
 export function BookingFlowHost() {
   const { paramId } = useDetailParam('book');
   const sp = useSearchParams();
-  const router = useRouter();
   const pathname = usePathname();
   if (!paramId) return null;
   return (
     <BookingFlow
       initialServiceTypeId={sp.get('bookService')}
       initialPropertyId={sp.get('bookProperty')}
-      onClose={() => router.replace(pathname, { scroll: false })}
+      onClose={() => replaceSearchShallow(pathname)}
     />
   );
 }

@@ -47,3 +47,46 @@ test.describe('Legacy routes redirect into the redesign', () => {
     await expect(page).toHaveURL(/\/admin(?:\?|$)/);
   });
 });
+
+// Regression: Next 16's client router silently no-ops a same-pathname
+// router.replace with different search params after a hard load whose URL
+// already carried params (the cached static entry restores its canonical URL).
+// Same-path search updates therefore go through native history.replaceState
+// (src/lib/shallowSearch.ts). These specs pin the user-visible contract: after
+// a reload WITH params in the URL, in-page section/tab switches still work.
+test.describe('Search-param navigation survives a hard load with params', () => {
+  test('settings section switch works after reloading on a section', async ({ page }) => {
+    await signIn(page);
+
+    // Hard load directly onto a non-default section: ?section= in the initial URL.
+    await page.goto('/admin/settings?section=branding', { waitUntil: 'domcontentloaded' });
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
+    await expect(nav).toBeVisible({ timeout: 20_000 });
+
+    await nav.getByRole('button', { name: 'Profile', exact: true }).click();
+    await expect(page).toHaveURL(/section=profile/, { timeout: 10_000 });
+    await expect(nav.getByRole('button', { name: 'Profile', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    await nav.getByRole('button', { name: 'Payments', exact: true }).click();
+    await expect(page).toHaveURL(/section=payments/);
+  });
+
+  test('payments ledger tab switch works after reloading on the payouts ledger', async ({ page }) => {
+    await signIn(page);
+
+    await page.goto('/admin/payments?ledger=payouts', { waitUntil: 'domcontentloaded' });
+    const payoutsTab = page.getByRole('tab', { name: /payouts/i });
+    await expect(payoutsTab).toHaveAttribute('aria-selected', 'true', { timeout: 20_000 });
+
+    await page.getByRole('tab', { name: /transactions/i }).click();
+    await expect(page.getByRole('tab', { name: /transactions/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+      { timeout: 10_000 },
+    );
+    await expect(page).not.toHaveURL(/ledger=payouts/);
+  });
+});

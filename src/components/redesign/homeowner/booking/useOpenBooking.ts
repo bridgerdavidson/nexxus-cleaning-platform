@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 
 export function bookingParams(opts?: { serviceTypeId?: string; propertyId?: string }): Record<string, string> {
   const p: Record<string, string> = { book: '1' };
@@ -12,17 +13,16 @@ export function bookingParams(opts?: { serviceTypeId?: string; propertyId?: stri
 
 /**
  * Open the "Request a cleaning" flow by setting `?book=1` on the current path (plus an
- * optional `&bookService=` / `&bookProperty=` prefill). Uses router.replace (no scroll);
+ * optional `&bookService=` / `&bookProperty=` prefill). Shallow in-place URL update;
  * reads no search params, so callers need no Suspense boundary (mirrors useOpenCleaning).
  */
 export function useOpenBooking(): (opts?: { serviceTypeId?: string; propertyId?: string }) => void {
-  const router = useRouter();
   const pathname = usePathname();
   return useCallback(
     (opts) => {
       const qs = new URLSearchParams(bookingParams(opts)).toString();
-      router.replace(`${pathname}?${qs}`, { scroll: false });
+      replaceSearchShallow(`${pathname}?${qs}`);
     },
-    [router, pathname],
+    [pathname],
   );
 }
