@@ -138,3 +138,50 @@ describe('cardLinkEmail', () => {
     expect(text).toContain('expires in 7 days');
   });
 });
+
+describe('cardLinkEmail branding', () => {
+  const base = { homeownerName: 'John', orgName: 'Sparkle Co', url: URL };
+
+  it("uses the org's brand color for the button and links when passed", () => {
+    const { html } = cardLinkEmail({ ...base, brandColor: '#B5179E' });
+    expect(html).toContain('background-color:#B5179E');
+    expect(html).not.toContain('#0150FC');
+  });
+
+  it('keeps the Nexxus brand exactly when no color is passed', () => {
+    const { html } = cardLinkEmail({ ...base });
+    expect(html).toContain('background-color:#0150FC');
+    expect(html).toContain('color:#0150FC');
+  });
+
+  it('keeps the Nexxus brand for an invalid color', () => {
+    const { html } = cardLinkEmail({ ...base, brandColor: 'blue' });
+    expect(html).toContain('background-color:#0150FC');
+  });
+
+  it('flips the button text dark and darkens link ink for a pale brand (AA)', () => {
+    const { html } = cardLinkEmail({ ...base, brandColor: '#FFE24D' });
+    // The button keeps the tenant's exact color as its fill...
+    expect(html).toContain('background-color:#FFE24D');
+    // ...but its label is no longer white, and links do not use the pale hex.
+    const button = html.match(/<a href="[^"]*" style="[^"]*display:inline-block[^"]*"/)?.[0] ?? '';
+    expect(button).not.toContain('color:#FFFFFF');
+    expect(html).not.toContain('color:#FFE24D;text-decoration:underline');
+  });
+
+  it('renders the logo img only when a URL is given, with the org name as alt', () => {
+    const withLogo = cardLinkEmail({ ...base, logoUrl: 'https://x.supabase.co/storage/v1/object/public/org-branding/o/icon-a.png' });
+    expect(withLogo.html).toContain('<img src="https://x.supabase.co/storage/v1/object/public/org-branding/o/icon-a.png"');
+    expect(withLogo.html).toContain('alt="Sparkle Co"');
+    const without = cardLinkEmail({ ...base });
+    expect(without.html).not.toContain('<img');
+  });
+
+  it('keeps the attribution footer in both variants (decision 11)', () => {
+    for (const input of [{ ...base }, { ...base, brandColor: '#B5179E', logoUrl: 'https://x.supabase.co/logo.png' }]) {
+      const { html, text } = cardLinkEmail(input);
+      expect(html).toContain('Sent by Sparkle Co via Nexxus');
+      expect(text).toContain('Sent by Sparkle Co via Nexxus');
+    }
+  });
+});

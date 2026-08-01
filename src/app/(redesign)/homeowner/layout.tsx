@@ -8,7 +8,7 @@ import { HomeownerShell } from "@/components/redesign/homeowner/shell/HomeownerS
 import { HomeownerCleaningDetailHost } from "@/components/redesign/homeowner/cleanings/HomeownerCleaningDetailHost";
 import { HomeownerMessageThreadHost } from "@/components/redesign/homeowner/messages/HomeownerMessageThreadHost";
 import { BookingFlowHost } from "@/components/redesign/homeowner/booking/BookingFlowHost";
-import { FullPageLoader } from "@/components/ui/nexxus-loader";
+import { TenantFullPageLoader as FullPageLoader } from "@/components/branding/TenantFullPageLoader";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 
 export default function HomeownerDashboardLayout({

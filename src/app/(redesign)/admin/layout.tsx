@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import WorkspaceErrorScreen from "@/components/WorkspaceErrorScreen";
 import { OperatorShell } from "@/components/redesign/shell/OperatorShell";
-import { FullPageLoader } from "@/components/ui/nexxus-loader";
+import { TenantFullPageLoader as FullPageLoader } from "@/components/branding/TenantFullPageLoader";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 
 /**

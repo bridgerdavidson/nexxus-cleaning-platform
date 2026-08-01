@@ -62,7 +62,10 @@ export function CleanerEarnings() {
   const embed = <CleanerStripeConnect appearance={appearance} payoutsMaxHeight="max-h-[460px]" />;
 
   return (
-    <CleanerEarningsView
+    <>
+      {/* Page h1: the top bar now carries the company logo (white-label PR 4). */}
+      <h1 className="mb-4 text-2xl font-extrabold leading-tight">Earnings</h1>
+      <CleanerEarningsView
       data={data}
       mounted={mounted}
       revealed={revealed}
@@ -77,5 +80,6 @@ export function CleanerEarnings() {
       error={Boolean(awaitingError || heldError || statsError)}
       onRetry={() => { void refetchAwaiting(); void refetchHeld(); void refetchStats(); }}
     />
+    </>
   );
 }

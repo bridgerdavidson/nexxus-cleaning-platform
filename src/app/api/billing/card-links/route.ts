@@ -174,10 +174,11 @@ export async function POST(request: NextRequest) {
       try {
         const { data: org } = await supabaseAdmin
           .from('organizations')
-          .select('name')
+          .select('name, brand_color, logo_icon_url')
           .eq('id', organization_id!)
           .maybeSingle();
-        const orgName = (org as { name?: string } | null)?.name?.trim() || 'Your cleaning company';
+        const orgRow = org as { name?: string; brand_color?: string | null; logo_icon_url?: string | null } | null;
+        const orgName = orgRow?.name?.trim() || 'Your cleaning company';
         const message = cardLinkEmail({
           homeownerName: profile.first_name?.trim() || null,
           orgName,
@@ -186,6 +187,10 @@ export async function POST(request: NextRequest) {
           accountUrl: `${appBase}/homeowner/account/payment-methods`,
           failedPayment: await failedPaymentContext(appointment_id, organization_id!, homeowner_id),
           expiresInDays: LINK_TTL_DAYS,
+          // White-label: the org's own color and icon; the template falls back
+          // to the Nexxus look when either is unset.
+          brandColor: orgRow?.brand_color ?? null,
+          logoUrl: orgRow?.logo_icon_url ?? null,
         });
         await sendEmail({ to: profile.email, ...message });
         delivered = 'email';

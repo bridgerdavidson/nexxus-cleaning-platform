@@ -26,7 +26,7 @@ export async function GET(
 
     const { data: linkRow } = await supabaseAdmin
       .from('homeowner_payment_links')
-      .select('homeowner_id, setup_intent_id, status, expires_at')
+      .select('homeowner_id, organization_id, setup_intent_id, status, expires_at')
       .eq('token', token)
       .maybeSingle();
 
@@ -35,6 +35,7 @@ export async function GET(
     }
     const link = linkRow as {
       homeowner_id: string;
+      organization_id: string | null;
       setup_intent_id: string | null;
       status: string;
       expires_at: string;
@@ -62,12 +63,27 @@ export async function GET(
       .eq('id', link.homeowner_id)
       .maybeSingle();
 
+    // The link token identifies the org, so this pre-auth page is allowed its
+    // branding (spec decision 10). Best-effort: a missing org just renders the
+    // default look.
+    const { data: org } = link.organization_id
+      ? await supabaseAdmin
+          .from('organizations')
+          .select('name, brand_color, logo_icon_url')
+          .eq('id', link.organization_id)
+          .maybeSingle()
+      : { data: null };
+    const orgRow = org as { name?: string | null; brand_color?: string | null; logo_icon_url?: string | null } | null;
+
     const setupIntent = await retrieveSetupIntent(link.setup_intent_id);
 
     return NextResponse.json({
       status: 'pending',
       client_secret: setupIntent.client_secret,
       homeowner_first_name: (ho as { first_name: string | null } | null)?.first_name ?? 'there',
+      org_name: orgRow?.name ?? null,
+      brand_color: orgRow?.brand_color ?? null,
+      logo_icon_url: orgRow?.logo_icon_url ?? null,
     });
   } catch (error) {
     console.error('Error resolving card link:', error);

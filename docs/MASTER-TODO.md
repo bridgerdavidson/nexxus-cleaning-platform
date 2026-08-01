@@ -56,31 +56,32 @@ Suggested internal order:
       ⚠ Standing ops rule: never Vercel-rollback past `70adc1b` once any transfer_attempt
       counter > 0; roll forward via a revert PR (see backlog T1-11/F8).
 
-## 2.5. White-label branding — Phase 0 of the go-to-market roadmap (BUILD-READY)
+## 2.5. White-label branding — Phase 0 of the go-to-market roadmap (✅ DONE 2026-07-31)
 
 Source: `docs/white-label-branding.md` (spec) + `docs/white-label-branding-plan.md` (5-PR plan).
-Strategy origin: Phase 0 of `2026-07-26-build-roadmap.md` in the brain. Scoped and planned
-2026-07-27; **nothing built yet**. Trigger: "let's build white-label" → open the plan, start PR 1.
+Strategy origin: Phase 0 of `2026-07-26-build-roadmap.md` in the brain. **All five PRs merged
+2026-07-29 to 2026-07-31 (~3 working sessions vs the 5 to 7 estimate).**
 
-Every cleaning company sets one brand color and two logos, and their whole app becomes theirs.
-This is the first build of the go-to-market sequence (it gates the signup wizard's magic moment and
-is the pre-sell demo), and white-label is included at every tier per the locked pricing decision.
+Every cleaning company sets one brand color and two logos, and their whole app becomes theirs:
+Settings → Branding retints everything live, reloads never flash the default blue, and the logo
+carries through the rail, headers, favicon, loader, and the card-collection email.
 
-- [ ] PR 1 `feat/branding-foundation` — OKLCH palette module, Tailwind brand ramp tokenized to CSS
-      vars, migration 120 (columns + `org-branding` bucket). **Invisible; defaults reproduce today's
-      palette exactly.**
-- [ ] PR 2 `fix/org-selection` — AuthContext picks the org deterministically (it currently takes an
-      arbitrary membership row) + switcher for multi-org users. Isolated: that file holds the
-      sign-in/out race invariants.
-- [ ] PR 3 `feat/branding-runtime` — BrandProvider, pre-paint bootstrap (no flash of default blue),
-      branding API route, settings section with live preview. **Demoable at this point.**
-- [ ] PR 4 `feat/branding-surfaces` — rail two-asset crossfade + monogram fallback + sidebar
-      expansion preference, homeowner/cleaner headers carry the logo (greetings promoted to real
-      `<h1>`s in the body), tenant loader, favicon/title/theme-color. **UI-heavy: `ui-feature-workflow`
-      + `ui-ux-pro-max` required.**
-- [ ] PR 5 `feat/branding-email` — branded card-collection email and the `/billing/add-card` page.
+- [x] PR 1 `feat/branding-foundation` (#219) — OKLCH palette module, Tailwind brand ramp tokenized
+      to CSS vars, migration **121** (renumbered from the plan's 120, which the payout stack took;
+      columns + `org-branding` bucket with server-side PNG/WebP + 2 MiB limits).
+- [x] PR 2 `fix/org-selection` (#223) — deterministic AuthContext org pick + account-menu switcher
+      in every role shell (spec beat the plan's settings-section placement).
+- [x] PR 3 `feat/branding-runtime` (#225) — BrandProvider, pre-paint bootstrap, branding API,
+      settings section with live preview + silent org refresh. Demoable from here.
+- [x] PR 4 `feat/branding-surfaces` (#227) — rail crossfade + monogram fallback + sidebar expansion
+      preference, homeowner/cleaner header logos with greetings promoted to real `<h1>`s, tenant
+      loader, favicon/title/theme-color (tenant surfaces only; /owner and pre-auth stay Nexxus).
+- [x] PR 5 `feat/branding-email` (#228) — branded card-collection email and `/billing/add-card`
+      themed from the link token.
 
-Estimate 5 to 7 sessions. Next in the roadmap after this: Phase 1, SaaS billing.
+Remaining follow-ups (tracked, not blockers): set up the anchor tenant's real branding (human step),
+visual pass of the branded add-card page on a preview/prod link, theme the in-app Stripe
+`appearance.ts` + `--chart-*` tokens per-org. Next in the roadmap: Phase 1, SaaS billing.
 
 ## 3. Payments audit Tier 2 — visibility & notification gaps (pre-MVP)
 

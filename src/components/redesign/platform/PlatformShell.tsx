@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense } from 'react';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { OperatorRail } from '@/components/redesign/shell/OperatorRail';
@@ -45,7 +46,32 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         >
           Skip to content
         </a>
-        <OperatorRail activeId={activeId} nav={PLATFORM_NAV} />
+        {/* Platform surface: the rail keeps the Nexxus lockup (clip-reveal on
+            hover), never a tenant identity, mirroring the loader and
+            BrandProvider /owner rules. */}
+        <OperatorRail
+          activeId={activeId}
+          nav={PLATFORM_NAV}
+          brand={
+            <div className="h-8 w-10 overflow-hidden transition-[width] duration-200 ease-out group-hover:w-[150px]">
+              <Image
+                src="/brand/logo-black.svg"
+                alt="Nexxus"
+                width={567}
+                height={126}
+                priority
+                className="h-8 w-auto max-w-none dark:hidden"
+              />
+              <Image
+                src="/brand/logo-white.svg"
+                alt="Nexxus"
+                width={565}
+                height={126}
+                className="hidden h-8 w-auto max-w-none dark:block"
+              />
+            </div>
+          }
+        />
         <div className="lg:pl-16">
           <RedesignImpersonationBanner />
           <PlatformTopBar />

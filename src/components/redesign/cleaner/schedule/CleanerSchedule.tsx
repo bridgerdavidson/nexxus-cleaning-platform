@@ -45,12 +45,16 @@ export function CleanerSchedule() {
   );
 
   return (
-    <CleanerScheduleView
+    <>
+      {/* Page h1: the top bar now carries the company logo (white-label PR 4). */}
+      <h1 className="mb-4 text-2xl font-extrabold leading-tight">Schedule</h1>
+      <CleanerScheduleView
       data={data} loading={loading} error={Boolean(error)} onRetry={() => refetch()} isEmployee={isEmployee}
       search={search} onSearchChange={setSearch}
       view={view} onViewChange={(v) => { setView(v); setStatusFilter("all"); }}
       statusFilter={statusFilter} onStatusFilterChange={setStatusFilter}
       onOpenJob={openJob} todayStr={dateStrs.todayStr}
     />
+    </>
   );
 }
