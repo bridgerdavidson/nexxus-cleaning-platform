@@ -3,10 +3,14 @@
 // radius instead of Stripe's defaults. Pure so it is unit-testable; the caller
 // (PaymentsYourMoney) decides light/dark from the active theme.
 
-export function getRedesignConnectAppearance(isDark: boolean) {
+export function getRedesignConnectAppearance(isDark: boolean, accentHex?: string) {
+  // accentHex: the org's brand color (white-label). Only the card-link page
+  // passes it today; in-app surfaces keep the token-driven Nexxus defaults
+  // until the appearance file is themed as a whole (tracked follow-up).
+  const accent = accentHex && /^#[0-9a-f]{6}$/i.test(accentHex) ? accentHex : undefined;
   return {
     variables: {
-      colorPrimary: isDark ? "#2E62FF" : "#0150FC", // brand-500 (lifted for dark) / brand-600
+      colorPrimary: accent ?? (isDark ? "#2E62FF" : "#0150FC"), // brand-500 (lifted for dark) / brand-600
       fontFamily: "Plus Jakarta Sans, system-ui, sans-serif",
       borderRadius: "14px", // control radius
       colorBackground: isDark ? "#24211B" : "#FFFFFF", // --card
