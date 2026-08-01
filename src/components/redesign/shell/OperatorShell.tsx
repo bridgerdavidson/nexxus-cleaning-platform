@@ -60,7 +60,9 @@ export function OperatorShell({
   // instead of routing to the legacy admin dashboard.
   const openBooking = useOpenOperatorBooking();
   const { nav, primary, secondary } = useOperatorNav();
-  const { expanded: railExpanded, toggle: toggleRail } = useRailPreference();
+  // Read-only here: the preference is set from Settings -> Appearance and
+  // arrives live via useRailPreference's same-tab sync.
+  const { expanded: railExpanded } = useRailPreference();
 
   // The "New booking" trigger (top-bar button, mobile FAB, command-palette action) is a
   // global affordance every Operator surface shares, so it is gated once here rather than
@@ -101,7 +103,6 @@ export function OperatorShell({
           badges={navBadges}
           messagesUnread={messagesUnread}
           expanded={railExpanded}
-          onToggleExpanded={toggleRail}
         />
         {/* The ONE padding point everything right of the rail flows from; the
             top bar is sticky INSIDE it, so it follows the rail automatically. */}

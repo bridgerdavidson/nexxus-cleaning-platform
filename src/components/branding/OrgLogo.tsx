@@ -18,11 +18,27 @@ import { useOrgBrand } from "./BrandProvider";
 export function OrgLogo({
   variant,
   size = 32,
+  boxWidth,
+  imageHeight,
   className,
 }: {
   variant: "icon" | "full";
   /** Rendered height in px; width follows the asset's aspect ratio. */
   size?: number;
+  /**
+   * Icon variant only: width of the letterbox the mark is centered in
+   * (defaults to `size`, a square). A wider box lets a tightly-cropped
+   * landscape icon (e.g. a transparent PNG cropped to its glyphs) render
+   * larger instead of being squeezed into the square.
+   */
+  boxWidth?: number;
+  /**
+   * Full variant only: rendered height for an UPLOADED lockup when it should
+   * differ from the monogram+name fallback. Uploaded lockups are usually
+   * cropped tight to their glyphs, so at equal pixel height they read much
+   * larger than the padded fallback; top bars cap them smaller.
+   */
+  imageHeight?: number;
   className?: string;
 }) {
   const brand = useOrgBrand();
@@ -43,7 +59,7 @@ export function OrgLogo({
       <img
         src={brand.fullUrl}
         alt={name}
-        style={{ height: size }}
+        style={{ height: imageHeight ?? size }}
         className={cn("w-auto max-w-full object-contain object-left", className)}
         onError={() => markFailed(brand.fullUrl!)}
       />
@@ -78,12 +94,14 @@ export function OrgLogo({
 
   if (usable(brand.iconUrl)) {
     return (
+      // Centered (not object-left): a non-square mark should sit in the middle
+      // of its box, matching how the monogram square self-centers.
       /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
       <img
         src={brand.iconUrl}
         alt={name}
-        style={{ height: size, width: size }}
-        className={cn("shrink-0 object-contain object-left", className)}
+        style={{ height: size, width: boxWidth ?? size }}
+        className={cn("shrink-0 object-contain", className)}
         onError={() => markFailed(brand.iconUrl!)}
       />
     );

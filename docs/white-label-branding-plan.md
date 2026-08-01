@@ -1390,7 +1390,12 @@ export function useRailPreference() {
 
 - [ ] **Step 4: Add the toggle control**
 
-A small chevron pinned at the rail's bottom next to Settings, `aria-label="Expand sidebar"` / `"Collapse sidebar"`.
+> **As built (revised post-ship):** the control shipped as a chevron in the rail, then moved to
+> **Settings -> Appearance** as a "Keep sidebar open" switch (`AppearanceSection.tsx`) after
+> Bridger's review: the rail carries actionable nav only. `OperatorRail` no longer renders a
+> toggle or accepts `onToggleExpanded`; `useRailPreference` exposes `setExpanded` and syncs
+> same-tab instances via a value-carrying CustomEvent, and the collapsed rail mirrors hover
+> expansion on `focus-within` for keyboard parity.
 
 - [ ] **Step 5: Update the mobile drawer**
 

@@ -19,7 +19,9 @@ export function WelcomeContent({
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-2 py-2 text-center">
       {/* The COMPANY'S mark, not Nexxus: the first-run welcome is a tenant
           surface, and spec decision 11 keeps Nexxus out of all of them. */}
-      <OrgLogo variant="full" size={32} />
+      {/* Same uploaded-lockup cap as the top bars (tight-cropped marks read
+          far larger than the monogram+name fallback at equal pixel height). */}
+      <OrgLogo variant="full" size={32} imageHeight={24} />
       {/* h2, not h1: this takeover renders above pages that carry their own h1
           (the white-label greeting headings), and a document gets one h1. */}
       <h2 className="mt-10 text-3xl font-extrabold tracking-tight text-foreground">{copy.title}</h2>
