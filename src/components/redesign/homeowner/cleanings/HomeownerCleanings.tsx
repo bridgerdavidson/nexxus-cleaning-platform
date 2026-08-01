@@ -12,7 +12,10 @@ export function HomeownerCleanings() {
   const { sections, isEmpty } = useMemo(() => deriveCleanings(appointments), [appointments]);
 
   return (
-    <HomeownerCleaningsView
+    <>
+      {/* Page h1: the top bar now carries the company logo (white-label PR 4). */}
+      <h1 className="mb-4 text-2xl font-extrabold leading-tight">Cleanings</h1>
+      <HomeownerCleaningsView
       sections={sections}
       isEmpty={isEmpty}
       loading={loading}
@@ -20,5 +23,6 @@ export function HomeownerCleanings() {
       onRetry={() => refetch()}
       onOpen={open}
     />
+    </>
   );
 }

@@ -16,6 +16,7 @@ import { SetupCompleteCard } from '@/components/redesign/onboarding/SetupComplet
 import { WelcomeContent } from '@/components/redesign/onboarding/WelcomeContent';
 import { getWelcomeCopy } from '@/lib/onboarding/welcomeCopy';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
+import { useAuth } from '@/hooks/useAuth';
 
 function todayStr(): string {
   const d = new Date();
@@ -29,6 +30,8 @@ export function HomeownerHome() {
   const { requests, cancelRequest, cancelling } = useHomeownerRequests();
   const openCleaning = useOpenCleaning();
   const onboarding = useHomeownerOnboarding();
+  const { user } = useAuth();
+  const first = user?.profile?.firstName || "there";
   const today = todayStr();
   const hero = useMemo(() => pickHeroAppointment(appointments, today), [appointments, today]);
   const seriesGroups = useMemo(() => deriveHomeownerSeries(appointments, today), [appointments, today]);
@@ -36,6 +39,13 @@ export function HomeownerHome() {
   return (
     <>
     <div className="flex flex-col gap-4 pb-8">
+      {/* The greeting lives here as the page h1 since the top bar now carries
+          the company logo (white-label PR 4). */}
+      <div>
+        <h1 className="text-2xl font-extrabold leading-tight">Hi, {first}</h1>
+        <p className="text-sm text-muted-foreground">Your home, handled.</p>
+      </div>
+
       {/* Above the hero on purpose: a failed payment must be the first thing seen. */}
       <HomeownerPaymentAlerts appointments={appointments} onOpen={openCleaning} />
 

@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
+import { OrgLogo } from "@/components/branding/OrgLogo";
 import { OrgSwitcherMenuItems } from "@/components/redesign/shared/OrgSwitcherMenuItems";
 
 type Profile = { firstName?: string; lastName?: string; avatarUrl?: string };
@@ -22,15 +23,15 @@ function initials(p?: Profile) {
   return (f + l).toUpperCase() || "ME";
 }
 
-/** Homeowner top bar: greeting + subtitle on the left; notifications + profile
- *  menu on the right. */
+/** Homeowner top bar: the cleaning company's logo on the left; notifications +
+ *  profile menu on the right. The greeting moved into the page body as a real
+ *  h1 (white-label decision: the top bar is the org's identity surface). */
 export function HomeownerTopBar() {
   const { user, signOut } = useAuth() as {
     user: { profile?: Profile } | null;
     signOut: () => void;
   };
   const profile = user?.profile;
-  const first = profile?.firstName || "there";
   const fullName =
     [profile?.firstName, profile?.lastName].filter(Boolean).join(" ") ||
     "Homeowner";
@@ -39,10 +40,7 @@ export function HomeownerTopBar() {
     <header className="sticky top-0 z-30 border-b border-border bg-card">
       <div className="mx-auto flex h-16 max-w-lg items-center gap-3 px-4">
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground">Your home, handled.</p>
-          <p className="truncate text-lg font-extrabold leading-tight">
-            Hi, {first}
-          </p>
+          <OrgLogo variant="full" size={32} />
         </div>
         <NotificationBell role="homeowner" />
         <DropdownMenu>

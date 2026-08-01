@@ -23,6 +23,13 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function greeting(d: Date): string {
+  const h = d.getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export function CleanerToday() {
   const router = useRouter();
   const openJob = useOpenJob();
@@ -62,6 +69,11 @@ export function CleanerToday() {
 
   return (
     <>
+      {/* The greeting lives here as the page h1 since the top bar now carries
+          the company logo (white-label PR 4). */}
+      <h1 className="text-2xl font-extrabold leading-tight">
+        {greeting(now)}, {user?.profile?.firstName || "there"}
+      </h1>
       <CleanerTodayView
         data={data}
         loading={loading}
