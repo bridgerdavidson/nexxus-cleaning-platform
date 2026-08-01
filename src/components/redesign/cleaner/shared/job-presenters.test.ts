@@ -8,7 +8,7 @@ import type { CleanerAppointment } from "@/hooks/useCleanerData";
 
 const base = {
   id: "a1", scheduled_date: "2026-06-01", scheduled_time: "09:00:00", status: "confirmed",
-  cleaner_confirmation_status: "approved", total_price: 120,
+  cleaner_confirmation_status: "approved",
   property: { name: "Maple House", address: "123 Main St", city: "Austin", state: "TX", zip_code: "78701" },
   homeowner: { first_name: "Jamie", last_name: "Lee", email: "j@x.co" },
   service_type: { name: "Deep clean", description: "", duration_minutes: 150 },

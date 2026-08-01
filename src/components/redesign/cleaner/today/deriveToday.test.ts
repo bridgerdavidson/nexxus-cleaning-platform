@@ -12,7 +12,6 @@ function appt(over: Partial<CleanerAppointment>): CleanerAppointment {
     scheduled_date: TODAY,
     scheduled_time: "10:00:00",
     status: "confirmed",
-    total_price: 100,
     cleaner_confirmation_status: "approved",
     homeowner: null,
     property: null,
