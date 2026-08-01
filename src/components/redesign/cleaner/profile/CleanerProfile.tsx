@@ -67,7 +67,10 @@ export function CleanerProfile() {
   if (!user) return null;
 
   return (
-    <CleanerProfileView
+    <>
+      {/* Page h1: the top bar now carries the company logo (white-label PR 4). */}
+      <h1 className="mb-4 text-2xl font-extrabold leading-tight">Profile</h1>
+      <CleanerProfileView
       initials={cleanerInitials({ firstName, lastName })}
       avatarUrl={user.profile.avatarUrl}
       email={user.email}
@@ -87,5 +90,6 @@ export function CleanerProfile() {
         void signOut();
       }}
     />
+    </>
   );
 }

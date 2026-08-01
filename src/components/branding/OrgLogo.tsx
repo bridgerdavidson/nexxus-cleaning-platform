@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
 import { orgInitials } from "@/lib/branding/monogram";
 import { useOrgBrand } from "./BrandProvider";
 
@@ -26,9 +25,11 @@ export function OrgLogo({
   size?: number;
   className?: string;
 }) {
-  const { currentOrganization } = useAuth();
   const brand = useOrgBrand();
-  const name = currentOrganization?.name ?? "";
+  // brand.name, never currentOrganization.name: during "View as" the latter is
+  // the platform admin's OWN org, which would pair the impersonated tenant's
+  // logo with the wrong name/initials.
+  const name = brand.name;
 
   // Track failed URLs so an onError falls through to the next state and a new
   // upload (different ?v=) gets a fresh chance.
@@ -62,7 +63,8 @@ export function OrgLogo({
             onError={() => markFailed(brand.iconUrl!)}
           />
         ) : (
-          <Monogram name={name} size={size} />
+          // Decorative: the visible name text follows, mirroring alt="" above.
+          <Monogram name={name} size={size} decorative />
         )}
         <span
           className="truncate font-extrabold tracking-tight text-foreground"
@@ -91,11 +93,21 @@ export function OrgLogo({
 }
 
 /** Initials in a brand-600 rounded square; fg-600 is the AA-picked pairing. */
-function Monogram({ name, size, className }: { name: string; size: number; className?: string }) {
+function Monogram({
+  name,
+  size,
+  className,
+  decorative = false,
+}: {
+  name: string;
+  size: number;
+  className?: string;
+  /** True when visible name text sits beside it, so SRs don't hear it twice. */
+  decorative?: boolean;
+}) {
   return (
     <span
-      role="img"
-      aria-label={name}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": name })}
       style={{ height: size, width: size, fontSize: Math.max(10, Math.round(size * 0.42)) }}
       className={cn(
         "grid shrink-0 select-none place-items-center rounded-md bg-brand-600 font-extrabold leading-none text-[hsl(var(--brand-fg-600))]",

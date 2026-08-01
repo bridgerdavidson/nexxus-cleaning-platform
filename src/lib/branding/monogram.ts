@@ -13,8 +13,12 @@ export function orgInitials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return "?";
 
+  // Code points, not code units: string indexing splits surrogate pairs, so an
+  // emoji-led name like "🧹 Broom Co" would render a broken half-glyph.
+  const first = (w: string, n = 1) => Array.from(w).slice(0, n).join("");
+
   const meaningful = words.filter((w) => !CONNECTORS.has(w.toLowerCase()));
-  if (meaningful.length === 0) return words[0].slice(0, 2).toUpperCase();
-  if (meaningful.length === 1) return meaningful[0].slice(0, 2).toUpperCase();
-  return (meaningful[0][0] + meaningful[1][0]).toUpperCase();
+  if (meaningful.length === 0) return first(words[0], 2).toUpperCase();
+  if (meaningful.length === 1) return first(meaningful[0], 2).toUpperCase();
+  return (first(meaningful[0]) + first(meaningful[1])).toUpperCase();
 }

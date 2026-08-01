@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrgLogo } from "@/components/branding/OrgLogo";
+import { useOrgBrand } from "@/components/branding/BrandProvider";
 import type { NavItem } from "./nav-items";
 import { NavMessagesBadge } from "./NavMessagesBadge";
 
@@ -23,6 +24,7 @@ export function OperatorRail({
   messagesUnread = 0,
   expanded = false,
   onToggleExpanded,
+  brand,
 }: {
   activeId?: string;
   nav: NavItem[];
@@ -31,7 +33,11 @@ export function OperatorRail({
   /** Persistent expansion preference (device-local, see useRailPreference). */
   expanded?: boolean;
   onToggleExpanded?: () => void;
+  /** Replaces the tenant OrgLogo crossfade in the brand cell. The /owner
+   * back-office passes the Nexxus lockup: platform surfaces never re-brand. */
+  brand?: React.ReactNode;
 }) {
+  const { name: orgName } = useOrgBrand();
   return (
     <aside
       className={cn(
@@ -47,24 +53,33 @@ export function OperatorRail({
         hover/expand. Both anchor to the same left edge, so a tenant whose
         lockup begins with their icon appears not to move. Falls back to the
         initials monogram (+ name when expanded) when nothing is uploaded.
+        Both visual layers are aria-hidden (the crossfade would read the org
+        twice); the sr-only span carries the one accessible name.
       */}
       <div className="grid h-16 flex-none items-center pl-[13px]">
-        <div
-          className={cn(
-            "col-start-1 row-start-1 transition-opacity duration-200 ease-out",
-            expanded ? "opacity-0" : "opacity-100 group-hover:opacity-0"
-          )}
-        >
-          <OrgLogo variant="icon" size={32} />
-        </div>
-        <div
-          className={cn(
-            "col-start-1 row-start-1 w-[210px] transition-opacity duration-200 ease-out",
-            expanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          )}
-        >
-          <OrgLogo variant="full" size={32} />
-        </div>
+        {brand ?? (
+          <>
+            <span className="sr-only">{orgName}</span>
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none col-start-1 row-start-1 transition-opacity duration-200 ease-out",
+                expanded ? "opacity-0" : "opacity-100 group-hover:opacity-0"
+              )}
+            >
+              <OrgLogo variant="icon" size={32} />
+            </div>
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none col-start-1 row-start-1 w-[210px] transition-opacity duration-200 ease-out",
+                expanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              )}
+            >
+              <OrgLogo variant="full" size={32} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* nav */}
@@ -111,10 +126,11 @@ export function OperatorRail({
           );
         })}
         {onToggleExpanded ? (
+          /* No aria-label: the (sometimes visually faded) text IS the
+             accessible name, keeping WCAG label-in-name intact. */
           <button
             type="button"
             onClick={onToggleExpanded}
-            aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
             className={cn(
               "flex items-center gap-[13px] rounded-control px-2 py-[9px] text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -131,7 +147,7 @@ export function OperatorRail({
                 expanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
               )}
             >
-              {expanded ? "Collapse" : "Keep open"}
+              {expanded ? "Collapse sidebar" : "Keep sidebar open"}
             </span>
           </button>
         ) : null}

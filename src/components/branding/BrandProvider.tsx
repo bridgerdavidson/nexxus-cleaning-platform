@@ -19,6 +19,10 @@ export interface OrgBrand {
   color: string;
   iconUrl: string | null;
   fullUrl: string | null;
+  /** The EFFECTIVE org's display name: the impersonated org's while "View as"
+   * is active, the member org's otherwise. Consumers must use this, not
+   * currentOrganization.name, or impersonation shows a mixed identity. */
+  name: string;
   /** True when the org has set no color, i.e. we are showing the platform brand. */
   isDefault: boolean;
 }
@@ -27,6 +31,7 @@ const DEFAULT_BRAND: OrgBrand = {
   color: NEXXUS_BRAND_HEX,
   iconUrl: null,
   fullUrl: null,
+  name: "",
   isDefault: true,
 };
 
@@ -46,6 +51,7 @@ const ALL_BRAND_VARS: string[] = [
 ];
 
 interface BrandRow {
+  name?: string | null;
   brand_color?: string | null;
   logo_icon_url?: string | null;
   logo_full_url?: string | null;
@@ -58,6 +64,7 @@ function toBrand(row: BrandRow | null | undefined): OrgBrand {
     color: row?.brand_color || NEXXUS_BRAND_HEX,
     iconUrl: row?.logo_icon_url ? row.logo_icon_url + v : null,
     fullUrl: row?.logo_full_url ? row.logo_full_url + v : null,
+    name: row?.name ?? "",
     isDefault: !row?.brand_color,
   };
 }
@@ -98,7 +105,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     supabase
       .from("organizations")
-      .select("brand_color, logo_icon_url, logo_full_url, brand_updated_at")
+      .select("name, brand_color, logo_icon_url, logo_full_url, brand_updated_at")
       .eq("id", impersonatingOrgId)
       .maybeSingle()
       .then(({ data }) => {

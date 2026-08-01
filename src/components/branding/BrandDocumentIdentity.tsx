@@ -5,26 +5,33 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrgBrand } from "./BrandProvider";
 
 /**
+ * Tenant app route groups. ONLY these get the org's browser chrome: marketing,
+ * /login, /signup stay Nexxus (spec decision 10), /owner is a platform surface,
+ * and /billing/add-card gets its own treatment in PR 5.
+ */
+const TENANT_PREFIXES = ["/admin", "/cleaner", "/homeowner"];
+
+/**
  * Render-null: keeps the browser chrome (tab title, favicon, theme-color) in
- * sync with the current org. Mounted inside BrandProvider. Restores the Nexxus
- * defaults whenever there is no org (pre-auth, /owner, signed out) and on
- * unmount, so signing out never strands a tenant's favicon.
+ * sync with the current org on tenant surfaces. Mounted inside BrandProvider.
  *
- * Runs per navigation too: the App Router rewrites <title> from route metadata
- * on transitions, so the tenant title must be re-applied after each one.
+ * Title handling: the App Router owns <title> via route metadata, so this
+ * never captures or restores it. It only OVERWRITES it while a tenant surface
+ * is active (re-applied per navigation, since Next rewrites the title on
+ * transitions); leaving for a non-tenant route lets that route's metadata win.
+ * Favicon and theme-color have stable app-wide defaults, so those are captured
+ * once and faithfully restored on deactivation and unmount.
  */
 export function BrandDocumentIdentity() {
-  const { currentOrganization, orgStatus } = useAuth();
+  const { orgStatus } = useAuth();
   const brand = useOrgBrand();
   const pathname = usePathname();
 
-  // Captured once, before the first override, so restore is always faithful.
-  const defaultsRef = useRef<{ title: string; icons: { el: HTMLLinkElement; href: string }[]; themeColor: string | null } | null>(null);
+  const defaultsRef = useRef<{ icons: { el: HTMLLinkElement; href: string }[]; themeColor: string | null } | null>(null);
 
   useEffect(() => {
     if (defaultsRef.current === null) {
       defaultsRef.current = {
-        title: document.title,
         icons: Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="shortcut icon"]')).map(
           (el) => ({ el, href: el.href }),
         ),
@@ -33,22 +40,24 @@ export function BrandDocumentIdentity() {
     }
     const defaults = defaultsRef.current;
 
-    const isPlatformSurface = pathname?.startsWith("/owner") ?? false;
-    const active = orgStatus === "loaded" && !!currentOrganization && !isPlatformSurface;
+    const onTenantSurface = TENANT_PREFIXES.some(
+      (p) => pathname === p || pathname?.startsWith(p + "/"),
+    );
+    const active = onTenantSurface && orgStatus === "loaded" && !!brand.name;
 
-    const restore = () => {
-      document.title = defaults.title;
+    const restoreChrome = () => {
       for (const { el, href } of defaults.icons) el.href = href;
       const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
       if (meta && defaults.themeColor) meta.content = defaults.themeColor;
     };
 
     if (!active) {
-      restore();
+      restoreChrome();
       return;
     }
 
-    document.title = currentOrganization.name;
+    // brand.name is the EFFECTIVE org (the impersonated one during "View as").
+    document.title = brand.name;
     if (brand.iconUrl) {
       for (const { el } of defaults.icons) el.href = brand.iconUrl;
     } else {
@@ -59,8 +68,8 @@ export function BrandDocumentIdentity() {
     if (meta && !brand.isDefault) meta.content = brand.color;
     else if (meta && defaults.themeColor) meta.content = defaults.themeColor;
 
-    return restore;
-  }, [currentOrganization, orgStatus, brand.iconUrl, brand.color, brand.isDefault, pathname]);
+    return restoreChrome;
+  }, [orgStatus, brand.name, brand.iconUrl, brand.color, brand.isDefault, pathname]);
 
   return null;
 }

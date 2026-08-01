@@ -71,7 +71,7 @@ export function CleanerToday() {
     <>
       {/* The greeting lives here as the page h1 since the top bar now carries
           the company logo (white-label PR 4). */}
-      <h1 className="text-2xl font-extrabold leading-tight">
+      <h1 className="mb-4 text-2xl font-extrabold leading-tight">
         {greeting(now)}, {user?.profile?.firstName || "there"}
       </h1>
       <CleanerTodayView

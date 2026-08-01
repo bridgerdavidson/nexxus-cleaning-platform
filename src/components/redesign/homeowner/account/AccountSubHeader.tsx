@@ -14,7 +14,7 @@ export function AccountSubHeader({ title }: { title: string }) {
       >
         <ChevronLeft className="size-6" />
       </Link>
-      <h1 className="text-xl font-bold">{title}</h1>
+      <h1 className="text-2xl font-extrabold leading-tight">{title}</h1>
     </div>
   );
 }

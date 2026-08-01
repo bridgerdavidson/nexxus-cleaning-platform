@@ -20,4 +20,8 @@ describe("orgInitials", () => {
   it("handles a name that is only connector words", () => {
     expect(orgInitials("of the")).toBe("OF");
   });
+  it("never splits surrogate pairs for emoji-led names", () => {
+    expect(orgInitials("🧹 Broom Co")).toBe("🧹B");
+    expect(orgInitials("🧹✨")).toBe("🧹✨");
+  });
 });

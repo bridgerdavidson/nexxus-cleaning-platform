@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Menu, CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrgLogo } from "@/components/branding/OrgLogo";
-import { useAuth } from "@/hooks/useAuth";
+import { useOrgBrand } from "@/components/branding/BrandProvider";
 import {
   Sheet,
   SheetClose,
@@ -42,8 +42,8 @@ export function OperatorMobileNav({
   messagesUnread?: number;
 }) {
   const drawerHasBadge = secondary.some((i) => (badges?.[i.id] ?? 0) > 0);
-  const { currentOrganization } = useAuth();
-  const orgName = currentOrganization?.name ?? "Menu";
+  // Effective org (impersonation-aware), never currentOrganization.name.
+  const orgName = useOrgBrand().name || "Menu";
   return (
     <>
       {/* New-booking FAB (labeled, the one persistent global action), above the

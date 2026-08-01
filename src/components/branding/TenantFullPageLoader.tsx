@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useOrgBrand } from "./BrandProvider";
 
 /**
@@ -13,13 +14,16 @@ import { useOrgBrand } from "./BrandProvider";
  */
 export function TenantFullPageLoader() {
   const { iconUrl } = useOrgBrand();
+  const [failed, setFailed] = useState(false);
+  const showIcon = !!iconUrl && !failed;
   return (
     <div role="status" aria-label="Loading" className="grid min-h-dvh place-items-center bg-background">
-      {iconUrl ? (
+      {showIcon ? (
         /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
         <img
           src={iconUrl}
           alt=""
+          onError={() => setFailed(true)}
           className="h-12 w-12 animate-pulse-subtle object-contain motion-reduce:animate-none"
         />
       ) : (
