@@ -4,6 +4,7 @@ import imageCompression from "browser-image-compression";
 import { Upload, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { uuidv4 } from "@/lib/uuid";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { deriveBrandRamp, rampToCssVars } from "@/lib/branding/palette";
@@ -27,8 +28,13 @@ const ACCEPTED_TYPES = ["image/png", "image/webp"];
 type LogoSlot = "icon" | "full";
 
 export function BrandingSection() {
-  const { currentOrganizationId, currentOrganization, reloadOrganization } = useAuth();
+  const { currentOrganizationId, currentOrganization, refreshOrganization } = useAuth();
   const orgName = currentOrganization?.name ?? "Your company";
+
+  // The PERSISTED logo urls, so upload cleanup can tell a staged (unsaved)
+  // object apart from one the org row actually references.
+  const savedUrlsRef = useRef<{ iconUrl: string; fullUrl: string }>({ iconUrl: "", fullUrl: "" });
+  const baselineUrl = (k: "iconUrl" | "fullUrl") => savedUrlsRef.current[k];
 
   const load = useCallback(async (): Promise<BrandingForm> => {
     if (!currentOrganizationId) throw new Error("No organization");
@@ -38,11 +44,13 @@ export function BrandingSection() {
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return {
+    const form = {
       color: (data?.brand_color as string | null) ?? "",
       iconUrl: (data?.logo_icon_url as string | null) ?? "",
       fullUrl: (data?.logo_full_url as string | null) ?? "",
     };
+    savedUrlsRef.current = { iconUrl: form.iconUrl, fullUrl: form.fullUrl };
+    return form;
   }, [currentOrganizationId]);
 
   const save = useCallback(
@@ -53,11 +61,14 @@ export function BrandingSection() {
         logo_icon_url: v.iconUrl || null,
         logo_full_url: v.fullUrl || null,
       });
-      // AuthContext still holds the pre-save org row; refresh it so
-      // BrandProvider retints the whole app right away, not on next reload.
-      await reloadOrganization();
+      savedUrlsRef.current = { iconUrl: v.iconUrl, fullUrl: v.fullUrl };
+      // AuthContext still holds the pre-save org row; silently refresh it so
+      // BrandProvider retints the whole app right away. NOT reloadOrganization:
+      // that cycles orgStatus through 'loading', which unmounts the entire
+      // shell (and this view) behind FullPageLoader.
+      await refreshOrganization();
     },
-    [currentOrganizationId, reloadOrganization],
+    [currentOrganizationId, refreshOrganization],
   );
 
   const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
@@ -81,9 +92,12 @@ export function BrandingSection() {
         htmlFor="brand-color-hex"
         helper="One color. Buttons, links, and highlights are derived from it."
       >
+        {/* Functional updates everywhere: uploads resolve asynchronously, and a
+            spread of a captured `value` would silently revert edits made while
+            an upload was in flight. */}
         <ColorField
           value={value.color}
-          onChange={(color) => setValue({ ...value, color })}
+          onChange={(color) => setValue((prev) => (prev ? { ...prev, color } : prev))}
         />
       </SettingRow>
 
@@ -94,8 +108,9 @@ export function BrandingSection() {
         <LogoField
           slot="icon"
           url={value.iconUrl}
+          savedUrl={baselineUrl("iconUrl")}
           orgId={currentOrganizationId}
-          onChange={(iconUrl) => setValue({ ...value, iconUrl })}
+          onChange={(iconUrl) => setValue((prev) => (prev ? { ...prev, iconUrl } : prev))}
         />
       </SettingRow>
 
@@ -106,8 +121,9 @@ export function BrandingSection() {
         <LogoField
           slot="full"
           url={value.fullUrl}
+          savedUrl={baselineUrl("fullUrl")}
           orgId={currentOrganizationId}
-          onChange={(fullUrl) => setValue({ ...value, fullUrl })}
+          onChange={(fullUrl) => setValue((prev) => (prev ? { ...prev, fullUrl } : prev))}
         />
       </SettingRow>
 
@@ -203,15 +219,33 @@ function ColorField({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+/** Best-effort delete of a STAGED (never saved) upload; failures are ignored. */
+function discardStagedObject(url: string, savedUrl: string) {
+  if (!url || url === savedUrl) return;
+  const marker = "/object/public/org-branding/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) return;
+  const path = url.slice(idx + marker.length).split("?")[0];
+  void supabase.storage
+    .from("org-branding")
+    .remove([path])
+    .catch(() => {
+      /* orphan stays; harmless */
+    });
+}
+
 /** Upload control for one logo slot: preview, upload/replace, remove. */
 function LogoField({
   slot,
   url,
+  savedUrl,
   orgId,
   onChange,
 }: {
   slot: LogoSlot;
   url: string;
+  /** The persisted URL, so replacing/removing a staged upload can clean it up. */
+  savedUrl: string;
   orgId: string | null;
   onChange: (url: string) => void;
 }) {
@@ -234,12 +268,15 @@ function LogoField({
         useWebWorker: true,
       });
       const ext = file.type === "image/webp" ? "webp" : "png";
-      const path = `${orgId}/${slot}-${crypto.randomUUID()}.${ext}`;
+      // uuidv4 helper, not crypto.randomUUID: the latter is undefined outside
+      // secure contexts (e.g. phone-on-LAN testing against a dev box).
+      const path = `${orgId}/${slot}-${uuidv4()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("org-branding")
         .upload(path, compressed, { contentType: file.type });
       if (uploadError) throw new Error(uploadError.message);
       const { data } = supabase.storage.from("org-branding").getPublicUrl(path);
+      discardStagedObject(url, savedUrl);
       onChange(data.publicUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed. Try again.");
@@ -270,6 +307,7 @@ function LogoField({
             aria-label={slot === "icon" ? "Remove app icon" : "Remove full logo"}
             onClick={() => {
               setError(null);
+              discardStagedObject(url, savedUrl);
               onChange("");
             }}
           >
@@ -329,7 +367,7 @@ function BrandPreview({ color, iconUrl, orgName }: { color: string; iconUrl: str
           /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
           <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
         ) : (
-          <span className="grid h-5 w-5 place-items-center rounded-md bg-brand-600 text-[10px] font-extrabold text-[hsl(var(--brand-fg-600))]">
+          <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
             {initial}
           </span>
         )}

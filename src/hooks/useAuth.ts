@@ -38,6 +38,9 @@ export interface AuthActions {
   /** Re-run the org-context load (e.g. from a "Try again" button after an
    * orgStatus === 'error'). Resolves when the attempt settles. */
   reloadOrganization: () => Promise<void>;
+  /** Silently re-read the current org row (name + branding) without cycling
+   * orgStatus, so the role shells never unmount behind FullPageLoader. */
+  refreshOrganization: () => Promise<void>;
   updateProfile: (updates: Partial<User['profile']>) => Promise<{ error?: string }>;
   /** Remember the chosen org and reload the app into it. Multi-org users only. */
   switchOrganization: (orgId: string) => void;

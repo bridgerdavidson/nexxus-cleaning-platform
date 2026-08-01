@@ -55,6 +55,11 @@ export async function PATCH(
 
     // Public-object prefix for this org's folder in the org-branding bucket.
     const bucketPrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/org-branding/${orgId}/`;
+    // Exactly the filenames the settings uploader writes: one path segment, no
+    // traversal, no query, no encoding tricks. Checked against the NORMALIZED
+    // URL: a raw startsWith is bypassable with dot segments ("<orgId>/../other/")
+    // that every consumer resolves away.
+    const filenameRe = /^(?:icon|full)-[A-Za-z0-9-]+\.(?:png|webp)$/;
 
     for (const field of ['logo_icon_url', 'logo_full_url'] as const) {
       const value = body[field];
@@ -63,14 +68,27 @@ export async function PATCH(
         update[field] = null;
         continue;
       }
-      const url = String(value).trim();
-      if (!url.startsWith(bucketPrefix) || url.length > 1000) {
+      const raw = String(value).trim();
+      let normalized: string;
+      try {
+        normalized = new URL(raw).href;
+      } catch {
+        normalized = '';
+      }
+      const filename = normalized.startsWith(bucketPrefix)
+        ? normalized.slice(bucketPrefix.length)
+        : null;
+      if (
+        raw.length > 1000 ||
+        filename === null ||
+        !filenameRe.test(filename)
+      ) {
         return NextResponse.json(
           { error: `${field} must be an org-branding upload belonging to this organization` },
           { status: 400 },
         );
       }
-      update[field] = url;
+      update[field] = normalized;
     }
 
     if (Object.keys(update).length === 0) {

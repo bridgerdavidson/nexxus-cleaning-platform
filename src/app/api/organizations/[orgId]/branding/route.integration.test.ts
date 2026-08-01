@@ -18,6 +18,7 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
   });
 
   afterEach(async () => {
+    await owner.cleanup();
     await org.cleanup();
   });
 
@@ -90,6 +91,24 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
       owner.accessToken,
     );
     expect(res.status).toBe(400);
+  });
+
+  it('rejects dot-segment traversal out of the org prefix', async () => {
+    const attacks = [
+      // Resolves to another org's folder despite passing a naive startsWith.
+      `${BUCKET_PREFIX}/${'{ORG}'}/../00000000-0000-0000-0000-000000000000/icon-x.png`,
+      // Resolves out of the storage API entirely.
+      `${BUCKET_PREFIX}/${'{ORG}'}/../../../../../../auth/v1/whatever`,
+      // Encoded dot segments and nested paths must not survive the filename pin.
+      `${BUCKET_PREFIX}/${'{ORG}'}/%2e%2e/icon-x.png`,
+      `${BUCKET_PREFIX}/${'{ORG}'}/sub/icon-x.png`,
+      `${BUCKET_PREFIX}/${'{ORG}'}/icon-x.png?d=evil`,
+      `${BUCKET_PREFIX}/${'{ORG}'}/icon-x.svg`,
+    ].map((u) => u.replace('{ORG}', org.organizationId));
+    for (const url of attacks) {
+      const res = await patch({ logo_icon_url: url }, owner.accessToken);
+      expect(res.status, url).toBe(400);
+    }
   });
 
   it('accepts a valid patch and advances brand_updated_at', async () => {
