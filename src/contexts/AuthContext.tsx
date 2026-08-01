@@ -7,6 +7,7 @@ import { User, OrgRole, Organization } from '../types';
 import type { AuthState, AuthActions } from '../hooks/useAuth';
 import { selectOrganization } from '../lib/auth/selectOrganization';
 import { getDashboardPath } from '../lib/redesign/dashboardPath';
+import { clearBrandCache } from '../lib/branding/brandCache';
 import { authDebug, tokenTail } from '../lib/authDebug';
 import {
   type OrgStatus,
@@ -610,12 +611,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
           isSigningInRef.current = false;
           // Same contract as performSignOut: a session that ends remotely (revocation,
-          // expiry) must not leave the remembered org for the next user on the device.
+          // expiry) must not leave the remembered org or its branding for the next
+          // user on the device.
           try {
             window.localStorage.removeItem(CURRENT_ORG_KEY);
           } catch {
             /* blocked storage */
           }
+          clearBrandCache();
         };
 
         // A sign-out we initiated locally clears immediately and unconditionally.
@@ -869,13 +872,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setOrgStatus('idle');
       clearImpersonation();
       setLoading(false);
-      // Forget the remembered org so the next user on a shared device does not
-      // inherit it.
+      // Forget the remembered org and the cached brand ramp so the next user
+      // on a shared device inherits neither the org nor its branding.
       try {
         window.localStorage.removeItem(CURRENT_ORG_KEY);
       } catch {
         /* private mode */
       }
+      clearBrandCache();
 
       // Default to local scope so logging out on one device no longer revokes a
       // shared account's sessions on every other device — Supabase's signOut
@@ -919,6 +923,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* private mode */
       }
+      clearBrandCache();
       isSigningOutRef.current = false;
       isSigningInRef.current = false;
     }
@@ -965,6 +970,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [memberships],
   );
 
+  // Silent re-read of the current org row (name + branding fields) WITHOUT
+  // cycling orgStatus: reloadOrganization sets 'loading', which unmounts every
+  // role shell behind FullPageLoader. Branding saves need the fresh row, not a
+  // full org-context rebuild.
+  const refreshOrganization = useCallback(async (): Promise<void> => {
+    const orgId = currentOrgIdRef.current;
+    if (!orgId) return;
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('name, logo_url, brand_color, logo_icon_url, logo_full_url, brand_updated_at')
+      .eq('id', orgId)
+      .maybeSingle();
+    if (error || !data || currentOrgIdRef.current !== orgId) return;
+    setCurrentOrganization((prev) =>
+      prev
+        ? {
+            ...prev,
+            name: data.name ?? prev.name,
+            logo_url: (data.logo_url as string | null) || undefined,
+            brand_color: (data.brand_color as string | null) ?? null,
+            logo_icon_url: (data.logo_icon_url as string | null) ?? null,
+            logo_full_url: (data.logo_full_url as string | null) ?? null,
+            brand_updated_at: (data.brand_updated_at as string | null) ?? null,
+          }
+        : prev,
+    );
+  }, []);
+
   const switchOrganization = useCallback((orgId: string) => {
     if (typeof window === 'undefined') return;
     try {
@@ -1001,6 +1034,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     signOutEverywhere,
     reloadOrganization: loadOrganization,
+    refreshOrganization,
     updateProfile,
     accessToken,
     isCleaningUp,

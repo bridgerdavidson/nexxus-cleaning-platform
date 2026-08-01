@@ -3,6 +3,7 @@ import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "../components/LayoutWrapper";
 import { APP_BG_COLOR } from "../constants/theme";
+import { BRAND_BOOTSTRAP_SCRIPT } from "../lib/branding/bootstrapScript";
 
 // Self-host Inter at build time instead of a render-blocking
 // `@import url(fonts.googleapis.com...)` in globals.css. Eliminates an external
@@ -55,6 +56,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jakarta.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-white">
+        {/* Replays the cached org brand ramp before anything below parses or
+            paints, so returning users never flash the default Nexxus blue.
+            Body-first-child rather than a hand-written <head>: the App Router
+            owns <head> via the metadata API, and a synchronous script here
+            still runs pre-paint. suppressHydrationWarning on <html> covers the
+            mutated inline style. */}
+        <script dangerouslySetInnerHTML={{ __html: BRAND_BOOTSTRAP_SCRIPT }} />
         <LayoutWrapper>
           {children}
         </LayoutWrapper>
