@@ -198,4 +198,81 @@ describe('POST /api/admin/update-cleaner', () => {
       expect(body.error).toBe('payout_percent must be between 0 and 100');
     }
   });
+
+  it('saving a pay field marks an unconfigured cleaner as configured (0% is a real choice)', async () => {
+    const unconfigured = await withTestOrg({ cleanerPayConfigured: false });
+    try {
+      // An explicit 0 must count: only ABSENCE of a save means unconfigured.
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(unconfigured.admin.accessToken),
+        body: {
+          cleanerId: unconfigured.cleaner.userId,
+          cleaner: { payout_model: 'percentage', payout_percent: 0 },
+        },
+      });
+      expect(status).toBe(200);
+
+      const admin = createTestSupabaseClient();
+      const { data } = await admin
+        .from('cleaner_profiles')
+        .select('payout_configured_at')
+        .eq('id', unconfigured.cleaner.userId)
+        .single();
+      expect(data?.payout_configured_at).toBeTruthy();
+    } finally {
+      await unconfigured.cleanup();
+    }
+  });
+
+  it('a contact-only edit does not mark the cleaner configured', async () => {
+    const unconfigured = await withTestOrg({ cleanerPayConfigured: false });
+    try {
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(unconfigured.admin.accessToken),
+        body: {
+          cleanerId: unconfigured.cleaner.userId,
+          profile: { phone: '555-0199' },
+          cleaner: { bio: 'Detail oriented.' },
+        },
+      });
+      expect(status).toBe(200);
+
+      const admin = createTestSupabaseClient();
+      const { data } = await admin
+        .from('cleaner_profiles')
+        .select('payout_configured_at, bio')
+        .eq('id', unconfigured.cleaner.userId)
+        .single();
+      expect(data?.payout_configured_at).toBeNull();
+      expect(data?.bio).toBe('Detail oriented.');
+    } finally {
+      await unconfigured.cleanup();
+    }
+  });
+
+  it('a later pay save does not move the original configured timestamp', async () => {
+    const admin = createTestSupabaseClient();
+    const { data: before } = await admin
+      .from('cleaner_profiles')
+      .select('payout_configured_at')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect(before?.payout_configured_at).toBeTruthy();
+
+    const { status } = await callRoute(POST, {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { cleanerId: org.cleaner.userId, cleaner: { payout_percent: 70 } },
+    });
+    expect(status).toBe(200);
+
+    const { data: after } = await admin
+      .from('cleaner_profiles')
+      .select('payout_configured_at')
+      .eq('id', org.cleaner.userId)
+      .single();
+    expect(after?.payout_configured_at).toBe(before?.payout_configured_at);
+  });
 });

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   deriveCleaners,
   matchesCleanerSearch,
+  payLabelOf,
   sortCleaners,
+  type CleanerPayFields,
   type CleanersCleaner,
 } from "./deriveCleaners";
 
@@ -101,5 +103,38 @@ describe("deriveCleaners", () => {
   it("returns all active when the search is empty, sorted by earnings", () => {
     const out = deriveCleaners([jane, aaron], { search: "", sort: "earnings" });
     expect(out.map((x) => x.first_name)).toEqual(["Aaron", "Jane"]);
+  });
+});
+
+describe("payLabelOf", () => {
+  const pay = (over: Partial<CleanerPayFields> = {}): CleanerPayFields => ({
+    payout_model: "percentage",
+    payout_percent: 60,
+    flat_rate_cents: null,
+    payout_configured_at: "2026-08-01T00:00:00Z",
+    ...over,
+  });
+
+  it("unconfigured wins over every mode branch (never renders '0% cut')", () => {
+    expect(payLabelOf(pay({ payout_configured_at: null, payout_percent: 0 }))).toBe("Pay not set");
+    expect(payLabelOf(pay({ payout_configured_at: null, payout_model: "request" }))).toBe("Pay not set");
+    expect(payLabelOf(pay({ payout_configured_at: null, payout_model: "flat", flat_rate_cents: 8000 }))).toBe(
+      "Pay not set",
+    );
+  });
+
+  it("percentage renders the rounded percent", () => {
+    expect(payLabelOf(pay())).toBe("60% cut");
+  });
+
+  it("flat renders cents-aware dollars", () => {
+    expect(payLabelOf(pay({ payout_model: "flat", flat_rate_cents: 8050 }))).toBe("$80.50 per job");
+    expect(payLabelOf(pay({ payout_model: "flat", flat_rate_cents: 8000 }))).toBe("$80 per job");
+    expect(payLabelOf(pay({ payout_model: "flat", flat_rate_cents: null }))).toBe("Flat rate not set");
+  });
+
+  it("request and hourly render their fixed labels", () => {
+    expect(payLabelOf(pay({ payout_model: "request" }))).toBe("Names their pay");
+    expect(payLabelOf(pay({ payout_model: "hourly_external" }))).toBe("Paid off platform");
   });
 });

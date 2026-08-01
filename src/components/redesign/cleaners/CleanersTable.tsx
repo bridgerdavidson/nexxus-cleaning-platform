@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CleanerStatusBadge, ConnectBadge, FailedPayoutBadge, OwedBadge } from "./cleaners-presenters";
+import { CleanerStatusBadge, ConnectBadge, FailedPayoutBadge, OwedBadge, PayNotSetBadge } from "./cleaners-presenters";
 import type { CleanerRowAction, CleanerRowVM } from "./cleaners-types";
 
 function RowMenu({
@@ -143,6 +143,7 @@ export function CleanersTable({
                       <div className="truncate text-xs text-muted-foreground">{row.email}</div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <CleanerStatusBadge status={row.status} />
+                        <PayNotSetBadge configured={row.payConfigured} />
                         <ConnectBadge state={row.connect} />
                         {row.payoutFailed ? <FailedPayoutBadge /> : null}
                         {row.owedLabel ? <OwedBadge label={row.owedLabel} /> : null}

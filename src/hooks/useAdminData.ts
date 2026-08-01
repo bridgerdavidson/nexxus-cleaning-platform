@@ -136,6 +136,8 @@ export interface AdminCleaner {
   payout_percent: number;
   /** Unified pay mode ('percentage' | 'flat' | 'request' | 'hourly_external'). */
   payout_model: string;
+  /** NULL = no pay decision was ever made for this cleaner ("Pay not set"). */
+  payout_configured_at: string | null;
   stripe_connect_account_id: string | null;
   stripe_connect_onboarding_complete: boolean;
 }
@@ -420,6 +422,7 @@ export function useAdminCleaners() {
           insurance_verified,
           payout_percent,
           payout_model,
+          payout_configured_at,
           stripe_connect_account_id,
           stripe_connect_onboarding_complete,
           user_profile:user_profiles!id(
@@ -2357,6 +2360,8 @@ export interface AdminCleanerScorecard {
   /** Unified pay mode ('percentage' | 'flat' | 'request' | 'hourly_external'). */
   payout_model: string;
   flat_rate_cents: number | null;
+  /** NULL = no pay decision was ever made for this cleaner ("Pay not set"). */
+  payout_configured_at: string | null;
   hourly_rate: number | null;
   experience_years: number | null;
   bio: string | null;
@@ -2399,6 +2404,9 @@ export function useAdminCleanerScorecards() {
         payout_percent: Number(row.payout_percent ?? 0),
         payout_model: (row.payout_model as string | null) ?? 'percentage',
         flat_rate_cents: row.flat_rate_cents == null ? null : Number(row.flat_rate_cents),
+        // Deliberately NO fallback to a configured state: a missing column must read
+        // as unconfigured and be loud, never as configured and silent.
+        payout_configured_at: (row.payout_configured_at ?? null) as string | null,
         hourly_rate: row.hourly_rate == null ? null : Number(row.hourly_rate),
         experience_years: row.experience_years == null ? null : Number(row.experience_years),
         bio: (row.bio ?? null) as string | null,

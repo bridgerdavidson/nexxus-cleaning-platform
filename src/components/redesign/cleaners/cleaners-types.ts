@@ -50,6 +50,8 @@ export type CleanerRowVM = {
   earningsLabel: string | null;
   /** Mode-aware pay chip: "60% cut" / "$80 per job" / "Names their pay". */
   payLabel: string;
+  /** False = no pay decision was ever made for this cleaner ("Pay not set" badge). */
+  payConfigured: boolean;
 };
 
 export type PendingInviteRowVM = {
@@ -106,6 +108,8 @@ export type CleanerDetailVM = {
   /** 'percentage' | 'flat' | 'request' | 'hourly_external' (legacy spelling normalized upstream). */
   payoutModel: string;
   flatRateCents: number | null;
+  /** False = no pay decision was ever made; the edit form starts with no mode selected. */
+  payConfigured: boolean;
   hourlyRate: number | null;
   experienceYears: number | null;
   scorecard: CleanerScorecardVM;
