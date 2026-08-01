@@ -38,7 +38,6 @@ function appt(over: Partial<CleanerAppointment>): CleanerAppointment {
     scheduled_date: '2026-06-30',
     scheduled_time: '10:00',
     status: 'in_progress',
-    total_price: 100,
     cleaner_confirmation_status: 'approved',
     homeowner: { first_name: 'John', last_name: 'Doe', email: 'j@x.com' },
     property: null,

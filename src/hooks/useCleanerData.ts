@@ -24,7 +24,6 @@ export interface CleanerAppointment {
   job_progress?: 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
   /** True once the cleaner skipped the photo gate with a reason (migration 095). */
   photos_skipped?: boolean;
-  total_price: number;
   special_requests?: string;
   cleaner_confirmation_status: 'awaiting' | 'approved' | 'rejected';
   /** Wave 2 SLA: cleaner-response deadline (ISO). Null once the cleaner responds. */
@@ -53,7 +52,6 @@ export interface CleanerAppointment {
   } | null;
   checklist?: {
     name: string;
-    price_adder: number;
   } | null;
   payment_status?: 'pending' | 'paid' | 'failed' | 'refunded' | null;
   /** Set when the job is marked complete (charge-at-completion). Drives the 24h job-message grace window. */
@@ -88,38 +86,6 @@ export interface CleanerMessage {
   appointment_id?: string;
 }
 
-export interface CleanerPayout {
-  id: string;
-  amount: number;
-  status: 'pending' | 'paid' | 'failed';
-  paid_at?: string;
-  created_at: string;
-  appointment: {
-    scheduled_date: string;
-    homeowner: {
-      first_name: string;
-      last_name: string;
-    } | null;
-    service_type: {
-      name: string;
-    } | null;
-  } | null;
-}
-
-export interface CleanerPhoto {
-  id: string;
-  photo_url: string;
-  photo_type: 'before' | 'after' | 'during';
-  uploaded_at: string;
-  appointment: {
-    scheduled_date: string;
-    homeowner: {
-      first_name: string;
-      last_name: string;
-    } | null;
-  } | null;
-}
-
 export function useCleanerAppointments() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
@@ -136,117 +102,24 @@ export function useCleanerAppointments() {
   const query = useOrgQuery({
     queryKey,
     ...(cachedSnapshot ? { initialData: cachedSnapshot.data, initialDataUpdatedAt: cachedSnapshot.ts } : {}),
-    queryFn: async ({ orgId, userId }) => {
-      const { data: cleanerProfile, error: profileError } = await supabase
-        .from('cleaner_profiles')
-        .select('id')
-        .eq('id', userId)
-        .eq('organization_id', orgId)
-        .single();
-      if (profileError) throw profileError;
-      if (!cleanerProfile) throw new Error('Cleaner profile not found');
-
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          service_type_id,
-          checklist_id,
-          scheduled_date,
-          scheduled_time,
-          status,
-          completed_at,
-          cancelled_at,
-          series_id,
-          job_progress,
-          photos_skipped,
-          total_price,
-          special_requests,
-          cleaner_confirmation_status,
-          response_deadline,
-          homeowner_initiated,
-          is_self_pay,
-          homeowner:user_profiles!homeowner_id(
-            first_name,
-            last_name,
-            email,
-            phone
-          ),
-          property:properties(
-            name,
-            address,
-            city,
-            state,
-            zip_code
-          ),
-          service_type:service_types(
-            name,
-            description,
-            duration_minutes
-          ),
-          checklist:checklists(
-            name,
-            price_adder
-          ),
-          appointment_requested_slots(
-            slot_index,
-            scheduled_date,
-            scheduled_time
-          )
-        `)
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .order('scheduled_date', { ascending: true });
-
-      if (error) throw error;
-
-      const appointmentIds = (data || []).map(a => a.id);
-      let paymentStatusMap: Record<string, 'pending' | 'paid' | 'failed' | 'refunded'> = {};
-      if (appointmentIds.length > 0) {
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('appointment_id, status')
-          .in('appointment_id', appointmentIds);
-        if (payments) {
-          paymentStatusMap = payments.reduce((acc, p) => {
-            acc[p.appointment_id] = p.status;
-            return acc;
-          }, {} as Record<string, 'pending' | 'paid' | 'failed' | 'refunded'>);
-        }
-      }
-
-      return (data || []).map(appointment => {
-        const a = appointment as typeof appointment & {
-          homeowner_initiated?: boolean;
-          appointment_requested_slots?: Array<{ slot_index: number; scheduled_date: string; scheduled_time: string }>;
-        };
-        return {
-          ...appointment,
-          homeowner: Array.isArray(appointment.homeowner) ? appointment.homeowner[0] : appointment.homeowner,
-          property: Array.isArray(appointment.property) ? appointment.property[0] : appointment.property,
-          service_type: Array.isArray(appointment.service_type) ? appointment.service_type[0] : appointment.service_type,
-          checklist: Array.isArray(appointment.checklist) ? appointment.checklist[0] : appointment.checklist,
-          payment_status: paymentStatusMap[appointment.id] || null,
-          homeowner_initiated: !!a.homeowner_initiated,
-          requested_slots: (a.appointment_requested_slots ?? []).slice().sort(
-            (x, y) => x.slot_index - y.slot_index,
-          ),
-        };
-      }) as CleanerAppointment[];
+    // NOT a Supabase query: migration 122 removed the cleaner's SELECT arm on
+    // appointments (the row carries total_price, which a request-mode cleaner
+    // must never see), so /api/cleaner/appointments shapes a price-free payload
+    // server-side. That also killed the old appointments realtime channel here:
+    // postgres_changes is RLS-gated per subscriber, so a cleaner subscription
+    // would be silently filtered out of every change and never fire. Polling is
+    // the honest signal, same as useCleanerPayRequests.
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    queryFn: async ({ orgId, accessToken, signal }) => {
+      const res = await fetch(`/api/cleaner/appointments?organization_id=${orgId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal,
+      });
+      if (!res.ok) throw new Error('Could not load your jobs');
+      const data = (await res.json()) as { appointments: CleanerAppointment[] };
+      return data.appointments;
     },
-  });
-
-  // Cleaner-scoped channel: filter to events for THIS cleaner only. Also
-  // invalidates the cleaner stats RPC so the dashboard tiles update live.
-  useSupabaseRealtimeSync({
-    channelName: `appointments:cleaner:${userId}`,
-    table: 'appointments',
-    filter: userId ? `cleaner_id=eq.${userId}` : undefined,
-    enabled: !!userId,
-    onEvent: () => ({
-      type: 'invalidate',
-      keys: [queryKey, keys.stats.cleaner(userId), keys.payouts.byCleaner(userId)],
-    }),
   });
 
   // Slot rows are inserted by AddAppointmentModal AFTER the appointment row
@@ -293,9 +166,14 @@ export function useCleanerStats() {
 
   const query = useOrgQuery({
     queryKey: keys.stats.cleaner(userId),
+    // The appointments realtime channel that used to invalidate this key died
+    // with migration 122 (see useCleanerAppointments); a slow poll keeps the
+    // tiles honest between job completions.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     queryFn: async ({ orgId, userId }) => {
-      // Single RPC round trip (migration 049_dashboard_rpcs.sql, shipped to all envs;
-      // the legacy multi-query fallback is gone).
+      // Single RPC round trip (cleaner_stats is SECURITY DEFINER + self-authorizing
+      // since migration 122, so it survives the cleaner's removed SELECT arm).
       const rpcRes = await supabase.rpc('cleaner_stats', {
         p_cleaner_id: userId,
         p_org_id: orgId,
@@ -370,85 +248,6 @@ export function useCleanerMessages() {
   };
 }
 
-// privacy-unsafe: selects the full customer charge (payments.amount) joined with the
-// homeowner name and has no payment_type filter. Do NOT render its rows to a cleaner
-// (would leak the customer charge to a payout_only org). Dead code kept only because
-// keys.payouts.byCleaner is invalidated elsewhere. See Slice 4 spec section 5.
-export function useCleanerPayouts() {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: keys.payouts.byCleaner(userId),
-    queryFn: async ({ orgId, userId }) => {
-      const { data: cleanerProfile, error: profileError } = await supabase
-        .from('cleaner_profiles')
-        .select('id')
-        .eq('id', userId)
-        .eq('organization_id', orgId)
-        .single();
-      if (profileError) throw profileError;
-      if (!cleanerProfile) throw new Error('Cleaner profile not found');
-
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId);
-
-      if (!appointments || appointments.length === 0) return [];
-
-      const appointmentIds = appointments.map(a => a.id);
-
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          id,
-          amount,
-          status,
-          paid_at,
-          created_at,
-          appointment:appointments(
-            scheduled_date,
-            homeowner:user_profiles!homeowner_id(
-              first_name,
-              last_name
-            ),
-            service_type:service_types(
-              name
-            )
-          )
-        `)
-        .eq('organization_id', orgId)
-        .in('appointment_id', appointmentIds)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      return (data || []).map(payment => ({
-        ...payment,
-        appointment: Array.isArray(payment.appointment)
-          ? {
-              ...payment.appointment[0],
-              homeowner: Array.isArray(payment.appointment[0]?.homeowner)
-                ? payment.appointment[0].homeowner[0]
-                : payment.appointment[0]?.homeowner,
-              service_type: Array.isArray(payment.appointment[0]?.service_type)
-                ? payment.appointment[0].service_type[0]
-                : payment.appointment[0]?.service_type,
-            }
-          : payment.appointment,
-      })) as CleanerPayout[];
-    },
-  });
-
-  return {
-    payouts: query.data ?? [],
-    loading: query.isLoading,
-    error: query.error?.message ?? null,
-  };
-}
-
 export interface AwaitingPaymentRow {
   id: string;
   /** The cleaner's expected cut once the customer's bank debit clears. */
@@ -463,83 +262,50 @@ export interface AwaitingPaymentRow {
   } | null;
 }
 
+type CleanerEarningsResponse = { awaiting: AwaitingPaymentRow[]; held: CleanerHeldPayoutRow[] };
+
+/**
+ * One shared query behind BOTH earnings sections. NOT a Supabase read: migration
+ * 122 removed the cleaner's arm from payments_select (payments.amount is the
+ * full customer charge, the number a request-mode cleaner must never see), so
+ * GET /api/cleaner/earnings computes the cleaner's cut server-side, per their
+ * pay mode, mirroring the settlement math. Both wrapper hooks use the same
+ * queryKey, so a screen mounting both still fetches once.
+ */
+function useCleanerEarningsQuery() {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+  const query = useOrgQuery({
+    queryKey: ['cleaner-earnings', 'route', userId] as const,
+    // Payments-table realtime can't reach the cleaner anymore (122). The payouts
+    // subscriptions below still fire on settlement; this poll is the backstop
+    // for Hop-1 status flips that never touch payouts.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    queryFn: async ({ orgId, accessToken, signal }): Promise<CleanerEarningsResponse> => {
+      const res = await fetch(`/api/cleaner/earnings?organization_id=${orgId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal,
+      });
+      if (!res.ok) throw new Error('Could not load your earnings');
+      return (await res.json()) as CleanerEarningsResponse;
+    },
+  });
+  return { userId, query };
+}
+
 /**
  * Bank (ACH) payments for THIS cleaner's appointments still clearing the customer's bank
  * (payment_status='processing', ~4 business days) — "Hop 1", distinct from a payout already on its
- * way to the cleaner's bank ("In Stripe"). The cleaner is paid only once these settle. RLS
- * (migration 075 payments_select) scopes payments to the cleaner's own appointments.
+ * way to the cleaner's bank ("In Stripe"). The cleaner is paid only once these settle.
  */
 export function useCleanerAwaitingPayments() {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: ['cleaner-earnings', 'awaiting', userId],
-    queryFn: async ({ userId }) => {
-      const { data: profile } = await supabase
-        .from('cleaner_profiles')
-        .select('payout_percent')
-        .eq('id', userId)
-        .maybeSingle();
-      const payoutPercent = Number((profile as { payout_percent: number | string } | null)?.payout_percent ?? 0);
-
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          id, amount, processing_fee_cents, payment_method, is_self_pay, created_at,
-          appointment:appointments!inner(
-            id, scheduled_date, cleaner_id,
-            homeowner:user_profiles!homeowner_id(first_name, last_name),
-            service_type:service_types(name)
-          )
-        `)
-        .eq('status', 'processing')
-        .eq('payment_type', 'revenue')
-        .eq('appointment.cleaner_id', userId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-
-      return (data || []).map((p: Record<string, unknown>) => {
-        const apptRaw = p.appointment as Record<string, unknown> | Record<string, unknown>[] | null;
-        const appt = (Array.isArray(apptRaw) ? apptRaw[0] : apptRaw) as Record<string, unknown> | null;
-        const hoRaw = appt?.homeowner as { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
-        const ho = Array.isArray(hoRaw) ? hoRaw[0] : hoRaw;
-        const svcRaw = appt?.service_type as { name?: string } | { name?: string }[] | null;
-        const svc = Array.isArray(svcRaw) ? svcRaw[0] : svcRaw;
-        const isSelfPay = Boolean(p.is_self_pay);
-        const chargeCents = Math.round(Number(p.amount) * 100);
-        const feeCents = Number(p.processing_fee_cents ?? 0);
-        const baseCents = Math.max(0, chargeCents - feeCents);
-        // Self-pay: the charge IS the cleaner's cut grossed up for the fee, so charge − fee is the
-        // EXACT cut (don't re-apply payout%). Homeowner: base is the service price, cut is payout%.
-        const cleanerCutCents = isSelfPay ? baseCents : Math.floor((baseCents * payoutPercent) / 100);
-        return {
-          id: p.id as string,
-          cleanerCut: cleanerCutCents / 100,
-          createdAt: p.created_at as string,
-          paymentMethod: (p as { payment_method?: string | null }).payment_method ?? null,
-          appointment: appt
-            ? {
-                id: appt.id as string,
-                scheduledDate: (appt.scheduled_date as string) ?? null,
-                homeownerName: isSelfPay
-                  ? 'Company-paid'
-                  : ho
-                    ? `${ho.first_name ?? ''} ${ho.last_name ?? ''}`.trim() || 'Customer'
-                    : 'Customer',
-                serviceName: svc?.name ?? null,
-              }
-            : null,
-        } as AwaitingPaymentRow;
-      });
-    },
-  });
+  const { userId, query } = useCleanerEarningsQuery();
 
   // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven by approvals +
   // Stripe webhooks on the payouts table. A new or changed payout row means a customer payment just
-  // settled, so refresh this awaiting list plus the cleaner's stats tiles. (Relocated here from the
-  // removed earnings-history hook; the embedded Stripe payouts table owns its own data, so this is
-  // the one subscription that keeps our own payout-derived sections fresh.)
+  // settled, so refresh the earnings payload plus the cleaner's stats tiles. (payouts_select keeps
+  // its direct cleaner_id arm, so this subscription still fires after 122.)
   useSupabaseRealtimeSync({
     channelName: `payouts:cleaner:${userId}`,
     table: 'payouts',
@@ -548,15 +314,14 @@ export function useCleanerAwaitingPayments() {
     onEvent: () => ({
       type: 'invalidate',
       keys: [
-        ['cleaner-earnings', 'awaiting', userId],
+        ['cleaner-earnings', 'route', userId],
         keys.stats.cleaner(userId),
-        keys.payouts.byCleaner(userId),
       ],
     }),
   });
 
   return {
-    awaitingPayments: query.data ?? [],
+    awaitingPayments: query.data?.awaiting ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,
@@ -584,61 +349,11 @@ export interface CleanerHeldPayoutRow {
  * useCleanerAwaitingPayments ("Hop 1", the customer's bank debit still clearing). Without this the
  * redesign Earnings screen showed only in-flight ACH + the Stripe embed, so a held or failed slice
  * (the Wanda-Jones onboarding stall) was invisible and the setup card read "No earnings yet".
- * payouts.amount is the cleaner's cut (never the customer charge); RLS payouts_select (migration 075)
- * scopes payouts to the cleaner's own rows.
+ * payouts.amount is the cleaner's cut (never the customer charge); the appointment labels come from
+ * the earnings route since 122 removed the cleaner's appointments SELECT arm.
  */
 export function useCleanerHeldPayouts() {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: ['cleaner-earnings', 'held', userId],
-    queryFn: async ({ orgId, userId }) => {
-      const { data, error } = await supabase
-        .from('payouts')
-        .select(`
-          id, amount, status, is_self_pay, created_at,
-          appointment:appointments(
-            id, scheduled_date,
-            homeowner:user_profiles!homeowner_id(first_name, last_name),
-            service_type:service_types(name)
-          )
-        `)
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId)
-        .in('status', ['pending', 'approved', 'failed'])
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-
-      return (data || []).map((p: Record<string, unknown>) => {
-        const apptRaw = p.appointment as Record<string, unknown> | Record<string, unknown>[] | null;
-        const appt = (Array.isArray(apptRaw) ? apptRaw[0] : apptRaw) as Record<string, unknown> | null;
-        const hoRaw = appt?.homeowner as { first_name?: string; last_name?: string } | { first_name?: string; last_name?: string }[] | null;
-        const ho = Array.isArray(hoRaw) ? hoRaw[0] : hoRaw;
-        const svcRaw = appt?.service_type as { name?: string } | { name?: string }[] | null;
-        const svc = Array.isArray(svcRaw) ? svcRaw[0] : svcRaw;
-        const isSelfPay = Boolean(p.is_self_pay);
-        return {
-          id: p.id as string,
-          amount: Number(p.amount ?? 0),
-          status: p.status as CleanerHeldPayoutRow['status'],
-          createdAt: p.created_at as string,
-          appointment: appt
-            ? {
-                id: appt.id as string,
-                scheduledDate: (appt.scheduled_date as string) ?? null,
-                homeownerName: isSelfPay
-                  ? 'Company-paid'
-                  : ho
-                    ? `${ho.first_name ?? ''} ${ho.last_name ?? ''}`.trim() || 'Customer'
-                    : 'Customer',
-                serviceName: svc?.name ?? null,
-              }
-            : null,
-        } as CleanerHeldPayoutRow;
-      });
-    },
-  });
+  const { userId, query } = useCleanerEarningsQuery();
 
   // A payout row status flip (transfer sent, failed, approved) means the held/failed slice changed.
   // Own subscription: useSupabaseRealtimeSync gives each hook a unique topic (useId), so this and
@@ -650,92 +365,15 @@ export function useCleanerHeldPayouts() {
     enabled: !!userId,
     onEvent: () => ({
       type: 'invalidate',
-      keys: [['cleaner-earnings', 'held', userId]],
+      keys: [['cleaner-earnings', 'route', userId]],
     }),
   });
 
   return {
-    heldPayouts: query.data ?? [],
+    heldPayouts: query.data?.held ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,
-  };
-}
-
-export function useCleanerPhotos() {
-  const { user } = useAuth();
-  const userId = user?.id ?? '';
-
-  const query = useOrgQuery({
-    queryKey: ['job-photos', 'cleaner', userId] as const,
-    queryFn: async ({ orgId, userId }) => {
-      const { data: cleanerProfile, error: profileError } = await supabase
-        .from('cleaner_profiles')
-        .select('id')
-        .eq('id', userId)
-        .eq('organization_id', orgId)
-        .single();
-      if (profileError) throw profileError;
-      if (!cleanerProfile) throw new Error('Cleaner profile not found');
-
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('cleaner_id', userId)
-        .eq('organization_id', orgId);
-
-      if (!appointments || appointments.length === 0) return [];
-
-      const appointmentIds = appointments.map(a => a.id);
-
-      const { data, error } = await supabase
-        .from('job_photos')
-        .select(`
-          id,
-          photo_url,
-          photo_type,
-          uploaded_at,
-          appointment:appointments(
-            scheduled_date,
-            homeowner:user_profiles!homeowner_id(
-              first_name,
-              last_name
-            )
-          )
-        `)
-        .in('appointment_id', appointmentIds)
-        .order('uploaded_at', { ascending: false });
-
-      if (error) throw error;
-      return (data || []).map(photo => ({
-        ...photo,
-        appointment: Array.isArray(photo.appointment)
-          ? {
-              ...photo.appointment[0],
-              homeowner: Array.isArray(photo.appointment[0]?.homeowner)
-                ? photo.appointment[0].homeowner[0]
-                : photo.appointment[0]?.homeowner,
-            }
-          : photo.appointment,
-      })) as CleanerPhoto[];
-    },
-  });
-
-  // job_photos carries only appointment_id (no org/cleaner column), so we can't
-  // DB-filter. Subscribe unfiltered + invalidate: Supabase realtime applies RLS,
-  // so the cleaner only receives events for their own appointments' photos.
-  // Lets uploads from the field appear without a manual refresh.
-  useSupabaseRealtimeSync({
-    channelName: `job_photos:cleaner:${userId}`,
-    table: 'job_photos',
-    enabled: !!userId,
-    onEvent: () => ({ type: 'invalidate', keys: [['job-photos', 'cleaner', userId]] }),
-  });
-
-  return {
-    photos: query.data ?? [],
-    loading: query.isLoading,
-    error: query.error?.message ?? null,
   };
 }
 
@@ -749,14 +387,11 @@ export function useCleanerPhotos() {
 async function emitJobLifecycleNotification(
   appointmentId: string,
   event: 'started' | 'completed',
+  organizationId: string | undefined,
 ): Promise<void> {
   try {
-    const { data: appt } = await supabase
-      .from('appointments')
-      .select('organization_id')
-      .eq('id', appointmentId)
-      .single();
-    const organizationId = (appt as { organization_id?: string } | null)?.organization_id;
+    // The org id comes from the caller's auth context: since migration 122 a
+    // cleaner cannot SELECT the appointment row to look it up.
     if (!organizationId) return;
     const token = await getAccessToken();
     await fetch(`/api/appointments/${appointmentId}/lifecycle`, {
@@ -772,7 +407,11 @@ async function emitJobLifecycleNotification(
   }
 }
 
-export async function updateAppointmentStatus(appointmentId: string, status: string) {
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  status: string,
+  organizationId?: string,
+) {
   try {
     // Prepare update object
     const updateData: { status: string; job_progress?: string } = { status };
@@ -784,36 +423,41 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
       updateData.job_progress = 'completed';
     }
 
-    const { error } = await supabase
-      .from('appointments')
-      .update(updateData)
-      .eq('id', appointmentId);
-
-    if (error) throw error;
+    // NOT a direct Supabase write: a Postgres UPDATE's WHERE clause needs
+    // SELECT rights on the row, so once migration 122 sealed the cleaner's
+    // appointments SELECT a direct update silently matches zero rows. The
+    // status route performs the write with the service role after verifying
+    // the assignment.
+    if (!organizationId) throw new Error('No organization');
+    const token = await getAccessToken();
+    const res = await fetch(`/api/cleaner/appointments/${appointmentId}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ organization_id: organizationId, ...updateData }),
+    });
+    const routeBody = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) throw new Error(routeBody.error || 'Could not update the job');
 
     // Notify homeowner + admins that the job started/finished (best-effort).
     if (status === 'in_progress' || status === 'completed') {
       void emitJobLifecycleNotification(
         appointmentId,
         status === 'in_progress' ? 'started' : 'completed',
+        organizationId,
       );
     }
 
     // If status changed to 'completed', trigger automatic payment
     if (status === 'completed') {
       try {
-        // Get appointment details for organization_id
-        const { data: appointment } = await supabase
-          .from('appointments')
-          .select('organization_id')
-          .eq('id', appointmentId)
-          .single();
-
         // New charge flow: a card is saved (not held) at booking, so charge the saved card now that
         // the job is complete (the assigned cleaner is permitted). Non-fatal: a payment problem (no
         // card, declined, tenant not ready) still completes the job and surfaces in "Payments needing
         // attention" for follow-up.
-        const result = await chargeCompletedAppointmentClient(appointmentId, appointment?.organization_id);
+        const result = await chargeCompletedAppointmentClient(appointmentId, organizationId);
         return { success: true, ...result };
       } catch (paymentError) {
         console.error('Error processing payment:', paymentError);
@@ -835,15 +479,24 @@ export async function updateAppointmentStatus(appointmentId: string, status: str
 // Helper function to update job progress
 export async function updateJobProgress(
   appointmentId: string,
-  progress: string
+  progress: string,
+  organizationId?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('appointments')
-      .update({ job_progress: progress })
-      .eq('id', appointmentId);
-
-    if (error) throw error;
+    // Same status route as updateAppointmentStatus: direct cleaner writes to
+    // appointments are dead since migration 122 (see the note there).
+    if (!organizationId) throw new Error('No organization');
+    const token = await getAccessToken();
+    const res = await fetch(`/api/cleaner/appointments/${appointmentId}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ organization_id: organizationId, job_progress: progress }),
+    });
+    const routeBody = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) throw new Error(routeBody.error || 'Failed to update job progress');
 
     return { success: true };
   } catch (error) {
@@ -998,12 +651,16 @@ export type DeclineReason = 'sick' | 'not_available' | 'not_my_service' | 'too_f
 /** Start a confirmed job (status -> in_progress; fires the 'started' lifecycle
  * notification inside updateAppointmentStatus). */
 export function useStartJob() {
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
   const qc = useQueryClient();
   const userId = user?.id;
   return useMutation({
     mutationFn: async (appointmentId: string) => {
-      const r = (await updateAppointmentStatus(appointmentId, 'in_progress')) as { success: boolean; error?: string };
+      const r = (await updateAppointmentStatus(
+        appointmentId,
+        'in_progress',
+        currentOrganizationId ?? undefined,
+      )) as { success: boolean; error?: string };
       if (!r.success) throw new Error(r.error || 'Could not start the job');
       return r;
     },
@@ -1215,7 +872,11 @@ export function useCompleteJob() {
         }
       }
 
-      const r = await updateAppointmentStatus(appointmentId, 'completed') as {
+      const r = await updateAppointmentStatus(
+        appointmentId,
+        'completed',
+        currentOrganizationId ?? undefined,
+      ) as {
         success: boolean;
         error?: string;
         paymentStatus?: string;
@@ -1242,6 +903,7 @@ export function useCompleteJob() {
 
 /** Silently update job_progress (step transitions; no toast). */
 export function useUpdateJobProgress() {
+  const { currentOrganizationId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
@@ -1251,7 +913,7 @@ export function useUpdateJobProgress() {
       appointmentId: string;
       progress: string;
     }): Promise<void> => {
-      const r = await updateJobProgress(appointmentId, progress);
+      const r = await updateJobProgress(appointmentId, progress, currentOrganizationId ?? undefined);
       if (!r.success) throw new Error(r.error || 'Could not update job progress');
     },
     onSuccess: (_data, { appointmentId }) => {
