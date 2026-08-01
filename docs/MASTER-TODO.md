@@ -105,12 +105,12 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
 - [ ] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
       (077 rounds to whole dollars). UI: KPI tiles consume cents. While in there, verify the
       revenue KPI nets out refunds (the T2-3 join fixed the ledger view, not necessarily the RPC).
-- [ ] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER).** Cleaners can read
-      `appointments.total_price` under row-level RLS (and `organizations.min_margin_bps` as any
-      org member), so a request-mode cleaner can compute the auto-approve cap exactly — migration
-      119's price-seal is cosmetic until this ships. Full write-up on PR #221. Branch
-      `fix/cleaner-price-readpath` exists (no commits yet). Do NOT set a real cleaner to
-      `request` mode before this lands.
+- [ ] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER) — BUILT, open as PR #226**
+      (`fix/cleaner-price-readpath`, migration 122: RLS seal + service-role cleaner read routes +
+      DEFINER `cleaner_stats`). Background: cleaners could read `appointments.total_price` under
+      row-level RLS and compute the auto-approve cap, making migration 119's price-seal cosmetic
+      (write-up on PR #221). Merging #226 unblocks the pilot flip; residuals documented in its
+      body. Do NOT set a real cleaner to `request` mode before it lands.
 - [ ] **3.5 T2-1b emailed receipts** (see 3a below; prereq: confirm the five SMTP vars in prod).
 - [ ] **3.6 Cancel notifications (T2-5, emit half).** The cancel route notifies neither customer
       nor cleaner (including when it charges a no-show fee). Wire the notifications, then restore
@@ -178,8 +178,8 @@ The "cleaner decides pay" (request-mode) stack SHIPPED 2026-07-31 (#205/#224/#21
 migrations 117-120 in prod). Spec:
 `docs/superpowers/specs/2026-07-26-cleaner-request-pay-model-design.md`.
 
-- [ ] **Pilot-flip blocker = the price read-path seal, item 3.4 above.** Until it ships, do not
-      set a real cleaner to `request` mode.
+- [ ] **Pilot-flip blocker = the price read-path seal (PR #226, item 3.4 above).** Until it
+      merges, do not set a real cleaner to `request` mode.
 - [ ] Org pay-model simplification (org setting becomes per-job-vs-hourly only; new cleaners get
       NO default pay; operator nudged per cleaner). Plan:
       `docs/superpowers/plans/2026-07-28-org-pay-model-simplification.md` — currently UNTRACKED
