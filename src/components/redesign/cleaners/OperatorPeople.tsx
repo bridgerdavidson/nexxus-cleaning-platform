@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
@@ -20,7 +21,6 @@ import type { PeopleSegment } from "./staff-types";
 export function OperatorPeople() {
   const { currentOrgRole } = useAuth();
   const { permissions, loading: permsLoading } = useManagerPermissions();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const privileged = currentOrgRole === "owner" || currentOrgRole === "admin";
@@ -36,9 +36,9 @@ export function OperatorPeople() {
       if (v === "staff") params.set("view", "staff");
       else params.delete("view");
       const qs = params.toString();
-      router.replace(qs ? `?${qs}` : "?", { scroll: false });
+      replaceSearchShallow(qs ? `?${qs}` : "?");
     },
-    [router, searchParams],
+    [searchParams],
   );
 
   if (!privileged && permsLoading) {

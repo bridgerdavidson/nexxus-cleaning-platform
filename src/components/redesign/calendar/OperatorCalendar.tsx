@@ -2,7 +2,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { useAdminAppointments, useAdminCleaners, type AdminAppointment } from '@/hooks/useAdminData';
 import { useAuth } from '@/hooks/useAuth';
@@ -67,7 +68,6 @@ function CalendarSkeleton() {
 }
 
 export function OperatorCalendar() {
-  const router = useRouter();
   const pathname = usePathname();
   const { currentOrgRole } = useAuth();
   const { appointments, loading, error, refetch } = useAdminAppointments();
@@ -124,7 +124,7 @@ export function OperatorCalendar() {
 
   const openNewBooking = (date?: string, time?: string) => {
     const qs = new URLSearchParams(operatorBookingParams(date || time ? { date, time } : undefined)).toString();
-    router.replace(`${pathname}?${qs}`, { scroll: false });
+    replaceSearchShallow(`${pathname}?${qs}`);
   };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));

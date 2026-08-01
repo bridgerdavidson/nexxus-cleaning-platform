@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
@@ -345,9 +346,9 @@ function OperatorCustomersData({
       const sp = new URLSearchParams(window.location.search);
       sp.delete("customer");
       sp.set("booking", appointmentId);
-      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+      replaceSearchShallow(`${pathname}?${sp.toString()}`);
     },
-    [router, pathname],
+    [pathname],
   );
 
   // Keep the detail in sync with the `?customer=<id>` deep link: open it when the

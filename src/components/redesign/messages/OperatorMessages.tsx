@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { replaceSearchShallow } from '@/lib/shallowSearch'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useConversations } from '@/hooks/useConversations'
@@ -65,9 +66,9 @@ function OperatorMessagesData() {
       sp.delete('to')
       sp.delete('appointment')
       sp.delete('job')
-      router.replace(`?${sp.toString()}`, { scroll: false })
+      replaceSearchShallow(`?${sp.toString()}`)
     },
-    [router, searchParams],
+    [searchParams],
   )
 
   const setSelectedJob = useCallback(
@@ -78,9 +79,9 @@ function OperatorMessagesData() {
       sp.delete('c')
       sp.delete('to')
       sp.delete('appointment')
-      router.replace(`?${sp.toString()}`, { scroll: false })
+      replaceSearchShallow(`?${sp.toString()}`)
     },
-    [router, searchParams],
+    [searchParams],
   )
 
   // data — useConversations returns `loading` (maps to inboxLoading).
@@ -284,8 +285,8 @@ function OperatorMessagesData() {
   const newBooking = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString())
     params.set('newbooking', '1')
-    router.replace(`?${params.toString()}`, { scroll: false })
-  }, [router, searchParams])
+    replaceSearchShallow(`?${params.toString()}`)
+  }, [searchParams])
 
   const onPickNew = useCallback(
     async (memberId: string) => {

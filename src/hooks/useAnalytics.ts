@@ -1,7 +1,8 @@
 "use client";
 import { useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useOrgQuery } from "@/lib/useOrgQuery";
 import { useAuth } from "@/hooks/useAuth";
 import { keys } from "@/lib/queryKeys";
@@ -23,7 +24,6 @@ export function useAnalyticsRange(): {
   range: ResolvedRange;
   setPreset: (p: RangePreset) => void;
 } {
-  const router = useRouter();
   const params = useSearchParams();
   const raw = params.get("range");
   const preset: RangePreset = (PRESETS as string[]).includes(raw ?? "")
@@ -34,9 +34,9 @@ export function useAnalyticsRange(): {
     (p: RangePreset) => {
       const sp = new URLSearchParams(params.toString());
       sp.set("range", p);
-      router.replace(`?${sp.toString()}`, { scroll: false });
+      replaceSearchShallow(`?${sp.toString()}`);
     },
-    [params, router],
+    [params],
   );
   return { range, setPreset };
 }

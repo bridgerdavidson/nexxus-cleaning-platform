@@ -1,7 +1,8 @@
 // src/components/redesign/settings/OperatorSettings.tsx
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
@@ -15,7 +16,6 @@ import { SECTION_COMPONENTS } from "./sections/registry";
 export function OperatorSettings() {
   const { user, currentOrgRole } = useAuth();
   const { permissions, loading: permsLoading } = useManagerPermissions();
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -37,8 +37,12 @@ export function OperatorSettings() {
   const navigateTo = useCallback((id: SettingsSectionId) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("section", id);
-    router.replace(`${pathname}?${params.toString()}`);
-  }, [router, pathname, searchParams]);
+    replaceSearchShallow(`${pathname}?${params.toString()}`);
+    // The router.replace this replaced scrolled to top by default; keep that so
+    // switching sections mid-scroll (especially on mobile, where the section
+    // list stacks above the content) lands at the new section's header.
+    window.scrollTo(0, 0);
+  }, [pathname, searchParams]);
 
   // Dirty-guard covers in-app section switches only. Direct ?section= URL edits, rail
   // navigation via browser back, and page unload are NOT intercepted; a beforeunload

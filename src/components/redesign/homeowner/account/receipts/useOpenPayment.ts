@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 
 /** Open the receipt takeover by setting `?payment=<id>` on the current path. */
 export function useOpenPayment(): (id: string) => void {
-  const router = useRouter();
   const pathname = usePathname();
   return useCallback(
-    (id: string) => router.replace(`${pathname}?payment=${id}`, { scroll: false }),
-    [router, pathname],
+    (id: string) => replaceSearchShallow(`${pathname}?payment=${id}`),
+    [pathname],
   );
 }

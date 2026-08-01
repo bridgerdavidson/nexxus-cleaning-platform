@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
 import { useCleanerAppointments } from '@/hooks/useCleanerData';
@@ -77,8 +78,8 @@ function JobThreadHostInner({
     sp.delete('jobthread');
     sp.delete('from');
     const qs = sp.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [router, pathname, searchParams]);
+    replaceSearchShallow(qs ? `${pathname}?${qs}` : pathname);
+  }, [pathname, searchParams]);
 
   const backToJob = useCallback(() => {
     router.replace(`/cleaner?job=${fromParam}`, { scroll: false });

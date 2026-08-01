@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { replaceSearchShallow } from '@/lib/shallowSearch';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
 import { useOrganizationMembers } from '@/hooks/useOrganizationMembers';
@@ -25,7 +26,6 @@ export function HomeownerMessageThreadHost() {
 }
 
 function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null; threadParam: string | null; jobParam: string | null }) {
-  const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
   const { user } = useAuth();
@@ -92,8 +92,8 @@ function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null;
     next.delete('thread');
     next.delete('job');
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [router, pathname, sp]);
+    replaceSearchShallow(qs ? `${pathname}?${qs}` : pathname);
+  }, [pathname, sp]);
 
   const ready = isJob ? !!jobAppt : !!officeRecipient;
 
