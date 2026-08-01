@@ -11,7 +11,7 @@ import {
 
 /**
  * POST /api/cleaner/appointments/[appointmentId]/status: the cleaner's job
- * status/progress write path since migration 122 sealed their direct
+ * status/progress write path since the price-seal migration sealed their direct
  * appointments access (an UPDATE's WHERE needs SELECT rights, so the old
  * client write became a silent no-op).
  */

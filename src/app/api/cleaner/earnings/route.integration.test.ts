@@ -11,7 +11,7 @@ import {
 
 /**
  * GET /api/cleaner/earnings: mode-aware Hop-1 (clearing) + Hop-2 (held) money,
- * computed server-side since migration 122 removed the cleaner's payments
+ * computed server-side since the price-seal migration removed the cleaner's payments
  * SELECT arm. The cut math must mirror settlement (resolveCleanerShareCents),
  * and the customer charge amount must never serialize.
  */

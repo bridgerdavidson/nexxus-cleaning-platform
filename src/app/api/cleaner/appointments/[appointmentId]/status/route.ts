@@ -8,8 +8,8 @@ export const runtime = 'nodejs';
  * POST /api/cleaner/appointments/[appointmentId]/status
  * Body: { organization_id, status?, job_progress? }
  *
- * The cleaner's job status/progress write path. Before migration 122 this was
- * a direct client UPDATE under the appointments_update cleaner arm; 122
+ * The cleaner's job status/progress write path. Before the price-seal migration this was
+ * a direct client UPDATE under the appointments_update cleaner arm; the seal
  * removed the cleaner's SELECT arm, and a Postgres UPDATE's WHERE clause needs
  * SELECT rights on the row, so a direct cleaner UPDATE now matches zero rows.
  * This route replaces it, and is deliberately narrower than the old RLS arm:

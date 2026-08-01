@@ -3,9 +3,9 @@ import { createTestSupabaseClient, createUserClient } from '../../../../tests/he
 import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../../../tests/helpers/fixtures';
 
 /**
- * Migration 122: the cleaner price seal at the data layer.
+ * The price-seal migration (cleaner_price_readpath_seal): the cleaner price seal at the data layer.
  *
- * RLS is row-level, so before 122 the assigned cleaner could read
+ * RLS is row-level, so before the seal the assigned cleaner could read
  * appointments.total_price (and payments.amount, and
  * recurring_appointment_series.total_price) directly with their own session
  * token, which let a request-mode cleaner compute the auto-approve cap and made
@@ -22,7 +22,7 @@ import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../.
  * RLS denial is `error === null` + zero rows, not a thrown error.
  */
 
-describe('cleaner price seal (migration 122)', () => {
+describe('cleaner price seal (cleaner_price_readpath_seal)', () => {
   let org: TestOrgFixture;
   let apptId: string;
   let propertyId: string;
@@ -234,7 +234,7 @@ describe('cleaner price seal (migration 122)', () => {
     it('status updates: a direct cleaner UPDATE is a silent no-op (writes go through the status route)', async () => {
       // A Postgres UPDATE's WHERE clause needs SELECT rights on the row, so
       // with the SELECT arm sealed a direct cleaner update matches zero rows.
-      // 122 also removed the (now dead) cleaner arm from appointments_update;
+      // The seal also removed the (now dead) cleaner arm from appointments_update;
       // the real write path is POST /api/cleaner/appointments/[id]/status,
       // covered in that route's own test file.
       const cleaner = createUserClient(org.cleaner.accessToken);
@@ -253,7 +253,7 @@ describe('cleaner price seal (migration 122)', () => {
     });
   });
 
-  describe('cleaner_stats (DEFINER + mode-aware since 122)', () => {
+  describe('cleaner_stats (DEFINER + mode-aware since the price-seal migration)', () => {
     it('request mode: earnings come from payout rows, never price x percent', async () => {
       const { error: payoutError } = await admin.from('payouts').insert([
         {

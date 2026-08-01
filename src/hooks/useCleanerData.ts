@@ -102,7 +102,7 @@ export function useCleanerAppointments() {
   const query = useOrgQuery({
     queryKey,
     ...(cachedSnapshot ? { initialData: cachedSnapshot.data, initialDataUpdatedAt: cachedSnapshot.ts } : {}),
-    // NOT a Supabase query: migration 122 removed the cleaner's SELECT arm on
+    // NOT a Supabase query: the price-seal migration removed the cleaner's SELECT arm on
     // appointments (the row carries total_price, which a request-mode cleaner
     // must never see), so /api/cleaner/appointments shapes a price-free payload
     // server-side. That also killed the old appointments realtime channel here:
@@ -167,13 +167,13 @@ export function useCleanerStats() {
   const query = useOrgQuery({
     queryKey: keys.stats.cleaner(userId),
     // The appointments realtime channel that used to invalidate this key died
-    // with migration 122 (see useCleanerAppointments); a slow poll keeps the
+    // with the price-seal migration (see useCleanerAppointments); a slow poll keeps the
     // tiles honest between job completions.
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async ({ orgId, userId }) => {
       // Single RPC round trip (cleaner_stats is SECURITY DEFINER + self-authorizing
-      // since migration 122, so it survives the cleaner's removed SELECT arm).
+      // since the price-seal migration, so it survives the cleaner's removed SELECT arm).
       const rpcRes = await supabase.rpc('cleaner_stats', {
         p_cleaner_id: userId,
         p_org_id: orgId,
@@ -266,7 +266,7 @@ type CleanerEarningsResponse = { awaiting: AwaitingPaymentRow[]; held: CleanerHe
 
 /**
  * One shared query behind BOTH earnings sections. NOT a Supabase read: migration
- * 122 removed the cleaner's arm from payments_select (payments.amount is the
+ * The price-seal migration removed the cleaner's arm from payments_select (payments.amount is the
  * full customer charge, the number a request-mode cleaner must never see), so
  * GET /api/cleaner/earnings computes the cleaner's cut server-side, per their
  * pay mode, mirroring the settlement math. Both wrapper hooks use the same
@@ -277,7 +277,7 @@ function useCleanerEarningsQuery() {
   const userId = user?.id ?? '';
   const query = useOrgQuery({
     queryKey: ['cleaner-earnings', 'route', userId] as const,
-    // Payments-table realtime can't reach the cleaner anymore (122). The payouts
+    // Payments-table realtime can't reach the cleaner anymore (price-seal). The payouts
     // subscriptions below still fire on settlement; this poll is the backstop
     // for Hop-1 status flips that never touch payouts.
     refetchInterval: 60_000,
@@ -305,7 +305,7 @@ export function useCleanerAwaitingPayments() {
   // Payout status flips (approved -> paid -> bank_paid, or a reversal) are driven by approvals +
   // Stripe webhooks on the payouts table. A new or changed payout row means a customer payment just
   // settled, so refresh the earnings payload plus the cleaner's stats tiles. (payouts_select keeps
-  // its direct cleaner_id arm, so this subscription still fires after 122.)
+  // its direct cleaner_id arm, so this subscription still fires after the price-seal migration.)
   useSupabaseRealtimeSync({
     channelName: `payouts:cleaner:${userId}`,
     table: 'payouts',
@@ -350,7 +350,7 @@ export interface CleanerHeldPayoutRow {
  * redesign Earnings screen showed only in-flight ACH + the Stripe embed, so a held or failed slice
  * (the Wanda-Jones onboarding stall) was invisible and the setup card read "No earnings yet".
  * payouts.amount is the cleaner's cut (never the customer charge); the appointment labels come from
- * the earnings route since 122 removed the cleaner's appointments SELECT arm.
+ * the earnings route since the price-seal migration removed the cleaner's appointments SELECT arm.
  */
 export function useCleanerHeldPayouts() {
   const { userId, query } = useCleanerEarningsQuery();
@@ -390,7 +390,7 @@ async function emitJobLifecycleNotification(
   organizationId: string | undefined,
 ): Promise<void> {
   try {
-    // The org id comes from the caller's auth context: since migration 122 a
+    // The org id comes from the caller's auth context: since the price-seal migration a
     // cleaner cannot SELECT the appointment row to look it up.
     if (!organizationId) return;
     const token = await getAccessToken();
@@ -424,7 +424,7 @@ export async function updateAppointmentStatus(
     }
 
     // NOT a direct Supabase write: a Postgres UPDATE's WHERE clause needs
-    // SELECT rights on the row, so once migration 122 sealed the cleaner's
+    // SELECT rights on the row, so once the price-seal migration sealed the cleaner's
     // appointments SELECT a direct update silently matches zero rows. The
     // status route performs the write with the service role after verifying
     // the assignment.
@@ -484,7 +484,7 @@ export async function updateJobProgress(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Same status route as updateAppointmentStatus: direct cleaner writes to
-    // appointments are dead since migration 122 (see the note there).
+    // appointments are dead since the price-seal migration (see the note there).
     if (!organizationId) throw new Error('No organization');
     const token = await getAccessToken();
     const res = await fetch(`/api/cleaner/appointments/${appointmentId}/status`, {

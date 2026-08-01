@@ -6,7 +6,7 @@ import { withTestOrg, createTestAppointment, type TestOrgFixture } from '../../.
 
 /**
  * GET /api/cleaner/appointments: the cleaner's price-free read path since
- * migration 122 removed their SELECT arm on appointments. The serialization
+ * the price-seal migration removed their SELECT arm on appointments. The serialization
  * guards are the point of this file: no price, in any spelling, ever.
  */
 

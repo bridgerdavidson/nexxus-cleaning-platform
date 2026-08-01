@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
  *
  * The cleaner's in-flight money, shaped server-side and price-free:
  * - awaiting: customer payments still clearing ("Hop 1"), with the CLEANER'S
- *   cut computed here per their pay mode. Before migration 122 the client read
+ *   cut computed here per their pay mode. Before the price-seal migration the client read
  *   `payments.amount` (the full customer charge) and multiplied by
  *   payout_percent itself; that both leaked the sealed job price to
  *   request-mode cleaners and showed flat/request cleaners a percent-derived

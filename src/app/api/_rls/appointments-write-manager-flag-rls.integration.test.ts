@@ -83,11 +83,11 @@ describe('regression: appointments UPDATE still works for admin, assigned cleane
     expect(data ?? []).toHaveLength(1);
   });
 
-  it('the assigned cleaner can no longer update directly (sealed by 122; route write path)', async () => {
+  it('the assigned cleaner can no longer update directly (sealed; route write path)', async () => {
     org = await withTestOrg();
     const apptId = await seedAppointment(org.organizationId, org.cleaner.userId, org.homeowner.userId);
     const db = createUserClient(org.cleaner.accessToken);
-    // Migration 122 sealed the cleaner's SELECT arm, and an UPDATE's WHERE
+    // The price-seal migration sealed the cleaner's SELECT arm, and an UPDATE's WHERE
     // clause needs SELECT rights on the row, so this is a silent zero-row
     // no-op. Cleaner status writes now go through
     // POST /api/cleaner/appointments/[id]/status (see its test file).

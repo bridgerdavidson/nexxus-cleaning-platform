@@ -9,7 +9,7 @@ export const runtime = 'nodejs';
  *
  * The cleaner's own appointment list, shaped server-side and price-free.
  *
- * WHY A ROUTE AND NOT AN RLS READ: migration 122 removed the cleaner's SELECT
+ * WHY A ROUTE AND NOT AN RLS READ: the price-seal migration removed the cleaner's SELECT
  * arm on appointments (and payments) because RLS is row-level, so the assigned
  * cleaner could read `total_price` (and `payments.amount`) directly with their
  * own session token, which let a request-mode cleaner compute the auto-approve

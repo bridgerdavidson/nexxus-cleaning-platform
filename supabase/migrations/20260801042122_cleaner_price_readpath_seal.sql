@@ -1,4 +1,4 @@
--- 122_cleaner_price_readpath_seal.sql
+-- cleaner_price_readpath_seal
 --
 -- Close the pay-request pilot blocker documented on PR #221: RLS is row-level,
 -- so the assigned cleaner could read `appointments.total_price` (and
@@ -53,7 +53,7 @@ as $$
 $$;
 
 comment on function public.is_assigned_cleaner(uuid) is
-  'SECURITY DEFINER: is the current user the assigned cleaner of this appointment. Lets dependent policies (job_photos, checklist_item_completions, requested slots, routing log, reviews) keep working after 122 removed the cleaner SELECT arm on appointments.';
+  'SECURITY DEFINER: is the current user the assigned cleaner of this appointment. Lets dependent policies (job_photos, checklist_item_completions, requested slots, routing log, reviews) keep working after this migration removed the cleaner SELECT arm on appointments.';
 
 create or replace function public.cleans_for_homeowner(p_homeowner_id uuid)
 returns boolean
