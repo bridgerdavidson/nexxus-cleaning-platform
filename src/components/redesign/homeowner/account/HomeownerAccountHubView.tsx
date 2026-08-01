@@ -38,7 +38,7 @@ export function HomeownerAccountHubView({
   return (
     <div className="space-y-6 pt-1">
       <header className="space-y-0.5">
-        <h1 className="text-xl font-bold">Account</h1>
+        <h1 className="text-2xl font-extrabold leading-tight">Account</h1>
         <p className="text-sm text-muted-foreground">Manage your profile, homes, and payments</p>
       </header>
 

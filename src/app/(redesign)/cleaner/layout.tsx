@@ -8,7 +8,7 @@ import { CleanerShell } from "@/components/redesign/cleaner/shell/CleanerShell";
 import { CleanerJobDetailHost } from "@/components/redesign/cleaner/job/CleanerJobDetailHost";
 import { CleanerMessageThreadHost } from "@/components/redesign/cleaner/messages/CleanerMessageThreadHost";
 import { CleanerJobThreadHost } from "@/components/redesign/cleaner/messages/CleanerJobThreadHost";
-import { FullPageLoader } from "@/components/ui/nexxus-loader";
+import { TenantFullPageLoader as FullPageLoader } from "@/components/branding/TenantFullPageLoader";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 
 export default function CleanerDashboardLayout({ children }: { children: ReactNode }) {

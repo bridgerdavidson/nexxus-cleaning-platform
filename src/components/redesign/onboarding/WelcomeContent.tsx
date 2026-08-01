@@ -1,6 +1,6 @@
 'use client';
 
-import { Logo } from '@/components/ui/logo';
+import { OrgLogo } from '@/components/branding/OrgLogo';
 import { Button } from '@/components/ui/button';
 import type { WelcomeCopy } from '@/lib/onboarding/welcomeCopy';
 
@@ -17,8 +17,12 @@ export function WelcomeContent({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-2 py-2 text-center">
-      <Logo variant="full" className="h-8 w-auto" />
-      <h1 className="mt-10 text-3xl font-extrabold tracking-tight text-foreground">{copy.title}</h1>
+      {/* The COMPANY'S mark, not Nexxus: the first-run welcome is a tenant
+          surface, and spec decision 11 keeps Nexxus out of all of them. */}
+      <OrgLogo variant="full" size={32} />
+      {/* h2, not h1: this takeover renders above pages that carry their own h1
+          (the white-label greeting headings), and a document gets one h1. */}
+      <h2 className="mt-10 text-3xl font-extrabold tracking-tight text-foreground">{copy.title}</h2>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{copy.lede}</p>
 
       {previewSteps && previewSteps.length > 0 && (

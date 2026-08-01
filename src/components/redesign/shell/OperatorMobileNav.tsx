@@ -1,9 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { Menu, CalendarPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { OrgLogo } from "@/components/branding/OrgLogo";
+import { useOrgBrand } from "@/components/branding/BrandProvider";
 import {
   Sheet,
   SheetClose,
@@ -41,6 +42,8 @@ export function OperatorMobileNav({
   messagesUnread?: number;
 }) {
   const drawerHasBadge = secondary.some((i) => (badges?.[i.id] ?? 0) > 0);
+  // Effective org (impersonation-aware), never currentOrganization.name.
+  const orgName = useOrgBrand().name || "Menu";
   return (
     <>
       {/* New-booking FAB (labeled, the one persistent global action), above the
@@ -113,24 +116,8 @@ export function OperatorMobileNav({
           </SheetTrigger>
           <SheetContent side="left" className="w-[80%] max-w-[320px] p-0">
             <SheetHeader className="flex h-16 flex-row items-center px-4">
-              <SheetTitle className="sr-only">Nexxus</SheetTitle>
-              {/* light theme: dark wordmark */}
-              <Image
-                src="/brand/logo-black.svg"
-                alt="Nexxus"
-                width={567}
-                height={126}
-                priority
-                className="h-7 w-auto dark:hidden"
-              />
-              {/* dark theme: white wordmark */}
-              <Image
-                src="/brand/logo-white.svg"
-                alt="Nexxus"
-                width={565}
-                height={126}
-                className="hidden h-7 w-auto dark:block"
-              />
+              <SheetTitle className="sr-only">{orgName}</SheetTitle>
+              <OrgLogo variant="full" size={28} />
             </SheetHeader>
 
             <div className="flex flex-col gap-1 px-3 pb-4">

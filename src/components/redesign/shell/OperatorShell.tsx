@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
+import { useRailPreference } from "@/hooks/useRailPreference";
+import { cn } from "@/lib/utils";
 import { usePayRequestsPendingCount } from "@/hooks/usePayRequestsPendingCount";
 import { useUnreadMessageCount } from "@/hooks/useUnreadMessageCount";
 import { OperatorRail } from "./OperatorRail";
@@ -58,6 +60,7 @@ export function OperatorShell({
   // instead of routing to the legacy admin dashboard.
   const openBooking = useOpenOperatorBooking();
   const { nav, primary, secondary } = useOperatorNav();
+  const { expanded: railExpanded, toggle: toggleRail } = useRailPreference();
 
   // The "New booking" trigger (top-bar button, mobile FAB, command-palette action) is a
   // global affordance every Operator surface shares, so it is gated once here rather than
@@ -92,8 +95,22 @@ export function OperatorShell({
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background text-foreground">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-control focus:bg-card focus:px-3 focus:py-2 focus:shadow-soft-md focus:ring-2 focus:ring-ring">Skip to content</a>
-        <OperatorRail activeId={activeId} nav={nav} badges={navBadges} messagesUnread={messagesUnread} />
-        <div className="lg:pl-16">
+        <OperatorRail
+          activeId={activeId}
+          nav={nav}
+          badges={navBadges}
+          messagesUnread={messagesUnread}
+          expanded={railExpanded}
+          onToggleExpanded={toggleRail}
+        />
+        {/* The ONE padding point everything right of the rail flows from; the
+            top bar is sticky INSIDE it, so it follows the rail automatically. */}
+        <div
+          className={cn(
+            "transition-[padding] duration-200 ease-out",
+            railExpanded ? "lg:pl-[248px]" : "lg:pl-16"
+          )}
+        >
           <RedesignImpersonationBanner />
           <OperatorTopBar
             onNewBooking={onNewBooking}

@@ -218,7 +218,7 @@ export function HomeownerMessagesView({
     <div className="space-y-6 pt-1">
       <header className="space-y-0.5">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">Messages</h1>
+          <h1 className="text-2xl font-extrabold leading-tight">Messages</h1>
           <Button
             type="button"
             variant="ghost"
