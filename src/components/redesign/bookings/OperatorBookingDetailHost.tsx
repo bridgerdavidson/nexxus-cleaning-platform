@@ -100,6 +100,9 @@ function HostInner({
     [cleaners, raw?.cleaner_id],
   );
   const completionNeedsPayOffer = assignedCleaner?.payout_model === "request" && canManagePayments;
+  // Warned, never blocked: the job stays bookable, but this cleaner's settlement
+  // defers until their pay is set, so the sheet keeps saying so post-assignment.
+  const assignedCleanerPayNotSet = !!assignedCleaner && assignedCleaner.payout_configured_at == null;
 
   // The dialog's own open state derives from reschedInit (init !== null), so
   // reset it whenever the sheet's open prop goes false: otherwise browser
@@ -278,6 +281,7 @@ function HostInner({
         detail={detail}
         appointment={raw}
         cleanerOptions={cleanerOptions}
+        assignedCleanerPayNotSet={assignedCleanerPayNotSet}
         canViewPayments={canViewPayments}
         canManagePayments={canManagePayments}
         canEdit={canEdit}

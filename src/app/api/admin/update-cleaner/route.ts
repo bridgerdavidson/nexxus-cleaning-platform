@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const { data: cleanerRow, error: lookupError } = await supabaseAdmin
       .from('cleaner_profiles')
-      .select('organization_id')
+      .select('organization_id, payout_configured_at')
       .eq('id', cleanerId)
       .maybeSingle();
     if (lookupError) {
@@ -112,6 +112,18 @@ export async function POST(request: NextRequest) {
           );
         }
         cleanerUpdate.flat_rate_cents = v;
+      }
+      // Saving any pay field IS the pay decision: mark the cleaner configured. An
+      // explicit 0% is a deliberate choice and counts; only the absence of a save
+      // means unconfigured. Never re-stamped (the first decision's timestamp holds),
+      // and never cleared — the unconfigured state exists only before the first save.
+      const paySaved = ['payout_model', 'payout_percent', 'flat_rate_cents'].some(
+        (k) => cleaner[k] !== undefined,
+      );
+      const alreadyConfigured =
+        (cleanerRow as { payout_configured_at: string | null }).payout_configured_at != null;
+      if (paySaved && !alreadyConfigured) {
+        cleanerUpdate.payout_configured_at = new Date().toISOString();
       }
     }
     if (deactivated !== undefined) {

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrgQuery } from "@/lib/useOrgQuery";
+import { supabase } from "@/lib/supabase";
 import { toast } from "@/components/ui/toast";
 import { useInvites } from "@/hooks/useInvites";
 import { useDetailParam } from "@/hooks/useDetailParam";
@@ -21,7 +23,7 @@ import type { Invite } from "@/types";
 import { OperatorCleanersView } from "./OperatorCleanersView";
 import { CleanerDetailSheet, type CleanerSaveFields } from "./CleanerDetailSheet";
 import { AddCleanerDialog } from "./AddCleanerDialog";
-import { deriveCleaners } from "./deriveCleaners";
+import { deriveCleaners, payLabelOf } from "./deriveCleaners";
 import type {
   CleanerDetailVM,
   CleanerRowAction,
@@ -83,22 +85,6 @@ function completionRateLabel(completed: number, cancelled: number): string {
 function thisWeekLabel(n: number): string {
   return n === 0 ? "No jobs this week" : `${n} this week`;
 }
-/** The pre-118 legacy spelling falls through to the percentage default branch by design. */
-function payLabelOf(c: AdminCleanerScorecard): string {
-  if (c.payout_model === "request") return "Names their pay";
-  if (c.payout_model === "flat") {
-    if (c.flat_rate_cents == null) return "Flat rate not set";
-    // Cents-aware (matches the detail sheet): $80.50 must not round to $81.
-    const dollars = c.flat_rate_cents / 100;
-    return `$${dollars.toLocaleString("en-US", {
-      minimumFractionDigits: c.flat_rate_cents % 100 === 0 ? 0 : 2,
-      maximumFractionDigits: 2,
-    })} per job`;
-  }
-  if (c.payout_model === "hourly_external") return "Paid off platform";
-  return `${Math.round(c.payout_percent)}% cut`;
-}
-
 function toRowVM(c: AdminCleanerScorecard, canViewPayments: boolean): CleanerRowVM {
   const name = nameOf(c);
   const hasName = name !== c.email;
@@ -117,6 +103,7 @@ function toRowVM(c: AdminCleanerScorecard, canViewPayments: boolean): CleanerRow
     upcomingCount: c.upcoming_jobs,
     earningsLabel: canViewPayments ? money0(c.cleaner_earnings) : null,
     payLabel: payLabelOf(c),
+    payConfigured: c.payout_configured_at != null,
   };
 }
 
@@ -141,6 +128,7 @@ function toDetailVM(c: AdminCleanerScorecard, canViewPayments: boolean): Cleaner
     payoutPercent: c.payout_percent,
     payoutModel: c.payout_model === "percentage_contractor" ? "percentage" : c.payout_model,
     flatRateCents: c.flat_rate_cents,
+    payConfigured: c.payout_configured_at != null,
     hourlyRate: c.hourly_rate,
     experienceYears: c.experience_years,
     scorecard: {
@@ -225,6 +213,23 @@ export function OperatorCleanersData({
   const [busy, setBusy] = useState(false);
 
   const { upcoming: detailUpcoming, loading: detailsLoading } = useCleanerWorkload(detailId);
+
+  // Org-level percent, used only to PREFILL the sheet's percent field the first
+  // time an unconfigured cleaner's pay is set. Never applied on its own.
+  const { data: percentPrefill } = useOrgQuery({
+    queryKey: ["operator-cleaners", "percent-prefill", currentOrganizationId ?? ""],
+    queryFn: async ({ orgId }) => {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("default_cleaner_payout_percent")
+        .eq("id", orgId)
+        .maybeSingle();
+      if (error) throw error;
+      const v = (data as { default_cleaner_payout_percent: number | string | null } | null)
+        ?.default_cleaner_payout_percent;
+      return v == null ? null : Number(v);
+    },
+  });
 
   const derived = useMemo(
     () => deriveCleaners(cleaners, { search, sort, showBenched }),
@@ -535,6 +540,7 @@ export function OperatorCleanersData({
           // is exactly the ?to= the Messages screen resolves into a thread.
           detail ? () => router.push(`/admin/messages?to=${detail.id}`) : undefined
         }
+        percentPrefill={percentPrefill ?? null}
       />
 
       <AddCleanerDialog open={addOpen} onOpenChange={setAddOpen} busy={busy} onInvite={handleInvite} />

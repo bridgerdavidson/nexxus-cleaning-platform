@@ -27,6 +27,17 @@ export function ConnectBadge({ state }: { state: ConnectState }) {
   );
 }
 
+/** "Pay not set" warning: no pay decision was ever made for this cleaner, so they
+ *  cannot be paid for a job until the operator sets it. Nothing when configured. */
+export function PayNotSetBadge({ configured }: { configured: boolean }) {
+  if (configured) return null;
+  return (
+    <Badge variant="caution" className="shrink-0 whitespace-nowrap">
+      <AlertTriangle /> Pay not set
+    </Badge>
+  );
+}
+
 /** Amber alert: money owed to the cleaner that has not been sent yet
  *  (pending + approved payouts). Only shown when there is something owed. */
 export function OwedBadge({ label }: { label: string }) {

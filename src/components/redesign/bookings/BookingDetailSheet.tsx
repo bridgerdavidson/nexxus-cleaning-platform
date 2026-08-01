@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  AlertTriangle,
   CalendarClock,
   Clock,
   Mail,
@@ -43,6 +44,9 @@ export type BookingDetailSheetProps = {
    *  simply doesn't render in either case. */
   appointment: AdminAppointment | null;
   cleanerOptions: CleanerOption[];
+  /** The assigned cleaner has no pay configured: keep the warning visible on the
+   *  booking after assignment, not just at the moment of assignment. */
+  assignedCleanerPayNotSet?: boolean;
   canViewPayments: boolean;
   canManagePayments: boolean;
   canEdit: boolean;
@@ -66,6 +70,7 @@ export function BookingDetailSheet({
   detail,
   appointment,
   cleanerOptions,
+  assignedCleanerPayNotSet,
   canViewPayments,
   canManagePayments,
   canEdit,
@@ -112,6 +117,7 @@ export function BookingDetailSheet({
               appointment={appointment}
               dirtyRef={dirtyRef}
               cleanerOptions={cleanerOptions}
+              assignedCleanerPayNotSet={assignedCleanerPayNotSet}
               canViewPayments={canViewPayments}
               canManagePayments={canManagePayments}
               canEdit={canEdit}
@@ -161,6 +167,7 @@ function DetailBody({
   appointment,
   dirtyRef,
   cleanerOptions,
+  assignedCleanerPayNotSet,
   canViewPayments,
   canManagePayments,
   canEdit,
@@ -276,6 +283,15 @@ function DetailBody({
               disabled={busy || !canAssignCleaner}
             />
           </div>
+          {assignedCleanerPayNotSet ? (
+            <div className="mt-2 flex items-start gap-2 rounded-control border border-caution-700/30 bg-caution-50 px-3 py-2 text-xs text-caution-700">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>
+                This cleaner has no pay set, so they will not be paid for this job until you set
+                it in Cleaners &amp; team.
+              </span>
+            </div>
+          ) : null}
         </Field>
 
         {detail.customerId || detail.cleanerId ? (

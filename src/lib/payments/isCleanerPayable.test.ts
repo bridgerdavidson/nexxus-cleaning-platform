@@ -7,11 +7,30 @@ const payable: CleanerPayoutFields = {
   stripe_connect_account_id: 'acct_123',
   stripe_connect_onboarding_complete: true,
   payout_percent: 80,
+  payout_configured_at: '2026-08-01T00:00:00Z',
 };
 
 describe('isCleanerPayable', () => {
-  it('true when onboarded, has a Connect account, not hourly_external, and percent > 0', () => {
+  it('true when configured, onboarded, has a Connect account, not hourly_external, and percent > 0', () => {
     expect(isCleanerPayable(payable)).toBe(true);
+  });
+
+  it('false when pay was never configured, in every mode (absence fails closed)', () => {
+    // A missing/absent field must read as unconfigured too: callers that forget
+    // to select payout_configured_at fail closed, never open.
+    expect(isCleanerPayable({ ...payable, payout_configured_at: null })).toBe(false);
+    expect(isCleanerPayable({ ...payable, payout_configured_at: undefined })).toBe(false);
+    expect(
+      isCleanerPayable({ ...payable, payout_model: 'request', payout_configured_at: null }),
+    ).toBe(false);
+    expect(
+      isCleanerPayable({
+        ...payable,
+        payout_model: 'flat',
+        flat_rate_cents: 9500,
+        payout_configured_at: null,
+      }),
+    ).toBe(false);
   });
 
   it('false for null / undefined', () => {

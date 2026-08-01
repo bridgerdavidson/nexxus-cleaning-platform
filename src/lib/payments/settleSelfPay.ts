@@ -143,12 +143,13 @@ export async function settleSelfPay(
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
     flat_rate_cents: number | null;
+    payout_configured_at: string | null;
   };
   let cleaner: CleanerRow | null = null;
   if (appt.cleaner_id) {
     const { data: cleanerRow } = await supabase
       .from('cleaner_profiles')
-      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
+      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents, payout_configured_at')
       .eq('id', appt.cleaner_id)
       .maybeSingle();
     cleaner = cleanerRow as CleanerRow | null;
