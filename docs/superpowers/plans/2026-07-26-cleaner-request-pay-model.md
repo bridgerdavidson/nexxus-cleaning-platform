@@ -6,7 +6,7 @@
 
 **Architecture:** Four sequential PRs off `origin/master`: (1) schema + pure logic (inert), (2) request lifecycle backend + settlement integration (the money core), (3) org UI, (4) cleaner UI + E2E. New state lives in `pay_requests` (one per appointment) + `pay_request_offers` (history); settlement resolves the cleaner's cents per mode via a new pure resolver and a cents-based split function; the existing charge path is untouched except a self-pay precondition bail.
 
-**Tech Stack:** Next.js 16 App Router routes, Supabase (Postgres migration 114+, RLS, realtime), Stripe via existing `settleCleanerPayout`/`chargeCompletedAppointment` orchestration, Vitest integration tests with `tests/helpers/`, TanStack Query v5 + `useSupabaseRealtimeSync` on the client.
+**Tech Stack:** Next.js 16 App Router routes, Supabase (Postgres migration 117+, RLS, realtime), Stripe via existing `settleCleanerPayout`/`chargeCompletedAppointment` orchestration, Vitest integration tests with `tests/helpers/`, TanStack Query v5 + `useSupabaseRealtimeSync` on the client.
 
 ## Global Constraints
 
@@ -208,7 +208,7 @@ Expected: same pass rate as detached `origin/master` baseline (no new failures).
 
 ```bash
 git add supabase/migrations/114_pay_requests.sql
-git commit -m "feat(payments): migration 114 - pay_requests, pay mode value space, min_margin_bps"
+git commit -m "feat(payments): migration 117 - pay_requests, pay mode value space, min_margin_bps"
 ```
 
 ### Task 3: Types + value-space write sweep + test-helper extension
@@ -642,9 +642,9 @@ export function isCleanerPayable(cleaner: CleanerPayoutFields | null | undefined
 
 Branch from master after PR1 merges: `git checkout -b feat/pay-request-lifecycle origin/master`.
 
-> **Added after the PR1 adversarial review:** PR1's migration 114 only WIDENS the payout-model
+> **Added after the PR1 adversarial review:** PR1's migration 117 only WIDENS the payout-model
 > constraints; it deliberately does not backfill data or flip column defaults (deploy-window
-> safety: old equality-readers + old constraints). PR2 therefore ships **migration 115**:
+> safety: old equality-readers + old constraints). PR2 therefore ships **migration 118**:
 > `UPDATE organizations/cleaner_profiles SET ... 'percentage' WHERE ... 'percentage_contractor'`,
 > `ALTER COLUMN ... SET DEFAULT 'percentage'` on both tables, and in the same PR flips the
 > profile route's transition write (`update.default_payout_model = m === 'percentage' ?
@@ -1063,6 +1063,28 @@ if (openThreads && openThreads.length > 0) {
 - [ ] **Step 3: Push + open PR** `feat(payments): pay-request lifecycle + deferred settlement (2/4)`. **Bridger merges.**
 
 ---
+
+> **Amendments after the PR2 adversarial review (9 confirmed findings, all fixed in PR2):**
+> 1. **Migration 119**: `pay_requests.current_offer_cents` carries the live offer so every
+>    transition is one atomic UPDATE; the CAS guards `(status, updated_at)` (ABA-safe). Terminal
+>    actions approve the row's own current offer, never a separately-loaded offer list.
+> 2. **The cleaner has NO direct RLS read on pay_requests / pay_request_offers** (the row carries
+>    `job_price_cents_snapshot`; a direct PostgREST read leaked the hidden price). **PR4 change:**
+>    `useCleanerPayRequests` reads a new service-role GET route
+>    (`GET /api/pay-requests/mine`, added in Task 19) that shapes a price-free payload
+>    (`presentChargeProjection` pattern); cleaner realtime on pay_requests is gone - refresh on
+>    notifications + focus instead.
+> 3. `triggerPayRequestSettlement` is capture-gated (status='paid' + captured_at, the sweep's
+>    filter) - approving a thread whose charge declined must never move pooled platform funds.
+> 4. Settlement/self-pay gates key on thread EXISTENCE and an approved thread stays the basis
+>    (mode flips mid-flight can't change the amount).
+> 5. Org-authored submit amounts are price-capped; escalations/acceptances also notify
+>    `can_manage_payments` managers; delete-cleaner blocks until threads are SETTLED
+>    (paid/bank_paid/reversed), not just approved.
+> 6. **Accepted + documented:** a lost `charge.dispute.closed` (won) leaves the dispute interlock
+>    blocking settlement until the local disputes row updates; the recurring
+>    `settlement_blocked_dispute_open` warning alert (6h dedupe) is the surface, manual dispute-row
+>    fix is the remedy. Follow-up candidate: live dispute re-derivation in the sweep.
 
 ## Phase 3 — PR3 `feat/pay-request-org-ui`
 

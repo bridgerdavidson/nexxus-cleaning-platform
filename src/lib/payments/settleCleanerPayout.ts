@@ -15,9 +15,18 @@
  * records a ledger event and bails (the cleaner isn't paid before the tenant is made whole); a
  * failed cleaner transfer records a `failed` payout row for the retry job. Never throws into the
  * webhook.
+ *
+ * Pay modes (migration 117): the cleaner's share is resolved per their
+ * payout_model. percentage = % of the split base (unchanged); flat =
+ * min(flat_rate_cents, base); request = the APPROVED pay-request amount -
+ * settlement DEFERS entirely (both legs - the tenant remainder depends on the
+ * cleaner amount) until the thread approves. Deferred approval also opens a
+ * window where a dispute can arrive before any transfer fires, so settlement
+ * refuses to move money into an open dispute.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { computePaymentSplit } from '@/lib/stripe/charges/splits';
+import { computePaymentSplit, computePaymentSplitFromCents } from '@/lib/stripe/charges/splits';
+import { resolveCleanerShareCents } from './payMode';
 import { transferGroupFor, createPlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
 import { transferIdempotencyKey, isIdempotencyConflictInFlight } from '@/lib/stripe/idempotencyKeys';
 import { retrievePaymentIntent } from '@/lib/stripe/reconcile';
@@ -86,7 +95,7 @@ export async function settleCleanerPayout(
   const { data: payRow, error: payRowError } = await supabase
     .from('payments')
     .select(
-      'amount, transfer_amount, processing_fee_cents, status, stripe_payment_intent_id, tenant_transfer_attempt',
+      'id, amount, transfer_amount, processing_fee_cents, status, stripe_payment_intent_id, tenant_transfer_attempt',
     )
     .eq('appointment_id', appointmentId)
     .eq('payment_type', 'revenue')
@@ -224,35 +233,128 @@ export async function settleCleanerPayout(
     stripe_connect_account_id: string | null;
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
+    flat_rate_cents: number | null;
   };
   let cleaner: CleanerRow | null = null;
   if (appt.cleaner_id && appt.status !== 'cancelled') {
     const { data: cleanerRow } = await supabase
       .from('cleaner_profiles')
-      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
       .eq('id', appt.cleaner_id)
       .maybeSingle();
     cleaner = cleanerRow as CleanerRow | null;
   }
-  // A cleaner whose payout share we must CARVE OUT, even if they can't be paid yet: assigned,
-  // not hourly-external, positive %. We split on their real % so the tenant gets only their TRUE
-  // remainder; then either pay the cleaner now (onboarded) or HOLD their slice for a later retry.
-  // This replaces the old behavior where an un-onboarded cleaner's share silently folded into the
-  // tenant payout (payoutPercent forced to 0).
-  const cleanerHasShare =
-    !!cleaner &&
-    cleaner.payout_model !== 'hourly_external' &&
-    Number(cleaner.payout_percent) > 0;
+  const payoutModel = cleaner?.payout_model ?? 'percentage';
+
+  // Pay-request gate, keyed on THREAD EXISTENCE, not the cleaner's current
+  // payout_model (review finding 4): the sweep's skip-set is existence-keyed,
+  // and an approved thread is a number both sides touched - it stays the
+  // settlement basis even if the org later flips the cleaner's mode or edits
+  // their percent (also closes the mid-flight mode-swap overpay). An
+  // unapproved thread defers BOTH legs (the tenant remainder depends on the
+  // cleaner amount); a request-mode job with NO thread defers until one exists.
+  // The forensic marker writes only on the webhook path so a repeated sweep
+  // pass can't spam the ledger.
+  let approvedRequestCents: number | null = null;
+  let payRequestId: string | null = null;
+  let threadApproved = false;
+  if (cleaner) {
+    const { data: prRow } = await supabase
+      .from('pay_requests')
+      .select('id, status, approved_amount_cents')
+      .eq('appointment_id', appointmentId)
+      .maybeSingle();
+    const pr = prRow as { id: string; status: string; approved_amount_cents: number | null } | null;
+    if ((pr && pr.status !== 'approved') || (!pr && payoutModel === 'request')) {
+      if (capturedCents != null) {
+        await recordPaymentEvent(supabase, {
+          appointmentId,
+          organizationId: appt.organization_id,
+          eventType: 'settlement_deferred_pay_request',
+          actor: 'webhook',
+          amount: capturedCents,
+          payload: { thread_status: pr?.status ?? 'missing' },
+        });
+      }
+      return { settled: false, reason: 'pay_request_pending' };
+    }
+    if (pr) {
+      threadApproved = true;
+      approvedRequestCents = pr.approved_amount_cents;
+      payRequestId = pr.id;
+    }
+  }
+
+  // Dispute interlock: settlement historically ran seconds after capture, long
+  // before any dispute could exist. A pay-request deferral (or a slow sweep
+  // retry) opens a real window - never move money out of a charge that is
+  // under active dispute; the clawback path handles post-settlement disputes.
+  const paymentRowId = (payRow as { id?: string } | null)?.id ?? null;
+  if (paymentRowId) {
+    const { data: openDispute } = await supabase
+      .from('disputes')
+      .select('id, status')
+      .eq('payment_id', paymentRowId)
+      .not('status', 'in', '("won","lost","warning_closed")')
+      .limit(1)
+      .maybeSingle();
+    if (openDispute) {
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'settlement_blocked_dispute_open',
+        actor: 'system',
+        payload: {
+          dispute_id: (openDispute as { id: string }).id,
+          dispute_status: (openDispute as { status: string }).status,
+        },
+      });
+      return { settled: false, reason: 'dispute_open' };
+    }
+  }
+
+  // The cleaner's share of the split base, resolved per pay mode. We split on
+  // their real share so the tenant gets only their TRUE remainder; then either
+  // pay the cleaner now (onboarded) or HOLD their slice for a later retry.
+  // This replaces the old behavior where an un-onboarded cleaner's share
+  // silently folded into the tenant payout.
+  const share = cleaner
+    ? resolveCleanerShareCents({
+        // An approved thread is the basis regardless of the CURRENT mode.
+        payoutModel: threadApproved ? 'request' : payoutModel,
+        payoutPercent: cleaner.payout_percent,
+        flatRateCents: cleaner.flat_rate_cents,
+        approvedRequestCents,
+        grossCents: splitBaseCents,
+      })
+    : ({ cents: 0, capped: false, basis: 'none' } as const);
+  if (share.capped) {
+    // A flat rate above the job's base, or a refund that shrank the base below
+    // the approved request: the cleaner gets the whole remaining base.
+    await recordPaymentEvent(supabase, {
+      appointmentId,
+      organizationId: appt.organization_id,
+      eventType: share.basis === 'flat' ? 'payout_flat_capped' : 'payout_request_capped',
+      actor: 'system',
+      amount: share.cents,
+      payload: {
+        basis: share.basis,
+        uncapped_cents: share.basis === 'flat' ? cleaner?.flat_rate_cents : approvedRequestCents,
+        split_base_cents: splitBaseCents,
+      },
+    });
+  }
+  const cleanerHasShare = share.cents > 0;
   // Connect-readiness of the cleaner's account, independent of their CURRENT share: a slice that
   // was already carved out must be paid once they finish onboarding even if their percent was
   // later edited (including down to 0) — the money was set aside at settlement time.
   const cleanerAccountReady =
     !!cleaner && !!cleaner.stripe_connect_account_id && cleaner.stripe_connect_onboarding_complete;
-  const payoutPercent = cleanerHasShare ? Number(cleaner!.payout_percent) : 0;
+  const payoutPercent = share.basis === 'percent' && cleanerHasShare ? Number(cleaner!.payout_percent) : 0;
 
-  const { cleanerCents, tenantRemainderCents } = computePaymentSplit({
+  const { cleanerCents, tenantRemainderCents } = computePaymentSplitFromCents({
     grossCents: splitBaseCents,
-    payoutPercent,
+    cleanerCents: share.cents,
     platformFeeBps: org.platform_fee_bps ?? 0,
   });
 
@@ -405,7 +507,7 @@ export async function settleCleanerPayout(
   // over/underpay the cleaner and strand funds (conservation breaks).
   const { data: priorPayoutRow, error: priorPayoutError } = await supabase
     .from('payouts')
-    .select('id, amount, payout_percent_snapshot, status, stripe_transfer_id, transfer_attempt')
+    .select('id, amount, payout_percent_snapshot, payout_model_snapshot, pay_request_id, status, stripe_transfer_id, transfer_attempt')
     .eq('appointment_id', appointmentId)
     .limit(1)
     .maybeSingle();
@@ -425,6 +527,8 @@ export async function settleCleanerPayout(
         id: string;
         amount: number | string;
         payout_percent_snapshot: number | string | null;
+        payout_model_snapshot: string | null;
+        pay_request_id: string | null;
         status: string;
         stripe_transfer_id: string | null;
         transfer_attempt: number | null;
@@ -489,12 +593,24 @@ export async function settleCleanerPayout(
   // hands the cleaner money the homeowner got back, a silent platform loss (audit T1-13). Capped by
   // the snapshot so a later percent edit can never push it ABOVE what was carved.
   const carvedSnapshotCents = priorPayout ? Math.round(Number(priorPayout.amount) * 100) : 0;
+  // Basis of the carved slice. request/flat slices are ABSOLUTE amounts: the
+  // approved request never changes after approval, and a later flat-rate edit
+  // must not move an already-carved slice, so their refund adjustment is
+  // simply "what's left of the base". Percent slices recompute their locked
+  // percent against the current base (T1-13). Legacy rows (no model snapshot)
+  // infer percentage from the percent snapshot.
+  const priorBasisModel =
+    priorPayout?.payout_model_snapshot ??
+    (priorPayout?.payout_percent_snapshot != null ? 'percentage' : null);
+  const priorBasisIsCents = priorBasisModel === 'request' || priorBasisModel === 'flat';
   const refundAdjustedCarvedCents = hasCarvedSlice
-    ? computePaymentSplit({
-        grossCents: splitBaseCents,
-        payoutPercent: cleanerSettlePercent,
-        platformFeeBps: org.platform_fee_bps ?? 0,
-      }).cleanerCents
+    ? priorBasisIsCents
+      ? Math.min(carvedSnapshotCents, splitBaseCents)
+      : computePaymentSplit({
+          grossCents: splitBaseCents,
+          payoutPercent: cleanerSettlePercent,
+          platformFeeBps: org.platform_fee_bps ?? 0,
+        }).cleanerCents
     : 0;
   const cleanerSettleCents = hasCarvedSlice
     ? Math.min(carvedSnapshotCents, refundAdjustedCarvedCents)
@@ -523,12 +639,24 @@ export async function settleCleanerPayout(
   const shouldSettleCleaner = (cleanerHasShare || hasCarvedSlice) && cleanerSettleCents > 0;
 
   if (shouldSettleCleaner) {
+    // Provenance: which mode produced this amount (unified spelling, so a
+    // legacy 'percentage_contractor' cleaner still snapshots as 'percentage');
+    // a retry keeps the carved slice's original basis.
+    const modelSnapshot =
+      hasCarvedSlice && priorBasisModel
+        ? priorBasisModel
+        : payoutModel === 'percentage_contractor'
+          ? 'percentage'
+          : payoutModel;
     const payoutBase = {
       organization_id: appt.organization_id,
       cleaner_id: appt.cleaner_id,
       appointment_id: appointmentId,
       amount: cleanerSettleCents / 100,
-      payout_percent_snapshot: cleanerSettlePercent,
+      payout_percent_snapshot:
+        modelSnapshot === 'request' || modelSnapshot === 'flat' ? null : cleanerSettlePercent,
+      payout_model_snapshot: modelSnapshot,
+      pay_request_id: payRequestId ?? priorPayout?.pay_request_id ?? null,
     };
 
     const upsertPayout = async (fields: Record<string, unknown>) => {

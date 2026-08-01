@@ -209,6 +209,46 @@ function build(eventType: NotificationEventType, payload: Payload): Notification
         icon: Banknote,
       };
 
+    case 'pay_request_escalated':
+      return {
+        title: cleaner
+          ? amount
+            ? `${cleaner} requested ${amount}`
+            : `${cleaner} sent a pay request`
+          : 'A pay request needs your review',
+        detail: joinDetail('Above your auto-approve margin', property),
+        tone: 'warning',
+        icon: Banknote,
+      };
+
+    case 'pay_request_countered':
+      return {
+        title: amount ? `New offer on your pay request: ${amount}` : 'New offer on your pay request',
+        detail: 'Review it in Earnings',
+        tone: 'info',
+        icon: Banknote,
+      };
+
+    case 'pay_request_approved':
+      return {
+        title: amount ? `Your pay request was approved: ${amount}` : 'Your pay request was approved',
+        detail: joinDetail(property, dateShort),
+        tone: 'success',
+        icon: Banknote,
+      };
+
+    case 'pay_request_accepted':
+      return {
+        title: cleaner
+          ? amount
+            ? `${cleaner} agreed to ${amount}`
+            : `${cleaner} accepted your offer`
+          : 'Pay request settled',
+        detail: joinDetail(property, dateShort),
+        tone: 'success',
+        icon: Banknote,
+      };
+
     case 'cleaner_payout_bank_failed': {
       if (str(payload, 'audience') === 'cleaner') {
         return {
@@ -447,6 +487,10 @@ const KNOWN_TYPES = new Set<string>([
   'cleaner_response_overdue',
   'cleaner_paid',
   'cleaner_payout_bank_failed',
+  'pay_request_escalated',
+  'pay_request_countered',
+  'pay_request_approved',
+  'pay_request_accepted',
   'job_started',
   'job_completed',
   'dispute_opened',

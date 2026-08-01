@@ -344,6 +344,7 @@ export interface PayRequest {
   cleaner_id: string; // References cleaner_profiles(id) = the auth user id
   status: PayRequestStatus;
   job_price_cents_snapshot: number; // appointments.total_price at submission, in cents
+  current_offer_cents: number | null; // the live offer (pending_org = cleaner's ask, pending_cleaner = org's counter)
   approved_amount_cents: number | null;
   approved_via: PayRequestApprovedVia | null;
   approved_by: string | null; // user id for 'org'/'cleaner_accept'; null for 'auto'

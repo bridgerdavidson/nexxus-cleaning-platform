@@ -5,6 +5,8 @@ import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createAuthUser,
+  createTestAppointment,
+  createTestPayRequest,
   type TestOrgFixture,
 } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
@@ -109,6 +111,76 @@ describe('DELETE /api/admin/delete-cleaner (authorization)', () => {
       .eq('id', org.cleaner.userId)
       .maybeSingle();
     expect(data).toBeNull();
+  });
+
+  it('blocks deletion while a pay-request thread is open, allows it once approved', async () => {
+    org = await withTestOrg({ cleanerPayoutModel: 'request', minMarginBps: 2000 });
+    const db = createTestSupabaseClient();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const pr = await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: appt.id,
+      cleanerId: org.cleaner.userId,
+      status: 'pending_org',
+      jobPriceCents: 10000,
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 9000, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const blocked = await callRoute<{ error: string }>(DELETE, {
+      method: 'DELETE',
+      url: url(org.cleaner.userId),
+      headers: bearerHeader(org.admin.accessToken),
+    });
+    expect(blocked.status).toBe(400);
+    expect(blocked.body.error).toBe('Cannot delete a cleaner with an open pay request. Resolve it first.');
+
+    await db
+      .from('pay_requests')
+      .update({
+        status: 'approved',
+        approved_amount_cents: 9000,
+        approved_via: 'org',
+        approved_by: org.admin.userId,
+        approved_at: new Date().toISOString(),
+      })
+      .eq('id', pr.id);
+
+    // Approved but UNSETTLED still blocks (review finding 2: deletion would
+    // cascade the payout basis away while money is carved/held).
+    const unsettled = await callRoute<{ error: string }>(DELETE, {
+      method: 'DELETE',
+      url: url(org.cleaner.userId),
+      headers: bearerHeader(org.admin.accessToken),
+    });
+    expect(unsettled.status).toBe(400);
+    expect(unsettled.body.error).toBe(
+      'Cannot delete a cleaner with an unsettled pay request. Wait for the payout to finish first.',
+    );
+
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 90,
+      status: 'paid',
+      payout_model_snapshot: 'request',
+      pay_request_id: pr.id,
+      paid_at: new Date().toISOString(),
+    });
+
+    const allowed = await callRoute<{ success: boolean }>(DELETE, {
+      method: 'DELETE',
+      url: url(org.cleaner.userId),
+      headers: bearerHeader(org.admin.accessToken),
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.success).toBe(true);
   });
 
   it('404 for a non-existent cleaner', async () => {

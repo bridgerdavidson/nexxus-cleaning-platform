@@ -54,11 +54,12 @@ vi.mock('@/lib/stripe/transfers', async (importOriginal) => {
 
 import { POST } from './route';
 import { createPlatformTransfer } from '@/lib/stripe/transfers';
-import { computeSelfPayAmounts } from '@/lib/payments/selfPayMath';
+import { computeSelfPayAmounts, computeSelfPayAmountsFromCents } from '@/lib/payments/selfPayMath';
 import { callRoute } from '../../../../../tests/helpers/auth';
 import {
   withTestOrg,
   createTestAppointment,
+  createTestPayRequest,
   buildPaymentIntentSucceededEvent,
   type TestOrgFixture,
 } from '../../../../../tests/helpers/fixtures';
@@ -169,6 +170,64 @@ describe('POST /api/stripe/webhook — self-pay settlement', () => {
     expect(payout.stripe_transfer_id).toBe(`tr_selfpay_${appt.id}`);
 
     await admin.from('webhook_events').delete().eq('id', `evt_selfpay_${appt.id}`);
+  });
+
+  it('request mode: settles the APPROVED amount with provenance columns (self-pay)', async () => {
+    const admin = createTestSupabaseClient();
+    await admin.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    const appt = await seedSelfPay(100);
+    // The seed writes a percent-sized charge; a request-mode job would have
+    // captured grossUp(approved + fee) instead - mirror that so the cut isn't
+    // (correctly) capped at a too-small captured amount.
+    const requestCharge = computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: 7200 });
+    await admin
+      .from('payments')
+      .update({ amount: requestCharge.chargeCents / 100 })
+      .eq('appointment_id', appt.id);
+    const pr = await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: appt.id,
+      cleanerId: org.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 10000,
+      approvedAmountCents: 7200,
+      approvedVia: 'org',
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 7200, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const payload = JSON.stringify(
+      buildPaymentIntentSucceededEvent({
+        appointmentId: appt.id,
+        amountDollars: 200,
+        selfPay: true,
+        eventId: `evt_selfpay_pr_${appt.id}`,
+      }),
+    );
+    const res = await callRoute(POST, {
+      method: 'POST',
+      url: 'http://test.local/api/stripe/webhook',
+      headers: { 'stripe-signature': signWebhookPayload(payload) },
+      body: payload,
+    });
+    expect(res.status).toBe(200);
+
+    expect(platformTransferCalls).toHaveLength(1);
+    expect(platformTransferCalls[0].amountCents).toBe(7200);
+
+    const { data: payouts } = await admin
+      .from('payouts')
+      .select('amount, status, is_self_pay, payout_percent_snapshot, payout_model_snapshot, pay_request_id')
+      .eq('appointment_id', appt.id);
+    expect(payouts).toHaveLength(1);
+    const payout = payouts![0] as Record<string, unknown>;
+    expect(Number(payout.amount)).toBe(72);
+    expect(payout.status).toBe('paid');
+    expect(payout.is_self_pay).toBe(true);
+    expect(payout.payout_percent_snapshot).toBeNull();
+    expect(payout.payout_model_snapshot).toBe('request');
+    expect(payout.pay_request_id).toBe(pr.id);
+
+    await admin.from('webhook_events').delete().eq('id', `evt_selfpay_pr_${appt.id}`);
   });
 
   it('is idempotent: replaying the same self-pay event still yields exactly one transfer and one paid payout', async () => {
