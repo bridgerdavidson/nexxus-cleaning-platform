@@ -2,15 +2,28 @@
  * Card-collection link email: pure { subject, html, text } builder, no I/O.
  *
  * Email HTML cannot use the Tailwind design system, so the brand tokens are
- * mirrored here as inline styles (brand-600 #0150FC, warm-50 canvas #F7F6F3,
- * warm-900 text #211E1A, warm-600 muted #6B6459, warm-200 border #E6E2DB;
- * source of truth: src/app/globals.css + tailwind.config.js).
+ * mirrored here as inline styles (neutrals: warm-50 canvas #F7F6F3, warm-900
+ * text #211E1A, warm-600 muted #6B6459, warm-200 border #E6E2DB; source of
+ * truth: src/app/globals.css + tailwind.config.js). The BRAND color is the
+ * org's own when provided (white-label PR 5), derived through the same
+ * AA-guarded ramp the app uses: the button fill honors the tenant color
+ * exactly, its label flips white/near-black, and link/eyebrow ink steps darker
+ * when the tenant color is not legible on white. Nexxus blue when absent.
  *
  * Every interpolated dynamic value is escaped: homeowner and org names are
  * operator-settable input, not self-owned. Only the server-built `url` carries
  * the link token, and it is escaped too (defense in depth; it is server-built
  * from APP_URL + a base64url token, so escaping never alters a legit URL).
  */
+import { parse, formatHex } from 'culori';
+import { deriveBrandRamp } from '@/lib/branding/palette';
+import { NEXXUS_BRAND_HEX } from '@/lib/branding/tokens';
+
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+
+function channelsToHex(channels: string): string {
+  return (formatHex(parse(`hsl(${channels})`)) ?? '#211E1A').toUpperCase();
+}
 
 export interface FailedPaymentContext {
   /**
@@ -43,6 +56,10 @@ export interface CardLinkEmailInput {
    */
   failedPayment?: FailedPaymentContext | null;
   expiresInDays?: number;
+  /** The org's brand hex (organizations.brand_color); null/invalid = Nexxus blue. */
+  brandColor?: string | null;
+  /** The org's icon URL (organizations.logo_icon_url); shown above the heading when set. */
+  logoUrl?: string | null;
 }
 
 export function escapeHtml(value: string): string {
@@ -66,7 +83,19 @@ export function cardLinkEmail({
   accountUrl,
   failedPayment,
   expiresInDays = 7,
+  brandColor,
+  logoUrl,
 }: CardLinkEmailInput): { subject: string; html: string; text: string } {
+  // The tenant's exact color fills the button (spec decision 3); the derived
+  // ramp supplies an AA-passing label and a link ink that stays readable on
+  // white. Using the raw accent hex when it IS the legible ink keeps the
+  // default output byte-identical to the pre-branding template.
+  const accent = brandColor && HEX_RE.test(brandColor) ? brandColor.toUpperCase() : NEXXUS_BRAND_HEX;
+  const ramp = deriveBrandRamp(accent);
+  const buttonFg = channelsToHex(ramp.foreground600);
+  const ink = ramp.inkOnLight === ramp.steps[600] ? accent : channelsToHex(ramp.inkOnLight);
+  const safeLogoUrl = logoUrl ? escapeHtml(logoUrl) : null;
+
   const safeOrg = escapeHtml(orgName);
   const greetingName = (homeownerName ?? '').trim();
   const greeting = greetingName ? `Hi ${escapeHtml(greetingName)},` : 'Hi,';
@@ -112,22 +141,26 @@ export function cardLinkEmail({
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background-color:#FFFFFF;border:1px solid #E6E2DB;border-radius:16px;">
             <tr>
               <td style="padding:32px 32px 24px 32px;font-family:${fontStack};">
-                <p style="margin:0 0 24px 0;font-size:14px;font-weight:700;color:#0150FC;">${safeOrg}</p>
+                ${
+                  safeLogoUrl
+                    ? `<img src="${safeLogoUrl}" alt="${safeOrg}" height="32" style="display:block;height:32px;max-width:200px;margin:0 0 24px 0;" />`
+                    : `<p style="margin:0 0 24px 0;font-size:14px;font-weight:700;color:${ink};">${safeOrg}</p>`
+                }
                 <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;font-weight:700;color:#211E1A;">${heading}</h1>
                 <p style="margin:0 0 8px 0;font-size:15px;line-height:1.6;color:#211E1A;">${greeting}</p>
                 <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#211E1A;">${leadHtml}</p>
                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0;">
                   <tr>
-                    <td style="border-radius:10px;background-color:#0150FC;">
-                      <a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-family:${fontStack};font-size:15px;font-weight:600;color:#FFFFFF;text-decoration:none;border-radius:10px;">Update payment method</a>
+                    <td style="border-radius:10px;background-color:${accent};">
+                      <a href="${safeUrl}" style="display:inline-block;padding:12px 24px;font-family:${fontStack};font-size:15px;font-weight:600;color:${buttonFg};text-decoration:none;border-radius:10px;">Update payment method</a>
                     </td>
                   </tr>
                 </table>
                 <p style="margin:0 0 8px 0;font-size:13px;line-height:1.6;color:#6B6459;">Or paste this link into your browser:</p>
-                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;word-break:break-all;"><a href="${safeUrl}" style="color:#0150FC;text-decoration:underline;">${safeUrl}</a></p>${
+                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;word-break:break-all;"><a href="${safeUrl}" style="color:${ink};text-decoration:underline;">${safeUrl}</a></p>${
                   safeAccountUrl
                     ? `
-                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;color:#6B6459;">Prefer not to use payment links from email? <a href="${safeAccountUrl}" style="color:#0150FC;text-decoration:underline;">Sign in to your account</a> and update your card from the Payment methods page.</p>`
+                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.6;color:#6B6459;">Prefer not to use payment links from email? <a href="${safeAccountUrl}" style="color:${ink};text-decoration:underline;">Sign in to your account</a> and update your card from the Payment methods page.</p>`
                     : ''
                 }
                 <p style="margin:0;font-size:13px;line-height:1.6;color:#6B6459;">This link is just for you and expires in ${expiresInDays} days. Your card details go directly to our payment processor and are never stored by ${safeOrg}.${
