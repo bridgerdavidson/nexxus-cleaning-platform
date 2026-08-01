@@ -79,4 +79,23 @@ describe('GET /api/billing/card-links/:token', () => {
     expect(body.homeowner_first_name).toBe('Homeowner');
     expect(body.status).toBe('pending');
   });
+
+  it("returns the link org's branding so the page can theme itself (white-label PR 5)", async () => {
+    const db = createTestSupabaseClient();
+    await db
+      .from('organizations')
+      .update({ brand_color: '#B5179E' })
+      .eq('id', org.organizationId);
+    await seedLink('tok_branded');
+    const { status, body } = await callRoute<{
+      org_name: string | null;
+      brand_color: string | null;
+      logo_icon_url: string | null;
+    }>(handlerFor('tok_branded'), { method: 'GET' });
+    expect(status).toBe(200);
+    expect(body.brand_color).toBe('#B5179E');
+    expect(typeof body.org_name).toBe('string');
+    expect(body.org_name!.length).toBeGreaterThan(0);
+    expect(body.logo_icon_url).toBeNull();
+  });
 });

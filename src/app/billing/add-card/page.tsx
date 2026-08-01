@@ -6,6 +6,8 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getRedesignConnectAppearance } from '@/lib/stripe/appearance';
+import { deriveBrandRamp, rampToCssVars } from '@/lib/branding/palette';
+import { orgInitials } from '@/lib/branding/monogram';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -20,6 +22,56 @@ const stripePromise = PUBLISHABLE_KEY ? loadStripe(PUBLISHABLE_KEY) : null;
 interface LinkData {
   clientSecret: string;
   firstName: string;
+  orgName: string | null;
+  brandColor: string | null;
+  logoIconUrl: string | null;
+}
+
+/**
+ * The link's org brand as local CSS variables. The ONE pre-auth surface that
+ * is allowed tenant branding: the token identifies the org (spec decision 10).
+ * Semantic tokens are re-derived locally because :root resolves them against
+ * its own --brand-* values and children inherit them pre-resolved.
+ */
+function brandVars(brandColor: string | null): React.CSSProperties | undefined {
+  if (!brandColor || !/^#[0-9a-f]{6}$/i.test(brandColor)) return undefined;
+  const ramp = rampToCssVars(deriveBrandRamp(brandColor));
+  return {
+    ...ramp,
+    '--primary': ramp['--brand-600'],
+    '--primary-foreground': ramp['--brand-fg-600'],
+    '--accent': ramp['--brand-50'],
+    '--accent-foreground': ramp['--brand-700'],
+    '--ring': ramp['--brand-600'],
+    '--brand-ink': ramp['--brand-ink-on-light'],
+  } as React.CSSProperties;
+}
+
+/** Link-scoped org identity; OrgLogo would show the VIEWER'S org, not the link's. */
+function LinkOrgIdentity({ orgName, logoIconUrl }: { orgName: string | null; logoIconUrl: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!orgName) return null;
+  return (
+    <div className="mb-5 flex items-center gap-2">
+      {logoIconUrl && !failed ? (
+        /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
+        <img
+          src={logoIconUrl}
+          alt=""
+          className="h-7 w-7 object-contain"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span
+          aria-hidden
+          className="grid h-7 w-7 shrink-0 select-none place-items-center rounded-md bg-brand-600 text-xs font-extrabold leading-none text-[hsl(var(--brand-fg-600))]"
+        >
+          {orgInitials(orgName)}
+        </span>
+      )}
+      <span className="truncate text-sm font-bold text-foreground">{orgName}</span>
+    </div>
+  );
 }
 
 function CardForm() {
@@ -112,7 +164,13 @@ function AddCardInner() {
               : data.error || 'We couldn’t load this link.',
           );
         } else {
-          setLink({ clientSecret: data.client_secret, firstName: data.homeowner_first_name ?? 'there' });
+          setLink({
+            clientSecret: data.client_secret,
+            firstName: data.homeowner_first_name ?? 'there',
+            orgName: data.org_name ?? null,
+            brandColor: data.brand_color ?? null,
+            logoIconUrl: data.logo_icon_url ?? null,
+          });
         }
       } catch {
         if (!cancelled) setError('Something went wrong loading this link.');
@@ -145,7 +203,10 @@ function AddCardInner() {
   }
 
   return (
-    <>
+    // The wrapper carries the LINK org's derived brand vars, so the primary
+    // button, focus rings, and the monogram all take the company's color.
+    <div style={brandVars(link.brandColor)}>
+      <LinkOrgIdentity orgName={link.orgName} logoIconUrl={link.logoIconUrl} />
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Hi {link.firstName} 👋</h1>
         <p className="text-muted-foreground mt-1">Add a card to confirm your cleaning booking.</p>
@@ -160,7 +221,7 @@ function AddCardInner() {
       >
         <CardForm />
       </Elements>
-    </>
+    </div>
   );
 }
 
