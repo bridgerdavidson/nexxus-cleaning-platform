@@ -53,14 +53,22 @@ describe('POST /api/pay-requests/[payRequestId]/approve', () => {
     return { appt, pr };
   }
 
-  function approve(payRequestId: string, organizationId: string, token: string) {
+  function approve(
+    payRequestId: string,
+    organizationId: string,
+    token: string,
+    expectedAmountCents?: number,
+  ) {
     return callRoute(
       (req: NextRequest) => POST(req, { params: Promise.resolve({ payRequestId }) }),
       {
         method: 'POST',
         url: `http://test/api/pay-requests/${payRequestId}/approve`,
         headers: bearerHeader(token),
-        body: { organization_id: organizationId },
+        body: {
+          organization_id: organizationId,
+          ...(expectedAmountCents !== undefined ? { expected_amount_cents: expectedAmountCents } : {}),
+        },
       },
     );
   }
@@ -92,6 +100,35 @@ describe('POST /api/pay-requests/[payRequestId]/approve', () => {
     expect(second.status).toBe(200);
     expect((second.body as { alreadyApproved: boolean }).alreadyApproved).toBe(true);
     expect((second.body as { approvedAmountCents: number }).approvedAmountCents).toBe(30000);
+  });
+
+  it('approves when expected_amount_cents matches the live offer', async () => {
+    const { pr } = await seed();
+    const res = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 30000);
+    expect(res.status).toBe(200);
+    expect((res.body as { approvedAmountCents: number }).approvedAmountCents).toBe(30000);
+  });
+
+  it('rejects a stale approval whose expected amount no longer matches the live offer', async () => {
+    const { pr } = await seed(); // live ask is 30000; the stale tab saw 25000
+    const res = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 25000);
+    expect(res.status).toBe(409);
+    expect((res.body as { error: string }).error).toBe('This request changed. Refresh and try again.');
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin.from('pay_requests').select('status').eq('id', pr.id).single();
+    expect((data as { status: string }).status).toBe('pending_org');
+  });
+
+  it('duplicate click with the matching expected amount stays a no-op; a different one 409s even after approval', async () => {
+    const { pr } = await seed();
+    const first = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 30000);
+    expect(first.status).toBe(200);
+    const replay = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 30000);
+    expect(replay.status).toBe(200);
+    expect((replay.body as { alreadyApproved: boolean }).alreadyApproved).toBe(true);
+    const stale = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 25000);
+    expect(stale.status).toBe(409);
   });
 
   it('409s when the thread is waiting on the cleaner', async () => {

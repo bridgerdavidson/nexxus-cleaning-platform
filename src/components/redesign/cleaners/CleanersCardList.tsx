@@ -131,7 +131,7 @@ export function CleanersCardList({
                 {canViewPayments ? (
                   <span className="font-semibold text-foreground">{row.earningsLabel ?? "$0"}</span>
                 ) : null}
-                <span className="text-xs text-muted-foreground">{row.payoutPercentLabel} cut</span>
+                <span className="text-xs text-muted-foreground">{row.payLabel}</span>
               </span>
             </div>
           </div>

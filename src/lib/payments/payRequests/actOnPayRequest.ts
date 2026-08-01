@@ -79,6 +79,12 @@ export interface ActArgs {
   /** Required for org_counter / cleaner_counter. */
   amountCents?: number;
   note?: string | null;
+  /**
+   * org_approve only: the amount the approver SAW. When present and it no
+   * longer matches the live offer, the action fails stale_state instead of
+   * approving money the operator never authorized (their tab was stale).
+   */
+  expectedAmountCents?: number;
 }
 
 export type ActResult =
@@ -95,6 +101,19 @@ export async function actOnPayRequest(supabase: SupabaseClient, args: ActArgs): 
   const loaded = await loadPayRequest(supabase, args.payRequestId);
   if (!loaded) return { ok: false, code: 'not_found' };
   const { pr, offerCount } = loaded;
+
+  // Pin the approval to what the approver saw. Checked before the idempotency
+  // short-circuit: a duplicate click on the same amount stays a no-op success,
+  // but a stale tab approving a since-changed amount gets "refresh and retry"
+  // (current_offer_cents is unchanged by approval, so this also covers rows
+  // another manager already approved at a different amount).
+  if (
+    args.action === 'org_approve' &&
+    args.expectedAmountCents !== undefined &&
+    pr.current_offer_cents !== args.expectedAmountCents
+  ) {
+    return { ok: false, code: 'stale_state' };
+  }
 
   // Idempotency short-circuit: a repeated terminal action on an approved
   // thread is success, not a conflict.

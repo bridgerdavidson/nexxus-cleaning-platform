@@ -92,7 +92,13 @@ export async function POST(
         : result.code === 'duplicate' ? 409
         : result.code === 'cancelled' ? 409
         : 400;
-      return NextResponse.json({ error: result.message }, { status });
+      // Machine-readable code on conflicts: callers must distinguish "thread
+      // already exists" (safe to proceed with completion) from "job was
+      // cancelled" (must not complete) without parsing human copy.
+      return NextResponse.json(
+        { error: result.message, ...(status === 409 ? { code: result.code } : {}) },
+        { status },
+      );
     }
 
     return NextResponse.json({
