@@ -40,7 +40,9 @@ export function HomeownerTopBar() {
     <header className="sticky top-0 z-30 border-b border-border bg-card">
       <div className="mx-auto flex h-16 max-w-lg items-center gap-3 px-4">
         <div className="min-w-0 flex-1">
-          <OrgLogo variant="full" size={32} />
+          {/* imageHeight caps an uploaded lockup below the fallback's 32px:
+              tight-cropped marks read far larger at equal pixel height. */}
+          <OrgLogo variant="full" size={32} imageHeight={24} />
         </div>
         <NotificationBell role="homeowner" />
         <DropdownMenu>

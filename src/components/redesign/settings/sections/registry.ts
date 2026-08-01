@@ -2,6 +2,7 @@
 import type { ComponentType } from "react";
 import type { SettingsSectionId } from "../sections";
 import { ProfileSection } from "./ProfileSection";
+import { AppearanceSection } from "./AppearanceSection";
 import { OrganizationSection } from "./OrganizationSection";
 import { BrandingSection } from "./BrandingSection";
 import { PaymentsSection } from "./PaymentsSection";
@@ -12,6 +13,7 @@ import { BusinessHoursSection } from "./BusinessHoursSection";
 
 export const SECTION_COMPONENTS: Record<SettingsSectionId, ComponentType> = {
   profile: ProfileSection,
+  appearance: AppearanceSection,
   organization: OrganizationSection,
   branding: BrandingSection,
   payments: PaymentsSection,

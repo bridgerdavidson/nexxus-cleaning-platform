@@ -1,9 +1,9 @@
 // src/components/redesign/settings/sections.ts
-import { User, Building2, CreditCard, Receipt, Wallet, CalendarClock, Users, Palette, type LucideIcon } from "lucide-react";
+import { User, Building2, CreditCard, Receipt, Wallet, CalendarClock, Users, Palette, PanelLeft, type LucideIcon } from "lucide-react";
 import type { ManagerPermissions } from "@/hooks/useAdminData";
 
 export type SettingsSectionId =
-  | "profile" | "organization" | "branding" | "payments" | "cancellation" | "payout" | "cleaner-experience" | "business-hours";
+  | "profile" | "appearance" | "organization" | "branding" | "payments" | "cancellation" | "payout" | "cleaner-experience" | "business-hours";
 export type SettingsGroupId = "account" | "business";
 
 export interface RedesignSettingsSection {
@@ -24,6 +24,7 @@ export const REDESIGN_SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] 
 
 export const REDESIGN_SETTINGS_SECTIONS: RedesignSettingsSection[] = [
   { id: "profile", label: "Profile", icon: User, group: "account" },
+  { id: "appearance", label: "Appearance", icon: PanelLeft, group: "account" },
   { id: "organization", label: "Organization", icon: Building2, group: "account", roles: ["owner"] },
   { id: "branding", label: "Branding", icon: Palette, group: "business", roles: ["owner", "admin"] },
   { id: "payments", label: "Payments", icon: CreditCard, group: "business", roles: ["admin", "owner", "manager"], managerPermission: "can_manage_payments" },
