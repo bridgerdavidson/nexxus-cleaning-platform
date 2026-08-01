@@ -41,7 +41,7 @@ function PickRow({
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-card border border-border bg-card p-4 text-left shadow-soft-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-600">
+      <div className="grid size-10 shrink-0 place-items-center rounded-control bg-brand-50 text-brand-ink">
         {icon}
       </div>
       <div className="min-w-0 flex-1">

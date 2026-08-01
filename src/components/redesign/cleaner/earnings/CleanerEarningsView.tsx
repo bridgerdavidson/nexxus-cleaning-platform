@@ -11,6 +11,7 @@ import PayoutTimingNotice from "@/components/PayoutTimingNotice";
 import { money2, PayoutStatusBadge, TxnStatusBadge } from "@/components/redesign/payments/payments-presenters";
 import { formatCardDate } from "@/components/redesign/cleaner/shared/job-presenters";
 import { ErrorState } from "@/components/ui/error-state";
+import { CleanerPayRequestSections } from "./CleanerPayRequestSections";
 import type {
   ClearingRow,
   ClearingSettleKind,
@@ -93,6 +94,11 @@ export function CleanerEarningsView({
       {owedLabel && <OwedSummary owedLabel={owedLabel} count={owedCount} setUp={setUp} />}
 
       <PayoutTimingNotice />
+
+      {/* Open pay negotiations (request-mode cleaners only; hides itself
+          otherwise). Above the payout buckets because it is the only part of
+          this screen the cleaner can act on. */}
+      <CleanerPayRequestSections />
 
       <PayoutsSection
         mode={data.mode}
@@ -232,7 +238,7 @@ function EarningsSetupCard({
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-ink">
           <Landmark className="h-6 w-6" />
         </div>
         <div className="space-y-1">

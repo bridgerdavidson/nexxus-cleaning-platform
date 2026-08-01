@@ -1,9 +1,12 @@
 "use client";
 
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useCleanerAppointments, useRespondToOffer, useRespondToSeries, useStartJob, type CleanerAppointment } from "@/hooks/useCleanerData";
+import { useCleanerPayRequests } from "@/hooks/useCleanerPayRequests";
+import { derivePayRequests } from "../earnings/derivePayRequests";
 import { useOpenJob } from "@/components/redesign/cleaner/job/useOpenJob";
 import { keys } from "@/lib/queryKeys";
 import { NEEDS_ATTENTION_DAYS } from "../shared/zones";
@@ -31,8 +34,15 @@ export function CleanerToday() {
   const series = useRespondToSeries();
   const startJob = useStartJob();
   const onboarding = useCleanerOnboarding();
+  // Same query key as the Earnings screen's instance, so mounting it here
+  // shares one poll instead of adding a second. Empty for non-request cleaners.
+  const payRequests = useCleanerPayRequests();
+  const payBuckets = useMemo(
+    () => derivePayRequests(payRequests.threads, Date.now()),
+    [payRequests.threads],
+  );
 
-  const payoutModel = currentOrganization?.default_payout_model ?? "percentage_contractor";
+  const payoutModel = currentOrganization?.default_payout_model ?? "percentage";
   const now = new Date();
   const todayStr = ymd(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -84,6 +94,8 @@ export function CleanerToday() {
         onDeclineSeries={(seriesId, reason, other) => series.declineAll(seriesId, reason, other)}
         onSeeTomorrow={() => router.push("/cleaner/schedule")}
         checklist={checklistSlot}
+        payOffers={payBuckets.yourTurn}
+        onOpenPayOffers={() => router.push("/cleaner/earnings")}
       />
       {onboarding.showWelcome && (
         <MobileTakeover ariaLabel="Welcome" onClosed={onboarding.onWelcomeDone}>

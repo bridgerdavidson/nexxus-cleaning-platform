@@ -126,7 +126,7 @@ export function CleanerActiveJobView({
         <div className="mx-auto w-full max-w-lg space-y-6 px-4 pt-5 pb-4">
           {/* Context block */}
           <section aria-label="Job details">
-            <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-brand-600">
+            <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-brand-ink">
               Active job
             </div>
             <h1 className="mt-1 text-lg font-bold leading-tight text-foreground">

@@ -1,10 +1,49 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeSelfPayAmounts,
+  computeSelfPayAmountsFromCents,
   grossUpForStripeFee,
   STRIPE_PERCENT_FEE,
   STRIPE_FIXED_FEE_CENTS,
 } from './selfPayMath';
+
+describe('computeSelfPayAmountsFromCents', () => {
+  it('matches computeSelfPayAmounts for the equivalent percent cut', () => {
+    const pct = computeSelfPayAmounts({ jobGrossCents: 10000, payoutPercent: 80, platformFeeBps: 100 });
+    const cents = computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: 8000, platformFeeBps: 100 });
+    expect(cents.cleanerCutCents).toBe(pct.cleanerCutCents);
+    expect(cents.platformFeeCents).toBe(pct.platformFeeCents);
+    expect(cents.chargeCents).toBe(pct.chargeCents);
+    expect(cents.estimatedFeeCents).toBe(pct.estimatedFeeCents);
+  });
+
+  it('keeps the platform fee on the JOB GROSS basis, not the cut', () => {
+    const a = computeSelfPayAmountsFromCents({ jobGrossCents: 35000, cleanerCutCents: 28000, platformFeeBps: 100 });
+    expect(a.platformFeeCents).toBe(350); // 1% of the $350 job, regardless of the $280 request
+  });
+
+  it('a zero cut charges nothing at all (no movement, no fee)', () => {
+    const a = computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: 0, platformFeeBps: 100 });
+    expect(a.platformFeeCents).toBe(0);
+    expect(a.chargeCents).toBe(0);
+  });
+
+  it('bank method grosses up cheaper than card', () => {
+    const card = computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: 7200, platformFeeBps: 100 });
+    const bank = computeSelfPayAmountsFromCents({
+      jobGrossCents: 10000,
+      cleanerCutCents: 7200,
+      platformFeeBps: 100,
+      method: 'us_bank_account',
+    });
+    expect(bank.chargeCents).toBeLessThan(card.chargeCents);
+  });
+
+  it('rejects a non-integer or negative cut', () => {
+    expect(() => computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: 10.5 })).toThrow();
+    expect(() => computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: -1 })).toThrow();
+  });
+});
 
 /** Stripe's actual fee on a charge of `chargeCents` (percentage part rounded, then + fixed). */
 function stripeFeeCents(chargeCents: number): number {

@@ -1,15 +1,17 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { toast } from '../components/ui/toast';
 import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
+import { readCleanerApptCache, writeCleanerApptCache } from './cleanerApptCache';
 import { keys } from '../lib/queryKeys';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
+import type { PayRequestOutcome } from '../components/redesign/cleaner/job/active-job-presenters';
 import type { ChargeProjection, ChecklistItemCompletion } from '../types';
 
 export interface CleanerAppointment {
@@ -124,8 +126,16 @@ export function useCleanerAppointments() {
   const queryClient = useQueryClient();
   const queryKey = keys.appointments.byCleaner(userId);
 
+  // Seed from the last-known offline snapshot so a cold open on no signal shows
+  // real jobs/addresses instead of skeleton then error. initialData makes the
+  // query "success" with stale data, so an online mount refetches in the
+  // background while an offline mount just keeps showing it (a failed background
+  // refetch never flips it to an error while data is present).
+  const cachedSnapshot = useMemo(() => readCleanerApptCache<CleanerAppointment>(userId), [userId]);
+
   const query = useOrgQuery({
     queryKey,
+    ...(cachedSnapshot ? { initialData: cachedSnapshot.data, initialDataUpdatedAt: cachedSnapshot.ts } : {}),
     queryFn: async ({ orgId, userId }) => {
       const { data: cleanerProfile, error: profileError } = await supabase
         .from('cleaner_profiles')
@@ -258,6 +268,16 @@ export function useCleanerAppointments() {
     [queryClient, queryKey]
   );
   void _setQuery;
+
+  // Persist each successfully-loaded list for the next offline open. Keyed off the
+  // query's own dataUpdatedAt: re-persisting the seeded snapshot on mount writes
+  // back the same data + ts (idempotent, never extends its life), and a failed
+  // refetch (which doesn't advance dataUpdatedAt) writes nothing.
+  useEffect(() => {
+    if (query.isSuccess && query.data && query.dataUpdatedAt) {
+      writeCleanerApptCache(userId, query.data, query.dataUpdatedAt);
+    }
+  }, [query.isSuccess, query.data, query.dataUpdatedAt, userId]);
 
   return {
     appointments: query.data ?? [],
@@ -1136,13 +1156,65 @@ export function useRespondToSeries() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Complete a job (status -> completed; triggers charge + lifecycle notification).
- * Returns { chargeOutcome } mapped from the completion charge paymentStatus. */
+ * Returns { chargeOutcome } mapped from the completion charge paymentStatus.
+ *
+ * For a REQUEST-mode cleaner, pass `requestAmountCents`: the pay request is
+ * POSTed BEFORE the status write, so a completed request-mode job can never
+ * exist without its pay thread. If the POST fails, completion is blocked and
+ * the error surfaces for a retry; a 409 duplicate (a retry whose earlier POST
+ * actually landed) counts as submitted and completion proceeds. */
 export function useCompleteJob() {
-  const { user } = useAuth();
+  const { user, currentOrganizationId } = useAuth();
   const qc = useQueryClient();
   const userId = user?.id;
   return useMutation({
-    mutationFn: async (appointmentId: string): Promise<{ chargeOutcome?: string }> => {
+    mutationFn: async (
+      args: string | { appointmentId: string; requestAmountCents?: number; note?: string },
+    ): Promise<{ chargeOutcome?: string; payRequest?: PayRequestOutcome }> => {
+      const appointmentId = typeof args === 'string' ? args : args.appointmentId;
+      const requestAmountCents = typeof args === 'string' ? undefined : args.requestAmountCents;
+      const note = typeof args === 'string' ? undefined : args.note;
+
+      let payRequest: PayRequestOutcome | undefined;
+      if (requestAmountCents !== undefined) {
+        if (!currentOrganizationId) throw new Error('No organization');
+        const token = await getAccessToken();
+        const res = await fetch(`/api/appointments/${appointmentId}/pay-request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            organization_id: currentOrganizationId,
+            amount_cents: requestAmountCents,
+            ...(note ? { note } : {}),
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+          autoApproved?: boolean;
+        };
+        if (res.ok) {
+          payRequest = {
+            submitted: true,
+            autoApproved: !!data.autoApproved,
+            amountCents: requestAmountCents,
+          };
+        } else if (res.status === 409 && data.code === 'duplicate') {
+          // A thread already exists for this job (an earlier attempt landed, or
+          // the org opened one). The amount just typed was NOT applied, so the
+          // completion proceeds but the success copy must not quote it back as
+          // though it had been sent. `amountCents: null` selects the
+          // amount-free branch.
+          payRequest = { submitted: true, autoApproved: false, amountCents: null };
+        } else {
+          // Blocked on purpose: never complete a request-mode job without a thread.
+          throw new Error(data.error || 'Could not send your pay request');
+        }
+      }
+
       const r = await updateAppointmentStatus(appointmentId, 'completed') as {
         success: boolean;
         error?: string;
@@ -1151,12 +1223,16 @@ export function useCompleteJob() {
       if (!r.success) throw new Error(r.error || 'Could not complete the job');
       // Map the paymentStatus ('paid'|'processing'|'failed') to the outcome-code
       // vocabulary the Complete sheet keys off ('charged'|'processing'|'failed').
-      return { chargeOutcome: r.paymentStatus === 'paid' ? 'charged' : r.paymentStatus };
+      return {
+        chargeOutcome: r.paymentStatus === 'paid' ? 'charged' : r.paymentStatus,
+        payRequest,
+      };
     },
     onSuccess: () => {
       if (userId) {
         qc.invalidateQueries({ queryKey: keys.appointments.byCleaner(userId) });
         qc.invalidateQueries({ queryKey: keys.stats.cleaner(userId) });
+        qc.invalidateQueries({ queryKey: keys.payRequests.byCleaner(userId) });
       }
       toast.success('Job completed');
     },
@@ -1278,6 +1354,48 @@ export function useToggleChecklistItem() {
 
 /** Fetch the charge projection for the active-job completion summary.
  * Lazy: only fetches when `enabled` (e.g. the completion sheet is open). */
+/**
+ * The signed-in cleaner's own pay mode, read straight from their
+ * cleaner_profiles row (which they can already read, same as payout_percent).
+ *
+ * Deliberately NOT derived from the charge projection: that route 404s whenever
+ * the Stripe flags are off and throws on any transient failure, and a
+ * request-mode cleaner who silently fell back to the plain completion path
+ * would complete a job with no pay thread, which is the one thing this feature
+ * must never allow. `status` lets the caller fail closed instead of guessing.
+ */
+export function useCleanerPayoutModel(): {
+  payoutModel: 'percentage' | 'flat' | 'request' | 'hourly_external' | null;
+  status: 'loading' | 'ready' | 'error';
+} {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const query = useQuery({
+    queryKey: keys.cleanerProfiles.detail(userId ?? 'anon'),
+    enabled: !!userId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cleaner_profiles')
+        .select('payout_model')
+        .eq('id', userId as string)
+        .maybeSingle();
+      if (error) throw error;
+      const raw = (data as { payout_model: string | null } | null)?.payout_model ?? 'percentage';
+      // The pre-118 spelling normalizes to the percentage default branch.
+      return (raw === 'percentage_contractor' ? 'percentage' : raw) as
+        | 'percentage'
+        | 'flat'
+        | 'request'
+        | 'hourly_external';
+    },
+  });
+  return {
+    payoutModel: query.data ?? null,
+    status: query.isPending ? 'loading' : query.isError ? 'error' : 'ready',
+  };
+}
+
 export function useChargeProjection(appointmentId: string | null, enabled: boolean) {
   const { currentOrganizationId } = useAuth();
   // Org in the key so a switch refetches; the route requires organization_id via

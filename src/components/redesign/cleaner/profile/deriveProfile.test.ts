@@ -30,7 +30,7 @@ describe("cleanerInitials", () => {
 describe("showAvailabilityPlaceholder", () => {
   it("is true only for the employee (hourly_external) model", () => {
     expect(showAvailabilityPlaceholder("hourly_external")).toBe(true);
-    expect(showAvailabilityPlaceholder("percentage_contractor")).toBe(false);
+    expect(showAvailabilityPlaceholder("percentage")).toBe(false);
     expect(showAvailabilityPlaceholder(undefined)).toBe(false);
   });
 });

@@ -61,6 +61,7 @@ export const ALERTABLE_PAYMENT_EVENTS: Record<string, AlertableSpec> = {
   cleaner_transfer_failed: { severity: 'warning', label: 'Cleaner payout transfer failed' },
   cleaner_payout_bank_failed: { severity: 'warning', label: 'A cleaner bank payout failed, funds returned to their Stripe balance' },
   unmatched_dispute: { severity: 'warning', label: 'A dispute could not be matched to a payment' },
+  settlement_blocked_dispute_open: { severity: 'warning', label: 'Settlement held back because the charge is under dispute' },
   early_fraud_warning: { severity: 'warning', label: 'Stripe early fraud warning' },
   radar_review_opened: { severity: 'warning', label: 'Stripe Radar opened a review' },
   // Deliberately excluded: setup_intent_failed (a homeowner card-save issue → Tier 2, not

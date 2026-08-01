@@ -137,6 +137,7 @@ export function OperatorOverview() {
           awaitingApproval: stats.pendingApprovals,
           revenueThisMonth: canViewPayments ? payStats.thisMonthRevenue : null,
           canViewPayments,
+          canViewBookings,
         }}
         unassigned={sections.unassigned.map(toQueueItem)}
         declined={sections.declined.map(toQueueItem)}

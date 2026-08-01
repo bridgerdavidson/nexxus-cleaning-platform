@@ -62,8 +62,8 @@ export interface WithTestOrgOptions {
   payoutPercent?: number;
   stripeConnectOnboardingComplete?: boolean;
   stripeConnectAccountId?: string;
-  /** organizations.default_payout_model (default 'percentage_contractor'). */
-  defaultPayoutModel?: 'percentage_contractor' | 'hourly_external';
+  /** organizations.default_payout_model (default 'percentage'). */
+  defaultPayoutModel?: 'percentage' | 'flat' | 'request' | 'hourly_external';
   /**
    * organizations.platform_fee_bps. Tests that assert split/charge amounts should PIN this
    * explicitly (0 for pure-split mechanics, 100 for fee behavior) instead of inheriting the
@@ -71,6 +71,16 @@ export interface WithTestOrgOptions {
    * database and CI.
    */
   platformFeeBps?: number;
+  /** cleaner_profiles.payout_model for the fixture cleaner (default 'percentage'). */
+  cleanerPayoutModel?: 'percentage' | 'flat' | 'request' | 'hourly_external';
+  /** cleaner_profiles.flat_rate_cents (only meaningful with cleanerPayoutModel 'flat'). */
+  flatRateCents?: number;
+  /**
+   * organizations.min_margin_bps (request-mode auto-approve threshold, migration 117).
+   * Tests asserting auto-approve vs escalate should PIN this instead of inheriting
+   * the DB default (2000).
+   */
+  minMarginBps?: number;
 }
 
 /**
@@ -91,6 +101,7 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
       name: orgName,
       ...(opts.defaultPayoutModel ? { default_payout_model: opts.defaultPayoutModel } : {}),
       ...(opts.platformFeeBps !== undefined ? { platform_fee_bps: opts.platformFeeBps } : {}),
+      ...(opts.minMarginBps !== undefined ? { min_margin_bps: opts.minMarginBps } : {}),
     })
     .select('id')
     .single();
@@ -139,6 +150,8 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
     payout_percent: opts.payoutPercent ?? 60,
     stripe_connect_account_id: opts.stripeConnectAccountId ?? null,
     stripe_connect_onboarding_complete: opts.stripeConnectOnboardingComplete ?? false,
+    payout_model: opts.cleanerPayoutModel ?? 'percentage',
+    flat_rate_cents: opts.flatRateCents ?? null,
   });
   if (cleanerProfileError) {
     throw new Error(`failed to insert cleaner_profile: ${cleanerProfileError.message}`);
@@ -347,6 +360,77 @@ export async function withPlatformAdmin(): Promise<PlatformAdminFixture> {
  *     `orgOwnedProperty`, homeowner_id is set to null too (the org pays, there is no homeowner).
  *     The DB CHECK `is_self_pay = true OR homeowner_id IS NOT NULL` stays satisfied either way.
  */
+
+/**
+ * Seeds a pay-request thread (migration 117) directly, bypassing the submit
+ * route, so route/settlement tests can start from any thread state. Offers get
+ * explicit second-spaced created_at values so "latest offer" ordering is
+ * deterministic. Status 'approved' requires approvedAmountCents (the DB
+ * approved_shape CHECK enforces the full approval triple).
+ */
+export async function createTestPayRequest(args: {
+  organizationId: string;
+  appointmentId: string;
+  cleanerId: string;
+  status: 'pending_org' | 'pending_cleaner' | 'approved';
+  jobPriceCents: number;
+  offers?: Array<{
+    actor: 'cleaner' | 'org';
+    actorUserId: string;
+    amountCents: number;
+    autoApproved?: boolean;
+    minMarginBpsSnapshot?: number | null;
+    note?: string | null;
+  }>;
+  approvedAmountCents?: number;
+  approvedVia?: 'auto' | 'org' | 'cleaner_accept';
+  approvedBy?: string | null;
+  /** The live offer riding the row (migration 119). Defaults to the last offer's amount, else approvedAmountCents. */
+  currentOfferCents?: number;
+}): Promise<{ id: string }> {
+  const admin = createTestSupabaseClient();
+  const currentOffer =
+    args.currentOfferCents ?? args.offers?.at(-1)?.amountCents ?? args.approvedAmountCents ?? null;
+  const { data: pr, error } = await admin
+    .from('pay_requests')
+    .insert({
+      organization_id: args.organizationId,
+      appointment_id: args.appointmentId,
+      cleaner_id: args.cleanerId,
+      status: args.status,
+      job_price_cents_snapshot: args.jobPriceCents,
+      current_offer_cents: currentOffer,
+      ...(args.status === 'approved'
+        ? {
+            approved_amount_cents: args.approvedAmountCents,
+            approved_via: args.approvedVia ?? 'org',
+            approved_by: args.approvedBy ?? null,
+            approved_at: new Date().toISOString(),
+          }
+        : {}),
+    })
+    .select('id')
+    .single();
+  if (error || !pr) throw new Error(`pay_requests insert failed: ${error?.message}`);
+  const payRequestId = (pr as { id: string }).id;
+
+  const base = Date.now() - (args.offers?.length ?? 0) * 1000;
+  for (const [i, offer] of (args.offers ?? []).entries()) {
+    const { error: offerErr } = await admin.from('pay_request_offers').insert({
+      pay_request_id: payRequestId,
+      actor: offer.actor,
+      actor_user_id: offer.actorUserId,
+      amount_cents: offer.amountCents,
+      note: offer.note ?? null,
+      min_margin_bps_snapshot: offer.minMarginBpsSnapshot ?? null,
+      auto_approved: offer.autoApproved ?? false,
+      created_at: new Date(base + i * 1000).toISOString(),
+    });
+    if (offerErr) throw new Error(`pay_request_offers insert failed: ${offerErr.message}`);
+  }
+  return { id: payRequestId };
+}
+
 export async function createTestAppointment(args: {
   organizationId: string;
   cleanerId: string | null;

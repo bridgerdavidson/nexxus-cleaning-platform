@@ -78,7 +78,7 @@ export function HomeownerPropertyDetail({
                       className="h-44 w-full rounded-card object-cover"
                     />
                   ) : (
-                    <div className="grid h-44 w-full place-items-center rounded-card bg-brand-50 text-brand-600">
+                    <div className="grid h-44 w-full place-items-center rounded-card bg-brand-50 text-brand-ink">
                       <Home className="size-10" aria-hidden />
                     </div>
                   )}

@@ -21,7 +21,7 @@ export function useHomeownerOnboarding(): OnboardingState {
   const cardsEnabled = stripeNewChargeFlowUiEnabled();
   const { cards, loading: cardsLoading } = useSavedPaymentMethods();
 
-  const allSteps = getSetupSteps('homeowner', 'percentage_contractor');
+  const allSteps = getSetupSteps('homeowner', 'percentage');
   const steps = cardsEnabled ? allSteps : allSteps.filter((s) => s.key !== 'card');
 
   const signals: Record<string, boolean> = {
@@ -35,7 +35,7 @@ export function useHomeownerOnboarding(): OnboardingState {
   const invalidate = () => { if (user?.id) void qc.invalidateQueries({ queryKey: keys.onboarding.flags(user.id) }); };
 
   return {
-    model: 'percentage_contractor',
+    model: 'percentage',
     vm,
     showChecklist: !loading && !flags.userChecklistDismissed && !vm.allRequiredComplete,
     showSuccess: !loading && justCompleted && !flags.userChecklistDismissed,

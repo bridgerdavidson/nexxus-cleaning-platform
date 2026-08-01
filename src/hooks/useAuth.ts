@@ -15,6 +15,9 @@ export interface AuthState {
   currentOrganizationId: string | null;
   currentOrgRole: OrgRole | null;
   currentOrganization: Organization | null;
+  /** Every org the user belongs to, oldest membership first. Drives the
+   * settings org switcher, which renders only when there are 2+. */
+  availableOrganizations: { id: string; name: string; role: string }[];
   // Lifecycle of the org-context load. Consumers distinguish a transient,
   // retryable failure ('error') from a confirmed absence of membership
   // ('no-org') so a blank dashboard is never shown for a recoverable blip.
@@ -36,6 +39,8 @@ export interface AuthActions {
    * orgStatus === 'error'). Resolves when the attempt settles. */
   reloadOrganization: () => Promise<void>;
   updateProfile: (updates: Partial<User['profile']>) => Promise<{ error?: string }>;
+  /** Remember the chosen org and reload the app into it. Multi-org users only. */
+  switchOrganization: (orgId: string) => void;
   /**
    * Platform-admin "View as" a tenant (read-only). Audit-first: returns true
    * only if the audit log was written; false (no state change) on audit failure

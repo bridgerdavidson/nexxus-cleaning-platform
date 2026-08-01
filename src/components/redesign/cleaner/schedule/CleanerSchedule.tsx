@@ -17,7 +17,7 @@ export function CleanerSchedule() {
   const { currentOrganization } = useAuth();
   const { appointments, loading, error, refetch } = useCleanerAppointments();
   const openJob = useOpenJob();
-  const isEmployee = (currentOrganization?.default_payout_model ?? "percentage_contractor") !== "percentage_contractor";
+  const isEmployee = (currentOrganization?.default_payout_model ?? "percentage") === "hourly_external";
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ScheduleView>("upcoming");
   const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");

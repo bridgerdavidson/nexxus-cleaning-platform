@@ -16,11 +16,12 @@
  * transfer records a `failed` payout row for the retry sweep and never throws into the webhook.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { computeSelfPayAmounts } from './selfPayMath';
 import { transferGroupFor, createPlatformTransfer, listTransfersByGroup } from '@/lib/stripe/transfers';
 import { transferIdempotencyKey, isIdempotencyConflictInFlight } from '@/lib/stripe/idempotencyKeys';
 import { recordPaymentEvent } from './events';
 import { chargeAmountRefundedCents } from './refundGuards';
+import { isCleanerPayable } from './isCleanerPayable';
+import { resolveSelfPayCutCents } from './payRequests/selfPayCut';
 
 export interface SettleResult {
   settled: boolean;
@@ -141,22 +142,18 @@ export async function settleSelfPay(
     stripe_connect_account_id: string | null;
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
+    flat_rate_cents: number | null;
   };
   let cleaner: CleanerRow | null = null;
   if (appt.cleaner_id) {
     const { data: cleanerRow } = await supabase
       .from('cleaner_profiles')
-      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent')
+      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
       .eq('id', appt.cleaner_id)
       .maybeSingle();
     cleaner = cleanerRow as CleanerRow | null;
   }
-  const cleanerPayable =
-    !!cleaner &&
-    cleaner.payout_model !== 'hourly_external' &&
-    !!cleaner.stripe_connect_account_id &&
-    cleaner.stripe_connect_onboarding_complete &&
-    Number(cleaner.payout_percent) > 0;
+  const cleanerPayable = !!cleaner && isCleanerPayable(cleaner);
 
   if (!cleanerPayable) {
     await recordPaymentEvent(supabase, {
@@ -171,9 +168,17 @@ export async function settleSelfPay(
     return { settled: false, reason: 'cleaner_not_payable' };
   }
 
-  const payoutPercent = Number(cleaner!.payout_percent);
+  // Mode-aware cut (shared with both self-pay charge paths so the three can
+  // never disagree). Request mode: the charge only ran because the thread
+  // approved, but guard anyway - a not-yet-approved thread defers settlement.
   const jobGrossCents = Math.round(Number(appt.total_price) * 100);
-  const { cleanerCutCents: fullCutCents } = computeSelfPayAmounts({ jobGrossCents, payoutPercent });
+  const cut = await resolveSelfPayCutCents(supabase, {
+    appointmentId,
+    cleaner: cleaner!,
+    jobGrossCents,
+  });
+  if (!cut.ok) return { settled: false, reason: 'pay_request_pending' };
+  const fullCutCents = cut.cutCents;
   // A PARTIAL pre-settlement refund shrinks the pool the cut can draw from; the cut is normally
   // well under the grossed-up captured amount, so this cap only binds when money went back.
   const cleanerCutCents = Math.min(fullCutCents, Math.max(0, capturedCents - refundedCents));
@@ -185,7 +190,9 @@ export async function settleSelfPay(
     cleaner_id: appt.cleaner_id,
     appointment_id: appointmentId,
     amount: cleanerCutCents / 100,
-    payout_percent_snapshot: payoutPercent,
+    payout_percent_snapshot: cut.basis === 'percent' ? cut.payoutPercent : null,
+    payout_model_snapshot: cut.basis === 'percent' ? 'percentage' : cut.basis,
+    pay_request_id: cut.payRequestId,
     is_self_pay: true,
   };
 

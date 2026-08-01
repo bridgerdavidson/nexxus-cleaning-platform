@@ -1,5 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { computePaymentSplit } from './splits';
+import { computePaymentSplit, computePaymentSplitFromCents } from './splits';
+
+describe('computePaymentSplitFromCents', () => {
+  it('matches computePaymentSplit for an equivalent percent', () => {
+    const pct = computePaymentSplit({ grossCents: 10000, payoutPercent: 60, platformFeeBps: 100 });
+    const cents = computePaymentSplitFromCents({ grossCents: 10000, cleanerCents: 6000, platformFeeBps: 100 });
+    expect(cents).toEqual(pct);
+  });
+
+  it('caps the fee at the remainder when the cleaner takes the whole gross', () => {
+    const s = computePaymentSplitFromCents({ grossCents: 10000, cleanerCents: 10000, platformFeeBps: 100 });
+    expect(s.platformFeeCents).toBe(0);
+    expect(s.tenantRemainderCents).toBe(0);
+  });
+
+  it('always sums to gross', () => {
+    for (const cleanerCents of [0, 1, 29999, 33332, 33333]) {
+      const s = computePaymentSplitFromCents({ grossCents: 33333, cleanerCents, platformFeeBps: 100 });
+      expect(s.platformFeeCents + s.cleanerCents + s.tenantRemainderCents).toBe(33333);
+      expect(s.tenantRemainderCents).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('throws when cleanerCents exceeds gross', () => {
+    expect(() => computePaymentSplitFromCents({ grossCents: 100, cleanerCents: 101, platformFeeBps: 0 })).toThrow();
+  });
+
+  it('throws on non-integer or negative inputs', () => {
+    expect(() => computePaymentSplitFromCents({ grossCents: 100.5, cleanerCents: 50, platformFeeBps: 0 })).toThrow();
+    expect(() => computePaymentSplitFromCents({ grossCents: 100, cleanerCents: -1, platformFeeBps: 0 })).toThrow();
+    expect(() => computePaymentSplitFromCents({ grossCents: 100, cleanerCents: 50.5, platformFeeBps: 0 })).toThrow();
+    expect(() => computePaymentSplitFromCents({ grossCents: 100, cleanerCents: 50, platformFeeBps: 10001 })).toThrow();
+  });
+});
 
 describe('computePaymentSplit', () => {
   it('the canonical example: $100 gross, 80% cleaner, 0 fee → $80 cleaner / $20 tenant', () => {

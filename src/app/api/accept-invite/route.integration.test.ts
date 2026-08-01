@@ -18,13 +18,17 @@ import {
 async function seedInvite(
   role: 'owner' | 'cleaner' | 'manager',
   managerPermissions: ManagerPermissions | null = null,
+  orgDefaultPayoutModel?: string,
 ) {
   const db = createTestSupabaseClient();
   const uniq = randomUUID().slice(0, 8);
 
   const { data: org, error: orgErr } = await db
     .from('organizations')
-    .insert({ name: `Accept Org ${uniq}` })
+    .insert({
+      name: `Accept Org ${uniq}`,
+      ...(orgDefaultPayoutModel ? { default_payout_model: orgDefaultPayoutModel } : {}),
+    })
     .select('id')
     .single();
   if (orgErr || !org) throw new Error(`seed org failed: ${orgErr?.message ?? 'no data'}`);
@@ -155,6 +159,56 @@ describe('POST /api/accept-invite (owner role mapping)', () => {
       .eq('id', seed.userId)
       .maybeSingle();
     expect(cleanerProfile).not.toBeNull();
+  });
+
+  it("stamps the org's default payout model onto the new cleaner profile", async () => {
+    const seed = await seedInvite('cleaner', null, 'request');
+    cleanup = seed.cleanup;
+
+    const { status } = await callRoute<{ success: boolean }>(POST, {
+      method: 'POST',
+      body: {
+        accessToken: seed.accessToken,
+        inviteId: seed.inviteId,
+        firstName: 'Rita',
+        lastName: 'Requests',
+        password: 'CleanerPass123!',
+      },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('cleaner_profiles')
+      .select('payout_model')
+      .eq('id', seed.userId)
+      .single();
+    expect((data as { payout_model: string }).payout_model).toBe('request');
+  });
+
+  it("normalizes a legacy 'percentage_contractor' org default to 'percentage' when stamping", async () => {
+    const seed = await seedInvite('cleaner', null, 'percentage_contractor');
+    cleanup = seed.cleanup;
+
+    const { status } = await callRoute<{ success: boolean }>(POST, {
+      method: 'POST',
+      body: {
+        accessToken: seed.accessToken,
+        inviteId: seed.inviteId,
+        firstName: 'Perry',
+        lastName: 'Percent',
+        password: 'CleanerPass123!',
+      },
+    });
+    expect(status).toBe(200);
+
+    const db = createTestSupabaseClient();
+    const { data } = await db
+      .from('cleaner_profiles')
+      .select('payout_model')
+      .eq('id', seed.userId)
+      .single();
+    expect((data as { payout_model: string }).payout_model).toBe('percentage');
   });
 });
 

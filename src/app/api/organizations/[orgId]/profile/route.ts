@@ -6,19 +6,16 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
  * PATCH /api/organizations/:orgId/profile
  *
  * Owner-only org-profile editor: name, logo_url, billing_email, default_payout_model.
- * default_payout_model is constrained to 'percentage_contractor' until the hourly
- * flow ships (UI also locks the toggle); we still validate server-side so a flag
- * flip on the UI doesn't write a model the rest of the system can't honor.
+ * default_payout_model is validated server-side so a stale or hand-rolled
+ * client can't write a model the rest of the system can't honor.
  *
  * Body (all optional, at least one required): { name, logo_url, billing_email, default_payout_model }.
  */
-const PAYOUT_MODELS = ['percentage_contractor', 'hourly_external'] as const;
+const PAYOUT_MODELS = ['percentage', 'flat', 'request', 'hourly_external'] as const;
 type PayoutModel = (typeof PAYOUT_MODELS)[number];
 
-// Only the contractor flow is shippable today. The hourly flow's payment
-// pipeline isn't built yet, so accept percent-only here even though the column
-// CHECK constraint allows both.
-const ENABLED_PAYOUT_MODELS: PayoutModel[] = ['percentage_contractor'];
+// hourly_external stays unselectable: its payment pipeline isn't built yet.
+const ENABLED_PAYOUT_MODELS: PayoutModel[] = ['percentage', 'flat', 'request'];
 
 export async function PATCH(
   request: NextRequest,
@@ -84,19 +81,25 @@ export async function PATCH(
     }
 
     if (body.default_payout_model !== undefined) {
-      const m = body.default_payout_model;
+      // 'percentage_contractor' was renamed to 'percentage' in migration 117;
+      // accept the old spelling from not-yet-redeployed clients, write the new one.
+      const m =
+        body.default_payout_model === 'percentage_contractor' ? 'percentage' : body.default_payout_model;
       if (!PAYOUT_MODELS.includes(m as PayoutModel)) {
         return NextResponse.json(
-          { error: 'default_payout_model must be percentage_contractor or hourly_external' },
+          { error: 'default_payout_model must be percentage, flat, request, or hourly_external' },
           { status: 400 },
         );
       }
       if (!ENABLED_PAYOUT_MODELS.includes(m as PayoutModel)) {
         return NextResponse.json(
-          { error: 'hourly_external payout model is not yet available' },
+          { error: 'That payout model is not yet available' },
           { status: 400 },
         );
       }
+      // Migration 118 (this PR) backfilled the data and flipped the column
+      // default, so the unified spelling is written directly. (117's PR wrote
+      // the legacy spelling through the constraint-widening deploy window.)
       update.default_payout_model = m;
     }
 

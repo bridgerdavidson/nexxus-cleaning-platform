@@ -122,7 +122,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     managerPermission: 'can_manage_payments',
   },
   {
-    // Payout MODEL (percentage_contractor | hourly_external). Owner-only;
+    // Payout MODEL (percentage | flat | request | hourly_external). Owner-only;
     // hourly_external is exposed but disabled until that flow ships.
     id: 'payout-model',
     label: 'Payout model',

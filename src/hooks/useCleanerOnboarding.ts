@@ -21,14 +21,14 @@ export function useCleanerOnboarding(): OnboardingState {
     payouts_connected: connectStatus?.onboarding_complete === true,
     profile_complete: !!user?.profile?.avatarUrl,
   };
-  const vm = deriveChecklist(getSetupSteps('cleaner', 'percentage_contractor'), signals);
+  const vm = deriveChecklist(getSetupSteps('cleaner', 'percentage'), signals);
 
   const loading = flags.loading || statusLoading;
   const justCompleted = useJustCompleted(vm.allRequiredComplete, !loading);
   const invalidate = () => { if (user?.id) void qc.invalidateQueries({ queryKey: keys.onboarding.flags(user.id) }); };
 
   return {
-    model: 'percentage_contractor',
+    model: 'percentage',
     vm,
     showChecklist: !loading && !flags.userChecklistDismissed && !vm.allRequiredComplete,
     showSuccess: !loading && justCompleted && !flags.userChecklistDismissed,

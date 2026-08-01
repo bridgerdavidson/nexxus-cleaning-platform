@@ -15,6 +15,10 @@ const EVENT_TYPES: NotificationEventType[] = [
   'cleaner_response_overdue',
   'cleaner_paid',
   'cleaner_payout_bank_failed',
+  'pay_request_escalated',
+  'pay_request_countered',
+  'pay_request_approved',
+  'pay_request_accepted',
   'job_started',
   'job_completed',
   'dispute_opened',
@@ -69,6 +73,19 @@ describe('describeNotification', () => {
         expect(d.detail ?? '').not.toContain('—');
       }
     }
+  });
+
+  it('pay-request copy: enriched titles carry the actor and amount, generic fallbacks stand alone', () => {
+    expect(describeNotification('pay_request_escalated', FULL_PAYLOAD).title).toBe('Wanda Jones requested $42.00');
+    expect(describeNotification('pay_request_escalated').title).toBe('A pay request needs your review');
+    expect(describeNotification('pay_request_countered', FULL_PAYLOAD).title).toBe(
+      'New offer on your pay request: $42.00',
+    );
+    expect(describeNotification('pay_request_approved', FULL_PAYLOAD).title).toBe(
+      'Your pay request was approved: $42.00',
+    );
+    expect(describeNotification('pay_request_approved', FULL_PAYLOAD).tone).toBe('success');
+    expect(describeNotification('pay_request_accepted', FULL_PAYLOAD).title).toBe('Wanda Jones agreed to $42.00');
   });
 
   it('falls back to generic copy when the payload has no names', () => {

@@ -79,3 +79,42 @@ export function computePaymentSplit({
 
   return { grossCents, platformFeeCents, cleanerCents, tenantRemainderCents };
 }
+
+export interface PaymentSplitFromCentsParams {
+  grossCents: number;
+  /** The cleaner's already-resolved share in cents (flat rate or approved pay request), <= grossCents. */
+  cleanerCents: number;
+  /** Platform fee in basis points, 0..10000 (100 = 1%). */
+  platformFeeBps: number;
+}
+
+/**
+ * The cents-based sibling of computePaymentSplit for pay modes whose cleaner
+ * share is an absolute amount (flat / request) rather than a percent. Same
+ * invariants: fee = min(fee-on-gross, gross - cleaner) so the tenant remainder
+ * never goes negative, and the three parts always sum to gross. Callers
+ * resolve the cleaner share first (resolveCleanerShareCents caps it at gross).
+ */
+export function computePaymentSplitFromCents({
+  grossCents,
+  cleanerCents,
+  platformFeeBps,
+}: PaymentSplitFromCentsParams): PaymentSplit {
+  if (!Number.isInteger(grossCents) || grossCents < 0) {
+    throw new Error('computePaymentSplitFromCents: grossCents must be a non-negative integer');
+  }
+  if (!Number.isInteger(cleanerCents) || cleanerCents < 0) {
+    throw new Error('computePaymentSplitFromCents: cleanerCents must be a non-negative integer');
+  }
+  if (cleanerCents > grossCents) {
+    throw new Error('computePaymentSplitFromCents: cleanerCents must not exceed grossCents');
+  }
+  if (!Number.isInteger(platformFeeBps) || platformFeeBps < 0 || platformFeeBps > 10000) {
+    throw new Error('computePaymentSplitFromCents: platformFeeBps must be an integer between 0 and 10000');
+  }
+
+  const platformFeeCents = Math.min(platformFeeCentsFor(grossCents, platformFeeBps), grossCents - cleanerCents);
+  const tenantRemainderCents = grossCents - platformFeeCents - cleanerCents;
+
+  return { grossCents, platformFeeCents, cleanerCents, tenantRemainderCents };
+}

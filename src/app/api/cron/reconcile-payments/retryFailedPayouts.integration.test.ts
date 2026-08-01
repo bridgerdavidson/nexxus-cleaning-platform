@@ -27,6 +27,7 @@ import { createPlatformTransfer } from '@/lib/stripe/transfers';
 import {
   withTestOrg,
   createTestAppointment,
+  createTestPayRequest,
   type TestOrgFixture,
 } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
@@ -109,5 +110,55 @@ describe('retryFailedPayouts (selection hardening)', () => {
     expect((repairEvents ?? []).length).toBe(1);
     // The snapshot-less row stays for manual review.
     expect(await statusOf(snapshotlessId)).toBe('failed');
+  });
+
+  it('retries a failed REQUEST payout (null percent snapshot, cents basis) at the carved amount', async () => {
+    const db = createTestSupabaseClient();
+    await db.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      status: 'completed',
+      totalPrice: 100,
+    });
+    const pr = await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: appt.id,
+      cleanerId: org.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 10000,
+      approvedAmountCents: 7200,
+      approvedVia: 'org',
+    });
+    await db.from('payouts').insert({
+      organization_id: org.organizationId,
+      cleaner_id: org.cleaner.userId,
+      appointment_id: appt.id,
+      amount: 72,
+      status: 'failed',
+      payout_percent_snapshot: null,
+      payout_model_snapshot: 'request',
+      pay_request_id: pr.id,
+    });
+
+    await retryFailedPayouts(db);
+
+    const calls = vi
+      .mocked(createPlatformTransfer)
+      .mock.calls.map((c) => c[0] as { idempotencyKey: string; amountCents: number });
+    const cleanerCall = calls.find((c) => c.idempotencyKey === `cleaner-payout-${appt.id}`);
+    expect(cleanerCall?.amountCents).toBe(7200);
+
+    const { data: payout } = await db
+      .from('payouts')
+      .select('status, amount, payout_percent_snapshot, payout_model_snapshot')
+      .eq('appointment_id', appt.id)
+      .single();
+    const row = payout as Record<string, unknown>;
+    expect(row.status).toBe('paid');
+    expect(Number(row.amount)).toBe(72);
+    expect(row.payout_percent_snapshot).toBeNull();
+    expect(row.payout_model_snapshot).toBe('request');
   });
 });

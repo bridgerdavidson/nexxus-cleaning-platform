@@ -4,6 +4,7 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled, stripeNewChargeFlowEnabled, stripeFeePassthroughEnabled } from '@/lib/stripe/flags';
 import { projectCompletionCharge } from '@/lib/payments/projectCompletionCharge';
 import { presentChargeProjection } from '@/lib/payments/presentChargeProjection';
+import type { PayoutModel } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -83,7 +84,7 @@ export async function GET(
       appt.cleaner_id
         ? supabaseAdmin
             .from('cleaner_profiles')
-            .select('payout_percent')
+            .select('payout_percent, payout_model')
             .eq('id', appt.cleaner_id)
             .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -94,7 +95,10 @@ export async function GET(
         .maybeSingle(),
     ]);
 
-    type CleanerProfileRow = { payout_percent: number | string | null } | null;
+    type CleanerProfileRow = {
+      payout_percent: number | string | null;
+      payout_model: string | null;
+    } | null;
     type OrgRow = {
       platform_fee_bps: number;
       default_cleaner_payout_percent: number;
@@ -137,10 +141,15 @@ export async function GET(
     // the presenter strips the customer charge + payout percentage from the response so
     // those numbers never reach the cleaner's device. Org staff (owner/admin/manager)
     // are not cleaner viewers, so they always get the full breakdown.
+    // The legacy spelling normalizes to the percentage default branch.
+    const rawModel = cleanerProfile?.payout_model ?? 'percentage';
+    const payoutModel = (rawModel === 'percentage_contractor' ? 'percentage' : rawModel) as PayoutModel;
+
     const isCleanerViewer = auth.role === 'cleaner';
     const projection = presentChargeProjection(full, {
       display: org?.cleaner_pay_display ?? 'full',
       isCleanerViewer,
+      payoutModel,
     });
 
     return NextResponse.json({ projection });

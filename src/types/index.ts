@@ -13,6 +13,14 @@ export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'refu
 export type PaymentType = 'revenue' | 'expense' | 'refund';
 export type PaymentMethod = 'card' | 'ach' | 'manual';
 export type PayoutStatus = 'pending' | 'approved' | 'paid' | 'failed' | 'reversed' | 'bank_paid';
+// Per-cleaner pay mode (flexible contractor umbrella, migration 117). The org's
+// default_payout_model shares this value space and is only what new cleaners
+// start as. 'percentage_contractor' was renamed to 'percentage' in 114; the DB
+// constraint stays permissive for the old spelling, so read sites must never
+// branch on 'percentage' - treat it as the default branch instead.
+export type PayoutModel = 'percentage' | 'flat' | 'request' | 'hourly_external';
+export type PayRequestStatus = 'pending_org' | 'pending_cleaner' | 'approved';
+export type PayRequestApprovedVia = 'auto' | 'org' | 'cleaner_accept';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'cancelled';
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
 export type JobProgress = 'not_started' | 'before_photos' | 'checklist' | 'after_photos' | 'completed';
@@ -81,6 +89,13 @@ export interface Organization {
   id: string;
   name: string;
   logo_url?: string | null;
+  /** One hex the tenant picks; null falls back to the Nexxus brand. See docs/white-label-branding.md. */
+  brand_color?: string | null;
+  /** Square-ish mark: collapsed rail, mobile nav, favicon, email. Null renders an initials monogram. */
+  logo_icon_url?: string | null;
+  /** Lockup or wordmark: expanded rail, drawer header. Null renders the icon plus the org name. */
+  logo_full_url?: string | null;
+  brand_updated_at?: string | null;
   created_at: string;
   created_by: string | null;
   // Stripe tenant Connect (merchant of record) — added in migration 065_stripe_restructure.
@@ -97,7 +112,10 @@ export interface Organization {
   subscription_current_period_end?: string | null;
   // Platform fee + per-org policy.
   platform_fee_bps?: number; // basis points (100 = 1%), default 0
-  default_payout_model?: 'percentage_contractor' | 'hourly_external';
+  default_payout_model?: PayoutModel;
+  // Request-mode auto-approve threshold (migration 117): the org must keep at
+  // least this share of the job price for a pay request to approve automatically.
+  min_margin_bps?: number; // basis points (2000 = 20%), default 2000
   cancellation_window_hours?: number; // default 24
   cancellation_fee_type?: 'none' | 'flat' | 'percent';
   cancellation_fee_value?: number; // dollars (flat) or percent (percent)
@@ -138,6 +156,8 @@ export interface CleanerProfile {
   stripe_connect_account_id: string | null;
   stripe_connect_onboarding_complete: boolean; // default false
   payout_percent: number; // numeric(5,2), default 0.00
+  payout_model: PayoutModel; // drives settlement branching; DB default flips to 'percentage' in migration 118 (legacy spelling until then, readers treat both identically)
+  flat_rate_cents: number | null; // required when payout_model = 'flat'
   created_at: string;
   updated_at: string;
 }
@@ -303,13 +323,45 @@ export interface Payout {
   stripe_transfer_id: string | null;
   stripe_payout_id: string | null;
   transfer_attempt: number; // T1-11: transfer idempotency-key rotation counter (0 = unsuffixed key)
-  payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time
+  payout_percent_snapshot: number | null; // numeric(5,2) — frozen at charge time; null for flat/request payouts
   is_self_pay: boolean; // true → cleaner payout funded by an org self-pay charge
+  pay_request_id: string | null; // set when payout_model_snapshot = 'request'
+  payout_model_snapshot: PayoutModel | null; // which pay mode produced `amount` (migration 117)
   notes: string | null;
   approved_at: string | null;
   paid_at: string | null;
   bank_paid_at: string | null;
   reversed_at: string | null;
+  created_at: string;
+}
+
+// PAY REQUESTS (migration 117) — one negotiation thread per appointment for
+// request-mode cleaners. State machine: src/lib/payments/payRequests/transitions.ts.
+export interface PayRequest {
+  id: string;
+  organization_id: string;
+  appointment_id: string;
+  cleaner_id: string; // References cleaner_profiles(id) = the auth user id
+  status: PayRequestStatus;
+  job_price_cents_snapshot: number; // appointments.total_price at submission, in cents
+  current_offer_cents: number | null; // the live offer (pending_org = cleaner's ask, pending_cleaner = org's counter)
+  approved_amount_cents: number | null;
+  approved_via: PayRequestApprovedVia | null;
+  approved_by: string | null; // user id for 'org'/'cleaner_accept'; null for 'auto'
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayRequestOffer {
+  id: string;
+  pay_request_id: string;
+  actor: 'cleaner' | 'org';
+  actor_user_id: string;
+  amount_cents: number;
+  note: string | null;
+  min_margin_bps_snapshot: number | null; // set on cleaner offers: the threshold it was judged against
+  auto_approved: boolean;
   created_at: string;
 }
 
@@ -650,7 +702,13 @@ export interface ChecklistItemCompletion {
 // they are optional here. Org staff always receive the full ('full') shape.
 export interface ChargeProjection {
   display: 'full' | 'payout_only';
-  cleanerCutCents: number;
+  /** The assigned cleaner's pay mode; drives which completion flow renders. */
+  payoutModel: PayoutModel;
+  /**
+   * Omitted for a request-mode CLEANER viewer: they name their own amount, so
+   * the percentage-derived cut is not what they will be paid.
+   */
+  cleanerCutCents?: number;
   isSelfPay: boolean;
   // present only when display === 'full':
   baseCents?: number;

@@ -26,7 +26,7 @@ export function PlatformMobileNav({ activeId }: { activeId?: string }) {
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-              active ? 'text-brand-600' : 'text-muted-foreground hover:text-foreground',
+              active ? 'text-brand-ink' : 'text-muted-foreground hover:text-foreground',
             )}
           >
             <Icon className="h-5 w-5" aria-hidden />

@@ -18,7 +18,7 @@ export function CleanerSubHeader({
     <div className="space-y-2">
       <Link
         href={backHref}
-        className="-ml-2 inline-flex items-center gap-0.5 rounded-control px-2 py-1.5 text-sm font-semibold text-brand-600 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+        className="-ml-2 inline-flex items-center gap-0.5 rounded-control px-2 py-1.5 text-sm font-semibold text-brand-ink outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronLeft className="size-4" aria-hidden />
         {backLabel}

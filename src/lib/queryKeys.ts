@@ -36,6 +36,12 @@ export const keys = {
     all: ['disputes'] as const,
     byOrg: (orgId: string) => ['disputes', 'org', orgId] as const,
   },
+  payRequests: {
+    all: ['pay-requests'] as const,
+    byOrg: (orgId: string) => ['pay-requests', 'org', orgId] as const,
+    byCleaner: (cleanerId: string) => ['pay-requests', 'cleaner', cleanerId] as const,
+    pendingCount: (orgId: string) => ['pay-requests', 'pending-count', orgId] as const,
+  },
   invoices: {
     byOrg: (orgId: string) => ['invoices', 'org', orgId] as const,
   },

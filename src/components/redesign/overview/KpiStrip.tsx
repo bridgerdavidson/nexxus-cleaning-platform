@@ -23,15 +23,21 @@ export function KpiStrip({ kpis, loading }: { kpis: OverviewKpis; loading?: bool
     );
   }
 
+  // Operational tiles click through to the matching Bookings segment/filter
+  // (Back-restorable via the URL filters), gated on can_view_bookings so a
+  // restricted manager gets a plain, non-clickable tile. Revenue routes to
+  // Payments (only rendered when can_view_payments).
+  const bookingsHref = (query: string) => (kpis.canViewBookings ? `/admin/bookings?${query}` : undefined);
+
   return (
     <>
       <h2 className="sr-only">Key metrics</h2>
       <div className={gridClass}>
-        <StatTile label="Today's jobs" value={String(kpis.todayJobs)} icon={<CalendarDays />} />
-        <StatTile label="In progress" value={String(kpis.inProgress)} icon={<Activity />} />
-        <StatTile label="Awaiting approval" value={String(kpis.awaitingApproval)} icon={<Clock />} />
+        <StatTile label="Today's jobs" value={String(kpis.todayJobs)} icon={<CalendarDays />} href={bookingsHref("segment=today")} />
+        <StatTile label="In progress" value={String(kpis.inProgress)} icon={<Activity />} href={bookingsHref("segment=active")} />
+        <StatTile label="Awaiting approval" value={String(kpis.awaitingApproval)} icon={<Clock />} href={bookingsHref("segment=all&status=pending")} />
         {showRevenue ? (
-          <StatTile label="Revenue this month" value={formatUsdCompact(kpis.revenueThisMonth as number)} icon={<DollarSign />} />
+          <StatTile label="Revenue this month" value={formatUsdCompact(kpis.revenueThisMonth as number)} icon={<DollarSign />} href="/admin/payments" />
         ) : null}
       </div>
     </>
