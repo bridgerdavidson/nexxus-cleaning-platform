@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CleanerStatusBadge, ConnectBadge, FailedPayoutBadge, OwedBadge } from "./cleaners-presenters";
+import { CleanerStatusBadge, ConnectBadge, FailedPayoutBadge, OwedBadge, PayNotSetBadge } from "./cleaners-presenters";
 import type { CleanerRowAction, CleanerRowVM } from "./cleaners-types";
 
 export type CleanersCardListProps = {
@@ -113,9 +113,10 @@ export function CleanersCardList({
               </div>
             </div>
 
-            {row.status === "benched" || row.connect !== "ready" || row.payoutFailed || row.owedLabel ? (
+            {row.status === "benched" || !row.payConfigured || row.connect !== "ready" || row.payoutFailed || row.owedLabel ? (
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 <CleanerStatusBadge status={row.status} />
+                <PayNotSetBadge configured={row.payConfigured} />
                 <ConnectBadge state={row.connect} />
                 {row.payoutFailed ? <FailedPayoutBadge /> : null}
                 {row.owedLabel ? <OwedBadge label={row.owedLabel} /> : null}

@@ -234,16 +234,40 @@ export async function settleCleanerPayout(
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
     flat_rate_cents: number | null;
+    payout_configured_at: string | null;
   };
   let cleaner: CleanerRow | null = null;
   if (appt.cleaner_id && appt.status !== 'cancelled') {
     const { data: cleanerRow } = await supabase
       .from('cleaner_profiles')
-      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
+      .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents, payout_configured_at')
       .eq('id', appt.cleaner_id)
       .maybeSingle();
     cleaner = cleanerRow as CleanerRow | null;
   }
+
+  // No pay decision was ever made for this cleaner — their stored mode is only the column
+  // default, and 0% must never be what someone gets paid. Defer BOTH legs (the tenant
+  // remainder depends on the cleaner amount, same as an unapproved pay request):
+  // transfer_amount stays null, so the settleUnsettledCaptures sweep re-attempts every
+  // cycle and settles on its first pass after the operator sets this cleaner's pay.
+  // A retry of an already-carved slice can never hit this gate: payout_configured_at is
+  // never reset to null once stamped. Forensic marker on the webhook path only, mirroring
+  // the pay-request deferral, so a repeated sweep pass can't spam the ledger.
+  if (cleaner && !cleaner.payout_configured_at) {
+    if (capturedCents != null) {
+      await recordPaymentEvent(supabase, {
+        appointmentId,
+        organizationId: appt.organization_id,
+        eventType: 'settlement_deferred_pay_not_configured',
+        actor: 'webhook',
+        amount: capturedCents,
+        payload: { cleaner_id: appt.cleaner_id },
+      });
+    }
+    return { settled: false, reason: 'cleaner_pay_not_configured' };
+  }
+
   const payoutModel = cleaner?.payout_model ?? 'percentage';
 
   // Pay-request gate, keyed on THREAD EXISTENCE, not the cleaner's current

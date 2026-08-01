@@ -81,6 +81,13 @@ export interface WithTestOrgOptions {
    * the DB default (2000).
    */
   minMarginBps?: number;
+  /**
+   * cleaner_profiles.payout_configured_at. Defaults to TRUE (stamped now): fixture cleaners
+   * represent a configured cleaner, matching the migration backfill of pre-existing rows.
+   * Pass false for the unconfigured-cleaner state (row created after the migration with no
+   * pay decision), which is not-payable and defers settlement.
+   */
+  cleanerPayConfigured?: boolean;
 }
 
 /**
@@ -152,6 +159,7 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
     stripe_connect_onboarding_complete: opts.stripeConnectOnboardingComplete ?? false,
     payout_model: opts.cleanerPayoutModel ?? 'percentage',
     flat_rate_cents: opts.flatRateCents ?? null,
+    payout_configured_at: (opts.cleanerPayConfigured ?? true) ? new Date().toISOString() : null,
   });
   if (cleanerProfileError) {
     throw new Error(`failed to insert cleaner_profile: ${cleanerProfileError.message}`);

@@ -519,6 +519,7 @@ async function chargeSelfPayNow(
     stripe_connect_onboarding_complete: boolean;
     payout_percent: number | string;
     flat_rate_cents: number | null;
+    payout_configured_at: string | null;
   };
   const [orgRes, cleanerRes] = await Promise.all([
     supabase
@@ -529,7 +530,7 @@ async function chargeSelfPayNow(
     appt.cleaner_id
       ? supabase
           .from('cleaner_profiles')
-          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents')
+          .select('payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents, payout_configured_at')
           .eq('id', appt.cleaner_id)
           .maybeSingle()
       : Promise.resolve({ data: null as CleanerRow | null }),
