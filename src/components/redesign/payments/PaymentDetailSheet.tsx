@@ -51,6 +51,7 @@ export type PaymentDetailSheetProps = {
   busy?: boolean;
   onRefund: (id: string) => void;
   onRetry: (id: string) => void;
+  onRetryFee: (id: string) => void;
   onDismiss: (id: string) => void;
   onMessage: (cleanerId: string | null) => void;
   /** Open the booking this row is tied to. Omitted when the viewer can't view bookings. */
@@ -67,6 +68,7 @@ export function PaymentDetailSheet({
   busy,
   onRefund,
   onRetry,
+  onRetryFee,
   onDismiss,
   onMessage,
   onViewBooking,
@@ -103,10 +105,22 @@ export function PaymentDetailSheet({
               ) : null}
               {txn.reference ? <Field label="Reference" value={txn.reference} /> : null}
               {txn.notes ? <NotesBlock notes={txn.notes} /> : null}
-              {(onViewBooking && txn.appointmentId) || txn.refundable ? (
+              {(onViewBooking && txn.appointmentId) || txn.refundable || (canManagePayments && txn.feeRetryable) ? (
                 <>
                   <Separator className="my-3" />
                   <div className="flex flex-col gap-2">
+                    {canManagePayments && txn.feeRetryable ? (
+                      <>
+                        {txn.feeNeedsCardVerification ? (
+                          <p className="text-xs text-muted-foreground">
+                            The bank needs the customer to verify this card. Sending a card link usually works better.
+                          </p>
+                        ) : null}
+                        <Button loading={busy} onClick={() => onRetryFee(txn.id)}>
+                          Retry fee charge
+                        </Button>
+                      </>
+                    ) : null}
                     {onViewBooking && txn.appointmentId ? (
                       <Button variant="secondary" onClick={() => onViewBooking(txn.appointmentId!)}>
                         <CalendarClock /> View booking

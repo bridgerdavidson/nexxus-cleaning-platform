@@ -80,6 +80,10 @@ export type TransactionDetailVM = TransactionRowVM & {
   grossAmount: number; // dollars, for the refund dialog
   refundedAmount: number; // dollars already refunded / in-flight
   remainingRefundable: number; // dollars still refundable
+  /** Failed cancellation/no-show fee: shows the "Retry fee charge" action (T2-7). */
+  feeRetryable: boolean;
+  /** The last attempt bounced on 3DS; retry only helps after a card change. */
+  feeNeedsCardVerification: boolean;
 };
 
 export type PayoutDetailVM = PayoutRowVM & {
