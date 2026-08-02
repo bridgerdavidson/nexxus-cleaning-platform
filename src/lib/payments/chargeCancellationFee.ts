@@ -26,12 +26,14 @@ import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
 import { notifyHomeownerCancellationFeeCharged } from './homeownerMoneyEvents';
 
-export type CancellationFeeCode = 'charged' | 'uncollectable' | 'failed';
+export type CancellationFeeCode = 'charged' | 'uncollectable' | 'failed' | 'retry_in_progress';
 
 export interface CancellationFeeOutcome {
   code: CancellationFeeCode;
   feeCapturedCents: number;
   paymentIntentId?: string;
+  /** The payments row this outcome wrote or found, when one exists (drives receipt deep-links). */
+  paymentId?: string;
   message?: string;
 }
 
@@ -114,7 +116,12 @@ export async function chargeCancellationFee(
         noShow: context.noShow,
       });
     }
-    return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: existing.stripe_payment_intent_id ?? undefined };
+    return {
+      code: 'charged',
+      feeCapturedCents: feeCents,
+      paymentIntentId: existing.stripe_payment_intent_id ?? undefined,
+      paymentId: existing.id,
+    };
   }
 
   if (!appt.payment_method_id || !appt.homeowner_id) {
@@ -165,7 +172,25 @@ export async function chargeCancellationFee(
   let reauthAttempt = appt.reauth_count ?? 0;
   if (existing && existing.status === 'failed') {
     reauthAttempt += 1;
-    await supabase.from('appointments').update({ reauth_count: reauthAttempt }).eq('id', appt.id);
+    // Atomic claim on the shared attempt counter: only the caller who still holds the value it
+    // READ may advance it. A lost claim means a concurrent retry is mid-flight under a fresh
+    // idempotency key; charging here too could create a second PaymentIntent (T2-7 hardening).
+    // appointments.reauth_count is NOT NULL DEFAULT 0 (migration 065), so it can never genuinely
+    // be null in the row; a caller-side null/undefined always means the true starting value is 0.
+    const { data: claimed } = await supabase
+      .from('appointments')
+      .update({ reauth_count: reauthAttempt })
+      .eq('id', appt.id)
+      .eq('reauth_count', appt.reauth_count ?? 0)
+      .select('id');
+    if (!claimed || claimed.length === 0) {
+      return {
+        code: 'retry_in_progress',
+        feeCapturedCents: 0,
+        paymentId: existing.id,
+        message: 'Another retry for this fee is already in progress.',
+      };
+    }
   }
 
   let pi;
@@ -206,7 +231,12 @@ export async function chargeCancellationFee(
     }
     await ledger('cancellation_fee_failed', { error: err instanceof Error ? err.message : String(err) }, failedPaymentId);
     await notifyFeeFailed('declined', `attempt-${reauthAttempt}`);
-    return { code: 'failed', feeCapturedCents: 0, message: err instanceof Error ? err.message : 'Card declined' };
+    return {
+      code: 'failed',
+      feeCapturedCents: 0,
+      paymentId: failedPaymentId ?? undefined,
+      message: err instanceof Error ? err.message : 'Card declined',
+    };
   }
 
   const baseRow = {
@@ -247,7 +277,7 @@ export async function chargeCancellationFee(
       amountCents: feeCents,
       noShow: context.noShow,
     });
-    return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: pi.id };
+    return { code: 'charged', feeCapturedCents: feeCents, paymentIntentId: pi.id, paymentId: paymentId ?? undefined };
   }
 
   // requires_action (off-session 3-D Secure: the customer isn't present) or any other non-success.
@@ -255,5 +285,11 @@ export async function chargeCancellationFee(
   const paymentId = await upsertRow({ ...baseRow, status: 'failed' });
   await ledger('cancellation_fee_failed', { payment_intent_id: pi.id, pi_status: pi.status }, paymentId);
   await notifyFeeFailed('authentication_required', pi.id);
-  return { code: 'failed', feeCapturedCents: 0, paymentIntentId: pi.id, message: 'Customer authentication required' };
+  return {
+    code: 'failed',
+    feeCapturedCents: 0,
+    paymentIntentId: pi.id,
+    paymentId: paymentId ?? undefined,
+    message: 'Customer authentication required',
+  };
 }
