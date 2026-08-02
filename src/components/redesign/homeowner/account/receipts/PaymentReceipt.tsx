@@ -2,6 +2,7 @@
 
 import { ChevronLeft, Receipt as ReceiptIcon } from 'lucide-react';
 import { MobileTakeover } from '@/components/redesign/shared/MobileTakeover';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -49,12 +50,20 @@ export function PaymentReceipt({
   loading = false,
   error = false,
   onRetry,
+  onPayNow,
+  onUpdateCard,
+  paying,
+  payError,
 }: {
   payment: PaymentLike | null;
   onClose: () => void;
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;
+  onPayNow?: () => void;
+  onUpdateCard?: () => void;
+  paying?: boolean;
+  payError?: string | null;
 }) {
   const fees = payment ? paymentFeeBreakdown(payment) : null;
 
@@ -145,6 +154,29 @@ export function PaymentReceipt({
                       )}
                     </div>
                   </div>
+
+                  {isCancellationFee(payment) && payment.status === 'failed' ? (
+                    <div className="space-y-2">
+                      {payment.payment_intent_status === 'requires_action' ? (
+                        <p className="text-sm text-muted-foreground">
+                          Your bank needs to verify this card. Update your card to continue.
+                        </p>
+                      ) : null}
+                      {payError ? <p className="text-sm text-critical-700">{payError}</p> : null}
+                      <div className="flex flex-col gap-2">
+                        {payment.payment_intent_status !== 'requires_action' && onPayNow ? (
+                          <Button loading={paying} onClick={onPayNow}>
+                            Pay now
+                          </Button>
+                        ) : null}
+                        {onUpdateCard ? (
+                          <Button variant="secondary" disabled={paying} onClick={onUpdateCard}>
+                            Update card
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>

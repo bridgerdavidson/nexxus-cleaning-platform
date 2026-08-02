@@ -12,7 +12,11 @@ export interface PaymentLike {
   is_self_pay?: boolean | null;
   paid_at?: string | null;
   created_at: string;
+  /** Raw Stripe PI status of the last attempt; 'requires_action' hides Pay now (3DS). */
+  payment_intent_status?: string | null;
   appointment?: {
+    id?: string | null;
+    payment_method_id?: string | null;
     scheduled_date?: string | null;
     service_type?: { name?: string | null } | null;
   } | null;
