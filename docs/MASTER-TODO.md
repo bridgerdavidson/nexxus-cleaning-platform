@@ -83,14 +83,52 @@ Remaining follow-ups (tracked, not blockers): set up the anchor tenant's real br
 visual pass of the branded add-card page on a preview/prod link, theme the in-app Stripe
 `appearance.ts` + `--chart-*` tokens per-org. Next in the roadmap: Phase 1, SaaS billing.
 
-## 3. Payments audit Tier 2 — visibility & notification gaps (pre-MVP)
+## 3. The remaining money + product queue (ONE list — the lanes are retired)
 
-Source: backlog Tier 2 (T2-1 … T2-18). Silent failures + operator/homeowner blind spots.
-T2-1 (homeowner money notifications) is **DONE** — #213 render + #214 emit, merged 2026-07-28.
-Next biggest: **T2-1b emailed receipt** (see below), disputes surface (T2-2), refunds visibility
-+ confirm/partial-refund dialog (T2-3/T2-4), then the rest.
+**2026-08-01: the parallel-lane split (A cutover / B money backend / C operator UI / D
+homeowner-cleaner UI, from `docs/redesign/2026-07-17-parallel-lanes.md`) is DISSOLVED by
+Bridger's call.** Lanes A and C were already closed; what remained of B and D is folded into
+the single list below, and each task carries BOTH its backend and UI halves so related work
+ships together in one PR. One session works this list top to bottom. The old lane file-ownership
+rules no longer apply.
 
-### 3a. T2-1b — emailed money receipts (next up in this block)
+Already shipped from Tier 2 (checkboxes swept in `payments-audit-v4-backlog.md`): T2-1
+(#213 + #214), T2-2/3/4/8/10/13/16 + the T2-5 copy fix + the T2-7 visibility half (#180),
+T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 shipped in #172.
+
+- [ ] **3.1 Fee retry, end to end (T2-7).** Backend: retry endpoint for a failed
+      cancellation/no-show fee, keyed on the failed payment row (re-POSTing the cancel route
+      can't reconstruct party/no_show). UI: retry affordance on the failed-fee row
+      (PaymentDetailSheet / triage band). Stretch: the homeowner-side fee retry surface (L-7).
+- [ ] **3.2 Failed-payout dismiss round trip (T2-9).** Backend: undismiss route + re-surface on
+      continued sweep failures. UI: undismiss affordance + resurfaced-row treatment.
+- [ ] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
+      (077 rounds to whole dollars). UI: KPI tiles consume cents. While in there, verify the
+      revenue KPI nets out refunds (the T2-3 join fixed the ledger view, not necessarily the RPC).
+- [ ] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER) — BUILT, open as PR #226**
+      (`fix/cleaner-price-readpath`, migration 122: RLS seal + service-role cleaner read routes +
+      DEFINER `cleaner_stats`). Background: cleaners could read `appointments.total_price` under
+      row-level RLS and compute the auto-approve cap, making migration 119's price-seal cosmetic
+      (write-up on PR #221). Merging #226 unblocks the pilot flip; residuals documented in its
+      body. Do NOT set a real cleaner to `request` mode before it lands.
+- [ ] **3.5 T2-1b emailed receipts** (see 3a below; prereq: confirm the five SMTP vars in prod).
+- [ ] **3.6 Cancel notifications (T2-5, emit half).** The cancel route notifies neither customer
+      nor cleaner (including when it charges a no-show fee). Wire the notifications, then restore
+      the honest-but-minimal dialog copy #180 had to neuter ("This can't be undone.").
+- [ ] **3.7 Realtime durability migration (T2-12).** payments/appointments live in the
+      `supabase_realtime` publication via dashboard config only; add the durable
+      `ALTER PUBLICATION` migration (048/081 pattern) so a rebuilt env keeps ledger liveness.
+- [ ] **3.8 Small sweep (one PR):** card-links email quotes the grossed-up total (T2-6 email leg —
+      verify against current code first); homeowner notice when a refund later FAILS at Stripe
+      (T2-1 follow-up: today the bell promises money that never arrives, admins-only alert);
+      org-scope the migration-075 `payouts_select` RLS join (latent leak flagged in the #205
+      review, 104/106 pattern); wire-or-delete the 3 dead analytics charts +
+      `useAdminActionItems.ts` (verified dead 2026-07-22).
+
+Opportunistic alongside any of the above: the backlog L-items (L-2 sub-minimum charge,
+L-4 refunds-embed pin, L-5 webhook reclaim re-stamp, L-9 orphaned Connect routes).
+
+### 3a. T2-1b — emailed money receipts (item 3.5 above)
 
 Homeowners now get an in-app bell for charges, fees, and refunds, but **no email**, so a
 quarterly booker gets nothing at all. Their card statement shows the tenant's business name
@@ -108,22 +146,17 @@ path. Each dispute costs $15 + the amount, and it lands on the tenant.
   it and double-charges undetected. Full reasoning in the backlog under T2-1 / T2-1b.
 - **Prerequisite:** confirm the five SMTP vars are actually set in prod (they degrade silently).
 
-## 4. Gap scan §2 — UX quick wins (interleave anytime)
+## 4. Gap scan §2 — UX quick wins (✅ DONE 2026-07-29)
 
-Source: gap scan §2. Twenty verified small items; the six "high"-rated S items first
-(operator: messages badge, availability in assign select, tappable Today rows, calendar
-skeleton; homeowner: tappable hero, last-cleaning prefill; cleaner: "Next up" card, "You're
-owed $X"). Good palate-cleansers between payments batches; candidates for the rolling
-`fix/ui-minor-fixes` cadence.
+- [x] **All 20 shipped.** High + S items via #168/#180/#181/#188/#189/#197/#198; the final four
+      via #215 (operator messages badge + clickable KPI tiles) and #216 (homeowner booking
+      prefill + cleaner offline Today cache), merged 2026-07-28/29. The ping-dot sweep was
+      mooted by Phase 4's dead-code deletion.
 
-## 5. Phase 4 — legacy retirement + /app prefix removal (after soak)
+## 5. Phase 4 — legacy retirement + /app prefix removal (✅ DONE)
 
-Source: runbook §6 (PR #167 version). Order is load-bearing, each step its own PR:
-4a legacy charge path → 4b delete legacy page dirs (NOT `/billing/add-card`) → 4c orphaned
-components → 4d gate removal (+ retire `NEXT_PUBLIC_REDESIGN_ENABLED`) → **4e remove the
-`/app` prefix** (role roots per §6.1: `/admin` `/cleaner` `/homeowner` `/owner`) → 4f graduate
-redirects to 308 (only in the out-of-`/app` direction; the old into-`/app` graduation is
-CANCELLED) → 4g optional cleanup. Prereq: block 1 above merged; soak window observed.
+- [x] **Complete.** 4a-4g all merged + the `redesignUiEnabled` flag retired (#201). Role roots
+      live in prod: `/admin` `/cleaner` `/homeowner` `/owner`.
 
 ## 6. Dark mode (build-ready, queued)
 
@@ -139,14 +172,28 @@ Source: backlog Tier 3. Do the ACH block (T3-1 … T3-4) before ever enabling
 (T3-10 ships in block 1; T3-12…15 fold into block 2's webhook work.) Plus the "lower-severity /
 ledger-accuracy" L-items opportunistically.
 
-## 8. Payout models (LOCKED until Bridger opens it)
+## 8. Payout models — pay-request pilot follow-ups
 
-Source: gap scan §3.5-6 + memory. "Cleaner decides payment" pilot first, then
-cleaning-company-with-availability. **No spec exists** — entry point is `/grill-me` with the
-queued questions. Do not start or re-raise unprompted.
+The "cleaner decides pay" (request-mode) stack SHIPPED 2026-07-31 (#205/#224/#217/#221,
+migrations 117-120 in prod). Spec:
+`docs/superpowers/specs/2026-07-26-cleaner-request-pay-model-design.md`.
+
+- [ ] **Pilot-flip blocker = the price read-path seal (PR #226, item 3.4 above).** Until it
+      merges, do not set a real cleaner to `request` mode.
+- [ ] Org pay-model simplification (org setting becomes per-job-vs-hourly only; new cleaners get
+      NO default pay; operator nudged per cleaner). Plan:
+      `docs/superpowers/plans/2026-07-28-org-pay-model-simplification.md` — currently UNTRACKED
+      in the landing-page worktree; commit it before starting.
+- [ ] Papercuts: 30s cleaner pay-request polling latency; scorecard percent-based earnings
+      estimates are wrong for flat/request cleaners.
+- Umbrella 2 (cleaning company: hourly + availability) stays a later build.
 
 ## Ops loose ends (small, mostly Bridger-manual)
 
+- [ ] **Repoint the test-mode Stripe webhook back at dev.** It still targets the deleted
+      pay-request walkthrough branch alias, which no longer deploys; restore
+      `nexxus-cleaning-platform-git-dev-…vercel.app/api/stripe/webhook` with the same
+      `x-vercel-protection-bypass` param. Time-sensitive if any preview money testing happens.
 - [ ] Live-test PR #161 on dev preview (0341 decline → bell + badge + banner; hard-refresh stale tabs).
 - [ ] Stripe live-webhook checklist (runbook §5.1) — sequenced inside block 2 / T1-3 above.
 - [ ] Stripe Dashboard branding checklist for hosted onboarding (manual, in redesign-audit memory).
