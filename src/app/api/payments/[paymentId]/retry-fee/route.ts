@@ -74,6 +74,53 @@ export async function POST(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
+    // Load the appointment immediately (it may be null) so the caller gates below can run BEFORE
+    // any state-revealing branch. A same-org homeowner or a manager without Manage Payments must
+    // never learn a row's status/amount (e.g. the paid/processing no-op, or the fee-kind/appointment
+    // 409s) via a paymentId that isn't theirs to see, so authorization comes first and every
+    // downstream branch is reached only once the caller is already cleared for this row.
+    const { data: apptRow } = payment.appointment_id
+      ? await supabaseAdmin
+          .from('appointments')
+          .select('id, organization_id, homeowner_id, payment_method_id, reauth_count, status')
+          .eq('id', payment.appointment_id)
+          .maybeSingle()
+      : { data: null };
+    const appt = apptRow as
+      | {
+          id: string;
+          organization_id: string;
+          homeowner_id: string | null;
+          payment_method_id: string | null;
+          reauth_count: number | null;
+          status: string;
+        }
+      | null;
+
+    // Homeowner allowlist, fail closed: no appointment on the row, or it belongs to someone else,
+    // is the same 403 either way (never leaks which case it was).
+    if (auth.role === 'homeowner') {
+      if (!appt || appt.homeowner_id !== auth.userId) {
+        return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
+      }
+    }
+
+    // Retrying a fee is a payment-management action: managers need the explicit permission
+    // (owner/admin always pass). Mirrors the payout retry route.
+    if (auth.role === 'manager') {
+      const { data: perms } = await supabaseAdmin
+        .from('manager_permissions')
+        .select('can_manage_payments')
+        .eq('manager_id', auth.userId)
+        .eq('organization_id', organization_id!)
+        .maybeSingle();
+      if (!(perms as { can_manage_payments: boolean } | null)?.can_manage_payments) {
+        return NextResponse.json({ error: 'Requires the Manage Payments permission' }, { status: 403 });
+      }
+    }
+
+    // From here on the caller is already authorized for this row; state branches can now reveal
+    // status/amount safely.
     if (payment.charge_kind !== 'cancellation_fee') {
       return NextResponse.json(
         { success: false, code: 'not_retryable', error: 'Only a cancellation or no-show fee can be retried here.' },
@@ -96,23 +143,6 @@ export async function POST(
       );
     }
 
-    const { data: apptRow } = payment.appointment_id
-      ? await supabaseAdmin
-          .from('appointments')
-          .select('id, organization_id, homeowner_id, payment_method_id, reauth_count, status')
-          .eq('id', payment.appointment_id)
-          .maybeSingle()
-      : { data: null };
-    const appt = apptRow as
-      | {
-          id: string;
-          organization_id: string;
-          homeowner_id: string | null;
-          payment_method_id: string | null;
-          reauth_count: number | null;
-          status: string;
-        }
-      | null;
     if (!appt || appt.organization_id !== organization_id || appt.status !== 'cancelled') {
       return NextResponse.json(
         { success: false, code: 'not_retryable', error: 'This fee is not attached to a cancelled appointment.' },
@@ -120,37 +150,18 @@ export async function POST(
       );
     }
 
-    // Homeowner allowlist, fail closed. Ownership FIRST (403), so a caller can never probe the
-    // card state of a row they don't own; then the 3DS gate (409): an off-session retry cannot
-    // clear requires_action, it would just loop (same reasoning as the charge route).
-    if (auth.role === 'homeowner') {
-      if (appt.homeowner_id !== auth.userId) {
-        return NextResponse.json({ error: 'Insufficient role for this action' }, { status: 403 });
-      }
-      if (payment.payment_intent_status === 'requires_action') {
-        return NextResponse.json(
-          {
-            success: false,
-            code: 'requires_card_verification',
-            error: 'Your bank needs to verify this card. Update your card, then try again.',
-          },
-          { status: 409 },
-        );
-      }
-    }
-
-    // Retrying a fee is a payment-management action: managers need the explicit permission
-    // (owner/admin always pass). Mirrors the payout retry route.
-    if (auth.role === 'manager') {
-      const { data: perms } = await supabaseAdmin
-        .from('manager_permissions')
-        .select('can_manage_payments')
-        .eq('manager_id', auth.userId)
-        .eq('organization_id', organization_id!)
-        .maybeSingle();
-      if (!(perms as { can_manage_payments: boolean } | null)?.can_manage_payments) {
-        return NextResponse.json({ error: 'Requires the Manage Payments permission' }, { status: 403 });
-      }
+    // 3DS gate (409): ownership already holds for a homeowner caller by this point, so this is
+    // purely a "can this retry succeed" check. An off-session retry can never clear requires_action,
+    // it would just loop (same reasoning as the charge route).
+    if (auth.role === 'homeowner' && payment.payment_intent_status === 'requires_action') {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'requires_card_verification',
+          error: 'Your bank needs to verify this card. Update your card, then try again.',
+        },
+        { status: 409 },
+      );
     }
 
     // Recover the original cancel context from the forensic ledger. It drives notification copy

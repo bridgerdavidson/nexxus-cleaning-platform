@@ -152,6 +152,14 @@ describe('POST /api/payments/:paymentId/retry-fee', () => {
     expect(status).toBe(403);
   });
 
+  it("homeowner cannot probe another homeowner's PAID fee: 403, not 200 already", async () => {
+    const { paymentId } = await seedFailedFee({ rowStatus: 'paid' });
+    const other = await addHomeownerToOrg(org.organizationId);
+    const { status, body } = await post(paymentId, other.accessToken);
+    expect(status).toBe(403);
+    expect(body.fee_captured_cents).toBeUndefined();
+  });
+
   it('homeowner on a requires_action row: 409 requires_card_verification, no charge', async () => {
     const { paymentId } = await seedFailedFee({ piStatus: 'requires_action' });
     const { status, body } = await post(paymentId, org.homeowner.accessToken);
@@ -174,6 +182,13 @@ describe('POST /api/payments/:paymentId/retry-fee', () => {
     const { paymentId: paymentId2 } = await seedFailedFee();
     const withPerm = await addManagerToOrg(org.organizationId, { can_manage_payments: true });
     expect((await post(paymentId2, withPerm.accessToken)).status).toBe(200);
+  });
+
+  it('manager without can_manage_payments gets 403 even on a paid row (no state leak)', async () => {
+    const { paymentId } = await seedFailedFee({ rowStatus: 'paid' });
+    const noPerm = await addManagerToOrg(org.organizationId);
+    const { status } = await post(paymentId, noPerm.accessToken);
+    expect(status).toBe(403);
   });
 
   it('cleaner: 403', async () => {
