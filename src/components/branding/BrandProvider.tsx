@@ -99,6 +99,9 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isPlatformSurface = pathname?.startsWith("/owner") ?? false;
   const isBrandedSurface = isBrandedAppPath(pathname);
+  // Where the NEXT account signs in; the only place a signed-out visit may
+  // clear the cached ramp (see the effect below).
+  const isAuthSurface = pathname === "/login" || (pathname?.startsWith("/signup") ?? false);
 
   // Impersonation: currentOrganization is still the admin's OWN org, so the
   // tenant's branding has to be fetched separately (allowed by the platform
@@ -159,10 +162,13 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       // Platform, marketing, and auth surfaces always render Nexxus (spec
       // decision 10), even for a signed-in member of a branded org.
       restoreDefaults();
-      // A definitively signed-out visitor must not leave a stale ramp behind
-      // for the next account on this device; a signed-in user just passing
-      // through keeps the cache so their next dashboard cold load replays.
-      if (!loading && !user) clearBrandCache();
+      // Only the AUTH surfaces clear the cache: that is where a different
+      // account signs in next, and a stale ramp must not replay for it.
+      // Everywhere else a signed-out visit keeps the cache: token-scoped
+      // pre-auth pages (/billing/add-card, accept-invite) are opened by the
+      // tenant's own people while signed out, and wiping there would
+      // re-introduce the cold-load flash the bootstrap exists to prevent.
+      if (!loading && !user && isAuthSurface) clearBrandCache();
       return;
     }
 
@@ -197,6 +203,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
   }, [
     isPlatformSurface,
     isBrandedSurface,
+    isAuthSurface,
     impersonatingOrgId,
     impersonatedRow,
     loading,

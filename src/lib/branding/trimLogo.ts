@@ -107,7 +107,9 @@ export async function trimLogoWhitespace(file: File): Promise<File> {
   try {
     bitmap = await createImageBitmap(file);
     const { width, height } = bitmap;
-    // Decode-bomb guard: a 2 MiB PNG can decode to an enormous bitmap.
+    // Oversize guard: createImageBitmap has already decoded by now, but
+    // bailing here still avoids the two further full-size copies (canvas
+    // backing store + getImageData) and the O(pixels) scan for absurd inputs.
     if (!width || !height || width * height > 32_000_000) return file;
 
     const source = document.createElement("canvas");

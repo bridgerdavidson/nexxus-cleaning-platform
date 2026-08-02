@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { readCachedIconUrl } from "@/lib/branding/brandCache";
+import { useAuth } from "@/hooks/useAuth";
 import { useOrgBrand } from "./BrandProvider";
 
 /**
@@ -17,6 +18,7 @@ import { useOrgBrand } from "./BrandProvider";
  */
 export function TenantFullPageLoader() {
   const { iconUrl } = useOrgBrand();
+  const { user, loading } = useAuth();
   // Read AFTER mount, never during the first render: the server prerender
   // cannot see localStorage, so a lazy-useState read would make the first
   // client render diverge from the server HTML and trip React 19 hydration
@@ -25,7 +27,11 @@ export function TenantFullPageLoader() {
   useEffect(() => {
     setCachedIconUrl(readCachedIconUrl());
   }, []);
-  const src = iconUrl ?? cachedIconUrl;
+  // The cached mark stands in only while a session plausibly exists (restore
+  // in flight, or a user present). Once restore resolves to NO user (lapsed
+  // session on a shared device), fall back to the spinner: the previous
+  // company's logo must not greet the next visitor during the login redirect.
+  const src = iconUrl ?? (loading || user ? cachedIconUrl : null);
 
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
@@ -41,8 +47,11 @@ export function TenantFullPageLoader() {
             src={src}
             alt=""
             ref={(el) => {
-              // Browser-cached icon: onLoad fired before hydration attached it.
-              if (el && el.complete && el.naturalWidth > 0) setLoadedUrl(src);
+              // Browser-cached outcome: onLoad/onError fired before hydration
+              // attached the handlers; classify by naturalWidth.
+              if (!el || !el.complete) return;
+              if (el.naturalWidth > 0) setLoadedUrl(src);
+              else setFailedUrl(src);
             }}
             onLoad={() => setLoadedUrl(src)}
             onError={() => setFailedUrl(src)}

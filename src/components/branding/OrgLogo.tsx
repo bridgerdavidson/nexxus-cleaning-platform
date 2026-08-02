@@ -62,28 +62,44 @@ export function OrgLogo({
   const markFailed = (url: string) => setFailed((prev) => ({ ...prev, [url]: true }));
   const markLoaded = (url: string) =>
     setLoadedUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }));
-  // onLoad never fires for an image that completed before hydration attached
-  // the handler (browser-cached asset), so the ref covers that case.
+  // onLoad/onError never fire for an image that completed before hydration
+  // attached the handlers (browser-cached asset OR cached failure), so the
+  // ref covers both outcomes; without the failure branch a pre-attach 404
+  // would leave an invisible img instead of falling through to the fallback.
   const completeRef = (url: string) => (el: HTMLImageElement | null) => {
-    if (el && el.complete && el.naturalWidth > 0) markLoaded(url);
+    if (!el || !el.complete) return;
+    if (el.naturalWidth > 0) markLoaded(url);
+    else markFailed(url);
   };
 
   if (variant === "full" && usable(brand.fullUrl)) {
     return (
-      /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
-      <img
-        ref={completeRef(brand.fullUrl)}
-        src={brand.fullUrl}
-        alt={name}
-        style={{ maxHeight: imageMaxHeight ?? size, maxWidth: imageMaxWidth }}
-        className={cn(
-          "h-auto w-auto max-w-full object-contain object-left",
-          !loadedUrls[brand.fullUrl] && "opacity-0",
-          className,
-        )}
-        onLoad={() => markLoaded(brand.fullUrl!)}
-        onError={() => markFailed(brand.fullUrl!)}
-      />
+      // The wrapper reserves the box height BEFORE the image loads (h-auto
+      // imgs are 0px tall until then), so content below the logo never jumps
+      // when it finishes loading (the welcome takeover centers on it).
+      <span
+        className={cn("flex min-w-0 items-center", className)}
+        style={{ height: imageMaxHeight ?? size }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */}
+        <img
+          ref={completeRef(brand.fullUrl)}
+          src={brand.fullUrl}
+          alt={name}
+          style={{
+            maxHeight: imageMaxHeight ?? size,
+            // min(): the width budget must never beat the container (inline
+            // max-width would override the max-w-full class on narrow bars).
+            maxWidth: imageMaxWidth != null ? `min(${imageMaxWidth}px, 100%)` : undefined,
+          }}
+          className={cn(
+            "h-auto w-auto max-w-full object-contain object-left",
+            !loadedUrls[brand.fullUrl] && "opacity-0",
+          )}
+          onLoad={() => markLoaded(brand.fullUrl!)}
+          onError={() => markFailed(brand.fullUrl!)}
+        />
+      </span>
     );
   }
 

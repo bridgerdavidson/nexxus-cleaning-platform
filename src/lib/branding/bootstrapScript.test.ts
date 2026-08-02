@@ -129,6 +129,17 @@ describe("BRAND_BOOTSTRAP_SCRIPT", () => {
     expect(doc.adoptedStyleSheets[0].css).toBe(":root{--brand-600:redbodydisplaynone;}");
   });
 
+  it("rejects tampered variable NAMES (the other injection side of concatenation)", () => {
+    stubEnvironment("/admin");
+    seedCache("org-1", {
+      "--brand-a:0}body{background:url(https://evil.example/x)}": "1",
+      "--brand-600": "1 2% 3%",
+    });
+    runBootstrap();
+    expect(doc.adoptedStyleSheets).toHaveLength(1);
+    expect(doc.adoptedStyleSheets[0].css).toBe(":root{--brand-600:1 2% 3%;}");
+  });
+
   it("adopts nothing when no cached var survives the namespace filter", () => {
     stubEnvironment("/admin");
     seedCache("org-1", { "--evil": "x" });

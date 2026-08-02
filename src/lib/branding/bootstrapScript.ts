@@ -25,8 +25,10 @@ import { BRANDED_APP_PREFIXES } from "./paths";
  * - Only tenant app paths (BRANDED_APP_PREFIXES): marketing, /login, /signup,
  *   and /owner stay Nexxus even for a signed-in visitor (BrandProvider
  *   applies the same gate after hydration).
- * - Only variables namespaced "--brand-", with values stripped to a safe
- *   character set, so a tampered cache entry cannot inject CSS.
+ * - Only variable names matching ^--brand-[A-Za-z0-9-]+$ and values stripped
+ *   to a safe character set: the CSS text is built by concatenation, so BOTH
+ *   sides must be sanitized or a tampered cache entry could inject rules
+ *   (master's setProperty rejected bad names implicitly; replaceSync parses).
  * - Skips the replay when the remembered org (nexxus.currentOrg) differs from
  *   the cache's orgId, so an org switch never paints the OLD company's ramp.
  */
@@ -46,7 +48,7 @@ var remembered=null;
 try{remembered=localStorage.getItem(${JSON.stringify(REMEMBERED_ORG_KEY)});}catch(e){}
 if(remembered&&p.orgId&&remembered!==p.orgId)return;
 var css="";
-for(var k in v){if(k.indexOf("--brand-")===0){css+=k+":"+String(v[k]).replace(/[^0-9a-zA-Z%., -]/g,"")+";";}}
+for(var k in v){if(/^--brand-[A-Za-z0-9-]+$/.test(k)){css+=k+":"+String(v[k]).replace(/[^0-9a-zA-Z%., -]/g,"")+";";}}
 if(!css)return;
 var sheet=new CSSStyleSheet();
 sheet.replaceSync(":root{"+css+"}");
