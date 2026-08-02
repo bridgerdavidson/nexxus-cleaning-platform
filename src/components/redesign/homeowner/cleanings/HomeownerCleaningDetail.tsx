@@ -192,21 +192,29 @@ export function HomeownerCleaningDetail({
                   </div>
 
                   {canCancel && (
-                    <>
-                      <Button
-                        variant="outline"
-                        className="w-full text-critical-700"
-                        onClick={() => setCancelOpen(true)}
-                      >
-                        Cancel cleaning
-                      </Button>
-                      <CancelCleaningSheet
-                        open={cancelOpen}
-                        onOpenChange={setCancelOpen}
-                        appointment={appointment}
-                        onCancelled={close}
-                      />
-                    </>
+                    <Button
+                      variant="outline"
+                      className="w-full text-critical-700"
+                      onClick={() => setCancelOpen(true)}
+                    >
+                      Cancel cleaning
+                    </Button>
+                  )}
+                  {/* Gate the sheet's mount on (canCancel || cancelOpen), not canCancel alone: the
+                      cancel route flips appointment.status to 'cancelled' before the fee attempt
+                      resolves, and both the mutation's onSuccess and the appointments realtime
+                      subscription invalidate/refetch the homeowner appointments query. As soon as
+                      either lands, canCancel goes false and would otherwise unmount the sheet mid
+                      flow, destroying its feeProblem state before the homeowner ever sees the
+                      "couldn't charge the fee" screen. Keeping it mounted while cancelOpen is true
+                      lets it survive that status flip until the homeowner dismisses it themselves. */}
+                  {(canCancel || cancelOpen) && (
+                    <CancelCleaningSheet
+                      open={cancelOpen}
+                      onOpenChange={setCancelOpen}
+                      appointment={appointment}
+                      onCancelled={close}
+                    />
                   )}
                 </>
               )}
