@@ -2,14 +2,8 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { isBrandedAppPath } from "@/lib/branding/paths";
 import { useOrgBrand } from "./BrandProvider";
-
-/**
- * Tenant app route groups. ONLY these get the org's browser chrome: marketing,
- * /login, /signup stay Nexxus (spec decision 10), /owner is a platform surface,
- * and /billing/add-card gets its own treatment in PR 5.
- */
-const TENANT_PREFIXES = ["/admin", "/cleaner", "/homeowner"];
 
 /**
  * Render-null: keeps the browser chrome (tab title, favicon, theme-color) in
@@ -40,10 +34,10 @@ export function BrandDocumentIdentity() {
     }
     const defaults = defaultsRef.current;
 
-    const onTenantSurface = TENANT_PREFIXES.some(
-      (p) => pathname === p || pathname?.startsWith(p + "/"),
-    );
-    const active = onTenantSurface && orgStatus === "loaded" && !!brand.name;
+    // Same allowlist as BrandProvider's CSS variables and the pre-paint
+    // bootstrap: marketing, /login, /signup, /owner keep the Nexxus chrome,
+    // and /billing/add-card gets its own link-scoped treatment.
+    const active = isBrandedAppPath(pathname) && orgStatus === "loaded" && !!brand.name;
 
     const restoreChrome = () => {
       for (const { el, href } of defaults.icons) el.href = href;

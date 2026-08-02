@@ -12,14 +12,17 @@ import { useOrgBrand } from "./BrandProvider";
  *   variant="full":  uploaded lockup -> (icon or monogram) + org name as text
  *
  * It never renders a broken-image glyph: a failed load falls through to the
- * next state. URLs come from useOrgBrand(), which already appends the
+ * next state. Every image is also hidden until it has fully loaded, so a slow
+ * network never shows a half-painted logo (progressive PNG decode paints top
+ * to bottom). URLs come from useOrgBrand(), which already appends the
  * brand_updated_at cache-buster.
  */
 export function OrgLogo({
   variant,
   size = 32,
   boxWidth,
-  imageHeight,
+  imageMaxHeight,
+  imageMaxWidth,
   className,
 }: {
   variant: "icon" | "full";
@@ -33,12 +36,15 @@ export function OrgLogo({
    */
   boxWidth?: number;
   /**
-   * Full variant only: rendered height for an UPLOADED lockup when it should
-   * differ from the monogram+name fallback. Uploaded lockups are usually
-   * cropped tight to their glyphs, so at equal pixel height they read much
-   * larger than the padded fallback; top bars cap them smaller.
+   * Full variant only: an UPLOADED lockup renders at its natural aspect ratio
+   * inside a max-height x max-width box (defaults: `size` tall, unlimited
+   * wide). The width budget is what keeps both extremes sane: a wide
+   * tight-cropped lockup hits imageMaxWidth and stops growing, while a
+   * squarish one uses the full imageMaxHeight instead of being scaled down to
+   * a sliver by a height-only cap. The monogram+name fallback stays at `size`.
    */
-  imageHeight?: number;
+  imageMaxHeight?: number;
+  imageMaxWidth?: number;
   className?: string;
 }) {
   const brand = useOrgBrand();
@@ -48,19 +54,34 @@ export function OrgLogo({
   const name = brand.name;
 
   // Track failed URLs so an onError falls through to the next state and a new
-  // upload (different ?v=) gets a fresh chance.
+  // upload (different ?v=) gets a fresh chance; track loaded URLs so an image
+  // stays invisible until it can paint completely.
   const [failed, setFailed] = useState<Record<string, true>>({});
+  const [loadedUrls, setLoadedUrls] = useState<Record<string, true>>({});
   const usable = (url: string | null): url is string => !!url && !failed[url];
   const markFailed = (url: string) => setFailed((prev) => ({ ...prev, [url]: true }));
+  const markLoaded = (url: string) =>
+    setLoadedUrls((prev) => (prev[url] ? prev : { ...prev, [url]: true }));
+  // onLoad never fires for an image that completed before hydration attached
+  // the handler (browser-cached asset), so the ref covers that case.
+  const completeRef = (url: string) => (el: HTMLImageElement | null) => {
+    if (el && el.complete && el.naturalWidth > 0) markLoaded(url);
+  };
 
   if (variant === "full" && usable(brand.fullUrl)) {
     return (
       /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
       <img
+        ref={completeRef(brand.fullUrl)}
         src={brand.fullUrl}
         alt={name}
-        style={{ height: imageHeight ?? size }}
-        className={cn("w-auto max-w-full object-contain object-left", className)}
+        style={{ maxHeight: imageMaxHeight ?? size, maxWidth: imageMaxWidth }}
+        className={cn(
+          "h-auto w-auto max-w-full object-contain object-left",
+          !loadedUrls[brand.fullUrl] && "opacity-0",
+          className,
+        )}
+        onLoad={() => markLoaded(brand.fullUrl!)}
         onError={() => markFailed(brand.fullUrl!)}
       />
     );
@@ -72,10 +93,15 @@ export function OrgLogo({
         {usable(brand.iconUrl) ? (
           /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
           <img
+            ref={completeRef(brand.iconUrl)}
             src={brand.iconUrl}
             alt=""
             style={{ height: size, width: size }}
-            className="shrink-0 object-contain object-left"
+            className={cn(
+              "shrink-0 object-contain object-left",
+              !loadedUrls[brand.iconUrl] && "opacity-0",
+            )}
+            onLoad={() => markLoaded(brand.iconUrl!)}
             onError={() => markFailed(brand.iconUrl!)}
           />
         ) : (
@@ -98,10 +124,12 @@ export function OrgLogo({
       // of its box, matching how the monogram square self-centers.
       /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
       <img
+        ref={completeRef(brand.iconUrl)}
         src={brand.iconUrl}
         alt={name}
         style={{ height: size, width: boxWidth ?? size }}
-        className={cn("shrink-0 object-contain", className)}
+        className={cn("shrink-0 object-contain", !loadedUrls[brand.iconUrl] && "opacity-0", className)}
+        onLoad={() => markLoaded(brand.iconUrl!)}
         onError={() => markFailed(brand.iconUrl!)}
       />
     );

@@ -34,3 +34,22 @@ export const DARK_SURFACE_HEX = "#24211B";
 
 /** localStorage key holding the last resolved ramp, replayed before first paint. */
 export const BRAND_CACHE_KEY = "nexxus.brand.v1";
+
+/**
+ * localStorage key remembering the active org (owned by AuthContext, which
+ * declares the same literal). The brand cache is only replayed/consumed when
+ * its orgId matches this, so an org switch never shows the OLD company.
+ */
+export const REMEMBERED_ORG_KEY = "nexxus.currentOrg";
+
+/**
+ * window property holding the constructed stylesheet the pre-paint bootstrap
+ * adopts. The bootstrap must not touch the DOM at all: React 19 hydrates the
+ * whole document, and BOTH a pre-hydration style attribute on <html> and a
+ * foreign <style> tag in <head> trigger hydration mismatch #418 (verified
+ * empirically; suppressHydrationWarning does not cover either), whose
+ * recovery can wipe the replayed ramp mid-load. document.adoptedStyleSheets
+ * lives outside the DOM, so hydration never sees it; BrandProvider un-adopts
+ * the sheet (via this handle) whenever it restores the default palette.
+ */
+export const BRAND_BOOTSTRAP_SHEET_GLOBAL = "__nexxusBrandBootstrapSheet";

@@ -11,9 +11,11 @@ import {
   BRAND_FG_600_VAR,
   BRAND_INK_ON_LIGHT_VAR,
   BRAND_INK_ON_DARK_VAR,
+  BRAND_BOOTSTRAP_SHEET_GLOBAL,
   NEXXUS_BRAND_HEX,
 } from "@/lib/branding/tokens";
 import { writeBrandCache, clearBrandCache } from "@/lib/branding/brandCache";
+import { isBrandedAppPath } from "@/lib/branding/paths";
 
 export interface OrgBrand {
   color: string;
@@ -75,6 +77,10 @@ function toBrand(row: BrandRow | null | undefined): OrgBrand {
  * Render sites never read brand_color: they consume brand-* / primary tokens,
  * which this provider repoints. Invariants (each one is a fixed review finding):
  *
+ * - Branding is applied ONLY on tenant app paths (isBrandedAppPath): the
+ *   marketing site, /login, /signup, and /owner always render the platform
+ *   palette, even for a signed-in member of a branded org. The pre-paint
+ *   bootstrap applies the same path gate.
  * - While the session or org context is still loading, it writes NOTHING, so
  *   the pre-paint bootstrap's replayed ramp survives until the real org
  *   arrives (no default-blue flash for returning users).
@@ -92,6 +98,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     useAuth();
   const pathname = usePathname();
   const isPlatformSurface = pathname?.startsWith("/owner") ?? false;
+  const isBrandedSurface = isBrandedAppPath(pathname);
 
   // Impersonation: currentOrganization is still the admin's OWN org, so the
   // tenant's branding has to be fetched separately (allowed by the platform
@@ -132,10 +139,30 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     };
     const restoreDefaults = () => {
       for (const name of ALL_BRAND_VARS) style.removeProperty(name);
+      // The pre-paint bootstrap delivers the replayed ramp as an ADOPTED
+      // stylesheet (any DOM mutation before hydration trips React 19's
+      // mismatch recovery); restoring defaults must un-adopt it too, or the
+      // replayed ramp keeps winning over globals.css.
+      try {
+        const w = window as unknown as Record<string, CSSStyleSheet | undefined>;
+        const sheet = w[BRAND_BOOTSTRAP_SHEET_GLOBAL];
+        if (sheet && document.adoptedStyleSheets) {
+          document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
+          delete w[BRAND_BOOTSTRAP_SHEET_GLOBAL];
+        }
+      } catch {
+        /* constructed stylesheets unsupported: nothing was injected */
+      }
     };
 
-    if (isPlatformSurface) {
+    if (isPlatformSurface || !isBrandedSurface) {
+      // Platform, marketing, and auth surfaces always render Nexxus (spec
+      // decision 10), even for a signed-in member of a branded org.
       restoreDefaults();
+      // A definitively signed-out visitor must not leave a stale ramp behind
+      // for the next account on this device; a signed-in user just passing
+      // through keeps the cache so their next dashboard cold load replays.
+      if (!loading && !user) clearBrandCache();
       return;
     }
 
@@ -152,9 +179,16 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (user && (orgStatus === "idle" || orgStatus === "loading")) return;
 
-    if (currentOrganization?.brand_color && currentOrganizationId) {
-      const vars = apply(currentOrganization.brand_color);
-      writeBrandCache(currentOrganizationId, vars);
+    if (currentOrganizationId && (currentOrganization?.brand_color || brand.iconUrl)) {
+      // The cache also carries the icon URL (org with an icon but the default
+      // palette included), so the cold-load loader can show the tenant mark.
+      let vars: Record<string, string> = {};
+      if (currentOrganization?.brand_color) {
+        vars = apply(currentOrganization.brand_color);
+      } else {
+        restoreDefaults();
+      }
+      writeBrandCache(currentOrganizationId, vars, brand.iconUrl);
     } else {
       // Signed out, no org, or an org with no brand: globals.css wins exactly.
       restoreDefaults();
@@ -162,6 +196,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     }
   }, [
     isPlatformSurface,
+    isBrandedSurface,
     impersonatingOrgId,
     impersonatedRow,
     loading,
@@ -169,6 +204,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     orgStatus,
     currentOrganization?.brand_color,
     currentOrganizationId,
+    brand.iconUrl,
   ]);
 
   return <BrandContext.Provider value={brand}>{children}</BrandContext.Provider>;

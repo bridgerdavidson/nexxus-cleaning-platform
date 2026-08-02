@@ -79,11 +79,10 @@ export function OperatorRail({
                 expanded ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
               )}
             >
-              {/* Deliberately no imageHeight cap: the expanded rail is the
-                  flagship brand surface with its own 210px column, unlike the
-                  text-scale top bars, and its 32px uploaded lockup is an
-                  accepted look. Do not "fix" this to match the top bars. */}
-              <OrgLogo variant="full" size={32} />
+              {/* The expanded rail is the flagship brand surface: uploaded
+                  lockups get a taller box than the text-scale top bars
+                  (40px) and most of the 210px column as width budget. */}
+              <OrgLogo variant="full" size={32} imageMaxHeight={40} imageMaxWidth={172} />
             </div>
           </>
         )}

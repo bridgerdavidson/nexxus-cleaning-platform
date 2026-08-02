@@ -117,9 +117,9 @@ export function OperatorMobileNav({
           <SheetContent side="left" className="w-[80%] max-w-[320px] p-0">
             <SheetHeader className="flex h-16 flex-row items-center px-4">
               <SheetTitle className="sr-only">{orgName}</SheetTitle>
-              {/* Same uploaded-lockup cap as the top bars (tight-cropped marks
-                  read far larger than the fallback at equal pixel height). */}
-              <OrgLogo variant="full" size={28} imageHeight={24} />
+              {/* Same uploaded-lockup box as the top bars: height AND width
+                  budget, so wide and squarish marks both render sanely. */}
+              <OrgLogo variant="full" size={28} imageMaxHeight={32} imageMaxWidth={190} />
             </SheetHeader>
 
             <div className="flex flex-col gap-1 px-3 pb-4">
