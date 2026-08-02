@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { readBrandCache, writeBrandCache, clearBrandCache } from "./brandCache";
+import { readBrandCache, writeBrandCache, clearBrandCache, readCachedIconUrl } from "./brandCache";
 
 // Minimal in-memory localStorage stand-in (unit tests run in the `node` env,
 // which has no window). Same pattern as formDraft.test.ts.
@@ -35,7 +35,22 @@ describe("brandCache", () => {
 
   it("round-trips vars", () => {
     writeBrandCache("org-1", { "--brand-600": "221 99% 50%" });
-    expect(readBrandCache()).toEqual({ orgId: "org-1", vars: { "--brand-600": "221 99% 50%" } });
+    expect(readBrandCache()).toEqual({
+      orgId: "org-1",
+      vars: { "--brand-600": "221 99% 50%" },
+      iconUrl: null,
+    });
+  });
+
+  it("round-trips the icon url", () => {
+    writeBrandCache("org-1", {}, "https://x/icon.png?v=1");
+    expect(readBrandCache()?.iconUrl).toBe("https://x/icon.png?v=1");
+  });
+
+  it("reads a pre-iconUrl cache entry (legacy shape)", () => {
+    storage.setItem("nexxus.brand.v1", JSON.stringify({ orgId: "org-1", vars: { "--brand-600": "x" } }));
+    expect(readBrandCache()?.vars).toEqual({ "--brand-600": "x" });
+    expect(readCachedIconUrl()).toBeNull();
   });
 
   it("returns null for corrupt json", () => {
@@ -52,6 +67,22 @@ describe("brandCache", () => {
     writeBrandCache("org-1", { "--brand-600": "0 0% 0%" });
     clearBrandCache();
     expect(readBrandCache()).toBeNull();
+  });
+
+  it("readCachedIconUrl honors the remembered-org guard", () => {
+    writeBrandCache("org-1", {}, "https://x/icon.png");
+    // No remembered org: trust the cache (same rule as the bootstrap replay).
+    expect(readCachedIconUrl()).toBe("https://x/icon.png");
+    storage.setItem("nexxus.currentOrg", "org-1");
+    expect(readCachedIconUrl()).toBe("https://x/icon.png");
+    // Org switch: the stale entry must not surface the OLD company's mark.
+    storage.setItem("nexxus.currentOrg", "org-2");
+    expect(readCachedIconUrl()).toBeNull();
+  });
+
+  it("readCachedIconUrl is null when no icon was cached", () => {
+    writeBrandCache("org-1", { "--brand-600": "x" });
+    expect(readCachedIconUrl()).toBeNull();
   });
 
   it("never throws when storage itself throws", () => {

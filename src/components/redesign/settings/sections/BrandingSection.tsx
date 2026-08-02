@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { deriveBrandRamp, rampToCssVars } from "@/lib/branding/palette";
 import { NEXXUS_BRAND_HEX } from "@/lib/branding/tokens";
+import { trimLogoWhitespace } from "@/lib/branding/trimLogo";
 import { updateOrgBranding } from "../settings-api";
 import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
@@ -262,18 +263,25 @@ function LogoField({
     setError(null);
     setUploading(true);
     try {
-      const compressed = await imageCompression(file, {
+      // Trim the padding border first: logo exports routinely waste half the
+      // canvas on whitespace, and every render surface sizes by bounding box,
+      // so padding directly shrinks the visible mark on every screen.
+      const trimmed = await trimLogoWhitespace(file);
+      const compressed = await imageCompression(trimmed, {
         maxSizeMB: 1,
         maxWidthOrHeight: 1024,
         useWebWorker: true,
       });
-      const ext = file.type === "image/webp" ? "webp" : "png";
+      // Type from the PROCESSED blob, not the input: Safari cannot encode
+      // WebP, so canvas re-encodes fall back to PNG bytes.
+      const outType = compressed.type === "image/webp" ? "image/webp" : "image/png";
+      const ext = outType === "image/webp" ? "webp" : "png";
       // uuidv4 helper, not crypto.randomUUID: the latter is undefined outside
       // secure contexts (e.g. phone-on-LAN testing against a dev box).
       const path = `${orgId}/${slot}-${uuidv4()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("org-branding")
-        .upload(path, compressed, { contentType: file.type });
+        .upload(path, compressed, { contentType: outType });
       if (uploadError) throw new Error(uploadError.message);
       const { data } = supabase.storage.from("org-branding").getPublicUrl(path);
       discardStagedObject(url, savedUrl);

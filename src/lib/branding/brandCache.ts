@@ -1,8 +1,11 @@
-import { BRAND_CACHE_KEY } from "./tokens";
+import { BRAND_CACHE_KEY, REMEMBERED_ORG_KEY } from "./tokens";
 
 interface CachedBrand {
   orgId: string;
   vars: Record<string, string>;
+  /** Cache-busted icon URL, so the cold-load loader can show the tenant's mark
+   *  before the org row arrives. Absent in pre-existing cache entries. */
+  iconUrl?: string | null;
 }
 
 /** Never throws: private-mode and quota failures must not break the app. */
@@ -18,10 +21,34 @@ export function readBrandCache(): CachedBrand | null {
   }
 }
 
-export function writeBrandCache(orgId: string, vars: Record<string, string>): void {
+/**
+ * The cached icon URL, but ONLY when the cache belongs to the remembered org
+ * (same guard the pre-paint bootstrap applies to the ramp): after an org
+ * switch the stale entry must not flash the OLD company's mark.
+ */
+export function readCachedIconUrl(): string | null {
+  const cached = readBrandCache();
+  if (!cached?.iconUrl) return null;
+  try {
+    const remembered = window.localStorage.getItem(REMEMBERED_ORG_KEY);
+    if (remembered && cached.orgId !== remembered) return null;
+  } catch {
+    return null;
+  }
+  return cached.iconUrl;
+}
+
+export function writeBrandCache(
+  orgId: string,
+  vars: Record<string, string>,
+  iconUrl?: string | null,
+): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(BRAND_CACHE_KEY, JSON.stringify({ orgId, vars }));
+    window.localStorage.setItem(
+      BRAND_CACHE_KEY,
+      JSON.stringify({ orgId, vars, iconUrl: iconUrl ?? null }),
+    );
   } catch {
     /* quota or private mode: the app still themes, it just flashes next load */
   }

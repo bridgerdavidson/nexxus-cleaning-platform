@@ -60,8 +60,10 @@ export default function RootLayout({
             paints, so returning users never flash the default Nexxus blue.
             Body-first-child rather than a hand-written <head>: the App Router
             owns <head> via the metadata API, and a synchronous script here
-            still runs pre-paint. suppressHydrationWarning on <html> covers the
-            mutated inline style. */}
+            still runs pre-paint. It adopts a constructed stylesheet rather
+            than mutating the DOM: React 19 hydration flags any pre-hydration
+            DOM change (html style attr, foreign style tag in head) as a
+            mismatch (#418) and can wipe it during recovery. */}
         <script dangerouslySetInnerHTML={{ __html: BRAND_BOOTSTRAP_SCRIPT }} />
         <LayoutWrapper>
           {children}
