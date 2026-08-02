@@ -173,10 +173,12 @@ export async function chargeCancellationFee(
   if (existing && existing.status === 'failed') {
     reauthAttempt += 1;
     // Atomic claim on the shared attempt counter: only the caller who still holds the value it
-    // READ may advance it. A lost claim means a concurrent retry is mid-flight under a fresh
-    // idempotency key; charging here too could create a second PaymentIntent (T2-7 hardening).
-    // appointments.reauth_count is NOT NULL DEFAULT 0 (migration 065), so it can never genuinely
-    // be null in the row; a caller-side null/undefined always means the true starting value is 0.
+    // READ may advance it. This NARROWS the concurrent double-charge window (kills same-token and
+    // stale-token replays) but does not CLOSE it: a reader arriving after this bump but before the
+    // outcome write below can still claim the fresh token and charge a second PI. Follow-up: an
+    // atomic claim on the payments row itself (payments-row lease, MASTER-TODO 3.9).
+    // appointments.reauth_count is NOT NULL DEFAULT 0 (migration 065), so a caller-side
+    // null/undefined always means the true starting value is 0.
     const { data: claimed } = await supabase
       .from('appointments')
       .update({ reauth_count: reauthAttempt })
