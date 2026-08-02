@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDetailParam } from '@/hooks/useDetailParam';
 import { useHomeownerPayments } from '@/hooks/useHomeownerData';
 import { useRetryFeeCharge } from '@/hooks/useRetryFeeCharge';
@@ -20,6 +20,14 @@ export function PaymentReceiptHost() {
   const [payError, setPayError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [swapping, setSwapping] = useState(false);
+
+  // The host stays mounted across receipt switches (search-param changes never unmount it; only
+  // the child PaymentReceipt is keyed by paramId), so a decline message or open card picker from
+  // the previously-viewed receipt would otherwise leak into the next one. Reset on every switch.
+  useEffect(() => {
+    setPayError(null);
+    setPickerOpen(false);
+  }, [paramId]);
 
   if (!paramId) return null;
   const payment = (payments as PaymentLike[]).find((p) => p.id === paramId) ?? null;
