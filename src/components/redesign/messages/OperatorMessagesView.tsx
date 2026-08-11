@@ -71,7 +71,7 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
         // nav (no floating card). On desktop it is an anchored, flattened two-pane.
         'flex flex-col bg-card',
         '-mx-4 -mt-5 -mb-28 h-[calc(100dvh-4rem-60px-env(safe-area-inset-bottom))]',
-        'lg:mx-0 lg:mt-0 lg:mb-0 lg:h-[calc(100dvh-9rem)] lg:max-w-[1700px] lg:bg-transparent',
+        'lg:mx-0 lg:mt-0 lg:mb-0 lg:h-[calc(100dvh-9rem)] lg:bg-transparent',
       )}
     >
       {/* Title (no conversation count) */}

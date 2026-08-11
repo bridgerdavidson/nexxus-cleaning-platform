@@ -54,7 +54,7 @@ export function OperatorTopBar({
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border bg-card">
       {/* inner content capped to the same width as the page content (1700px) so edges align on wide screens */}
-      <div className="flex h-full max-w-[1700px] items-center gap-3 px-4 lg:px-6">
+      <div className="mx-auto flex h-full w-full max-w-[1700px] items-center gap-3 px-4 lg:px-6">
       {/* search — opens the command palette (full trigger on sm+, icon on mobile) */}
       <button
         type="button"
