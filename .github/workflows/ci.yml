@@ -6,10 +6,15 @@ on:
   # trigger BOTH a push-run and a pull_request-run of this same workflow (the
   # duplicate "CI (push)" + "CI (pull_request)" checks), doubling runner usage
   # and flake exposure. Pushes to the long-lived branches still run CI.
+  #
+  # pull_request has NO base-branch filter: stacked PRs (GitHub Stacks) target
+  # another PR's branch rather than master, and the stack's atomic merge still
+  # requires every layer to carry the four required checks. Filtering to
+  # base=master starved the upper layers of CI. There is still exactly one run
+  # per PR (push stays restricted to the long-lived branches above).
   push:
     branches: [master, dev]
   pull_request:
-    branches: [master]
 
 # Cancel superseded in-progress runs for the same branch (e.g. rapid pushes to an
 # open PR) so only the latest commit's CI consumes a runner.
