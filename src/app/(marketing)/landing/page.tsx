@@ -5,6 +5,7 @@ import { LiveTrackingSection } from '@/components/marketing/LiveTrackingSection'
 import { CapabilityExplorer } from '@/components/marketing/CapabilityExplorer'
 import { PayModelsSection } from '@/components/marketing/PayModelsSection'
 import { FlexibilitySection } from '@/components/marketing/FlexibilitySection'
+import { BrandingSection } from '@/components/marketing/BrandingSection'
 import { PricingSection } from '@/components/marketing/PricingSection'
 import { FaqSection } from '@/components/marketing/FaqSection'
 import { WaitlistSection } from '@/components/marketing/WaitlistSection'
@@ -20,6 +21,7 @@ export default function LandingPage() {
         <Reveal><LiveTrackingSection /></Reveal>
         <PayModelsSection />
         <Reveal><FlexibilitySection /></Reveal>
+        <Reveal><BrandingSection /></Reveal>
         <PricingSection />
         <Reveal><FaqSection /></Reveal>
         <Reveal><WaitlistSection /></Reveal>
