@@ -90,6 +90,11 @@ export function MessageThreadTakeoverView(props: MessageThreadTakeoverViewProps)
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
+      {/* Desktop cap (D16): the takeover fills the viewport, but its content
+          rides the shells' centered phone-column convention at lg:, so header,
+          transcript, and composer share one axis instead of stretching edge to
+          edge on a monitor. */}
+      <div className="mx-auto flex h-full min-h-0 w-full flex-col lg:max-w-lg">
       {/* Trimmed header: back (takeover only) + avatar + title */}
       <ThreadHeader
         onBack={props.onBack}
@@ -136,6 +141,7 @@ export function MessageThreadTakeoverView(props: MessageThreadTakeoverViewProps)
       ) : (
         <MessageComposer {...props.composer} />
       )}
+      </div>
     </div>
   );
 }

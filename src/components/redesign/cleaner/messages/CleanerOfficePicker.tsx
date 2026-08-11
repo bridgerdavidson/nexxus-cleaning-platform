@@ -1,26 +1,14 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Loader2, Users } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PersonPicker, PersonPickerRow } from "@/components/redesign/messages/PersonPicker";
+import { initialsFromFullName } from "@/components/redesign/messages/messages-format";
+import { ROLE_LABEL } from "@/components/redesign/messages/messages-pills";
 import type { OfficeContact } from "./office-contacts";
 
-const ROLE_HINT: Record<string, string> = { admin: "Admin", manager: "Manager" };
-
-function initials(name: string): string {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase() || "O"
-  );
-}
-
 /** "New message" compose picker: lists the office (admins/managers) so the cleaner
- *  can start a thread with a SPECIFIC person. Phone-first bottom sheet. */
+ *  can start a thread with a SPECIFIC person. */
 export function CleanerOfficePicker({
   open,
   onOpenChange,
@@ -36,41 +24,25 @@ export function CleanerOfficePicker({
   loading?: boolean;
 }) {
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Message your office</DrawerTitle>
-        </DrawerHeader>
-        <div className="max-h-[60dvh] overflow-y-auto px-2 pb-[max(env(safe-area-inset-bottom),1rem)]">
-          {loading && contacts.length === 0 ? (
-            <div className="grid place-items-center py-8">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Loading office contacts" />
-            </div>
-          ) : contacts.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">No office contacts yet.</p>
-          ) : (
-            contacts.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => onPick(c)}
-                className="flex w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors active:bg-accent hover:bg-accent/60"
-              >
-                <Avatar className="size-10 shrink-0">
-                  {c.avatarUrl ? <AvatarImage src={c.avatarUrl} alt="" /> : null}
-                  <AvatarFallback>{initials(c.name)}</AvatarFallback>
-                </Avatar>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-foreground">{c.name}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {c.orgRole === "owner" ? "Owner" : ROLE_HINT[c.role] ?? "Office"}
-                  </span>
-                </span>
-              </button>
-            ))
-          )}
+    <PersonPicker open={open} onOpenChange={onOpenChange} title="Message your office">
+      {loading && contacts.length === 0 ? (
+        <div className="grid place-items-center py-8">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Loading office contacts" />
         </div>
-      </DrawerContent>
-    </Drawer>
+      ) : contacts.length === 0 ? (
+        <EmptyState compact icon={<Users />} title="No office contacts yet" />
+      ) : (
+        contacts.map((c) => (
+          <PersonPickerRow
+            key={c.id}
+            avatarUrl={c.avatarUrl}
+            initials={initialsFromFullName(c.name)}
+            title={c.name}
+            subtitle={c.orgRole === "owner" ? "Owner" : ROLE_LABEL[c.role] ?? "Office"}
+            onSelect={() => onPick(c)}
+          />
+        ))
+      )}
+    </PersonPicker>
   );
 }

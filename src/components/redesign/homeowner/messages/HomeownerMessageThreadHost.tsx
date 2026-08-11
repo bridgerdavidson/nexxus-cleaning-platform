@@ -134,11 +134,13 @@ function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null;
           ) : null
         ) : (
           <div className="flex h-full min-h-0 flex-col bg-card">
-            {/* Same chrome as the loaded thread (D5/D9): header with a title
-                skeleton, bubbles skeleton anchored to the composer edge. */}
-            <ThreadHeader onBack={closeTakeover} />
-            <div className="flex min-h-0 flex-1 flex-col justify-end px-5 py-4">
-              <ThreadSkeleton />
+            {/* Same chrome as the loaded thread (D5/D9/D16): header with a title
+                skeleton, bubbles skeleton, centered column on desktop. */}
+            <div className="mx-auto flex h-full min-h-0 w-full flex-col lg:max-w-lg">
+              <ThreadHeader onBack={closeTakeover} />
+              <div className="flex min-h-0 flex-1 flex-col justify-end px-5 py-4">
+                <ThreadSkeleton />
+              </div>
             </div>
           </div>
         )
