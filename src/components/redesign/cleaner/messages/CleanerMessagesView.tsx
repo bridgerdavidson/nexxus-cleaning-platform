@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { BOOKING_STATUS_VARIANT } from '@/components/redesign/messages/messages-pills';
 import { CleanerConversationRow } from './CleanerConversationRow';
 import type { CleanerInboxModel, CleanerJobRowVM } from './cleaner-inbox-types';
 
@@ -23,15 +24,14 @@ export interface CleanerMessagesViewProps {
   onOpenJob: (appointmentId: string) => void;
 }
 
-const STATUS_LABEL: Record<
-  CleanerJobRowVM['status'],
-  { label: string; variant: 'default' | 'secondary' | 'positive' | 'caution' | 'critical' }
-> = {
-  pending: { label: 'Requested', variant: 'secondary' },
-  confirmed: { label: 'Scheduled', variant: 'default' },
-  in_progress: { label: 'In progress', variant: 'positive' },
-  completed: { label: 'Completed', variant: 'secondary' },
-  cancelled: { label: 'Cancelled', variant: 'critical' },
+// Role-voiced copy (audit section 5 decision); variants come from the one
+// shared status map so a cleaner sees the same status colors as everyone else.
+const STATUS_LABEL: Record<CleanerJobRowVM['status'], string> = {
+  pending: 'Requested',
+  confirmed: 'Scheduled',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
 };
 
 function initialsFromName(name: string): string {
@@ -55,7 +55,6 @@ function ListShell({ children }: { children: React.ReactNode }) {
 }
 
 function JobRow({ row, muted, onOpen }: { row: CleanerJobRowVM; muted?: boolean; onOpen: () => void }) {
-  const status = STATUS_LABEL[row.status];
   return (
     <button
       type="button"
@@ -76,8 +75,8 @@ function JobRow({ row, muted, onOpen }: { row: CleanerJobRowVM; muted?: boolean;
               Closed
             </Badge>
           ) : (
-            <Badge variant={status.variant} className="shrink-0">
-              {status.label}
+            <Badge variant={BOOKING_STATUS_VARIANT[row.status]} className="shrink-0">
+              {STATUS_LABEL[row.status]}
             </Badge>
           )}
           <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">

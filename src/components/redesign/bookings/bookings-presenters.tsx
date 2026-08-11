@@ -26,7 +26,7 @@ type BadgeConfig = {
 // Color hierarchy: amber = needs you, red = problem, gray = settled (confirmed),
 // blue = live (in progress), green = done. Confirmed is intentionally quiet so it
 // does not compete with the active blue state.
-const BADGE: Record<BookingBadgeKey, BadgeConfig> = {
+export const BADGE: Record<BookingBadgeKey, BadgeConfig> = {
   unassigned: { label: "Unassigned", variant: "caution", Icon: UserPlus },
   awaiting_cleaner: { label: "Awaiting cleaner", variant: "caution", Icon: Hourglass },
   counter_proposed: { label: "Counter-proposed", variant: "caution", Icon: Repeat },

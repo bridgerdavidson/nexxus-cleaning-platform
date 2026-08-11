@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { ArrowLeft, Info, MoreVertical, MessageSquare, Loader2, Trash2 } from 'lucide-react'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Info, MoreVertical, MessageSquare, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import {
@@ -12,18 +11,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { MessageBubble } from './MessageBubble'
 import { MessageComposer } from './MessageComposer'
+import { ThreadHeader } from './ThreadHeader'
+import { LoadMoreSpinner, ThreadEmptyState, ThreadSkeleton } from './ThreadStates'
+import { ROLE_LABEL } from './messages-pills'
 import type { MessageVM } from './messages-types'
-
-const ROLE_LABEL: Record<string, string> = {
-  homeowner: 'Homeowner',
-  cleaner: 'Cleaner',
-  manager: 'Manager',
-  admin: 'Admin',
-}
 
 export function MessageThreadPanel(props: {
   hasSelection: boolean
@@ -98,7 +92,7 @@ export function MessageThreadPanel(props: {
     return (
       <div className="flex h-full items-center justify-center">
         <EmptyState
-          icon={<MessageSquare className="size-5" />}
+          icon={<MessageSquare />}
           title="Select a conversation"
           description="Choose a conversation on the left to read and reply."
         />
@@ -109,56 +103,44 @@ export function MessageThreadPanel(props: {
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       {/* Thread header (white; the warm message list below separates the white bubbles) */}
-      <div className="flex items-center gap-3 border-b border-border/60 bg-card px-3 py-2.5">
-        {props.onBack && (
-          <IconButton
-            aria-label="Back to conversations"
-            className="h-9 w-9 lg:hidden"
-            onClick={props.onBack}
-          >
-            <ArrowLeft className="size-5" />
-          </IconButton>
-        )}
-        <Avatar className="size-9 shrink-0">
-          {props.avatarUrl ? <AvatarImage src={props.avatarUrl} alt="" /> : null}
-          <AvatarFallback>{props.initials}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold">{props.title}</div>
-          {props.role && (
-            <div className="text-xs text-muted-foreground">
-              {ROLE_LABEL[props.role] ?? props.role}
-            </div>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={props.onToggleDetails}
-          aria-pressed={props.detailsOpen}
-          className={`gap-1.5 ${
-            props.detailsOpen
-              ? 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'
-              : ''
-          }`}
-        >
-          <Info className="size-4" />
-          Details
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton aria-label="Conversation actions" className="h-9 w-9">
-              <MoreVertical className="size-4" />
-            </IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem destructive onSelect={props.onRequestDelete}>
-              <Trash2 className="size-4" />
-              Delete conversation
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <ThreadHeader
+        onBack={props.onBack}
+        backHiddenOnDesktop
+        backAriaLabel="Back to conversations"
+        avatar={{ url: props.avatarUrl, initials: props.initials }}
+        title={props.title}
+        subtitle={props.role ? ROLE_LABEL[props.role] ?? props.role : undefined}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={props.onToggleDetails}
+              aria-pressed={props.detailsOpen}
+              className={cn(
+                'gap-1.5',
+                props.detailsOpen && 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/20',
+              )}
+            >
+              <Info className="size-4" />
+              Details
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton aria-label="Conversation actions" className="h-9 w-9">
+                  <MoreVertical className="size-4" />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem destructive onSelect={props.onRequestDelete}>
+                  <Trash2 className="size-4" />
+                  Delete conversation
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
       {/* Message scroll area */}
       <div
@@ -166,30 +148,15 @@ export function MessageThreadPanel(props: {
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-5 py-4"
       >
         <div ref={sentinelRef} aria-hidden className="h-px" />
-        {props.isLoadingMore && (
-          <div className="flex justify-center py-1">
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          </div>
-        )}
+        {props.isLoadingMore && <LoadMoreSpinner />}
         {/* Bottom-anchor: this spacer grows to push a short thread down to the
             composer (like iMessage/WhatsApp) and collapses to 0 once messages
             overflow, so normal scrolling is unaffected. */}
         <div aria-hidden className="flex-1" />
         {props.loading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                className={cn('h-10 rounded-card', i % 2 ? 'w-2/3 self-end' : 'w-1/2 self-start')}
-              />
-            ))}
-          </div>
+          <ThreadSkeleton />
         ) : props.messages.length === 0 ? (
-          <EmptyState
-            icon={<MessageSquare className="size-5" />}
-            title="No messages yet"
-            description="Say hello to start the conversation."
-          />
+          <ThreadEmptyState title="No messages yet" body="Say hello to start the conversation." />
         ) : (
           props.messages.map((m) => (
             <div key={m.id} className="flex flex-col gap-3">
