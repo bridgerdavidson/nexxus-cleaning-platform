@@ -176,7 +176,7 @@ export async function chargeCancellationFee(
     // READ may advance it. This NARROWS the concurrent double-charge window (kills same-token and
     // stale-token replays) but does not CLOSE it: a reader arriving after this bump but before the
     // outcome write below can still claim the fresh token and charge a second PI. Follow-up: an
-    // atomic claim on the payments row itself (payments-row lease, MASTER-TODO 3.9).
+    // atomic claim on the payments row itself (payments-row lease follow-up, MASTER-TODO block 3).
     // appointments.reauth_count is NOT NULL DEFAULT 0 (migration 065), so a caller-side
     // null/undefined always means the true starting value is 0.
     const { data: claimed } = await supabase

@@ -124,7 +124,12 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
       org-scope the migration-075 `payouts_select` RLS join (latent leak flagged in the #205
       review, 104/106 pattern); wire-or-delete the 3 dead analytics charts +
       `useAdminActionItems.ts` (verified dead 2026-07-22).
-- [ ] **3.9 Fee-retry payments-row lease (follow-up hardening).** The reauth-counter claim only narrows the concurrent double-charge window on fee retries (same-token/stale-token replays); a reader arriving after the bump but before the outcome write can still create a second PI. Real fix: atomic failed-to-retrying claim on the payments row + a stuck-row recovery path (likely a status CHECK migration). Flagged in the fee-retry final review 2026-08-01.
+- [ ] **Follow-up hardening (from 3.1): fee-retry payments-row lease.** The reauth-counter claim
+      only narrows the concurrent double-charge window on fee retries (same-token/stale-token
+      replays); a reader arriving after the bump but before the outcome write can still create a
+      second PI. Real fix: atomic failed-to-retrying claim on the payments row + a stuck-row
+      recovery path (likely a status CHECK migration). Flagged in the fee-retry final review
+      2026-08-01. (Numbered 3.9 in an earlier draft; 3.9 now belongs to messaging below.)
 
 Opportunistic alongside any of the above: the backlog L-items (L-2 sub-minimum charge,
 L-4 refunds-embed pin, L-5 webhook reclaim re-stamp, L-9 orphaned Connect routes).

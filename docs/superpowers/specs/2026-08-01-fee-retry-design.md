@@ -128,7 +128,7 @@ Fix: make the bump a conditional claim.
 This NARROWS the double-charge window (it kills same-token and stale-token replays) but does not
 CLOSE it: a reader who arrives after the first caller's bump but before that caller writes its
 outcome row still reads the fresh counter value, wins its own claim, and charges a second PI. The
-real fix is an atomic claim on the payments row itself (payments-row lease, MASTER-TODO 3.9);
+real fix is an atomic claim on the payments row itself (payments-row lease follow-up, MASTER-TODO block 3);
 tracked as follow-up hardening, not done here.
 
 This also hardens the pre-existing concurrent double-cancel race for free. The cancel route needs
@@ -220,7 +220,7 @@ harmless and stays.
   key and Stripe dedupes to one PI. The claim only narrows the window, not closes it: a reader
   landing after the winner's bump but before its outcome write still claims a fresh token and can
   charge a second PI (residual read-after-bump-before-outcome-write interleave; follow-up is a
-  payments-row lease, MASTER-TODO 3.9).
+  payments-row lease follow-up, MASTER-TODO block 3).
 - **Fee collected in the meantime:** 200 already-collected no-op (route status gate), or the
   helper's paid-row short-circuit if it lands mid-flight.
 - **Card removed since cancel:** helper returns `uncollectable` → 409 with add-card guidance.
