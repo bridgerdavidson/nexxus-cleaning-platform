@@ -5,11 +5,16 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 /**
  * PATCH /api/organizations/:orgId/profile
  *
- * Owner-only org-profile editor: name, logo_url, billing_email, default_payout_model.
+ * Owner-only org billing/payout fields: billing_email, default_payout_model.
  * default_payout_model is validated server-side so a stale or hand-rolled
  * client can't write a model the rest of the system can't honor.
  *
- * Body (all optional, at least one required): { name, logo_url, billing_email, default_payout_model }.
+ * The company name moved to the branding route (it is display identity, edited
+ * by owner OR admin next to the logos it falls back to). logo_url was removed
+ * outright: the legacy paste-a-URL column was superseded by the branding
+ * uploads and was rendered nowhere.
+ *
+ * Body (all optional, at least one required): { billing_email, default_payout_model }.
  */
 const PAYOUT_MODELS = ['percentage', 'flat', 'request', 'hourly_external'] as const;
 type PayoutModel = (typeof PAYOUT_MODELS)[number];
@@ -30,39 +35,11 @@ export async function PATCH(
     if (!auth.ok) return auth.response;
 
     const body = (await request.json().catch(() => ({}))) as {
-      name?: string;
-      logo_url?: string | null;
       billing_email?: string | null;
       default_payout_model?: string;
     };
 
     const update: Record<string, unknown> = {};
-
-    if (body.name !== undefined) {
-      const name = String(body.name).trim();
-      if (name.length < 1 || name.length > 200) {
-        return NextResponse.json(
-          { error: 'name must be 1–200 characters' },
-          { status: 400 },
-        );
-      }
-      update.name = name;
-    }
-
-    if (body.logo_url !== undefined) {
-      if (body.logo_url === null || body.logo_url === '') {
-        update.logo_url = null;
-      } else {
-        const url = String(body.logo_url).trim();
-        if (!/^https?:\/\//i.test(url) || url.length > 1000) {
-          return NextResponse.json(
-            { error: 'logo_url must be an http(s) URL up to 1000 chars' },
-            { status: 400 },
-          );
-        }
-        update.logo_url = url;
-      }
-    }
 
     if (body.billing_email !== undefined) {
       if (body.billing_email === null || body.billing_email === '') {

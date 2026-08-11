@@ -15,12 +15,12 @@ const ids = (role?: string, orgRole?: string, p?: ManagerPermissions) =>
   deriveSettingsSections(role, orgRole, p).map((s) => s.id);
 
 describe("deriveSettingsSections", () => {
-  it("owner sees all nine sections", () => {
+  it("owner sees all eight sections", () => {
     expect(ids("admin", "owner")).toEqual([
-      "profile", "appearance", "organization", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
+      "profile", "appearance", "branding", "payments", "cancellation", "payout", "cleaner-experience", "business-hours",
     ]);
   });
-  it("admin sees owner+admin sections but not owner-only (organization, payout)", () => {
+  it("admin sees owner+admin sections but not owner-only (payout)", () => {
     expect(ids("admin", "admin")).toEqual([
       "profile", "appearance", "branding", "payments", "cancellation", "cleaner-experience", "business-hours",
     ]);

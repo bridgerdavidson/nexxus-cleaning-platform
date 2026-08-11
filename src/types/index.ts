@@ -88,7 +88,6 @@ export interface UserProfile {
 export interface Organization {
   id: string;
   name: string;
-  logo_url?: string | null;
   /** One hex the tenant picks; null falls back to the Nexxus brand. See docs/white-label-branding.md. */
   brand_color?: string | null;
   /** Square-ish mark: collapsed rail, mobile nav, favicon, email. Null renders an initials monogram. */
