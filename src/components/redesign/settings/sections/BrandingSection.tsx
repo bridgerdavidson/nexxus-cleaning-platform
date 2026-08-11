@@ -16,8 +16,9 @@ import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
 import { ErrorState } from "@/components/ui/error-state";
 import { SettingsSaveBar } from "../SettingsSaveBar";
 
-/** Empty string means "not set": the app shows the Nexxus default. */
+/** For color/logos an empty string means "not set": the app shows the Nexxus default. */
 interface BrandingForm {
+  name: string;
   color: string;
   iconUrl: string;
   fullUrl: string;
@@ -29,8 +30,7 @@ const ACCEPTED_TYPES = ["image/png", "image/webp"];
 type LogoSlot = "icon" | "full";
 
 export function BrandingSection() {
-  const { currentOrganizationId, currentOrganization, refreshOrganization } = useAuth();
-  const orgName = currentOrganization?.name ?? "Your company";
+  const { currentOrganizationId, refreshOrganization } = useAuth();
 
   // The PERSISTED logo urls, so upload cleanup can tell a staged (unsaved)
   // object apart from one the org row actually references.
@@ -41,11 +41,12 @@ export function BrandingSection() {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
       .from("organizations")
-      .select("brand_color, logo_icon_url, logo_full_url")
+      .select("name, brand_color, logo_icon_url, logo_full_url")
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     const form = {
+      name: (data?.name as string | null) ?? "",
       color: (data?.brand_color as string | null) ?? "",
       iconUrl: (data?.logo_icon_url as string | null) ?? "",
       fullUrl: (data?.logo_full_url as string | null) ?? "",
@@ -57,7 +58,9 @@ export function BrandingSection() {
   const save = useCallback(
     async (v: BrandingForm) => {
       if (!currentOrganizationId) throw new Error("No organization");
+      if (!v.name.trim()) throw new Error("Enter a company name.");
       await updateOrgBranding(currentOrganizationId, {
+        name: v.name.trim(),
         brand_color: v.color || null,
         logo_icon_url: v.iconUrl || null,
         logo_full_url: v.fullUrl || null,
@@ -80,13 +83,28 @@ export function BrandingSection() {
     return <ErrorState title="Couldn't load this section" onRetry={retry} />;
 
   const effectiveColor = HEX_RE.test(value.color) ? value.color : NEXXUS_BRAND_HEX;
+  const previewName = value.name.trim() || "Your company";
 
   return (
     <div>
       <SectionHeader
         title="Branding"
-        lead="Your color and logo, everywhere your team and customers see the app."
+        lead="Your name, color, and logo, everywhere your team and customers see the app."
       />
+
+      <SettingRow
+        label="Company name"
+        htmlFor="brand-org-name"
+        helper="Shown across your app and in emails to customers."
+      >
+        <Input
+          id="brand-org-name"
+          className="sm:w-72"
+          maxLength={200}
+          value={value.name}
+          onChange={(e) => setValue((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+        />
+      </SettingRow>
 
       <SettingRow
         label="Brand color"
@@ -132,7 +150,7 @@ export function BrandingSection() {
         label="Preview"
         helper="How your brand looks in the app. Updates as you edit; nothing changes until you save."
       >
-        <BrandPreview color={effectiveColor} iconUrl={value.iconUrl} orgName={orgName} />
+        <BrandPreview color={effectiveColor} iconUrl={value.iconUrl} orgName={previewName} />
       </SettingRow>
 
       <SettingRow
@@ -143,7 +161,7 @@ export function BrandingSection() {
           type="button"
           variant="outline"
           disabled={!value.color && !value.iconUrl && !value.fullUrl}
-          onClick={() => setValue({ color: "", iconUrl: "", fullUrl: "" })}
+          onClick={() => setValue((prev) => (prev ? { ...prev, color: "", iconUrl: "", fullUrl: "" } : prev))}
         >
           Reset to default
         </Button>

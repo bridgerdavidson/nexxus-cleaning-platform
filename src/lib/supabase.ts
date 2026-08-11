@@ -58,21 +58,18 @@ export type Database = {
         Row: {
           id: string
           name: string
-          logo_url: string | null
           created_at: string
           created_by: string | null
         }
         Insert: {
           id?: string
           name: string
-          logo_url?: string | null
           created_at?: string
           created_by?: string | null
         }
         Update: {
           id?: string
           name?: string
-          logo_url?: string | null
           created_at?: string
           created_by?: string | null
         }

@@ -149,4 +149,53 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
     const res = await patch({}, owner.accessToken);
     expect(res.status).toBe(400);
   });
+
+  describe('name (moved here from the owner-only profile route)', () => {
+    async function readName() {
+      const admin = createTestSupabaseClient();
+      const { data } = await admin
+        .from('organizations')
+        .select('name')
+        .eq('id', org.organizationId)
+        .single();
+      return (data as { name: string }).name;
+    }
+
+    it('lets an ADMIN rename the org (branding is owner+admin by design)', async () => {
+      const res = await patch({ name: '  Sparkle Squad  ' }, org.admin.accessToken);
+      expect(res.status).toBe(200);
+      expect(await readName()).toBe('Sparkle Squad');
+    });
+
+    it('lets the owner rename the org', async () => {
+      const res = await patch({ name: 'BrightNest Cleaning' }, owner.accessToken);
+      expect(res.status).toBe(200);
+      expect(await readName()).toBe('BrightNest Cleaning');
+    });
+
+    it('rejects an empty or whitespace-only name', async () => {
+      for (const bad of ['', '   ']) {
+        const res = await patch({ name: bad }, owner.accessToken);
+        expect(res.status, `name ${JSON.stringify(bad)}`).toBe(400);
+      }
+    });
+
+    it('rejects a name over 200 characters', async () => {
+      const res = await patch({ name: 'x'.repeat(201) }, owner.accessToken);
+      expect(res.status).toBe(400);
+    });
+
+    it('does NOT advance brand_updated_at on a name-only save (would cache-bust unchanged logos)', async () => {
+      // Establish a non-null brand_updated_at first.
+      await patch({ brand_color: '#16A34A' }, owner.accessToken);
+      const before = await readBranding();
+      expect(before.brand_updated_at).not.toBeNull();
+
+      const res = await patch({ name: 'Rename Only Co' }, owner.accessToken);
+      expect(res.status).toBe(200);
+      const after = await readBranding();
+      expect(after.brand_updated_at).toBe(before.brand_updated_at);
+      expect(await readName()).toBe('Rename Only Co');
+    });
+  });
 });

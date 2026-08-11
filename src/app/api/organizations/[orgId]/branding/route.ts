@@ -5,12 +5,15 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 /**
  * PATCH /api/organizations/:orgId/branding
  *
- * Owner or admin sets the org's brand color and logo URLs (white-label Phase 0,
- * docs/white-label-branding.md). Wider than the owner-only profile route on
- * purpose: branding is day-to-day appearance, not billing identity.
+ * Owner or admin sets the org's display identity: company name, brand color,
+ * and logo URLs (white-label Phase 0, docs/white-label-branding.md). Wider
+ * than the owner-only profile route on purpose: this is day-to-day appearance,
+ * not billing identity. The name lives here (not on the profile route) because
+ * it IS the brand: it renders as the wordmark, monogram, and tab title, and
+ * the same owner/admin set already controls the logos it falls back to.
  *
- * Body (all optional, at least one required; null clears):
- *   { brand_color, logo_icon_url, logo_full_url }
+ * Body (all optional, at least one required; null clears, name cannot be cleared):
+ *   { name, brand_color, logo_icon_url, logo_full_url }
  *
  * Logo URLs must live under THIS org's prefix in the org-branding public
  * bucket, so the column can never point at an attacker-chosen host that would
@@ -29,12 +32,24 @@ export async function PATCH(
     if (!auth.ok) return auth.response;
 
     const body = (await request.json().catch(() => ({}))) as {
+      name?: string;
       brand_color?: string | null;
       logo_icon_url?: string | null;
       logo_full_url?: string | null;
     };
 
     const update: Record<string, unknown> = {};
+
+    if (body.name !== undefined) {
+      const name = String(body.name).trim();
+      if (name.length < 1 || name.length > 200) {
+        return NextResponse.json(
+          { error: 'Company name must be 1 to 200 characters' },
+          { status: 400 },
+        );
+      }
+      update.name = name;
+    }
 
     if (body.brand_color !== undefined) {
       if (body.brand_color === null || body.brand_color === '') {
@@ -95,7 +110,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    update.brand_updated_at = new Date().toISOString();
+    // brand_updated_at drives the client-side logo cache-buster (?v=), so only
+    // stamp it when a brand ASSET changed; a name-only save must not force
+    // every client to refetch unchanged logo files.
+    const touchesBrandAssets = ['brand_color', 'logo_icon_url', 'logo_full_url'].some(
+      (f) => f in update,
+    );
+    if (touchesBrandAssets) update.brand_updated_at = new Date().toISOString();
 
     const { error } = await supabaseAdmin.from('organizations').update(update).eq('id', orgId);
     if (error) {

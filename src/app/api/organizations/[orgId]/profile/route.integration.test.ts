@@ -92,4 +92,75 @@ describe('PATCH /api/organizations/[orgId]/profile payout model', () => {
     const res = await patch({ default_payout_model: 'percentage' }, org.admin.accessToken);
     expect(res.status).toBe(403);
   });
+
+  describe('billing_email', () => {
+    it('writes a lowercased billing_email and clears it with null', async () => {
+      const admin = createTestSupabaseClient();
+
+      const res = await patch({ billing_email: 'Billing@Example.COM' }, owner.accessToken);
+      expect(res.status).toBe(200);
+      const { data: after } = await admin
+        .from('organizations')
+        .select('billing_email')
+        .eq('id', org.organizationId)
+        .single();
+      expect((after as { billing_email: string | null }).billing_email).toBe('billing@example.com');
+
+      const clear = await patch({ billing_email: null }, owner.accessToken);
+      expect(clear.status).toBe(200);
+      const { data: cleared } = await admin
+        .from('organizations')
+        .select('billing_email')
+        .eq('id', org.organizationId)
+        .single();
+      expect((cleared as { billing_email: string | null }).billing_email).toBeNull();
+    });
+
+    it('rejects a malformed billing_email', async () => {
+      const res = await patch({ billing_email: 'not-an-email' }, owner.accessToken);
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('retired fields', () => {
+    // The company name moved to the branding route; logo_url was removed with
+    // the legacy paste-a-URL logo field. Either alone must no longer count as
+    // a valid field, and neither may reach the database.
+    it('no longer accepts name (moved to branding route)', async () => {
+      const res = await patch({ name: 'Sneaky Rename LLC' }, owner.accessToken);
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toBe('No valid fields to update');
+
+      const admin = createTestSupabaseClient();
+      const { data } = await admin
+        .from('organizations')
+        .select('name')
+        .eq('id', org.organizationId)
+        .single();
+      expect((data as { name: string }).name).not.toBe('Sneaky Rename LLC');
+    });
+
+    it('no longer accepts logo_url', async () => {
+      const res = await patch({ logo_url: 'https://example.com/logo.png' }, owner.accessToken);
+      expect(res.status).toBe(400);
+      expect((res.body as { error: string }).error).toBe('No valid fields to update');
+    });
+
+    it('ignores retired fields riding alongside a valid one', async () => {
+      const res = await patch(
+        { default_payout_model: 'flat', name: 'Sneaky Rename LLC', logo_url: 'https://example.com/x.png' },
+        owner.accessToken,
+      );
+      expect(res.status).toBe(200);
+      const admin = createTestSupabaseClient();
+      const { data } = await admin
+        .from('organizations')
+        .select('name, default_payout_model')
+        .eq('id', org.organizationId)
+        .single();
+      const row = data as { name: string; default_payout_model: string };
+      expect(row.default_payout_model).toBe('flat');
+      expect(row.name).not.toBe('Sneaky Rename LLC');
+    });
+  });
 });

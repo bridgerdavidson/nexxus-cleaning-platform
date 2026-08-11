@@ -1133,7 +1133,8 @@ export function useSkipPhotos() {
  * Reads `organizations.require_job_photos` for the cleaner's current org.
  *
  * IMPORTANT: this is sourced from a dedicated query that actually SELECTs the
- * column. The org object on AuthContext only selects `id, name, logo_url`, so
+ * column. The org object on AuthContext only selects id, name, and the
+ * branding/payout columns, so
  * `currentOrganization.require_job_photos` there always falls back to its default
  * (`true`) and would make the photo gate ignore an org that set it to `false`.
  * Reading it here avoids that trap. Defaults to `true` (gate required) while
