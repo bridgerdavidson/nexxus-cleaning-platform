@@ -1,6 +1,6 @@
 'use client';
 
-import { OrgLogo } from '@/components/branding/OrgLogo';
+import { OrgAvatar } from '@/components/branding/OrgAvatar';
 import { PersonPicker, PersonPickerRow } from '@/components/redesign/messages/PersonPicker';
 import { initialsFromFullName } from '@/components/redesign/messages/messages-format';
 import type { MessageableCleaning } from './messageableCleanings';
@@ -30,7 +30,7 @@ export function NewConversationSheet({
     <PersonPicker open={open} onOpenChange={onOpenChange} title="New conversation">
       {hasOffice && (
         <PersonPickerRow
-          leading={<OrgLogo variant="icon" size={40} className="shrink-0" />}
+          leading={<OrgAvatar size={40} />}
           title="Message office"
           onSelect={() => {
             onPickOffice();

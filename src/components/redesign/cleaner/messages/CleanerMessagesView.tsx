@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { OrgLogo } from '@/components/branding/OrgLogo';
+import { OrgAvatar } from '@/components/branding/OrgAvatar';
 import { InboxRow, InboxRowSkeleton } from '@/components/redesign/messages/InboxRow';
 import { ListShell, SectionHeader } from '@/components/redesign/messages/InboxSections';
 import { initialsFromFullName } from '@/components/redesign/messages/messages-format';
@@ -98,8 +98,9 @@ function StartOfficeRow({ onStart }: { onStart: () => void }) {
   return (
     <InboxRow
       onSelect={onStart}
-      // The office IS the company: brand icon when uploaded, initials monogram otherwise.
-      leading={<OrgLogo variant="icon" size={44} className="shrink-0" />}
+      // The office IS the company: brand icon when uploaded, initials monogram
+      // otherwise, round to match the people-avatars in the list.
+      leading={<OrgAvatar size={44} />}
       name="Message your office"
       preview="Reach an admin or manager anytime"
     />

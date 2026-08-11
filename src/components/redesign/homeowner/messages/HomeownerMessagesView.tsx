@@ -2,7 +2,7 @@
 
 import { ChevronRight, MessageSquare, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { OrgLogo } from '@/components/branding/OrgLogo';
+import { OrgAvatar } from '@/components/branding/OrgAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -39,8 +39,9 @@ function OfficeRow({
   return (
     <InboxRow
       onSelect={office ? onOpenThread : onStart}
-      // The office IS the company: brand icon when uploaded, initials monogram otherwise.
-      leading={<OrgLogo variant="icon" size={44} className="shrink-0" />}
+      // The office IS the company: brand icon when uploaded, initials monogram
+      // otherwise, round to match the people-avatars in the list.
+      leading={<OrgAvatar size={44} />}
       name="Cleaning office"
       timeLabel={office?.timeLabel || undefined}
       preview={office ? office.preview : 'Message your office anytime'}
