@@ -1,7 +1,9 @@
 /**
  * The catalog of notification events written to the `notification_events`
- * outbox. Today only in-app realtime listeners read these; tomorrow an SMS
- * dispatcher reads the same rows.
+ * outbox. In-app realtime listeners read every row; the email drain
+ * (dispatchReceiptEmails.ts, cron every 5 min) delivers ONLY the homeowner
+ * money receipts (charge_succeeded / refund_issued / cancellation_fee_charged)
+ * as org-branded email. Tomorrow an SMS dispatcher reads the same rows.
  *
  * Each event_type implies a recipient:
  *   - admin events: recipient_user_id = each admin/owner of the org
