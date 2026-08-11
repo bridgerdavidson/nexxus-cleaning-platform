@@ -3,9 +3,11 @@
 import { CalendarDays, MessageSquare, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { OrgLogo } from '@/components/branding/OrgLogo';
 import { InboxRow, InboxRowSkeleton } from '@/components/redesign/messages/InboxRow';
 import { ListShell, SectionHeader } from '@/components/redesign/messages/InboxSections';
 import { initialsFromFullName } from '@/components/redesign/messages/messages-format';
@@ -96,14 +98,8 @@ function StartOfficeRow({ onStart }: { onStart: () => void }) {
   return (
     <InboxRow
       onSelect={onStart}
-      leading={
-        <span
-          aria-hidden
-          className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary/10 text-primary"
-        >
-          <MessageSquare className="size-5" />
-        </span>
-      }
+      // The office IS the company: brand icon when uploaded, initials monogram otherwise.
+      leading={<OrgLogo variant="icon" size={44} className="shrink-0" />}
       name="Message your office"
       preview="Reach an admin or manager anytime"
     />
@@ -112,7 +108,11 @@ function StartOfficeRow({ onStart }: { onStart: () => void }) {
 
 function LoadingState() {
   return (
-    <div className="py-2">
+    <div className="space-y-6 py-1">
+      <div className="space-y-2">
+        <Skeleton className="h-7 w-32" />
+        <Skeleton className="h-4 w-48" />
+      </div>
       <ListShell>
         {Array.from({ length: 4 }).map((_, i) => (
           <InboxRowSkeleton key={i} />
@@ -143,28 +143,44 @@ export function CleanerMessagesView({
   const hasOffice = model.office.length > 0 || hasOfficeContacts;
   const isEmpty = !hasOffice && model.active.length === 0 && model.past.length === 0;
 
-  if (isEmpty) {
-    return (
-      <div className="py-6">
-        <EmptyState
-          icon={<MessageSquare />}
-          title="No messages yet"
-          description="Once your office adds an admin or manager, you can message them here. Homeowner threads appear during a cleaning."
-        />
-      </div>
-    );
-  }
+  const totalUnread = [...model.office, ...model.active, ...model.past].reduce(
+    (n, r) => n + r.unreadCount,
+    0,
+  );
+  const subtitle =
+    totalUnread > 0
+      ? `${totalUnread} unread message${totalUnread === 1 ? '' : 's'}`
+      : 'Your office and cleaning conversations';
 
   return (
     <div className="space-y-6 py-1">
-      {hasOfficeContacts && (
-        <div className="flex items-center justify-end">
-          <Button onClick={onNew} className="gap-1.5">
-            <Plus className="size-4" aria-hidden /> New
-          </Button>
+      {/* Same header idiom as the homeowner tab: title + the primary + trigger. */}
+      <header className="space-y-0.5">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-extrabold leading-tight">Messages</h1>
+          {hasOfficeContacts && (
+            <IconButton
+              aria-label="New conversation"
+              className="h-11 w-11 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={onNew}
+            >
+              <Plus className="size-5" />
+            </IconButton>
+          )}
         </div>
-      )}
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
+      </header>
 
+      {isEmpty ? (
+        <div className="pt-6">
+          <EmptyState
+            icon={<MessageSquare />}
+            title="No messages yet"
+            description="Once your office adds an admin or manager, you can message them here. Homeowner threads appear during a cleaning."
+          />
+        </div>
+      ) : (
+        <>
       {(model.office.length > 0 || hasOfficeContacts) && (
         <section>
           <SectionHeader label="Office" count={model.office.length} />
@@ -200,6 +216,8 @@ export function CleanerMessagesView({
             ))}
           </ListShell>
         </section>
+      )}
+        </>
       )}
     </div>
   );

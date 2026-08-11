@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageCircle } from 'lucide-react';
+import { OrgLogo } from '@/components/branding/OrgLogo';
 import { PersonPicker, PersonPickerRow } from '@/components/redesign/messages/PersonPicker';
 import { initialsFromFullName } from '@/components/redesign/messages/messages-format';
 import type { MessageableCleaning } from './messageableCleanings';
@@ -30,7 +30,7 @@ export function NewConversationSheet({
     <PersonPicker open={open} onOpenChange={onOpenChange} title="New conversation">
       {hasOffice && (
         <PersonPickerRow
-          icon={<MessageCircle className="size-5" />}
+          leading={<OrgLogo variant="icon" size={40} className="shrink-0" />}
           title="Message office"
           onSelect={() => {
             onPickOffice();

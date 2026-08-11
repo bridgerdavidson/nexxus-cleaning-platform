@@ -1,7 +1,8 @@
 'use client';
 
-import { ChevronRight, MessageCircle, MessageSquare, Plus } from 'lucide-react';
+import { ChevronRight, MessageSquare, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { OrgLogo } from '@/components/branding/OrgLogo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -38,14 +39,8 @@ function OfficeRow({
   return (
     <InboxRow
       onSelect={office ? onOpenThread : onStart}
-      leading={
-        <span
-          aria-hidden
-          className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary/10 text-primary"
-        >
-          <MessageCircle className="size-5" />
-        </span>
-      }
+      // The office IS the company: brand icon when uploaded, initials monogram otherwise.
+      leading={<OrgLogo variant="icon" size={44} className="shrink-0" />}
       name="Cleaning office"
       timeLabel={office?.timeLabel || undefined}
       preview={office ? office.preview : 'Message your office anytime'}
