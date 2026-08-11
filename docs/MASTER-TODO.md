@@ -100,8 +100,11 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
       cancellation/no-show fee, keyed on the failed payment row (re-POSTing the cancel route
       can't reconstruct party/no_show). UI: retry affordance on the failed-fee row
       (PaymentDetailSheet / triage band). Stretch: the homeowner-side fee retry surface (L-7).
-- [ ] **3.2 Failed-payout dismiss round trip (T2-9).** Backend: undismiss route + re-surface on
-      continued sweep failures. UI: undismiss affordance + resurfaced-row treatment.
+- [x] **3.2 Failed-payout dismiss round trip (T2-9).** ✅ DONE 2026-08-11 (fee-dismiss PR):
+      dismissal is now an honest 24h SNOOZE (`payoutDismissSnooze.ts`; the triage query stops
+      honoring stale stamps, so a payout the sweep keeps failing resurfaces with a "Still
+      failing" treatment instead of staying invisible), plus `POST /api/payouts/:id/undismiss`
+      with a Snooze/Restore toggle in the payout detail sheet.
 - [ ] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
       (077 rounds to whole dollars). UI: KPI tiles consume cents. While in there, verify the
       revenue KPI nets out refunds (the T2-3 join fixed the ledger view, not necessarily the RPC).
