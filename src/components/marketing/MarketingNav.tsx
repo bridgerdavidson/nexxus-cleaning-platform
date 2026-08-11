@@ -30,7 +30,7 @@ export function MarketingNav() {
           ))}
         </nav>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
+          <Button variant="ghost" size="sm" asChild>
             <Link href="/login">Log in</Link>
           </Button>
           <Button size="sm" asChild>
