@@ -7,73 +7,15 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { cn } from '@/lib/utils'
 import { Reveal } from './Reveal'
-
-interface Tier {
-  name: string
-  base: number
-  includedSeats: number
-  extraSeat: number
-  blurb: string
-  features: string[]
-  popular?: boolean
-}
-
-// Placeholder early-access numbers (ZenMaid seat model x Jobber tiers).
-// See brainstorming/2026-07-06-landing-page-grill-session.md before changing.
-const TIERS: Tier[] = [
-  {
-    name: 'Starter',
-    base: 29,
-    includedSeats: 2,
-    extraSeat: 10,
-    blurb: 'For solo operators and first hires.',
-    features: [
-      'Online booking and scheduling',
-      'Dispatch calendar',
-      'Cleaner mobile app',
-      'Card payments',
-    ],
-  },
-  {
-    name: 'Growth',
-    base: 79,
-    includedSeats: 5,
-    extraSeat: 8,
-    blurb: 'For companies ready to stop doing office work at night.',
-    popular: true,
-    features: [
-      'Everything in Starter',
-      'Customer portal with self-serve rescheduling',
-      'Recurring visits and automatic reminders',
-      'Job photos and checklists',
-      'Automatic cleaner payouts',
-    ],
-  },
-  {
-    name: 'Pro',
-    base: 149,
-    includedSeats: 10,
-    extraSeat: 6,
-    blurb: 'For established crews with managers and payroll.',
-    features: [
-      'Everything in Growth',
-      'Manager roles and permissions',
-      'Payroll and payout automation',
-      'Advanced reports',
-      'Priority support',
-    ],
-  },
-]
-
-function tierTotal(tier: Tier, cleaners: number): number {
-  return tier.base + Math.max(0, cleaners - tier.includedSeats) * tier.extraSeat
-}
+import { EXTRA_SEAT_PRICE, PRICING_TIERS, overCap, tierTotal, type BillingPeriod } from './pricing'
 
 export function PricingSection() {
   const [cleaners, setCleaners] = React.useState(5)
+  const [period, setPeriod] = React.useState<BillingPeriod>('annual')
   return (
     <section id="pricing" className="scroll-mt-16 border-y border-border bg-card">
       <Reveal className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
@@ -113,10 +55,22 @@ export function PricingSection() {
           </div>
         </Card>
 
+        <div className="mt-8 flex justify-center">
+          <SegmentedControl<BillingPeriod>
+            options={[
+              { value: 'annual', label: 'Billed annually' },
+              { value: 'monthly', label: 'Billed monthly' },
+            ]}
+            value={period}
+            onChange={setPeriod}
+          />
+        </div>
+
         <div className="mx-auto mt-8 grid max-w-5xl gap-5 lg:grid-cols-3">
-          {TIERS.map((tier) => {
-            const total = tierTotal(tier, cleaners)
+          {PRICING_TIERS.map((tier) => {
+            const total = tierTotal(tier, period, cleaners)
             const extras = Math.max(0, cleaners - tier.includedSeats)
+            const over = overCap(tier, cleaners)
             return (
               <Card
                 key={tier.name}
@@ -129,15 +83,27 @@ export function PricingSection() {
                 ) : null}
                 <h3 className="text-lg font-bold text-foreground">{tier.name}</h3>
                 <p className="mt-1 min-h-10 text-sm text-muted-foreground">{tier.blurb}</p>
-                <p className="mt-4 text-4xl font-extrabold tracking-tight text-foreground tnum">
-                  <AnimatedNumber value={total} prefix="$" />
-                  <span className="ml-1 text-base font-semibold text-muted-foreground">/mo</span>
-                </p>
-                <p className="mt-1 text-xs font-medium text-muted-foreground tnum">
-                  {extras > 0
-                    ? `$${tier.base} base + ${extras} extra ${extras === 1 ? 'seat' : 'seats'} at $${tier.extraSeat}`
-                    : `${tier.includedSeats} cleaner ${tier.includedSeats === 1 ? 'seat' : 'seats'} included`}
-                </p>
+                {over ? (
+                  <div className="mt-4 min-h-[72px]">
+                    <p className="text-2xl font-extrabold tracking-tight text-foreground">Needs {tier.capNeeds}</p>
+                    <p className="mt-1 text-xs font-medium text-muted-foreground">
+                      {tier.name} supports up to {tier.cap} cleaners
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-4 min-h-[72px]">
+                    <p className="text-4xl font-extrabold tracking-tight text-foreground tnum">
+                      <AnimatedNumber value={total} prefix="$" />
+                      <span className="ml-1 text-base font-semibold text-muted-foreground">/mo</span>
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-muted-foreground tnum">
+                      {extras > 0
+                        ? `$${tier.bases[period]} base + ${extras} extra ${extras === 1 ? 'seat' : 'seats'} at $${EXTRA_SEAT_PRICE}`
+                        : `${tier.includedSeats} cleaner seats included`}
+                      {period === 'annual' ? ', billed annually' : ''}
+                    </p>
+                  </div>
+                )}
                 <ul className="mt-5 grid flex-1 content-start gap-2.5">
                   {tier.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -146,7 +112,7 @@ export function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                <Button variant={tier.popular ? 'default' : 'outline'} className="mt-6 w-full" asChild>
+                <Button variant={tier.popular && !over ? 'default' : 'outline'} className="mt-6 w-full" asChild>
                   <a href="#waitlist">Join the waitlist</a>
                 </Button>
               </Card>
@@ -154,10 +120,14 @@ export function PricingSection() {
           })}
         </div>
 
-        <p className="mt-8 text-center text-sm font-medium text-muted-foreground">
-          Early access pricing. Lock it in by joining the waitlist. Two months free when billed
-          annually, and every plan starts with a 14 day free trial.
-        </p>
+        <div className="mx-auto mt-8 max-w-2xl space-y-1.5 text-center text-sm font-medium text-muted-foreground">
+          <p>Every plan starts with a 14 day free trial at the Growth level. No credit card required.</p>
+          <p>
+            1% platform fee on jobs paid through the platform, and it includes paying your cleaners
+            automatically. We only make money when you do.
+          </p>
+          <p>Card processing at cost (2.9% + 30&cent;), zero markup. Your customers never pay a fee.</p>
+        </div>
       </Reveal>
     </section>
   )
