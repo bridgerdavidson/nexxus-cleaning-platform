@@ -1,4 +1,5 @@
 import type { JobThreadSummary } from '@/hooks/useOrgJobThreads';
+import { monthDay, timeAgo } from './messages-format';
 
 export interface JobThreadRowVM {
   appointmentId: string;
@@ -24,26 +25,6 @@ function fullName(p?: { first_name?: string | null; last_name?: string | null } 
   return `${p?.first_name ?? ''} ${p?.last_name ?? ''}`.trim();
 }
 
-function monthDay(s?: string | null): string {
-  if (!s) return '';
-  const d = new Date(`${s}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function timeAgo(iso: string, now: Date): string {
-  const then = new Date(iso).getTime();
-  const secs = Math.max(0, Math.floor((now.getTime() - then) / 1000));
-  if (secs < 60) return 'now';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d`;
-  return monthDay(new Date(iso).toISOString().slice(0, 10));
-}
-
 /**
  * Build a read-only job-thread row for the operator console from a message-derived
  * summary + the appointment the operator already loads. Falls back to generic
@@ -63,7 +44,7 @@ export function toJobThreadRowVM(
     title,
     dateLabel: monthDay(appointment?.scheduled_date),
     preview: summary.lastMessageContent || 'Photo',
-    timeLabel: timeAgo(summary.lastMessageAt, now),
+    timeLabel: timeAgo(summary.lastMessageAt, now.toISOString()),
     unreadCount: summary.unreadCount,
   };
 }

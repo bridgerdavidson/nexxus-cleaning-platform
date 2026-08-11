@@ -1,5 +1,6 @@
 import type { Appointment } from '@/hooks/useHomeownerData';
 import { isJobMessagingWindowOpen } from '@/lib/messaging/jobMessagingWindow';
+import { weekdayMonthDay } from '@/components/redesign/messages/messages-format';
 
 export interface MessageableCleaning {
   appointmentId: string;
@@ -12,14 +13,6 @@ function getCleanerName(a: Appointment): string {
   const u = a.cleaner_profile?.user_profile;
   const n = `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim();
   return n || 'Your cleaner';
-}
-
-function getDateLabel(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 /**
@@ -44,7 +37,7 @@ export function messageableCleanings(appointments: Appointment[], now: Date): Me
     .map((a) => ({
       appointmentId: a.id,
       cleanerName: getCleanerName(a),
-      dateLabel: getDateLabel(a.scheduled_date),
+      dateLabel: weekdayMonthDay(a.scheduled_date),
       serviceLabel: a.service_type?.name ?? 'Cleaning',
     }));
 }

@@ -1,3 +1,5 @@
+import { dayLabel, fmtTime } from './messages-format';
+
 export interface JobTranscriptRowVM {
   id: string;
   /** cleaner = aligned to one side, homeowner = the other. */
@@ -19,17 +21,6 @@ interface TranscriptInput {
 
 function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function dayLabel(d: Date, now: Date): string {
-  const diff = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function timeLabel(d: Date): string {
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 /**
@@ -58,8 +49,8 @@ export function toJobTranscriptVM(
       side,
       senderName,
       content: m.content,
-      timeLabel: timeLabel(d),
-      dayLabel: dayLabel(d, now),
+      timeLabel: fmtTime(m.created_at),
+      dayLabel: dayLabel(m.created_at, now.toISOString()),
       showDayDivider,
     };
   });

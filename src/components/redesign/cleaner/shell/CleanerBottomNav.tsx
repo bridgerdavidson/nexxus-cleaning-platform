@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { NavMessagesBadge } from "@/components/redesign/shell/NavMessagesBadge";
 import { CLEANER_NAV } from "./cleaner-nav-items";
 
 /** Phone-first bottom tab bar (5 top-level tabs), shown at all widths. */
@@ -35,19 +36,9 @@ export function CleanerBottomNav({
             )}
             <span className="relative transition-transform duration-fast group-active:scale-90">
               <Icon className="h-6 w-6" aria-hidden />
-              {item.id === "messages" && messagesUnread > 0 && (
-                <span
-                  aria-hidden
-                  className="absolute -right-2 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card bg-brand-600 px-1 text-[10px] font-bold leading-none tabular-nums text-white"
-                >
-                  {messagesUnread > 99 ? "99+" : messagesUnread}
-                </span>
-              )}
+              {item.id === "messages" && <NavMessagesBadge count={messagesUnread} />}
             </span>
             {item.label}
-            {item.id === "messages" && messagesUnread > 0 && (
-              <span className="sr-only">{messagesUnread} unread</span>
-            )}
           </Link>
         );
       })}

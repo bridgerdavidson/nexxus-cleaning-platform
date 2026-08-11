@@ -49,5 +49,14 @@ describe('toJobTranscriptVM', () => {
     );
     expect(rows.map(r => r.showDayDivider)).toEqual([true, false, true]);
     expect(rows[2].dayLabel).toBe('Today');
+    expect(rows[0].dayLabel).toBe('Yesterday');
+  });
+
+  it('formats the clock time via the shared formatter', () => {
+    const rows = toJobTranscriptVM([msg({ created_at: '2026-06-30T09:05:00Z' })], {
+      cleanerId: 'cln-1',
+      now: NOW,
+    });
+    expect(rows[0].timeLabel).toBe('9:05 AM');
   });
 });

@@ -20,7 +20,6 @@ import type { JobThreadRowVM } from './jobThreadRow'
 
 export function InboxList(props: {
   rows: ConversationRowVM[]
-  totalConversations: number
   unreadTotal: number
   search: string
   onSearchChange: (v: string) => void

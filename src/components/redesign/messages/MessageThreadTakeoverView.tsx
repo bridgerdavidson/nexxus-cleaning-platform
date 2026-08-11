@@ -23,8 +23,6 @@ export interface MessageThreadTakeoverViewProps {
   messagesEndRef: RefObject<HTMLDivElement>;
   onOpenBooking: (id: string) => void;
   composer: React.ComponentProps<typeof MessageComposer>;
-  /** 'inline' = the Messages tab itself (no back); 'takeover' = full-screen overlay. */
-  variant: "inline" | "takeover";
   onBack?: () => void;
   /** Label shown next to the back chevron (e.g. "Back to job"). */
   backLabel?: string;

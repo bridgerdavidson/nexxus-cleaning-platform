@@ -5,7 +5,7 @@ import type { AdminAppointment } from '@/hooks/useAdminData'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import {
-  timeAgo, lastMessagePreview, fmtTime, money2, initialsOf, dayLabel,
+  timeAgo, lastMessagePreview, fmtTime, money2, initialsOf, dayLabel, weekdayMonthDay,
 } from './messages-format'
 import { deriveContactBookings } from './deriveContactBookings'
 import type {
@@ -78,7 +78,7 @@ export function toInlineBookingVM(appt: AdminAppointment | undefined, appointmen
     appointmentId,
     found: true,
     service: appt.service_type?.name || appt.checklist?.name || 'Cleaning',
-    dateLabel: new Date(`${appt.scheduled_date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+    dateLabel: weekdayMonthDay(appt.scheduled_date),
     timeLabel: fmtTime(appt.scheduled_time),
     // property.name is a string (not optional) in AdminAppointment, fallback to address
     address: appt.property?.name || appt.property?.address || null,
