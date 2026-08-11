@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useReducedMotion } from 'motion/react'
 import { CalendarDays, Camera, Check, CreditCard, Home, MessageSquare, Settings, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { deriveBrandRamp, rampToCssVars } from '@/lib/branding/palette'
@@ -67,6 +68,32 @@ function DemoLine({ className }: { className?: string }) {
 
 export function BrandingSection() {
   const [brand, setBrand] = React.useState<BrandPreset>(PRESETS[0])
+  const sectionRef = React.useRef<HTMLElement>(null)
+  const [interacted, setInteracted] = React.useState(false)
+  const [inView, setInView] = React.useState(false)
+  const reduced = useReducedMotion() ?? false
+
+  // Cycle only while the section is actually on screen.
+  React.useEffect(() => {
+    const node = sectionRef.current
+    if (!node) return
+    const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.35 })
+    io.observe(node)
+    return () => io.disconnect()
+  }, [])
+
+  // Idle brand cycle: stops permanently on first interaction, never runs under
+  // reduced motion, pauses offscreen.
+  React.useEffect(() => {
+    if (interacted || reduced || !inView) return
+    const timer = setInterval(() => {
+      setBrand((prev) => {
+        const i = PRESETS.findIndex((p) => p.name === prev.name && p.hex === prev.hex)
+        return PRESETS[(i + 1) % PRESETS.length] ?? PRESETS[0]
+      })
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [interacted, reduced, inView])
 
   // The production theming engine, scoped to the tableau below. The semantic
   // aliases (--primary, --accent, ...) are re-declared here because :root
@@ -90,7 +117,7 @@ export function BrandingSection() {
   const domain = display.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'yourcompany'
 
   return (
-    <section id="white-label" className="scroll-mt-16">
+    <section id="white-label" ref={sectionRef} className="scroll-mt-16">
       <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
           <Badge variant="secondary">White-label</Badge>
@@ -165,7 +192,11 @@ export function BrandingSection() {
 
         {/* Theme bar: the visitor's controls. Deliberately OUTSIDE the brand-vars
             wrapper so the controls themselves stay in Nexxus chrome. */}
-        <div className="mx-auto mt-12 flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-card border border-border bg-card px-3 py-2 shadow-soft-md sm:rounded-pill">
+        <div
+          onPointerDownCapture={() => setInteracted(true)}
+          onFocusCapture={() => setInteracted(true)}
+          className="mx-auto mt-12 flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-card border border-border bg-card px-3 py-2 shadow-soft-md sm:rounded-pill"
+        >
           {PRESETS.map((p) => {
             const active = brand.name === p.name && brand.hex === p.hex
             return (
