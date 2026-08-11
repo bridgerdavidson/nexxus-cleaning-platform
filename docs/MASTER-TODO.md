@@ -118,7 +118,13 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
       row-level RLS and compute the auto-approve cap, making migration 119's price-seal cosmetic
       (write-up on PR #221). Merging #226 unblocks the pilot flip; residuals documented in its
       body. Do NOT set a real cleaner to `request` mode before it lands.
-- [ ] **3.5 T2-1b emailed receipts** (see 3a below; prereq: confirm the five SMTP vars in prod).
+- [x] **3.5 T2-1b emailed receipts** (see 3a below; prereq: confirm the five SMTP vars in prod).
+      **✅ DONE 2026-08-11: org-branded receipt emails for charge/refund/fee, drained from the
+      notification_events outbox (`dispatchReceiptEmails.ts`, claim-first on email_dispatched_at,
+      retry + platform alert on exhaustion) via `POST /api/cron/notification-emails` on a 5-min
+      pg_cron (migration 20260811211708, incl. backfill stamp so the historical bell backlog is
+      never mailed). SMTP vars confirmed in prod. ⚠ The prereq check found `CRON_SECRET` missing
+      in prod (see Ops loose ends): until it is set, this cron AND the reconcile sweep never fire.**
 - [ ] **3.6 Cancel notifications (T2-5, emit half).** The cancel route notifies neither customer
       nor cleaner (including when it charges a no-show fee). Wire the notifications, then restore
       the honest-but-minimal dialog copy #180 had to neuter ("This can't be undone.").
@@ -242,6 +248,19 @@ migrations 117-120 in prod). Spec:
 
 ## Ops loose ends (small, mostly Bridger-manual)
 
+- [ ] ⚠⚠ **Set `CRON_SECRET` in prod — the reconcile sweep has never run there.** Discovered
+      2026-08-11 while shipping 3.5: an unauthenticated POST to prod
+      `/api/cron/reconcile-payments` returns the fail-closed 500 ("Server misconfigured"),
+      which is the missing-`CRON_SECRET` branch, and `vercel env ls` shows no `CRON_SECRET`
+      in any environment. So every pg_cron-driven route (reconcile sweep 067, auto-defer 064,
+      and now notification-emails) is dead in prod; webhooks alone have been carrying money
+      correctness, and the "sweep backstops missed webhook deliveries" assumption is false
+      today. Fix (Bridger): generate a random 64-char secret; `vercel env add CRON_SECRET
+      production`; in prod Postgres set the matching `app.cron_secret` plus `app.api_base_url =
+      'https://nexxus-cleaning-platform.vercel.app'` (hosted Supabase: `ALTER DATABASE postgres
+      SET ...`, then re-login/reload so pg_cron's new connections see it); redeploy prod; verify
+      behaviorally (unauthenticated POST now 401s, `cron.job_run_details` shows 200s). Do the
+      same for the dev preview if preview sweep coverage is wanted.
 - [ ] **Repoint the test-mode Stripe webhook back at dev.** It still targets the deleted
       pay-request walkthrough branch alias, which no longer deploys; restore
       `nexxus-cleaning-platform-git-dev-…vercel.app/api/stripe/webhook` with the same
@@ -249,7 +268,7 @@ migrations 117-120 in prod). Spec:
 - [ ] Live-test PR #161 on dev preview (0341 decline → bell + badge + banner; hard-refresh stale tabs).
 - [ ] Stripe live-webhook checklist (runbook §5.1) — sequenced inside block 2 / T1-3 above.
 - [ ] Stripe Dashboard branding checklist for hosted onboarding (manual, in redesign-audit memory).
-- [ ] **Turn on Stripe automatic receipts** (Settings → Customer emails → Successful payments). The interim half of T2-1b: zero code, no money risk, but Nexxus-branded on every tenant's charge (separate charges and transfers use the platform's branding), so it gets revisited when the branded email lands. Note receipts never send in test mode.
+- [ ] **Turn on Stripe automatic receipts** (Settings → Customer emails → Successful payments). The interim half of T2-1b: zero code, no money risk, but Nexxus-branded on every tenant's charge (separate charges and transfers use the platform's branding), so it gets revisited when the branded email lands. Note receipts never send in test mode. **Update 2026-08-11: the branded email shipped (3.5). Once the CRON_SECRET fix above is done and the drain is verified sending in prod, either skip this toggle or turn it off if it was enabled, so homeowners don't get two receipts per charge.**
 - [ ] Verify prod platform balance heals ≥ $0 after the 1% fee (platform-fee follow-up).
 - [ ] Flip the CI lint/tsc `continue-on-error` gates once pre-existing errors are cleaned (tsc already blocking; lint remains).
 - [ ] Sweep the ping-dot idiom out of cleaner/homeowner/StatTile (Today-card restyle follow-up).
