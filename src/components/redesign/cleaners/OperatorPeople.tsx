@@ -61,7 +61,7 @@ export function OperatorPeople() {
   }
 
   return (
-    <div className="max-w-[1700px]">
+    <div>
       {view === "staff" ? (
         <OperatorStaffData
           canManage={privileged}
