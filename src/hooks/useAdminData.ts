@@ -625,6 +625,8 @@ export interface AdminPayout {
   paid_at?: string;
   created_at: string;
   notes?: string;
+  /** Snoozed out of the payments attention band (T2-9); null/absent = visible there. */
+  attention_dismissed_at?: string | null;
   cleaner: {
     first_name: string;
     last_name: string;
@@ -652,6 +654,7 @@ export function useAdminPayouts() {
           paid_at,
           created_at,
           notes,
+          attention_dismissed_at,
           cleaner:cleaner_profiles!cleaner_id(
             user_profile:user_profiles(
               first_name,
@@ -748,6 +751,7 @@ const PAYOUTS_INFINITE_SELECT = `
   paid_at,
   created_at,
   notes,
+  attention_dismissed_at,
   cleaner:cleaner_profiles!cleaner_id(
     user_profile:user_profiles(
       first_name,

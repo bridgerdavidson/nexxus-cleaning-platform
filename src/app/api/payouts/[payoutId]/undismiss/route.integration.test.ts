@@ -14,7 +14,7 @@ import { createTestSupabaseClient } from '../../../../../../tests/helpers/supaba
 const handlerFor = (payoutId: string) => (req: NextRequest) =>
   POST(req, { params: Promise.resolve({ payoutId }) });
 
-describe('POST /api/payouts/:payoutId/dismiss', () => {
+describe('POST /api/payouts/:payoutId/undismiss', () => {
   let org: TestOrgFixture;
   let originalFlag: string | undefined;
 
@@ -40,7 +40,11 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
     });
   }
 
-  async function seedPayout(appointmentId: string, status: string): Promise<string> {
+  async function seedPayout(
+    appointmentId: string,
+    status: string,
+    dismissedAt: string | null = null,
+  ): Promise<string> {
     const db = createTestSupabaseClient();
     const { data, error } = await db
       .from('payouts')
@@ -51,6 +55,7 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
         amount: 60,
         payout_percent_snapshot: 60,
         status,
+        attention_dismissed_at: dismissedAt,
       })
       .select('id')
       .single();
@@ -60,7 +65,7 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
 
   it('returns 401 with no Authorization header', async () => {
     const appt = await makeAppt();
-    const payoutId = await seedPayout(appt.id, 'failed');
+    const payoutId = await seedPayout(appt.id, 'failed', new Date().toISOString());
     const { status } = await callRoute(handlerFor(payoutId), {
       method: 'POST',
       body: { organization_id: org.organizationId },
@@ -70,7 +75,7 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
 
   it('rejects a cleaner caller (insufficient role)', async () => {
     const appt = await makeAppt();
-    const payoutId = await seedPayout(appt.id, 'failed');
+    const payoutId = await seedPayout(appt.id, 'failed', new Date().toISOString());
     const { status } = await callRoute(handlerFor(payoutId), {
       method: 'POST',
       headers: bearerHeader(org.cleaner.accessToken),
@@ -88,9 +93,9 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
     expect(status).toBe(404);
   });
 
-  it('dismisses a failed payout: sets attention_dismissed_at and writes a ledger row', async () => {
+  it('restores a dismissed failed payout: clears attention_dismissed_at and writes a ledger row', async () => {
     const appt = await makeAppt();
-    const payoutId = await seedPayout(appt.id, 'failed');
+    const payoutId = await seedPayout(appt.id, 'failed', new Date().toISOString());
 
     const { status, body } = await callRoute<{ success: boolean }>(handlerFor(payoutId), {
       method: 'POST',
@@ -108,50 +113,52 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
       .eq('id', payoutId)
       .single();
     const payout = row as { status: string; attention_dismissed_at: string | null };
-    // Status is unchanged (still owed); only the panel-visibility flag is set.
+    // Status is unchanged (still owed); only the panel-visibility flag is cleared.
     expect(payout.status).toBe('failed');
-    expect(payout.attention_dismissed_at).not.toBeNull();
+    expect(payout.attention_dismissed_at).toBeNull();
 
     const { data: events } = await db
       .from('payment_events')
       .select('event_type, actor')
       .eq('appointment_id', appt.id);
-    const dismissed = (events ?? []).find(
-      (e) => (e as { event_type: string }).event_type === 'payout_attention_dismissed',
+    const restored = (events ?? []).find(
+      (e) => (e as { event_type: string }).event_type === 'payout_attention_undismissed',
     ) as { actor: string } | undefined;
-    expect(dismissed).toBeTruthy();
-    expect(dismissed!.actor).toBe(`user:${org.admin.userId}`);
+    expect(restored).toBeTruthy();
+    expect(restored!.actor).toBe(`user:${org.admin.userId}`);
   });
 
-  it('re-dismissing an already-dismissed payout re-stamps the snooze clock (T2-9)', async () => {
+  it('no-op 200 when the payout was never dismissed (idempotent, no ledger row)', async () => {
     const appt = await makeAppt();
-    const payoutId = await seedPayout(appt.id, 'failed');
-    const db = createTestSupabaseClient();
-    // A stale stamp (older than the snooze window) is what a resurfaced row carries.
-    const staleStamp = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    await db.from('payouts').update({ attention_dismissed_at: staleStamp }).eq('id', payoutId);
+    const payoutId = await seedPayout(appt.id, 'failed', null);
 
-    const { status } = await callRoute(handlerFor(payoutId), {
-      method: 'POST',
-      headers: bearerHeader(org.admin.accessToken),
-      body: { organization_id: org.organizationId },
-    });
+    const { status, body } = await callRoute<{ success: boolean; already?: boolean }>(
+      handlerFor(payoutId),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId },
+      },
+    );
     expect(status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.already).toBe(true);
 
-    const { data: row } = await db
-      .from('payouts')
-      .select('attention_dismissed_at')
-      .eq('id', payoutId)
-      .single();
-    const restamped = (row as { attention_dismissed_at: string | null }).attention_dismissed_at;
-    expect(restamped).not.toBeNull();
-    // The fresh stamp snoozes the row again: it must be NEWER than the stale one.
-    expect(Date.parse(restamped!)).toBeGreaterThan(Date.parse(staleStamp));
+    const db = createTestSupabaseClient();
+    const { data: events } = await db
+      .from('payment_events')
+      .select('event_type')
+      .eq('appointment_id', appt.id);
+    expect(
+      (events ?? []).some(
+        (e) => (e as { event_type: string }).event_type === 'payout_attention_undismissed',
+      ),
+    ).toBe(false);
   });
 
-  it('409 when trying to dismiss a non-failed payout (paid)', async () => {
+  it('409 when trying to restore a non-failed payout (paid)', async () => {
     const appt = await makeAppt();
-    const payoutId = await seedPayout(appt.id, 'paid');
+    const payoutId = await seedPayout(appt.id, 'paid', new Date().toISOString());
     const { status } = await callRoute(handlerFor(payoutId), {
       method: 'POST',
       headers: bearerHeader(org.admin.accessToken),
@@ -162,7 +169,7 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
 
   it('403 for a manager WITHOUT can_manage_payments', async () => {
     const appt = await makeAppt();
-    const payoutId = await seedPayout(appt.id, 'failed');
+    const payoutId = await seedPayout(appt.id, 'failed', new Date().toISOString());
     const db = createTestSupabaseClient();
     await db
       .from('organization_members')
@@ -182,5 +189,17 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
     });
     expect(status).toBe(403);
     expect(body.error).toBe('Requires the Manage Payments permission');
+  });
+
+  it('404 when the flags are off', async () => {
+    process.env.STRIPE_NEW_CHARGE_FLOW_ENABLED = 'false';
+    const appt = await makeAppt();
+    const payoutId = await seedPayout(appt.id, 'failed', new Date().toISOString());
+    const { status } = await callRoute(handlerFor(payoutId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(404);
   });
 });
