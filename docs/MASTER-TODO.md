@@ -146,6 +146,45 @@ path. Each dispute costs $15 + the amount, and it lands on the tenant.
   it and double-charges undetected. Full reasoning in the backlog under T2-1 / T2-1b.
 - **Prerequisite:** confirm the five SMTP vars are actually set in prod (they degrade silently).
 
+## 3.9. Messaging UI unification — full audit + fix (URGENT, MVP-blocking)
+
+Added 2026-08-01 (Bridger). The conversations UI evolved piecemeal as each platform was built
+out, and the three role surfaces no longer look like one product. The **operator/admin inbox is
+the gold standard** (`src/components/redesign/messages/**`: InboxList, ConversationRow,
+MessageThreadPanel, MessageBubble, MessageComposer, ContextPanel, takeover view); cleaner and
+homeowner each grew parallel component sets (`redesign/cleaner/messages/**`,
+`redesign/homeowner/messages/**`) that have drifted visually. Cleaner/homeowner are
+**structurally** different on purpose (appointment-based job threads vs the operator inbox) and
+stay that way; the *visual language* (bubbles, composer, rows, headers, empty/loading states,
+timestamps, unread treatment) must unify.
+
+- [x] **3.9.1 Audit.** ✅ DONE 2026-08-10: docs/messaging-ui-audit.md (16 drift hotspots + adoption decisions + PR slicing; doubles as the 3.9.2 spec). Inventory every messaging surface, including the embedded ones
+      (`JobMessagesPanel` in booking detail, `PayRequestThreadSheet`, cleaner active-job thread,
+      `MessageAttachmentsLightbox`, `NavMessagesBadge`). Screenshot each role side by side,
+      catalog every inconsistency (styling, spacing, states, mobile behavior), and mark which
+      admin primitives each drifted copy should adopt. Deliverable: audit doc under `docs/`
+      that becomes the spec for 3.5.2.
+- [ ] **3.9.2 Unify.** Extract the admin thread primitives into shared components where the
+      audit says so, and re-skin cleaner + homeowner surfaces onto them. Keep the
+      appointment-based structure; unify the skin. Design-system rules apply
+      (`ui-feature-workflow` + `ui-ux-pro-max` at design AND implementation).
+
+## 3.95. Mobile polish pair (added 2026-08-01)
+
+- [ ] **3.95.1 Login button on the mobile landing page.** `MarketingNav.tsx` hides the Log in
+      button below the `sm` breakpoint (`hidden sm:inline-flex`), so on phones the header shows
+      only logo + "Join the waitlist" and login survives only as a footer link. Add a mobile
+      login affordance to the nav chrome (fits the rolling small-UI-batch branch pattern).
+- [ ] **3.95.2 iOS status-bar color sweep (native feel).** Full-app pass so the strip behind
+      the iOS status bar (time/battery area) matches each screen's top-of-page surface color in
+      every state, instead of a single static color. Today `theme-color` is only set per-tenant
+      on tenant surfaces (branding PR #227). Sweep = audit every route + state (marketing, auth,
+      each role shell, scrolled headers, takeovers/sheets that change the top surface) and drive
+      `theme-color` dynamically to match, plus `viewport-fit`/safe-area-inset handling where the
+      layout should extend under the notch. Must COMPOSE with white-label branding (#227 owns
+      the per-org value on tenant surfaces) and gains a second axis when dark mode (block 6)
+      lands, so build it as a small helper, not scattered hardcodes.
+
 ## 4. Gap scan §2 — UX quick wins (✅ DONE 2026-07-29)
 
 - [x] **All 20 shipped.** High + S items via #168/#180/#181/#188/#189/#197/#198; the final four

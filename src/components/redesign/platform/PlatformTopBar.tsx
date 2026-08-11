@@ -35,7 +35,7 @@ export function PlatformTopBar() {
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border bg-card">
-      <div className="flex h-full max-w-[1700px] items-center gap-3 px-4 lg:px-6">
+      <div className="mx-auto flex h-full w-full max-w-[1700px] items-center gap-3 px-4 lg:px-6">
         <span className="text-sm font-semibold text-foreground">Platform Owner</span>
         <div className="ml-auto flex items-center gap-2">
           <DropdownMenu>

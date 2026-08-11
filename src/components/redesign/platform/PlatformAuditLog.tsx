@@ -91,7 +91,7 @@ export function PlatformAuditLog() {
   const entries = data?.pages.flatMap((p) => p.entries) ?? [];
 
   return (
-    <div className="max-w-[1700px] space-y-6">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Audit log</h1>

@@ -124,7 +124,7 @@ export function OperatorBookingsView({
   const filtersActive = !!search || statusFilter !== "all" || cleanerFilter !== "all";
 
   return (
-    <div className="max-w-[1700px] space-y-5">
+    <div className="space-y-5">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Bookings</h1>
         <p className="mt-1 text-sm text-muted-foreground">

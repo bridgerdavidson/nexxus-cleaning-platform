@@ -75,7 +75,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         <div className="lg:pl-16">
           <RedesignImpersonationBanner />
           <PlatformTopBar />
-          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
+          <main id="main-content" className="mx-auto w-full max-w-[1700px] px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
             {/* Keyed by pathname so each page switch replays the entrance animation
                 while the shell chrome stays put. */}
             <div key={pathname} className="animate-page-in motion-reduce:animate-none">

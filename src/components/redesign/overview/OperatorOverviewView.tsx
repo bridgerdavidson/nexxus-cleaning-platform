@@ -54,7 +54,7 @@ export function OperatorOverviewView({
     return <ErrorState title="Couldn't load your dashboard" onRetry={onRetry} />;
   }
   return (
-    <div className="max-w-[1700px] space-y-5">
+    <div className="space-y-5">
       {checklist}
       {greeting ? (
         <header>

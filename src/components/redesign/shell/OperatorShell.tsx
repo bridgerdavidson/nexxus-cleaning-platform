@@ -118,7 +118,10 @@ export function OperatorShell({
             onOpenSearch={() => setSearchOpen(true)}
             onOpenBooking={canViewBookings ? openBookingDetail : undefined}
           />
-          <main id="main-content" className="px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
+          {/* Centered content column: the cap lives HERE (not in each view) and
+              matches the top bar's inner row exactly, so on wide monitors the
+              content floats with symmetric margins instead of pinning left. */}
+          <main id="main-content" className="mx-auto w-full max-w-[1700px] px-4 pb-28 pt-5 lg:px-6 lg:pb-10">
             {/* Keyed by pathname so each tab/page switch replays the entrance
                 animation on the incoming content (the shell itself stays put). */}
             <div key={pathname} className="animate-page-in motion-reduce:animate-none">

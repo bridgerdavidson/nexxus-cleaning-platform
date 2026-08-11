@@ -324,7 +324,7 @@ export function OperatorProperties() {
         : `${rows.length} ${rows.length === 1 ? "property" : "properties"}`;
 
   return (
-    <div className="max-w-[1700px] space-y-6">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Properties</h1>

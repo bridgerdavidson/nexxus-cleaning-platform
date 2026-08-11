@@ -12,7 +12,7 @@ export function OperatorSettingsView({
   children: React.ReactNode;
 }) {
   return (
-    <div className="max-w-[1700px] space-y-6">
+    <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
       </header>
