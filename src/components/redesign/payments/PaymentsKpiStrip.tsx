@@ -10,8 +10,8 @@ const ICONS = [<CalendarRange key="month" />, <DollarSign key="total" />];
 /** Two headline revenue KPI tiles. Width-capped so the pair reads as two
  *  comfortable cards on desktop instead of stretching across the page. */
 export function PaymentsKpiStrip(props: {
-  totalRevenue: number;
-  thisMonth: number;
+  totalRevenueCents: number;
+  thisMonthCents: number;
   loading?: boolean;
 }) {
   if (props.loading) {

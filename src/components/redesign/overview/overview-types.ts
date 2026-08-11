@@ -5,10 +5,10 @@ export type OverviewKpis = {
   todayJobs: number;
   inProgress: number;
   awaitingApproval: number;
-  /** Dollars (the payment_stats RPC returns whole-dollar amounts, like the legacy UI).
+  /** Integer cents (T2-11: payment_stats is cents-precise and refund-netted).
    *  null when the viewer lacks can_view_payments (manager); then the 4th KPI
    *  tile is dropped entirely (the strip reflows to 3 tiles, no substitute). */
-  revenueThisMonth: number | null;
+  revenueThisMonthCents: number | null;
   canViewPayments: boolean;
   /** Gates the operational tiles' click-through to /admin/bookings (mirrors the
    *  can_view_bookings route gate). When false the tiles render non-clickable. */
@@ -49,13 +49,6 @@ export function fmtShortDate(s: string): string {
   const d = new Date(`${s}T00:00:00`);
   if (Number.isNaN(d.getTime())) return s;
   return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
-/** Amounts are in whole dollars (matches the payment_stats RPC + legacy UI). */
-export function formatUsd(dollars: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
-    Math.round(dollars)
-  );
 }
 
 export function formatUsdCompact(dollars: number): string {

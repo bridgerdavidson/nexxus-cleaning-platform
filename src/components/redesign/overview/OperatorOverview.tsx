@@ -135,7 +135,7 @@ export function OperatorOverview() {
           todayJobs: sections.today.length,
           inProgress: sections.activeNow.length,
           awaitingApproval: stats.pendingApprovals,
-          revenueThisMonth: canViewPayments ? payStats.thisMonthRevenue : null,
+          revenueThisMonthCents: canViewPayments ? payStats.thisMonthRevenueCents : null,
           canViewPayments,
           canViewBookings,
         }}
