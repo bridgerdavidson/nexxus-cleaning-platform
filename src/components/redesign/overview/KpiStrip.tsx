@@ -10,7 +10,7 @@ import { formatUsdCompact, type OverviewKpis } from "./overview-types";
  *  substitute tile, and the grid reflows to 3 columns at the lg breakpoint so
  *  the strip still lays out cleanly. */
 export function KpiStrip({ kpis, loading }: { kpis: OverviewKpis; loading?: boolean }) {
-  const showRevenue = kpis.canViewPayments && kpis.revenueThisMonth != null;
+  const showRevenue = kpis.canViewPayments && kpis.revenueThisMonthCents != null;
   const gridClass = cn("grid grid-cols-2 gap-4 md:grid-cols-3", showRevenue ? "lg:grid-cols-4" : "lg:grid-cols-3");
 
   if (loading) {
@@ -37,7 +37,7 @@ export function KpiStrip({ kpis, loading }: { kpis: OverviewKpis; loading?: bool
         <StatTile label="In progress" value={String(kpis.inProgress)} icon={<Activity />} href={bookingsHref("segment=active")} />
         <StatTile label="Awaiting approval" value={String(kpis.awaitingApproval)} icon={<Clock />} href={bookingsHref("segment=all&status=pending")} />
         {showRevenue ? (
-          <StatTile label="Revenue this month" value={formatUsdCompact(kpis.revenueThisMonth as number)} icon={<DollarSign />} href="/admin/payments" />
+          <StatTile label="Revenue this month" value={formatUsdCompact((kpis.revenueThisMonthCents as number) / 100)} icon={<DollarSign />} href="/admin/payments" />
         ) : null}
       </div>
     </>

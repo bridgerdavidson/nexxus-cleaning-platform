@@ -17,7 +17,7 @@ export default function OperatorPreviewPage() {
           todayJobs: 8,
           inProgress: 2,
           awaitingApproval: 4,
-          revenueThisMonth: 12845,
+          revenueThisMonthCents: 1284500,
           canViewPayments: true,
           canViewBookings: true,
         }}

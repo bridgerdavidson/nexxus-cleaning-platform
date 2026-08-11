@@ -485,8 +485,8 @@ function OperatorPaymentsData({
         payRequests={<PayRequestsBand canManagePayments={canManagePayments} />}
         kpis={
           <PaymentsKpiStrip
-            totalRevenue={stats?.totalRevenue ?? 0}
-            thisMonth={stats?.thisMonthRevenue ?? 0}
+            totalRevenueCents={stats?.totalRevenueCents ?? 0}
+            thisMonthCents={stats?.thisMonthRevenueCents ?? 0}
             loading={statsLoading}
           />
         }

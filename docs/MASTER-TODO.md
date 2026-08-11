@@ -105,9 +105,13 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
       honoring stale stamps, so a payout the sweep keeps failing resurfaces with a "Still
       failing" treatment instead of staying invisible), plus `POST /api/payouts/:id/undismiss`
       with a Snooze/Restore toggle in the payout detail sheet.
-- [ ] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
+- [x] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
       (077 rounds to whole dollars). UI: KPI tiles consume cents. While in there, verify the
       revenue KPI nets out refunds (the T2-3 join fixed the ledger view, not necessarily the RPC).
+      **✅ DONE 2026-08-11: migration 20260811203429 returns integer-cents keys (legacy dollar
+      keys kept cents-precise for the deploy window) AND nets pending+succeeded refunds per
+      payment (the verification found the RPC did NOT net partial refunds; a full refund was
+      already excluded via status='refunded'). usePaymentStats/KPI tiles/overview consume cents.**
 - [x] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER) — BUILT, open as PR #226** **MERGED 2026-08-01 (#226, d0decab); pilot flip unblocked.**
       (`fix/cleaner-price-readpath`, migration 122: RLS seal + service-role cleaner read routes +
       DEFINER `cleaner_stats`). Background: cleaners could read `appointments.total_price` under
