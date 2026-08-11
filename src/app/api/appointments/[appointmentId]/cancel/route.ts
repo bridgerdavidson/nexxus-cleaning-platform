@@ -262,6 +262,7 @@ export async function POST(
       cancelled: true,
       fee_captured_cents: outcome.feeCapturedCents,
       fee_outcome: outcome.code,
+      ...(outcome.paymentId ? { fee_payment_id: outcome.paymentId } : {}),
       ...(outcome.message ? { fee_message: outcome.message } : {}),
     });
   } catch (error) {

@@ -5,6 +5,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { getAccessToken } from '@/lib/auth/clientAccessToken';
 import { keys } from '@/lib/queryKeys';
 
+export interface CancelMyCleaningResult {
+  fee_outcome?: 'charged' | 'uncollectable' | 'failed' | 'retry_in_progress';
+  fee_captured_cents?: number;
+  fee_message?: string;
+  fee_payment_id?: string;
+}
+
 /**
  * Homeowner-initiated cancel of their own cleaning. POSTs the shared cancel route as the
  * owning homeowner; the route forces party='homeowner' / no_show=false server-side, so we
@@ -30,7 +37,7 @@ export function useCancelMyCleaning() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || data.details || 'Cancellation failed');
-      return data as { fee_captured_cents?: number };
+      return data as CancelMyCleaningResult;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keys.appointments.byHomeowner(userId) });
@@ -39,9 +46,7 @@ export function useCancelMyCleaning() {
   });
 
   return {
-    cancel: async (appointmentId: string, reason?: string) => {
-      await mutation.mutateAsync({ appointmentId, reason });
-    },
+    cancel: (appointmentId: string, reason?: string) => mutation.mutateAsync({ appointmentId, reason }),
     isPending: mutation.isPending,
   };
 }

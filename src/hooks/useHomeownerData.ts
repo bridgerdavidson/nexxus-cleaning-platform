@@ -120,9 +120,13 @@ export interface Payment {
   id: string;
   amount: number;
   status: 'pending' | 'paid' | 'failed' | 'refunded';
+  charge_kind?: string | null;
+  payment_intent_status?: string | null;
   paid_at?: string;
   created_at: string;
   appointment: {
+    id?: string;
+    payment_method_id?: string | null;
     scheduled_date: string;
     service_type: {
       name: string;
@@ -447,11 +451,14 @@ export function useHomeownerPayments() {
           amount,
           status,
           charge_kind,
+          payment_intent_status,
           processing_fee_cents,
           is_self_pay,
           paid_at,
           created_at,
           appointment:appointments(
+            id,
+            payment_method_id,
             scheduled_date,
             homeowner_id,
             service_type:service_types(

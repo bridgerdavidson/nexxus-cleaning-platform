@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { computeCancellationFee } from '@/lib/payments/cancellationFee';
@@ -33,11 +34,17 @@ export function CancelCleaningSheet({
   appointment: Appointment;
   onCancelled: () => void;
 }) {
+  const router = useRouter();
   const { currentOrganizationId } = useAuth();
   const { cancel, isPending } = useCancelMyCleaning();
   const [error, setError] = useState<string | null>(null);
   const [policyLoading, setPolicyLoading] = useState(true);
   const [policyError, setPolicyError] = useState(false);
+  // Set when the cancellation succeeded but the fee did NOT collect: the sheet stays open and
+  // says so instead of closing as plain success after a "Cancel and pay $X" button (L-7).
+  const [feeProblem, setFeeProblem] = useState<{ uncollectable: boolean; paymentId: string | null } | null>(
+    null,
+  );
   const [policy, setPolicy] = useState<{
     windowHours: number;
     feeType: FeeType;
@@ -58,6 +65,7 @@ export function CancelCleaningSheet({
     if (!open || !currentOrganizationId) return;
     setError(null);
     setPolicyError(false);
+    setFeeProblem(null);
     let cancelled = false;
     (async () => {
       setPolicyLoading(true);
@@ -122,7 +130,19 @@ export function CancelCleaningSheet({
   async function submit() {
     setError(null);
     try {
-      await cancel(appointment.id);
+      const result = await cancel(appointment.id);
+      if (result.fee_outcome && result.fee_outcome !== 'charged') {
+        // Deviation from the task-5 brief: `onCancelled` here is the parent
+        // `HomeownerCleaningDetail`'s MobileTakeover `close()`, not a plain refetch. It
+        // animates the whole detail screen out and unmounts this sheet ~300ms later, which
+        // would yank the fee-problem message off screen before the homeowner can read it.
+        // So we hold off firing it until the homeowner dismisses via Done / View fee below.
+        setFeeProblem({
+          uncollectable: result.fee_outcome === 'uncollectable',
+          paymentId: result.fee_payment_id ?? null,
+        });
+        return;
+      }
       onOpenChange(false);
       onCancelled();
     } catch (e) {
@@ -133,36 +153,78 @@ export function CancelCleaningSheet({
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Cancel this cleaning?</DrawerTitle>
-          <DrawerDescription className={policyError ? 'text-critical-700' : undefined}>
-            {policyLoading
-              ? 'Checking your cancellation policy.'
-              : policyError
-                ? "We couldn't load your cancellation policy. Please try again."
-                : fee > 0
-                  ? `Cancelling now is within ${policy.windowHours} hours of your appointment, so a ${formatUsd(fee)} cancellation fee applies. We'll charge the ${formatUsd(fee)} fee to your card on file.`
-                  : 'You can cancel this cleaning at no charge.'}
-          </DrawerDescription>
-        </DrawerHeader>
+        {feeProblem ? (
+          <>
+            <DrawerHeader>
+              <DrawerTitle>Cleaning cancelled</DrawerTitle>
+              <DrawerDescription>
+                {feeProblem.uncollectable
+                  ? `Your cleaning is cancelled, but we couldn't charge the ${formatUsd(fee)} cancellation fee because there is no chargeable card on file.`
+                  : `Your cleaning is cancelled, but we couldn't charge the ${formatUsd(fee)} cancellation fee to your card. You can pay it from your receipts after updating your card.`}
+              </DrawerDescription>
+            </DrawerHeader>
+            <DrawerFooter>
+              {feeProblem.paymentId ? (
+                <Button
+                  onClick={() => {
+                    onOpenChange(false);
+                    onCancelled();
+                    router.push(`/homeowner/account/receipts?payment=${feeProblem.paymentId}`);
+                  }}
+                >
+                  View fee
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  onOpenChange(false);
+                  onCancelled();
+                }}
+              >
+                Done
+              </Button>
+            </DrawerFooter>
+          </>
+        ) : (
+          <>
+            <DrawerHeader>
+              <DrawerTitle>Cancel this cleaning?</DrawerTitle>
+              <DrawerDescription className={policyError ? 'text-critical-700' : undefined}>
+                {policyLoading
+                  ? 'Checking your cancellation policy.'
+                  : policyError
+                    ? "We couldn't load your cancellation policy. Please try again."
+                    : fee > 0
+                      ? `Cancelling now is within ${policy.windowHours} hours of your appointment, so a ${formatUsd(fee)} cancellation fee applies. We'll charge the ${formatUsd(fee)} fee to your card on file.`
+                      : 'You can cancel this cleaning at no charge.'}
+              </DrawerDescription>
+            </DrawerHeader>
 
-        {fee > 0 && !policyLoading && !policyError && (
-          <div className="mx-5 mb-1 flex items-center justify-between rounded-control bg-caution-50 px-4 py-3 text-sm">
-            <span className="font-medium text-caution-700">Cancellation fee</span>
-            <span className="font-bold tabular-nums text-caution-700">{formatUsd(fee)}</span>
-          </div>
+            {fee > 0 && !policyLoading && !policyError && (
+              <div className="mx-5 mb-1 flex items-center justify-between rounded-control bg-caution-50 px-4 py-3 text-sm">
+                <span className="font-medium text-caution-700">Cancellation fee</span>
+                <span className="font-bold tabular-nums text-caution-700">{formatUsd(fee)}</span>
+              </div>
+            )}
+
+            {error && <p className="px-5 text-sm text-critical-700">{error}</p>}
+
+            <DrawerFooter>
+              <Button
+                variant="destructive"
+                loading={isPending}
+                disabled={policyLoading || policyError}
+                onClick={submit}
+              >
+                {fee > 0 ? `Cancel and pay ${formatUsd(fee)}` : 'Cancel cleaning'}
+              </Button>
+              <Button variant="ghost" disabled={isPending} onClick={() => onOpenChange(false)}>
+                Keep my cleaning
+              </Button>
+            </DrawerFooter>
+          </>
         )}
-
-        {error && <p className="px-5 text-sm text-critical-700">{error}</p>}
-
-        <DrawerFooter>
-          <Button variant="destructive" loading={isPending} disabled={policyLoading || policyError} onClick={submit}>
-            {fee > 0 ? `Cancel and pay ${formatUsd(fee)}` : 'Cancel cleaning'}
-          </Button>
-          <Button variant="ghost" disabled={isPending} onClick={() => onOpenChange(false)}>
-            Keep my cleaning
-          </Button>
-        </DrawerFooter>
       </DrawerContent>
     </Drawer>
   );

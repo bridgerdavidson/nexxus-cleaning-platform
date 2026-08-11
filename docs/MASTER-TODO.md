@@ -96,7 +96,7 @@ Already shipped from Tier 2 (checkboxes swept in `payments-audit-v4-backlog.md`)
 (#213 + #214), T2-2/3/4/8/10/13/16 + the T2-5 copy fix + the T2-7 visibility half (#180),
 T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 shipped in #172.
 
-- [ ] **3.1 Fee retry, end to end (T2-7).** Backend: retry endpoint for a failed
+- [x] **3.1 Fee retry, end to end (T2-7).** **Shipped in this PR (retry endpoint + operator sheet retry + homeowner honesty/Pay now; L-7 closed).** Backend: retry endpoint for a failed
       cancellation/no-show fee, keyed on the failed payment row (re-POSTing the cancel route
       can't reconstruct party/no_show). UI: retry affordance on the failed-fee row
       (PaymentDetailSheet / triage band). Stretch: the homeowner-side fee retry surface (L-7).
@@ -105,7 +105,7 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
 - [ ] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
       (077 rounds to whole dollars). UI: KPI tiles consume cents. While in there, verify the
       revenue KPI nets out refunds (the T2-3 join fixed the ledger view, not necessarily the RPC).
-- [ ] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER) — BUILT, open as PR #226**
+- [x] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER) — BUILT, open as PR #226** **MERGED 2026-08-01 (#226, d0decab); pilot flip unblocked.**
       (`fix/cleaner-price-readpath`, migration 122: RLS seal + service-role cleaner read routes +
       DEFINER `cleaner_stats`). Background: cleaners could read `appointments.total_price` under
       row-level RLS and compute the auto-approve cap, making migration 119's price-seal cosmetic
@@ -124,6 +124,12 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
       org-scope the migration-075 `payouts_select` RLS join (latent leak flagged in the #205
       review, 104/106 pattern); wire-or-delete the 3 dead analytics charts +
       `useAdminActionItems.ts` (verified dead 2026-07-22).
+- [ ] **Follow-up hardening (from 3.1): fee-retry payments-row lease.** The reauth-counter claim
+      only narrows the concurrent double-charge window on fee retries (same-token/stale-token
+      replays); a reader arriving after the bump but before the outcome write can still create a
+      second PI. Real fix: atomic failed-to-retrying claim on the payments row + a stuck-row
+      recovery path (likely a status CHECK migration). Flagged in the fee-retry final review
+      2026-08-01. (Numbered 3.9 in an earlier draft; 3.9 now belongs to messaging below.)
 
 Opportunistic alongside any of the above: the backlog L-items (L-2 sub-minimum charge,
 L-4 refunds-embed pin, L-5 webhook reclaim re-stamp, L-9 orphaned Connect routes).
@@ -217,10 +223,10 @@ The "cleaner decides pay" (request-mode) stack SHIPPED 2026-07-31 (#205/#224/#21
 migrations 117-120 in prod). Spec:
 `docs/superpowers/specs/2026-07-26-cleaner-request-pay-model-design.md`.
 
-- [ ] **Pilot-flip blocker = the price read-path seal (PR #226, item 3.4 above).** Until it
+- [x] **Pilot-flip blocker = the price read-path seal (PR #226, item 3.4 above).** Resolved by #226. Until it
       merges, do not set a real cleaner to `request` mode.
-- [ ] Org pay-model simplification (org setting becomes per-job-vs-hourly only; new cleaners get
-      NO default pay; operator nudged per cleaner). Plan:
+- [x] Org pay-model simplification (org setting becomes per-job-vs-hourly only; new cleaners get
+      NO default pay; operator nudged per cleaner). **SHIPPED 2026-08-01 (#232, f7b7c5d).** Plan:
       `docs/superpowers/plans/2026-07-28-org-pay-model-simplification.md` — currently UNTRACKED
       in the landing-page worktree; commit it before starting.
 - [ ] Papercuts: 30s cleaner pay-request polling latency; scorecard percent-based earnings

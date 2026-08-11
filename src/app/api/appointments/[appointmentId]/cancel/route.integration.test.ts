@@ -305,6 +305,29 @@ describe('POST /api/appointments/:appointmentId/cancel', () => {
     expect((events ?? []).some((e) => (e as { event_type: string }).event_type === 'cancellation_fee_failed')).toBe(true);
   });
 
+  it('failed fee: response carries fee_payment_id pointing at the failed payments row', async () => {
+    await setPolicy({ type: 'flat', value: 50 });
+    const appt = await seedAppointment();
+    vi.mocked(createDestinationCharge).mockRejectedValueOnce(new Error('Your card was declined.'));
+
+    const { status, body } = await callRoute<{ fee_outcome: string; fee_payment_id?: string }>(
+      handlerFor(appt.id),
+      {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { organization_id: org.organizationId, party: 'homeowner', no_show: true },
+      },
+    );
+    expect(status).toBe(200);
+    expect(body.fee_outcome).toBe('failed');
+    expect(body.fee_payment_id).toBeTruthy();
+
+    const db = createTestSupabaseClient();
+    const { data: p } = await db.from('payments').select('id, status').eq('appointment_id', appt.id).single();
+    expect((p as { id: string }).id).toBe(body.fee_payment_id);
+    expect((p as { status: string }).status).toBe('failed');
+  });
+
   it('a bank (ACH) payer is not charged a small fee (uncollectable)', async () => {
     await setPolicy({ type: 'flat', value: 50 });
     const appt = await seedAppointment();

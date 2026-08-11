@@ -178,6 +178,55 @@ describe('POST /api/appointments/:appointmentId/payment-method', () => {
     expect(status).toBe(200);
   });
 
+  it('card swap on a failed CANCELLATION FEE row leaves the row untouched (no pending reset)', async () => {
+    const db = createTestSupabaseClient();
+    // Cancelled appointment whose completion charge failed BEFORE the cancel, so
+    // authorization_status='failed', and whose revenue row was reused as the fee row.
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 100,
+      status: 'cancelled',
+    });
+    await db
+      .from('appointments')
+      .update({ authorization_status: 'failed', payment_method_id: 'pm_old' })
+      .eq('id', appt.id);
+    await db.from('user_profiles').update({ stripe_customer_id: 'cus_test_homeowner' }).eq('id', org.homeowner.userId);
+    const { data: pay } = await db
+      .from('payments')
+      .insert({
+        organization_id: org.organizationId,
+        appointment_id: appt.id,
+        amount: 50,
+        status: 'failed',
+        payment_type: 'revenue',
+        payment_method: 'card',
+        charge_kind: 'cancellation_fee',
+        stripe_payment_intent_id: 'pi_failed_fee',
+        payment_intent_status: 'requires_payment_method',
+      })
+      .select('id')
+      .single();
+
+    const { status } = await callRoute(handlerFor(appt.id), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId, payment_method_id: 'pm_new' },
+    });
+    expect(status).toBe(200);
+
+    const { data: p } = await db
+      .from('payments')
+      .select('status, stripe_payment_intent_id')
+      .eq('id', (pay as { id: string }).id)
+      .single();
+    // Still a retryable failed fee: status untouched, PI still attached.
+    expect((p as { status: string }).status).toBe('failed');
+    expect((p as { stripe_payment_intent_id: string }).stripe_payment_intent_id).toBe('pi_failed_fee');
+  });
+
   describe('manager gating (can_manage_payments)', () => {
     let mgr: ManagerMemberHandle;
 

@@ -109,6 +109,12 @@ export async function POST(
       .or('authorization_status.neq.charging,authorization_status.is.null');
 
     if (wasFailed) {
+      // Never reset a cancellation-fee row: the completion-charge lifecycle ("reads Unpaid,
+      // charged at completion") doesn't exist on a cancelled appointment, and a fee row flipped
+      // to pending is stranded forever (the fee retry endpoint only accepts failed rows). Use an
+      // OR (not a bare .neq) because SQL's three-valued logic means `charge_kind <> 'cancellation_fee'`
+      // alone excludes NULL rows too, and legacy null-kind failed rows are completion charges that
+      // must still reset.
       await supabaseAdmin
         .from('payments')
         .update({
@@ -119,7 +125,8 @@ export async function POST(
         })
         .eq('appointment_id', appointmentId)
         .eq('payment_type', 'revenue')
-        .eq('status', 'failed');
+        .eq('status', 'failed')
+        .or('charge_kind.neq.cancellation_fee,charge_kind.is.null');
     }
 
     await recordPaymentEvent(supabaseAdmin, {

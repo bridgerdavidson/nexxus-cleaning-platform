@@ -175,6 +175,9 @@ export interface AdminPayment {
    *  payment_method: a manual 'card' row has none and can't be refunded; a settled
    *  ACH charge has one and can. */
   stripe_payment_intent_id?: string | null;
+  /** Raw Stripe PI status on the latest attempt. 'requires_action' marks a 3DS-blocked fee,
+   *  where a retry can't succeed until the customer verifies or swaps the card. */
+  payment_intent_status?: string | null;
   /** Refund rows against this payment. `amount` is CENTS. Used to show refunded
    *  totals and cap the refundable remainder (pending + succeeded reduce it). */
   refunds?: { amount: number; status: string }[];
@@ -721,6 +724,7 @@ const PAYMENTS_INFINITE_SELECT = `
   created_at,
   is_self_pay,
   stripe_payment_intent_id,
+  payment_intent_status,
   refunds:refunds(amount, status),
   appointment:appointments(
     id,

@@ -259,6 +259,8 @@ function OperatorPaymentsData({
       grossAmount: p.amount,
       refundedAmount: rm.refundedCents / 100,
       remainingRefundable: rm.remainingCents / 100,
+      feeRetryable: p.charge_kind === "cancellation_fee" && p.status === "failed",
+      feeNeedsCardVerification: p.payment_intent_status === "requires_action",
     };
   }, [ledger, selectedRowId, payments, orgName, canRefund, openDisputedIds]);
 
@@ -374,6 +376,32 @@ function OperatorPaymentsData({
     [currentOrganizationId, authHeaders, refetchPayouts],
   );
 
+  const handleRetryFee = useCallback(
+    async (id: string) => {
+      if (!currentOrganizationId) return;
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/payments/${id}/retry-fee`, {
+          method: "POST",
+          headers: await authHeaders(),
+          body: JSON.stringify({ organization_id: currentOrganizationId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const cents = Number(data.fee_captured_cents ?? 0);
+          toast.success(cents > 0 ? `Fee collected: ${money2(cents / 100)}` : "Fee collected");
+          queryClient.invalidateQueries({ queryKey: keys.payments.infinite(currentOrganizationId) });
+          queryClient.invalidateQueries({ queryKey: keys.payments.statsByOrg(currentOrganizationId) });
+        } else {
+          toast.error(typeof data.error === "string" ? data.error : "Retry failed. Please try again.");
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [currentOrganizationId, authHeaders, queryClient],
+  );
+
   // The redesign Messages screen creates/opens the thread itself from ?to=.
   const handleMessage = useCallback(
     async (cleanerId: string | null) => {
@@ -452,6 +480,7 @@ function OperatorPaymentsData({
           if (txnDetail) setRefundTarget(txnDetail);
         }}
         onRetry={handleRetry}
+        onRetryFee={handleRetryFee}
         onDismiss={handleDismiss}
         onMessage={handleMessage}
         onViewBooking={canViewBookings ? handleViewBooking : undefined}

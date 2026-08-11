@@ -38,11 +38,11 @@ const PAYOUT_ROWS: PayoutRowVM[] = [
 ];
 
 const TXN_DETAILS: Record<string, TransactionDetailVM> = {
-  t1: { ...TXN_ROWS[0], appointmentId: "a1", reference: "AP-1042", notes: "Partially refunded after a rescheduled room.", createdLabel: "Jun 20, 2026", paidLabel: "Jun 20, 2026", refundable: true, refundedLabel: "$40.00", grossAmount: 240, refundedAmount: 40, remainingRefundable: 200 },
-  t2: { ...TXN_ROWS[1], appointmentId: "a2", reference: null, notes: "Company self-pay.", createdLabel: "Jun 19, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 120, refundedAmount: 0, remainingRefundable: 120 },
-  t3: { ...TXN_ROWS[2], appointmentId: "a3", reference: "AP-1031", notes: null, createdLabel: "Jun 18, 2026", paidLabel: "Jun 18, 2026", refundable: false, refundedLabel: "$310.00", grossAmount: 310, refundedAmount: 310, remainingRefundable: 0 },
-  t4: { ...TXN_ROWS[3], appointmentId: "a4", reference: null, notes: "Cash on site.", createdLabel: "Jun 17, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 95, refundedAmount: 0, remainingRefundable: 95 },
-  t5: { ...TXN_ROWS[4], appointmentId: "a5", reference: null, notes: null, createdLabel: "Jun 16, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 220, refundedAmount: 0, remainingRefundable: 220 },
+  t1: { ...TXN_ROWS[0], appointmentId: "a1", reference: "AP-1042", notes: "Partially refunded after a rescheduled room.", createdLabel: "Jun 20, 2026", paidLabel: "Jun 20, 2026", refundable: true, refundedLabel: "$40.00", grossAmount: 240, refundedAmount: 40, remainingRefundable: 200, feeRetryable: false, feeNeedsCardVerification: false },
+  t2: { ...TXN_ROWS[1], appointmentId: "a2", reference: null, notes: "Company self-pay.", createdLabel: "Jun 19, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 120, refundedAmount: 0, remainingRefundable: 120, feeRetryable: false, feeNeedsCardVerification: false },
+  t3: { ...TXN_ROWS[2], appointmentId: "a3", reference: "AP-1031", notes: null, createdLabel: "Jun 18, 2026", paidLabel: "Jun 18, 2026", refundable: false, refundedLabel: "$310.00", grossAmount: 310, refundedAmount: 310, remainingRefundable: 0, feeRetryable: false, feeNeedsCardVerification: false },
+  t4: { ...TXN_ROWS[3], appointmentId: "a4", reference: null, notes: "Cash on site.", createdLabel: "Jun 17, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 95, refundedAmount: 0, remainingRefundable: 95, feeRetryable: false, feeNeedsCardVerification: false },
+  t5: { ...TXN_ROWS[4], appointmentId: "a5", reference: null, notes: null, createdLabel: "Jun 16, 2026", paidLabel: null, refundable: false, refundedLabel: null, grossAmount: 220, refundedAmount: 0, remainingRefundable: 220, feeRetryable: true, feeNeedsCardVerification: false },
 };
 
 const PAYOUT_DETAILS: Record<string, PayoutDetailVM> = {
@@ -161,6 +161,7 @@ export default function PaymentsPreviewPage() {
         busy={false}
         onRefund={() => {}}
         onRetry={() => {}}
+        onRetryFee={() => {}}
         onDismiss={() => {}}
         onMessage={() => {}}
         onViewBooking={() => {}}
