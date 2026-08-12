@@ -12,14 +12,51 @@ import { BrowserFrame, PhoneFrame } from './frames'
 interface BrandPreset {
   name: string
   hex: string
+  Logo: React.ComponentType<{ className?: string }>
+}
+
+// "Uploaded" logo marks for the preset companies. Like the PRESETS hexes, the
+// fills are DATA: a real tenant's logo arrives as a fixed-color asset and does
+// not tint with the theme. Summit Shine's green mark on an amber brand is
+// deliberate; matching is the norm, not the rule. When the visitor types their
+// own name, these give way to the monogram (no logo uploaded yet).
+function SparkleMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <path d="M12 1.5 14.6 9.4 22.5 12 14.6 14.6 12 22.5 9.4 14.6 1.5 12 9.4 9.4 Z" fill="#DB2777" />
+    </svg>
+  )
+}
+
+function PeakMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <circle cx="18.5" cy="5.5" r="2.5" fill="#059669" />
+      <path d="M1.5 20.5h21L14 8l-3.4 5.6L8.2 10 1.5 20.5Z" fill="#059669" />
+    </svg>
+  )
+}
+
+function BirdMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <g fill="#8B5CF6">
+        <path d="M1.8 6.8 10 12.6 7 16.4 Z" />
+        <ellipse cx="12.8" cy="14.6" rx="5.8" ry="4.4" />
+        <circle cx="17" cy="8.6" r="3.3" />
+        <path d="M20 7.3 23.2 8.7 20.1 9.9 Z" />
+      </g>
+      <circle cx="18.1" cy="7.9" r="0.75" fill="#FFFFFF" />
+    </svg>
+  )
 }
 
 // Demo identities. These hexes are DATA, not styling: they feed the production
 // deriveBrandRamp pipeline exactly like a tenant's saved brand color does.
 const PRESETS: BrandPreset[] = [
-  { name: 'Sparkle & Co', hex: '#059669' },
-  { name: 'Summit Shine', hex: '#DB2777' },
-  { name: 'Bluebird Home', hex: '#8B5CF6' },
+  { name: 'Sparkle & Co', hex: '#DB2777', Logo: SparkleMark },
+  { name: 'Summit Shine', hex: '#FFAA00', Logo: PeakMark },
+  { name: 'Swift Home', hex: '#8B5CF6', Logo: BirdMark },
 ]
 
 const RAIL_ITEMS = [
@@ -30,16 +67,19 @@ const RAIL_ITEMS = [
   { label: 'Messages', Icon: MessageSquare },
 ]
 
-/** Expanded operator rail at sketch scale: lockup with the live company name,
- * labeled nav (first item active in brand), settings pinned to the bottom. */
-function ExpandedDemoRail({ name }: { name: string }) {
+/** Expanded operator rail at sketch scale: lockup with the live company name
+ * (uploaded logo when the preset has one, monogram otherwise), labeled nav
+ * (first item active in brand), settings pinned to the bottom. */
+function ExpandedDemoRail({ name, logo }: { name: string; logo?: React.ReactNode }) {
   const display = name.trim() || 'Your Company'
   return (
     <div className="flex w-24 shrink-0 flex-col gap-1 border-r border-border bg-card p-2 sm:w-32" aria-hidden>
       <div className="mb-1.5 flex items-center gap-1.5 px-1">
-        <span className="grid size-5 shrink-0 place-items-center rounded-chip bg-primary text-[8px] font-extrabold text-primary-foreground transition-colors duration-slow">
-          {orgInitials(display)}
-        </span>
+        {logo ?? (
+          <span className="grid size-5 shrink-0 place-items-center rounded-chip bg-primary text-[8px] font-extrabold text-primary-foreground transition-colors duration-slow">
+            {orgInitials(display)}
+          </span>
+        )}
         <span className="truncate text-[10px] font-bold text-foreground">{display}</span>
       </div>
       {RAIL_ITEMS.map(({ label, Icon }, i) => (
@@ -144,7 +184,16 @@ export function BrandingSection() {
 
         {/* Tableau: everything inside this wrapper repaints from the brand vars. */}
         <div style={brandVars} className="relative mx-auto mt-10 max-w-2xl" aria-hidden>
-          <BrowserFrame label={`app.${domain}.com`} rail={<ExpandedDemoRail name={display} />} className="mr-12 sm:mr-24">
+          <BrowserFrame
+            label={`app.${domain}.com`}
+            rail={
+              <ExpandedDemoRail
+                name={display}
+                logo={customName.trim() ? undefined : <brand.Logo className="size-5 shrink-0" />}
+              />
+            }
+            className="mr-12 sm:mr-24"
+          >
             {/* pr clears the overlapping phone so pills never clip mid-word.
                 Mobile drops the third KPI and lets the demo lines flex so the
                 sliver between rail and phone never crushes its content. */}
@@ -191,9 +240,13 @@ export function BrandingSection() {
           >
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
-                <span className="grid size-5 shrink-0 place-items-center rounded-chip bg-primary text-[8px] font-extrabold text-primary-foreground transition-colors duration-slow">
-                  {orgInitials(display)}
-                </span>
+                {customName.trim() ? (
+                  <span className="grid size-5 shrink-0 place-items-center rounded-chip bg-primary text-[8px] font-extrabold text-primary-foreground transition-colors duration-slow">
+                    {orgInitials(display)}
+                  </span>
+                ) : (
+                  <brand.Logo className="size-5 shrink-0" />
+                )}
                 <span className="truncate text-[10px] font-bold text-foreground">{display}</span>
               </div>
               <div className="rounded-control border border-border bg-card p-2">
