@@ -10,7 +10,7 @@ const FAQS = [
   {
     id: 'pricing-final',
     q: 'What happens when pricing is final?',
-    a: 'The numbers on this page are early access pricing. Companies on the waitlist keep the rate they signed up under, even if public pricing goes up later.',
+    a: 'The numbers on this page are early access pricing. Companies that join during early access keep the rate they signed up under, even if public pricing goes up later.',
   },
   {
     id: 'online-booking',
@@ -30,7 +30,7 @@ const FAQS = [
   {
     id: 'when',
     q: 'When does early access open?',
-    a: 'We are onboarding a small group of founding companies first, in the order they joined the waitlist. Join below and we will reach out with your start date.',
+    a: 'We are onboarding a small group of founding companies first. Create your account and we will reach out with your start date.',
   },
 ]
 

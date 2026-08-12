@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { AnimatePresence, motion as m, useReducedMotion } from 'motion/react'
 import { Check } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -135,7 +136,7 @@ export function PricingSection() {
                   ))}
                 </ul>
                 <Button variant={tier.popular && !over ? 'default' : 'outline'} className="mt-6 w-full" asChild>
-                  <a href="#waitlist">Join the waitlist</a>
+                  <Link href="/get-started">Try it out</Link>
                 </Button>
               </Card>
             )

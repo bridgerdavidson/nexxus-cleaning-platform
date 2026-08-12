@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { motion as m } from 'motion/react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,7 +29,7 @@ export function HeroSection() {
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" asChild>
-              <a href="#waitlist">Join the waitlist</a>
+              <Link href="/get-started">Try it out</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <a href="#try-it">See the product</a>

@@ -8,7 +8,6 @@ import { FlexibilitySection } from '@/components/marketing/FlexibilitySection'
 import { BrandingSection } from '@/components/marketing/BrandingSection'
 import { PricingSection } from '@/components/marketing/PricingSection'
 import { FaqSection } from '@/components/marketing/FaqSection'
-import { WaitlistSection } from '@/components/marketing/WaitlistSection'
 import { MarketingFooter } from '@/components/marketing/MarketingFooter'
 
 export default function LandingPage() {
@@ -24,7 +23,6 @@ export default function LandingPage() {
         <Reveal><FlexibilitySection /></Reveal>
         <PricingSection />
         <Reveal><FaqSection /></Reveal>
-        <Reveal><WaitlistSection /></Reveal>
       </main>
       <MarketingFooter />
     </div>
