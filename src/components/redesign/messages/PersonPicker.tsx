@@ -87,8 +87,9 @@ export function PersonPicker({
   );
 }
 
-/** A pickable person (or static option, via `icon`) inside a PersonPicker. */
+/** A pickable person (or static option, via `icon`/`leading`) inside a PersonPicker. */
 export function PersonPickerRow({
+  leading,
   avatarUrl,
   initials,
   icon,
@@ -96,9 +97,11 @@ export function PersonPickerRow({
   subtitle,
   onSelect,
 }: {
+  /** Fully replaces the avatar/icon slot (e.g. the org's brand mark). */
+  leading?: React.ReactNode;
   avatarUrl?: string | null;
   initials?: string;
-  /** Icon tile instead of an avatar (e.g. the "Cleaning office" option). */
+  /** Icon tile instead of an avatar. */
   icon?: React.ReactNode;
   title: string;
   subtitle?: string;
@@ -110,7 +113,7 @@ export function PersonPickerRow({
       onClick={onSelect}
       className="flex min-h-[44px] w-full items-center gap-3 rounded-control px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring active:bg-accent hover:bg-accent/60"
     >
-      {icon ? (
+      {leading ?? (icon ? (
         <span
           aria-hidden
           className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary/10 text-primary"
@@ -122,7 +125,7 @@ export function PersonPickerRow({
           {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
           <AvatarFallback>{initials ?? '?'}</AvatarFallback>
         </Avatar>
-      )}
+      ))}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-bold">{title}</span>
         {subtitle ? (

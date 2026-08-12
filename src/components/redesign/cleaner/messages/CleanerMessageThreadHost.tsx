@@ -155,10 +155,13 @@ function ThreadHostInner({
 function ThreadLoading({ onBack, backLabel }: { onBack: () => void; backLabel?: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
-      {/* Same chrome as the loaded thread (D5/D9): real header, bubbles skeleton. */}
-      <ThreadHeader onBack={onBack} backLabel={backLabel} title="Office" />
-      <div className="flex min-h-0 flex-1 flex-col justify-end px-5 py-4">
-        <ThreadSkeleton />
+      {/* Same chrome as the loaded thread (D5/D9/D16): real header, bubbles
+          skeleton, centered column on desktop. */}
+      <div className="mx-auto flex h-full min-h-0 w-full flex-col lg:max-w-lg">
+        <ThreadHeader onBack={onBack} backLabel={backLabel} title="Office" />
+        <div className="flex min-h-0 flex-1 flex-col justify-end px-5 py-4">
+          <ThreadSkeleton />
+        </div>
       </div>
     </div>
   );

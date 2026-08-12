@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  timeAgo, lastMessagePreview, money2, initialsOf, dayLabel, monthDay, weekdayMonthDay, fmtTime,
+  timeAgo, lastMessagePreview, money2, initialsOf, initialsFromFullName, dayLabel, monthDay,
+  weekdayMonthDay, fmtTime,
 } from './messages-format'
 
 // Pin the timezone: dayLabel uses local-time day boundaries, so absolute
@@ -61,6 +62,19 @@ describe('initialsOf', () => {
   })
   it('returns "?" for both null', () => {
     expect(initialsOf(null, null)).toBe('?')
+  })
+})
+
+describe('initialsFromFullName', () => {
+  it('takes first + last word initials', () => {
+    expect(initialsFromFullName('Wanda Jacobs')).toBe('WJ')
+    expect(initialsFromFullName('Mary Jo van der Berg')).toBe('MB')
+  })
+  it('uses two letters of a single name', () => {
+    expect(initialsFromFullName('Cher')).toBe('CH')
+  })
+  it('returns "?" for empty input', () => {
+    expect(initialsFromFullName('  ')).toBe('?')
   })
 })
 

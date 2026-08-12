@@ -183,10 +183,13 @@ timestamps, unread treatment) must unify.
       catalog every inconsistency (styling, spacing, states, mobile behavior), and mark which
       admin primitives each drifted copy should adopt. Deliverable: audit doc under `docs/`
       that becomes the spec for 3.5.2.
-- [ ] **3.9.2 Unify.** Extract the admin thread primitives into shared components where the
-      audit says so, and re-skin cleaner + homeowner surfaces onto them. Keep the
-      appointment-based structure; unify the skin. Design-system rules apply
-      (`ui-feature-workflow` + `ui-ux-pro-max` at design AND implementation).
+- [x] **3.9.2 Unify.** ✅ DONE 2026-08-11 as a three-PR stack, validated by Bridger on the
+      seeded demo cast: #239 (invisible consolidation: one time/format module, dead-code
+      sweep, NavMessagesBadge adoption), #241 (shared primitives + operator adoption:
+      ThreadHeader, InboxRow, pills/status map pinned to the bookings BADGE source, thread
+      states, PersonPicker, Details re-token), #243 (cleaner + homeowner re-skin: flush
+      lists, unified + trigger and header, round OrgAvatar office rows, takeover desktop
+      cap). Structure stayed role-specific; the skin is one product.
 
 ## 3.95. Mobile polish pair (added 2026-08-01)
 
