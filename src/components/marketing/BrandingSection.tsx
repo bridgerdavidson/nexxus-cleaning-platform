@@ -31,8 +31,8 @@ function SparkleMark({ className }: { className?: string }) {
 function PeakMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <circle cx="18.5" cy="5.5" r="2.5" fill="#D97706" />
-      <path d="M1.5 20.5h21L14 8l-3.4 5.6L8.2 10 1.5 20.5Z" fill="#D97706" />
+      <circle cx="18.5" cy="5.5" r="2.5" fill="#FFAA00" />
+      <path d="M1.5 20.5h21L14 8l-3.4 5.6L8.2 10 1.5 20.5Z" fill="#FFAA00" />
     </svg>
   )
 }
