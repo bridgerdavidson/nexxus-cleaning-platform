@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
-  timeAgo, lastMessagePreview, money2, initialsOf, dayLabel,
+  timeAgo, lastMessagePreview, money2, initialsOf, dayLabel, monthDay, weekdayMonthDay, fmtTime,
 } from './messages-format'
+
+// Pin the timezone: dayLabel uses local-time day boundaries, so absolute
+// expectations are only stable under a fixed zone (same convention as
+// jobTranscript.test.ts). Set at module load, before any `it` runs.
+process.env.TZ = 'UTC'
 
 const NOW = new Date('2026-06-24T18:00:00Z').toISOString()
 
@@ -62,5 +67,37 @@ describe('initialsOf', () => {
 describe('dayLabel', () => {
   it('labels same day as Today', () => {
     expect(dayLabel('2026-06-24T09:00:00Z', NOW)).toBe('Today')
+  })
+  it('labels the previous day as Yesterday', () => {
+    expect(dayLabel('2026-06-23T18:00:00Z', NOW)).toBe('Yesterday')
+  })
+  it('falls back to month + day for older dates', () => {
+    expect(dayLabel('2026-06-10T18:00:00Z', NOW)).toBe('Jun 10')
+  })
+})
+
+describe('monthDay', () => {
+  it('formats a YYYY-MM-DD as month + day', () => {
+    expect(monthDay('2026-06-29')).toBe('Jun 29')
+  })
+  it('returns empty for missing or invalid input', () => {
+    expect(monthDay(undefined)).toBe('')
+    expect(monthDay(null)).toBe('')
+    expect(monthDay('not-a-date')).toBe('')
+  })
+})
+
+describe('weekdayMonthDay', () => {
+  it('formats a YYYY-MM-DD with the weekday', () => {
+    expect(weekdayMonthDay('2026-06-27')).toBe('Sat, Jun 27')
+  })
+})
+
+describe('fmtTime', () => {
+  it('formats a bare HH:MM as a 12-hour clock time', () => {
+    expect(fmtTime('14:30')).toBe('2:30 PM')
+  })
+  it('formats an ISO timestamp as a 12-hour clock time', () => {
+    expect(fmtTime('2026-06-24T09:05:00Z')).toBe('9:05 AM')
   })
 })

@@ -90,7 +90,6 @@ export function OperatorMessagesView(props: OperatorMessagesViewProps) {
         <div className="flex min-h-0 w-full flex-col lg:w-[360px] lg:shrink-0 lg:border-r lg:border-border">
           <InboxList
             rows={props.rows}
-            totalConversations={props.totalConversations}
             unreadTotal={props.unreadTotal}
             search={props.search}
             onSearchChange={props.onSearchChange}

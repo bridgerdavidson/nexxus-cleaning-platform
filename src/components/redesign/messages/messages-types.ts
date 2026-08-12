@@ -83,7 +83,6 @@ export interface OperatorMessagesViewProps {
   onRetry?: () => void
   // inbox
   rows: ConversationRowVM[]
-  totalConversations: number
   unreadTotal: number
   search: string
   onSearchChange: (v: string) => void

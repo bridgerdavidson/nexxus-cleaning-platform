@@ -105,7 +105,6 @@ export function HomeownerMessageThread({
       onLoadMore={loadMoreMessages}
       messagesEndRef={messagesEndRef as RefObject<HTMLDivElement>}
       onOpenBooking={() => {}}
-      variant="takeover"
       onBack={onBack}
       readOnly={readOnly}
       readOnlyNotice={readOnlyNotice}

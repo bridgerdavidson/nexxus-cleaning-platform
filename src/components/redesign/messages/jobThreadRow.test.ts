@@ -38,4 +38,14 @@ describe('toJobThreadRowVM', () => {
     const vm = toJobThreadRowVM(summary, appt as never, NOW);
     expect(vm.timeLabel).toBe('2h');
   });
+
+  it('uses the shared week label past 7 days and the shared month-day date label', () => {
+    const vm = toJobThreadRowVM(
+      { ...summary, lastMessageAt: '2026-06-10T12:00:00Z' },
+      appt as never,
+      NOW,
+    );
+    expect(vm.timeLabel).toBe('2w');
+    expect(vm.dateLabel).toBe('Oct 15');
+  });
 });
