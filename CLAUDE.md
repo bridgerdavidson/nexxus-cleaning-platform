@@ -112,6 +112,40 @@ This project uses a feature-branch + PR-to-master flow with automated checks in 
    git branch -d feat/<name>
    ```
 
+### Stacked PRs (multi-phase work)
+
+When one feature/fix ships as **multiple dependent phases** that are reviewed separately but
+merged together after end-of-stack validation, use GitHub's native stacked PRs via the
+`gh-stack` extension (installed; `gh extension install github/gh-stack` elsewhere) instead of
+long-lived unmerged branches plus a manual merge train. Decision rule: phases that build on
+each other and land together → stack; independent changes → separate parallel PRs as usual.
+First production use: the messaging unification (#239/#241/#243, stack #245, 2026-08-11).
+
+```bash
+gh stack init <bottom> <mid> <top>          # adopts EXISTING branches and their open PRs
+gh stack submit                             # links them into a Stack on GitHub (same PR numbers)
+gh stack rebase && gh stack push            # restack the whole stack onto current master
+gh stack merge --yes --squash <bottom-pr#>  # merge ONE layer; GitHub auto-retargets AND
+                                            # auto-rebases the layers above, server-side
+```
+
+Repo-specific rules (learned the hard way; details in the first stack's history):
+
+- **Merge bottom-up, one layer at a time.** The atomic whole-stack merge fails here with
+  "N of 4 required status checks are expected": the two E2E checks attach via
+  `deployment_status`, which the atomic collapse cannot map onto the simulated result (needs
+  the merge-queue part of the rollout). After each layer merges, wait for the auto-rebased
+  next PR's checks to re-run (roughly 15 minutes: CI plus preview E2E), then merge it.
+- **`ci.yml`'s `pull_request` trigger has NO base-branch filter, deliberately.** Stack layers
+  target another PR's branch, and every layer must still carry the four required checks.
+  Never re-add `branches: [master]` there (the `push` trigger stays restricted to master/dev,
+  so each PR still gets exactly one CI run).
+- Branch protection is unchanged and enforced per layer; never weaken it to make a stack
+  merge pass. Keep squash merges.
+- The `Migrate / migrate-dev` shared-dev drift rules below apply per layer, same as any branch.
+- `gh stack rebase` + `gh stack push` replace the old post-squash `rebase --onto` recovery
+  playbook; if a stack gets into a weird state, restack rather than close/reopen PRs.
+
 ### When a check fails
 
 - **`CI / unit + integration` red** — reproduce locally with `npm run test` (or `npm run test:integration -- <pattern>` for a specific file). Fix, commit, push. CI re-runs automatically on each push to the same branch; the PR updates in place.
@@ -271,7 +305,7 @@ Required for full functionality:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only admin client (never expose)
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — server Stripe
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
-- `CRON_SECRET` — shared secret pg_cron uses to authenticate to `/api/appointments/auto-defer/cron`. Generate a random 64-char string. In Postgres, set the matching value via `ALTER SYSTEM SET app.cron_secret = '<value>'` plus `ALTER SYSTEM SET app.api_base_url = 'https://your-host'` so the cron job (migration 064) can call back.
+- `CRON_SECRET` — shared secret every pg_cron job uses to authenticate to the cron routes (`/api/appointments/auto-defer/cron`, `/api/cron/reconcile-payments`, `/api/cron/notification-emails`). Generate a random 64-char string. On the Postgres side the jobs read **Supabase Vault**, not GUCs (migration `20260812024230_cron_config_vault`): provision each environment once in the SQL editor with `SELECT vault.create_secret('<value>', 'cron_secret');` and `SELECT vault.create_secret('https://your-host', 'app_base_url');`. Until both secrets exist the jobs no-op silently. (Never use `ALTER SYSTEM`/`ALTER DATABASE ... SET app.*` for this — hosted Supabase's postgres role is not superuser and Postgres 15+ denies custom-GUC writes with 42501; that only works on local.)
 
 Optional / debug:
 
