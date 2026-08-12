@@ -97,6 +97,11 @@ export function useCleanerConnect(
     } finally {
       setLoading(false);
     }
+    // appearanceOverride and resolvedTheme are intentionally excluded:
+    // re-running this effect would re-create (and unmount) the iframe-bearing
+    // instance, which breaks the Connect popup flow. The appearance is applied
+    // at init time by design; a mid-session theme toggle picks up on remount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, user?.id]);
 
   return { enabled, connectInstance, initError, loading };
