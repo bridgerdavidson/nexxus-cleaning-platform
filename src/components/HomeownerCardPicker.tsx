@@ -171,7 +171,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
       <label
         key={value}
         className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition-colors ${
-          checked ? "border-primary-500 bg-primary-50" : "border-gray-300 hover:border-gray-400"
+          checked ? "border-primary bg-primary/10" : "border-border hover:border-muted-foreground/40"
         }`}
       >
         <input
@@ -182,8 +182,8 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
           onChange={() => setSelected(value)}
         />
         <span className="flex-1">
-          <span className="block text-sm font-medium text-gray-900">{label}</span>
-          {sublabel && <span className="block text-xs text-gray-500">{sublabel}</span>}
+          <span className="block text-sm font-medium text-foreground">{label}</span>
+          {sublabel && <span className="block text-xs text-muted-foreground">{sublabel}</span>}
         </span>
       </label>
     );
@@ -192,13 +192,13 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saved payment methods</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Saved payment methods</p>
         {loadingCards ? (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading your cards…
           </div>
         ) : cards.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-500">
+          <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
             No saved payment methods yet.
           </p>
         ) : (
@@ -207,10 +207,10 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
               ? radio(
                   c.id,
                   <span className="flex items-center gap-2">
-                    <Landmark className="h-4 w-4 text-gray-500" />
+                    <Landmark className="h-4 w-4 text-muted-foreground" />
                     {c.bankName ?? "Bank account"} •••• {c.last4}
                     {c.isDefault && (
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
                         Default
                       </span>
                     )}
@@ -220,10 +220,10 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
               : radio(
                   c.id,
                   <span className="flex items-center gap-2 capitalize">
-                    <CreditCard className="h-4 w-4 text-gray-500" />
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
                     {c.brand} •••• {c.last4}
                     {c.isDefault && (
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-600">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
                         Default
                       </span>
                     )}
@@ -235,11 +235,11 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Pay with a new card or bank</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay with a new card or bank</p>
         {/* Nudge toward bank (lower fee) before any bank is attached — that incentive otherwise
             only shows as a sublabel on an already-saved bank. */}
         {stripeAchUiEnabled() && !hasSavedBank && (
-          <p className="flex items-start gap-1.5 text-xs text-gray-500">
+          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <Landmark className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary-600" />
             Paying by bank account costs less than a card. Add one below to save on fees.
           </p>
@@ -247,7 +247,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
         {radio(
           NEW_CARD,
           <span className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-gray-500" /> Use a new card or bank account
+            <Plus className="h-4 w-4 text-muted-foreground" /> Use a new card or bank account
           </span>,
         )}
         {selected === NEW_CARD && (
@@ -257,7 +257,7 @@ const HomeownerCardPicker = forwardRef<CardPickerHandle, Props>(function Homeown
         )}
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted-foreground">
         You won’t be charged until your cleaning is completed. Your card or bank account is saved
         securely for next time.
       </p>

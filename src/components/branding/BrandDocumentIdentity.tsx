@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { isBrandedAppPath } from "@/lib/branding/paths";
+import { APP_BG_COLOR_DARK } from "@/constants/theme";
 import { useOrgBrand } from "./BrandProvider";
 
 /**
@@ -22,6 +23,19 @@ export function BrandDocumentIdentity() {
   const pathname = usePathname();
 
   const defaultsRef = useRef<{ icons: { el: HTMLLinkElement; href: string }[]; themeColor: string | null } | null>(null);
+
+  // Theme comes from the html class, NOT useTheme(): this component mounts
+  // outside the (redesign) ThemeProvider tree, and the class is what next-themes
+  // actually writes. A MutationObserver keeps it live across toggles.
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    const update = () => setIsDark(el.classList.contains("dark"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (defaultsRef.current === null) {
@@ -59,11 +73,14 @@ export function BrandDocumentIdentity() {
       for (const { el, href } of defaults.icons) el.href = href;
     }
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (meta && !brand.isDefault) meta.content = brand.color;
+    // Dark mode wins over the brand hue: the status bar must match the dark
+    // canvas, not float a saturated band above a near-black app.
+    if (meta && isDark) meta.content = APP_BG_COLOR_DARK;
+    else if (meta && !brand.isDefault) meta.content = brand.color;
     else if (meta && defaults.themeColor) meta.content = defaults.themeColor;
 
     return restoreChrome;
-  }, [orgStatus, brand.name, brand.iconUrl, brand.color, brand.isDefault, pathname]);
+  }, [orgStatus, brand.name, brand.iconUrl, brand.color, brand.isDefault, pathname, isDark]);
 
   return null;
 }

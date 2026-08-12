@@ -28,15 +28,15 @@ export default function WorkspaceErrorScreen({
   };
 
   return (
-    <div className="min-h-screen bg-white md:bg-gray-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background md:bg-muted flex items-center justify-center p-4">
       <div className="max-w-sm text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
-          <AlertTriangle className="h-6 w-6 text-amber-600" aria-hidden="true" />
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-caution/15">
+          <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-caution" aria-hidden="true" />
         </div>
-        <h2 className="mb-2 text-lg font-semibold text-gray-900">
+        <h2 className="mb-2 text-lg font-semibold text-foreground">
           Couldn&apos;t load your workspace
         </h2>
-        <p className="mb-6 text-sm text-gray-600">
+        <p className="mb-6 text-sm text-muted-foreground">
           We hit a snag loading your account. This is usually temporary. You&apos;re still
           signed in.
         </p>

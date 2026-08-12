@@ -51,7 +51,7 @@ function SettingsIndex({
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex w-full items-center gap-2.5 rounded-control px-2.5 py-2 text-left text-sm font-medium transition-colors",
-                        active ? "bg-brand-50 text-brand-700" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        active ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-ink" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                       )}
                     >
                       <Icon className={cn("size-4 shrink-0", active ? "text-brand-ink" : "text-muted-foreground")} />

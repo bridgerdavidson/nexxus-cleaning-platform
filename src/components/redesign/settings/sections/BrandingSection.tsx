@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import imageCompression from "browser-image-compression";
-import { Upload, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { uuidv4 } from "@/lib/uuid";
@@ -22,26 +23,41 @@ interface BrandingForm {
   color: string;
   iconUrl: string;
   fullUrl: string;
+  /** Dark-mode variants; empty falls back to the light asset at render time. */
+  iconDarkUrl: string;
+  fullDarkUrl: string;
 }
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 const ACCEPTED_TYPES = ["image/png", "image/webp"];
 
-type LogoSlot = "icon" | "full";
+/** Doubles as the storage filename prefix (`<slot>-<uuid>.<ext>`), which the
+ *  branding route's filename pin accepts for all four spellings. */
+type LogoSlot = "icon" | "full" | "icon-dark" | "full-dark";
+
+const SLOT_LABEL: Record<LogoSlot, string> = {
+  icon: "App icon",
+  full: "Full logo",
+  "icon-dark": "Dark mode icon",
+  "full-dark": "Dark mode logo",
+};
 
 export function BrandingSection() {
   const { currentOrganizationId, refreshOrganization } = useAuth();
 
   // The PERSISTED logo urls, so upload cleanup can tell a staged (unsaved)
   // object apart from one the org row actually references.
-  const savedUrlsRef = useRef<{ iconUrl: string; fullUrl: string }>({ iconUrl: "", fullUrl: "" });
-  const baselineUrl = (k: "iconUrl" | "fullUrl") => savedUrlsRef.current[k];
+  const savedUrlsRef = useRef<{ iconUrl: string; fullUrl: string; iconDarkUrl: string; fullDarkUrl: string }>(
+    { iconUrl: "", fullUrl: "", iconDarkUrl: "", fullDarkUrl: "" },
+  );
+  const baselineUrl = (k: "iconUrl" | "fullUrl" | "iconDarkUrl" | "fullDarkUrl") =>
+    savedUrlsRef.current[k];
 
   const load = useCallback(async (): Promise<BrandingForm> => {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
       .from("organizations")
-      .select("name, brand_color, logo_icon_url, logo_full_url")
+      .select("name, brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url")
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -50,8 +66,15 @@ export function BrandingSection() {
       color: (data?.brand_color as string | null) ?? "",
       iconUrl: (data?.logo_icon_url as string | null) ?? "",
       fullUrl: (data?.logo_full_url as string | null) ?? "",
+      iconDarkUrl: (data?.logo_icon_dark_url as string | null) ?? "",
+      fullDarkUrl: (data?.logo_full_dark_url as string | null) ?? "",
     };
-    savedUrlsRef.current = { iconUrl: form.iconUrl, fullUrl: form.fullUrl };
+    savedUrlsRef.current = {
+      iconUrl: form.iconUrl,
+      fullUrl: form.fullUrl,
+      iconDarkUrl: form.iconDarkUrl,
+      fullDarkUrl: form.fullDarkUrl,
+    };
     return form;
   }, [currentOrganizationId]);
 
@@ -64,8 +87,15 @@ export function BrandingSection() {
         brand_color: v.color || null,
         logo_icon_url: v.iconUrl || null,
         logo_full_url: v.fullUrl || null,
+        logo_icon_dark_url: v.iconDarkUrl || null,
+        logo_full_dark_url: v.fullDarkUrl || null,
       });
-      savedUrlsRef.current = { iconUrl: v.iconUrl, fullUrl: v.fullUrl };
+      savedUrlsRef.current = {
+        iconUrl: v.iconUrl,
+        fullUrl: v.fullUrl,
+        iconDarkUrl: v.iconDarkUrl,
+        fullDarkUrl: v.fullDarkUrl,
+      };
       // AuthContext still holds the pre-save org row; silently refresh it so
       // BrandProvider retints the whole app right away. NOT reloadOrganization:
       // that cycles orgStatus through 'loading', which unmounts the entire
@@ -124,12 +154,16 @@ export function BrandingSection() {
         label="App icon"
         helper="Square works best. Shown in the sidebar, tabs, and emails."
       >
-        <LogoField
+        <LogoPairField
           slot="icon"
+          darkSlot="icon-dark"
           url={value.iconUrl}
+          darkUrl={value.iconDarkUrl}
           savedUrl={baselineUrl("iconUrl")}
+          savedDarkUrl={baselineUrl("iconDarkUrl")}
           orgId={currentOrganizationId}
           onChange={(iconUrl) => setValue((prev) => (prev ? { ...prev, iconUrl } : prev))}
+          onDarkChange={(iconDarkUrl) => setValue((prev) => (prev ? { ...prev, iconDarkUrl } : prev))}
         />
       </SettingRow>
 
@@ -137,20 +171,45 @@ export function BrandingSection() {
         label="Full logo"
         helper="Your full lockup or wordmark. Shown when the sidebar is expanded."
       >
-        <LogoField
+        <LogoPairField
           slot="full"
+          darkSlot="full-dark"
           url={value.fullUrl}
+          darkUrl={value.fullDarkUrl}
           savedUrl={baselineUrl("fullUrl")}
+          savedDarkUrl={baselineUrl("fullDarkUrl")}
           orgId={currentOrganizationId}
           onChange={(fullUrl) => setValue((prev) => (prev ? { ...prev, fullUrl } : prev))}
+          onDarkChange={(fullDarkUrl) => setValue((prev) => (prev ? { ...prev, fullDarkUrl } : prev))}
         />
       </SettingRow>
 
       <SettingRow
         label="Preview"
-        helper="How your brand looks in the app. Updates as you edit; nothing changes until you save."
+        helper="How your brand looks in the app, in light and dark mode. Updates as you edit; nothing changes until you save."
       >
-        <BrandPreview color={effectiveColor} iconUrl={value.iconUrl} orgName={previewName} />
+        <div className="grid gap-3">
+          <BrandPreview
+            mode="light"
+            color={effectiveColor}
+            iconUrl={value.iconUrl}
+            fullUrl={value.fullUrl}
+            orgName={previewName}
+          />
+          <BrandPreview
+            mode="dark"
+            color={effectiveColor}
+            iconUrl={value.iconDarkUrl || value.iconUrl}
+            fullUrl={value.fullDarkUrl || value.fullUrl}
+            orgName={previewName}
+          />
+          {(value.iconUrl || value.fullUrl) && !value.iconDarkUrl && !value.fullDarkUrl ? (
+            <p className="max-w-72 text-sm text-muted-foreground">
+              This is how your logo looks in dark mode. If it is hard to see, add a dark version
+              in the logo sections above.
+            </p>
+          ) : null}
+        </div>
       </SettingRow>
 
       <SettingRow
@@ -160,8 +219,16 @@ export function BrandingSection() {
         <Button
           type="button"
           variant="outline"
-          disabled={!value.color && !value.iconUrl && !value.fullUrl}
-          onClick={() => setValue((prev) => (prev ? { ...prev, color: "", iconUrl: "", fullUrl: "" } : prev))}
+          disabled={
+            !value.color && !value.iconUrl && !value.fullUrl && !value.iconDarkUrl && !value.fullDarkUrl
+          }
+          onClick={() =>
+            setValue((prev) =>
+              prev
+                ? { ...prev, color: "", iconUrl: "", fullUrl: "", iconDarkUrl: "", fullDarkUrl: "" }
+                : prev,
+            )
+          }
         >
           Reset to default
         </Button>
@@ -238,6 +305,183 @@ function ColorField({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+/**
+ * One brand asset as a Light/Dark surface tile pair. The Dark tile always
+ * shows what dark-mode users actually see: the uploaded dark variant, or the
+ * light asset on the dark canvas ("Same as light", the render-time fallback).
+ * There is no toggle: the state IS whether a dark image exists, and the X on
+ * the dark tile returns to same-as-light. Each tile pins its own theme via
+ * the scope classes, so both render truthfully whatever theme the settings
+ * page itself is in.
+ */
+function LogoPairField({
+  slot,
+  darkSlot,
+  url,
+  darkUrl,
+  savedUrl,
+  savedDarkUrl,
+  orgId,
+  onChange,
+  onDarkChange,
+}: {
+  slot: LogoSlot;
+  darkSlot: LogoSlot;
+  url: string;
+  darkUrl: string;
+  savedUrl: string;
+  savedDarkUrl: string;
+  orgId: string | null;
+  onChange: (url: string) => void;
+  onDarkChange: (url: string) => void;
+}) {
+  const light = useLogoUpload(slot, url, savedUrl, orgId, onChange);
+  const dark = useLogoUpload(darkSlot, darkUrl, savedDarkUrl, orgId, onDarkChange);
+  const darkShownUrl = darkUrl || url;
+
+  return (
+    <div className="grid gap-2 sm:w-72">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="grid content-start gap-1.5">
+          <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Light mode
+          </p>
+          <LogoSurfaceTile mode="light" empty={!url}>
+            {url ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+              <img src={url} alt={SLOT_LABEL[slot]} className="max-h-12 max-w-full object-contain" />
+            ) : (
+              <span className="text-xs text-muted-foreground">No logo yet</span>
+            )}
+          </LogoSurfaceTile>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={light.uploading || !orgId}
+              onClick={light.openPicker}
+            >
+              {light.uploading ? "Uploading..." : url ? "Replace" : "Upload"}
+            </Button>
+            {url ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 px-2"
+                aria-label={`Remove ${SLOT_LABEL[slot].toLowerCase()}`}
+                onClick={() => {
+                  discardStagedObject(url, savedUrl);
+                  onChange("");
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="grid content-start gap-1.5">
+          <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Dark mode
+          </p>
+          <LogoSurfaceTile mode="dark" empty={!darkShownUrl}>
+            {darkShownUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+              <img
+                src={darkShownUrl}
+                alt={SLOT_LABEL[darkSlot]}
+                className="max-h-12 max-w-full object-contain"
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground">No logo yet</span>
+            )}
+          </LogoSurfaceTile>
+          {darkUrl ? (
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={dark.uploading || !orgId}
+                onClick={dark.openPicker}
+              >
+                {dark.uploading ? "Uploading..." : "Replace"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 px-2"
+                aria-label="Use the light version in dark mode"
+                onClick={() => {
+                  discardStagedObject(darkUrl, savedDarkUrl);
+                  onDarkChange("");
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={dark.uploading || !orgId}
+                onClick={dark.openPicker}
+              >
+                {dark.uploading ? "Uploading..." : "Add dark version"}
+              </Button>
+              {url ? (
+                <p className="px-0.5 text-[11px] text-muted-foreground">Same as light</p>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+      {light.error ? (
+        <p role="alert" className="text-sm text-critical-700">
+          {light.error}
+        </p>
+      ) : null}
+      {dark.error ? (
+        <p role="alert" className="text-sm text-critical-700">
+          {dark.error}
+        </p>
+      ) : null}
+      {light.inputNode}
+      {dark.inputNode}
+    </div>
+  );
+}
+
+/** The themed surface a logo sits on: light or dark canvas, pinned locally. */
+function LogoSurfaceTile({
+  mode,
+  empty,
+  children,
+}: {
+  mode: "light" | "dark";
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid h-20 place-items-center overflow-hidden rounded-control border border-border bg-background p-2",
+        mode === "dark" ? "dark" : "theme-scope-light",
+        empty && "border-dashed",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** Best-effort delete of a STAGED (never saved) upload; failures are ignored. */
 function discardStagedObject(url: string, savedUrl: string) {
   if (!url || url === savedUrl) return;
@@ -253,21 +497,18 @@ function discardStagedObject(url: string, savedUrl: string) {
     });
 }
 
-/** Upload control for one logo slot: preview, upload/replace, remove. */
-function LogoField({
-  slot,
-  url,
-  savedUrl,
-  orgId,
-  onChange,
-}: {
-  slot: LogoSlot;
-  url: string;
-  /** The persisted URL, so replacing/removing a staged upload can clean it up. */
-  savedUrl: string;
-  orgId: string | null;
-  onChange: (url: string) => void;
-}) {
+/**
+ * Upload pipeline for one logo slot (trim, compress, upload, stage). Returns
+ * the picker trigger plus a hidden input node the caller must render.
+ * `savedUrl` is the persisted URL, so replacing a staged upload can clean it up.
+ */
+function useLogoUpload(
+  slot: LogoSlot,
+  url: string,
+  savedUrl: string,
+  orgId: string | null,
+  onChange: (url: string) => void,
+) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -312,106 +553,138 @@ function LogoField({
     }
   }
 
-  return (
-    <div className="sm:w-72">
-      <div className="flex items-center gap-3">
-        {url ? (
-          <span className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-control border border-border bg-card">
-            {/* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */}
-            <img src={url} alt={slot === "icon" ? "App icon" : "Full logo"} className="max-h-10 max-w-14 object-contain" />
-          </span>
-        ) : null}
-        <Button type="button" variant="outline" disabled={uploading || !orgId} onClick={() => inputRef.current?.click()}>
-          <Upload className="h-4 w-4" aria-hidden />
-          {uploading ? "Uploading..." : url ? "Replace" : "Upload"}
-        </Button>
-        {url ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={slot === "icon" ? "Remove app icon" : "Remove full logo"}
-            onClick={() => {
-              setError(null);
-              discardStagedObject(url, savedUrl);
-              onChange("");
-            }}
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </Button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/png, image/webp"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handleFile(file);
-        }}
-      />
-      {error ? (
-        <p role="alert" className="mt-1.5 text-sm text-critical-700">
-          {error}
-        </p>
-      ) : null}
-    </div>
+  const inputNode = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="image/png, image/webp"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) void handleFile(file);
+      }}
+    />
   );
+
+  return {
+    uploading,
+    error,
+    openPicker: () => {
+      setError(null);
+      inputRef.current?.click();
+    },
+    inputNode,
+  };
 }
 
 /**
  * Miniature app composition driven by the STAGED color: the derived ramp is
  * applied as local CSS variables on the wrapper, so tokens inside resolve to
  * the draft brand while the real app keeps the saved one until save.
+ *
+ * The wrapper also pins its THEME locally: `dark` re-declares the dark token
+ * set on the card (class-scoped in globals.css), and `theme-scope-light`
+ * re-pins the light set, so each card renders its own theme no matter which
+ * theme the settings page itself is in. The alias re-map below stays anyway:
+ * it must not depend on the scope classes being present.
  */
-function BrandPreview({ color, iconUrl, orgName }: { color: string; iconUrl: string; orgName: string }) {
+function BrandPreview({
+  mode,
+  color,
+  iconUrl,
+  fullUrl,
+  orgName,
+}: {
+  mode: "light" | "dark";
+  color: string;
+  iconUrl: string;
+  /** Full lockup: when present it replaces icon + name in the header, mirroring OrgLogo. */
+  fullUrl: string;
+  orgName: string;
+}) {
   const vars = useMemo(() => {
     const ramp = rampToCssVars(deriveBrandRamp(color));
-    return {
-      ...ramp,
-      // Semantic tokens resolve their var(--brand-*) references AT :root and
-      // inherit down already-resolved, so overriding --brand-* here alone
-      // would not reach bg-primary etc. Re-derive them locally.
-      "--primary": ramp["--brand-600"],
-      "--primary-foreground": ramp["--brand-fg-600"],
-      "--accent": ramp["--brand-50"],
-      "--accent-foreground": ramp["--brand-700"],
-      "--ring": ramp["--brand-600"],
-      "--brand-ink": ramp["--brand-ink-on-light"],
-    };
-  }, [color]);
+    // Semantic tokens resolve their var(--brand-*) references AT :root and
+    // inherit down already-resolved, so overriding --brand-* here alone
+    // would not reach bg-primary etc. Re-derive them locally, per theme
+    // (mirrors :root vs .dark in globals.css).
+    return mode === "dark"
+      ? {
+          ...ramp,
+          "--primary": ramp["--brand-500"],
+          "--primary-foreground": ramp["--brand-fg-500"],
+          "--ring": ramp["--brand-400"],
+          "--brand-ink": ramp["--brand-ink-on-dark"],
+        }
+      : {
+          ...ramp,
+          "--primary": ramp["--brand-600"],
+          "--primary-foreground": ramp["--brand-fg-600"],
+          "--accent": ramp["--brand-50"],
+          "--accent-foreground": ramp["--brand-700"],
+          "--ring": ramp["--brand-600"],
+          "--brand-ink": ramp["--brand-ink-on-light"],
+        };
+  }, [color, mode]);
   const initial = (orgName.trim()[0] ?? "?").toUpperCase();
 
   return (
-    <div
-      style={vars as React.CSSProperties}
-      className="w-full overflow-hidden rounded-card border border-border bg-background sm:w-72"
-    >
-      <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2">
-        {iconUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
-          <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
-        ) : (
-          <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
-            {initial}
-          </span>
+    <div className="w-full sm:w-72">
+      <p className="mb-1 px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+        {mode === "dark" ? "Dark mode" : "Light mode"}
+      </p>
+      <div
+        style={vars as React.CSSProperties}
+        className={cn(
+          "w-full overflow-hidden rounded-card border border-border bg-background",
+          mode === "dark" ? "dark" : "theme-scope-light",
         )}
-        <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
-      </div>
-      <div className="space-y-2 p-3">
-        <span className="inline-flex items-center rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">
-          Bookings
-        </span>
-        <div>
-          <span className="inline-flex items-center rounded-pill bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
-            New booking
-          </span>
+      >
+        <div className="flex h-9 items-center gap-2 border-b border-border bg-card px-3">
+          {fullUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+            <img src={fullUrl} alt={orgName} className="h-5 max-w-[180px] object-contain object-left" />
+          ) : (
+            <>
+              {iconUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+                <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+              ) : (
+                <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
+                  {initial}
+                </span>
+              )}
+              <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
+            </>
+          )}
         </div>
-        <div>
-          <span className="inline-flex items-center rounded-pill bg-positive-50 px-2 py-0.5 text-[11px] font-bold text-positive-700">
-            Confirmed
+        <div className="space-y-2 p-3">
+          {/* Chip styling is pinned per mode prop, NOT via dark: variants:
+              dark: keys off html.dark, so it would leak the page's theme into
+              the card that is deliberately showing the OTHER theme. */}
+          <span
+            className={cn(
+              "inline-flex items-center rounded-pill px-2.5 py-1 text-[11px] font-bold",
+              mode === "dark" ? "bg-brand-500/15 text-brand-ink" : "bg-brand-50 text-brand-700",
+            )}
+          >
+            Bookings
           </span>
+          <div>
+            <span className="inline-flex items-center rounded-pill bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
+              New booking
+            </span>
+          </div>
+          <div>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-pill px-2 py-0.5 text-[11px] font-bold",
+                mode === "dark" ? "bg-positive/15 text-positive" : "bg-positive-50 text-positive-700",
+              )}
+            >
+              Confirmed
+            </span>
+          </div>
         </div>
       </div>
     </div>

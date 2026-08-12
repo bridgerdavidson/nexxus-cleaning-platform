@@ -21,6 +21,9 @@ export interface OrgBrand {
   color: string;
   iconUrl: string | null;
   fullUrl: string | null;
+  /** Dark-mode variants; null falls back to the light asset at render time. */
+  iconDarkUrl: string | null;
+  fullDarkUrl: string | null;
   /** The EFFECTIVE org's display name: the impersonated org's while "View as"
    * is active, the member org's otherwise. Consumers must use this, not
    * currentOrganization.name, or impersonation shows a mixed identity. */
@@ -33,6 +36,8 @@ const DEFAULT_BRAND: OrgBrand = {
   color: NEXXUS_BRAND_HEX,
   iconUrl: null,
   fullUrl: null,
+  iconDarkUrl: null,
+  fullDarkUrl: null,
   name: "",
   isDefault: true,
 };
@@ -57,6 +62,8 @@ interface BrandRow {
   brand_color?: string | null;
   logo_icon_url?: string | null;
   logo_full_url?: string | null;
+  logo_icon_dark_url?: string | null;
+  logo_full_dark_url?: string | null;
   brand_updated_at?: string | null;
 }
 
@@ -66,6 +73,8 @@ function toBrand(row: BrandRow | null | undefined): OrgBrand {
     color: row?.brand_color || NEXXUS_BRAND_HEX,
     iconUrl: row?.logo_icon_url ? row.logo_icon_url + v : null,
     fullUrl: row?.logo_full_url ? row.logo_full_url + v : null,
+    iconDarkUrl: row?.logo_icon_dark_url ? row.logo_icon_dark_url + v : null,
+    fullDarkUrl: row?.logo_full_dark_url ? row.logo_full_dark_url + v : null,
     name: row?.name ?? "",
     isDefault: !row?.brand_color,
   };
@@ -115,7 +124,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     let alive = true;
     supabase
       .from("organizations")
-      .select("name, brand_color, logo_icon_url, logo_full_url, brand_updated_at")
+      .select("name, brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url, brand_updated_at")
       .eq("id", impersonatingOrgId)
       .maybeSingle()
       .then(({ data }) => {
@@ -185,7 +194,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (user && (orgStatus === "idle" || orgStatus === "loading")) return;
 
-    if (currentOrganizationId && (currentOrganization?.brand_color || brand.iconUrl)) {
+    if (currentOrganizationId && (currentOrganization?.brand_color || brand.iconUrl || brand.iconDarkUrl)) {
       // The cache also carries the icon URL (org with an icon but the default
       // palette included), so the cold-load loader can show the tenant mark.
       let vars: Record<string, string> = {};
@@ -194,7 +203,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       } else {
         restoreDefaults();
       }
-      writeBrandCache(currentOrganizationId, vars, brand.iconUrl);
+      writeBrandCache(currentOrganizationId, vars, brand.iconUrl, brand.iconDarkUrl);
     } else {
       // Signed out, no org, or an org with no brand: globals.css wins exactly.
       restoreDefaults();
@@ -212,6 +221,7 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
     currentOrganization?.brand_color,
     currentOrganizationId,
     brand.iconUrl,
+    brand.iconDarkUrl,
   ]);
 
   return <BrandContext.Provider value={brand}>{children}</BrandContext.Provider>;

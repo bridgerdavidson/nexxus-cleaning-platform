@@ -256,6 +256,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       brand_color?: string | null;
       logo_icon_url?: string | null;
       logo_full_url?: string | null;
+      logo_icon_dark_url?: string | null;
+      logo_full_dark_url?: string | null;
       brand_updated_at?: string | null;
     };
     type OrgMembershipRow = {
@@ -296,7 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const query = supabase
         .from('organization_members')
         .select(
-          'organization_id, role, created_at, organizations ( id, name, default_payout_model, brand_color, logo_icon_url, logo_full_url, brand_updated_at )'
+          'organization_id, role, created_at, organizations ( id, name, default_payout_model, brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url, brand_updated_at )'
         )
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: true })
@@ -360,6 +362,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 brand_color: org.brand_color ?? null,
                 logo_icon_url: org.logo_icon_url ?? null,
                 logo_full_url: org.logo_full_url ?? null,
+                logo_icon_dark_url: org.logo_icon_dark_url ?? null,
+                logo_full_dark_url: org.logo_full_dark_url ?? null,
                 brand_updated_at: org.brand_updated_at ?? null,
                 created_at: new Date().toISOString(),
                 created_by: null,
@@ -977,7 +981,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!orgId) return;
     const { data, error } = await supabase
       .from('organizations')
-      .select('name, brand_color, logo_icon_url, logo_full_url, brand_updated_at')
+      .select('name, brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url, brand_updated_at')
       .eq('id', orgId)
       .maybeSingle();
     if (error || !data || currentOrgIdRef.current !== orgId) return;
@@ -989,6 +993,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             brand_color: (data.brand_color as string | null) ?? null,
             logo_icon_url: (data.logo_icon_url as string | null) ?? null,
             logo_full_url: (data.logo_full_url as string | null) ?? null,
+            logo_icon_dark_url: (data.logo_icon_dark_url as string | null) ?? null,
+            logo_full_dark_url: (data.logo_full_dark_url as string | null) ?? null,
             brand_updated_at: (data.brand_updated_at as string | null) ?? null,
           }
         : prev,

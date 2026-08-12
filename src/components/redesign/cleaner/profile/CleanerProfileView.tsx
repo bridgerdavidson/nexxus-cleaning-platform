@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { CleanerAvatarEditor } from "./CleanerAvatarEditor";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
 import { ProfileRow } from "./ProfileRow";
+import { ThemePreferenceRow } from "@/components/redesign/shared/ThemePreferenceRow";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -133,7 +134,10 @@ export function CleanerProfileView({
       {/* Account */}
       <section>
         <SectionLabel>Account</SectionLabel>
-        <ChangePasswordDialog email={email} />
+        <div className="space-y-2">
+          <ChangePasswordDialog email={email} />
+          <ThemePreferenceRow />
+        </div>
       </section>
 
       {/* Availability (employee model placeholder) */}
@@ -171,7 +175,7 @@ export function CleanerProfileView({
         <Button
           variant="outline"
           onClick={onSignOut}
-          className="w-full border-critical/30 bg-critical-50 text-critical hover:bg-critical-50 hover:text-critical"
+          className="w-full border-critical/30 bg-critical-50 text-critical hover:bg-critical-50 hover:text-critical dark:border-destructive/30 dark:bg-critical/15 dark:text-destructive dark:hover:bg-critical/15 dark:hover:text-destructive"
         >
           <LogOut aria-hidden />
           Sign out

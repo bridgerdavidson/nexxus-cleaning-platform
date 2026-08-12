@@ -38,13 +38,15 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
     const admin = createTestSupabaseClient();
     const { data } = await admin
       .from('organizations')
-      .select('brand_color, logo_icon_url, logo_full_url, brand_updated_at')
+      .select('brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url, brand_updated_at')
       .eq('id', org.organizationId)
       .single();
     return data as {
       brand_color: string | null;
       logo_icon_url: string | null;
       logo_full_url: string | null;
+      logo_icon_dark_url: string | null;
+      logo_full_dark_url: string | null;
       brand_updated_at: string | null;
     };
   }
@@ -148,6 +150,54 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
   it('rejects an empty body', async () => {
     const res = await patch({}, owner.accessToken);
     expect(res.status).toBe(400);
+  });
+
+  describe('dark-mode logo variants', () => {
+    it('accepts and pins dark logo URLs and stamps brand_updated_at', async () => {
+      const icon = `${BUCKET_PREFIX}/${org.organizationId}/icon-dark-abc123.png`;
+      const full = `${BUCKET_PREFIX}/${org.organizationId}/full-dark-def456.webp`;
+      const res = await patch(
+        { logo_icon_dark_url: icon, logo_full_dark_url: full },
+        owner.accessToken,
+      );
+      expect(res.status).toBe(200);
+      const after = await readBranding();
+      expect(after.logo_icon_dark_url).toContain(`/${org.organizationId}/icon-dark-abc123.png`);
+      expect(after.logo_full_dark_url).toContain(`/${org.organizationId}/full-dark-def456.webp`);
+      expect(after.brand_updated_at).not.toBeNull();
+    });
+
+    it('rejects a dark logo URL outside the org-branding bucket', async () => {
+      const res = await patch(
+        { logo_icon_dark_url: 'https://evil.example.com/icon-dark-x.png' },
+        owner.accessToken,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a dark logo URL under another org's prefix", async () => {
+      const res = await patch(
+        { logo_icon_dark_url: `${BUCKET_PREFIX}/00000000-0000-0000-0000-000000000000/icon-dark-x.png` },
+        owner.accessToken,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('clears dark logo URLs with null', async () => {
+      const seed = await patch(
+        { logo_icon_dark_url: `${BUCKET_PREFIX}/${org.organizationId}/icon-dark-seed.png` },
+        owner.accessToken,
+      );
+      expect(seed.status).toBe(200);
+      const res = await patch(
+        { logo_icon_dark_url: null, logo_full_dark_url: null },
+        owner.accessToken,
+      );
+      expect(res.status).toBe(200);
+      const after = await readBranding();
+      expect(after.logo_icon_dark_url).toBeNull();
+      expect(after.logo_full_dark_url).toBeNull();
+    });
   });
 
   describe('name (moved here from the owner-only profile route)', () => {
