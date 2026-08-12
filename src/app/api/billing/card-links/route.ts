@@ -192,7 +192,8 @@ export async function POST(request: NextRequest) {
           brandColor: orgRow?.brand_color ?? null,
           logoUrl: orgRow?.logo_icon_url ?? null,
         });
-        await sendEmail({ to: profile.email, ...message });
+        // White-label sender: the inbox row shows the org's name (address stays EMAIL_FROM).
+        await sendEmail({ to: profile.email, fromName: orgName, ...message });
         delivered = 'email';
       } catch (emailError) {
         console.error('Card link email failed; falling back to copy:', emailError);

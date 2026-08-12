@@ -115,6 +115,8 @@ describe('POST /api/cron/notification-emails', () => {
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
     const call = sendEmailMock.mock.calls[0][0];
     expect(call.to).toBe(org.homeowner.email);
+    // White-label sender: the org's name is the inbox display name (T2-1b follow-up).
+    expect(call.fromName).toMatch(/^Test Org /);
     expect(call.subject).toContain('$123.45');
     expect(call.html).toContain('Maple Ave');
 

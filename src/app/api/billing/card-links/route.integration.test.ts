@@ -153,6 +153,8 @@ describe('POST /api/billing/card-links email delivery', () => {
     expect(vi.mocked(sendEmail)).toHaveBeenCalledTimes(1);
     const sent = vi.mocked(sendEmail).mock.calls[0][0];
     expect(sent.to).toBe(org.homeowner.email);
+    // White-label sender: the org's name is the inbox display name.
+    expect(sent.fromName).toMatch(/^Test Org /);
     expect(sent.subject).toContain('Update your payment method');
     const emailedUrl = `https://app.nexxus.test/billing/add-card?t=${body.token}`;
     expect(sent.html).toContain(emailedUrl);
