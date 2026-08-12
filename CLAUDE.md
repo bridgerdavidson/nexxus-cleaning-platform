@@ -271,7 +271,7 @@ Required for full functionality:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only admin client (never expose)
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — server Stripe
 - `STRIPE_ENABLED`, `NEXT_PUBLIC_STRIPE_ENABLED` — feature flags (string `"true"` to enable)
-- `CRON_SECRET` — shared secret pg_cron uses to authenticate to `/api/appointments/auto-defer/cron`. Generate a random 64-char string. In Postgres, set the matching value via `ALTER SYSTEM SET app.cron_secret = '<value>'` plus `ALTER SYSTEM SET app.api_base_url = 'https://your-host'` so the cron job (migration 064) can call back.
+- `CRON_SECRET` — shared secret every pg_cron job uses to authenticate to the cron routes (`/api/appointments/auto-defer/cron`, `/api/cron/reconcile-payments`, `/api/cron/notification-emails`). Generate a random 64-char string. On the Postgres side the jobs read **Supabase Vault**, not GUCs (migration `20260812024230_cron_config_vault`): provision each environment once in the SQL editor with `SELECT vault.create_secret('<value>', 'cron_secret');` and `SELECT vault.create_secret('https://your-host', 'app_base_url');`. Until both secrets exist the jobs no-op silently. (Never use `ALTER SYSTEM`/`ALTER DATABASE ... SET app.*` for this — hosted Supabase's postgres role is not superuser and Postgres 15+ denies custom-GUC writes with 42501; that only works on local.)
 
 Optional / debug:
 
