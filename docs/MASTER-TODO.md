@@ -256,19 +256,23 @@ migrations 117-120 in prod). Spec:
 
 ## Ops loose ends (small, mostly Bridger-manual)
 
-- [ ] ⚠⚠ **Set `CRON_SECRET` in prod — the reconcile sweep has never run there.** Discovered
-      2026-08-11 while shipping 3.5: an unauthenticated POST to prod
-      `/api/cron/reconcile-payments` returns the fail-closed 500 ("Server misconfigured"),
-      which is the missing-`CRON_SECRET` branch, and `vercel env ls` shows no `CRON_SECRET`
-      in any environment. So every pg_cron-driven route (reconcile sweep 067, auto-defer 064,
-      and now notification-emails) is dead in prod; webhooks alone have been carrying money
-      correctness, and the "sweep backstops missed webhook deliveries" assumption is false
-      today. Fix (Bridger): generate a random 64-char secret; `vercel env add CRON_SECRET
-      production`; in prod Postgres set the matching `app.cron_secret` plus `app.api_base_url =
-      'https://nexxus-cleaning-platform.vercel.app'` (hosted Supabase: `ALTER DATABASE postgres
-      SET ...`, then re-login/reload so pg_cron's new connections see it); redeploy prod; verify
-      behaviorally (unauthenticated POST now 401s, `cron.job_run_details` shows 200s). Do the
-      same for the dev preview if preview sweep coverage is wanted.
+- [ ] ⚠⚠ **Arm the prod crons — the reconcile sweep has never run there.** Discovered
+      2026-08-11 while shipping 3.5: `CRON_SECRET` was unset everywhere (fail-closed 500 from
+      the prod route), so every pg_cron-driven route (reconcile sweep 067, auto-defer 064,
+      notification-emails) has been dead in prod; webhooks alone carried money correctness.
+      Progress 2026-08-11: `CRON_SECRET` added to Vercel prod+preview and live (route now
+      401s); #246 merged. **Root cause of the rest: the documented `ALTER DATABASE SET app.*`
+      setup CANNOT work on hosted Supabase** (postgres role isn't superuser; PG15+ denies
+      custom-GUC writes, error 42501) — it only ever worked locally, which is why the crons
+      were never wired. Fix = migration `20260812024230_cron_config_vault` (jobs read Supabase
+      Vault; obsolete jit-authorize-due unscheduled). Remaining (Bridger, after that migration
+      reaches prod): in the prod SQL editor run
+      `SELECT vault.create_secret('<CRON_SECRET value>', 'cron_secret');` and
+      `SELECT vault.create_secret('https://cleaning.trynexxus.com', 'app_base_url');`
+      then verify `cron.job_run_details` shows the jobs firing and the routes returning 200.
+      ⚠ The first sweep run repairs ALL historical drift (may charge uncollected completions,
+      retry failed payouts) — consider a supervised manual run first. Until both Vault secrets
+      exist the jobs no-op silently.
 - [ ] **Repoint the test-mode Stripe webhook back at dev.** It still targets the deleted
       pay-request walkthrough branch alias, which no longer deploys; restore
       `nexxus-cleaning-platform-git-dev-…vercel.app/api/stripe/webhook` with the same
