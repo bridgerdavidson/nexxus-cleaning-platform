@@ -9,7 +9,7 @@ const EASE = [0.16, 1, 0.3, 1] as const
 
 export function HeroSection() {
   return (
-    <section id="top" className="mx-auto w-full max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pt-12">
+    <section id="top" className="mx-auto w-full max-w-6xl scroll-mt-16 px-4 pb-16 pt-10 sm:px-6 sm:pt-12">
       <div className="mx-auto max-w-3xl text-center">
         <m.div
           initial={{ opacity: 0, y: 12 }}

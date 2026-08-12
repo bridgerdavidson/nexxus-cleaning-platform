@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useReducedMotion } from 'motion/react'
-import { CalendarDays, Camera, Check, CreditCard, Home, MessageSquare, Settings, Users } from 'lucide-react'
+import { CalendarDays, Camera, CreditCard, Home, MessageSquare, Settings, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { deriveBrandRamp, rampToCssVars } from '@/lib/branding/palette'
 import { orgInitials } from '@/lib/branding/monogram'
@@ -223,7 +223,6 @@ export function BrandingSection() {
               >
                 <span className="size-3 rounded-pill" style={{ backgroundColor: p.hex }} />
                 {p.name}
-                {active ? <Check className="size-4" aria-hidden /> : null}
               </button>
             )
           })}

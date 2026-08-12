@@ -17,9 +17,11 @@ export function MarketingNav() {
     // solid card surface with a hairline. Deliberately static on scroll.
     <header className="sticky top-0 z-40 h-16 border-b border-border bg-card">
       <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="#top" aria-label="Nexxus home" className="flex items-center">
+        {/* Plain anchor: Link no-ops a same-hash click, which strands the logo
+            as a dead control whenever #top is already in the URL. */}
+        <a href="#top" aria-label="Nexxus home" className="flex items-center">
           <Logo variant="full" className="h-8" priority />
-        </Link>
+        </a>
         <nav className="hidden items-center gap-7 md:flex" aria-label="Page sections">
           {LINKS.map((link) => (
             <a
