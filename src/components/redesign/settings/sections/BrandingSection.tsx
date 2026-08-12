@@ -2,13 +2,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import imageCompression from "browser-image-compression";
 import { cn } from "@/lib/utils";
-import { Upload, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { uuidv4 } from "@/lib/uuid";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { deriveBrandRamp, rampToCssVars } from "@/lib/branding/palette";
 import { NEXXUS_BRAND_HEX } from "@/lib/branding/tokens";
 import { trimLogoWhitespace } from "@/lib/branding/trimLogo";
@@ -158,7 +157,6 @@ export function BrandingSection() {
         <LogoPairField
           slot="icon"
           darkSlot="icon-dark"
-          switchId="brand-icon-same-dark"
           url={value.iconUrl}
           darkUrl={value.iconDarkUrl}
           savedUrl={baselineUrl("iconUrl")}
@@ -176,7 +174,6 @@ export function BrandingSection() {
         <LogoPairField
           slot="full"
           darkSlot="full-dark"
-          switchId="brand-full-same-dark"
           url={value.fullUrl}
           darkUrl={value.fullDarkUrl}
           savedUrl={baselineUrl("fullUrl")}
@@ -192,17 +189,24 @@ export function BrandingSection() {
         helper="How your brand looks in the app, in light and dark mode. Updates as you edit; nothing changes until you save."
       >
         <div className="grid gap-3">
-          <BrandPreview mode="light" color={effectiveColor} iconUrl={value.iconUrl} orgName={previewName} />
+          <BrandPreview
+            mode="light"
+            color={effectiveColor}
+            iconUrl={value.iconUrl}
+            fullUrl={value.fullUrl}
+            orgName={previewName}
+          />
           <BrandPreview
             mode="dark"
             color={effectiveColor}
             iconUrl={value.iconDarkUrl || value.iconUrl}
+            fullUrl={value.fullDarkUrl || value.fullUrl}
             orgName={previewName}
           />
           {(value.iconUrl || value.fullUrl) && !value.iconDarkUrl && !value.fullDarkUrl ? (
             <p className="max-w-72 text-sm text-muted-foreground">
-              This is how your logo looks in dark mode. If it is hard to see, switch off &quot;Use
-              in dark mode too&quot; above and add a dark version.
+              This is how your logo looks in dark mode. If it is hard to see, add a dark version
+              in the logo sections above.
             </p>
           ) : null}
         </div>
@@ -302,17 +306,17 @@ function ColorField({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 /**
- * One brand asset with its optional dark-mode variant behind a "Use in dark
- * mode too" switch. ON (the default) means the light asset serves both themes
- * (dark URL empty, the render-time fallback); flipping it OFF reveals the dark
- * upload slot. An org that never thinks about dark mode never sees a second
- * slot, and the switch makes the same-asset default legible instead of
- * implying homework.
+ * One brand asset as a Light/Dark surface tile pair. The Dark tile always
+ * shows what dark-mode users actually see: the uploaded dark variant, or the
+ * light asset on the dark canvas ("Same as light", the render-time fallback).
+ * There is no toggle: the state IS whether a dark image exists, and the X on
+ * the dark tile returns to same-as-light. Each tile pins its own theme via
+ * the scope classes, so both render truthfully whatever theme the settings
+ * page itself is in.
  */
 function LogoPairField({
   slot,
   darkSlot,
-  switchId,
   url,
   darkUrl,
   savedUrl,
@@ -323,7 +327,6 @@ function LogoPairField({
 }: {
   slot: LogoSlot;
   darkSlot: LogoSlot;
-  switchId: string;
   url: string;
   darkUrl: string;
   savedUrl: string;
@@ -332,54 +335,149 @@ function LogoPairField({
   onChange: (url: string) => void;
   onDarkChange: (url: string) => void;
 }) {
-  // ON = same asset in both themes = no dark URL. An existing dark upload
-  // means the org already opted out.
-  const [sameForDark, setSameForDark] = useState(!darkUrl);
-  // Re-sync when the form's dark URL changes from elsewhere (load, discard,
-  // reset to default) - same ref pattern as ColorField above. A transition to
-  // empty flips the switch back ON; a transition to a value flips it OFF.
-  const lastDarkUrl = useRef(darkUrl);
-  if (lastDarkUrl.current !== darkUrl) {
-    lastDarkUrl.current = darkUrl;
-    if (sameForDark === !!darkUrl) setSameForDark(!darkUrl);
-  }
+  const light = useLogoUpload(slot, url, savedUrl, orgId, onChange);
+  const dark = useLogoUpload(darkSlot, darkUrl, savedDarkUrl, orgId, onDarkChange);
+  const darkShownUrl = darkUrl || url;
 
   return (
-    <div className="grid gap-3 sm:w-72">
-      <LogoField slot={slot} url={url} savedUrl={savedUrl} orgId={orgId} onChange={onChange} />
-      <label
-        htmlFor={switchId}
-        className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground"
-      >
-        <Switch
-          id={switchId}
-          checked={sameForDark}
-          onCheckedChange={(checked) => {
-            if (checked) {
-              // Back to same-asset: drop any staged dark upload (a SAVED one
-              // is only cleared from the org row on save, like Remove).
-              discardStagedObject(darkUrl, savedDarkUrl);
-              onDarkChange("");
-            }
-            setSameForDark(checked);
-          }}
-        />
-        Use in dark mode too
-      </label>
-      {!sameForDark ? (
-        <div className="grid gap-1.5">
-          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-            {SLOT_LABEL[darkSlot]}
+    <div className="grid gap-2 sm:w-72">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="grid content-start gap-1.5">
+          <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Light mode
           </p>
-          <LogoField
-            slot={darkSlot}
-            url={darkUrl}
-            savedUrl={savedDarkUrl}
-            orgId={orgId}
-            onChange={onDarkChange}
-          />
+          <LogoSurfaceTile mode="light" empty={!url}>
+            {url ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+              <img src={url} alt={SLOT_LABEL[slot]} className="max-h-12 max-w-full object-contain" />
+            ) : (
+              <span className="text-xs text-muted-foreground">No logo yet</span>
+            )}
+          </LogoSurfaceTile>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={light.uploading || !orgId}
+              onClick={light.openPicker}
+            >
+              {light.uploading ? "Uploading..." : url ? "Replace" : "Upload"}
+            </Button>
+            {url ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 px-2"
+                aria-label={`Remove ${SLOT_LABEL[slot].toLowerCase()}`}
+                onClick={() => {
+                  discardStagedObject(url, savedUrl);
+                  onChange("");
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </Button>
+            ) : null}
+          </div>
         </div>
+
+        <div className="grid content-start gap-1.5">
+          <p className="px-0.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Dark mode
+          </p>
+          <LogoSurfaceTile mode="dark" empty={!darkShownUrl}>
+            {darkShownUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+              <img
+                src={darkShownUrl}
+                alt={SLOT_LABEL[darkSlot]}
+                className="max-h-12 max-w-full object-contain"
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground">No logo yet</span>
+            )}
+          </LogoSurfaceTile>
+          {darkUrl ? (
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={dark.uploading || !orgId}
+                onClick={dark.openPicker}
+              >
+                {dark.uploading ? "Uploading..." : "Replace"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0 px-2"
+                aria-label="Use the light version in dark mode"
+                onClick={() => {
+                  discardStagedObject(darkUrl, savedDarkUrl);
+                  onDarkChange("");
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={dark.uploading || !orgId}
+                onClick={dark.openPicker}
+              >
+                {dark.uploading ? "Uploading..." : "Add dark version"}
+              </Button>
+              {url ? (
+                <p className="px-0.5 text-[11px] text-muted-foreground">Same as light</p>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+      {light.error ? (
+        <p role="alert" className="text-sm text-critical-700">
+          {light.error}
+        </p>
       ) : null}
+      {dark.error ? (
+        <p role="alert" className="text-sm text-critical-700">
+          {dark.error}
+        </p>
+      ) : null}
+      {light.inputNode}
+      {dark.inputNode}
+    </div>
+  );
+}
+
+/** The themed surface a logo sits on: light or dark canvas, pinned locally. */
+function LogoSurfaceTile({
+  mode,
+  empty,
+  children,
+}: {
+  mode: "light" | "dark";
+  empty: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid h-20 place-items-center overflow-hidden rounded-control border border-border bg-background p-2",
+        mode === "dark" ? "dark" : "theme-scope-light",
+        empty && "border-dashed",
+      )}
+    >
+      {children}
     </div>
   );
 }
@@ -399,21 +497,18 @@ function discardStagedObject(url: string, savedUrl: string) {
     });
 }
 
-/** Upload control for one logo slot: preview, upload/replace, remove. */
-function LogoField({
-  slot,
-  url,
-  savedUrl,
-  orgId,
-  onChange,
-}: {
-  slot: LogoSlot;
-  url: string;
-  /** The persisted URL, so replacing/removing a staged upload can clean it up. */
-  savedUrl: string;
-  orgId: string | null;
-  onChange: (url: string) => void;
-}) {
+/**
+ * Upload pipeline for one logo slot (trim, compress, upload, stage). Returns
+ * the picker trigger plus a hidden input node the caller must render.
+ * `savedUrl` is the persisted URL, so replacing a staged upload can clean it up.
+ */
+function useLogoUpload(
+  slot: LogoSlot,
+  url: string,
+  savedUrl: string,
+  orgId: string | null,
+  onChange: (url: string) => void,
+) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -458,52 +553,28 @@ function LogoField({
     }
   }
 
-  return (
-    <div className="sm:w-72">
-      <div className="flex items-center gap-3">
-        {url ? (
-          <span className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-control border border-border bg-card">
-            {/* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */}
-            <img src={url} alt={SLOT_LABEL[slot]} className="max-h-10 max-w-14 object-contain" />
-          </span>
-        ) : null}
-        <Button type="button" variant="outline" disabled={uploading || !orgId} onClick={() => inputRef.current?.click()}>
-          <Upload className="h-4 w-4" aria-hidden />
-          {uploading ? "Uploading..." : url ? "Replace" : "Upload"}
-        </Button>
-        {url ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Remove ${SLOT_LABEL[slot].toLowerCase()}`}
-            onClick={() => {
-              setError(null);
-              discardStagedObject(url, savedUrl);
-              onChange("");
-            }}
-          >
-            <X className="h-4 w-4" aria-hidden />
-          </Button>
-        ) : null}
-      </div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/png, image/webp"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handleFile(file);
-        }}
-      />
-      {error ? (
-        <p role="alert" className="mt-1.5 text-sm text-critical-700">
-          {error}
-        </p>
-      ) : null}
-    </div>
+  const inputNode = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="image/png, image/webp"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) void handleFile(file);
+      }}
+    />
   );
+
+  return {
+    uploading,
+    error,
+    openPicker: () => {
+      setError(null);
+      inputRef.current?.click();
+    },
+    inputNode,
+  };
 }
 
 /**
@@ -521,11 +592,14 @@ function BrandPreview({
   mode,
   color,
   iconUrl,
+  fullUrl,
   orgName,
 }: {
   mode: "light" | "dark";
   color: string;
   iconUrl: string;
+  /** Full lockup: when present it replaces icon + name in the header, mirroring OrgLogo. */
+  fullUrl: string;
   orgName: string;
 }) {
   const vars = useMemo(() => {
@@ -566,16 +640,23 @@ function BrandPreview({
           mode === "dark" ? "dark" : "theme-scope-light",
         )}
       >
-        <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2">
-          {iconUrl ? (
+        <div className="flex h-9 items-center gap-2 border-b border-border bg-card px-3">
+          {fullUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
-            <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+            <img src={fullUrl} alt={orgName} className="h-5 max-w-[180px] object-contain object-left" />
           ) : (
-            <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
-              {initial}
-            </span>
+            <>
+              {iconUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+                <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+              ) : (
+                <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
+                  {initial}
+                </span>
+              )}
+              <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
+            </>
           )}
-          <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
         </div>
         <div className="space-y-2 p-3">
           {/* Chip styling is pinned per mode prop, NOT via dark: variants:
