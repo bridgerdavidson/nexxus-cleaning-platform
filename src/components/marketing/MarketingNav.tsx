@@ -15,8 +15,13 @@ export function MarketingNav() {
   return (
     // Docked app chrome, the same vocabulary as the in-product top bars:
     // solid card surface with a hairline. Deliberately static on scroll.
-    <header className="sticky top-0 z-40 h-16 border-b border-border bg-card">
-      <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+    // The safe-area-inset-top padding extends the nav's own surface into the
+    // iOS safe area (standalone / notch cases; zero in normal browsing) so the
+    // strip above the nav is always the nav's color, per the app shells'
+    // convention. NOTE: never spell the bracketed arbitrary-value class inside
+    // a comment; Tailwind scans comments and compiles it as invalid CSS.
+    <header className="sticky top-0 z-40 border-b border-border bg-card pt-[env(safe-area-inset-top)]">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Plain anchor: Link no-ops a same-hash click, which strands the logo
             as a dead control whenever #top is already in the URL. */}
         <a href="#top" aria-label="Nexxus home" className="flex items-center">
