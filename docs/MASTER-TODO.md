@@ -219,17 +219,22 @@ timestamps, unread treatment) must unify.
 - [x] **Complete.** 4a-4g all merged + the `redesignUiEnabled` flag retired (#201). Role roots
       live in prod: `/admin` `/cleaner` `/homeowner` `/owner`.
 
-## 6. Dark mode (built 2026-08-11, PR open)
+## 6. Dark mode (✅ SHIPPED 2026-08-11, PR #250 → 3a30127)
 
 Source: dark-mode plan (design revised 2026-08-11: per-user grain reaffirmed + per-theme org
-logo assets, `docs/redesign/2026-07-16-dark-mode-plan.md`).
+logo assets, `docs/redesign/2026-07-16-dark-mode-plan.md`). Migration
+`20260812033748_org_branding_dark_logos` verified in prod; migrate-dev drift from PR #249
+resolved by merge order (never repaired).
 
 - [x] Phase 1 theme-complete the live surface (token retrofit; MessagesPage-era list was stale,
       real surface was 6 legacy files + status ramps)
-- [x] Phase 2a dark logo pipeline (`logo_icon_dark_url`/`logo_full_dark_url`, 2x2 Branding
-      slots, dual-theme preview + nudge, CSS-level OrgLogo/loader swap)
+- [x] Phase 2a dark logo pipeline (`logo_icon_dark_url`/`logo_full_dark_url`, CSS-level
+      OrgLogo/loader swap; Branding settings shipped as light/dark surface TILE PAIRS with
+      "Same as light" fallback state after live review, plus lockup-aware dual-theme preview)
 - [x] Phase 2b 3-way Light/Dark/System control in all three role settings (go-live)
-- [ ] Phase 3 `user_profiles.theme` cross-device sync (post-MVP fast-follow)
+- [x] Post-review polish: theme-stable dark scrims on sheet/dialog/drawer/command overlays
+- [ ] Phase 3 `user_profiles.theme` cross-device sync (post-MVP fast-follow; design in the
+      spec doc)
 
 ## 7. Payments audit Tier 3 — flag-flip gates (not MVP-blocking)
 
