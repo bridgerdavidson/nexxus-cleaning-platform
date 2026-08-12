@@ -75,9 +75,9 @@ export default function CleanerStripeConnect({
 
   if (!enabled) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 py-12 text-center">
-        <CreditCard className="mb-3 h-8 w-8 text-gray-300" />
-        <p className="max-w-sm text-sm text-gray-500">
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/50 py-12 text-center">
+        <CreditCard className="mb-3 h-8 w-8 text-muted-foreground/40" />
+        <p className="max-w-sm text-sm text-muted-foreground">
           Payout setup isn’t available yet. It will appear here once enabled.
         </p>
       </div>
