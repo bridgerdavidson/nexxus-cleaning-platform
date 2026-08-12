@@ -7,9 +7,20 @@
     font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
     @apply bg-white min-h-screen;
   }
-  
+
   body {
     @apply bg-white text-gray-900 min-h-screen;
+  }
+
+  /* Dark document canvas, so overscroll/rubber-band never flashes white in
+     dark mode. Gated on .redesign actually being mounted: marketing and auth
+     have no ThemeProvider, and a .dark class lingering on <html> after a
+     client-side navigation away from the app must not darken them. */
+  html.dark:has(.redesign) {
+    @apply bg-background;
+  }
+  html.dark body:has(.redesign) {
+    @apply bg-background text-foreground;
   }
 }
 
