@@ -90,7 +90,7 @@ export function HomeownerAccountHubView({
         <Button
           variant="outline"
           onClick={() => onSignOutOpenChange(true)}
-          className="w-full border-critical/30 bg-critical-50 text-critical hover:bg-critical-50 hover:text-critical"
+          className="w-full border-critical/30 bg-critical-50 text-critical hover:bg-critical-50 hover:text-critical dark:border-destructive/30 dark:bg-critical/15 dark:text-destructive dark:hover:bg-critical/15 dark:hover:text-destructive"
         >
           <LogOut aria-hidden />
           Sign out
