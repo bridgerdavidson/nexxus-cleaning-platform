@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useMemo, useRef, useState } from "react";
 import imageCompression from "browser-image-compression";
+import { cn } from "@/lib/utils";
 import { Upload, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
@@ -22,26 +23,41 @@ interface BrandingForm {
   color: string;
   iconUrl: string;
   fullUrl: string;
+  /** Dark-mode variants; empty falls back to the light asset at render time. */
+  iconDarkUrl: string;
+  fullDarkUrl: string;
 }
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 const ACCEPTED_TYPES = ["image/png", "image/webp"];
 
-type LogoSlot = "icon" | "full";
+/** Doubles as the storage filename prefix (`<slot>-<uuid>.<ext>`), which the
+ *  branding route's filename pin accepts for all four spellings. */
+type LogoSlot = "icon" | "full" | "icon-dark" | "full-dark";
+
+const SLOT_LABEL: Record<LogoSlot, string> = {
+  icon: "App icon",
+  full: "Full logo",
+  "icon-dark": "Dark mode icon",
+  "full-dark": "Dark mode logo",
+};
 
 export function BrandingSection() {
   const { currentOrganizationId, refreshOrganization } = useAuth();
 
   // The PERSISTED logo urls, so upload cleanup can tell a staged (unsaved)
   // object apart from one the org row actually references.
-  const savedUrlsRef = useRef<{ iconUrl: string; fullUrl: string }>({ iconUrl: "", fullUrl: "" });
-  const baselineUrl = (k: "iconUrl" | "fullUrl") => savedUrlsRef.current[k];
+  const savedUrlsRef = useRef<{ iconUrl: string; fullUrl: string; iconDarkUrl: string; fullDarkUrl: string }>(
+    { iconUrl: "", fullUrl: "", iconDarkUrl: "", fullDarkUrl: "" },
+  );
+  const baselineUrl = (k: "iconUrl" | "fullUrl" | "iconDarkUrl" | "fullDarkUrl") =>
+    savedUrlsRef.current[k];
 
   const load = useCallback(async (): Promise<BrandingForm> => {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
       .from("organizations")
-      .select("name, brand_color, logo_icon_url, logo_full_url")
+      .select("name, brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url")
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -50,8 +66,15 @@ export function BrandingSection() {
       color: (data?.brand_color as string | null) ?? "",
       iconUrl: (data?.logo_icon_url as string | null) ?? "",
       fullUrl: (data?.logo_full_url as string | null) ?? "",
+      iconDarkUrl: (data?.logo_icon_dark_url as string | null) ?? "",
+      fullDarkUrl: (data?.logo_full_dark_url as string | null) ?? "",
     };
-    savedUrlsRef.current = { iconUrl: form.iconUrl, fullUrl: form.fullUrl };
+    savedUrlsRef.current = {
+      iconUrl: form.iconUrl,
+      fullUrl: form.fullUrl,
+      iconDarkUrl: form.iconDarkUrl,
+      fullDarkUrl: form.fullDarkUrl,
+    };
     return form;
   }, [currentOrganizationId]);
 
@@ -64,8 +87,15 @@ export function BrandingSection() {
         brand_color: v.color || null,
         logo_icon_url: v.iconUrl || null,
         logo_full_url: v.fullUrl || null,
+        logo_icon_dark_url: v.iconDarkUrl || null,
+        logo_full_dark_url: v.fullDarkUrl || null,
       });
-      savedUrlsRef.current = { iconUrl: v.iconUrl, fullUrl: v.fullUrl };
+      savedUrlsRef.current = {
+        iconUrl: v.iconUrl,
+        fullUrl: v.fullUrl,
+        iconDarkUrl: v.iconDarkUrl,
+        fullDarkUrl: v.fullDarkUrl,
+      };
       // AuthContext still holds the pre-save org row; silently refresh it so
       // BrandProvider retints the whole app right away. NOT reloadOrganization:
       // that cycles orgStatus through 'loading', which unmounts the entire
@@ -147,10 +177,50 @@ export function BrandingSection() {
       </SettingRow>
 
       <SettingRow
-        label="Preview"
-        helper="How your brand looks in the app. Updates as you edit; nothing changes until you save."
+        label="Dark mode icon"
+        helper="Optional. Replaces your app icon when someone uses dark mode."
       >
-        <BrandPreview color={effectiveColor} iconUrl={value.iconUrl} orgName={previewName} />
+        <LogoField
+          slot="icon-dark"
+          url={value.iconDarkUrl}
+          savedUrl={baselineUrl("iconDarkUrl")}
+          orgId={currentOrganizationId}
+          onChange={(iconDarkUrl) => setValue((prev) => (prev ? { ...prev, iconDarkUrl } : prev))}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label="Dark mode logo"
+        helper="Optional. Replaces your full logo when someone uses dark mode."
+      >
+        <LogoField
+          slot="full-dark"
+          url={value.fullDarkUrl}
+          savedUrl={baselineUrl("fullDarkUrl")}
+          orgId={currentOrganizationId}
+          onChange={(fullDarkUrl) => setValue((prev) => (prev ? { ...prev, fullDarkUrl } : prev))}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label="Preview"
+        helper="How your brand looks in the app, in light and dark mode. Updates as you edit; nothing changes until you save."
+      >
+        <div className="grid gap-3">
+          <BrandPreview mode="light" color={effectiveColor} iconUrl={value.iconUrl} orgName={previewName} />
+          <BrandPreview
+            mode="dark"
+            color={effectiveColor}
+            iconUrl={value.iconDarkUrl || value.iconUrl}
+            orgName={previewName}
+          />
+          {(value.iconUrl || value.fullUrl) && !value.iconDarkUrl && !value.fullDarkUrl ? (
+            <p className="max-w-72 text-sm text-muted-foreground">
+              This is how your logo looks in dark mode. If it is hard to see, upload a dark version
+              above.
+            </p>
+          ) : null}
+        </div>
       </SettingRow>
 
       <SettingRow
@@ -160,8 +230,16 @@ export function BrandingSection() {
         <Button
           type="button"
           variant="outline"
-          disabled={!value.color && !value.iconUrl && !value.fullUrl}
-          onClick={() => setValue((prev) => (prev ? { ...prev, color: "", iconUrl: "", fullUrl: "" } : prev))}
+          disabled={
+            !value.color && !value.iconUrl && !value.fullUrl && !value.iconDarkUrl && !value.fullDarkUrl
+          }
+          onClick={() =>
+            setValue((prev) =>
+              prev
+                ? { ...prev, color: "", iconUrl: "", fullUrl: "", iconDarkUrl: "", fullDarkUrl: "" }
+                : prev,
+            )
+          }
         >
           Reset to default
         </Button>
@@ -318,7 +396,7 @@ function LogoField({
         {url ? (
           <span className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-control border border-border bg-card">
             {/* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */}
-            <img src={url} alt={slot === "icon" ? "App icon" : "Full logo"} className="max-h-10 max-w-14 object-contain" />
+            <img src={url} alt={SLOT_LABEL[slot]} className="max-h-10 max-w-14 object-contain" />
           </span>
         ) : null}
         <Button type="button" variant="outline" disabled={uploading || !orgId} onClick={() => inputRef.current?.click()}>
@@ -330,7 +408,7 @@ function LogoField({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={slot === "icon" ? "Remove app icon" : "Remove full logo"}
+            aria-label={`Remove ${SLOT_LABEL[slot].toLowerCase()}`}
             onClick={() => {
               setError(null);
               discardStagedObject(url, savedUrl);
@@ -364,54 +442,87 @@ function LogoField({
  * Miniature app composition driven by the STAGED color: the derived ramp is
  * applied as local CSS variables on the wrapper, so tokens inside resolve to
  * the draft brand while the real app keeps the saved one until save.
+ *
+ * The wrapper also pins its THEME locally: `dark` re-declares the dark token
+ * set on the card (class-scoped in globals.css), and `theme-scope-light`
+ * re-pins the light set, so each card renders its own theme no matter which
+ * theme the settings page itself is in. The alias re-map below stays anyway:
+ * it must not depend on the scope classes being present.
  */
-function BrandPreview({ color, iconUrl, orgName }: { color: string; iconUrl: string; orgName: string }) {
+function BrandPreview({
+  mode,
+  color,
+  iconUrl,
+  orgName,
+}: {
+  mode: "light" | "dark";
+  color: string;
+  iconUrl: string;
+  orgName: string;
+}) {
   const vars = useMemo(() => {
     const ramp = rampToCssVars(deriveBrandRamp(color));
-    return {
-      ...ramp,
-      // Semantic tokens resolve their var(--brand-*) references AT :root and
-      // inherit down already-resolved, so overriding --brand-* here alone
-      // would not reach bg-primary etc. Re-derive them locally.
-      "--primary": ramp["--brand-600"],
-      "--primary-foreground": ramp["--brand-fg-600"],
-      "--accent": ramp["--brand-50"],
-      "--accent-foreground": ramp["--brand-700"],
-      "--ring": ramp["--brand-600"],
-      "--brand-ink": ramp["--brand-ink-on-light"],
-    };
-  }, [color]);
+    // Semantic tokens resolve their var(--brand-*) references AT :root and
+    // inherit down already-resolved, so overriding --brand-* here alone
+    // would not reach bg-primary etc. Re-derive them locally, per theme
+    // (mirrors :root vs .dark in globals.css).
+    return mode === "dark"
+      ? {
+          ...ramp,
+          "--primary": ramp["--brand-500"],
+          "--primary-foreground": ramp["--brand-fg-500"],
+          "--ring": ramp["--brand-400"],
+          "--brand-ink": ramp["--brand-ink-on-dark"],
+        }
+      : {
+          ...ramp,
+          "--primary": ramp["--brand-600"],
+          "--primary-foreground": ramp["--brand-fg-600"],
+          "--accent": ramp["--brand-50"],
+          "--accent-foreground": ramp["--brand-700"],
+          "--ring": ramp["--brand-600"],
+          "--brand-ink": ramp["--brand-ink-on-light"],
+        };
+  }, [color, mode]);
   const initial = (orgName.trim()[0] ?? "?").toUpperCase();
 
   return (
-    <div
-      style={vars as React.CSSProperties}
-      className="w-full overflow-hidden rounded-card border border-border bg-background sm:w-72"
-    >
-      <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2">
-        {iconUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
-          <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
-        ) : (
-          <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
-            {initial}
-          </span>
+    <div className="w-full sm:w-72">
+      <p className="mb-1 px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+        {mode === "dark" ? "Dark mode" : "Light mode"}
+      </p>
+      <div
+        style={vars as React.CSSProperties}
+        className={cn(
+          "w-full overflow-hidden rounded-card border border-border bg-background",
+          mode === "dark" ? "dark" : "theme-scope-light",
         )}
-        <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
-      </div>
-      <div className="space-y-2 p-3">
-        <span className="inline-flex items-center rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">
-          Bookings
-        </span>
-        <div>
-          <span className="inline-flex items-center rounded-pill bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
-            New booking
-          </span>
+      >
+        <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-2">
+          {iconUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element -- storage URL, unoptimized preview */
+            <img src={iconUrl} alt="" className="h-5 w-5 object-contain" />
+          ) : (
+            <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-[10px] font-extrabold text-primary-foreground">
+              {initial}
+            </span>
+          )}
+          <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
         </div>
-        <div>
-          <span className="inline-flex items-center rounded-pill bg-positive-50 px-2 py-0.5 text-[11px] font-bold text-positive-700">
-            Confirmed
+        <div className="space-y-2 p-3">
+          <span className="inline-flex items-center rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-ink">
+            Bookings
           </span>
+          <div>
+            <span className="inline-flex items-center rounded-pill bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
+              New booking
+            </span>
+          </div>
+          <div>
+            <span className="inline-flex items-center rounded-pill bg-positive-50 px-2 py-0.5 text-[11px] font-bold text-positive-700 dark:bg-positive/15 dark:text-positive">
+              Confirmed
+            </span>
+          </div>
         </div>
       </div>
     </div>

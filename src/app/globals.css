@@ -440,8 +440,13 @@ nav.sticky {
    REDESIGN TOKENS (additive). Light = :root, dark = .dark.
    shadcn HSL-channel convention: consumed as hsl(var(--x)).
    Source of truth hex is in the trailing comment on each line.
+   .theme-scope-light re-pins the light set on a subtree (the
+   Branding settings light preview card must stay light while the
+   page itself is dark); it shares this block so the values can
+   never drift from :root.
    ============================================================ */
-:root {
+:root,
+.theme-scope-light {
   /* shadow base (warm near-black, light theme) */
   --shadow-rgb: 20 18 15;
 
