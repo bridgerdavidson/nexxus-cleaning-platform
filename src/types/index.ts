@@ -94,6 +94,9 @@ export interface Organization {
   logo_icon_url?: string | null;
   /** Lockup or wordmark: expanded rail, drawer header. Null renders the icon plus the org name. */
   logo_full_url?: string | null;
+  /** Optional dark-mode variants; each falls back to its light counterpart at render time. */
+  logo_icon_dark_url?: string | null;
+  logo_full_dark_url?: string | null;
   brand_updated_at?: string | null;
   created_at: string;
   created_by: string | null;

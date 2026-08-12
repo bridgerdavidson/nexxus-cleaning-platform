@@ -33,10 +33,10 @@ export default function StripeFramedCard({
 }: StripeFramedCardProps) {
   return (
     <div
-      className={`relative rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 ${minHeight}`}
+      className={`relative rounded-xl border border-dashed border-border bg-muted p-4 ${minHeight}`}
     >
       {showAttribution && (
-        <div className="absolute right-3 top-2 text-[10px] font-medium text-gray-400">
+        <div className="absolute right-3 top-2 text-[10px] font-medium text-muted-foreground">
           Powered by Stripe
         </div>
       )}
@@ -50,17 +50,17 @@ export default function StripeFramedCard({
 function DefaultSkeleton() {
   return (
     <div className="space-y-3" role="status" aria-label="Loading">
-      <div className="grid grid-cols-4 gap-3 border-b border-gray-100 pb-2">
+      <div className="grid grid-cols-4 gap-3 border-b border-border pb-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-3 animate-pulse rounded bg-gray-200" />
+          <div key={i} className="h-3 animate-pulse rounded bg-muted-foreground/20" />
         ))}
       </div>
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="grid grid-cols-4 gap-3 py-1">
-          <div className="h-4 animate-pulse rounded bg-gray-200" />
-          <div className="h-4 w-3/4 animate-pulse rounded bg-gray-200" />
-          <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-gray-200 justify-self-end" />
+          <div className="h-4 animate-pulse rounded bg-muted-foreground/20" />
+          <div className="h-4 w-3/4 animate-pulse rounded bg-muted-foreground/20" />
+          <div className="h-4 w-2/3 animate-pulse rounded bg-muted-foreground/20" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-muted-foreground/20 justify-self-end" />
         </div>
       ))}
     </div>

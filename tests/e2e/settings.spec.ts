@@ -90,3 +90,28 @@ test.describe('Search-param navigation survives a hard load with params', () => 
     await expect(page).not.toHaveURL(/ledger=payouts/);
   });
 });
+
+// Dark mode go-live surface: the 3-way theme control in Settings > Appearance
+// drives the next-themes html class and persists per device (localStorage).
+test.describe('Theme control in Settings > Appearance', () => {
+  test('dark selection applies, survives reload, and reverts to light', async ({ page }) => {
+    await signIn(page);
+
+    await page.goto('/admin/settings?section=appearance', { waitUntil: 'domcontentloaded' });
+    const themeGroup = page.getByRole('radiogroup', { name: 'Theme' });
+    await expect(themeGroup).toBeVisible({ timeout: 15_000 });
+
+    await themeGroup.getByRole('radio', { name: 'Dark' }).click();
+    await expect(page.locator('html')).toHaveClass(/dark/, { timeout: 5_000 });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveClass(/dark/, { timeout: 15_000 });
+
+    await page.goto('/admin/settings?section=appearance', { waitUntil: 'domcontentloaded' });
+    await page
+      .getByRole('radiogroup', { name: 'Theme' })
+      .getByRole('radio', { name: 'Light' })
+      .click();
+    await expect(page.locator('html')).not.toHaveClass(/dark/, { timeout: 5_000 });
+  });
+});

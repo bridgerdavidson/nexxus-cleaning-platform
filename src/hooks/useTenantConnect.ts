@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { loadConnectAndInitialize } from '@stripe/connect-js';
 import type { StripeConnectInstance } from '@stripe/connect-js';
 import { useAuth } from './useAuth';
@@ -86,6 +87,7 @@ export function useTenantConnect(
   appearanceOverride?: Parameters<typeof loadConnectAndInitialize>[0]['appearance'],
 ): TenantConnectState {
   const { currentOrganizationId, currentOrgRole } = useAuth();
+  const { resolvedTheme } = useTheme();
   const { permissions } = useManagerPermissions();
   // Only the OWNER may run setup. Financial *visibility* is broader: owner, any
   // admin, and managers with can_manage_payments. The backend mirrors this
@@ -252,9 +254,9 @@ export function useTenantConnect(
       const instance = loadConnectAndInitialize({
         publishableKey: PUBLISHABLE_KEY,
         fetchClientSecret,
-        // Caller-supplied theme (redesign, theme-aware) wins; otherwise the light
-        // brand appearance so legacy surfaces match the rebrand too.
-        appearance: appearanceOverride ?? getRedesignConnectAppearance(false),
+        // Caller-supplied theme (redesign, theme-aware) wins; otherwise the
+        // current app theme at init time.
+        appearance: appearanceOverride ?? getRedesignConnectAppearance(resolvedTheme === 'dark'),
       });
       setConnectInstance(instance);
     } catch (err) {
@@ -262,9 +264,11 @@ export function useTenantConnect(
     } finally {
       setLoading(false);
     }
-    // appearanceOverride is intentionally excluded: re-running this effect would
-    // re-create (and unmount) the iframe-bearing instance, which breaks the Connect
-    // popup flow. The appearance is applied at init/org-change time by design.
+    // appearanceOverride and resolvedTheme are intentionally excluded:
+    // re-running this effect would re-create (and unmount) the iframe-bearing
+    // instance, which breaks the Connect popup flow. The appearance is applied
+    // at init/org-change time by design; a mid-session theme toggle picks up
+    // on the next mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, currentOrganizationId]);
 

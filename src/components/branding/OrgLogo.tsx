@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { orgInitials } from "@/lib/branding/monogram";
+import { resolveLogoPair, type LogoPair } from "@/lib/branding/logoPair";
 import { useOrgBrand } from "./BrandProvider";
 
 /**
@@ -16,6 +17,13 @@ import { useOrgBrand } from "./BrandProvider";
  * network never shows a half-painted logo (progressive PNG decode paints top
  * to bottom). URLs come from useOrgBrand(), which already appends the
  * brand_updated_at cache-buster.
+ *
+ * Dark mode: each asset may have a dark variant. Theme selection is CSS-level
+ * (dark:hidden / hidden dark:block on sibling imgs keyed off html.dark), never
+ * resolvedTheme in JS, so there is no mount flicker and no hydration
+ * divergence. When only one side of a pair is usable (missing or failed
+ * upload), that side renders in BOTH themes: a broken dark asset degrades to
+ * the light logo, never to a blank slot.
  */
 export function OrgLogo({
   variant,
@@ -72,7 +80,25 @@ export function OrgLogo({
     else markFailed(url);
   };
 
-  if (variant === "full" && usable(brand.fullUrl)) {
+  // A pair collapses to the img elements that actually render: two themed
+  // siblings when a distinct dark variant is usable, one plain img otherwise.
+  const themedSources = (pair: LogoPair): { url: string; themeCls?: string }[] => {
+    const light = usable(pair.light) ? pair.light : null;
+    const dark = usable(pair.dark) ? pair.dark : null;
+    if (light && dark && light !== dark) {
+      return [
+        { url: light, themeCls: "dark:hidden" },
+        { url: dark, themeCls: "hidden dark:block" },
+      ];
+    }
+    const only = light ?? dark;
+    return only ? [{ url: only }] : [];
+  };
+
+  const iconSources = themedSources(resolveLogoPair(brand.iconUrl, brand.iconDarkUrl));
+  const fullSources = themedSources(resolveLogoPair(brand.fullUrl, brand.fullDarkUrl));
+
+  if (variant === "full" && fullSources.length > 0) {
     return (
       // The wrapper reserves the box height BEFORE the image loads (h-auto
       // imgs are 0px tall until then), so content below the logo never jumps
@@ -81,24 +107,28 @@ export function OrgLogo({
         className={cn("flex min-w-0 items-center", className)}
         style={{ height: imageMaxHeight ?? size }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */}
-        <img
-          ref={completeRef(brand.fullUrl)}
-          src={brand.fullUrl}
-          alt={name}
-          style={{
-            maxHeight: imageMaxHeight ?? size,
-            // min(): the width budget must never beat the container (inline
-            // max-width would override the max-w-full class on narrow bars).
-            maxWidth: imageMaxWidth != null ? `min(${imageMaxWidth}px, 100%)` : undefined,
-          }}
-          className={cn(
-            "h-auto w-auto max-w-full object-contain object-left",
-            !loadedUrls[brand.fullUrl] && "opacity-0",
-          )}
-          onLoad={() => markLoaded(brand.fullUrl!)}
-          onError={() => markFailed(brand.fullUrl!)}
-        />
+        {fullSources.map(({ url, themeCls }) => (
+          /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
+          <img
+            key={url}
+            ref={completeRef(url)}
+            src={url}
+            alt={name}
+            style={{
+              maxHeight: imageMaxHeight ?? size,
+              // min(): the width budget must never beat the container (inline
+              // max-width would override the max-w-full class on narrow bars).
+              maxWidth: imageMaxWidth != null ? `min(${imageMaxWidth}px, 100%)` : undefined,
+            }}
+            className={cn(
+              "h-auto w-auto max-w-full object-contain object-left",
+              !loadedUrls[url] && "opacity-0",
+              themeCls,
+            )}
+            onLoad={() => markLoaded(url)}
+            onError={() => markFailed(url)}
+          />
+        ))}
       </span>
     );
   }
@@ -106,20 +136,24 @@ export function OrgLogo({
   if (variant === "full") {
     return (
       <span className={cn("flex min-w-0 items-center gap-2", className)}>
-        {usable(brand.iconUrl) ? (
-          /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
-          <img
-            ref={completeRef(brand.iconUrl)}
-            src={brand.iconUrl}
-            alt=""
-            style={{ height: size, width: size }}
-            className={cn(
-              "shrink-0 object-contain object-left",
-              !loadedUrls[brand.iconUrl] && "opacity-0",
-            )}
-            onLoad={() => markLoaded(brand.iconUrl!)}
-            onError={() => markFailed(brand.iconUrl!)}
-          />
+        {iconSources.length > 0 ? (
+          iconSources.map(({ url, themeCls }) => (
+            /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
+            <img
+              key={url}
+              ref={completeRef(url)}
+              src={url}
+              alt=""
+              style={{ height: size, width: size }}
+              className={cn(
+                "shrink-0 object-contain object-left",
+                !loadedUrls[url] && "opacity-0",
+                themeCls,
+              )}
+              onLoad={() => markLoaded(url)}
+              onError={() => markFailed(url)}
+            />
+          ))
         ) : (
           // Decorative: the visible name text follows, mirroring alt="" above.
           <Monogram name={name} size={size} decorative />
@@ -134,20 +168,46 @@ export function OrgLogo({
     );
   }
 
-  if (usable(brand.iconUrl)) {
+  if (iconSources.length === 1) {
+    const { url } = iconSources[0];
     return (
       // Centered (not object-left): a non-square mark should sit in the middle
       // of its box, matching how the monogram square self-centers.
       /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
       <img
-        ref={completeRef(brand.iconUrl)}
-        src={brand.iconUrl}
+        ref={completeRef(url)}
+        src={url}
         alt={name}
         style={{ height: size, width: boxWidth ?? size }}
-        className={cn("shrink-0 object-contain", !loadedUrls[brand.iconUrl] && "opacity-0", className)}
-        onLoad={() => markLoaded(brand.iconUrl!)}
-        onError={() => markFailed(brand.iconUrl!)}
+        className={cn("shrink-0 object-contain", !loadedUrls[url] && "opacity-0", className)}
+        onLoad={() => markLoaded(url)}
+        onError={() => markFailed(url)}
       />
+    );
+  }
+
+  if (iconSources.length > 1) {
+    return (
+      // Same box the single-img case renders; only one themed sibling is
+      // visible at a time, so the span's content is exactly that img.
+      <span
+        className={cn("inline-flex shrink-0", className)}
+        style={{ height: size, width: boxWidth ?? size }}
+      >
+        {iconSources.map(({ url, themeCls }) => (
+          /* eslint-disable-next-line @next/next/no-img-element -- tenant-uploaded storage asset */
+          <img
+            key={url}
+            ref={completeRef(url)}
+            src={url}
+            alt={name}
+            style={{ height: size, width: boxWidth ?? size }}
+            className={cn("shrink-0 object-contain", !loadedUrls[url] && "opacity-0", themeCls)}
+            onLoad={() => markLoaded(url)}
+            onError={() => markFailed(url)}
+          />
+        ))}
+      </span>
     );
   }
 

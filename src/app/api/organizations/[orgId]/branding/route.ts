@@ -13,7 +13,7 @@ import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
  * the same owner/admin set already controls the logos it falls back to.
  *
  * Body (all optional, at least one required; null clears, name cannot be cleared):
- *   { name, brand_color, logo_icon_url, logo_full_url }
+ *   { name, brand_color, logo_icon_url, logo_full_url, logo_icon_dark_url, logo_full_dark_url }
  *
  * Logo URLs must live under THIS org's prefix in the org-branding public
  * bucket, so the column can never point at an attacker-chosen host that would
@@ -36,6 +36,8 @@ export async function PATCH(
       brand_color?: string | null;
       logo_icon_url?: string | null;
       logo_full_url?: string | null;
+      logo_icon_dark_url?: string | null;
+      logo_full_dark_url?: string | null;
     };
 
     const update: Record<string, unknown> = {};
@@ -76,7 +78,12 @@ export async function PATCH(
     // that every consumer resolves away.
     const filenameRe = /^(?:icon|full)-[A-Za-z0-9-]+\.(?:png|webp)$/;
 
-    for (const field of ['logo_icon_url', 'logo_full_url'] as const) {
+    for (const field of [
+      'logo_icon_url',
+      'logo_full_url',
+      'logo_icon_dark_url',
+      'logo_full_dark_url',
+    ] as const) {
       const value = body[field];
       if (value === undefined) continue;
       if (value === null || value === '') {
@@ -113,9 +120,13 @@ export async function PATCH(
     // brand_updated_at drives the client-side logo cache-buster (?v=), so only
     // stamp it when a brand ASSET changed; a name-only save must not force
     // every client to refetch unchanged logo files.
-    const touchesBrandAssets = ['brand_color', 'logo_icon_url', 'logo_full_url'].some(
-      (f) => f in update,
-    );
+    const touchesBrandAssets = [
+      'brand_color',
+      'logo_icon_url',
+      'logo_full_url',
+      'logo_icon_dark_url',
+      'logo_full_dark_url',
+    ].some((f) => f in update);
     if (touchesBrandAssets) update.brand_updated_at = new Date().toISOString();
 
     const { error } = await supabaseAdmin.from('organizations').update(update).eq('id', orgId);
