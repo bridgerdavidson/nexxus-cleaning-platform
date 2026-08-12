@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { uuidv4 } from "@/lib/uuid";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { deriveBrandRamp, rampToCssVars } from "@/lib/branding/palette";
 import { NEXXUS_BRAND_HEX } from "@/lib/branding/tokens";
 import { trimLogoWhitespace } from "@/lib/branding/trimLogo";
@@ -154,12 +155,17 @@ export function BrandingSection() {
         label="App icon"
         helper="Square works best. Shown in the sidebar, tabs, and emails."
       >
-        <LogoField
+        <LogoPairField
           slot="icon"
+          darkSlot="icon-dark"
+          switchId="brand-icon-same-dark"
           url={value.iconUrl}
+          darkUrl={value.iconDarkUrl}
           savedUrl={baselineUrl("iconUrl")}
+          savedDarkUrl={baselineUrl("iconDarkUrl")}
           orgId={currentOrganizationId}
           onChange={(iconUrl) => setValue((prev) => (prev ? { ...prev, iconUrl } : prev))}
+          onDarkChange={(iconDarkUrl) => setValue((prev) => (prev ? { ...prev, iconDarkUrl } : prev))}
         />
       </SettingRow>
 
@@ -167,38 +173,17 @@ export function BrandingSection() {
         label="Full logo"
         helper="Your full lockup or wordmark. Shown when the sidebar is expanded."
       >
-        <LogoField
+        <LogoPairField
           slot="full"
+          darkSlot="full-dark"
+          switchId="brand-full-same-dark"
           url={value.fullUrl}
+          darkUrl={value.fullDarkUrl}
           savedUrl={baselineUrl("fullUrl")}
+          savedDarkUrl={baselineUrl("fullDarkUrl")}
           orgId={currentOrganizationId}
           onChange={(fullUrl) => setValue((prev) => (prev ? { ...prev, fullUrl } : prev))}
-        />
-      </SettingRow>
-
-      <SettingRow
-        label="Dark mode icon"
-        helper="Optional. Replaces your app icon when someone uses dark mode."
-      >
-        <LogoField
-          slot="icon-dark"
-          url={value.iconDarkUrl}
-          savedUrl={baselineUrl("iconDarkUrl")}
-          orgId={currentOrganizationId}
-          onChange={(iconDarkUrl) => setValue((prev) => (prev ? { ...prev, iconDarkUrl } : prev))}
-        />
-      </SettingRow>
-
-      <SettingRow
-        label="Dark mode logo"
-        helper="Optional. Replaces your full logo when someone uses dark mode."
-      >
-        <LogoField
-          slot="full-dark"
-          url={value.fullDarkUrl}
-          savedUrl={baselineUrl("fullDarkUrl")}
-          orgId={currentOrganizationId}
-          onChange={(fullDarkUrl) => setValue((prev) => (prev ? { ...prev, fullDarkUrl } : prev))}
+          onDarkChange={(fullDarkUrl) => setValue((prev) => (prev ? { ...prev, fullDarkUrl } : prev))}
         />
       </SettingRow>
 
@@ -216,8 +201,8 @@ export function BrandingSection() {
           />
           {(value.iconUrl || value.fullUrl) && !value.iconDarkUrl && !value.fullDarkUrl ? (
             <p className="max-w-72 text-sm text-muted-foreground">
-              This is how your logo looks in dark mode. If it is hard to see, upload a dark version
-              above.
+              This is how your logo looks in dark mode. If it is hard to see, switch off &quot;Use
+              in dark mode too&quot; above and add a dark version.
             </p>
           ) : null}
         </div>
@@ -311,6 +296,89 @@ function ColorField({ value, onChange }: { value: string; onChange: (v: string) 
         <p id="brand-color-error" role="alert" className="mt-1.5 text-sm text-critical-700">
           {error}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * One brand asset with its optional dark-mode variant behind a "Use in dark
+ * mode too" switch. ON (the default) means the light asset serves both themes
+ * (dark URL empty, the render-time fallback); flipping it OFF reveals the dark
+ * upload slot. An org that never thinks about dark mode never sees a second
+ * slot, and the switch makes the same-asset default legible instead of
+ * implying homework.
+ */
+function LogoPairField({
+  slot,
+  darkSlot,
+  switchId,
+  url,
+  darkUrl,
+  savedUrl,
+  savedDarkUrl,
+  orgId,
+  onChange,
+  onDarkChange,
+}: {
+  slot: LogoSlot;
+  darkSlot: LogoSlot;
+  switchId: string;
+  url: string;
+  darkUrl: string;
+  savedUrl: string;
+  savedDarkUrl: string;
+  orgId: string | null;
+  onChange: (url: string) => void;
+  onDarkChange: (url: string) => void;
+}) {
+  // ON = same asset in both themes = no dark URL. An existing dark upload
+  // means the org already opted out.
+  const [sameForDark, setSameForDark] = useState(!darkUrl);
+  // Re-sync when the form's dark URL changes from elsewhere (load, discard,
+  // reset to default) - same ref pattern as ColorField above. A transition to
+  // empty flips the switch back ON; a transition to a value flips it OFF.
+  const lastDarkUrl = useRef(darkUrl);
+  if (lastDarkUrl.current !== darkUrl) {
+    lastDarkUrl.current = darkUrl;
+    if (sameForDark === !!darkUrl) setSameForDark(!darkUrl);
+  }
+
+  return (
+    <div className="grid gap-3 sm:w-72">
+      <LogoField slot={slot} url={url} savedUrl={savedUrl} orgId={orgId} onChange={onChange} />
+      <label
+        htmlFor={switchId}
+        className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground"
+      >
+        <Switch
+          id={switchId}
+          checked={sameForDark}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              // Back to same-asset: drop any staged dark upload (a SAVED one
+              // is only cleared from the org row on save, like Remove).
+              discardStagedObject(darkUrl, savedDarkUrl);
+              onDarkChange("");
+            }
+            setSameForDark(checked);
+          }}
+        />
+        Use in dark mode too
+      </label>
+      {!sameForDark ? (
+        <div className="grid gap-1.5">
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            {SLOT_LABEL[darkSlot]}
+          </p>
+          <LogoField
+            slot={darkSlot}
+            url={darkUrl}
+            savedUrl={savedDarkUrl}
+            orgId={orgId}
+            onChange={onDarkChange}
+          />
+        </div>
       ) : null}
     </div>
   );
