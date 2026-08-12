@@ -178,7 +178,9 @@ export async function dispatchReceiptEmails(
         logoUrl: org?.logo_icon_url ?? null,
       });
 
-      await sendEmail({ to: profile.email, ...email });
+      // White-label sender: the inbox row shows the org's name, not the platform's
+      // (the address stays the verified EMAIL_FROM; the footer discloses "via Nexxus").
+      await sendEmail({ to: profile.email, fromName: org?.name, ...email });
       result.sent += 1;
     } catch (err) {
       // Un-claim so the next run retries, and record why.
