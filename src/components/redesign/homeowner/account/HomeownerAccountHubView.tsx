@@ -11,6 +11,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { ProfileRow } from '@/components/redesign/cleaner/profile/ProfileRow';
+import { ThemePreferenceRow } from '@/components/redesign/shared/ThemePreferenceRow';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -51,6 +52,7 @@ export function HomeownerAccountHubView({
             subtitle="Name, photo, and password"
             href="/homeowner/account/profile"
           />
+          <ThemePreferenceRow />
         </div>
       </section>
 
