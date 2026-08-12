@@ -219,12 +219,17 @@ timestamps, unread treatment) must unify.
 - [x] **Complete.** 4a-4g all merged + the `redesignUiEnabled` flag retired (#201). Role roots
       live in prod: `/admin` `/cleaner` `/homeowner` `/owner`.
 
-## 6. Dark mode (build-ready, queued)
+## 6. Dark mode (built 2026-08-11, PR open)
 
-Source: dark-mode plan. Infra is live already; work = Phase 1 theme-complete the live surface
-(invisible, small PRs) → Phase 2 the 3-way Light/Dark/System toggle in each role's settings
-(the go-live moment; ui-feature-workflow + ui-ux-pro-max apply) → Phase 3
-`user_profiles.theme` cross-device fast-follow. Trigger: "let's work on dark mode".
+Source: dark-mode plan (design revised 2026-08-11: per-user grain reaffirmed + per-theme org
+logo assets, `docs/redesign/2026-07-16-dark-mode-plan.md`).
+
+- [x] Phase 1 theme-complete the live surface (token retrofit; MessagesPage-era list was stale,
+      real surface was 6 legacy files + status ramps)
+- [x] Phase 2a dark logo pipeline (`logo_icon_dark_url`/`logo_full_dark_url`, 2x2 Branding
+      slots, dual-theme preview + nudge, CSS-level OrgLogo/loader swap)
+- [x] Phase 2b 3-way Light/Dark/System control in all three role settings (go-live)
+- [ ] Phase 3 `user_profiles.theme` cross-device sync (post-MVP fast-follow)
 
 ## 7. Payments audit Tier 3 — flag-flip gates (not MVP-blocking)
 

@@ -510,7 +510,15 @@ function BrandPreview({
           <span className="truncate text-xs font-bold text-foreground">{orgName}</span>
         </div>
         <div className="space-y-2 p-3">
-          <span className="inline-flex items-center rounded-pill bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-ink">
+          {/* Chip styling is pinned per mode prop, NOT via dark: variants:
+              dark: keys off html.dark, so it would leak the page's theme into
+              the card that is deliberately showing the OTHER theme. */}
+          <span
+            className={cn(
+              "inline-flex items-center rounded-pill px-2.5 py-1 text-[11px] font-bold",
+              mode === "dark" ? "bg-brand-500/15 text-brand-ink" : "bg-brand-50 text-brand-700",
+            )}
+          >
             Bookings
           </span>
           <div>
@@ -519,7 +527,12 @@ function BrandPreview({
             </span>
           </div>
           <div>
-            <span className="inline-flex items-center rounded-pill bg-positive-50 px-2 py-0.5 text-[11px] font-bold text-positive-700 dark:bg-positive/15 dark:text-positive">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-pill px-2 py-0.5 text-[11px] font-bold",
+                mode === "dark" ? "bg-positive/15 text-positive" : "bg-positive-50 text-positive-700",
+              )}
+            >
               Confirmed
             </span>
           </div>
