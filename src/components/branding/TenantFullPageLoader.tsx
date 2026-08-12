@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readCachedIconUrl } from "@/lib/branding/brandCache";
+import { readCachedIconUrls } from "@/lib/branding/brandCache";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrgBrand } from "./BrandProvider";
 
@@ -25,7 +25,7 @@ export function TenantFullPageLoader() {
   // mismatch #418 (whose recovery can wipe unrelated client-set state).
   const [cachedIconUrl, setCachedIconUrl] = useState<string | null>(null);
   useEffect(() => {
-    setCachedIconUrl(readCachedIconUrl());
+    setCachedIconUrl(readCachedIconUrls().iconUrl);
   }, []);
   // The cached mark stands in only while a session plausibly exists (restore
   // in flight, or a user present). Once restore resolves to NO user (lapsed
