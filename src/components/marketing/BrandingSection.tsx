@@ -17,9 +17,9 @@ interface BrandPreset {
 // Demo identities. These hexes are DATA, not styling: they feed the production
 // deriveBrandRamp pipeline exactly like a tenant's saved brand color does.
 const PRESETS: BrandPreset[] = [
-  { name: 'Sparkle & Co', hex: '#0FA47A' },
-  { name: 'Summit Shine', hex: '#E86A2C' },
-  { name: 'Bluebird Home', hex: '#7C5CFF' },
+  { name: 'Sparkle & Co', hex: '#059669' },
+  { name: 'Summit Shine', hex: '#DB2777' },
+  { name: 'Bluebird Home', hex: '#8B5CF6' },
 ]
 
 const RAIL_ITEMS = [
@@ -35,7 +35,7 @@ const RAIL_ITEMS = [
 function ExpandedDemoRail({ name }: { name: string }) {
   const display = name.trim() || 'Your Company'
   return (
-    <div className="flex w-32 shrink-0 flex-col gap-1 border-r border-border bg-card p-2" aria-hidden>
+    <div className="flex w-24 shrink-0 flex-col gap-1 border-r border-border bg-card p-2 sm:w-32" aria-hidden>
       <div className="mb-1.5 flex items-center gap-1.5 px-1">
         <span className="grid size-5 shrink-0 place-items-center rounded-chip bg-primary text-[8px] font-extrabold text-primary-foreground transition-colors duration-slow">
           {orgInitials(display)}
@@ -75,6 +75,10 @@ const COLOR_WHEEL =
 export function BrandingSection() {
   const [brand, setBrand] = React.useState<BrandPreset>(PRESETS[0])
   const [pickedColor, setPickedColor] = React.useState(false)
+  // The visitor's own company name. Kept separate from the preset identities:
+  // the input stays empty (an invitation to type) while the presets cycle, and
+  // once typed it wins over every preset name.
+  const [customName, setCustomName] = React.useState('')
   const sectionRef = React.useRef<HTMLElement>(null)
   const [interacted, setInteracted] = React.useState(false)
   const [inView, setInView] = React.useState(false)
@@ -120,7 +124,7 @@ export function BrandingSection() {
     [brand.hex],
   )
 
-  const display = brand.name.trim() || 'Your Company'
+  const display = customName.trim() || brand.name
   const domain = display.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'yourcompany'
 
   return (
@@ -140,31 +144,36 @@ export function BrandingSection() {
 
         {/* Tableau: everything inside this wrapper repaints from the brand vars. */}
         <div style={brandVars} className="relative mx-auto mt-10 max-w-2xl" aria-hidden>
-          <BrowserFrame label={`app.${domain}.com`} rail={<ExpandedDemoRail name={brand.name} />} className="mr-14 sm:mr-24">
-            {/* pr clears the overlapping phone so pills never clip mid-word */}
-            <div className="space-y-2 p-3 pr-16 sm:pr-24">
-              <div className="grid grid-cols-3 gap-2">
+          <BrowserFrame label={`app.${domain}.com`} rail={<ExpandedDemoRail name={display} />} className="mr-12 sm:mr-24">
+            {/* pr clears the overlapping phone so pills never clip mid-word.
+                Mobile drops the third KPI and lets the demo lines flex so the
+                sliver between rail and phone never crushes its content. */}
+            <div className="space-y-2 p-3 pr-20 sm:pr-24">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {[
                   { label: 'Today', value: '6' },
-                  { label: 'In progress', value: '2' },
-                  { label: 'This month', value: '$12.4k' },
+                  { label: 'Active', value: '2' },
+                  { label: 'This month', value: '$12.4k', desktopOnly: true },
                 ].map((k) => (
-                  <div key={k.label} className="rounded-control border border-border bg-card p-2">
+                  <div
+                    key={k.label}
+                    className={cn('rounded-control border border-border bg-card p-2', k.desktopOnly && 'hidden sm:block')}
+                  >
                     <p className="text-[8px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{k.label}</p>
                     <p className="text-sm font-extrabold text-foreground tnum">{k.value}</p>
                   </div>
                 ))}
               </div>
               {[
-                { w: 'w-24', pill: 'Scheduled', brand: true },
-                { w: 'w-32', pill: 'Done', brand: false },
-                { w: 'w-28', pill: 'In progress', brand: true },
+                { max: 'max-w-24', pill: 'Scheduled', brand: true },
+                { max: 'max-w-32', pill: 'Done', brand: false },
+                { max: 'max-w-28', pill: 'In progress', brand: true },
               ].map((row, i) => (
-                <div key={i} className="flex items-center justify-between rounded-control border border-border bg-card px-2.5 py-2">
-                  <DemoLine className={row.w} />
+                <div key={i} className="flex items-center justify-between gap-2 rounded-control border border-border bg-card px-2.5 py-2">
+                  <DemoLine className={cn('min-w-3 flex-1', row.max)} />
                   <span
                     className={cn(
-                      'rounded-pill px-2 py-0.5 text-[8px] font-bold transition-colors duration-slow',
+                      'shrink-0 rounded-pill px-2 py-0.5 text-[8px] font-bold transition-colors duration-slow',
                       row.brand ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground',
                     )}
                   >
@@ -178,7 +187,7 @@ export function BrandingSection() {
           <PhoneFrame
             initials={orgInitials(display)}
             tabs={[Home, CalendarDays, Camera, CreditCard]}
-            className="absolute -bottom-6 right-0 z-10 w-36 sm:w-40"
+            className="absolute -bottom-6 right-0 z-10 w-32 sm:w-40"
           >
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
@@ -227,7 +236,7 @@ export function BrandingSection() {
             )
           })}
           <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-pill border border-border px-3.5">
-            <span className="text-sm font-semibold text-muted-foreground">Brand color</span>
+            <span className="text-sm font-semibold text-muted-foreground">Your brand color</span>
             <span
               className="relative size-6 shrink-0 overflow-hidden rounded-pill border border-border"
               style={pickedColor ? { backgroundColor: brand.hex } : { background: COLOR_WHEEL }}
@@ -244,14 +253,15 @@ export function BrandingSection() {
               />
             </span>
           </label>
-          <label className="flex min-h-11 items-center gap-2.5 rounded-pill border border-border px-3.5">
-            <span className="text-sm font-semibold text-muted-foreground">Company name</span>
+          <label className="flex min-h-11 items-center rounded-pill border border-border px-3.5">
             <input
               type="text"
-              value={brand.name}
+              value={customName}
               maxLength={24}
-              onChange={(e) => setBrand((b) => ({ ...b, name: e.target.value }))}
-              className="w-32 border-0 bg-transparent p-0 text-sm font-semibold text-foreground focus:outline-none focus:ring-0"
+              placeholder="Your company name here"
+              aria-label="Your company name"
+              onChange={(e) => setCustomName(e.target.value)}
+              className="w-48 border-0 bg-transparent p-0 text-sm font-semibold text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-0"
             />
           </label>
         </div>
