@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useRef, type RefObject } from "react";
-import { ChevronLeft, MessageSquare } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { MessageBubble } from "./MessageBubble";
 import { MessageComposer } from "./MessageComposer";
+import { ThreadHeader } from "./ThreadHeader";
+import { LoadMoreSpinner, ThreadEmptyState, ThreadSkeleton } from "./ThreadStates";
 import type { MessageVM } from "./messages-types";
 
 export interface MessageThreadTakeoverViewProps {
@@ -93,29 +91,12 @@ export function MessageThreadTakeoverView(props: MessageThreadTakeoverViewProps)
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
       {/* Trimmed header: back (takeover only) + avatar + title */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-2 py-2">
-        {props.onBack && (
-          <button
-            type="button"
-            onClick={props.onBack}
-            aria-label={props.backLabel ?? "Back"}
-            className={cn(
-              "flex h-11 shrink-0 items-center gap-1 rounded-control text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-              props.backLabel ? "px-2" : "w-11 justify-center",
-            )}
-          >
-            <ChevronLeft className="size-6 shrink-0" />
-            {props.backLabel && <span className="text-sm font-semibold">{props.backLabel}</span>}
-          </button>
-        )}
-        <Avatar className={cn("size-9 shrink-0", !props.onBack && "ml-1")}>
-          {props.avatarUrl ? <AvatarImage src={props.avatarUrl} alt="" /> : null}
-          <AvatarFallback>{props.initials}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold text-foreground">{props.title}</div>
-        </div>
-      </div>
+      <ThreadHeader
+        onBack={props.onBack}
+        backLabel={props.backLabel}
+        avatar={{ url: props.avatarUrl, initials: props.initials }}
+        title={props.title}
+      />
 
       {/* Message scroll area */}
       <div
@@ -123,32 +104,16 @@ export function MessageThreadTakeoverView(props: MessageThreadTakeoverViewProps)
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-5 py-4"
       >
         <div ref={sentinelRef} aria-hidden className="h-px" />
-        {props.isLoadingMore && (
-          <div className="flex justify-center py-1">
-            <Skeleton className="h-4 w-16 rounded-full" />
-          </div>
-        )}
+        {props.isLoadingMore && <LoadMoreSpinner />}
         {/* Bottom-anchor spacer: pushes a short thread down to the composer, collapses once messages overflow. */}
         <div aria-hidden className="flex-1" />
         {props.loading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                className={cn("h-10 rounded-card", i % 2 ? "w-2/3 self-end" : "w-1/2 self-start")}
-              />
-            ))}
-          </div>
+          <ThreadSkeleton />
         ) : props.messages.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-10 text-center">
-            <MessageSquare className="size-6 text-muted-foreground" aria-hidden />
-            <p className="text-sm font-semibold text-foreground">
-              {props.emptyTitle ?? 'Start the conversation'}
-            </p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              {props.emptyBody ?? 'Send your office a message. They will see it right away.'}
-            </p>
-          </div>
+          <ThreadEmptyState
+            title={props.emptyTitle ?? "Start the conversation"}
+            body={props.emptyBody ?? "Send your office a message. They will see it right away."}
+          />
         ) : (
           props.messages.map((m) => (
             <div key={m.id} className="flex flex-col gap-3">

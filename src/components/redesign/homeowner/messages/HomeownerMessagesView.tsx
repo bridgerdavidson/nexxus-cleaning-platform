@@ -8,16 +8,10 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { BOOKING_STATUS_VARIANT } from '@/components/redesign/messages/messages-pills';
 import { homeownerStatusLabel } from '../home/home-presenters';
 import type { HomeownerInboxModel, JobThreadRowVM } from './homeowner-messages-types';
 
-const TONE_TO_VARIANT = {
-  default: 'default',
-  secondary: 'secondary',
-  positive: 'positive',
-  caution: 'caution',
-  critical: 'critical',
-} as const;
 
 export interface HomeownerMessagesViewProps {
   model: HomeownerInboxModel;
@@ -140,7 +134,8 @@ function JobRow({
               Closed
             </Badge>
           ) : (
-            <Badge variant={TONE_TO_VARIANT[status.tone]} className="shrink-0">
+            // Role-voiced copy ("All done"); variant from the one shared status map.
+            <Badge variant={BOOKING_STATUS_VARIANT[row.status]} className="shrink-0">
               {status.label}
             </Badge>
           )}

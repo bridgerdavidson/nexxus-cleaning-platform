@@ -11,9 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConversationRow } from './ConversationRow'
+import { InboxRowSkeleton } from './InboxRow'
 import { JobThreadInboxRow } from './JobThreadInboxRow'
 import type { ConversationRowVM, RoleFilter } from './messages-types'
 import type { JobThreadRowVM } from './jobThreadRow'
@@ -102,15 +102,9 @@ export function InboxList(props: {
       {/* Conversation list */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {props.loading ? (
-          <div className="space-y-1 p-2">
+          <div>
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-2 py-3">
-                <Skeleton className="size-10 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-3 w-2/3" />
-                  <Skeleton className="h-3 w-1/2" />
-                </div>
-              </div>
+              <InboxRowSkeleton key={i} />
             ))}
           </div>
         ) : props.rows.length === 0 && (!props.jobRows || props.jobRows.length === 0) ? (

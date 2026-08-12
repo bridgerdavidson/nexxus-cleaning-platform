@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { ThreadHeader } from '@/components/redesign/messages/ThreadHeader';
+import { ThreadSkeleton } from '@/components/redesign/messages/ThreadStates';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { replaceSearchShallow } from '@/lib/shallowSearch';
 import { useAuth } from '@/hooks/useAuth';
@@ -132,8 +133,13 @@ function HostInner({ toParam, threadParam, jobParam }: { toParam: string | null;
             <HomeownerMessageThread config={{ kind: 'office', recipient: officeRecipient }} conversationId={officeConvId} onBack={closeTakeover} />
           ) : null
         ) : (
-          <div className="grid h-full place-items-center bg-card">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Loading conversation" />
+          <div className="flex h-full min-h-0 flex-col bg-card">
+            {/* Same chrome as the loaded thread (D5/D9): header with a title
+                skeleton, bubbles skeleton anchored to the composer edge. */}
+            <ThreadHeader onBack={closeTakeover} />
+            <div className="flex min-h-0 flex-1 flex-col justify-end px-5 py-4">
+              <ThreadSkeleton />
+            </div>
           </div>
         )
       }

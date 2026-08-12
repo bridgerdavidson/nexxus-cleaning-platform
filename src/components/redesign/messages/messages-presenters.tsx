@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import {
   timeAgo, lastMessagePreview, fmtTime, money2, initialsOf, dayLabel, weekdayMonthDay,
 } from './messages-format'
+import { BOOKING_STATUS_VARIANT } from './messages-pills'
 import { deriveContactBookings } from './deriveContactBookings'
 import type {
   BookingStatus, ConversationRowVM, InlineBookingVM, MessageVM, ContactContextVM,
@@ -14,15 +15,16 @@ import type {
 
 type BadgeVariant = 'default' | 'secondary' | 'outline' | 'positive' | 'caution' | 'critical' | 'info'
 
+// Variants come from the shared status map (D13); only labels + icons live here.
 export const BOOKING_STATUS_CONFIG: Record<
   BookingStatus,
   { label: string; variant: BadgeVariant; Icon: LucideIcon; spin?: boolean }
 > = {
-  pending:     { label: 'Pending',     variant: 'caution',    Icon: Clock },
-  confirmed:   { label: 'Confirmed',   variant: 'secondary',  Icon: CalendarCheck },
-  in_progress: { label: 'In progress', variant: 'default',    Icon: Loader2, spin: true },
-  completed:   { label: 'Completed',   variant: 'positive',   Icon: CheckCircle2 },
-  cancelled:   { label: 'Cancelled',   variant: 'critical',   Icon: XCircle },
+  pending:     { label: 'Pending',     variant: BOOKING_STATUS_VARIANT.pending,     Icon: Clock },
+  confirmed:   { label: 'Confirmed',   variant: BOOKING_STATUS_VARIANT.confirmed,   Icon: CalendarCheck },
+  in_progress: { label: 'In progress', variant: BOOKING_STATUS_VARIANT.in_progress, Icon: Loader2, spin: true },
+  completed:   { label: 'Completed',   variant: BOOKING_STATUS_VARIANT.completed,   Icon: CheckCircle2 },
+  cancelled:   { label: 'Cancelled',   variant: BOOKING_STATUS_VARIANT.cancelled,   Icon: XCircle },
 }
 
 export function BookingBadge({ status, className }: { status: BookingStatus; className?: string }) {
