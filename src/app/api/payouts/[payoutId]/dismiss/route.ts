@@ -7,11 +7,15 @@ import { recordPaymentEvent } from '@/lib/payments/events';
 /**
  * POST /api/payouts/:payoutId/dismiss
  *
- * Hide a failed cleaner-payout row from the Payments "Needs attention" panel once an admin has
+ * Hide a failed cleaner-payout row from the Payments "Needs you now" band once an admin has
  * handled it or confirmed it's stale. UI-only: sets `attention_dismissed_at`. It does NOT change
  * the payout status and does NOT stop the reconciliation sweep from retrying the transfer, so a
  * dismissed-but-recoverable payout still self-heals and the cleaner is never silently stranded.
- * Org staff only (managers need can_manage_payments).
+ *
+ * A dismissal is a SNOOZE, not a permanent hide (T2-9): the triage query stops honoring stamps
+ * older than PAYOUT_DISMISS_SNOOZE_HOURS (payoutDismissSnooze.ts), so a payout that is still
+ * failed a day later resurfaces in the band. Re-dismissing re-stamps the clock; /undismiss is
+ * the manual inverse. Org staff only (managers need can_manage_payments).
  *
  * Body: { organization_id }
  */

@@ -46,10 +46,10 @@ const TXN_DETAILS: Record<string, TransactionDetailVM> = {
 };
 
 const PAYOUT_DETAILS: Record<string, PayoutDetailVM> = {
-  p1: { ...PAYOUT_ROWS[0], cleanerId: "c1", appointmentId: "a1", notes: null, createdLabel: "Jun 20, 2026", approvedLabel: "Jun 20, 2026", paidLabel: "Jun 20, 2026", rawStatus: "paid" },
-  p2: { ...PAYOUT_ROWS[1], cleanerId: "c2", appointmentId: "a2", notes: null, createdLabel: "Jun 19, 2026", approvedLabel: null, paidLabel: null, rawStatus: "pending" },
-  p3: { ...PAYOUT_ROWS[2], cleanerId: "c1", appointmentId: "a3", notes: "Transfer bounced.", createdLabel: "Jun 18, 2026", approvedLabel: null, paidLabel: null, rawStatus: "failed" },
-  p4: { ...PAYOUT_ROWS[3], cleanerId: "c3", appointmentId: "a4", notes: "Refund clawback.", createdLabel: "Jun 12, 2026", approvedLabel: "Jun 12, 2026", paidLabel: "Jun 12, 2026", rawStatus: "reversed" },
+  p1: { ...PAYOUT_ROWS[0], cleanerId: "c1", appointmentId: "a1", notes: null, createdLabel: "Jun 20, 2026", approvedLabel: "Jun 20, 2026", paidLabel: "Jun 20, 2026", rawStatus: "paid", dismissedLabel: null, dismissalStale: false },
+  p2: { ...PAYOUT_ROWS[1], cleanerId: "c2", appointmentId: "a2", notes: null, createdLabel: "Jun 19, 2026", approvedLabel: null, paidLabel: null, rawStatus: "pending", dismissedLabel: null, dismissalStale: false },
+  p3: { ...PAYOUT_ROWS[2], cleanerId: "c1", appointmentId: "a3", notes: "Transfer bounced.", createdLabel: "Jun 18, 2026", approvedLabel: null, paidLabel: null, rawStatus: "failed", dismissedLabel: "Jun 19, 2026", dismissalStale: true },
+  p4: { ...PAYOUT_ROWS[3], cleanerId: "c3", appointmentId: "a4", notes: "Refund clawback.", createdLabel: "Jun 12, 2026", approvedLabel: "Jun 12, 2026", paidLabel: "Jun 12, 2026", rawStatus: "reversed", dismissedLabel: null, dismissalStale: false },
 };
 
 function MockTriageBand() {
@@ -145,7 +145,7 @@ export default function PaymentsPreviewPage() {
         canManagePayments
         onRecordPayment={() => {}}
         triage={<MockTriageBand />}
-        kpis={<PaymentsKpiStrip totalRevenue={12480} thisMonth={3210} />}
+        kpis={<PaymentsKpiStrip totalRevenueCents={1248000} thisMonthCents={321000} />}
         yourMoney={<MockYourMoney />}
       />
 
@@ -163,6 +163,7 @@ export default function PaymentsPreviewPage() {
         onRetry={() => {}}
         onRetryFee={() => {}}
         onDismiss={() => {}}
+        onUndismiss={() => {}}
         onMessage={() => {}}
         onViewBooking={() => {}}
       />

@@ -132,7 +132,6 @@ export function CleanerThread({
         isMobile: true,
         showReferenceBooking: false,
       }}
-      variant={variant}
       onBack={onBack}
       backLabel={backLabel}
     />

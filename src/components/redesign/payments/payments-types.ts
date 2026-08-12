@@ -94,6 +94,10 @@ export type PayoutDetailVM = PayoutRowVM & {
   approvedLabel: string | null;
   paidLabel: string | null;
   rawStatus: string; // to choose footer actions
+  /** "Aug 10, 2026" when the row is snoozed out of the attention band, else null (T2-9). */
+  dismissedLabel: string | null;
+  /** The snooze has lapsed (the row is back in the band), so the sheet says so. */
+  dismissalStale: boolean;
 };
 
 export type TriageChargeVM = {
@@ -105,7 +109,15 @@ export type TriageChargeVM = {
   homeownerId: string | null;
   canSendLink: boolean; // homeowner_id && !is_self_pay
 };
-export type TriagePayoutVM = { id: string; cleaner: string; amountLabel: string };
+export type TriagePayoutVM = {
+  id: string;
+  cleaner: string;
+  amountLabel: string;
+  /** Dismissed earlier but STILL failing past the snooze window, so it's back (T2-9). */
+  resurfaced: boolean;
+  /** "Aug 10, 2026" when resurfaced, for the "you dismissed this on X" line. */
+  dismissedDateLabel: string | null;
+};
 export type TriageHeldVM = { cleanerId: string | null; cleaner: string; amountLabel: string };
 
 // --- Disputes (chargebacks) ---

@@ -8,6 +8,7 @@ import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { useSupabaseRealtimeSync } from "@/lib/useSupabaseRealtimeSync";
 import { useDetailParam } from "@/hooks/useDetailParam";
 import { money2, longDate } from "./payments-presenters";
+import { dismissCutoffIso } from "./payoutDismissSnooze";
 import type { TriageChargeVM, TriagePayoutVM, TriageHeldVM } from "./payments-types";
 
 // Focused data + actions for the Payments "Needs you now" triage band. Queries the
@@ -79,7 +80,7 @@ export function usePaymentsTriage(): PaymentsTriage {
     if (!currentOrganizationId) return;
     if (!loadedOnce.current) setLoading(true);
     const payoutSelect =
-      "id, amount, status, cleaner_id, cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles(first_name, last_name))";
+      "id, amount, status, cleaner_id, attention_dismissed_at, cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles(first_name, last_name))";
 
     const [chargeRes, failedRes, heldRes] = await Promise.all([
       // Failed/requires-action charges are found by the DATA (authorization_status),
@@ -96,12 +97,17 @@ export function usePaymentsTriage(): PaymentsTriage {
         .in("authorization_status", ["failed", "requires_action"])
         .neq("status", "cancelled")
         .order("scheduled_date", { ascending: true }),
+      // Dismissal is a SNOOZE, not a hide-forever (T2-9): a stamp older than the snooze
+      // window stops filtering the row, so a payout the sweep keeps failing comes back
+      // (tagged `resurfaced` below) instead of staying invisible while the cleaner's
+      // money stays stranded. The sweep's next failed write fires the realtime reload
+      // that actually brings an expired row back on screen.
       supabase
         .from("payouts")
         .select(payoutSelect)
         .eq("organization_id", currentOrganizationId)
         .eq("status", "failed")
-        .is("attention_dismissed_at", null)
+        .or(`attention_dismissed_at.is.null,attention_dismissed_at.lt.${dismissCutoffIso(Date.now())}`)
         .order("created_at", { ascending: false }),
       supabase
         .from("payouts")
@@ -138,11 +144,18 @@ export function usePaymentsTriage(): PaymentsTriage {
       };
     });
 
-    const failedVMs: TriagePayoutVM[] = ((failedRes.data as Record<string, unknown>[]) ?? []).map((p) => ({
-      id: p.id as string,
-      cleaner: cleanerNameFromJoin(p.cleaner) || "Cleaner",
-      amountLabel: money2(Number(p.amount ?? 0)),
-    }));
+    const failedVMs: TriagePayoutVM[] = ((failedRes.data as Record<string, unknown>[]) ?? []).map((p) => {
+      // The query only returns dismissed rows once their snooze lapsed, so any stamp
+      // here means "dismissed earlier but STILL failing" — the resurfaced treatment.
+      const dismissedAt = (p.attention_dismissed_at as string | null) ?? null;
+      return {
+        id: p.id as string,
+        cleaner: cleanerNameFromJoin(p.cleaner) || "Cleaner",
+        amountLabel: money2(Number(p.amount ?? 0)),
+        resurfaced: dismissedAt != null,
+        dismissedDateLabel: dismissedAt ? longDate(dismissedAt) : null,
+      };
+    });
 
     // Group held payouts by cleaner so one row (summed) shows per cleaner.
     const heldMap = new Map<string, { cleaner: string; total: number; cleanerId: string | null }>();

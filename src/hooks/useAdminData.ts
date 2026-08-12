@@ -625,6 +625,8 @@ export interface AdminPayout {
   paid_at?: string;
   created_at: string;
   notes?: string;
+  /** Snoozed out of the payments attention band (T2-9); null/absent = visible there. */
+  attention_dismissed_at?: string | null;
   cleaner: {
     first_name: string;
     last_name: string;
@@ -652,6 +654,7 @@ export function useAdminPayouts() {
           paid_at,
           created_at,
           notes,
+          attention_dismissed_at,
           cleaner:cleaner_profiles!cleaner_id(
             user_profile:user_profiles(
               first_name,
@@ -748,6 +751,7 @@ const PAYOUTS_INFINITE_SELECT = `
   paid_at,
   created_at,
   notes,
+  attention_dismissed_at,
   cleaner:cleaner_profiles!cleaner_id(
     user_profile:user_profiles(
       first_name,
@@ -988,10 +992,12 @@ export function useAdminInvoices() {
   };
 }
 
+/** All fields are integer CENTS (T2-11: the payment_stats RPC is cents-precise
+ *  and nets pending/succeeded refunds since migration 20260811203429). */
 export interface PaymentStats {
-  totalRevenue: number;
-  pendingPayouts: number;
-  thisMonthRevenue: number;
+  totalRevenueCents: number;
+  pendingPayoutsCents: number;
+  thisMonthRevenueCents: number;
 }
 
 export function usePaymentStats() {
@@ -1006,16 +1012,23 @@ export function usePaymentStats() {
       const rpcRes = await supabase.rpc('payment_stats', { p_org_id: orgId });
       if (rpcRes.error) throw rpcRes.error;
       const r = (rpcRes.data ?? {}) as Record<string, number>;
+      // Prefer the integer-cents keys (migration 20260811203429). The dollar-key
+      // fallback covers the window where this client runs against an environment
+      // whose RPC predates that migration (prod deploy vs migrate race).
+      const cents = (centsKey: string, dollarKey: string) =>
+        r[centsKey] != null
+          ? Math.round(Number(r[centsKey]))
+          : Math.round(Number(r[dollarKey] ?? 0) * 100);
       return {
-        totalRevenue: Number(r.totalRevenue ?? 0),
-        pendingPayouts: Number(r.pendingPayouts ?? 0),
-        thisMonthRevenue: Number(r.thisMonthRevenue ?? 0),
+        totalRevenueCents: cents('totalRevenueCents', 'totalRevenue'),
+        pendingPayoutsCents: cents('pendingPayoutsCents', 'pendingPayouts'),
+        thisMonthRevenueCents: cents('thisMonthRevenueCents', 'thisMonthRevenue'),
       } as PaymentStats;
     },
   });
 
   return {
-    stats: query.data ?? { totalRevenue: 0, pendingPayouts: 0, thisMonthRevenue: 0 },
+    stats: query.data ?? { totalRevenueCents: 0, pendingPayoutsCents: 0, thisMonthRevenueCents: 0 },
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,

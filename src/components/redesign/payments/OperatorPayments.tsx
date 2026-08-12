@@ -23,6 +23,7 @@ import { deriveTransactions, derivePayouts } from "./derivePayments";
 import { deriveTransactionBadge, derivePayoutBadge } from "./derivePaymentsBadges";
 import { openDisputedPaymentIds } from "./deriveDisputes";
 import { longDate, methodLabel, money2 } from "./payments-presenters";
+import { isDismissalStale } from "./payoutDismissSnooze";
 import { OperatorPaymentsView } from "./OperatorPaymentsView";
 import { DisputesBand } from "./DisputesBand";
 import { PaymentsTriageBand } from "./PaymentsTriageBand";
@@ -281,6 +282,8 @@ function OperatorPaymentsData({
       approvedLabel: p.approved_at ? longDate(p.approved_at) : null,
       paidLabel: p.paid_at ? longDate(p.paid_at) : null,
       rawStatus: p.status,
+      dismissedLabel: p.attention_dismissed_at ? longDate(p.attention_dismissed_at) : null,
+      dismissalStale: isDismissalStale(p.attention_dismissed_at, Date.now()),
     };
   }, [ledger, selectedRowId, payouts]);
 
@@ -363,12 +366,36 @@ function OperatorPaymentsData({
           body: JSON.stringify({ organization_id: currentOrganizationId }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Could not dismiss");
-        toast.success("Dismissed");
+        if (!res.ok) throw new Error(data.error || "Could not snooze");
+        toast.success("Snoozed for a day. It comes back if it keeps failing.");
         await refetchPayouts();
         setSelectedRowId(null);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Could not dismiss");
+        toast.error(e instanceof Error ? e.message : "Could not snooze");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [currentOrganizationId, authHeaders, refetchPayouts],
+  );
+
+  const handleUndismiss = useCallback(
+    async (id: string) => {
+      if (!currentOrganizationId) return;
+      setBusy(true);
+      try {
+        const res = await fetch(`/api/payouts/${id}/undismiss`, {
+          method: "POST",
+          headers: await authHeaders(),
+          body: JSON.stringify({ organization_id: currentOrganizationId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not restore");
+        toast.success("Restored to Needs you now");
+        await refetchPayouts();
+        setSelectedRowId(null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not restore");
       } finally {
         setBusy(false);
       }
@@ -458,8 +485,8 @@ function OperatorPaymentsData({
         payRequests={<PayRequestsBand canManagePayments={canManagePayments} />}
         kpis={
           <PaymentsKpiStrip
-            totalRevenue={stats?.totalRevenue ?? 0}
-            thisMonth={stats?.thisMonthRevenue ?? 0}
+            totalRevenueCents={stats?.totalRevenueCents ?? 0}
+            thisMonthCents={stats?.thisMonthRevenueCents ?? 0}
             loading={statsLoading}
           />
         }
@@ -482,6 +509,7 @@ function OperatorPaymentsData({
         onRetry={handleRetry}
         onRetryFee={handleRetryFee}
         onDismiss={handleDismiss}
+        onUndismiss={handleUndismiss}
         onMessage={handleMessage}
         onViewBooking={canViewBookings ? handleViewBooking : undefined}
       />

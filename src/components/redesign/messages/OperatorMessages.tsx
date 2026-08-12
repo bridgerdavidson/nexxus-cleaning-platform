@@ -317,7 +317,6 @@ function OperatorMessagesData() {
         error={hasError}
         onRetry={onRetry}
         rows={rows}
-        totalConversations={rowsAll.length}
         unreadTotal={unreadTotal(rowsAll)}
         search={search}
         onSearchChange={setSearch}

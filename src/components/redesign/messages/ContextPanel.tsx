@@ -35,7 +35,7 @@ function BookingMini({ b, onOpen }: { b: ContactBookingVM; onOpen?: () => void }
   )
 }
 
-export function ContextPanelBody({
+function ContextPanelBody({
   context, onOpenBooking, onViewProfile, onNewBooking, onCopy, onClose,
 }: {
   context: ContactContextVM

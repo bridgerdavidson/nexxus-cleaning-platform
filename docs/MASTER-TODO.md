@@ -100,18 +100,31 @@ T2-6 recovery-card gross-up (#183), T2-14/17/18 (#182), T2-15 (#181). T3-10 ship
       cancellation/no-show fee, keyed on the failed payment row (re-POSTing the cancel route
       can't reconstruct party/no_show). UI: retry affordance on the failed-fee row
       (PaymentDetailSheet / triage band). Stretch: the homeowner-side fee retry surface (L-7).
-- [ ] **3.2 Failed-payout dismiss round trip (T2-9).** Backend: undismiss route + re-surface on
-      continued sweep failures. UI: undismiss affordance + resurfaced-row treatment.
-- [ ] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
+- [x] **3.2 Failed-payout dismiss round trip (T2-9).** ✅ DONE 2026-08-11 (fee-dismiss PR):
+      dismissal is now an honest 24h SNOOZE (`payoutDismissSnooze.ts`; the triage query stops
+      honoring stale stamps, so a payout the sweep keeps failing resurfaces with a "Still
+      failing" treatment instead of staying invisible), plus `POST /api/payouts/:id/undismiss`
+      with a Snooze/Restore toggle in the payout detail sheet.
+- [x] **3.3 Cents-precise payment stats (T2-11).** Migration: `payment_stats` returns cents
       (077 rounds to whole dollars). UI: KPI tiles consume cents. While in there, verify the
       revenue KPI nets out refunds (the T2-3 join fixed the ledger view, not necessarily the RPC).
+      **✅ DONE 2026-08-11: migration 20260811203429 returns integer-cents keys (legacy dollar
+      keys kept cents-precise for the deploy window) AND nets pending+succeeded refunds per
+      payment (the verification found the RPC did NOT net partial refunds; a full refund was
+      already excluded via status='refunded'). usePaymentStats/KPI tiles/overview consume cents.**
 - [x] **3.4 Cleaner price read-path seal (pay-request PILOT BLOCKER) — BUILT, open as PR #226** **MERGED 2026-08-01 (#226, d0decab); pilot flip unblocked.**
       (`fix/cleaner-price-readpath`, migration 122: RLS seal + service-role cleaner read routes +
       DEFINER `cleaner_stats`). Background: cleaners could read `appointments.total_price` under
       row-level RLS and compute the auto-approve cap, making migration 119's price-seal cosmetic
       (write-up on PR #221). Merging #226 unblocks the pilot flip; residuals documented in its
       body. Do NOT set a real cleaner to `request` mode before it lands.
-- [ ] **3.5 T2-1b emailed receipts** (see 3a below; prereq: confirm the five SMTP vars in prod).
+- [x] **3.5 T2-1b emailed receipts** (see 3a below; prereq: confirm the five SMTP vars in prod).
+      **✅ DONE 2026-08-11: org-branded receipt emails for charge/refund/fee, drained from the
+      notification_events outbox (`dispatchReceiptEmails.ts`, claim-first on email_dispatched_at,
+      retry + platform alert on exhaustion) via `POST /api/cron/notification-emails` on a 5-min
+      pg_cron (migration 20260811211708, incl. backfill stamp so the historical bell backlog is
+      never mailed). SMTP vars confirmed in prod. ⚠ The prereq check found `CRON_SECRET` missing
+      in prod (see Ops loose ends): until it is set, this cron AND the reconcile sweep never fire.**
 - [ ] **3.6 Cancel notifications (T2-5, emit half).** The cancel route notifies neither customer
       nor cleaner (including when it charges a no-show fee). Wire the notifications, then restore
       the honest-but-minimal dialog copy #180 had to neuter ("This can't be undone.").
@@ -170,10 +183,13 @@ timestamps, unread treatment) must unify.
       catalog every inconsistency (styling, spacing, states, mobile behavior), and mark which
       admin primitives each drifted copy should adopt. Deliverable: audit doc under `docs/`
       that becomes the spec for 3.5.2.
-- [ ] **3.9.2 Unify.** Extract the admin thread primitives into shared components where the
-      audit says so, and re-skin cleaner + homeowner surfaces onto them. Keep the
-      appointment-based structure; unify the skin. Design-system rules apply
-      (`ui-feature-workflow` + `ui-ux-pro-max` at design AND implementation).
+- [x] **3.9.2 Unify.** ✅ DONE 2026-08-11 as a three-PR stack, validated by Bridger on the
+      seeded demo cast: #239 (invisible consolidation: one time/format module, dead-code
+      sweep, NavMessagesBadge adoption), #241 (shared primitives + operator adoption:
+      ThreadHeader, InboxRow, pills/status map pinned to the bookings BADGE source, thread
+      states, PersonPicker, Details re-token), #243 (cleaner + homeowner re-skin: flush
+      lists, unified + trigger and header, round OrgAvatar office rows, takeover desktop
+      cap). Structure stayed role-specific; the skin is one product.
 
 ## 3.95. Mobile polish pair (added 2026-08-01)
 
@@ -235,6 +251,19 @@ migrations 117-120 in prod). Spec:
 
 ## Ops loose ends (small, mostly Bridger-manual)
 
+- [ ] ⚠⚠ **Set `CRON_SECRET` in prod — the reconcile sweep has never run there.** Discovered
+      2026-08-11 while shipping 3.5: an unauthenticated POST to prod
+      `/api/cron/reconcile-payments` returns the fail-closed 500 ("Server misconfigured"),
+      which is the missing-`CRON_SECRET` branch, and `vercel env ls` shows no `CRON_SECRET`
+      in any environment. So every pg_cron-driven route (reconcile sweep 067, auto-defer 064,
+      and now notification-emails) is dead in prod; webhooks alone have been carrying money
+      correctness, and the "sweep backstops missed webhook deliveries" assumption is false
+      today. Fix (Bridger): generate a random 64-char secret; `vercel env add CRON_SECRET
+      production`; in prod Postgres set the matching `app.cron_secret` plus `app.api_base_url =
+      'https://nexxus-cleaning-platform.vercel.app'` (hosted Supabase: `ALTER DATABASE postgres
+      SET ...`, then re-login/reload so pg_cron's new connections see it); redeploy prod; verify
+      behaviorally (unauthenticated POST now 401s, `cron.job_run_details` shows 200s). Do the
+      same for the dev preview if preview sweep coverage is wanted.
 - [ ] **Repoint the test-mode Stripe webhook back at dev.** It still targets the deleted
       pay-request walkthrough branch alias, which no longer deploys; restore
       `nexxus-cleaning-platform-git-dev-…vercel.app/api/stripe/webhook` with the same
@@ -242,7 +271,7 @@ migrations 117-120 in prod). Spec:
 - [ ] Live-test PR #161 on dev preview (0341 decline → bell + badge + banner; hard-refresh stale tabs).
 - [ ] Stripe live-webhook checklist (runbook §5.1) — sequenced inside block 2 / T1-3 above.
 - [ ] Stripe Dashboard branding checklist for hosted onboarding (manual, in redesign-audit memory).
-- [ ] **Turn on Stripe automatic receipts** (Settings → Customer emails → Successful payments). The interim half of T2-1b: zero code, no money risk, but Nexxus-branded on every tenant's charge (separate charges and transfers use the platform's branding), so it gets revisited when the branded email lands. Note receipts never send in test mode.
+- [ ] **Turn on Stripe automatic receipts** (Settings → Customer emails → Successful payments). The interim half of T2-1b: zero code, no money risk, but Nexxus-branded on every tenant's charge (separate charges and transfers use the platform's branding), so it gets revisited when the branded email lands. Note receipts never send in test mode. **Update 2026-08-11: the branded email shipped (3.5). Once the CRON_SECRET fix above is done and the drain is verified sending in prod, either skip this toggle or turn it off if it was enabled, so homeowners don't get two receipts per charge.**
 - [ ] Verify prod platform balance heals ≥ $0 after the 1% fee (platform-fee follow-up).
 - [ ] Flip the CI lint/tsc `continue-on-error` gates once pre-existing errors are cleaned (tsc already blocking; lint remains).
 - [ ] Sweep the ping-dot idiom out of cleaner/homeowner/StatTile (Today-card restyle follow-up).

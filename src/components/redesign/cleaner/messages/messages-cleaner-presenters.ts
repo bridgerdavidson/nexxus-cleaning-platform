@@ -1,7 +1,7 @@
 // React-free: map the cleaner's OWN appointment (CleanerAppointment) to the shared
 // message VMs. The operator's toInlineBookingVM is typed to AdminAppointment, so the
 // cleaner needs its own mapper (the VM types themselves are shared).
-import { fmtTime } from "@/components/redesign/messages/messages-format";
+import { fmtTime, monthDay, weekdayMonthDay } from "@/components/redesign/messages/messages-format";
 import type {
   BookingStatus,
   ContactBookingVM,
@@ -40,11 +40,7 @@ export function cleanerApptToInlineBookingVM(
     appointmentId,
     found: true,
     service: serviceLabel(appt),
-    dateLabel: apptDate(appt.scheduled_date).toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    }),
+    dateLabel: weekdayMonthDay(appt.scheduled_date),
     timeLabel: fmtTime(appt.scheduled_time),
     address: addressLabel(appt),
     cleanerName: null,
@@ -58,7 +54,7 @@ export function cleanerApptToContactBookingVM(appt: CleanerAppointment): Contact
   return {
     appointmentId: appt.id,
     service: serviceLabel(appt),
-    dateLabel: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    dateLabel: monthDay(appt.scheduled_date),
     timeLabel: fmtTime(appt.scheduled_time),
     address: addressLabel(appt),
     status: (appt.status as BookingStatus) ?? "confirmed",

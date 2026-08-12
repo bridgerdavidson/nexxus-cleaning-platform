@@ -105,13 +105,22 @@ export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: b
                   className="flex flex-col gap-3 rounded-control border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {p.cleaner} · {p.amountLabel}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {p.cleaner} · {p.amountLabel}
+                      </p>
+                      {p.resurfaced ? (
+                        <Badge variant="caution" className="shrink-0">
+                          Still failing
+                        </Badge>
+                      ) : null}
+                    </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {canManagePayments
-                        ? "Transfer to the cleaner failed. Retry now, or dismiss if it's stale."
-                        : "Transfer to the cleaner failed. It retries automatically on the next sweep."}
+                      {p.resurfaced
+                        ? `You snoozed this on ${p.dismissedDateLabel}. It has kept failing since.`
+                        : canManagePayments
+                          ? "Transfer to the cleaner failed. Retry now, or snooze it for a day."
+                          : "Transfer to the cleaner failed. It retries automatically on the next sweep."}
                     </p>
                   </div>
                   {canManagePayments ? (
@@ -125,7 +134,7 @@ export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: b
                         disabled={t.busyId === p.id}
                         onClick={() => t.dismissPayout(p.id)}
                       >
-                        Dismiss
+                        {p.resurfaced ? "Snooze again" : "Snooze"}
                       </Button>
                     </div>
                   ) : null}

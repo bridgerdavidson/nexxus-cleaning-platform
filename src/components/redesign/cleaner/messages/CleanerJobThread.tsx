@@ -80,7 +80,6 @@ export function CleanerJobThread({
       onLoadMore={loadMoreMessages}
       messagesEndRef={messagesEndRef as RefObject<HTMLDivElement>}
       onOpenBooking={() => {}}
-      variant="takeover"
       onBack={onBack}
       backLabel={backLabel}
       readOnly={readOnly}

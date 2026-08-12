@@ -2,6 +2,7 @@ import type { ConversationWithDetails } from '@/types';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import { isJobMessagingWindowOpen } from '@/lib/messaging/jobMessagingWindow';
 import { toConversationRowVM } from '@/components/redesign/messages/messages-presenters';
+import { weekdayMonthDay } from '@/components/redesign/messages/messages-format';
 import type { HomeownerInboxModel, JobThreadRowVM } from './homeowner-messages-types';
 
 interface DeriveInput {
@@ -16,12 +17,6 @@ function cleanerName(a: Appointment): string {
   const u = a.cleaner_profile?.user_profile;
   const n = `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim();
   return n || 'Your cleaner';
-}
-
-function dateLabel(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric',
-  });
 }
 
 /**
@@ -53,7 +48,7 @@ export function deriveHomeownerInbox(input: DeriveInput): HomeownerInboxModel {
       conversationId: conv.id,
       appointmentId: conv.appointment_id,
       cleanerName: cleanerName(appt),
-      dateLabel: dateLabel(appt.scheduled_date),
+      dateLabel: weekdayMonthDay(appt.scheduled_date),
       status: appt.status,
       preview: base.preview,
       timeLabel: base.timeLabel,

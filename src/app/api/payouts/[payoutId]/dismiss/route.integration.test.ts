@@ -123,6 +123,32 @@ describe('POST /api/payouts/:payoutId/dismiss', () => {
     expect(dismissed!.actor).toBe(`user:${org.admin.userId}`);
   });
 
+  it('re-dismissing an already-dismissed payout re-stamps the snooze clock (T2-9)', async () => {
+    const appt = await makeAppt();
+    const payoutId = await seedPayout(appt.id, 'failed');
+    const db = createTestSupabaseClient();
+    // A stale stamp (older than the snooze window) is what a resurfaced row carries.
+    const staleStamp = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    await db.from('payouts').update({ attention_dismissed_at: staleStamp }).eq('id', payoutId);
+
+    const { status } = await callRoute(handlerFor(payoutId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+    expect(status).toBe(200);
+
+    const { data: row } = await db
+      .from('payouts')
+      .select('attention_dismissed_at')
+      .eq('id', payoutId)
+      .single();
+    const restamped = (row as { attention_dismissed_at: string | null }).attention_dismissed_at;
+    expect(restamped).not.toBeNull();
+    // The fresh stamp snoozes the row again: it must be NEWER than the stale one.
+    expect(Date.parse(restamped!)).toBeGreaterThan(Date.parse(staleStamp));
+  });
+
   it('409 when trying to dismiss a non-failed payout (paid)', async () => {
     const appt = await makeAppt();
     const payoutId = await seedPayout(appt.id, 'paid');

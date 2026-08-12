@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, Loader2 } from "lucide-react";
+import { ThreadHeader } from "@/components/redesign/messages/ThreadHeader";
+import { ThreadSkeleton } from "@/components/redesign/messages/ThreadStates";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useAuth } from "@/hooks/useAuth";
@@ -154,20 +155,13 @@ function ThreadHostInner({
 function ThreadLoading({ onBack, backLabel }: { onBack: () => void; backLabel?: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-2">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={backLabel ?? "Back"}
-          className="flex h-11 items-center gap-1 rounded-control px-2 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronLeft className="size-6 shrink-0" />
-          {backLabel && <span className="text-sm font-semibold">{backLabel}</span>}
-        </button>
-        <div className="text-sm font-bold text-foreground">Office</div>
-      </div>
-      <div className="grid flex-1 place-items-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Loading conversation" />
+      {/* Same chrome as the loaded thread (D5/D9/D16): real header, bubbles
+          skeleton, centered column on desktop. */}
+      <div className="mx-auto flex h-full min-h-0 w-full flex-col lg:max-w-lg">
+        <ThreadHeader onBack={onBack} backLabel={backLabel} title="Office" />
+        <div className="flex min-h-0 flex-1 flex-col justify-end px-5 py-4">
+          <ThreadSkeleton />
+        </div>
       </div>
     </div>
   );

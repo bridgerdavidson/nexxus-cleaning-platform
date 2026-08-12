@@ -64,13 +64,39 @@ export function initialsOf(first: string | null | undefined, last: string | null
   return out || '?'
 }
 
+/** Initials from an already-joined display name ("Wanda Jacobs" -> "WJ"). */
+export function initialsFromFullName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
 export function dayLabel(iso: string, now?: string): string {
   const d = new Date(iso)
-  const ref = new Date(nowMs(now))
-  const sameDay =
-    d.getFullYear() === ref.getFullYear() &&
-    d.getMonth() === ref.getMonth() &&
-    d.getDate() === ref.getDate()
-  if (sameDay) return 'Today'
+  const diff = Math.round((startOfDay(new Date(nowMs(now))) - startOfDay(d)) / 86_400_000)
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Yesterday'
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** "Jun 29" from a YYYY-MM-DD (parsed at local midnight); '' when missing/invalid. */
+export function monthDay(ymd?: string | null): string {
+  if (!ymd) return ''
+  const d = new Date(`${ymd}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+/** "Sat, Jun 27" from a YYYY-MM-DD (parsed at local midnight). */
+export function weekdayMonthDay(ymd: string): string {
+  return new Date(`${ymd}T00:00:00`).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
 }

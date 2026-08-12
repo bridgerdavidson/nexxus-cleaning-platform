@@ -53,6 +53,7 @@ export type PaymentDetailSheetProps = {
   onRetry: (id: string) => void;
   onRetryFee: (id: string) => void;
   onDismiss: (id: string) => void;
+  onUndismiss: (id: string) => void;
   onMessage: (cleanerId: string | null) => void;
   /** Open the booking this row is tied to. Omitted when the viewer can't view bookings. */
   onViewBooking?: (appointmentId: string) => void;
@@ -70,6 +71,7 @@ export function PaymentDetailSheet({
   onRetry,
   onRetryFee,
   onDismiss,
+  onUndismiss,
   onMessage,
   onViewBooking,
 }: PaymentDetailSheetProps) {
@@ -172,13 +174,26 @@ export function PaymentDetailSheet({
               {canManagePayments && payout.rawStatus === "failed" ? (
                 <>
                   <Separator className="my-3" />
+                  {payout.dismissedLabel ? (
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {payout.dismissalStale
+                        ? `Snoozed from Needs you now on ${payout.dismissedLabel}, but it kept failing, so it's back.`
+                        : `Snoozed from Needs you now on ${payout.dismissedLabel}. If it keeps failing, it comes back after a day.`}
+                    </p>
+                  ) : null}
                   <div className="flex gap-2">
                     <Button loading={busy} onClick={() => onRetry(payout.id)}>
                       Retry now
                     </Button>
-                    <Button variant="ghost" disabled={busy} onClick={() => onDismiss(payout.id)}>
-                      Dismiss
-                    </Button>
+                    {payout.dismissedLabel ? (
+                      <Button variant="ghost" disabled={busy} onClick={() => onUndismiss(payout.id)}>
+                        Restore
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" disabled={busy} onClick={() => onDismiss(payout.id)}>
+                        Snooze
+                      </Button>
+                    )}
                   </div>
                 </>
               ) : null}

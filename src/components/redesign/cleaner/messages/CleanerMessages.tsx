@@ -60,8 +60,6 @@ export function CleanerMessages() {
 
   return (
     <>
-      {/* Page h1: the top bar now carries the company logo (white-label PR 4). */}
-      <h1 className="mb-4 text-2xl font-extrabold leading-tight">Messages</h1>
       <CleanerMessagesView
         model={model}
         loading={lo || lj || la || lm}
