@@ -1,4 +1,14 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
+
+// iOS Safari paints the safe area (status bar / notch chrome) with theme-color.
+// Pin it to the SAME surface MarketingNav paints (bg-card, white) so the chrome
+// and the nav read as one continuous piece at every scroll position. If the
+// nav's surface ever changes, this must change with it. Only themeColor is set:
+// segment viewports shallow-merge per key, so width/scale/viewportFit still
+// come from the root layout.
+export const viewport: Viewport = {
+  themeColor: '#ffffff',
+}
 
 // Marketing pages are always light: no ThemeProvider here, so the .dark class
 // never applies regardless of the visitor's device preference. The .redesign

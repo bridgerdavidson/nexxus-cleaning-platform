@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { motion as m } from 'motion/react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,7 @@ const EASE = [0.16, 1, 0.3, 1] as const
 
 export function HeroSection() {
   return (
-    <section id="top" className="mx-auto w-full max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pt-12">
+    <section id="top" className="mx-auto w-full max-w-6xl scroll-mt-16 px-4 pb-16 pt-10 sm:px-6 sm:pt-12">
       <div className="mx-auto max-w-3xl text-center">
         <m.div
           initial={{ opacity: 0, y: 12 }}
@@ -28,7 +29,7 @@ export function HeroSection() {
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" asChild>
-              <a href="#waitlist">Join the waitlist</a>
+              <Link href="/get-started">Try it out</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <a href="#try-it">See the product</a>
