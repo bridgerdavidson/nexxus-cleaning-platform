@@ -19,9 +19,9 @@ export default function LandingPage() {
         <HeroSection />
         <Reveal><CapabilityExplorer /></Reveal>
         <Reveal><LiveTrackingSection /></Reveal>
+        <Reveal><BrandingSection /></Reveal>
         <PayModelsSection />
         <Reveal><FlexibilitySection /></Reveal>
-        <Reveal><BrandingSection /></Reveal>
         <PricingSection />
         <Reveal><FaqSection /></Reveal>
         <Reveal><WaitlistSection /></Reveal>

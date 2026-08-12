@@ -66,8 +66,15 @@ function DemoLine({ className }: { className?: string }) {
   return <span className={cn('block h-1.5 rounded-pill bg-muted', className)} />
 }
 
+// The universal color-wheel affordance for the picker swatch: it means "any
+// color you want", not a palette choice, and is replaced by the real hex the
+// moment the visitor picks one. Stops are the Tailwind 500 hues.
+const COLOR_WHEEL =
+  'conic-gradient(from 0deg, #ef4444, #f59e0b, #84cc16, #06b6d4, #3b82f6, #a855f7, #ef4444)'
+
 export function BrandingSection() {
   const [brand, setBrand] = React.useState<BrandPreset>(PRESETS[0])
+  const [pickedColor, setPickedColor] = React.useState(false)
   const sectionRef = React.useRef<HTMLElement>(null)
   const [interacted, setInteracted] = React.useState(false)
   const [inView, setInView] = React.useState(false)
@@ -125,7 +132,9 @@ export function BrandingSection() {
             Your customers see your brand. Not ours.
           </h2>
           <p className="mt-3 text-base font-medium text-muted-foreground">
-            Pick a color, type your name, and the whole platform wears it. Included on every plan.
+            Pick a color, type your name, and upload your logo. The whole platform wears it, and
+            your customers see your brand in every email, receipt, and booking page. Included on
+            every plan.
           </p>
         </div>
 
@@ -195,7 +204,7 @@ export function BrandingSection() {
         <div
           onPointerDownCapture={() => setInteracted(true)}
           onFocusCapture={() => setInteracted(true)}
-          className="mx-auto mt-12 flex w-fit max-w-full flex-wrap items-center justify-center gap-2 rounded-card border border-border bg-card px-3 py-2 shadow-soft-md sm:rounded-pill"
+          className="mx-auto mt-12 flex w-fit max-w-full flex-wrap items-center justify-center gap-2.5 rounded-card border border-border bg-card px-4 py-3 shadow-soft-md sm:rounded-pill"
         >
           {PRESETS.map((p) => {
             const active = brand.name === p.name && brand.hex === p.hex
@@ -218,20 +227,26 @@ export function BrandingSection() {
               </button>
             )
           })}
-          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-pill border border-border px-3">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Brand color</span>
-            <span className="relative size-6 overflow-hidden rounded-pill border border-border" style={{ backgroundColor: brand.hex }}>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-pill border border-border px-3.5">
+            <span className="text-sm font-semibold text-muted-foreground">Brand color</span>
+            <span
+              className="relative size-6 shrink-0 overflow-hidden rounded-pill border border-border"
+              style={pickedColor ? { backgroundColor: brand.hex } : { background: COLOR_WHEEL }}
+            >
               <input
                 type="color"
                 value={brand.hex}
-                onChange={(e) => setBrand((b) => ({ ...b, hex: e.target.value }))}
+                onChange={(e) => {
+                  setPickedColor(true)
+                  setBrand((b) => ({ ...b, hex: e.target.value }))
+                }}
                 aria-label="Pick your brand color"
                 className="absolute inset-0 size-full cursor-pointer opacity-0"
               />
             </span>
           </label>
-          <label className="flex min-h-11 items-center gap-2 rounded-pill border border-border px-3">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Company name</span>
+          <label className="flex min-h-11 items-center gap-2.5 rounded-pill border border-border px-3.5">
+            <span className="text-sm font-semibold text-muted-foreground">Company name</span>
             <input
               type="text"
               value={brand.name}
