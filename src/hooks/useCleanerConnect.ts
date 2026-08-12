@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { loadConnectAndInitialize } from '@stripe/connect-js';
 import type { StripeConnectInstance } from '@stripe/connect-js';
 import { useAuth } from './useAuth';
@@ -42,6 +43,7 @@ export function useCleanerConnect(
   appearanceOverride?: Parameters<typeof loadConnectAndInitialize>[0]["appearance"],
 ): CleanerConnectState {
   const { user } = useAuth();
+  const { resolvedTheme } = useTheme();
   const enabled =
     !!user?.id && user.role === 'cleaner' && stripeUiEnabled() && !!PUBLISHABLE_KEY;
 
@@ -84,9 +86,10 @@ export function useCleanerConnect(
       const instance = loadConnectAndInitialize({
         publishableKey: PUBLISHABLE_KEY,
         fetchClientSecret,
-        // Caller-supplied theme (redesign, theme-aware) wins; otherwise the light
-        // brand appearance so legacy surfaces match the rebrand too.
-        appearance: appearanceOverride ?? getRedesignConnectAppearance(false),
+        // Caller-supplied theme (redesign, theme-aware) wins; otherwise the
+        // current app theme at init time (picked up on the next mount after a
+        // mid-session toggle; re-init here would break the Connect popup flow).
+        appearance: appearanceOverride ?? getRedesignConnectAppearance(resolvedTheme === 'dark'),
       });
       setConnectInstance(instance);
     } catch (err) {

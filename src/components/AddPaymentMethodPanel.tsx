@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { Loader2, AlertCircle, CreditCard } from "lucide-react";
@@ -31,6 +32,7 @@ interface Props {
  * add-method flow can never drift between them. Renders nothing without a publishable key.
  */
 export default function AddPaymentMethodPanel({ createSetupIntent, onSaved, saveLabel }: Props) {
+  const { resolvedTheme } = useTheme();
   const [secret, setSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export default function AddPaymentMethodPanel({ createSetupIntent, onSaved, save
   return (
     <Elements
       stripe={stripePromise}
-      options={{ clientSecret: secret, appearance: getRedesignConnectAppearance(false) }}
+      options={{ clientSecret: secret, appearance: getRedesignConnectAppearance(resolvedTheme === "dark") }}
     >
       <AddPaymentMethodInner onSaved={onSaved} saveLabel={saveLabel} />
     </Elements>
