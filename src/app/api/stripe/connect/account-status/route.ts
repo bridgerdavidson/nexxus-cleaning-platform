@@ -3,6 +3,7 @@ import { getConnectAccountStatus } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { verifyAccessToken } from '@/lib/auth/verifyToken';
+import { isStripeAccountId } from '@/lib/stripe/connect/accountSlot';
 
 export async function POST(request: NextRequest) {
   if (!stripeEnabled()) {
@@ -41,7 +42,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cleaner not found' }, { status: 404 });
     }
 
-    if (!cleaner.stripe_connect_account_id) {
+    // A `pending:` slot-claim token can be stored for the second or so between
+    // /start claiming the slot and committing the real acct_ id. It is not a
+    // Stripe account id; passing it to Stripe 500s the status poll that races
+    // the commit. Treat any non-acct_ value as "no account yet".
+    if (!isStripeAccountId(cleaner.stripe_connect_account_id)) {
       return NextResponse.json({
         success: true,
         has_account: false,
