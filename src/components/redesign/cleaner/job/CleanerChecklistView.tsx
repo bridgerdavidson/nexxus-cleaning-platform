@@ -14,6 +14,7 @@
 
 import React, { useCallback } from 'react';
 import { ChevronLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { IconButton } from '@/components/ui/icon-button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -138,6 +139,25 @@ export function CleanerChecklistView({
           </ul>
         )}
       </div>
+
+      {/* ---- Done bar (mirrors the overview's persistent Complete bar) ---- */}
+      {!isLoading && lineItems.length > 0 && (
+        <div
+          className="border-t border-border bg-card px-4 pt-3"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.75rem)' }}
+        >
+          <div className="mx-auto w-full max-w-lg">
+            <Button
+              size="lg"
+              className="w-full"
+              disabled={doneCount < lineItems.length}
+              onClick={onBack}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
