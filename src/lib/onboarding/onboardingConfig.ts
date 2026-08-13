@@ -16,7 +16,7 @@ export interface SetupStepDef {
 const OPERATOR_PERCENTAGE: SetupStepDef[] = [
   { key: 'payments', title: 'Connect payments', description: 'So you can charge customers and pay your cleaners', required: true, ctaLabel: 'Connect', href: '/admin/settings?section=payments', completionKey: 'payments_connected' },
   { key: 'services', title: 'Add your services and pricing', description: 'Define what you offer and what it costs', required: true, ctaLabel: 'Add service', href: '/admin/services', completionKey: 'services_added' },
-  { key: 'payout', title: 'Set cleaner pay', description: 'The percent each cleaner earns per job', required: true, ctaLabel: 'Set pay', href: '/admin/settings?section=payout', completionKey: 'cleaner_pay_set' },
+  { key: 'payout', title: 'Set cleaner pay', description: 'How your team gets paid, and the defaults for new cleaners', required: true, ctaLabel: 'Set pay', href: '/admin/settings?section=payout', completionKey: 'cleaner_pay_set' },
   { key: 'cleaners', title: 'Invite your cleaners', description: 'Build your team so you can assign jobs', required: true, ctaLabel: 'Invite', href: '/admin/cleaners', completionKey: 'cleaners_invited' },
   { key: 'hours', title: 'Set business hours and cancellation policy', description: 'When you work and your terms', required: false, ctaLabel: 'Set hours', href: '/admin/settings?section=business-hours', completionKey: 'hours_policy_set' },
 ];
