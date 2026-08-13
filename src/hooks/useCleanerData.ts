@@ -9,6 +9,7 @@ import { useOrgQuery } from '../lib/useOrgQuery';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { readCleanerApptCache, writeCleanerApptCache } from './cleanerApptCache';
 import { keys } from '../lib/queryKeys';
+import { checklistToggleMutationOptions } from '../lib/checklist/toggleChecklist';
 import { getAccessToken } from '../lib/auth/clientAccessToken';
 import { chargeCompletedAppointmentClient } from '../lib/payments/authorizeClient';
 import type { PayRequestOutcome } from '../components/redesign/cleaner/job/active-job-presenters';
@@ -955,21 +956,15 @@ export function useChecklistCompletions(appointmentId: string | null) {
 }
 
 /** Toggle a checklist line item completion for an appointment.
- * Optimistic: updates the cached Set immediately, then invalidates on settle.
+ * Optimistic per-item cache updates; the refetch fires only after the LAST
+ * in-flight toggle settles so rapid taps can't be unchecked by a stale
+ * response (see src/lib/checklist/toggleChecklist.ts + its test).
  * organization_id is sourced from auth context so RLS reads by org staff are authorized. */
 export function useToggleChecklistItem() {
   const { currentOrganizationId } = useAuth();
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      appointmentId,
-      lineItemId,
-      done,
-    }: {
-      appointmentId: string;
-      lineItemId: string;
-      done: boolean;
-    }): Promise<void> => {
+  return useMutation(
+    checklistToggleMutationOptions(qc, async ({ appointmentId, lineItemId, done }) => {
       if (done) {
         const { error } = await supabase
           .from('checklist_item_completions')
@@ -990,28 +985,8 @@ export function useToggleChecklistItem() {
           .eq('checklist_line_item_id', lineItemId);
         if (error) throw error;
       }
-    },
-    onMutate: async ({ appointmentId, lineItemId, done }) => {
-      const queryKey = keys.appointments.checklistCompletions(appointmentId);
-      await qc.cancelQueries({ queryKey });
-      const previous = qc.getQueryData<Set<string>>(queryKey);
-      qc.setQueryData<Set<string>>(queryKey, (old) => {
-        const next = new Set(old ?? []);
-        if (done) next.add(lineItemId);
-        else next.delete(lineItemId);
-        return next;
-      });
-      return { previous, queryKey };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx) {
-        qc.setQueryData(ctx.queryKey, ctx.previous);
-      }
-    },
-    onSettled: (_data, _err, { appointmentId }) => {
-      qc.invalidateQueries({ queryKey: keys.appointments.checklistCompletions(appointmentId) });
-    },
-  });
+    }),
+  );
 }
 
 /** Fetch the charge projection for the active-job completion summary.
