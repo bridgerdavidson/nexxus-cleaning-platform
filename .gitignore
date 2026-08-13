@@ -44,7 +44,7 @@ next-env.d.ts
 # OS
 Thumbs.db
 
-# Playwright MCP session artifacts
+# Legacy Playwright MCP session artifacts (tooling removed 2026-08-12, but old debris dirs linger on local machines)
 .playwright-mcp/
 
 # Superpowers brainstorm session (visual companion mockups, audit screenshots)
