@@ -37,7 +37,7 @@ The moment a task involves real UI (a new screen, a redesign, a component with v
 1. **"This has real UI, do you want me to use the browser companion to explore the UX/structure first?"**
 2. If yes: **"Are you on mobile or desktop right now?"**
    - **Desktop** -> start the companion and send the localhost link; they view it live and click options.
-   - **Mobile** -> they cannot open localhost on a phone. Drive the companion yourself with the Playwright tools and send **screenshots/images** of each screen instead of a link.
+   - **Mobile** -> they cannot open localhost on a phone. Drive the companion yourself with the Claude in Chrome browser tools (`claude-in-chrome`) and send **screenshots/images** of each screen instead of a link.
 
 Why ask the device every time: the user is frequently on their phone and a localhost link is useless there. Guessing wrong wastes a round trip. Ask, don't assume.
 

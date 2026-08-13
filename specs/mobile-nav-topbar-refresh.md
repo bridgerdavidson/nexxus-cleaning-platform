@@ -126,7 +126,7 @@ const activeLabel = tabs.find(t => t.id === activeTab)?.label ?? "";
 
 `isHome` uses `tabs[0].id` as the home/overview tab. **Open item to confirm during
 implementation:** verify each role's first `mobileNavTabs` entry is its
-overview/home tab (it is for the dashboards as built; confirm in the Playwright
+overview/home tab (it is for the dashboards as built; confirm in the browser
 pass). If any role's first tab is not "home", switch `isHome` to an explicit
 `activeTab === "overview"`-style check for that role.
 
@@ -195,7 +195,7 @@ Removed: `bg-white/95`, `backdrop-blur-lg`, `border-x`, `rounded-t-2xl`,
 
 Inner container height (D6b, PROVISIONAL): `h-[5.125rem]` (82px) -> `h-16` (64px).
 Keep `relative flex items-center justify-around px-2 py-2`. If 64px feels cramped
-with icon + label in the Playwright pass, step back up (e.g. `h-[4.5rem]` / 72px).
+with icon + label in the browser pass, step back up (e.g. `h-[4.5rem]` / 72px).
 Note this is the content row; the safe-area inset adds device padding below it.
 
 ### 2b. Active indicator -> sliding gold capsule (D6, D9)
@@ -319,10 +319,10 @@ cleaner ~1736. Admin's existing `showNotifications={!impersonatingOrgId}` stays.
 
 ---
 
-## Verification plan (Playwright MCP, mobile viewport)
+## Verification plan (Claude in Chrome browser tools, mobile viewport)
 
-Run `npm run dev`, drive the Playwright MCP browser at a phone viewport
-(e.g. 390x844, iPhone-ish). For **each of the 4 roles**:
+Run `npm run dev`, drive the browser via the Claude in Chrome integration at a
+phone viewport (e.g. 390x844, iPhone-ish). For **each of the 4 roles**:
 
 1. Land on the dashboard. Confirm:
    - Page surface is gray-100; both bars are solid white and read as raised by tone.
@@ -360,7 +360,7 @@ Then the standard gates before PR: `npm run test`, `npx tsc --noEmit`, `npm run 
 - [ ] Bell badge and nav badge are identical (`bg-primary-600 text-white` + white ring).
 - [ ] `aria-current="page"` on the active tab.
 - [ ] Notification sheet still hides the top bar (iOS safe-area tint correct).
-- [ ] tsc + lint + tests green; Playwright screenshots attached to the PR.
+- [ ] tsc + lint + tests green; browser screenshots attached to the PR.
 
 ## Rollback notes
 

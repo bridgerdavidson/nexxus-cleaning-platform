@@ -314,8 +314,11 @@ Optional / debug:
 - `NEXT_PUBLIC_AUTH_DEBUG` — set to `"true"` to enable auth/session diagnostics (`src/lib/authDebug.ts`): `[authdbg]` console logs across the auth event stream, org-context load, token rotation, and disabled org-scoped queries, plus an on-screen corner badge (`AuthDebugOverlay`) showing `user / orgStatus / orgId / token`. Off (and a no-op) by default; safe to leave unset in prod. Used to reproduce the concurrent-session blank-dashboard class of bug.
 
 ## Visual Testing
-Use the Playwright MCP tools to navigate to the local dev server 
-(http://localhost:3000) and take a screenshot to verify UI changes.
+Use the native Claude in Chrome integration (the `claude-in-chrome` browser tools; enable with `claude --chrome` or `/chrome`) to open the local dev server (http://localhost:3000) and take screenshots to verify UI changes. It drives the real Chrome install, so what you see is what Bridger sees.
+
+For deeper debugging (network request inspection, performance traces, Lighthouse), enable the `chrome-devtools` MCP server in `/mcp` for that session; leave it off otherwise to save context.
+
+Do NOT use Playwright MCP for browser driving — it was removed 2026-08-12 (slow, no session state, huge context dumps). Playwright the *test library* is unaffected: `npm run test:e2e` and the CI E2E jobs stay exactly as documented above.
 
 ### Tailwind theme
 
