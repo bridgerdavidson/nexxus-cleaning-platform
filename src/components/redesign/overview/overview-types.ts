@@ -24,7 +24,9 @@ export type QueueItem = {
 export type TodayItemStatus = "done" | "live" | "unassigned" | "upcoming";
 
 /** One row of the unified Today card. `elapsed` is preformatted ("42 min") and
- *  present only for live rows whose started_at is known. */
+ *  present only for live rows whose started_at is known. `checklistId` /
+ *  `serviceTypeId` are likewise live-row-only; they let the row subscribe to
+ *  the job's checklist progress. */
 export type TodayItem = {
   id: string;
   time: string; // "8:00am"
@@ -32,6 +34,8 @@ export type TodayItem = {
   subtitle: string; // cleaner short name, with a date hint for non-today live rows
   status: TodayItemStatus;
   elapsed?: string | null;
+  checklistId?: string | null;
+  serviceTypeId?: string | null;
 };
 
 export function fmtTime(t: string | undefined): string {

@@ -10,6 +10,8 @@ export interface TodayItemSource {
   scheduled_time?: string;
   started_at?: string | null;
   cleaner_id?: string | null;
+  checklist_id?: string | null;
+  service_type_id?: string | null;
 }
 
 /**
@@ -56,7 +58,13 @@ export function buildTodayItems<T extends TodayItemSource>(
       title: opts.title(a),
       subtitle: dateHint ? `${dateHint} · ${cleanerLabel}` : cleanerLabel,
       status,
-      ...(status === "live" ? { elapsed: formatElapsed(a.started_at ?? null, opts.nowMs) } : {}),
+      ...(status === "live"
+        ? {
+            elapsed: formatElapsed(a.started_at ?? null, opts.nowMs),
+            checklistId: a.checklist_id ?? null,
+            serviceTypeId: a.service_type_id ?? null,
+          }
+        : {}),
     };
   });
 }

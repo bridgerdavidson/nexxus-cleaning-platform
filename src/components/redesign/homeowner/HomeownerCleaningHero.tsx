@@ -110,7 +110,9 @@ export function HomeownerCleaningHero({
           </div>
         </div>
       )}
-      {state === 'in_progress' && <LiveCleaningProgress appointment={appointment} />}
+      {state === 'in_progress' && (
+        <LiveCleaningProgress appointment={appointment} expandable={!interactive} />
+      )}
       {interactive && (
         <div className="mt-4 flex items-center justify-end gap-0.5 text-xs font-bold text-white/90">
           Details

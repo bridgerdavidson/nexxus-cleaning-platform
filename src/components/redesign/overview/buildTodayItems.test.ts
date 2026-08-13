@@ -75,6 +75,21 @@ describe("buildTodayItems", () => {
     expect(r[2].elapsed).toBeUndefined();
   });
 
+  it("passes checklist ids through on live rows only (for the progress bar)", () => {
+    const r = buildTodayItems(
+      [
+        appt({ id: "l", status: "in_progress", checklist_id: "cl-1", service_type_id: "st-1", scheduled_time: "09:00" }),
+        appt({ id: "up", status: "confirmed", checklist_id: "cl-2", service_type_id: "st-2", scheduled_time: "10:00" }),
+      ],
+      [],
+      opts
+    );
+    expect(r[0].checklistId).toBe("cl-1");
+    expect(r[0].serviceTypeId).toBe("st-1");
+    expect(r[1].checklistId).toBeUndefined();
+    expect(r[1].serviceTypeId).toBeUndefined();
+  });
+
   it("sorts by date then time and formats the display time", () => {
     const r = buildTodayItems(
       [

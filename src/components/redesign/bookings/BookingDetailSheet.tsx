@@ -24,6 +24,7 @@ import { Field, DiscardChangesDialog } from "./detail-atoms";
 import { JobMessagesPanel } from "./JobMessagesPanel";
 import { OperatorPaymentSection } from "./payment/OperatorPaymentSection";
 import { JobPhotosSection } from "./photos/JobPhotosSection";
+import { ChecklistProgressSection } from "./ChecklistProgressSection";
 import { RoutingHistorySection } from "./routing/RoutingHistorySection";
 import { EntityPickerField } from "./new-booking/EntityPickerField";
 import { useRankedCleaners } from "./new-booking/useRankedCleaners";
@@ -438,6 +439,13 @@ function DetailBody({
             </div>
           </>
         ) : null}
+
+        <ChecklistProgressSection
+          appointmentId={detail.id}
+          status={detail.status}
+          checklistId={appointment?.checklist_id ?? null}
+          serviceTypeId={appointment?.service_type_id ?? null}
+        />
 
         <JobPhotosSection
           appointmentId={detail.id}
