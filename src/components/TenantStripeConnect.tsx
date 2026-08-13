@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, CreditCard } from 'lucide-react';
+import { AlertTriangle, CreditCard, Info } from 'lucide-react';
 import {
   ConnectComponentsProvider,
   ConnectAccountOnboarding,
@@ -10,16 +10,6 @@ import {
 } from '@stripe/react-connect-js';
 import { useTenantConnect, type TenantConnectStatus } from '../hooks/useTenantConnect';
 import StripeFramedCard from './settings/StripeFramedCard';
-
-/** Humanize a Stripe `requirements.currently_due` key (e.g. `business_profile.url`). */
-function prettyRequirement(key: string): string {
-  return key
-    .replace(/^individual\./, '')
-    .replace(/^business_profile\./, '')
-    .replace(/^company\./, '')
-    .replace(/[._]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export function tenantStatusKind(
   status: TenantConnectStatus | null,
@@ -174,14 +164,16 @@ export default function TenantStripeConnect({
   // Owner: full setup experience.
   return (
     <>
+      {/* The onboarding form below collects every outstanding requirement itself,
+          and once active Stripe's own ConnectNotificationBanner surfaces new asks.
+          So never enumerate raw requirement keys here; one calm line is enough. */}
       {isPending && (status?.requirementsDue?.length ?? 0) > 0 && (
-        <div className="mb-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="mb-1 font-semibold">Stripe still needs:</p>
-          <ul className="list-disc space-y-0.5 pl-5">
-            {status!.requirementsDue.map((r) => (
-              <li key={r}>{prettyRequirement(r)}</li>
-            ))}
-          </ul>
+        <div className="mb-4 flex items-center gap-2.5 rounded-control border border-border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+          <Info className="size-4 flex-none text-primary-600" aria-hidden />
+          <span>
+            Stripe needs a few more details before you can take payments. Finish the
+            steps below and you are all set.
+          </span>
         </div>
       )}
 
