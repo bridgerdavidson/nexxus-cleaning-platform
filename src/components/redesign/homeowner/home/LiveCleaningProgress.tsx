@@ -1,18 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Check } from 'lucide-react';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import { Progress } from '@/components/ui/progress';
-import { useHomeownerJobProgress } from '@/hooks/useHomeownerJobProgress';
+import { useJobChecklistProgress } from '@/hooks/useJobChecklistProgress';
 import { useHomeownerJobPhotos } from '@/hooks/useHomeownerJobPhotos';
 import { checklistProgressLabel } from '@/components/redesign/cleaner/job/active-job-presenters';
+import { cn } from '@/lib/utils';
 import { progressPercent, formatElapsed, stageLabel } from './job-progress-presenters';
 
 export function LiveCleaningProgress({ appointment }: { appointment: Appointment }) {
-  const { doneCount, totalCount } = useHomeownerJobProgress(
-    appointment.id,
-    appointment.checklist_id ?? null,
-  );
+  const { lineItems, completed, doneCount, totalCount } = useJobChecklistProgress({
+    appointmentId: appointment.id,
+    checklistId: appointment.checklist_id ?? null,
+    serviceTypeId: appointment.service_type_id ?? null,
+  });
   const { beforePhotos } = useHomeownerJobPhotos(appointment.id);
   const pct = progressPercent(doneCount, totalCount);
   // Tick every 30s so the elapsed label counts up live. formatElapsed rounds to
@@ -45,6 +48,33 @@ export function LiveCleaningProgress({ appointment }: { appointment: Appointment
           <p className="mt-1 text-xs text-white/85 tabular-nums">
             {checklistProgressLabel(doneCount, totalCount)}
           </p>
+          <ul role="list" className="mt-2 space-y-1.5">
+            {lineItems.map((item) => {
+              const done = completed.has(item.id);
+              return (
+                <li key={item.id} className="flex items-start gap-2 text-xs">
+                  <span
+                    className={cn(
+                      'mt-px flex size-4 flex-none items-center justify-center rounded-full border',
+                      done ? 'border-white bg-white/20' : 'border-white/40',
+                    )}
+                    aria-hidden
+                  >
+                    {done && <Check className="size-3 text-white" />}
+                  </span>
+                  <span
+                    className={cn(
+                      'leading-snug',
+                      done ? 'text-white/60 line-through' : 'text-white/90',
+                    )}
+                  >
+                    {item.task}
+                  </span>
+                  {done && <span className="sr-only">(done)</span>}
+                </li>
+              );
+            })}
+          </ul>
         </>
       )}
       {beforePhotos.length > 0 && (

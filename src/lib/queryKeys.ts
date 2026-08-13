@@ -13,8 +13,6 @@ export const keys = {
       ['appointments', 'routing-log', appointmentId] as const,
     checklistCompletions: (appointmentId: string) =>
       ['appointments', 'checklist-completions', appointmentId] as const,
-    checklistTotal: (checklistId: string) =>
-      ['appointments', 'checklist-total', checklistId] as const,
     chargeProjection: (appointmentId: string) =>
       ['appointments', 'charge-projection', appointmentId] as const,
   },

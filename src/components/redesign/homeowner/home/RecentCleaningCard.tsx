@@ -5,7 +5,7 @@ import type { Appointment } from '@/hooks/useHomeownerData';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useHomeownerJobPhotos } from '@/hooks/useHomeownerJobPhotos';
-import { useHomeownerJobProgress } from '@/hooks/useHomeownerJobProgress';
+import { useJobChecklistProgress } from '@/hooks/useJobChecklistProgress';
 import {
   formatCleaningWhen,
   cleanerDisplayName,
@@ -43,10 +43,10 @@ export function RecentCleaningCard({
   onOpen?: (id: string) => void;
 }) {
   const { afterPhotos } = useHomeownerJobPhotos(appointment.id);
-  const { doneCount, totalCount } = useHomeownerJobProgress(
-    appointment.id,
-    appointment.checklist_id ?? null,
-  );
+  const { doneCount, totalCount } = useJobChecklistProgress({
+    appointmentId: appointment.id,
+    checklistId: appointment.checklist_id ?? null,
+  });
 
   const pay = recentCleaningPaymentBadge(appointment.payment_status);
   const cleaner = cleanerDisplayName(appointment);
