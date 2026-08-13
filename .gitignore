@@ -44,9 +44,6 @@ next-env.d.ts
 # OS
 Thumbs.db
 
-# Playwright MCP session artifacts
-.playwright-mcp/
-
 # Superpowers brainstorm session (visual companion mockups, audit screenshots)
 .superpowers/
 

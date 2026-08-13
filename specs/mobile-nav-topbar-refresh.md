@@ -378,7 +378,7 @@ Then the standard gates before PR: `npm run test`, `npx tsc --noEmit`, `npm run 
 - Confirm each role's first `mobileNavTabs` entry is the overview/home tab (drives
   `isHome`); fall back to an explicit id check per role if not.
 - Final capsule dimensions + radius (`rounded-xl` band behind the icon vs a taller
-  pill behind icon+label) - decide visually in the Playwright pass.
+  pill behind icon+label) - decide visually in the browser pass.
 - Confirm `h-16` (64px) is comfortable; step up toward 72px if cramped (D6b is
   provisional / vetoable).
 - Decide whether the top bar's hairline becomes scroll-aware later (appears on
