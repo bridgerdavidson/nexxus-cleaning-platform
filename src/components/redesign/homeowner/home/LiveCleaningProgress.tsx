@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import type { Appointment } from '@/hooks/useHomeownerData';
 import { Progress } from '@/components/ui/progress';
 import { useJobChecklistProgress } from '@/hooks/useJobChecklistProgress';
@@ -10,12 +10,23 @@ import { checklistProgressLabel } from '@/components/redesign/cleaner/job/active
 import { cn } from '@/lib/utils';
 import { progressPercent, formatElapsed, stageLabel } from './job-progress-presenters';
 
-export function LiveCleaningProgress({ appointment }: { appointment: Appointment }) {
+/** `expandable` gates the collapsed-by-default task list. It must stay false
+ *  when this renders inside the Home hero, which is itself a <button> (a
+ *  nested toggle would be invalid HTML); there the bar + count summarize and
+ *  the card tap opens the detail, whose static hero passes expandable. */
+export function LiveCleaningProgress({
+  appointment,
+  expandable = false,
+}: {
+  appointment: Appointment;
+  expandable?: boolean;
+}) {
   const { lineItems, completed, doneCount, totalCount } = useJobChecklistProgress({
     appointmentId: appointment.id,
     checklistId: appointment.checklist_id ?? null,
     serviceTypeId: appointment.service_type_id ?? null,
   });
+  const [showTasks, setShowTasks] = useState(false);
   const { beforePhotos } = useHomeownerJobPhotos(appointment.id);
   const pct = progressPercent(doneCount, totalCount);
   // Tick every 30s so the elapsed label counts up live. formatElapsed rounds to
@@ -48,7 +59,25 @@ export function LiveCleaningProgress({ appointment }: { appointment: Appointment
           <p className="mt-1 text-xs text-white/85 tabular-nums">
             {checklistProgressLabel(doneCount, totalCount)}
           </p>
-          <ul role="list" className="mt-2 space-y-1.5">
+          {expandable && (
+            <button
+              type="button"
+              aria-expanded={showTasks}
+              onClick={() => setShowTasks((v) => !v)}
+              className="mt-1 flex min-h-[44px] w-full items-center justify-between rounded-control text-xs font-semibold text-white/90 outline-none transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white/70"
+            >
+              {showTasks ? 'Hide tasks' : 'See tasks'}
+              <ChevronDown
+                className={cn(
+                  'size-4 transition-transform duration-base',
+                  showTasks && 'rotate-180',
+                )}
+                aria-hidden
+              />
+            </button>
+          )}
+          {expandable && showTasks && (
+          <ul role="list" className="mt-1 space-y-1.5">
             {lineItems.map((item) => {
               const done = completed.has(item.id);
               return (
@@ -75,6 +104,7 @@ export function LiveCleaningProgress({ appointment }: { appointment: Appointment
               );
             })}
           </ul>
+          )}
         </>
       )}
       {beforePhotos.length > 0 && (
