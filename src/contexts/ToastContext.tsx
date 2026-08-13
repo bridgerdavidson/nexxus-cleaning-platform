@@ -34,21 +34,21 @@ export function useToast() {
 }
 
 const VARIANT_ICON: Record<ToastVariant, React.ReactNode> = {
-  email:   <Mail className="w-5 h-5 text-primary-600" />,
-  success: <CheckCircle className="w-5 h-5 text-success-600" />,
-  error:   <AlertCircle className="w-5 h-5 text-red-600" />,
-  info:    <Info className="w-5 h-5 text-blue-600" />,
+  email:   <Mail className="w-5 h-5 text-brand-600 dark:text-brand-400" />,
+  success: <CheckCircle className="w-5 h-5 text-success-600 dark:text-success-400" />,
+  error:   <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />,
+  info:    <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />,
 };
 
 const VARIANT_ICON_BG: Record<ToastVariant, string> = {
-  email:   'bg-primary-100',
-  success: 'bg-success-100',
-  error:   'bg-red-100',
-  info:    'bg-blue-100',
+  email:   'bg-brand-600/12',
+  success: 'bg-success-600/12',
+  error:   'bg-red-600/12',
+  info:    'bg-blue-600/12',
 };
 
 const VARIANT_BAR: Record<ToastVariant, string> = {
-  email:   'bg-primary-600',
+  email:   'bg-brand-600',
   success: 'bg-success-600',
   error:   'bg-red-500',
   info:    'bg-blue-500',
@@ -59,7 +59,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
   return (
     <div
       className={`
-        relative w-80 bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden
+        relative w-80 bg-card rounded-xl border border-border shadow-lg overflow-hidden
         ${toast.exiting ? 'animate-toast-out' : 'animate-toast-in'}
       `}
       role="alert"
@@ -74,16 +74,16 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
 
         {/* Text */}
         <div className="flex-1 min-w-0 pt-0.5">
-          <p className="text-sm font-semibold text-gray-900 leading-snug">{toast.message}</p>
+          <p className="text-sm font-semibold text-foreground leading-snug">{toast.message}</p>
           {toast.description && (
-            <p className="mt-0.5 text-xs text-gray-500 leading-snug truncate">{toast.description}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground leading-snug truncate">{toast.description}</p>
           )}
         </div>
 
         {/* Dismiss */}
         <button
           onClick={() => onDismiss(toast.id)}
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors mt-0.5"
+          className="flex-shrink-0 text-muted-foreground/70 hover:text-foreground transition-colors mt-0.5"
           aria-label="Dismiss notification"
         >
           <X className="w-4 h-4" />
@@ -91,7 +91,7 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
       </div>
 
       {/* Progress bar — drains left-to-right over `duration` ms */}
-      <div className="h-1 w-full bg-gray-100">
+      <div className="h-1 w-full bg-muted">
         <div
           className={`h-full ${VARIANT_BAR[toast.variant]} origin-left`}
           style={{
