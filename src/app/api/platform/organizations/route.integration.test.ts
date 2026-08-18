@@ -1,4 +1,14 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+
+// Unconfigured by default so the pre-existing tests keep the GoTrue
+// (inviteUserByEmail) delivery path; the Nexxus-branded test below flips
+// emailConfigured per test to exercise the generateLink + sendEmail path.
+vi.mock('@/lib/email/sendEmail', () => ({
+  sendEmail: vi.fn(async () => undefined),
+  emailConfigured: vi.fn(() => false),
+}));
+
+import { sendEmail, emailConfigured } from '@/lib/email/sendEmail';
 import { GET, POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
@@ -158,5 +168,91 @@ describe('POST /api/platform/organizations (provision tenant)', () => {
       .eq('target_org_id', orgId)
       .eq('action', 'provision_tenant');
     expect((auditRows ?? []).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('with SMTP configured, sends the owner-provision email AS NEXXUS (not white-labeled)', async () => {
+    admin = await withPlatformAdmin();
+    vi.mocked(emailConfigured).mockReturnValue(true);
+    const generateSpy = vi
+      .spyOn(supabaseAdmin.auth.admin, 'generateLink')
+      .mockResolvedValue({
+        data: {
+          properties: { action_link: 'https://xyz.supabase.co/auth/v1/verify?token=t&type=invite' },
+          user: { id: 'usr_mock' },
+        },
+        error: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+    const inviteSpy = vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail');
+
+    const ownerEmail = `founder-${Date.now()}@acme-branded.local`;
+    const { status, body } = await callRoute<{
+      organization: { id: string };
+      invite: { id: string; status: string };
+    }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(admin.accessToken),
+      body: { name: 'Acme Cleaning', owner_email: ownerEmail },
+    });
+
+    expect(status).toBe(201);
+    createdOrgIds.push(body.organization.id);
+    expect(body.invite.status).toBe('pending');
+
+    // The user was created via generateLink (no GoTrue send) with the invite redirect.
+    expect(generateSpy).toHaveBeenCalledTimes(1);
+    const linkArgs = generateSpy.mock.calls[0][0] as {
+      type: string;
+      email: string;
+      options?: { redirectTo?: string };
+    };
+    expect(linkArgs.type).toBe('invite');
+    expect(linkArgs.email).toBe(ownerEmail);
+    expect(linkArgs.options?.redirectTo).toContain(`/accept-invite?invite_id=${body.invite.id}`);
+    expect(inviteSpy).not.toHaveBeenCalled();
+
+    // Platform voice: sender name is Nexxus, subject grants the owner account.
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    expect(sent.to).toBe(ownerEmail);
+    expect(sent.fromName).toBe('Nexxus');
+    expect(sent.subject).toBe('Your owner account for Acme Cleaning is ready');
+    expect(sent.html).toContain('Welcome, owner.');
+    expect(sent.html).toContain('https://xyz.supabase.co/auth/v1/verify?token=t&amp;type=invite');
+  });
+
+  it('marks the invite failed and 500s when the branded send fails', async () => {
+    admin = await withPlatformAdmin();
+    vi.mocked(emailConfigured).mockReturnValue(true);
+    vi.spyOn(supabaseAdmin.auth.admin, 'generateLink').mockResolvedValue({
+      data: {
+        properties: { action_link: 'https://xyz.supabase.co/auth/v1/verify?token=t&type=invite' },
+        user: { id: 'usr_mock' },
+      },
+      error: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('smtp down'));
+
+    const ownerEmail = `founder-${Date.now()}@acme-fail.local`;
+    const { status, body } = await callRoute<{ error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(admin.accessToken),
+      body: { name: 'Acme Cleaning', owner_email: ownerEmail },
+    });
+
+    expect(status).toBe(500);
+    expect(body.error).toContain('invite email failed');
+
+    // The org row exists (provision is not rolled back) and the invite is 'failed'.
+    const db = createTestSupabaseClient();
+    const { data: inviteRows } = await db
+      .from('invites')
+      .select('status, organization_id')
+      .eq('email', ownerEmail);
+    expect(inviteRows).toHaveLength(1);
+    const inv = inviteRows![0] as { status: string; organization_id: string };
+    expect(inv.status).toBe('failed');
+    createdOrgIds.push(inv.organization_id);
   });
 });
