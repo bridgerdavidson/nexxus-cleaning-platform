@@ -2,16 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { getSetupSteps } from './onboardingConfig';
 
 describe('getSetupSteps', () => {
-  it('returns 6 operator steps with 5 required for percentage', () => {
+  it('returns 6 operator steps with 4 required for percentage', () => {
     const steps = getSetupSteps('operator', 'percentage');
     expect(steps.map((s) => s.key)).toEqual(['payments', 'services', 'payout', 'branding', 'cleaners', 'hours']);
-    expect(steps.filter((s) => s.required).map((s) => s.key)).toEqual(['payments', 'services', 'payout', 'branding', 'cleaners']);
+    expect(steps.filter((s) => s.required).map((s) => s.key)).toEqual(['payments', 'services', 'payout', 'cleaners']);
     expect(steps.find((s) => s.key === 'payout')!.href).toBe('/admin/settings?section=payout');
     expect(steps.find((s) => s.key === 'branding')!.href).toBe('/admin/settings?section=branding');
   });
 
-  it('branding comes before inviting cleaners, so invites go out branded', () => {
-    const keys = getSetupSteps('operator', 'percentage').map((s) => s.key);
+  it('branding is optional and listed before inviting cleaners, so invites go out branded', () => {
+    const steps = getSetupSteps('operator', 'percentage');
+    expect(steps.find((s) => s.key === 'branding')!.required).toBe(false);
+    const keys = steps.map((s) => s.key);
     expect(keys.indexOf('branding')).toBeLessThan(keys.indexOf('cleaners'));
   });
 
