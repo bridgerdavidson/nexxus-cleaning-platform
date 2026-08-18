@@ -1,6 +1,8 @@
 'use client';
 
-import { CreditCard, Landmark, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CreditCard, Landmark } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   paymentMethodTitle,
   paymentMethodSubtitle,
@@ -17,6 +19,13 @@ export interface PaymentMethodRowProps {
 
 export function PaymentMethodRow({ pm, busy, onSetDefault, onRemove }: PaymentMethodRowProps) {
   const Icon = pm.type === 'us_bank_account' ? Landmark : CreditCard;
+
+  // The parent only knows WHICH ROW is busy; remember which button was pressed
+  // so the spinner lands on that button instead of a detached header spinner.
+  const [pressed, setPressed] = useState<'default' | 'remove' | null>(null);
+  useEffect(() => {
+    if (!busy) setPressed(null);
+  }, [busy]);
 
   return (
     <div className="rounded-card border border-border bg-card p-4 shadow-soft-sm">
@@ -35,28 +44,37 @@ export function PaymentMethodRow({ pm, busy, onSetDefault, onRemove }: PaymentMe
           </div>
           <div className="truncate text-xs text-muted-foreground">{paymentMethodSubtitle(pm)}</div>
         </div>
-        {busy && <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />}
       </div>
 
       <div className="mt-1 flex items-center gap-2 border-t border-border">
         {!pm.isDefault && (
-          <button
-            type="button"
-            onClick={onSetDefault}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto min-h-[44px] rounded-control px-1 text-xs font-bold text-brand-700"
+            loading={busy && pressed === 'default'}
             disabled={busy}
-            className="inline-flex min-h-[44px] items-center rounded-control px-1 text-xs font-bold text-brand-700 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            onClick={() => {
+              setPressed('default');
+              onSetDefault();
+            }}
           >
             Set as default
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          onClick={onRemove}
+        <Button
+          variant="link"
+          size="sm"
+          className="ml-auto h-auto min-h-[44px] rounded-control px-1 text-xs font-bold text-critical"
+          loading={busy && pressed === 'remove'}
           disabled={busy}
-          className="ml-auto inline-flex min-h-[44px] items-center rounded-control px-1 text-xs font-bold text-critical outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          onClick={() => {
+            setPressed('remove');
+            onRemove();
+          }}
         >
           Remove
-        </button>
+        </Button>
       </div>
     </div>
   );

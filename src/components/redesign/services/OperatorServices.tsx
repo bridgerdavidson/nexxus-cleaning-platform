@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { replaceSearchShallow } from "@/lib/shallowSearch";
 import { useQueryClient } from "@tanstack/react-query";
@@ -389,15 +389,25 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     [selectedId, checklistDialog, refetchChecklists, refreshMaxChecklistAdders],
   );
 
+  // Re-entry guard: the duplicate insert is not idempotent server-side, so a
+  // rapid double-click would create two copies. The card shows the spinner;
+  // this ref is the backstop.
+  const duplicatingRef = useRef(false);
   const handleDuplicateChecklist = useCallback(
     async (checklistId: string) => {
-      const r = await duplicateChecklist(checklistId);
-      if (r.success) {
-        await refetchChecklists();
-        refreshMaxChecklistAdders();
-        toast.success("Checklist duplicated");
-      } else {
-        toast.error(r.error || "Could not duplicate the checklist");
+      if (duplicatingRef.current) return;
+      duplicatingRef.current = true;
+      try {
+        const r = await duplicateChecklist(checklistId);
+        if (r.success) {
+          await refetchChecklists();
+          refreshMaxChecklistAdders();
+          toast.success("Checklist duplicated");
+        } else {
+          toast.error(r.error || "Could not duplicate the checklist");
+        }
+      } finally {
+        duplicatingRef.current = false;
       }
     },
     [refetchChecklists, refreshMaxChecklistAdders],

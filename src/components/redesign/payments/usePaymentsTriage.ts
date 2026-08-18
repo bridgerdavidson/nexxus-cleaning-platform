@@ -47,6 +47,8 @@ export type PaymentsTriage = {
   failedPayouts: TriagePayoutVM[];
   heldPayouts: TriageHeldVM[];
   busyId: string | null;
+  /** Which action busyId refers to, so a row can spin ONLY the pressed button. */
+  busyAction: "retry" | "dismiss" | "card-link" | null;
   error: string | null;
   notice: string | null;
   isEmpty: boolean;
@@ -68,6 +70,7 @@ export function usePaymentsTriage(): PaymentsTriage {
   const [failedPayouts, setFailedPayouts] = useState<TriagePayoutVM[]>([]);
   const [heldPayouts, setHeldPayouts] = useState<TriageHeldVM[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"retry" | "dismiss" | "card-link" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -208,6 +211,7 @@ export function usePaymentsTriage(): PaymentsTriage {
     async (id: string) => {
       if (!currentOrganizationId) return;
       setBusyId(id);
+      setBusyAction("retry");
       setError(null);
       setNotice(null);
       try {
@@ -229,6 +233,7 @@ export function usePaymentsTriage(): PaymentsTriage {
         setError(e instanceof Error ? e.message : "Retry failed");
       } finally {
         setBusyId(null);
+        setBusyAction(null);
       }
     },
     [currentOrganizationId, reload],
@@ -238,6 +243,7 @@ export function usePaymentsTriage(): PaymentsTriage {
     async (id: string) => {
       if (!currentOrganizationId) return;
       setBusyId(id);
+      setBusyAction("dismiss");
       setError(null);
       setNotice(null);
       try {
@@ -254,6 +260,7 @@ export function usePaymentsTriage(): PaymentsTriage {
         setError(e instanceof Error ? e.message : "Could not dismiss");
       } finally {
         setBusyId(null);
+        setBusyAction(null);
       }
     },
     [currentOrganizationId, reload],
@@ -263,6 +270,7 @@ export function usePaymentsTriage(): PaymentsTriage {
     async (apptId: string, homeownerId: string | null, customerName?: string) => {
       if (!currentOrganizationId || !homeownerId) return;
       setBusyId(apptId);
+      setBusyAction("card-link");
       setError(null);
       try {
         const token = await getAccessToken();
@@ -304,6 +312,7 @@ export function usePaymentsTriage(): PaymentsTriage {
         setError(e instanceof Error ? e.message : "Could not create card link");
       } finally {
         setBusyId(null);
+        setBusyAction(null);
       }
     },
     [currentOrganizationId],
@@ -341,6 +350,7 @@ export function usePaymentsTriage(): PaymentsTriage {
     failedPayouts,
     heldPayouts,
     busyId,
+    busyAction,
     error,
     notice,
     isEmpty,

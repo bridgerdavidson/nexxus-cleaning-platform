@@ -89,7 +89,7 @@ function ForgotPasswordContent() {
           disabled={status === "submitting"}
         />
         <Button type="submit" size="lg" className="w-full" loading={status === "submitting"}>
-          {status === "submitting" ? "Sending..." : "Send reset link"}
+          Send reset link
         </Button>
         <div className="text-center">
           <Link href="/login" className="text-sm font-semibold text-brand-ink hover:text-brand-700">

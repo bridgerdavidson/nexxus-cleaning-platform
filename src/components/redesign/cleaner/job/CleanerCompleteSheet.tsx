@@ -326,13 +326,7 @@ export function CleanerCompleteSheet({
             loading={isCompleting}
             className="w-full min-h-[44px]"
           >
-            {isCompleting
-              ? isRequestMode
-                ? 'Sending...'
-                : 'Completing...'
-              : isRequestMode
-                ? 'Send request and complete'
-                : 'Complete job'}
+            {isRequestMode ? 'Send request and complete' : 'Complete job'}
           </Button>
           <Button
             variant="ghost"

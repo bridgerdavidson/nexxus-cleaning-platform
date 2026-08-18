@@ -353,7 +353,7 @@ function AcceptInviteContent() {
           placeholder="Re-enter your password"
         />
         <Button type="submit" size="lg" className="w-full" loading={isLoading}>
-          {isLoading ? "Setting up your account..." : "Create account"}
+          Create account
         </Button>
       </form>
     </AuthShell>

@@ -28,7 +28,7 @@ import type {
   StaffRowVM,
   StaffSort,
 } from "./staff-types";
-import type { InviteRowAction } from "./cleaners-types";
+import type { InviteRowAction, InviteRowBusy } from "./cleaners-types";
 
 // --- formatting helpers (AdminStaffMember -> view-model) ---
 
@@ -143,6 +143,7 @@ export function OperatorStaffData({
   const [addOpen, setAddOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyInvite, setBusyInvite] = useState<InviteRowBusy>(null);
 
   const rows: StaffRowVM[] = useMemo(() => {
     const ROLE_RANK: Record<StaffRole, number> = { owner: 0, admin: 1, manager: 2 };
@@ -219,6 +220,7 @@ export function OperatorStaffData({
     async (inviteId: string, action: InviteRowAction) => {
       if (!currentOrganizationId) return;
       setBusy(true);
+      setBusyInvite({ id: inviteId, action });
       try {
         if (action === "resend") {
           const inv = invites.find((i) => i.id === inviteId);
@@ -232,6 +234,7 @@ export function OperatorStaffData({
         }
       } finally {
         setBusy(false);
+        setBusyInvite(null);
       }
     },
     [currentOrganizationId, accessToken, invites, resend, refetchInvites],
@@ -277,6 +280,7 @@ export function OperatorStaffData({
         totalCount={staff.length}
         canManage={canManage}
         busy={busy}
+        busyInvite={busyInvite}
         search={search}
         onSearchChange={setSearch}
         sort={sort}

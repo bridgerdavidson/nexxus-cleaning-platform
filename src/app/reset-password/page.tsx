@@ -221,7 +221,7 @@ function ResetPasswordContent() {
           disabled={isSubmitting}
         />
         <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
-          {isSubmitting ? "Updating password..." : "Update password"}
+          Update password
         </Button>
       </form>
     </AuthShell>

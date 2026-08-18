@@ -78,7 +78,7 @@ function LoginContent() {
           </Link>
         </div>
         <Button type="submit" size="lg" className="w-full" loading={isLoading || isCleaningUp}>
-          {isCleaningUp ? "Please wait..." : isLoading ? "Signing in..." : "Sign in"}
+          Sign in
         </Button>
       </form>
     </AuthShell>
