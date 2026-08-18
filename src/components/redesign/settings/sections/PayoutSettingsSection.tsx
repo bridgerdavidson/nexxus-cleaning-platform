@@ -1,10 +1,12 @@
 // src/components/redesign/settings/sections/PayoutSettingsSection.tsx
 "use client";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { useOrgQuery } from "@/lib/useOrgQuery";
+import { keys } from "@/lib/queryKeys";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -27,6 +29,10 @@ interface PayoutForm {
   storedModel: string;
   defaultPct: string;
   marginPct: string;
+  /** Whether the org has ever saved this section (payout_configured_at). While
+   *  false the save bar stays visible even on a clean form, so accepting the
+   *  defaults is a saveable action and the setup checklist can complete. */
+  confirmed: boolean;
 }
 
 const CATEGORY_OPTIONS: { value: PayCategory; label: string; description: string; disabled?: boolean }[] = [
@@ -59,6 +65,10 @@ function marginExample(marginPct: number): string | null {
 
 export function PayoutSettingsSection() {
   const { currentOrganizationId } = useAuth();
+  const qc = useQueryClient();
+  // Flips after a successful save so the confirm bar retires immediately
+  // (useSettingsSection never re-runs load after a save).
+  const [confirmedNow, setConfirmedNow] = useState(false);
 
   // Cleaners with no pay decision yet (active only). Drives the nudge row below;
   // disappears once every cleaner is configured.
@@ -80,7 +90,7 @@ export function PayoutSettingsSection() {
     if (!currentOrganizationId) throw new Error("No organization");
     const { data, error } = await supabase
       .from("organizations")
-      .select("default_payout_model, default_cleaner_payout_percent, min_margin_bps")
+      .select("default_payout_model, default_cleaner_payout_percent, min_margin_bps, payout_configured_at")
       .eq("id", currentOrganizationId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -90,6 +100,7 @@ export function PayoutSettingsSection() {
       storedModel,
       defaultPct: String(data?.default_cleaner_payout_percent ?? 50),
       marginPct: String((Number(data?.min_margin_bps ?? 2000)) / 100),
+      confirmed: data?.payout_configured_at != null,
     };
   }, [currentOrganizationId]);
 
@@ -110,7 +121,11 @@ export function PayoutSettingsSection() {
       default_cleaner_payout_percent: pct,
       min_margin_bps: Math.round(margin * 100),
     });
-  }, [currentOrganizationId]);
+    // Saving (even with untouched defaults) stamps payout_configured_at, which
+    // completes the "Set cleaner pay" setup-checklist step on the overview.
+    setConfirmedNow(true);
+    void qc.invalidateQueries({ queryKey: keys.onboarding.operator(currentOrganizationId) });
+  }, [currentOrganizationId, qc]);
 
   const { value, setValue, loading, saving, isDirty, loadError, retry, onSave, onDiscard } =
     useSettingsSection<PayoutForm>({ load, save, successMessage: "Payout settings updated" });
@@ -120,6 +135,7 @@ export function PayoutSettingsSection() {
     return <ErrorState title="Couldn't load this section" onRetry={retry} />;
 
   const example = marginExample(parseFloat(value.marginPct));
+  const needsConfirm = !value.confirmed && !confirmedNow;
 
   return (
     <div>
@@ -184,7 +200,15 @@ export function PayoutSettingsSection() {
           {example ? <p className="max-w-64 text-xs text-muted-foreground">{example}</p> : null}
         </div>
       </SettingRow>
-      <SettingsSaveBar visible={isDirty} saving={saving} onSave={onSave} onDiscard={onDiscard} />
+      <SettingsSaveBar
+        visible={isDirty || needsConfirm}
+        saving={saving}
+        onSave={onSave}
+        onDiscard={onDiscard}
+        message={isDirty ? "Unsaved changes" : "Confirm these settings to finish this setup step"}
+        saveLabel={isDirty ? "Save changes" : "These look good"}
+        showDiscard={isDirty}
+      />
     </div>
   );
 }
