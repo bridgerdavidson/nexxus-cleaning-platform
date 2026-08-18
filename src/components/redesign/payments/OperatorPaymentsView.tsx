@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Plus, Search, Wallet, Loader2 } from "lucide-react";
+import { Plus, Search, Wallet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -193,8 +193,7 @@ export function OperatorPaymentsView({
             }
             action={
               filtersActive && hasMore ? (
-                <Button variant="secondary" onClick={onLoadMore} disabled={loadingMore}>
-                  {loadingMore ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                <Button variant="secondary" onClick={onLoadMore} loading={loadingMore}>
                   Load more {noun}s to search
                 </Button>
               ) : filtersActive ? (
@@ -230,8 +229,8 @@ export function OperatorPaymentsView({
             </div>
             {hasMore ? (
               <div className="flex justify-center pt-2">
-                <Button variant="secondary" onClick={onLoadMore} disabled={loadingMore}>
-                  {loadingMore ? <Loader2 className="mr-2 size-4 animate-spin" /> : null} Load more
+                <Button variant="secondary" onClick={onLoadMore} loading={loadingMore}>
+                  Load more
                 </Button>
               </div>
             ) : null}

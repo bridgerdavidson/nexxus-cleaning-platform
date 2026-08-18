@@ -33,7 +33,7 @@ export function AvatarEditor({
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { items, start, reset, isWorking } = useImageUpload({
+  const { start, reset, isWorking } = useImageUpload({
     context: { kind: "avatar", ctx: { userId: user?.id ?? "", currentAvatarUrl } },
     onComplete: ({ uploaded, failed }) => {
       if (uploaded[0]) {
@@ -47,16 +47,6 @@ export function AvatarEditor({
       }
     },
   });
-
-  const status = items[0]?.status;
-  const statusLabel =
-    status === "converting"
-      ? "Converting"
-      : status === "compressing"
-        ? "Compressing"
-        : status === "uploading"
-          ? "Uploading"
-          : "Saving";
 
   useEffect(() => {
     return () => {
@@ -124,7 +114,7 @@ export function AvatarEditor({
         {pendingFile ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" loading={isWorking} onClick={onSave}>
-              {isWorking ? statusLabel : "Save photo"}
+              Save photo
             </Button>
             {!isWorking && (
               <Button type="button" size="sm" variant="ghost" onClick={onCancel}>

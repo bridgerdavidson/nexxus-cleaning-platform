@@ -24,6 +24,7 @@ import type {
   CleanerSort,
   InviteRowAction,
   PendingInviteRowVM,
+  InviteRowBusy,
 } from "./cleaners-types";
 import type { PeopleSegment } from "./staff-types";
 
@@ -49,11 +50,13 @@ function PendingInvitesGroup({
   invites,
   canEdit,
   busy,
+  busyInvite,
   onInviteAction,
 }: {
   invites: PendingInviteRowVM[];
   canEdit: boolean;
   busy?: boolean;
+  busyInvite?: InviteRowBusy;
   onInviteAction: (inviteId: string, action: InviteRowAction) => void;
 }) {
   if (invites.length === 0) return null;
@@ -83,6 +86,7 @@ function PendingInvitesGroup({
                     <Button
                       variant="ghost"
                       size="sm"
+                      loading={busyInvite?.id === inv.inviteId && busyInvite.action === "resend"}
                       disabled={busy}
                       onClick={() => onInviteAction(inv.inviteId, "resend")}
                     >
@@ -93,6 +97,7 @@ function PendingInvitesGroup({
                     variant="ghost"
                     size="sm"
                     className="text-destructive hover:bg-critical-50 hover:text-destructive"
+                    loading={busyInvite?.id === inv.inviteId && busyInvite.action === "cancel"}
                     disabled={busy}
                     onClick={() => onInviteAction(inv.inviteId, "cancel")}
                   >
@@ -122,6 +127,7 @@ export type OperatorCleanersViewProps = {
   canViewPayments: boolean;
   canEdit: boolean;
   bulkBusy?: boolean;
+  busyInvite?: InviteRowBusy;
 
   search: string;
   onSearchChange: (v: string) => void;
@@ -156,6 +162,7 @@ export function OperatorCleanersView({
   canViewPayments,
   canEdit,
   bulkBusy,
+  busyInvite,
   search,
   onSearchChange,
   sort,
@@ -230,6 +237,7 @@ export function OperatorCleanersView({
         invites={pendingInvites}
         canEdit={canEdit}
         busy={bulkBusy}
+        busyInvite={busyInvite}
         onInviteAction={onInviteAction}
       />
 

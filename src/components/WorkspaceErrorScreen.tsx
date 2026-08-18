@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 /**
  * Full-screen fallback shown when the org context fails to load (orgStatus ===
@@ -40,15 +41,9 @@ export default function WorkspaceErrorScreen({
           We hit a snag loading your account. This is usually temporary. You&apos;re still
           signed in.
         </p>
-        <button
-          type="button"
-          onClick={handleRetry}
-          disabled={retrying}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-700 disabled:opacity-60"
-        >
-          {retrying && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {retrying ? 'Retrying…' : 'Try again'}
-        </button>
+        <Button type="button" loading={retrying} onClick={handleRetry}>
+          Try again
+        </Button>
       </div>
     </div>
   );

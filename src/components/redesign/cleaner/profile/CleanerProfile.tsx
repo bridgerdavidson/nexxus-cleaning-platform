@@ -18,6 +18,14 @@ export function CleanerProfile() {
   const [lastName, setLastName] = useState(baseLast);
   const [phone, setPhone] = useState(formatPhoneDisplay(basePhoneDigits));
   const [saving, setSaving] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function onConfirmSignOut() {
+    setSigningOut(true);
+    await signOut();
+    // On success the auth listener routes to /login; keep the spinner until then.
+  }
 
   // Resync the form to the auth profile when it changes externally (late
   // hydration, sign-in, account switch). In-progress edits never change
@@ -86,8 +94,12 @@ export function CleanerProfile() {
       onDiscard={onDiscard}
       onAvatarUploaded={onAvatarUploaded}
       showAvailability={showAvailabilityPlaceholder(currentOrganization?.default_payout_model)}
-      onSignOut={() => {
-        void signOut();
+      signOutOpen={signOutOpen}
+      signingOut={signingOut}
+      onSignOutOpenChange={setSignOutOpen}
+      onSignOut={() => setSignOutOpen(true)}
+      onConfirmSignOut={() => {
+        void onConfirmSignOut();
       }}
     />
     </>

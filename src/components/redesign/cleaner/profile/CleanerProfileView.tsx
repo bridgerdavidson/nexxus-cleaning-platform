@@ -2,6 +2,14 @@
 
 import { Building2, List, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { CleanerAvatarEditor } from "./CleanerAvatarEditor";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
@@ -32,7 +40,11 @@ export interface CleanerProfileViewProps {
   onDiscard: () => void;
   onAvatarUploaded: (url: string) => void;
   showAvailability: boolean;
+  signOutOpen: boolean;
+  signingOut: boolean;
+  onSignOutOpenChange: (open: boolean) => void;
   onSignOut: () => void;
+  onConfirmSignOut: () => void;
 }
 
 export function CleanerProfileView({
@@ -51,7 +63,11 @@ export function CleanerProfileView({
   onDiscard,
   onAvatarUploaded,
   showAvailability,
+  signOutOpen,
+  signingOut,
+  onSignOutOpenChange,
   onSignOut,
+  onConfirmSignOut,
 }: CleanerProfileViewProps) {
   return (
     <div className="space-y-6 pt-1">
@@ -170,7 +186,8 @@ export function CleanerProfileView({
         />
       </section>
 
-      {/* Sign out */}
+      {/* Sign out: confirm drawer + spinner (mirrors the homeowner account hub;
+          a silent sign-out on job-site mobile data reads as a dead button). */}
       <section className="pt-1">
         <Button
           variant="outline"
@@ -181,6 +198,28 @@ export function CleanerProfileView({
           Sign out
         </Button>
       </section>
+
+      <Drawer open={signOutOpen} onOpenChange={(v) => !signingOut && onSignOutOpenChange(v)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Sign out?</DrawerTitle>
+            <DrawerDescription>You will need to sign in again on this device.</DrawerDescription>
+          </DrawerHeader>
+          <DrawerFooter>
+            <Button onClick={onConfirmSignOut} loading={signingOut} className="w-full">
+              Sign out
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              disabled={signingOut}
+              onClick={() => onSignOutOpenChange(false)}
+            >
+              Cancel
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

@@ -125,12 +125,18 @@ export function PaymentsTriageBand({ canManagePayments }: { canManagePayments: b
                   </div>
                   {canManagePayments ? (
                     <div className="flex shrink-0 items-center gap-2">
-                      <Button size="sm" loading={t.busyId === p.id} onClick={() => t.retryPayout(p.id)}>
+                      <Button
+                        size="sm"
+                        loading={t.busyId === p.id && t.busyAction === "retry"}
+                        disabled={t.busyId === p.id}
+                        onClick={() => t.retryPayout(p.id)}
+                      >
                         Retry now
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
+                        loading={t.busyId === p.id && t.busyAction === "dismiss"}
                         disabled={t.busyId === p.id}
                         onClick={() => t.dismissPayout(p.id)}
                       >

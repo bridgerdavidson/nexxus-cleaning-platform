@@ -24,7 +24,7 @@ import type {
   StaffPendingInviteVM,
   StaffSort,
 } from "./staff-types";
-import type { InviteRowAction } from "./cleaners-types";
+import type { InviteRowAction, InviteRowBusy } from "./cleaners-types";
 
 function StaffSkeleton() {
   return (
@@ -47,11 +47,13 @@ function StaffPendingInvitesGroup({
   invites,
   canManage,
   busy,
+  busyInvite,
   onInviteAction,
 }: {
   invites: StaffPendingInviteVM[];
   canManage: boolean;
   busy?: boolean;
+  busyInvite?: InviteRowBusy;
   onInviteAction: (inviteId: string, action: InviteRowAction) => void;
 }) {
   if (invites.length === 0) return null;
@@ -80,7 +82,13 @@ function StaffPendingInvitesGroup({
               {canManage ? (
                 <>
                   {inv.canResend ? (
-                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => onInviteAction(inv.inviteId, "resend")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      loading={busyInvite?.id === inv.inviteId && busyInvite.action === "resend"}
+                      disabled={busy}
+                      onClick={() => onInviteAction(inv.inviteId, "resend")}
+                    >
                       <RefreshCw /> Resend
                     </Button>
                   ) : null}
@@ -88,6 +96,7 @@ function StaffPendingInvitesGroup({
                     variant="ghost"
                     size="sm"
                     className="text-destructive hover:bg-critical-50 hover:text-destructive"
+                    loading={busyInvite?.id === inv.inviteId && busyInvite.action === "cancel"}
                     disabled={busy}
                     onClick={() => onInviteAction(inv.inviteId, "cancel")}
                   >
@@ -115,6 +124,7 @@ export type OperatorStaffViewProps = {
   totalCount: number;
   canManage: boolean;
   busy?: boolean;
+  busyInvite?: InviteRowBusy;
   search: string;
   onSearchChange: (v: string) => void;
   sort: StaffSort;
@@ -137,6 +147,7 @@ export function OperatorStaffView({
   totalCount,
   canManage,
   busy,
+  busyInvite,
   search,
   onSearchChange,
   sort,
@@ -190,6 +201,7 @@ export function OperatorStaffView({
         invites={pendingInvites}
         canManage={canManage}
         busy={busy}
+        busyInvite={busyInvite}
         onInviteAction={onInviteAction}
       />
 

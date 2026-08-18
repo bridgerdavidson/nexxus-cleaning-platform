@@ -37,10 +37,11 @@ export function ChecklistCard({
   onDeleteTask: (taskId: string) => void;
   onReorderTasks: (checklistId: string, orderedIds: string[]) => void;
   onEditChecklist: (checklistId: string) => void;
-  onDuplicateChecklist: (checklistId: string) => void;
+  onDuplicateChecklist: (checklistId: string) => void | Promise<void>;
   onDeleteChecklist: (checklistId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [draft, setDraft] = useState("");
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -82,7 +83,21 @@ export function ChecklistCard({
             <Button size="icon" variant="ghost" aria-label="Edit checklist" onClick={() => onEditChecklist(checklist.id)}>
               <Pencil className="size-4" />
             </Button>
-            <Button size="icon" variant="ghost" aria-label="Duplicate checklist" onClick={() => onDuplicateChecklist(checklist.id)}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Duplicate checklist"
+              loading={duplicating}
+              onClick={async () => {
+                if (duplicating) return;
+                setDuplicating(true);
+                try {
+                  await onDuplicateChecklist(checklist.id);
+                } finally {
+                  setDuplicating(false);
+                }
+              }}
+            >
               <Copy className="size-4" />
             </Button>
             <Button size="icon" variant="ghost" aria-label="Delete checklist" onClick={() => onDeleteChecklist(checklist.id)}>

@@ -2,6 +2,7 @@
 
 import { Bell, Check, CheckCheck, ChevronDown, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { NotificationTone } from '@/lib/notifications/labels';
 import type { NotificationGroupVM, NotificationItemVM } from './deriveNotifications';
@@ -132,15 +133,15 @@ export function NotificationPanel({
                   {n.action ? (
                     <div className="flex flex-wrap gap-2 px-4 pb-3 pl-[4.25rem]">
                       {n.action.kind === 'accept' ? (
-                        <button
-                          type="button"
+                        <Button
+                          size="sm"
+                          className="h-auto px-3 py-1.5 text-xs [&_svg]:size-3.5"
+                          loading={acceptingId === n.id}
                           onClick={() => onAccept(n)}
-                          disabled={acceptingId === n.id}
-                          className="inline-flex items-center gap-1.5 rounded-control bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white outline-none hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                         >
-                          <Check className="h-3.5 w-3.5" aria-hidden />
-                          {acceptingId === n.id ? 'Confirming...' : n.action.label}
-                        </button>
+                          <Check aria-hidden />
+                          {n.action.label}
+                        </Button>
                       ) : (
                         <button
                           type="button"

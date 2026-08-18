@@ -23,6 +23,9 @@ export type ConnectState = "ready" | "incomplete" | "none";
 
 export type CleanerRowAction = "open" | "edit" | "deactivate" | "reactivate" | "remove";
 export type InviteRowAction = "resend" | "cancel";
+/** Which pending-invite row action is in flight, for the per-row button spinner
+ *  (the page-level busy flag alone would spin every row at once). */
+export type InviteRowBusy = { id: string; action: InviteRowAction } | null;
 
 /** Invite statuses shown in the roster's Pending group (terminal states like
  *  accepted/superseded/revoked are filtered out before mapping). */

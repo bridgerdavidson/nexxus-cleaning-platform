@@ -360,10 +360,11 @@ function LogoPairField({
               variant="outline"
               size="sm"
               className="flex-1"
-              disabled={light.uploading || !orgId}
+              loading={light.uploading}
+              disabled={!orgId}
               onClick={light.openPicker}
             >
-              {light.uploading ? "Uploading..." : url ? "Replace" : "Upload"}
+              {url ? "Replace" : "Upload"}
             </Button>
             {url ? (
               <Button
@@ -406,10 +407,11 @@ function LogoPairField({
                 variant="outline"
                 size="sm"
                 className="flex-1"
-                disabled={dark.uploading || !orgId}
+                loading={dark.uploading}
+                disabled={!orgId}
                 onClick={dark.openPicker}
               >
-                {dark.uploading ? "Uploading..." : "Replace"}
+                Replace
               </Button>
               <Button
                 type="button"
@@ -431,10 +433,11 @@ function LogoPairField({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={dark.uploading || !orgId}
+                loading={dark.uploading}
+                disabled={!orgId}
                 onClick={dark.openPicker}
               >
-                {dark.uploading ? "Uploading..." : "Add dark version"}
+                Add dark version
               </Button>
               {url ? (
                 <p className="px-0.5 text-[11px] text-muted-foreground">Same as light</p>

@@ -141,10 +141,13 @@ export function MessageComposer(props: {
         />
         <IconButton
           aria-label="Send message"
+          loading={props.sending}
           disabled={!canSend}
           className={cn(
             'h-9 w-9 shrink-0',
-            canSend
+            // While sending, keep the primary look (the spinner is the busy
+            // signal); the muted look means "nothing to send", not "working".
+            canSend || props.sending
               ? 'bg-primary text-primary-foreground hover:bg-primary/90'
               : 'bg-muted text-muted-foreground',
           )}

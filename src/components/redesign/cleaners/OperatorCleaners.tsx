@@ -32,6 +32,7 @@ import type {
   CleanerUpcomingVM,
   ConnectState,
   InviteRowAction,
+  InviteRowBusy,
   PendingInviteRowVM,
   PendingInviteStatus,
 } from "./cleaners-types";
@@ -211,6 +212,7 @@ export function OperatorCleanersData({
   const [addOpen, setAddOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [busy, setBusy] = useState(false);
+  const [busyInvite, setBusyInvite] = useState<InviteRowBusy>(null);
 
   const { upcoming: detailUpcoming, loading: detailsLoading } = useCleanerWorkload(detailId);
 
@@ -384,6 +386,7 @@ export function OperatorCleanersData({
     async (inviteId: string, action: InviteRowAction) => {
       if (!currentOrganizationId) return;
       setBusy(true);
+      setBusyInvite({ id: inviteId, action });
       try {
         if (action === "resend") {
           const inv = invites.find((i) => i.id === inviteId);
@@ -397,6 +400,7 @@ export function OperatorCleanersData({
         }
       } finally {
         setBusy(false);
+        setBusyInvite(null);
       }
     },
     [currentOrganizationId, accessToken, invites, resend, refetchInvites],
@@ -501,6 +505,7 @@ export function OperatorCleanersData({
         canViewPayments={canViewPayments}
         canEdit={canEdit}
         bulkBusy={busy}
+        busyInvite={busyInvite}
         search={search}
         onSearchChange={setSearch}
         sort={sort}
