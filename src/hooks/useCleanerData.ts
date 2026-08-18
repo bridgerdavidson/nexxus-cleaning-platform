@@ -263,7 +263,27 @@ export interface AwaitingPaymentRow {
   } | null;
 }
 
-type CleanerEarningsResponse = { awaiting: AwaitingPaymentRow[]; held: CleanerHeldPayoutRow[] };
+export interface CleanerPaidPayoutRow {
+  id: string;
+  /** payouts.amount is the transfer TO the cleaner (their own cut), so it is privacy-safe to render. */
+  amount: number;
+  /** 'paid' = in their Stripe balance / heading to the bank; 'bank_paid' = deposited. */
+  status: 'paid' | 'bank_paid';
+  createdAt: string;
+  paidAt: string | null;
+  appointment: {
+    id: string;
+    scheduledDate: string | null;
+    homeownerName: string;
+    serviceName: string | null;
+  } | null;
+}
+
+type CleanerEarningsResponse = {
+  awaiting: AwaitingPaymentRow[];
+  held: CleanerHeldPayoutRow[];
+  paid: CleanerPaidPayoutRow[];
+};
 
 /**
  * One shared query behind BOTH earnings sections. NOT a Supabase read: migration
@@ -372,6 +392,24 @@ export function useCleanerHeldPayouts() {
 
   return {
     heldPayouts: query.data?.held ?? [],
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
+}
+
+/**
+ * The cleaner's recent settled payouts ('paid'/'bank_paid'), i.e. money that already went out.
+ * Without this the Earnings screen only ever showed in-flight money, and the happy path (card
+ * clears in seconds, onboarded cleaner's payout written straight to 'paid') rendered as
+ * "No earnings yet" forever. Reads the same shared earnings query; realtime refresh comes from
+ * the payouts subscriptions in the sibling hooks mounted on the same screen, which invalidate
+ * the shared queryKey on any payout status flip.
+ */
+export function useCleanerPaidPayouts() {
+  const { query } = useCleanerEarningsQuery();
+  return {
+    paidPayouts: query.data?.paid ?? [],
     loading: query.isLoading,
     error: query.error?.message ?? null,
     refetch: query.refetch,

@@ -23,6 +23,13 @@ type EarningsBody = {
     appointment: { id: string; homeownerName: string; serviceName: string | null } | null;
   }>;
   held: Array<{ id: string; amount: number; status: string; appointment: { id: string } | null }>;
+  paid: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    paidAt: string | null;
+    appointment: { id: string } | null;
+  }>;
 };
 
 const admin = createTestSupabaseClient();
@@ -164,6 +171,68 @@ describe('GET /api/cleaner/earnings', () => {
     expect(res.body.held[0].amount).toBe(33);
     expect(res.body.held[0].status).toBe('pending');
     expect(res.body.held[0].appointment?.id).toBe(appt.id);
+  });
+
+  it('paid: the cleaner sees paid + bank_paid history newest first; reversed is excluded', async () => {
+    const org = await withTestOrg({ payoutPercent: 50 });
+    cleanups.push(org.cleanup);
+    // One appointment per payout: uniq_payouts_per_appt allows a single payout row per job.
+    const mkAppt = () =>
+      createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+        totalPrice: 100,
+        status: 'completed',
+      });
+    const [apptPaid, apptBank, apptReversed] = [await mkAppt(), await mkAppt(), await mkAppt()];
+    const { error } = await admin.from('payouts').insert([
+      {
+        organization_id: org.organizationId,
+        appointment_id: apptPaid.id,
+        cleaner_id: org.cleaner.userId,
+        amount: 40,
+        status: 'paid',
+        paid_at: '2026-08-01T12:00:00.000Z',
+        created_at: '2026-08-01T12:00:00.000Z',
+      },
+      {
+        organization_id: org.organizationId,
+        appointment_id: apptBank.id,
+        cleaner_id: org.cleaner.userId,
+        amount: 55,
+        status: 'bank_paid',
+        paid_at: '2026-08-05T12:00:00.000Z',
+        bank_paid_at: '2026-08-06T12:00:00.000Z',
+        created_at: '2026-08-05T12:00:00.000Z',
+      },
+      {
+        organization_id: org.organizationId,
+        appointment_id: apptReversed.id,
+        cleaner_id: org.cleaner.userId,
+        amount: 20,
+        status: 'reversed',
+        reversed_at: '2026-08-07T12:00:00.000Z',
+        created_at: '2026-08-04T12:00:00.000Z',
+      },
+    ]);
+    expect(error).toBeNull();
+
+    const res = await callRoute<EarningsBody>(GET, {
+      method: 'GET',
+      url: url(org.organizationId),
+      headers: bearerHeader(org.cleaner.accessToken),
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.paid.map((r) => [r.amount, r.status])).toEqual([
+      [55, 'bank_paid'],
+      [40, 'paid'],
+    ]);
+    expect(res.body.paid[0].appointment?.id).toBe(apptBank.id);
+    expect(res.body.paid[0].paidAt).toBeTruthy();
+    // Paid history must never bleed into the owed buckets.
+    expect(res.body.held).toEqual([]);
+    expect(res.body.awaiting).toEqual([]);
   });
 
   it('rejects org staff (403) and a missing token (401)', async () => {

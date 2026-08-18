@@ -1,5 +1,10 @@
 // src/components/redesign/cleaner/earnings/earnings-types.ts
-import type { AwaitingPaymentRow, CleanerHeldPayoutRow, CleanerStats } from "@/hooks/useCleanerData";
+import type {
+  AwaitingPaymentRow,
+  CleanerHeldPayoutRow,
+  CleanerPaidPayoutRow,
+  CleanerStats,
+} from "@/hooks/useCleanerData";
 import type { CleanerPayoutModel } from "@/components/redesign/cleaner/today/today-types";
 
 /** Mirrors cleanerStatusKind()'s output (computed in the Container). */
@@ -41,6 +46,21 @@ export interface HeldPayoutRow {
   kind: HeldKind;
 }
 
+/** Settled history: 'paid' = sent to their Stripe balance, 'bank_paid' = deposited. */
+export type PaidKind = "paid" | "bank_paid";
+
+export interface PaidPayoutRow {
+  id: string;
+  appointmentId: string | null;
+  serviceLabel: string;
+  customerLabel: string;
+  /** scheduledDate when present, else paidAt, else createdAt; formatted in the View. */
+  dateRaw: string | null;
+  /** The cleaner's own payout amount, in dollars (privacy-safe). */
+  amountDollars: number;
+  kind: PaidKind;
+}
+
 export interface ActivityCounts {
   thisWeek: number;
   completed: number;
@@ -53,6 +73,8 @@ export interface EarningsData {
   clearing: ClearingRow[];
   /** Held/approved/failed payout rows (Hop 2). Split into "Needs attention" + "Held" in the View. */
   held: HeldPayoutRow[];
+  /** Recent settled payouts, newest first (capped server-side). Excluded from owedDollars. */
+  paid: PaidPayoutRow[];
   /**
    * Total the cleaner is owed but hasn't received: the sum of their own clearing cuts + held/failed
    * payout amounts. Derived from per-row cleaner cuts ONLY, never from the org-derived stats
@@ -68,5 +90,6 @@ export interface DeriveEarningsInput {
   connectKind: ConnectKind;
   awaiting: AwaitingPaymentRow[] | undefined;
   heldPayouts: CleanerHeldPayoutRow[] | undefined;
+  paidPayouts: CleanerPaidPayoutRow[] | undefined;
   stats: CleanerStats | undefined;
 }

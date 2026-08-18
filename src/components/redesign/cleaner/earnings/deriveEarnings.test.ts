@@ -2,7 +2,12 @@
 import { describe, it, expect } from "vitest";
 import { deriveEarnings, shouldReveal } from "./deriveEarnings";
 import type { DeriveEarningsInput } from "./earnings-types";
-import type { AwaitingPaymentRow, CleanerHeldPayoutRow, CleanerStats } from "@/hooks/useCleanerData";
+import type {
+  AwaitingPaymentRow,
+  CleanerHeldPayoutRow,
+  CleanerPaidPayoutRow,
+  CleanerStats,
+} from "@/hooks/useCleanerData";
 
 function awaiting(over: Partial<AwaitingPaymentRow> = {}): AwaitingPaymentRow {
   return {
@@ -36,6 +41,23 @@ function held(over: Partial<CleanerHeldPayoutRow> = {}): CleanerHeldPayoutRow {
   };
 }
 
+function paid(over: Partial<CleanerPaidPayoutRow> = {}): CleanerPaidPayoutRow {
+  return {
+    id: "pyt_paid_1",
+    amount: 65,
+    status: "paid",
+    createdAt: "2026-06-15T10:00:00.000Z",
+    paidAt: "2026-06-16T09:00:00.000Z",
+    appointment: {
+      id: "appt_3",
+      scheduledDate: "2026-06-14",
+      homeownerName: "R. Patel",
+      serviceName: "Move-out clean",
+    },
+    ...over,
+  };
+}
+
 function stats(over: Partial<CleanerStats> = {}): CleanerStats {
   return {
     totalJobs: 150,
@@ -55,6 +77,7 @@ function input(over: Partial<DeriveEarningsInput> = {}): DeriveEarningsInput {
     connectKind: "active",
     awaiting: [awaiting()],
     heldPayouts: [],
+    paidPayouts: [],
     stats: stats(),
     ...over,
   };
@@ -126,6 +149,7 @@ describe("deriveEarnings", () => {
       "held",
       "mode",
       "owedDollars",
+      "paid",
     ]);
     const json = JSON.stringify(result);
     expect(json).not.toContain("totalEarnings");
@@ -179,6 +203,55 @@ describe("deriveEarnings held payouts (T2-15)", () => {
   it("is empty when there are no held payouts", () => {
     expect(deriveEarnings(input({ heldPayouts: [] })).held).toEqual([]);
     expect(deriveEarnings(input({ heldPayouts: undefined })).held).toEqual([]);
+  });
+});
+
+describe("deriveEarnings paid history", () => {
+  it("maps paid and bank_paid rows with labels, preferring scheduledDate", () => {
+    const rows = deriveEarnings(
+      input({ paidPayouts: [paid(), paid({ id: "b", status: "bank_paid", amount: 80 })] }),
+    ).paid;
+    expect(rows[0]).toEqual({
+      id: "pyt_paid_1",
+      appointmentId: "appt_3",
+      serviceLabel: "Move-out clean",
+      customerLabel: "R. Patel",
+      dateRaw: "2026-06-14",
+      amountDollars: 65,
+      kind: "paid",
+    });
+    expect(rows[1].kind).toBe("bank_paid");
+    expect(rows[1].amountDollars).toBe(80);
+  });
+
+  it("falls back to paidAt then createdAt when the appointment is missing", () => {
+    const noAppt = deriveEarnings(
+      input({ paidPayouts: [paid({ appointment: null })] }),
+    ).paid[0];
+    expect(noAppt.dateRaw).toBe("2026-06-16T09:00:00.000Z");
+    expect(noAppt.serviceLabel).toBe("Cleaning");
+    expect(noAppt.customerLabel).toBe("Customer");
+
+    const bare = deriveEarnings(
+      input({ paidPayouts: [paid({ appointment: null, paidAt: null })] }),
+    ).paid[0];
+    expect(bare.dateRaw).toBe("2026-06-15T10:00:00.000Z");
+  });
+
+  it("is empty when there is no paid history", () => {
+    expect(deriveEarnings(input({ paidPayouts: [] })).paid).toEqual([]);
+    expect(deriveEarnings(input({ paidPayouts: undefined })).paid).toEqual([]);
+  });
+
+  it("never counts paid history toward owedDollars", () => {
+    const result = deriveEarnings(
+      input({
+        awaiting: [awaiting({ cleanerCut: 84 })],
+        heldPayouts: [held({ amount: 120 })],
+        paidPayouts: [paid({ amount: 500 })],
+      }),
+    );
+    expect(result.owedDollars).toBe(204);
   });
 });
 
