@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import imageCompression from "browser-image-compression";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
@@ -11,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { deriveBrandRamp, rampToCssVars } from "@/lib/branding/palette";
 import { NEXXUS_BRAND_HEX } from "@/lib/branding/tokens";
 import { trimLogoWhitespace } from "@/lib/branding/trimLogo";
+import { markBrandingVisited } from "@/lib/onboarding/onboardingFlags";
+import { keys } from "@/lib/queryKeys";
 import { updateOrgBranding } from "../settings-api";
 import { useSettingsSection } from "../useSettingsSection";
 import { SettingRow, SectionHeader, SectionSkeleton } from "../SettingRow";
@@ -43,7 +46,21 @@ const SLOT_LABEL: Record<LogoSlot, string> = {
 };
 
 export function BrandingSection() {
-  const { currentOrganizationId, refreshOrganization } = useAuth();
+  const { currentOrganizationId, refreshOrganization, accessToken } = useAuth();
+  const qc = useQueryClient();
+
+  // Seeing this section completes the setup checklist's branding step (it is
+  // visit-driven: keeping the default look is a valid choice). Server-side the
+  // stamp is first-visit-only, so repeat mounts are no-ops. Best-effort.
+  const visitMarkedRef = useRef(false);
+  useEffect(() => {
+    if (visitMarkedRef.current || !currentOrganizationId || !accessToken) return;
+    visitMarkedRef.current = true;
+    const orgId = currentOrganizationId;
+    void markBrandingVisited(orgId, accessToken)
+      .then(() => qc.invalidateQueries({ queryKey: keys.onboarding.operator(orgId) }))
+      .catch(() => {});
+  }, [currentOrganizationId, accessToken, qc]);
 
   // The PERSISTED logo urls, so upload cleanup can tell a staged (unsaved)
   // object apart from one the org row actually references.
