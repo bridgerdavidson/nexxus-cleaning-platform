@@ -45,7 +45,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           buttonVariants({ variant, size, className }),
           // Loading is a busy state, not a dead control: keep the button's normal
           // look (override the disabled dim) and let the spinner carry the signal.
-          loading && 'relative disabled:opacity-100',
+          // Under reduced motion the arc doesn't spin, so restore a light dim as
+          // the non-motion busy affordance.
+          loading && 'relative disabled:opacity-100 motion-reduce:disabled:opacity-60',
         )}
         ref={ref}
         disabled={disabled || loading}
@@ -61,7 +63,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                 tree, just visually hidden. Never render the spinner NEXT TO the
                 children: buttons with a leading icon would show two icons. */}
             <span aria-hidden className="absolute inset-0 grid place-items-center">
-              <Loader2 className="size-5 animate-spin" />
+              {/* Scale with the button so small/icon sizes don't overflow. */}
+              <Loader2 className={cn('animate-spin', size === 'sm' ? 'size-4' : 'size-5')} />
             </span>
             <span className="inline-flex items-center gap-2 opacity-0 [&_svg]:size-5 [&_svg]:shrink-0">
               {children}
