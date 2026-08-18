@@ -136,7 +136,7 @@ export function PricingSection() {
                   ))}
                 </ul>
                 <Button variant={tier.popular && !over ? 'default' : 'outline'} className="mt-6 w-full" asChild>
-                  <Link href="/get-started">Try it out</Link>
+                  <Link href="/login">Try it out</Link>
                 </Button>
               </Card>
             )

@@ -43,7 +43,7 @@ export function MarketingNav() {
             <Link href="/login">Log in</Link>
           </Button>
           <Button size="sm" asChild>
-            <Link href="/get-started">Try it out</Link>
+            <Link href="/login">Try it out</Link>
           </Button>
         </div>
       </div>

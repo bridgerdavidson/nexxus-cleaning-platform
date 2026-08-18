@@ -6,7 +6,12 @@ import { useTheme } from "next-themes";
 import CleanerStripeConnect, { cleanerStatusKind } from "@/components/CleanerStripeConnect";
 import { useAuth } from "@/hooks/useAuth";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
-import { useCleanerAwaitingPayments, useCleanerHeldPayouts, useCleanerStats } from "@/hooks/useCleanerData";
+import {
+  useCleanerAwaitingPayments,
+  useCleanerHeldPayouts,
+  useCleanerPaidPayouts,
+  useCleanerStats,
+} from "@/hooks/useCleanerData";
 import { getRedesignConnectAppearance } from "@/lib/stripe/appearance";
 import { deriveEarnings, shouldReveal } from "./deriveEarnings";
 import { CleanerEarningsView } from "./CleanerEarningsView";
@@ -30,6 +35,7 @@ export function CleanerEarnings() {
     useStripeConnect();
   const { awaitingPayments: awaiting, error: awaitingError, refetch: refetchAwaiting } = useCleanerAwaitingPayments();
   const { heldPayouts, error: heldError, refetch: refetchHeld } = useCleanerHeldPayouts();
+  const { paidPayouts } = useCleanerPaidPayouts();
   const { stats, error: statsError, refetch: refetchStats } = useCleanerStats();
 
   const connectKind = cleanerStatusKind(connectStatus, statusLoading);
@@ -49,6 +55,7 @@ export function CleanerEarnings() {
     connectKind,
     awaiting,
     heldPayouts,
+    paidPayouts,
     stats,
   });
 

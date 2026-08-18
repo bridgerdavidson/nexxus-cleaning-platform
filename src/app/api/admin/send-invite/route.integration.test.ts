@@ -1,5 +1,15 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+
+// Unconfigured by default so every pre-existing test keeps the GoTrue
+// (inviteUserByEmail) delivery path; the org-branded describe at the bottom
+// flips emailConfigured per test to exercise the generateLink + sendEmail path.
+vi.mock('@/lib/email/sendEmail', () => ({
+  sendEmail: vi.fn(async () => undefined),
+  emailConfigured: vi.fn(() => false),
+}));
+
+import { sendEmail, emailConfigured } from '@/lib/email/sendEmail';
 import { POST } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import {
@@ -414,5 +424,120 @@ describe('POST /api/admin/send-invite (invite-carried manager permissions)', () 
       .eq('id', body.invite.id)
       .single();
     expect((invite as { manager_permissions: unknown }).manager_permissions).toBeNull();
+  });
+});
+
+/**
+ * Org-branded invite delivery (white-label sender): when SMTP is configured the
+ * route must mint the action link itself (generateLink) and send through the
+ * app transport with the org's name as the sender, never GoTrue's mailer. When
+ * the send fails after the link was minted, the invite row must flip to
+ * 'failed' exactly like a GoTrue send failure.
+ */
+describe('POST /api/admin/send-invite (org-branded delivery)', () => {
+  let org: TestOrgFixture | null = null;
+  let owner: OwnerMemberHandle | null = null;
+
+  const ACTION_LINK =
+    'http://127.0.0.1:54321/auth/v1/verify?token=tok123&type=invite&redirect_to=http%3A%2F%2Flocalhost%3A3000%2Faccept-invite%3Finvite_id%3Dabc';
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.mocked(emailConfigured).mockReturnValue(false);
+    await owner?.cleanup();
+    await org?.cleanup();
+    org = null;
+    owner = null;
+  });
+
+  it('sends via generateLink + org-named sender and never calls the GoTrue mailer', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    vi.mocked(emailConfigured).mockReturnValue(true);
+    vi.mocked(sendEmail).mockResolvedValue(undefined);
+    const generateLinkSpy = vi
+      .spyOn(supabaseAdmin.auth.admin, 'generateLink')
+       
+      .mockResolvedValue({
+        data: { properties: { action_link: ACTION_LINK }, user: { id: 'usr_mock' } },
+        error: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+    const inviteByEmailSpy = vi.spyOn(supabaseAdmin.auth.admin, 'inviteUserByEmail');
+
+    const email = `branded-${randomUUID().slice(0, 8)}@test.local`;
+    const { status, body } = await callRoute<{ success: boolean; invite: { id: string; status: string } }>(
+      POST,
+      {
+        method: 'POST',
+        headers: bearerHeader(owner.accessToken),
+        body: { email, role: 'cleaner', organizationId: org.organizationId },
+      },
+    );
+
+    expect(status).toBe(200);
+    expect(body.invite.status).toBe('pending');
+    expect(inviteByEmailSpy).not.toHaveBeenCalled();
+
+    // The minted link targets this invite's accept page.
+    expect(generateLinkSpy).toHaveBeenCalledTimes(1);
+    const linkArgs = generateLinkSpy.mock.calls[0][0] as {
+      type: string;
+      email: string;
+      options?: { redirectTo?: string };
+    };
+    expect(linkArgs.type).toBe('invite');
+    expect(linkArgs.email).toBe(email);
+    expect(linkArgs.options?.redirectTo).toContain(`/accept-invite?invite_id=${body.invite.id}`);
+
+    // The email went out through the branded transport: org name as the sender
+    // display name and in the subject, the action link in the body.
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    const db = createTestSupabaseClient();
+    const { data: orgRow } = await db
+      .from('organizations')
+      .select('name')
+      .eq('id', org.organizationId)
+      .single();
+    const orgName = (orgRow as { name: string }).name;
+    expect(sent.to).toBe(email);
+    expect(sent.fromName).toBe(orgName);
+    expect(sent.subject).toContain(orgName);
+    expect(sent.html).toContain('/auth/v1/verify');
+    expect(sent.text).toContain(ACTION_LINK);
+  });
+
+  it('marks the invite failed and 500s when the branded send fails after link minting', async () => {
+    org = await withTestOrg();
+    owner = await addOwnerToOrg(org.organizationId);
+    vi.mocked(emailConfigured).mockReturnValue(true);
+    vi.mocked(sendEmail).mockRejectedValue(new Error('smtp down'));
+    vi.spyOn(supabaseAdmin.auth.admin, 'generateLink')
+       
+      .mockResolvedValue({
+        data: { properties: { action_link: ACTION_LINK }, user: { id: 'usr_mock' } },
+        error: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+    const email = `branded-fail-${randomUUID().slice(0, 8)}@test.local`;
+    const { status, body } = await callRoute<{ success: boolean; error: string }>(POST, {
+      method: 'POST',
+      headers: bearerHeader(owner.accessToken),
+      body: { email, role: 'cleaner', organizationId: org.organizationId },
+    });
+
+    expect(status).toBe(500);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('smtp down');
+
+    const db = createTestSupabaseClient();
+    const { data: rows } = await db
+      .from('invites')
+      .select('status')
+      .eq('email', email)
+      .eq('organization_id', org.organizationId);
+    expect((rows ?? []).map((r) => (r as { status: string }).status)).toEqual(['failed']);
   });
 });

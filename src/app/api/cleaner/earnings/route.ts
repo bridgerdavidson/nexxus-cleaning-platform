@@ -20,6 +20,10 @@ export const runtime = 'nodejs';
  * - held: the cleaner's own payout rows not yet in their bank ("Hop 2").
  *   payouts.amount is already the cleaner's cut, safe to return as-is; only
  *   the appointment labels need the service role now.
+ * - paid: recent settled history (paid/bank_paid). Without this bucket the
+ *   happy path is invisible: a card payment is 'processing' for seconds and an
+ *   onboarded cleaner's payout is written straight to 'paid', so a cleaner
+ *   whose money always arrived on time saw "No earnings yet" forever.
  *
  * The customer charge amount never appears in the response.
  */
@@ -189,7 +193,41 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ awaiting, held: heldRows });
+    // ── Paid history: money already sent to the cleaner ─────────────────────
+    const { data: paid, error: paidError } = await supabaseAdmin
+      .from('payouts')
+      .select(
+        `id, amount, status, is_self_pay, created_at, paid_at, bank_paid_at,
+         appointment:appointments(
+           id, scheduled_date,
+           homeowner:user_profiles!homeowner_id(first_name, last_name),
+           service_type:service_types(name)
+         )`,
+      )
+      .eq('cleaner_id', auth.userId)
+      .eq('organization_id', organizationId!)
+      .in('status', ['paid', 'bank_paid'])
+      .order('created_at', { ascending: false })
+      .limit(25);
+    if (paidError) {
+      console.error('cleaner/earnings paid load failed:', paidError);
+      return NextResponse.json({ error: 'Could not load your earnings' }, { status: 500 });
+    }
+
+    const paidRows = ((paid ?? []) as unknown as Record<string, unknown>[]).map((p) => {
+      const appt = firstOf(p.appointment as Embed<ApptEmbed>);
+      const isSelfPay = Boolean(p.is_self_pay);
+      return {
+        id: p.id as string,
+        amount: Number(p.amount ?? 0),
+        status: p.status as 'paid' | 'bank_paid',
+        createdAt: p.created_at as string,
+        paidAt: (p.paid_at as string | null) ?? (p.bank_paid_at as string | null) ?? null,
+        appointment: apptLabel(appt, isSelfPay),
+      };
+    });
+
+    return NextResponse.json({ awaiting, held: heldRows, paid: paidRows });
   } catch (err) {
     console.error('cleaner/earnings failed:', err);
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });

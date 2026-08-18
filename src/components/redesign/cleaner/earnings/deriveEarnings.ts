@@ -1,6 +1,10 @@
 // src/components/redesign/cleaner/earnings/deriveEarnings.ts
 // React-free: no imports from any .tsx. Formatting happens in the View.
-import type { AwaitingPaymentRow, CleanerHeldPayoutRow } from "@/hooks/useCleanerData";
+import type {
+  AwaitingPaymentRow,
+  CleanerHeldPayoutRow,
+  CleanerPaidPayoutRow,
+} from "@/hooks/useCleanerData";
 import type {
   ClearingRow,
   ClearingSettleKind,
@@ -9,6 +13,7 @@ import type {
   EarningsData,
   HeldKind,
   HeldPayoutRow,
+  PaidPayoutRow,
 } from "./earnings-types";
 
 function settleKindFromMethod(method: string | null | undefined): ClearingSettleKind {
@@ -47,8 +52,21 @@ function toHeldRow(row: CleanerHeldPayoutRow): HeldPayoutRow {
   };
 }
 
+function toPaidRow(row: CleanerPaidPayoutRow): PaidPayoutRow {
+  return {
+    id: row.id,
+    appointmentId: row.appointment?.id ?? null,
+    serviceLabel: row.appointment?.serviceName ?? "Cleaning",
+    customerLabel: row.appointment?.homeownerName ?? "Customer",
+    dateRaw: row.appointment?.scheduledDate ?? row.paidAt ?? row.createdAt ?? null,
+    amountDollars: row.amount ?? 0,
+    kind: row.status,
+  };
+}
+
 export function deriveEarnings(input: DeriveEarningsInput): EarningsData {
-  const { stripeEnabled, payoutModel, connectKind, awaiting, heldPayouts, stats } = input;
+  const { stripeEnabled, payoutModel, connectKind, awaiting, heldPayouts, paidPayouts, stats } =
+    input;
 
   let mode: EarningsData["mode"];
   if (payoutModel === "hourly_external") mode = "employee";
@@ -57,9 +75,11 @@ export function deriveEarnings(input: DeriveEarningsInput): EarningsData {
 
   const clearing = (awaiting ?? []).map(toClearingRow);
   const held = (heldPayouts ?? []).map(toHeldRow);
+  const paid = (paidPayouts ?? []).map(toPaidRow);
 
   // Owed = everything earned but not yet received. Summed from the cleaner's OWN cut rows
   // (clearing cuts + held/failed payout amounts), never from the org-derived stats aggregates.
+  // Paid history is already received and never counts toward owed.
   const owedDollars =
     clearing.reduce((sum, r) => sum + (r.cutDollars || 0), 0) +
     held.reduce((sum, r) => sum + (r.amountDollars || 0), 0);
@@ -69,6 +89,7 @@ export function deriveEarnings(input: DeriveEarningsInput): EarningsData {
     connectKind,
     clearing,
     held,
+    paid,
     owedDollars,
     counts: {
       thisWeek: stats?.completedThisWeek ?? 0,

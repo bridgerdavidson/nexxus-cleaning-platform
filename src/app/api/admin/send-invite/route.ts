@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-admin';
 import { verifyAccessToken } from '../../../../lib/auth/verifyToken';
 import { coerceManagerPermissions } from '@/lib/permissions/managerFlags';
+import { deliverInviteEmail } from '@/lib/auth/inviteDelivery';
 
 export async function POST(request: NextRequest) {
   try {
@@ -260,16 +261,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Send the Supabase invite email ────────────────────────────────────────
+    // ── Create the invited user + send the invite email ───────────────────────
+    // Org-branded (sender name, color, logo) via our own transport when SMTP is
+    // configured; GoTrue's inviteUserByEmail otherwise. See inviteDelivery.ts.
     // Include invite_id in the redirect so the accept page can mark the
     // invite expired if the user clicks the email link a second time
     // (Supabase preserves query params on otp_expired error redirects too).
-    const { data: supabaseInvite, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-      normalizedEmail,
-      { redirectTo: `${process.env.APP_URL}/accept-invite?invite_id=${inviteData.id}` }
-    );
+    const delivery = await deliverInviteEmail({
+      email: normalizedEmail,
+      organizationId,
+      redirectTo: `${process.env.APP_URL}/accept-invite?invite_id=${inviteData.id}`,
+    });
 
-    if (inviteError || !supabaseInvite) {
+    if (!delivery.ok) {
       // Mark the row as failed so it doesn't block future invite attempts.
       await supabaseAdmin
         .from('invites')
@@ -279,7 +283,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to send invite: ' + (inviteError?.message ?? 'no invite data returned'),
+          error: 'Failed to send invite: ' + delivery.error,
         },
         { status: 500 }
       );

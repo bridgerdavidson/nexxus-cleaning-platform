@@ -29,7 +29,7 @@ export function HeroSection() {
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" asChild>
-              <Link href="/get-started">Try it out</Link>
+              <Link href="/login">Try it out</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <a href="#try-it">See the product</a>

@@ -19,6 +19,8 @@ import type {
   EarningsData,
   HeldKind,
   HeldPayoutRow,
+  PaidKind,
+  PaidPayoutRow,
 } from "./earnings-types";
 
 export interface CleanerEarningsViewProps {
@@ -127,15 +129,19 @@ export function CleanerEarningsView({
         />
       )}
 
-      {data.clearing.length > 0 ? (
+      {data.clearing.length > 0 && (
         <ClearingSection rows={data.clearing} todayStr={todayStr} setUp={setUp} />
-      ) : data.held.length === 0 && setUp ? (
+      )}
+
+      {data.paid.length > 0 && <PaidSection rows={data.paid} todayStr={todayStr} />}
+
+      {data.clearing.length === 0 && data.held.length === 0 && data.paid.length === 0 && (
         <EmptyState
           icon={<Wallet />}
           title="No earnings yet"
           description="Once you complete a job, your pay shows up here."
         />
-      ) : null}
+      )}
 
       <ActivityTiles counts={data.counts} />
     </div>
@@ -307,6 +313,49 @@ function PayoutBucketSection({
           })}
         </div>
         {footer ? <p className="px-4 py-3 text-xs text-muted-foreground">{footer}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Where the money is now. 'paid' = transfer sent, riding Stripe's payout schedule to the bank. */
+function paidReason(kind: PaidKind): string {
+  if (kind === "bank_paid") return "Deposited to your bank.";
+  return "On its way to your bank.";
+}
+
+function PaidSection({ rows, todayStr }: { rows: PaidPayoutRow[]; todayStr: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Paid to you</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-border">
+          {rows.map((r) => {
+            const dateLabel = r.dateRaw ? formatCardDate(r.dateRaw, todayStr) : null;
+            return (
+              <div key={r.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{r.serviceLabel}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {r.customerLabel}
+                      {dateLabel ? ` · ${dateLabel}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <PayoutStatusBadge badge="paid" />
+                    <span className="tabular-nums text-sm font-semibold text-foreground">
+                      {money2(r.amountDollars)}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{paidReason(r.kind)}</p>
+              </div>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );

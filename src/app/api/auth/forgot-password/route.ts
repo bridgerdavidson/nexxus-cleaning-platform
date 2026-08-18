@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { triggerPasswordReset } from '@/lib/auth/passwordReset';
-import { isAuthEmailSendFailure } from '@/lib/monitoring/authEmailHealth';
+import { deliverRecoveryEmail } from '@/lib/auth/recoveryDelivery';
 import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
 
 // Records platform alerts via the service-role admin client — server runtime required.
@@ -16,7 +15,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * than directly from the browser) so we can observe a send failure — e.g. the email
  * provider rejecting GoTrue's SMTP login — and page the PLATFORM OWNER, who is the
  * only one who can fix it. See migration 085 (platform_alerts), authEmailHealth.ts,
- * and platformAlert.ts.
+ * and platformAlert.ts. Delivery is org-branded when SMTP is configured
+ * (recoveryDelivery.ts): the sender shows the user's org, GoTrue's mailer is the
+ * fallback.
  *
  * Anti-enumeration: this ALWAYS returns { ok: true } regardless of whether the email
  * exists or the send succeeded. The end user can't act on a provider outage, and the
@@ -44,18 +45,18 @@ export async function POST(request: NextRequest) {
   const safeRedirect =
     typeof redirectTo === 'string' && redirectTo.length > 0 ? redirectTo : undefined;
 
-  const { error } = await triggerPasswordReset(trimmedEmail, safeRedirect);
+  const result = await deliverRecoveryEmail({ email: trimmedEmail, redirectTo: safeRedirect });
 
-  if (isAuthEmailSendFailure(error)) {
+  if (!result.ok) {
     await recordPlatformAlert(supabaseAdmin, {
       alert_type: 'auth_email_send_failure',
       severity: 'critical',
       summary: 'Password-recovery email failed to send (provider/SMTP error).',
       details: {
         email: trimmedEmail,
-        status: error?.status ?? null,
-        code: (error as { code?: string } | null)?.code ?? null,
-        message: error?.message ?? null,
+        status: result.failure.status,
+        code: result.failure.code,
+        message: result.failure.message,
         path: '/recover',
       },
     });
