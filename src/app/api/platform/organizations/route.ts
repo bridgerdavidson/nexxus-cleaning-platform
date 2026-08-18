@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requirePlatformAdmin } from '@/lib/auth/requirePlatformAdmin';
+import { deliverInviteEmail } from '@/lib/auth/inviteDelivery';
 import {
   EMPTY_MEMBER_COUNTS,
   type PlatformOrgMemberCounts,
@@ -158,16 +159,20 @@ export async function POST(request: NextRequest) {
   }
   const inviteId = (invite as { id: string }).id;
 
-  // 3. Send the Supabase invite email. redirectTo MUST use APP_URL (same as
-  //    send-invite) so the founder lands on /accept-invite for this invite.
-  const { error: sendError } = await supabaseAdmin.auth.admin.inviteUserByEmail(ownerEmail, {
+  // 3. Send the invite email, branded as the new org (org-name sender + colors
+  //    when SMTP is configured; GoTrue fallback otherwise, see inviteDelivery.ts).
+  //    redirectTo MUST use APP_URL (same as send-invite) so the founder lands on
+  //    /accept-invite for this invite.
+  const delivery = await deliverInviteEmail({
+    email: ownerEmail,
+    organizationId,
     redirectTo: `${process.env.APP_URL}/accept-invite?invite_id=${inviteId}`,
   });
 
-  if (sendError) {
+  if (!delivery.ok) {
     await supabaseAdmin.from('invites').update({ status: 'failed' }).eq('id', inviteId);
     return NextResponse.json(
-      { error: 'Organization created but invite email failed', details: sendError.message },
+      { error: 'Organization created but invite email failed', details: delivery.error },
       { status: 500 },
     );
   }
