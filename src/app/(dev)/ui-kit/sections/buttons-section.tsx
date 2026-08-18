@@ -24,6 +24,10 @@ export function ButtonsSection() {
       <Specimen label="States">
         <Button disabled>Disabled</Button>
         <Button loading>Saving</Button>
+        {/* Leading icon + loading: the spinner must OVERLAY (never sit beside the
+            icon) and the width must match the idle button exactly. */}
+        <Button loading><Plus /> Send invite</Button>
+        <Button><Plus /> Send invite</Button>
       </Specimen>
       <Specimen label="Icon buttons">
         <IconButton aria-label="Add"><Plus /></IconButton>

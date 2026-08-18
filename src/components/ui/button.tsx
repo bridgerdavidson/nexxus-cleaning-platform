@@ -41,7 +41,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : 'button'
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(
+          buttonVariants({ variant, size, className }),
+          // Loading is a busy state, not a dead control: keep the button's normal
+          // look (override the disabled dim) and let the spinner carry the signal.
+          loading && 'relative disabled:opacity-100',
+        )}
         ref={ref}
         disabled={disabled || loading}
         aria-busy={loading || undefined}
@@ -49,11 +54,21 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {asChild ? (
           children
-        ) : (
+        ) : loading ? (
           <>
-            {loading ? <Loader2 className="size-5 animate-spin" /> : null}
-            {children}
+            {/* Spinner overlays the centered content; the label stays in flow
+                (button width never changes, no layout jump) and in the a11y
+                tree, just visually hidden. Never render the spinner NEXT TO the
+                children: buttons with a leading icon would show two icons. */}
+            <span aria-hidden className="absolute inset-0 grid place-items-center">
+              <Loader2 className="size-5 animate-spin" />
+            </span>
+            <span className="inline-flex items-center gap-2 opacity-0 [&_svg]:size-5 [&_svg]:shrink-0">
+              {children}
+            </span>
           </>
+        ) : (
+          children
         )}
       </Comp>
     )
