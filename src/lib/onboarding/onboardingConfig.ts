@@ -17,6 +17,10 @@ const OPERATOR_PERCENTAGE: SetupStepDef[] = [
   { key: 'payments', title: 'Connect payments', description: 'So you can charge customers and pay your cleaners', required: true, ctaLabel: 'Connect', href: '/admin/settings?section=payments', completionKey: 'payments_connected' },
   { key: 'services', title: 'Add your services and pricing', description: 'Define what you offer and what it costs', required: true, ctaLabel: 'Add service', href: '/admin/services', completionKey: 'services_added' },
   { key: 'payout', title: 'Set cleaner pay', description: 'How your team gets paid, and the defaults for new cleaners', required: true, ctaLabel: 'Set pay', href: '/admin/settings?section=payout', completionKey: 'cleaner_pay_set' },
+  // Deliberately BEFORE the invite step: invite emails white-label from whatever
+  // branding exists at send time, so an unbranded org invites its team as plain
+  // Nexxus (Bridger's 2026-08-18 provisioning walkthrough finding).
+  { key: 'branding', title: 'Add your logo and brand color', description: 'Invites and emails to your team and customers carry your brand', required: true, ctaLabel: 'Set branding', href: '/admin/settings?section=branding', completionKey: 'branding_set' },
   { key: 'cleaners', title: 'Invite your cleaners', description: 'Build your team so you can assign jobs', required: true, ctaLabel: 'Invite', href: '/admin/cleaners', completionKey: 'cleaners_invited' },
   { key: 'hours', title: 'Set business hours and cancellation policy', description: 'When you work and your terms', required: false, ctaLabel: 'Set hours', href: '/admin/settings?section=business-hours', completionKey: 'hours_policy_set' },
 ];
