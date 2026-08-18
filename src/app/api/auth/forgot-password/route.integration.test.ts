@@ -7,9 +7,19 @@ vi.mock('@/lib/auth/passwordReset', () => ({
   triggerPasswordReset: vi.fn(async () => ({ error: null })),
 }));
 
+// Unconfigured by default so the pre-existing tests keep the GoTrue fallback
+// path; the org-branded describe at the bottom flips emailConfigured per test.
+vi.mock('@/lib/email/sendEmail', () => ({
+  sendEmail: vi.fn(async () => undefined),
+  emailConfigured: vi.fn(() => false),
+}));
+
 import { POST } from './route';
 import { triggerPasswordReset } from '@/lib/auth/passwordReset';
+import { sendEmail, emailConfigured } from '@/lib/email/sendEmail';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { callRoute } from '../../../../../tests/helpers/auth';
+import { withTestOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 const admin = createTestSupabaseClient();
@@ -128,5 +138,115 @@ describe('POST /api/auth/forgot-password', () => {
     const alerts = await openAlerts();
     expect(alerts).toHaveLength(1);
     expect(alerts[0].occurrences).toBe(2);
+  });
+});
+
+/**
+ * Org-branded recovery delivery: with SMTP configured the route must mint the
+ * link via generateLink and send through the app transport with the user's org
+ * as the sender, never GoTrue's mailer. Anti-enumeration and the alerting
+ * contract must survive the new path.
+ */
+describe('POST /api/auth/forgot-password (org-branded delivery)', () => {
+  let org: TestOrgFixture | null = null;
+
+  const ACTION_LINK =
+    'http://127.0.0.1:54321/auth/v1/verify?token=tok&type=recovery&redirect_to=http%3A%2F%2Flocalhost%3A3000%2Freset-password';
+
+  beforeEach(async () => {
+    await clearAlerts();
+    vi.mocked(triggerPasswordReset).mockReset();
+    vi.mocked(sendEmail).mockReset();
+    vi.mocked(sendEmail).mockResolvedValue(undefined);
+    vi.mocked(emailConfigured).mockReturnValue(true);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.mocked(emailConfigured).mockReturnValue(false);
+    await org?.cleanup();
+    org = null;
+    await clearAlerts();
+  });
+
+  it("sends via generateLink with the user's org as sender; GoTrue trigger never called", async () => {
+    org = await withTestOrg();
+    vi.spyOn(supabaseAdmin.auth.admin, 'generateLink')
+       
+      .mockResolvedValue({
+        data: { properties: { action_link: ACTION_LINK }, user: { id: org.cleaner.userId } },
+        error: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+    const { status, body } = await callRoute<{ ok: boolean }>(POST, {
+      method: 'POST',
+      body: { email: org.cleaner.email, redirectTo: 'http://localhost:3000/reset-password' },
+    });
+
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(triggerPasswordReset).not.toHaveBeenCalled();
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+
+    const sent = vi.mocked(sendEmail).mock.calls[0][0];
+    const { data: orgRow } = await admin
+      .from('organizations')
+      .select('name')
+      .eq('id', org.organizationId)
+      .single();
+    const orgName = (orgRow as { name: string }).name;
+    expect(sent.to).toBe(org.cleaner.email);
+    expect(sent.fromName).toBe(orgName);
+    expect(sent.subject).toBe('Reset your password');
+    expect(sent.html).toContain(orgName);
+    expect(sent.text).toContain(ACTION_LINK);
+    expect(await openAlerts()).toHaveLength(0);
+  });
+
+  it('stays silent for an unknown email (anti-enumeration): generic ok, no send, no alert', async () => {
+    vi.spyOn(supabaseAdmin.auth.admin, 'generateLink')
+       
+      .mockResolvedValue({
+        data: { properties: null, user: null },
+        error: { status: 404, code: 'user_not_found', message: 'User not found', name: 'AuthApiError' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+    const { status, body } = await callRoute<{ ok: boolean }>(POST, {
+      method: 'POST',
+      body: { email: 'nobody@example.com', redirectTo: 'http://localhost:3000/reset-password' },
+    });
+
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(await openAlerts()).toHaveLength(0);
+  });
+
+  it('records a platform alert when the branded send fails, response stays generic ok', async () => {
+    org = await withTestOrg();
+    vi.spyOn(supabaseAdmin.auth.admin, 'generateLink')
+       
+      .mockResolvedValue({
+        data: { properties: { action_link: ACTION_LINK }, user: { id: org.cleaner.userId } },
+        error: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+    vi.mocked(sendEmail).mockRejectedValue(new Error('smtp down'));
+
+    const { status, body } = await callRoute<{ ok: boolean }>(POST, {
+      method: 'POST',
+      body: { email: org.cleaner.email, redirectTo: 'http://localhost:3000/reset-password' },
+    });
+
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+
+    const alerts = await openAlerts();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe('critical');
+    expect(alerts[0].details.code).toBe('smtp_send_failed');
+    expect(alerts[0].details.message).toBe('smtp down');
   });
 });
