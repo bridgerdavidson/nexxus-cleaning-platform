@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getDashboardPath } from "@/lib/redesign/dashboardPath";
 
-type PageState = "loading" | "valid" | "expired" | "invalid";
+type PageState = "loading" | "confirm" | "valid" | "expired" | "invalid";
 
 interface InvitePreview {
   id: string;
@@ -39,6 +39,8 @@ function AcceptInviteContent() {
   const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [accessToken, setAccessToken] = useState("");
+  const [inviteId, setInviteId] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -64,6 +66,7 @@ function AcceptInviteContent() {
     // included it in redirect_to when sending the invite.
     const queryParams = new URLSearchParams(window.location.search);
     const inviteIdFromQuery = queryParams.get("invite_id");
+    setInviteId(inviteIdFromQuery);
 
     if (hashError) {
       handled = true;
@@ -160,9 +163,17 @@ function AcceptInviteContent() {
     });
 
     // Fast-path: if the session is already present (e.g. page reload after exchange).
+    // Otherwise: emailed invites now land here with ONLY an invite_id (no token
+    // anywhere in the URL, so a mail scanner's GET has nothing to consume) and
+    // wait on the Continue button, which claims a fresh token via
+    // /api/accept-invite/claim. The legacy action-link flow (hash tokens,
+    // handled by detectSessionInUrl above) keeps working for already-sent
+    // emails and the no-SMTP dev fallback.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         processSession(session);
+      } else if (!handled && inviteIdFromQuery && !window.location.hash.includes("access_token")) {
+        setPageState("confirm");
       }
     });
 
@@ -183,6 +194,53 @@ function AcceptInviteContent() {
     window.addEventListener("pagehide", handlePageHide);
     return () => window.removeEventListener("pagehide", handlePageHide);
   }, [pageState, invitePreview?.id]);
+
+  // Continue button: claim a token minted right now (so it can never have
+  // aged out), then verify it. Verification only ever runs from this explicit
+  // click, which is what keeps scanner prefetch from burning anything.
+  const handleContinue = async () => {
+    if (!inviteId || verifying) return;
+    setVerifying(true);
+    try {
+      const res = await fetch("/api/accept-invite/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId }),
+      });
+      const result = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        status?: string;
+        message?: string;
+        tokenHash?: string;
+        verificationType?: "invite" | "magiclink";
+      };
+
+      if (!result.success || !result.tokenHash) {
+        setPageError(result.message || "This invite link is invalid or has already been used.");
+        setPageState(result.status === "expired" ? "expired" : "invalid");
+        setVerifying(false);
+        return;
+      }
+
+      const { error } = await supabase.auth.verifyOtp({
+        type: result.verificationType ?? "invite",
+        token_hash: result.tokenHash,
+      });
+      if (error) {
+        setPageError("Could not verify your invite. Please try again or ask an admin to resend it.");
+        setPageState("invalid");
+        setVerifying(false);
+        return;
+      }
+      // Success: the SIGNED_IN listener above takes over (preview + form).
+      // Deliberately stay in the loading state until that flips pageState;
+      // resetting here would re-arm the button during the preview fetch.
+    } catch {
+      setPageError("An unexpected error occurred. Please try again.");
+      setPageState("invalid");
+      setVerifying(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,6 +322,27 @@ function AcceptInviteContent() {
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <Loader2 className="size-8 animate-spin text-brand-ink" />
           <p className="text-sm font-medium text-muted-foreground">Verifying your invite...</p>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  // ── Confirm state — explicit click before any token is spent ──────────────
+  if (pageState === "confirm") {
+    return (
+      <AuthShell {...INVITE_PANEL}>
+        <div className="flex flex-col items-center gap-4 py-2 text-center">
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight text-foreground">
+              You&apos;re invited
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Continue to set up your account and join the team.
+            </p>
+          </div>
+          <Button size="lg" className="w-full" loading={verifying} onClick={handleContinue}>
+            Continue
+          </Button>
         </div>
       </AuthShell>
     );

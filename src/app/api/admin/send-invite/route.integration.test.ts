@@ -429,10 +429,11 @@ describe('POST /api/admin/send-invite (invite-carried manager permissions)', () 
 
 /**
  * Org-branded invite delivery (white-label sender): when SMTP is configured the
- * route must mint the action link itself (generateLink) and send through the
- * app transport with the org's name as the sender, never GoTrue's mailer. When
- * the send fails after the link was minted, the invite row must flip to
- * 'failed' exactly like a GoTrue send failure.
+ * route must create the user itself (generateLink, which sends nothing) and
+ * send through the app transport with the org's name as the sender, never
+ * GoTrue's mailer. The emailed URL is the accept page, never the consumable
+ * action link. When the send fails after the user was created, the invite row
+ * must flip to 'failed' exactly like a GoTrue send failure.
  */
 describe('POST /api/admin/send-invite (org-branded delivery)', () => {
   let org: TestOrgFixture | null = null;
@@ -491,7 +492,8 @@ describe('POST /api/admin/send-invite (org-branded delivery)', () => {
     expect(linkArgs.options?.redirectTo).toContain(`/accept-invite?invite_id=${body.invite.id}`);
 
     // The email went out through the branded transport: org name as the sender
-    // display name and in the subject, the action link in the body.
+    // display name and in the subject. The body carries OUR accept page URL,
+    // never the consumable GoTrue action link (scanner-prefetch burn, 2026-08-18).
     expect(sendEmail).toHaveBeenCalledTimes(1);
     const sent = vi.mocked(sendEmail).mock.calls[0][0];
     const db = createTestSupabaseClient();
@@ -504,8 +506,10 @@ describe('POST /api/admin/send-invite (org-branded delivery)', () => {
     expect(sent.to).toBe(email);
     expect(sent.fromName).toBe(orgName);
     expect(sent.subject).toContain(orgName);
-    expect(sent.html).toContain('/auth/v1/verify');
-    expect(sent.text).toContain(ACTION_LINK);
+    expect(sent.html).toContain(`/accept-invite?invite_id=${body.invite.id}`);
+    expect(sent.text).toContain(`/accept-invite?invite_id=${body.invite.id}`);
+    expect(sent.html).not.toContain('/auth/v1/verify');
+    expect(sent.text).not.toContain(ACTION_LINK);
   });
 
   it('marks the invite failed and 500s when the branded send fails after link minting', async () => {
