@@ -58,43 +58,4 @@ describe('PATCH /api/organizations/:orgId/onboarding', () => {
     expect(status).toBe(400);
   });
 
-  it('mark_branding_visited stamps branding_visited_at once and keeps the first timestamp', async () => {
-    const first = await callRoute<{ success: boolean }>(handlerFor(org.organizationId), {
-      method: 'PATCH',
-      headers: bearerHeader(org.admin.accessToken),
-      body: { mark_branding_visited: true },
-    });
-    expect(first.status).toBe(200);
-    expect(first.body.success).toBe(true);
-
-    const db = createTestSupabaseClient();
-    const read = async () => {
-      const { data } = await db
-        .from('organizations')
-        .select('branding_visited_at')
-        .eq('id', org.organizationId)
-        .single();
-      return (data as { branding_visited_at: string | null }).branding_visited_at;
-    };
-    const stamped = await read();
-    expect(stamped).not.toBeNull();
-
-    // Second visit is a server-side no-op: same timestamp, still 200.
-    const again = await callRoute<{ success: boolean }>(handlerFor(org.organizationId), {
-      method: 'PATCH',
-      headers: bearerHeader(org.admin.accessToken),
-      body: { mark_branding_visited: true },
-    });
-    expect(again.status).toBe(200);
-    expect(await read()).toBe(stamped);
-  });
-
-  it('rejects a cleaner marking branding visited (403)', async () => {
-    const { status } = await callRoute(handlerFor(org.organizationId), {
-      method: 'PATCH',
-      headers: bearerHeader(org.cleaner.accessToken),
-      body: { mark_branding_visited: true },
-    });
-    expect(status).toBe(403);
-  });
 });

@@ -72,6 +72,21 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
     expect(res.status).toBe(200);
   });
 
+  it('any successful save stamps branding_confirmed_at (completes the setup step) without bumping brand_updated_at on a name-only save', async () => {
+    const res = await patch({ name: 'Sparkle Cleaning Co' }, owner.accessToken);
+    expect(res.status).toBe(200);
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('organizations')
+      .select('branding_confirmed_at, brand_updated_at')
+      .eq('id', org.organizationId)
+      .single();
+    const row = data as { branding_confirmed_at: string | null; brand_updated_at: string | null };
+    expect(row.branding_confirmed_at).not.toBeNull();
+    expect(row.brand_updated_at).toBeNull();
+  });
+
   it('rejects a non-hex brand color', async () => {
     for (const bad of ['blue', '#12345', '#B5179E00', 'B5179E']) {
       const res = await patch({ brand_color: bad }, owner.accessToken);
