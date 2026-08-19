@@ -596,7 +596,9 @@ export function useChecklist({ checklistId, serviceTypeId }: UseChecklistArgs) {
           .from('checklists')
           .select('id, name, service_type_id')
           .eq('service_type_id', serviceTypeId)
-          .order('name', { ascending: true })
+          // First tier in the locked canonical order (cheapest, then oldest;
+          // matches compareChecklists), so this fallback agrees with the UI.
+          .order('price_adder', { ascending: true })
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
