@@ -16,7 +16,6 @@ export async function PATCH(
 
     const body = (await request.json().catch(() => ({}))) as {
       dismiss_setup_checklist?: boolean;
-      mark_branding_visited?: boolean;
     };
 
     if (body.dismiss_setup_checklist === true) {
@@ -30,22 +29,8 @@ export async function PATCH(
       return NextResponse.json({ success: true });
     }
 
-    if (body.mark_branding_visited === true) {
-      // First visit wins: the timestamp records when they first saw the
-      // branding section, so repeat visits are a no-op (0 rows is success).
-      const { error } = await supabaseAdmin
-        .from('organizations')
-        .update({ branding_visited_at: new Date().toISOString() })
-        .eq('id', orgId)
-        .is('branding_visited_at', null);
-      if (error) {
-        return NextResponse.json({ error: 'Failed to mark branding visited', details: error.message }, { status: 500 });
-      }
-      return NextResponse.json({ success: true });
-    }
-
     return NextResponse.json(
-      { error: 'dismiss_setup_checklist or mark_branding_visited must be true' },
+      { error: 'dismiss_setup_checklist must be true' },
       { status: 400 },
     );
   } catch (error) {

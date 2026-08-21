@@ -43,7 +43,7 @@ export function useOperatorOnboarding(): OnboardingState {
       const [orgRes, svcRes, cleanerRes] = await Promise.all([
         supabase
           .from('organizations')
-          .select('stripe_connect_charges_enabled, default_payout_model, payout_configured_at, hours_policy_configured_at, setup_checklist_dismissed_at, branding_visited_at, brand_color, logo_icon_url')
+          .select('stripe_connect_charges_enabled, default_payout_model, payout_configured_at, hours_policy_configured_at, setup_checklist_dismissed_at, branding_confirmed_at, brand_color, logo_icon_url')
           .eq('id', orgId as string)
           .maybeSingle(),
         supabase.from('service_types').select('id', { count: 'exact', head: true }).eq('organization_id', orgId as string),
@@ -55,7 +55,7 @@ export function useOperatorOnboarding(): OnboardingState {
         payout_configured_at?: string | null;
         hours_policy_configured_at?: string | null;
         setup_checklist_dismissed_at?: string | null;
-        branding_visited_at?: string | null;
+        branding_confirmed_at?: string | null;
         brand_color?: string | null;
         logo_icon_url?: string | null;
       };
@@ -65,10 +65,10 @@ export function useOperatorOnboarding(): OnboardingState {
         payoutConfigured: !!org.payout_configured_at,
         hoursConfigured: !!org.hours_policy_configured_at,
         orgDismissed: !!org.setup_checklist_dismissed_at,
-        // Visit-driven (BrandingSection stamps branding_visited_at on mount;
-        // keeping the default look is a valid choice). The data signals cover
-        // orgs that branded themselves before the visit flag existed.
-        brandingSet: !!org.branding_visited_at || !!org.brand_color || !!org.logo_icon_url,
+        // Confirm-or-save driven (any branding save stamps the flag; "Looks
+        // good" keeps the defaults and is also a save). The data signals cover
+        // orgs that branded themselves before the confirm flag existed.
+        brandingSet: !!org.branding_confirmed_at || !!org.brand_color || !!org.logo_icon_url,
         serviceCount: svcRes.count ?? 0,
         cleanerCount: cleanerRes.count ?? 0,
       };

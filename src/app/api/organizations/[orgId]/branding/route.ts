@@ -129,6 +129,11 @@ export async function PATCH(
     ].some((f) => f in update);
     if (touchesBrandAssets) update.brand_updated_at = new Date().toISOString();
 
+    // Any successful branding save counts as confirming the branding setup
+    // step, "Looks good" keep-the-defaults saves included (mirrors how the
+    // cleaner-payouts route stamps payout_configured_at on every save).
+    update.branding_confirmed_at = new Date().toISOString();
+
     const { error } = await supabaseAdmin.from('organizations').update(update).eq('id', orgId);
     if (error) {
       return NextResponse.json(

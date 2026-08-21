@@ -1,0 +1,13 @@
+-- Setup-checklist "Add your logo and brand color" step becomes REQUIRED and
+-- confirm-or-save driven, mirroring payout_configured_at: any successful save
+-- in the branding settings section stamps this, including the explicit
+-- "Looks good" keep-the-defaults confirm. Restamping on later saves is fine;
+-- the checklist only cares that it is non-null.
+--
+-- Deliberately NOT backfilled from branding_visited_at (the visit-driven flag
+-- this replaces, shipped in #262): a mere visit is not a confirm, which is the
+-- whole point of the change. Orgs that actually branded themselves are covered
+-- by the brand_color / logo_icon_url fallback signals in the checklist hook.
+-- branding_visited_at stays for now; drop it in a later cleanup once no
+-- deployed code reads or writes it.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS branding_confirmed_at timestamptz;
