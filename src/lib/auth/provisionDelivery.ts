@@ -15,9 +15,11 @@ export type OwnerProvisionDeliveryResult = { ok: true } | { ok: false; error: st
  * (src/lib/email/templates/ownerProvisionEmail.ts).
  *
  * Mechanics mirror inviteDelivery.ts exactly:
- * - With SMTP: admin.generateLink({ type: 'invite' }) creates the user and
- *   mints the action link without sending, then the Brevo transport sends
- *   with fromName 'Nexxus'.
+ * - With SMTP: admin.generateLink({ type: 'invite' }) creates the user without
+ *   sending anything, then the Brevo transport sends with fromName 'Nexxus'.
+ *   The emailed URL is redirectTo itself (never the consumable action link;
+ *   see inviteDelivery.ts for the scanner-prefetch rationale). The accept page
+ *   mints a fresh token via /api/accept-invite/claim on the button click.
  * - Without SMTP: fall back to GoTrue's inviteUserByEmail so provisioning
  *   still works (platform-branded via the project's auth SMTP).
  * - Both paths leave identical auth state. If the send fails AFTER
@@ -48,15 +50,14 @@ export async function deliverOwnerProvisionEmail({
     email,
     options: { redirectTo },
   });
-  const actionLink = linkData?.properties?.action_link;
-  if (linkError || !actionLink) {
-    return { ok: false, error: linkError?.message ?? 'no invite link returned' };
+  if (linkError || !linkData?.user) {
+    return { ok: false, error: linkError?.message ?? 'no invite data returned' };
   }
 
   try {
     const assetBaseUrl =
       (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? '').trim() || null;
-    const message = ownerProvisionEmail({ orgName, url: actionLink, assetBaseUrl });
+    const message = ownerProvisionEmail({ orgName, url: redirectTo, assetBaseUrl });
     await sendEmail({ to: email, fromName: 'Nexxus', ...message });
     return { ok: true };
   } catch (err) {
