@@ -1,4 +1,5 @@
 import type { ServiceSort, ServiceStatusFilter } from "./services-types";
+import { compareChecklists, type ChecklistOrderKey } from "@/lib/checklistOrder";
 
 // Pure formatting + filter/sort for the Operator Services screen. No React or
 // data-layer dependency, so it is unit-tested in isolation. Generic over the
@@ -80,17 +81,7 @@ export function sortServices<T extends ServiceLike>(list: T[], sort: ServiceSort
   return copy;
 }
 
-type ChecklistLike = { name: string; position?: number | null };
-
-/** position asc (nulls last) then name. Returns a NEW array. */
-export function sortChecklists<T extends ChecklistLike>(list: T[]): T[] {
-  return [...list].sort((a, b) => {
-    const ap = a.position ?? null;
-    const bp = b.position ?? null;
-    if (ap === null && bp === null) return a.name.localeCompare(b.name);
-    if (ap === null) return 1;
-    if (bp === null) return -1;
-    if (ap !== bp) return ap - bp;
-    return a.name.localeCompare(b.name);
-  });
+/** Locked canonical tier order (cheapest first; see compareChecklists). Returns a NEW array. */
+export function sortChecklists<T extends ChecklistOrderKey>(list: T[]): T[] {
+  return [...list].sort(compareChecklists);
 }

@@ -17,7 +17,6 @@ export type ServiceDetailHandlers = {
   onToggleActive: (next: boolean) => void;
   onDuplicateService: () => void;
   onDeleteService: () => void;
-  onReorderChecklists: (orderedIds: string[]) => void;
   onAddChecklist: () => void;
   onAddTasks: (checklistId: string, raw: string) => void;
   onSaveTask: (taskId: string, task: string) => void;
@@ -104,7 +103,6 @@ export function ServiceDetailPane({
         <ChecklistsEditor
           checklists={checklists}
           canManage={canManage}
-          onReorderChecklists={h.onReorderChecklists}
           onAddChecklist={h.onAddChecklist}
           onAddTasks={h.onAddTasks}
           onSaveTask={h.onSaveTask}
