@@ -26,10 +26,10 @@ Fits invite-only IF gated by org membership. Design:
 
 ### 2. Invite / email reliability
 - "Link expires in X hours" countdown on `/accept-invite`.
-- Explicit **verify-on-click** (button) rather than implicit verify on page load , further defangs Safe-Links prefetch.
+- ~~Explicit **verify-on-click** (button) rather than implicit verify on page load , further defangs Safe-Links prefetch.~~ **SHIPPED 2026-08-18** (pilot bug): invite emails now carry only the invite id; `/api/accept-invite/claim` mints a fresh token on the Continue click.
 - Admin **"extend expiry"** action on the Invites page (+7 days) instead of delete + resend.
 - **Auto-retry** failed invite emails (background job, exponential backoff 5m/15m/1h) instead of manual resend only.
-- Consider a longer OTP lifetime for invite links (24-48h) so a slow form-fill doesn't expire.
+- ~~Consider a longer OTP lifetime for invite links (24-48h) so a slow form-fill doesn't expire.~~ Superseded by claim-at-click (same 2026-08-18 change): the token is minted seconds before use, so the emailed link lives the invite row's full 7 days regardless of OTP lifetime. Password-reset links still verify on page load and remain prefetch-burnable; same claim pattern is the fix when it bites.
 
 ### 3. MFA / 2FA (TOTP) for owners + platform admins
 Supabase built-in TOTP. Optional for org owners/admins, graduating to mandatory for platform admins. Strongest "official" signal for high-value accounts. Moderate effort.

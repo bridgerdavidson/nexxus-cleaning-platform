@@ -212,13 +212,16 @@ describe('POST /api/platform/organizations (provision tenant)', () => {
     expect(inviteSpy).not.toHaveBeenCalled();
 
     // Platform voice: sender name is Nexxus, subject grants the owner account.
+    // The body carries OUR accept page URL, never the consumable GoTrue action
+    // link (scanner-prefetch burn, 2026-08-18).
     expect(sendEmail).toHaveBeenCalledTimes(1);
     const sent = vi.mocked(sendEmail).mock.calls[0][0];
     expect(sent.to).toBe(ownerEmail);
     expect(sent.fromName).toBe('Nexxus');
     expect(sent.subject).toBe('Your owner account for Acme Cleaning is ready');
     expect(sent.html).toContain('Welcome, owner.');
-    expect(sent.html).toContain('https://xyz.supabase.co/auth/v1/verify?token=t&amp;type=invite');
+    expect(sent.html).toContain(`/accept-invite?invite_id=${body.invite.id}`);
+    expect(sent.html).not.toContain('/auth/v1/verify');
   });
 
   it('marks the invite failed and 500s when the branded send fails', async () => {

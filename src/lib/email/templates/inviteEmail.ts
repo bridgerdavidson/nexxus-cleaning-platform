@@ -40,7 +40,9 @@ function channelsToHex(channels: string): string {
 export interface InviteEmailInput {
   /** The inviting org's name (the actor throughout; "Nexxus" is only the platform). */
   orgName: string;
-  /** GoTrue action link (…/auth/v1/verify?…), minted server-side via generateLink. */
+  /** The accept-invite page URL (APP_URL/accept-invite?invite_id=…). Never a
+   * consumable GoTrue action link: scanners GET emailed URLs, and a GET on the
+   * single-use link burned it before the human clicked (2026-08-18 pilot bug). */
   url: string;
   /** The org's brand hex (organizations.brand_color); null/invalid = Nexxus blue. */
   brandColor?: string | null;
