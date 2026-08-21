@@ -88,11 +88,11 @@ describe("sortServices", () => {
 });
 
 describe("sortChecklists", () => {
-  it("orders by position (nulls last) then name", () => {
+  it("orders by price (cheapest first), price ties by creation order; names never matter", () => {
     const cls = [
-      { id: "1", name: "Zeta", position: null },
-      { id: "2", name: "Beta", position: 1 },
-      { id: "3", name: "Alpha", position: 0 },
+      { id: "1", name: "Alpha", price_adder: 40, created_at: "2026-01-01T00:00:00Z" },
+      { id: "2", name: "Zeta", price_adder: 0, created_at: "2026-01-02T00:00:00Z" },
+      { id: "3", name: "Beta", price_adder: 0, created_at: "2026-01-01T00:00:00Z" },
     ];
     expect(sortChecklists(cls).map((c) => c.id)).toEqual(["3", "2", "1"]);
   });

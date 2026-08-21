@@ -3,12 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { replaceSearchShallow } from "@/lib/shallowSearch";
-import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
-import { keys } from "@/lib/queryKeys";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   useServices,
@@ -31,8 +29,6 @@ import {
   updateLineItem,
   deleteLineItem,
   reorderLineItems,
-  reorderChecklists,
-  type ChecklistWithItems,
   type ChecklistLineItem,
 } from "@/hooks/useChecklists";
 import {
@@ -129,7 +125,6 @@ export function OperatorServices() {
 function OperatorServicesData({ canManage }: { canManage: boolean }) {
   const { currentOrganizationId } = useAuth();
   const orgId = currentOrganizationId ?? "";
-  const queryClient = useQueryClient();
 
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -500,35 +495,12 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     [checklists, applyLineItemsReordered, refetchChecklists],
   );
 
-  const handleReorderChecklists = useCallback(
-    async (orderedIds: string[]) => {
-      if (!selectedId) return;
-      const key = keys.checklists.byServiceType(selectedId);
-      const prev = queryClient.getQueryData<ChecklistWithItems[]>(key);
-      if (prev) {
-        const byId = new Map(prev.map((c) => [c.id, c]));
-        const reordered: ChecklistWithItems[] = orderedIds
-          .map((id) => byId.get(id))
-          .filter((c): c is ChecklistWithItems => c !== undefined)
-          .map((c, idx) => ({ ...c, position: idx }));
-        queryClient.setQueryData(key, reordered);
-      }
-      const r = await reorderChecklists(selectedId, orderedIds);
-      if (!r.success) {
-        await refetchChecklists();
-        toast.error(r.error || "Could not reorder checklists");
-      }
-    },
-    [selectedId, queryClient, refetchChecklists],
-  );
-
   const detailHandlers: ServiceDetailHandlers = {
     onBack: clearSelection,
     onEdit: () => setServiceDialog({ mode: "edit" }),
     onToggleActive: handleToggleActive,
     onDuplicateService: handleDuplicateService,
     onDeleteService: handleDeleteServiceClick,
-    onReorderChecklists: handleReorderChecklists,
     onAddChecklist: () => setChecklistDialog({ mode: "create" }),
     onAddTasks: handleAddTasks,
     onSaveTask: handleSaveTask,

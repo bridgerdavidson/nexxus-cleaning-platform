@@ -4,12 +4,12 @@ import { useState } from "react";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors,
-  type DragEndEvent, type DraggableAttributes, type DraggableSyntheticListeners,
+  type DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { GripVertical, Plus, Pencil, Copy, Trash2 } from "lucide-react";
+import { Plus, Pencil, Copy, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,6 @@ import type { ChecklistVM } from "./services-types";
 export function ChecklistCard({
   checklist,
   canManage,
-  handleProps,
   onAddTasks,
   onSaveTask,
   onDeleteTask,
@@ -31,7 +30,6 @@ export function ChecklistCard({
 }: {
   checklist: ChecklistVM;
   canManage: boolean;
-  handleProps?: { attributes: DraggableAttributes; listeners: DraggableSyntheticListeners };
   onAddTasks: (checklistId: string, raw: string) => void;
   onSaveTask: (taskId: string, task: string) => void;
   onDeleteTask: (taskId: string) => void;
@@ -65,17 +63,6 @@ export function ChecklistCard({
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        {canManage && (
-          <button
-            type="button"
-            className="cursor-grab text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
-            aria-label="Drag to reorder checklist"
-            {...(handleProps?.attributes ?? {})}
-            {...(handleProps?.listeners ?? {})}
-          >
-            <GripVertical className="size-4" />
-          </button>
-        )}
         <span className="font-bold text-foreground">{checklist.name}</span>
         <Badge variant="secondary" className="tnum">{checklist.priceAdderLabel}</Badge>
         {canManage && (

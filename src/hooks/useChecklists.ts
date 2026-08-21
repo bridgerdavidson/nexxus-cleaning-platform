@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useSupabaseRealtimeSync } from '../lib/useSupabaseRealtimeSync';
 import { keys } from '../lib/queryKeys';
+import { compareChecklists } from '../lib/checklistOrder';
 import { Checklist, ChecklistLineItem, ChecklistWithItems } from '../types';
 
 interface UseChecklistsResult {
@@ -38,21 +39,18 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
           *,
           checklist_line_items (*)
         `)
-        .eq('service_type_id', serviceTypeId as string);
+        .eq('service_type_id', serviceTypeId as string)
+        .order('price_adder', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true });
 
       if (error) throw error;
 
       const checklistsWithItems = (data || []) as ChecklistWithItems[];
-      // Tiers ordered by position (nulls last) then name; matches sortChecklists.
-      checklistsWithItems.sort((a, b) => {
-        const ap = a.position ?? null;
-        const bp = b.position ?? null;
-        if (ap === null && bp === null) return a.name.localeCompare(b.name);
-        if (ap === null) return 1;
-        if (bp === null) return -1;
-        if (ap !== bp) return ap - bp;
-        return a.name.localeCompare(b.name);
-      });
+      // Tiers in the locked canonical order: cheapest first, ties by creation
+      // (see compareChecklists). The server already ordered; re-sorting keeps
+      // cache patches (applyChecklistAdded/Updated) on the same rule.
+      checklistsWithItems.sort(compareChecklists);
       checklistsWithItems.forEach((checklist) => {
         if (checklist.checklist_line_items) {
           checklist.checklist_line_items.sort((a, b) => {
@@ -155,9 +153,11 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
   const applyChecklistUpdated = useCallback(
     (checklistId: string, name: string, priceAdder: number) => {
       updateCache(prev =>
-        prev.map(checklist =>
-          checklist.id === checklistId ? { ...checklist, name, price_adder: priceAdder } : checklist
-        )
+        prev
+          .map(checklist =>
+            checklist.id === checklistId ? { ...checklist, name, price_adder: priceAdder } : checklist
+          )
+          .sort(compareChecklists)
       );
     },
     [updateCache]
@@ -165,17 +165,7 @@ export function useChecklists(serviceTypeId: string | null): UseChecklistsResult
 
   const applyChecklistAdded = useCallback(
     (checklist: ChecklistWithItems) => {
-      updateCache(prev =>
-        [...prev, checklist].sort((a, b) => {
-          const ap = a.position ?? null;
-          const bp = b.position ?? null;
-          if (ap === null && bp === null) return a.name.localeCompare(b.name);
-          if (ap === null) return 1;
-          if (bp === null) return -1;
-          if (ap !== bp) return ap - bp;
-          return a.name.localeCompare(b.name);
-        })
-      );
+      updateCache(prev => [...prev, checklist].sort(compareChecklists));
     },
     [updateCache]
   );
@@ -434,30 +424,6 @@ export async function reorderLineItems(
 }
 
 /**
- * Reorder checklists (tiers) within a service by writing 0-indexed positions.
- * Sequential updates avoid request storms, matching reorderLineItems.
- */
-export async function reorderChecklists(
-  serviceTypeId: string,
-  orderedIds: string[]
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    for (const [index, id] of orderedIds.entries()) {
-      const { error } = await supabase
-        .from('checklists')
-        .update({ position: index })
-        .eq('id', id)
-        .eq('service_type_id', serviceTypeId); // ensure the checklist belongs to this service
-      if (error) throw error;
-    }
-    return { success: true };
-  } catch (err) {
-    console.error('Error reordering checklists:', err);
-    return { success: false, error: err instanceof Error ? err.message : 'Failed to reorder checklists' };
-  }
-}
-
-/**
  * Bulk-create line items from pasted text. Each non-blank line becomes one task,
  * appended after existing items (position left NULL so they sort last by created_at).
  */
@@ -486,8 +452,8 @@ export async function createLineItems(
 
 /**
  * Clone a checklist (tier) within the same service, including all its line items
- * in order. The copy is named "<name> (copy)" and appended (position = NULL so it
- * sorts last until the user reorders).
+ * in order. The copy is named "<name> (copy)" and carries the source's price, so
+ * the locked order places it right after the source (creation time breaks the tie).
  */
 export async function duplicateChecklist(
   checklistId: string
@@ -507,7 +473,6 @@ export async function duplicateChecklist(
         service_type_id: src.service_type_id,
         name: `${src.name} (copy)`,
         price_adder: src.price_adder,
-        position: null,
       })
       .select()
       .single();
