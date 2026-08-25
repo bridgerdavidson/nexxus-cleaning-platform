@@ -23,6 +23,7 @@ import {
   effectiveTotalUsd,
   canReview,
   canCreateBooking,
+  selfPayCleanerBlockReason,
 } from './deriveOperatorBooking';
 import { isRecurring, buildOccurrenceInput, previewOccurrences, recurrenceRecap } from './deriveRecurrence';
 import { EntityPickerField, type PickerItem } from './EntityPickerField';
@@ -148,19 +149,23 @@ export function OperatorBookingForm({
     .map((s) => ({ id: s.id, label: s.name, sublabel: serviceMeta(s.base_price, s.duration_minutes) }));
   const checklistItems: PickerItem[] = checklists.map((c) => ({ id: c.id, label: c.name }));
   const cleanerItems: PickerItem[] = rankedCleaners.map((r) => {
-    const payable = (r.cleaner.payout_percent ?? 0) > 0 && !!r.cleaner.stripe_connect_onboarding_complete;
+    // Company pays: the row is gated on whether settlement could pay this cleaner
+    // (shared predicate, so flat / request cleaners are not grayed for having 0%),
+    // and the sublabel says why when it is.
+    const blocked = self ? selfPayCleanerBlockReason(r.cleaner) : null;
     return {
       id: r.cleaner.id,
       label: cleanerName(r.cleaner),
-      sublabel: r.isAvailable ? 'Available' : `Busy (${r.conflicts.length})`,
+      sublabel: blocked ?? (r.isAvailable ? 'Available' : `Busy (${r.conflicts.length})`),
       badge: (
         <Badge variant={r.isAvailable ? 'positive' : 'caution'} className="ml-2">
           {r.isAvailable ? 'Free' : 'Busy'}
         </Badge>
       ),
-      disabled: self && !payable,
+      disabled: blocked != null,
     };
   });
+  const someCleanerBlocked = self && cleanerItems.some((i) => i.disabled);
 
   const total = effectiveTotalUsd(state, service, checklist);
 
@@ -377,6 +382,13 @@ export function OperatorBookingForm({
               {state.cleanerId && (
                 <p className="mt-1 px-0.5 text-xs text-muted-foreground">
                   We will offer this to the cleaner. If they decline, it routes to the next one.
+                </p>
+              )}
+              {someCleanerBlocked && !state.cleanerId && (
+                <p className="mt-1 px-0.5 text-xs text-muted-foreground">
+                  Grayed-out cleaners cannot receive a company-pays payout yet. Pay is set in
+                  Cleaners &amp; team; Stripe payout setup is finished by the cleaner from their
+                  dashboard.
                 </p>
               )}
               {selectedCleanerPayNotSet && (

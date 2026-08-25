@@ -136,6 +136,8 @@ export interface AdminCleaner {
   payout_percent: number;
   /** Unified pay mode ('percentage' | 'flat' | 'request' | 'hourly_external'). */
   payout_model: string;
+  /** Per-job cents when payout_model = 'flat'; null otherwise. */
+  flat_rate_cents: number | null;
   /** NULL = no pay decision was ever made for this cleaner ("Pay not set"). */
   payout_configured_at: string | null;
   stripe_connect_account_id: string | null;
@@ -425,6 +427,7 @@ export function useAdminCleaners() {
           insurance_verified,
           payout_percent,
           payout_model,
+          flat_rate_cents,
           payout_configured_at,
           stripe_connect_account_id,
           stripe_connect_onboarding_complete,
