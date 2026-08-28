@@ -333,6 +333,16 @@ export function CleanerPhotoCapture({
                       <p className="truncate text-sm font-medium text-foreground">
                         {item.file.name}
                       </p>
+                      {/* The reason matters more than the badge. Without it a
+                          failure is unreportable: the cleaner sees "Failed",
+                          nothing is logged anywhere, and the real message dies
+                          with the tab. Wrapped, not truncated, so it can be
+                          read aloud or screenshotted. */}
+                      {item.status === 'failed' && item.error && (
+                        <p className="mt-0.5 break-words text-xs text-critical-700">
+                          {item.error}
+                        </p>
+                      )}
                     </div>
                     <UploadStatusChip item={item} />
                     {item.status === 'failed' && (
