@@ -236,7 +236,13 @@ async function deleteReplacedFile(context: UploadContext, newUrl: string): Promi
  */
 export function isTransientError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  if (msg.includes('failed to fetch')) return true;
+  if (msg.includes('failed to fetch')) return true;   // Chrome / Firefox
+  // Safari (incl. iOS) words a failed fetch "Load failed". The \b matters: this
+  // module prefixes every storage error with "Upload failed: ", which contains
+  // "load failed" as a substring. Without the boundary an RLS denial would be
+  // classified transient and retried.
+  if (/\bload failed\b/.test(msg)) return true;
+  if (msg.includes('connection was lost')) return true; // Safari, backgrounded tab
   if (msg.includes('network')) return true;
   if (msg.includes('timeout')) return true;
   if (/\b5\d\d\b/.test(msg)) return true;
