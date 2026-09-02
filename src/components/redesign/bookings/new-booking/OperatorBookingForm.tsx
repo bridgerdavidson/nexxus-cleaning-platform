@@ -320,6 +320,16 @@ export function OperatorBookingForm({
                   </Button>
                 )}
               </div>
+              {state.serviceTypeId && Number(total) === 0 && (
+                <div className="mt-2 flex items-start gap-2 rounded-control border border-caution-700/30 bg-caution-50 px-3 py-2 text-xs text-caution-700">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>
+                    This job is priced at $0. A percentage-paid cleaner earns nothing on it, and a
+                    cleaner who names their pay will need your approval for every ask. You can still
+                    book it.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Times */}

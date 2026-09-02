@@ -15,7 +15,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { money2 } from "./payments-presenters";
-import { marginLine, type MarginTone } from "./payRequestMath";
+import { marginLine, selfPayChargeEstimateCents, type MarginTone } from "./payRequestMath";
 import type { PayRequestVM } from "./usePayRequests";
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
@@ -31,6 +31,7 @@ const MARGIN_TONE_CLASS: Record<MarginTone, string> = {
   positive: "text-positive-700",
   caution: "text-caution-700",
   critical: "text-critical-700",
+  neutral: "text-foreground",
 };
 
 export type PayRequestDetailSheetProps = {
@@ -83,6 +84,22 @@ export function PayRequestDetailSheet({
   const margin = marginLine(r);
   const yourTurn = r.status === "pending_org";
 
+  // Company pays: no cap (the org funds whatever it agrees to) and the
+  // counter form shows what the card would be charged as the amount is typed.
+  const counterDollars = parseFloat(amount);
+  const counterCents = Number.isFinite(counterDollars) && counterDollars >= 0 ? Math.round(counterDollars * 100) : null;
+  const counterEstimateCents =
+    r.isSelfPay && counterCents != null
+      ? selfPayChargeEstimateCents({
+          jobPriceCents: r.jobPriceCents,
+          amountCents: counterCents,
+          platformFeeBps: r.platformFeeBps,
+        })
+      : null;
+  const counterHelper = r.isSelfPay
+    ? `Any amount. Company pays: the card on file is charged the counter plus fees once ${r.cleaner} accepts.`
+    : `Up to the job price (${money2(r.jobPriceCents / 100)}). The cleaner is paid out of the customer's charge. The cleaner can accept or counter back.`;
+
   const submitCounter = async () => {
     const dollars = parseFloat(amount);
     if (!Number.isFinite(dollars) || dollars < 0) {
@@ -90,7 +107,7 @@ export function PayRequestDetailSheet({
       return;
     }
     const cents = Math.round(dollars * 100);
-    if (cents > r.jobPriceCents) {
+    if (!r.isSelfPay && cents > r.jobPriceCents) {
       setAmountError(`Counter cannot exceed the job price (${money2(r.jobPriceCents / 100)}).`);
       return;
     }
@@ -109,6 +126,7 @@ export function PayRequestDetailSheet({
             ) : (
               <Badge variant="secondary">Waiting on cleaner</Badge>
             )}
+            {r.isSelfPay ? <Badge variant="info">Company pays</Badge> : null}
           </div>
           <SheetTitle className="truncate">{r.cleaner}</SheetTitle>
           <SheetDescription>
@@ -130,8 +148,12 @@ export function PayRequestDetailSheet({
             value={<span className="font-semibold tnum">{money2(r.latestAmountCents / 100)}</span>}
           />
           <Field
-            label="Margin"
-            value={<span className={`tnum ${MARGIN_TONE_CLASS[margin.tone]}`}>{margin.text}</span>}
+            label={r.isSelfPay ? "You pay" : "Margin"}
+            value={
+              <span className={`tnum ${MARGIN_TONE_CLASS[margin.tone]}`}>
+                {r.isSelfPay ? `About ${money2((r.selfPayChargeCents ?? 0) / 100)} with fees` : margin.text}
+              </span>
+            }
           />
 
           <Separator className="my-3" />
@@ -169,7 +191,7 @@ export function PayRequestDetailSheet({
                     label="Counter amount"
                     htmlFor="pr-counter-amount"
                     error={amountError ?? undefined}
-                    helper={`Up to the job price (${money2(r.jobPriceCents / 100)}). The cleaner can accept or counter back.`}
+                    helper={counterHelper}
                   >
                     <Input
                       id="pr-counter-amount"
@@ -181,6 +203,11 @@ export function PayRequestDetailSheet({
                       onChange={(e) => setAmount(e.target.value)}
                     />
                   </FormField>
+                  {counterEstimateCents != null ? (
+                    <p className="text-xs text-muted-foreground">
+                      You pay about <span className="tnum">{money2(counterEstimateCents / 100)}</span> with fees.
+                    </p>
+                  ) : null}
                   <FormField label="Note (optional)" htmlFor="pr-counter-note">
                     <Textarea
                       id="pr-counter-note"

@@ -257,6 +257,21 @@ migrations 117-120 in prod). Spec:
       in the landing-page worktree; commit it before starting.
 - [ ] Papercuts: 30s cleaner pay-request polling latency; scorecard percent-based earnings
       estimates are wrong for flat/request cleaners.
+- [x] **Company-pays threads had a job-price cap that deadlocked a $0-priced job** (pilot,
+      2026-08-28; fixed 2026-09-01). Org approve/counter/offer are uncapped on `is_self_pay` jobs
+      and the self-pay cut resolver no longer caps at the notional price; the org UI shows the
+      estimated company-card charge instead of a margin; the booking form warns on a $0 price.
+      Follow-ups it surfaced (not fixed, decisions for Bridger):
+  - [ ] Platform fee on a company-pays above-price approval is 1% of the *notional* price, so a
+        $0-priced job earns the platform $0 on a $100 approval. Fee basis is a pricing call
+        (brain docs own it); candidate rule: 1% of max(job price, approved amount).
+  - [ ] Customer-billed jobs keep the cap because the cleaner is paid out of the customer's
+        charge. Letting the org approve above price there needs a company-card top-up charge
+        for the excess (new charge kind, split settlement, refund/dispute interplay). Design,
+        not a bug fix.
+  - [ ] A $0-priced company-pays job with a *percentage* cleaner reaches Stripe with a $0
+        charge (Stripe rejects it as a decline). Add a precondition bail with a clear admin
+        notice, or block $0 bookings for percentage cleaners at booking time.
 - Umbrella 2 (cleaning company: hourly + availability) stays a later build.
 
 ## Ops loose ends (small, mostly Bridger-manual)

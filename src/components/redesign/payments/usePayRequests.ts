@@ -9,7 +9,7 @@ import { getAccessToken } from "@/lib/auth/clientAccessToken";
 import { keys } from "@/lib/queryKeys";
 import { useOrgQuery } from "@/lib/useOrgQuery";
 import { useSupabaseRealtimeSync } from "@/lib/useSupabaseRealtimeSync";
-import { agoLabel } from "./payRequestMath";
+import { agoLabel, selfPayChargeEstimateCents } from "./payRequestMath";
 
 // Data + actions for the Payments "Pay requests" band: the negotiation queue
 // for request-mode cleaners. Open threads only (approved rows settle into the
@@ -48,6 +48,16 @@ export type PayRequestVM = {
   jobLabel: string;
   dateLabel: string;
   jobPriceCents: number;
+  /**
+   * Company pays (appointments.is_self_pay): the org funds the amount from its
+   * own card, so there is no job-price cap and no margin; see
+   * selfPayChargeCents for what approving costs.
+   */
+  isSelfPay: boolean;
+  /** organizations.platform_fee_bps, for the company-pays charge estimate. */
+  platformFeeBps: number;
+  /** Estimated company-card charge for the live amount; null unless company pays. */
+  selfPayChargeCents: number | null;
   /** The offer currently on the table (last in the thread). */
   latestAmountCents: number;
   latestActor: "cleaner" | "org";
@@ -73,6 +83,7 @@ type RawRow = {
   updated_at: string;
   cleaner: unknown;
   appointment: unknown;
+  organization: unknown;
   offers: {
     id: string;
     actor: string;
@@ -97,11 +108,14 @@ function toVM(row: RawRow, now: number): PayRequestVM | null {
   const cleanerJoin = firstOf(row.cleaner as { user_profile?: NamePair | NamePair[] } | null);
   const cleanerName = fullName(firstOf(cleanerJoin?.user_profile)) || "Cleaner";
 
-  const appt = firstOf(
-    row.appointment as
-      | { scheduled_date?: string; service_type?: { name?: string } | { name?: string }[] | null }
-      | Array<{ scheduled_date?: string; service_type?: { name?: string } | { name?: string }[] | null }>
-      | null,
+  type ApptJoin = {
+    scheduled_date?: string;
+    is_self_pay?: boolean;
+    service_type?: { name?: string } | { name?: string }[] | null;
+  };
+  const appt = firstOf(row.appointment as ApptJoin | ApptJoin[] | null);
+  const orgJoin = firstOf(
+    row.organization as { platform_fee_bps?: number } | { platform_fee_bps?: number }[] | null,
   );
   const serviceName = firstOf(appt?.service_type)?.name ?? "Cleaning";
   const dateLabel = appt?.scheduled_date
@@ -117,6 +131,8 @@ function toVM(row: RawRow, now: number): PayRequestVM | null {
   // atomic with the row UPDATE, so it can briefly trail).
   const amount = Number(row.current_offer_cents);
   const margin = price - amount;
+  const isSelfPay = !!appt?.is_self_pay;
+  const platformFeeBps = Number(orgJoin?.platform_fee_bps ?? 0);
 
   return {
     id: row.id,
@@ -127,6 +143,11 @@ function toVM(row: RawRow, now: number): PayRequestVM | null {
     jobLabel: serviceName,
     dateLabel,
     jobPriceCents: price,
+    isSelfPay,
+    platformFeeBps,
+    selfPayChargeCents: isSelfPay
+      ? selfPayChargeEstimateCents({ jobPriceCents: price, amountCents: amount, platformFeeBps })
+      : null,
     latestAmountCents: amount,
     latestActor: latest.actor === "org" ? "org" : "cleaner",
     latestIsCounter:
@@ -175,7 +196,8 @@ export function usePayRequests(): PayRequestsQueue {
         .select(
           `id, status, appointment_id, cleaner_id, job_price_cents_snapshot, current_offer_cents, updated_at,
            cleaner:cleaner_profiles!cleaner_id(user_profile:user_profiles(first_name, last_name)),
-           appointment:appointments!appointment_id(scheduled_date, service_type:service_types(name)),
+           appointment:appointments!appointment_id(scheduled_date, is_self_pay, service_type:service_types(name)),
+           organization:organizations!organization_id(platform_fee_bps),
            offers:pay_request_offers(id, actor, amount_cents, note, auto_approved, created_at)`,
         )
         .eq("organization_id", orgId)

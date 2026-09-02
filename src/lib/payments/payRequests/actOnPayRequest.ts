@@ -30,8 +30,14 @@ import { retrievePaymentIntent } from '@/lib/stripe/reconcile';
  * row; the settlement trigger behind it is itself idempotent
  * (cleaner-payout-<appointmentId> transfer keys).
  *
- * Price rules: org amounts (counter, and org_approve of an ask) are hard-capped
- * at the job-price snapshot; cleaner counters are uncapped and escalate, so no
+ * Price rules: when the customer is billed, org amounts (counter, and
+ * org_approve of an ask) are hard-capped at the job-price snapshot, because
+ * the cleaner's pay is carved out of the customer's charge. When the company
+ * pays (appointments.is_self_pay) there is NO cap: the org is the payer and
+ * its charge is derived from the approved amount (selfPayCut), so any amount
+ * is fundable, and a cap only deadlocks the thread (a job left at $0 could
+ * never be approved or countered above $0; Nexxus Corp Housing pilot,
+ * 2026-08-28). Cleaner counters are uncapped everywhere and escalate, so no
  * cleaner-facing response ever leaks the hidden price.
  */
 
@@ -50,27 +56,36 @@ interface PayRequestRow {
 export interface LoadedPayRequest {
   pr: PayRequestRow;
   offerCount: number;
+  /**
+   * Company pays (appointments.is_self_pay): the org funds the cleaner's pay
+   * from its own card, so org amounts are not capped at the job price.
+   */
+  isSelfPay: boolean;
 }
 
 export async function loadPayRequest(
   supabase: SupabaseClient,
   payRequestId: string,
 ): Promise<LoadedPayRequest | null> {
-  const { data: pr } = await supabase
+  const { data } = await supabase
     .from('pay_requests')
     .select(
-      'id, organization_id, appointment_id, cleaner_id, status, job_price_cents_snapshot, approved_amount_cents, current_offer_cents, updated_at',
+      'id, organization_id, appointment_id, cleaner_id, status, job_price_cents_snapshot, approved_amount_cents, current_offer_cents, updated_at, appointment:appointments!appointment_id(is_self_pay)',
     )
     .eq('id', payRequestId)
     .maybeSingle();
-  if (!pr) return null;
+  if (!data) return null;
+  const { appointment, ...pr } = data as PayRequestRow & {
+    appointment: { is_self_pay: boolean } | { is_self_pay: boolean }[] | null;
+  };
+  const apptRow = Array.isArray(appointment) ? appointment[0] : appointment;
 
   const { count } = await supabase
     .from('pay_request_offers')
     .select('id', { count: 'exact', head: true })
     .eq('pay_request_id', payRequestId);
 
-  return { pr: pr as PayRequestRow, offerCount: count ?? 0 };
+  return { pr: pr as PayRequestRow, offerCount: count ?? 0, isSelfPay: !!apptRow?.is_self_pay };
 }
 
 export interface ActArgs {
@@ -101,7 +116,10 @@ export type ActResult =
 export async function actOnPayRequest(supabase: SupabaseClient, args: ActArgs): Promise<ActResult> {
   const loaded = await loadPayRequest(supabase, args.payRequestId);
   if (!loaded) return { ok: false, code: 'not_found' };
-  const { pr, offerCount } = loaded;
+  const { pr, offerCount, isSelfPay } = loaded;
+  // The org's ceiling: the job-price snapshot when the customer is billed
+  // (the cleaner is paid out of that charge), none when the company pays.
+  const orgCapCents = isSelfPay ? null : pr.job_price_cents_snapshot;
 
   // Pin the approval to what the approver saw. Checked before the idempotency
   // short-circuit: a duplicate click on the same amount stays a no-op success,
@@ -133,9 +151,9 @@ export async function actOnPayRequest(supabase: SupabaseClient, args: ActArgs): 
     if (!Number.isInteger(args.amountCents) || (args.amountCents as number) < 0) {
       return { ok: false, code: 'invalid_amount' };
     }
-    // Org amounts can never exceed the job price (spec §5 over-price rule);
-    // cleaner counters are uncapped and escalate instead.
-    if (args.action === 'org_counter' && (args.amountCents as number) > pr.job_price_cents_snapshot) {
+    // Customer-billed org amounts can never exceed the job price (spec §5
+    // over-price rule); cleaner counters are uncapped and escalate instead.
+    if (args.action === 'org_counter' && orgCapCents != null && (args.amountCents as number) > orgCapCents) {
       return { ok: false, code: 'over_price' };
     }
   }
@@ -170,8 +188,8 @@ export async function actOnPayRequest(supabase: SupabaseClient, args: ActArgs): 
   if (newStatus === 'approved') {
     if (args.action === 'org_approve') {
       if (pr.current_offer_cents == null) return { ok: false, code: 'no_offer' };
-      if (pr.current_offer_cents > pr.job_price_cents_snapshot) {
-        // An over-price ask cannot be approved as-is; the org must counter.
+      if (orgCapCents != null && pr.current_offer_cents > orgCapCents) {
+        // A customer-billed over-price ask cannot be approved as-is; the org must counter.
         return { ok: false, code: 'over_price' };
       }
       approvedAmountCents = pr.current_offer_cents;

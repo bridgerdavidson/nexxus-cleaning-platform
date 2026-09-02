@@ -7,12 +7,19 @@
  *   floor(gross * percent / 100), identical to computePaymentSplit.
  * - flat: min(flat_rate_cents, gross). `capped` flags when the rate exceeded
  *   the job's gross so settlement can record a payout_flat_capped event.
- * - request: min(approved_amount_cents, gross). Approvals are capped at the
- *   job price upstream, but refunds can shrink the split base below the
- *   approved amount; `capped` flags that so settlement can record it.
+ * - request: min(approved_amount_cents, gross). Customer-billed approvals are
+ *   capped at the job price upstream, but refunds can shrink the split base
+ *   below the approved amount; `capped` flags that so settlement can record it.
  *   Throws when no approved amount is supplied - settlement must gate on the
  *   thread's approval BEFORE resolving the share.
  * - hourly_external: 0 (paid outside the app).
+ *
+ * `capAtGross` (default true) is the homeowner-funded rule: the cleaner's
+ * slice is carved out of the captured charge, so it can never exceed it. When
+ * the company pays (self-pay), the org's charge is DERIVED from the cut, so
+ * the notional job price funds nothing and flat/request amounts must not be
+ * capped by it; those callers pass `capAtGross: false`. Percentage is always
+ * a percent of gross, so the flag does not apply to it.
  *
  * Pure + dependency-free.
  */
@@ -23,6 +30,8 @@ export interface ResolveCleanerShareArgs {
   flatRateCents: number | null | undefined;
   approvedRequestCents: number | null | undefined;
   grossCents: number;
+  /** Cap flat/request amounts at `grossCents` (default true). False when the company pays. */
+  capAtGross?: boolean;
 }
 
 export interface ResolvedCleanerShare {
@@ -33,6 +42,7 @@ export interface ResolvedCleanerShare {
 
 export function resolveCleanerShareCents(args: ResolveCleanerShareArgs): ResolvedCleanerShare {
   const { payoutModel, grossCents } = args;
+  const capAtGross = args.capAtGross ?? true;
   if (!Number.isInteger(grossCents) || grossCents < 0) {
     throw new Error('resolveCleanerShareCents: grossCents must be a non-negative integer');
   }
@@ -46,6 +56,7 @@ export function resolveCleanerShareCents(args: ResolveCleanerShareArgs): Resolve
     if (approved == null || !Number.isInteger(approved) || approved < 0) {
       throw new Error('resolveCleanerShareCents: request mode requires an approved amount');
     }
+    if (!capAtGross) return { cents: approved, capped: false, basis: 'request' };
     return { cents: Math.min(approved, grossCents), capped: approved > grossCents, basis: 'request' };
   }
 
@@ -54,6 +65,7 @@ export function resolveCleanerShareCents(args: ResolveCleanerShareArgs): Resolve
     if (flat == null || !Number.isInteger(flat) || flat < 0) {
       throw new Error('resolveCleanerShareCents: flat mode requires flat_rate_cents');
     }
+    if (!capAtGross) return { cents: flat, capped: false, basis: 'flat' };
     return { cents: Math.min(flat, grossCents), capped: flat > grossCents, basis: 'flat' };
   }
 

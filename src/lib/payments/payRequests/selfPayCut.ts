@@ -12,8 +12,11 @@ import { resolveCleanerShareCents } from '@/lib/payments/payMode';
  * class as tenant_not_ready) so the reconcile sweep re-collects automatically
  * once the thread approves.
  *
- * The approval price cap (approved <= job price) is enforced by the thread
- * routes; the resolver still caps at the gross defensively.
+ * No cap at the notional job price: the org IS the payer and its charge is
+ * derived from this cut (computeSelfPayAmountsFromCents), so an approved
+ * request or a flat rate above the job price is fundable in full. The thread
+ * routes let the org approve/counter any amount on a company-pays job for the
+ * same reason; capping here would turn that approval into a $0 charge.
  */
 
 export interface SelfPayCleanerFields {
@@ -68,6 +71,7 @@ export async function resolveSelfPayCutCents(
     flatRateCents: args.cleaner.flat_rate_cents ?? null,
     approvedRequestCents,
     grossCents: args.jobGrossCents,
+    capAtGross: false,
   });
 
   return {

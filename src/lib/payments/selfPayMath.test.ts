@@ -28,6 +28,15 @@ describe('computeSelfPayAmountsFromCents', () => {
     expect(a.chargeCents).toBe(0);
   });
 
+  it('a cut above the notional job price is charged in full; the fee stays on the (smaller) gross basis', () => {
+    // Company pays, "Custom" service left at $0, org approved a $100 ask: the org's card is
+    // charged the $100 grossed up for the card fee, and the 1% platform fee is 1% of $0.
+    const a = computeSelfPayAmountsFromCents({ jobGrossCents: 0, cleanerCutCents: 10000, platformFeeBps: 100 });
+    expect(a.cleanerCutCents).toBe(10000);
+    expect(a.platformFeeCents).toBe(0);
+    expect(a.chargeCents).toBe(grossUpForStripeFee(10000));
+  });
+
   it('bank method grosses up cheaper than card', () => {
     const card = computeSelfPayAmountsFromCents({ jobGrossCents: 10000, cleanerCutCents: 7200, platformFeeBps: 100 });
     const bank = computeSelfPayAmountsFromCents({

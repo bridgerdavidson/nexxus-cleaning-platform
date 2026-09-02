@@ -67,3 +67,29 @@ describe('resolveCleanerShareCents', () => {
     ).toThrow();
   });
 });
+
+describe('resolveCleanerShareCents with capAtGross: false (Company pays: the org funds the cut)', () => {
+  it('request mode pays the approved amount in full above the notional job price', () => {
+    expect(
+      resolveCleanerShareCents({ payoutModel: 'request', payoutPercent: 0, flatRateCents: null, approvedRequestCents: 10000, grossCents: 0, capAtGross: false }),
+    ).toEqual({ cents: 10000, capped: false, basis: 'request' });
+  });
+
+  it('flat mode pays the flat rate in full above the notional job price', () => {
+    expect(
+      resolveCleanerShareCents({ payoutModel: 'flat', payoutPercent: 0, flatRateCents: 9500, approvedRequestCents: null, grossCents: 8000, capAtGross: false }),
+    ).toEqual({ cents: 9500, capped: false, basis: 'flat' });
+  });
+
+  it('percentage is still a percent of gross (a $0 job pays $0 either way)', () => {
+    expect(
+      resolveCleanerShareCents({ payoutModel: 'percentage', payoutPercent: 60, flatRateCents: null, approvedRequestCents: null, grossCents: 0, capAtGross: false }),
+    ).toEqual({ cents: 0, capped: false, basis: 'percent' });
+  });
+
+  it('defaults to capping (the homeowner-funded split must never exceed the captured base)', () => {
+    expect(
+      resolveCleanerShareCents({ payoutModel: 'request', payoutPercent: 0, flatRateCents: null, approvedRequestCents: 10000, grossCents: 8000 }),
+    ).toEqual({ cents: 8000, capped: true, basis: 'request' });
+  });
+});

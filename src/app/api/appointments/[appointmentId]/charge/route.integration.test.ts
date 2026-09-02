@@ -642,6 +642,45 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     expect(vi.mocked(createSelfPayCharge).mock.calls[0][0].chargeCents).toBe(expected.chargeCents);
   });
 
+  it('self-pay + request mode: an approved amount above the job price is charged in full (no cap at the notional price)', async () => {
+    const db = createTestSupabaseClient();
+    await db.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
+    await db.from('organizations').update({ platform_fee_bps: 100 }).eq('id', org.organizationId);
+    const apptId = await completedSelfPayAppt();
+    // The pilot shape: a "Custom" service left at $0, the cleaner asked $100, the org approved it.
+    await db.from('appointments').update({ total_price: 0 }).eq('id', apptId);
+    await createTestPayRequest({
+      organizationId: org.organizationId,
+      appointmentId: apptId,
+      cleanerId: org.cleaner.userId,
+      status: 'approved',
+      jobPriceCents: 0,
+      approvedAmountCents: 10000,
+      approvedVia: 'org',
+      offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 10000, minMarginBpsSnapshot: 2000 }],
+    });
+
+    const { status, body } = await callRoute<{ code: string }>(handlerFor(apptId), {
+      method: 'POST',
+      headers: bearerHeader(org.admin.accessToken),
+      body: { organization_id: org.organizationId },
+    });
+
+    expect(status).toBe(200);
+    expect(body.code).toBe('charged');
+    expect(vi.mocked(createSelfPayCharge)).toHaveBeenCalledTimes(1);
+    const expected = computeSelfPayAmountsFromCents({ jobGrossCents: 0, cleanerCutCents: 10000, platformFeeBps: 100 });
+    expect(vi.mocked(createSelfPayCharge).mock.calls[0][0].chargeCents).toBe(expected.chargeCents);
+
+    const { data: charged } = await db
+      .from('payment_events')
+      .select('payload')
+      .eq('appointment_id', apptId)
+      .eq('event_type', 'charged')
+      .single();
+    expect((charged as { payload: { cleanerCutCents: number } }).payload.cleanerCutCents).toBe(10000);
+  });
+
   it('a declined SELF-PAY charge never notifies the comped homeowner', async () => {
     // selfPay WITHOUT orgOwnedProperty keeps homeowner_id: a comped booking. The
     // company card failing is staff's problem, not the homeowner's.

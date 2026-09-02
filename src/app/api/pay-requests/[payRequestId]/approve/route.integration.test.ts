@@ -23,21 +23,31 @@ describe('POST /api/pay-requests/[payRequestId]/approve', () => {
     other = null;
   });
 
-  async function seed(opts: { status?: 'pending_org' | 'pending_cleaner'; askCents?: number } = {}) {
+  async function seed(
+    opts: {
+      status?: 'pending_org' | 'pending_cleaner';
+      askCents?: number;
+      /** Company pays (is_self_pay): the org funds the cleaner's pay from its own card. */
+      selfPay?: boolean;
+      priceCents?: number;
+    } = {},
+  ) {
     org = await withTestOrg({ cleanerPayoutModel: 'request', minMarginBps: 2000, platformFeeBps: 100 });
+    const priceCents = opts.priceCents ?? 35000;
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
       cleanerId: org.cleaner.userId,
       homeownerId: org.homeowner.userId,
-      totalPrice: 350,
+      totalPrice: priceCents / 100,
       status: 'completed',
+      ...(opts.selfPay ? { selfPay: true, orgOwnedProperty: true } : {}),
     });
     const pr = await createTestPayRequest({
       organizationId: org.organizationId,
       appointmentId: appt.id,
       cleanerId: org.cleaner.userId,
       status: opts.status ?? 'pending_org',
-      jobPriceCents: 35000,
+      jobPriceCents: priceCents,
       offers: [
         {
           actor: 'cleaner',
@@ -137,15 +147,38 @@ describe('POST /api/pay-requests/[payRequestId]/approve', () => {
     expect(res.status).toBe(409);
   });
 
-  it('refuses to approve an over-price ask as-is (org must counter)', async () => {
+  it('customer-billed: refuses to approve an over-price ask as-is and says why (org must counter)', async () => {
     const { pr } = await seed({ askCents: 40000 });
     const res = await approve(pr.id, org!.organizationId, org!.admin.accessToken);
     expect(res.status).toBe(400);
-    expect((res.body as { error: string }).error).toContain('Counter');
+    const error = (res.body as { error: string }).error;
+    expect(error).toContain('counter');
+    expect(error).toContain("paid out of the customer's charge");
 
     const admin = createTestSupabaseClient();
     const { data } = await admin.from('pay_requests').select('status').eq('id', pr.id).single();
     expect((data as { status: string }).status).toBe('pending_org');
+  });
+
+  it('company pays: approves an ask above the job price, even on a $0 job (the org is the payer)', async () => {
+    // The pilot deadlock: a "Custom" service left at $0, the cleaner asked $100, and the
+    // org could neither approve nor counter anything above $0.
+    const { pr } = await seed({ selfPay: true, priceCents: 0, askCents: 10000 });
+    const res = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 10000);
+    expect(res.status).toBe(200);
+    const body = res.body as { status: string; approvedAmountCents: number; settlement: string };
+    expect(body.status).toBe('approved');
+    expect(body.approvedAmountCents).toBe(10000);
+    // No company card on this fixture org: the self-pay charge defers and the sweep re-collects.
+    expect(body.settlement).toBe('deferred');
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin
+      .from('pay_requests')
+      .select('status, approved_amount_cents, approved_via')
+      .eq('id', pr.id)
+      .single();
+    expect(data).toMatchObject({ status: 'approved', approved_amount_cents: 10000, approved_via: 'org' });
   });
 
   it('CAPTURE GATE: never settles off a failed charge - approval defers with no transfer attempt', async () => {
