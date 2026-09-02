@@ -50,7 +50,7 @@ export async function createPayRequest(
 
   const { data: appt } = await supabase
     .from('appointments')
-    .select('id, organization_id, cleaner_id, total_price, status')
+    .select('id, organization_id, cleaner_id, total_price, status, is_self_pay')
     .eq('id', args.appointmentId)
     .maybeSingle();
   const a = appt as {
@@ -59,6 +59,7 @@ export async function createPayRequest(
     cleaner_id: string | null;
     total_price: number | string;
     status: string;
+    is_self_pay: boolean;
   } | null;
   if (!a?.cleaner_id) return { ok: false, code: 'not_found', message: 'Appointment not found.' };
   if (a.status === 'cancelled') {
@@ -82,12 +83,19 @@ export async function createPayRequest(
   const minMarginBps = (org as { min_margin_bps?: number } | null)?.min_margin_bps ?? 2000;
   const priceCents = Math.round(Number(a.total_price) * 100);
 
-  // Org-authored amounts obey the same job-price cap as counters and approvals
-  // (review finding 6: without this, an operator-entered amount above the price
-  // could be cleaner-accepted into an over-price approval). Cleaner asks stay
-  // uncapped and escalate - a cap error would leak the hidden price.
-  if (args.actorKind === 'org' && args.amountCents > priceCents) {
-    return { ok: false, code: 'over_price', message: 'Amount cannot exceed the job price.' };
+  // Customer-billed org-authored amounts obey the same job-price cap as
+  // counters and approvals (review finding 6: without this, an operator-entered
+  // amount above the price could be cleaner-accepted into an over-price
+  // approval). When the company pays there is no cap: the org's charge is
+  // derived from the amount (see actOnPayRequest). Cleaner asks stay uncapped
+  // and escalate - a cap error would leak the hidden price.
+  if (args.actorKind === 'org' && !a.is_self_pay && args.amountCents > priceCents) {
+    return {
+      ok: false,
+      code: 'over_price',
+      message:
+        "Amount cannot exceed the job price. When the customer is billed, the cleaner is paid out of the customer's charge.",
+    };
   }
 
   const auto = args.actorKind === 'cleaner' && isAutoApproved(args.amountCents, priceCents, minMarginBps);

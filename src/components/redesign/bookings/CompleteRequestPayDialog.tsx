@@ -19,18 +19,24 @@ import { Textarea } from "@/components/ui/textarea";
  * the pay offer that goes out with the completed booking. `onSubmit` sends the
  * offer and completes the booking (POST-first; a duplicate thread proceeds to
  * completion), returning an error message to show inline, or null on success.
+ *
+ * The offer is capped at the job price only when the customer is billed (the
+ * cleaner is paid out of that charge). Company pays takes any amount: the org
+ * funds it, so the cap would only block a job whose price was left at $0.
  */
 export function CompleteRequestPayDialog({
   open,
   onOpenChange,
   cleanerName,
   jobPriceCents,
+  isSelfPay,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cleanerName: string;
   jobPriceCents: number | null;
+  isSelfPay: boolean;
   onSubmit: (amountCents: number, note: string | null) => Promise<string | null>;
 }) {
   const [amount, setAmount] = useState("");
@@ -61,7 +67,7 @@ export function CompleteRequestPayDialog({
       return;
     }
     const cents = Math.round(dollars * 100);
-    if (jobPriceCents != null && cents > jobPriceCents) {
+    if (!isSelfPay && jobPriceCents != null && cents > jobPriceCents) {
       setError(`Offer cannot exceed the job price (${priceLabel}).`);
       return;
     }
@@ -90,7 +96,13 @@ export function CompleteRequestPayDialog({
             label="Offer amount"
             htmlFor="crp-amount"
             error={error ?? undefined}
-            helper={priceLabel ? `Up to the job price (${priceLabel}).` : undefined}
+            helper={
+              isSelfPay
+                ? "Any amount. Company pays: the card on file is charged the offer plus fees once they accept."
+                : priceLabel
+                  ? `Up to the job price (${priceLabel}). The cleaner is paid out of the customer's charge.`
+                  : undefined
+            }
           >
             <Input
               id="crp-amount"

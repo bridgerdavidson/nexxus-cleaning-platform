@@ -343,6 +343,7 @@ function HostInner({
             "This cleaner"
           }
           jobPriceCents={raw.total_price != null ? Math.round(Number(raw.total_price) * 100) : null}
+          isSelfPay={!!raw.is_self_pay}
           onSubmit={sendPayOfferAndComplete}
         />
       ) : null}

@@ -123,10 +123,18 @@ its age. Nothing auto-resolves money.
 ### The over-price rule
 
 Cleaner requests **above the job price are allowed and simply escalate**. Rejecting them at
-submission would leak the hidden price through the error. The cap applies to **approvals**: no
-amount above `job_price_cents_snapshot` can ever be approved or countered by the org, and the
-explanation for that constraint appears only in org-facing UI. Consequence: an over-price request
-cannot be approved as-is; the org must counter.
+submission would leak the hidden price through the error. The cap applies to **approvals on
+customer-billed jobs**: no amount above `job_price_cents_snapshot` can be approved or countered by
+the org, because the cleaner is paid out of the customer's charge, and the explanation for that
+constraint appears only in org-facing UI. Consequence: an over-price request on a customer-billed
+job cannot be approved as-is; the org must counter.
+
+**Company-pays (self-pay) jobs have no cap** (revised 2026-09-01). The org is the payer and its
+charge is *derived from* the approved amount (§6), so any amount is fundable and the cap served no
+money-safety purpose. It did deadlock the pilot: a Nexxus Corp Housing job on a "Custom" service
+left at $0 got a $100 ask, and the org could neither approve nor counter anything above $0
+(`actOnPayRequest` / `createPayRequest` gate the cap on `appointments.is_self_pay`; the org UI
+shows the estimated company-card charge instead of a margin).
 
 ### Consent symmetry
 
@@ -149,10 +157,13 @@ completion) always requires the cleaner's accept.
   and `tenantRemainder = gross − platformFee − cleanerCents ≥ 0`. Holds because approved amounts
   are capped at gross. Transfer idempotency keys (`cleaner-payout-${appointmentId}`,
   `tenant-payout-${appointmentId}`) are unchanged.
-- **Self-pay**: works unchanged. The org is charged `approved_amount + platform fee (1% of the
-  notional job price) + processing gross-up`; the threshold evaluates against the notional job
-  price. The approval price cap stays universal (one rule everywhere); revisit if the pilot needs
-  self-pay approvals above price.
+- **Self-pay**: the org is charged `approved_amount + platform fee (1% of the notional job
+  price) + processing gross-up`; the threshold evaluates against the notional job price. **No
+  approval price cap** (revised 2026-09-01; the pilot needed exactly this, §5): the self-pay cut
+  resolver passes `capAtGross: false`, so an approved request (or a flat rate) above the notional
+  price is charged and paid in full. Open follow-up: the platform fee stays 1% of the *notional*
+  price, so an above-price approval on a $0-priced job earns the platform $0 (pricing decision,
+  owned by the brain docs).
 - **Cancellation / no-show fees**: for request-mode cleaners, `cleanerCents = 0` on the fee split;
   the org keeps the fee minus the platform fee. (Decision 7.)
 - **Refunds / disputes**: the unwind machinery (T1-1 and successors) operates on recorded amounts,
@@ -256,8 +267,10 @@ New admin-audience `payment_events` types, written at each transition:
   unresponsive cleaner stalls that thread (and the org's own remainder); accepted for the pilot.
 - **Threshold edited mid-thread**: next cleaner offer uses the new value; prior offers keep their
   snapshots.
-- **Zero-price / comped jobs**: approvals cap at $0 like any job; the org compensates offline.
-  Funding real pay on a $0 charge needs self-pay-style org funding and is out of pilot scope.
+- **Zero-price / comped jobs**: on a customer-billed job approvals cap at $0 like any job and the
+  org compensates offline; funding real pay on a $0 customer charge would need a company-card
+  top-up and is out of scope. On a company-pays job there is no cap (§5): the org approves the
+  ask and its card is charged for it. The booking form now warns when a job is priced at $0.
 - **Races / double-taps**: state-guarded transitions (409 on stale state), idempotent approve,
   unchanged transfer idempotency keys. Same guard class as T1-5.
 - **Dispute during a pending thread**: transfers have not fired; the existing

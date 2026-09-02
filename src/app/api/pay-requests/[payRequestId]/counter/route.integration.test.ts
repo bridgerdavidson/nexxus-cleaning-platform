@@ -19,7 +19,10 @@ describe('POST /api/pay-requests/[payRequestId]/counter', () => {
     org = null;
   });
 
-  async function seed(status: 'pending_org' | 'pending_cleaner' = 'pending_org') {
+  async function seed(
+    status: 'pending_org' | 'pending_cleaner' = 'pending_org',
+    opts: { selfPay?: boolean } = {},
+  ) {
     org = await withTestOrg({ cleanerPayoutModel: 'request', minMarginBps: 2000 });
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
@@ -27,6 +30,7 @@ describe('POST /api/pay-requests/[payRequestId]/counter', () => {
       homeownerId: org.homeowner.userId,
       totalPrice: 350,
       status: 'completed',
+      ...(opts.selfPay ? { selfPay: true, orgOwnedProperty: true } : {}),
     });
     const pr = await createTestPayRequest({
       organizationId: org.organizationId,
@@ -89,7 +93,7 @@ describe('POST /api/pay-requests/[payRequestId]/counter', () => {
     );
   });
 
-  it('caps the counter at the job price with org-facing copy', async () => {
+  it('customer-billed: caps the counter at the job price with org-facing copy that says why', async () => {
     const { pr } = await seed();
     const res = await counter(
       pr.id,
@@ -97,7 +101,24 @@ describe('POST /api/pay-requests/[payRequestId]/counter', () => {
       org!.admin.accessToken,
     );
     expect(res.status).toBe(400);
-    expect((res.body as { error: string }).error).toBe('Counter cannot exceed the job price.');
+    expect((res.body as { error: string }).error).toBe(
+      "Counter cannot exceed the job price. When the customer is billed, the cleaner is paid out of the customer's charge.",
+    );
+  });
+
+  it('company pays: accepts a counter above the job price (the org is the payer)', async () => {
+    const { pr } = await seed('pending_org', { selfPay: true });
+    const res = await counter(
+      pr.id,
+      { organization_id: org!.organizationId, amount_cents: 40000 },
+      org!.admin.accessToken,
+    );
+    expect(res.status).toBe(200);
+    expect((res.body as { status: string }).status).toBe('pending_cleaner');
+
+    const admin = createTestSupabaseClient();
+    const { data } = await admin.from('pay_requests').select('current_offer_cents').eq('id', pr.id).single();
+    expect((data as { current_offer_cents: number }).current_offer_cents).toBe(40000);
   });
 
   it('409s when the thread is already waiting on the cleaner', async () => {

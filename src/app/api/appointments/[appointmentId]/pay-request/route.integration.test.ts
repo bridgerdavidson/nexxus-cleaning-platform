@@ -289,7 +289,25 @@ describe('POST /api/appointments/[appointmentId]/pay-request', () => {
     });
     const res = await submit(appt.id, { organization_id: org.organizationId, amount_cents: 40000 }, org.admin.accessToken);
     expect(res.status).toBe(400);
-    expect((res.body as { error: string }).error).toBe('Amount cannot exceed the job price.');
+    expect((res.body as { error: string }).error).toBe(
+      "Amount cannot exceed the job price. When the customer is billed, the cleaner is paid out of the customer's charge.",
+    );
+  });
+
+  it('company pays: accepts an org-authored offer above the job price, even on a $0 job', async () => {
+    org = await requestOrg();
+    const appt = await createTestAppointment({
+      organizationId: org.organizationId,
+      cleanerId: org.cleaner.userId,
+      homeownerId: org.homeowner.userId,
+      totalPrice: 0,
+      status: 'in_progress',
+      selfPay: true,
+      orgOwnedProperty: true,
+    });
+    const res = await submit(appt.id, { organization_id: org.organizationId, amount_cents: 40000 }, org.admin.accessToken);
+    expect(res.status).toBe(200);
+    expect((res.body as { status: string }).status).toBe('pending_cleaner');
   });
 
   it('RLS: the cleaner cannot read pay_requests rows directly (price stays hidden at the data layer)', async () => {

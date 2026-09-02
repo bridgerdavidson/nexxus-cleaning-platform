@@ -6,7 +6,8 @@ import { actOnPayRequest, loadPayRequest } from '@/lib/payments/payRequests/actO
 /**
  * POST /api/pay-requests/:payRequestId/counter
  * Org counters the cleaner's ask with a different amount (+ optional note).
- * The amount is hard-capped at the job price; the cap and its error copy are
+ * The amount is hard-capped at the job price when the customer is billed (a
+ * company-pays job accepts any amount); the cap and its error copy are
  * org-facing only. Body: { organization_id, amount_cents, note? }.
  */
 export async function POST(
@@ -43,7 +44,13 @@ export async function POST(
 
     if (!result.ok) {
       if (result.code === 'over_price') {
-        return NextResponse.json({ error: 'Counter cannot exceed the job price.' }, { status: 400 });
+        return NextResponse.json(
+          {
+            error:
+              "Counter cannot exceed the job price. When the customer is billed, the cleaner is paid out of the customer's charge.",
+          },
+          { status: 400 },
+        );
       }
       if (result.code === 'invalid_amount') {
         return NextResponse.json({ error: 'Enter a whole amount of 0 or more.' }, { status: 400 });

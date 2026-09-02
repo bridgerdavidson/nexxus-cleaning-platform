@@ -9,7 +9,9 @@ import {
 
 /**
  * POST /api/pay-requests/:payRequestId/approve
- * Org approves the latest cleaner offer as-is. Idempotent: re-approving an
+ * Org approves the latest cleaner offer as-is. Capped at the job price only
+ * when the customer is billed; a company-pays job accepts any amount (the org
+ * funds it). Idempotent: re-approving an
  * approved thread is a 200 no-op (and still nudges settlement, which is
  * itself idempotent). Body: { organization_id, expected_amount_cents? };
  * when expected_amount_cents is present and the live offer differs, the
@@ -50,7 +52,10 @@ export async function POST(
     if (!result.ok) {
       if (result.code === 'over_price') {
         return NextResponse.json(
-          { error: 'This ask is above the job price. Counter with an amount up to the job price.' },
+          {
+            error:
+              "This ask is above the job price. When the customer is billed, the cleaner is paid out of the customer's charge, so counter with an amount up to the job price.",
+          },
           { status: 400 },
         );
       }

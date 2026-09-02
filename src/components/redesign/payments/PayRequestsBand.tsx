@@ -130,6 +130,7 @@ const MARGIN_TONE_CLASS: Record<MarginTone, string> = {
   positive: "text-positive-700",
   caution: "text-caution-700",
   critical: "text-critical-700",
+  neutral: "text-foreground",
 };
 
 function PayRequestRow({

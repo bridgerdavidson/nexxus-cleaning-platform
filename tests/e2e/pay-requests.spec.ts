@@ -178,7 +178,7 @@ test.describe('operator pay-request queue', () => {
     // The operator must see what the job is worth, what was asked, and what
     // that leaves them, before any approve action.
     await expect(page.getByText(/job price/i).first()).toBeVisible();
-    await expect(page.getByText(/leaves you|above job price/i).first()).toBeVisible();
+    await expect(page.getByText(/leaves you|above job price|company pays/i).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /^review$/i }).first()).toBeVisible();
   });
 });
