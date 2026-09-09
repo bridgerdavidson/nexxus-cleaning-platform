@@ -472,3 +472,4 @@ No change. Nothing a cleaner does creates new work.
 4. Stripe SDK version in `package.json` supports `integration_identifier` (API ≥ 2026-03-25) and `pause_collection` resume via empty string; bump if needed.
 5. The `platform_audit_log` write helper used by `impersonation/route.ts`, to reuse for the new actions.
 6. `APP_URL` is set in every environment (checkout success/cancel URLs must be absolute and never built from the request host).
+7. **Pricing review 2026-09-09, pending Bridger's confirmation:** (a) annual plans are one upfront charge per year ($348 / $948 / $1,668), not monthly billing on a 12-month commitment; (b) the annual seat price ($120/yr = 12 × $10, no annual discount on seats) is an inference not yet logged in the pricing doc; (c) Pro's marketing bullet "Unlimited cleaner seats" reads as free seats; under purchased seats it should say "No seat limit" (one-line change in `pricing.ts`).
