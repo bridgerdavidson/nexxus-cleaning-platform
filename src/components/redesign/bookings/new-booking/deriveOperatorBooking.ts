@@ -1,5 +1,6 @@
 import type { ServiceType } from '@/hooks/useServices';
 import { isCleanerPayable, type CleanerPayoutFields } from '@/lib/payments/isCleanerPayable';
+import { jobPriceError } from '@/lib/pricing/minJobPrice';
 import {
   MAX_OPERATOR_SLOTS,
   type OperatorBookingSlot,
@@ -28,7 +29,28 @@ export function effectiveTotalUsd(
   return (service?.base_price ?? 0) + (checklist?.price_adder ?? 0);
 }
 
-export function canReview(s: OperatorBookingState): boolean {
+/**
+ * The blocking price message for the form, or null. Only once a service is chosen: before
+ * that the price field is empty and there is nothing to correct yet.
+ */
+export function bookingPriceError(
+  s: OperatorBookingState,
+  service: ServiceType | null,
+  checklist?: { price_adder: number } | null,
+): string | null {
+  if (!s.serviceTypeId) return null;
+  return jobPriceError(effectiveTotalUsd(s, service, checklist));
+}
+
+/**
+ * Whether the form can move to Review. Takes the service and checklist so the price rule
+ * (every job at least $1, see minJobPrice) gates on the same total that gets written.
+ */
+export function canReview(
+  s: OperatorBookingState,
+  service: ServiceType | null,
+  checklist?: { price_adder: number } | null,
+): boolean {
   const hasCustomer = isSelfPay(s) ? true : !!s.customerId;
   return (
     hasCustomer &&
@@ -36,12 +58,17 @@ export function canReview(s: OperatorBookingState): boolean {
     !!s.serviceTypeId &&
     !!s.checklistId &&
     s.slots.length >= 1 &&
-    !!s.cleanerId
+    !!s.cleanerId &&
+    bookingPriceError(s, service, checklist) === null
   );
 }
 
-export function canCreate(s: OperatorBookingState): boolean {
-  if (!canReview(s)) return false;
+export function canCreate(
+  s: OperatorBookingState,
+  service: ServiceType | null,
+  checklist?: { price_adder: number } | null,
+): boolean {
+  if (!canReview(s, service, checklist)) return false;
   // Self-pay needs an org method on file; customer-billed can defer (card/link/collect later).
   return isSelfPay(s) ? s.selfPayHasMethod : true;
 }
@@ -55,8 +82,13 @@ export function cardIdFromPaymentValue(v: string | null): string | null {
  * Whether the booking can be created, recurrence-aware. A recurring (customer-billed) series also
  * requires the current cadence + end to produce at least one occurrence.
  */
-export function canCreateBooking(s: OperatorBookingState, occurrenceCount: number): boolean {
-  if (!canCreate(s)) return false;
+export function canCreateBooking(
+  s: OperatorBookingState,
+  occurrenceCount: number,
+  service: ServiceType | null,
+  checklist?: { price_adder: number } | null,
+): boolean {
+  if (!canCreate(s, service, checklist)) return false;
   if (isSelfPay(s)) return true;
   if (!s.recurrence.enabled) return true;
   return occurrenceCount >= 1;

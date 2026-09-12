@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { FormField } from "@/components/ui/form-field";
+import { MIN_JOB_PRICE_USD, jobPriceError } from "@/lib/pricing/minJobPrice";
 
 export type ServiceFormValues = {
   name: string; description: string; base_price: number;
@@ -31,11 +33,20 @@ export function ServiceFormDialog({
   onSubmit: (v: ServiceFormValues) => void;
 }) {
   const [v, setV] = useState<ServiceFormValues>(BLANK);
+  const [priceTouched, setPriceTouched] = useState(false);
   useEffect(() => {
-    if (open) setV(initial ?? BLANK);
+    if (open) {
+      setV(initial ?? BLANK);
+      setPriceTouched(false);
+    }
   }, [open, initial]);
 
-  const valid = v.name.trim().length > 0 && v.base_price >= 0 && v.duration_minutes >= 1;
+  // Every service must cost at least $1 (bookings inherit the base price). A new service
+  // shows the message once the price is touched; an existing under-$1 service shows it
+  // right away so the disabled Save explains itself.
+  const priceError = jobPriceError(v.base_price);
+  const showPriceError = !!priceError && (priceTouched || !!initial);
+  const valid = v.name.trim().length > 0 && priceError === null && v.duration_minutes >= 1;
   const submit = () => {
     if (!valid) return;
     onSubmit({
@@ -62,11 +73,19 @@ export function ServiceFormDialog({
             <Textarea id="svc-desc" rows={3} value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="svc-price">Base price</Label>
-              <Input id="svc-price" type="number" min={0} step={0.01} value={v.base_price}
-                onChange={(e) => setV({ ...v, base_price: Number(e.target.value) })} />
-            </div>
+            <FormField
+              label="Base price"
+              htmlFor="svc-price"
+              error={showPriceError ? (priceError ?? undefined) : undefined}
+              className="gap-1.5"
+            >
+              <Input id="svc-price" type="number" min={MIN_JOB_PRICE_USD} step={0.01} value={v.base_price}
+                onBlur={() => setPriceTouched(true)}
+                onChange={(e) => {
+                  setPriceTouched(true);
+                  setV({ ...v, base_price: Number(e.target.value) });
+                }} />
+            </FormField>
             <div className="space-y-1.5">
               <Label htmlFor="svc-dur">Duration (minutes)</Label>
               <Input id="svc-dur" type="number" min={1} step={1} value={v.duration_minutes}

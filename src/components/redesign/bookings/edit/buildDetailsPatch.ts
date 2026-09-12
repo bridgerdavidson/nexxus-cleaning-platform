@@ -1,4 +1,34 @@
+import { jobPriceError } from '@/lib/pricing/minJobPrice';
 import type { EditDetailsState } from './seedEditDetails';
+
+/**
+ * Whether the edit changes the price inputs relative to the seeded state. Mirrors the
+ * details route's change detection (service, checklist, or override differs), which is
+ * what decides whether the save rewrites total_price at all.
+ */
+export function isPriceAffectingEdit(initial: EditDetailsState, s: EditDetailsState): boolean {
+  return (
+    s.serviceTypeId !== initial.serviceTypeId ||
+    s.checklistId !== initial.checklistId ||
+    s.overrideEnabled !== initial.overrideEnabled ||
+    (s.overrideEnabled && s.overrideTotal !== initial.overrideTotal)
+  );
+}
+
+/**
+ * The blocking price message for the edit form, or null. Only a price-affecting edit is
+ * checked (same as the route and the require_min_price DB trigger), so a notes-only save
+ * on a legacy under-$1 booking is never blocked. `systemTotal` is service base + checklist
+ * adder, the price used when the override is off.
+ */
+export function editDetailsPriceError(
+  initial: EditDetailsState,
+  s: EditDetailsState,
+  systemTotal: number,
+): string | null {
+  if (!isPriceAffectingEdit(initial, s)) return null;
+  return jobPriceError(s.overrideEnabled ? s.overrideTotal : systemTotal);
+}
 
 /** Body for PATCH /api/appointments/[appointmentId]/details. */
 export interface DetailsPatchBody {

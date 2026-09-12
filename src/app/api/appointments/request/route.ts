@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { recordNotificationEvent } from '@/lib/notifications/recordEvent';
 import { loadNotificationContext } from '@/lib/notifications/context';
+import { meetsMinJobPrice } from '@/lib/pricing/minJobPrice';
+
+const HOMEOWNER_UNBOOKABLE_SERVICE_MESSAGE =
+  'This service is not available to book right now. Please contact your office.';
 
 interface OfferedSlot {
   scheduled_date: string;
@@ -115,6 +119,17 @@ export async function POST(request: NextRequest) {
       checklistAdder = Number(checklist.price_adder) || 0;
     }
 
+    // Minimum job price ($1). The homeowner picker hides services under $1, so this
+    // only catches a stale client. The homeowner cannot set a price, so the copy
+    // points them at the office instead of repeating the operator-facing rule.
+    const totalPrice = Number(serviceType.base_price) + checklistAdder;
+    if (!meetsMinJobPrice(totalPrice)) {
+      return NextResponse.json(
+        { success: false, error: HOMEOWNER_UNBOOKABLE_SERVICE_MESSAGE },
+        { status: 400 },
+      );
+    }
+
     // Insert the appointment row with the primary slot as the placeholder
     // scheduled_date/time (NOT NULL columns). The accept path overwrites these
     // with the cleaner's chosen slot.
@@ -131,7 +146,7 @@ export async function POST(request: NextRequest) {
         scheduled_date: primary.scheduled_date,
         scheduled_time: primary.scheduled_time,
         duration_minutes: serviceType.duration_minutes,
-        total_price: serviceType.base_price + checklistAdder,
+        total_price: totalPrice,
         special_requests: specialRequests ?? null,
         payment_method_id: paymentMethodId ?? null,
         status: 'pending',

@@ -189,6 +189,34 @@ describe('PATCH /api/appointments/[appointmentId]/details', () => {
     expect((await getRow(appt.id)).total_price).toBe(250);
   });
 
+  it('minimum job price: an override under $1 is a 400 with the rule, and the booking is untouched', async () => {
+    const org = await seedOrg();
+    const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId, totalPrice: 100 });
+
+    for (const total of [0, 0.5, 0.99]) {
+      const res = await call(appt.id, org.admin.accessToken, {
+        organizationId: org.organizationId, serviceTypeId: appt.serviceTypeId, checklistId: null,
+        priceOverrideEnabled: true, priceOverrideTotal: total, specialRequests: null, notes: 'should not save',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ success: false, error: 'Price must be at least $1.' });
+    }
+    const row = await getRow(appt.id);
+    expect(row).toMatchObject({ total_price: 100, price_override_enabled: false, notes: null });
+    expect(row.price_override_total).toBeNull();
+  });
+
+  it('minimum job price: an override of exactly $1 saves', async () => {
+    const org = await seedOrg();
+    const appt = await createTestAppointment({ organizationId: org.organizationId, cleanerId: org.cleaner.userId, homeownerId: org.homeowner.userId, totalPrice: 100 });
+    const res = await call(appt.id, org.admin.accessToken, {
+      organizationId: org.organizationId, serviceTypeId: appt.serviceTypeId, checklistId: null,
+      priceOverrideEnabled: true, priceOverrideTotal: 1, specialRequests: null, notes: null,
+    });
+    expect(res.status).toBe(200);
+    expect(await getRow(appt.id)).toMatchObject({ total_price: 1, price_override_enabled: true, price_override_total: 1 });
+  });
+
   it('gates: manager needs can_edit_bookings; completed booking is 409 stale', async () => {
     const org = await seedOrg();
     const none = await addManagerToOrg(org.organizationId, { can_handle_requests: true });

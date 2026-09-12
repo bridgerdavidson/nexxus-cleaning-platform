@@ -8,6 +8,7 @@ import {
   type TestOrgFixture,
   type ManagerMemberHandle,
 } from '../../../../tests/helpers/fixtures';
+import { createTestSupabaseClient } from '../../../../tests/helpers/supabase';
 
 /**
  * Security audit C3/F-CORE-2: both POST and GET were fully unauthenticated. POST mass-
@@ -83,6 +84,80 @@ describe('/api/recurring-appointments (auth)', () => {
     expect(status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.data.appointmentsCreated).toBeGreaterThan(0);
+  });
+
+  describe('minimum job price ($1)', () => {
+    it('POST 400s a series priced under $1 and creates neither a series nor appointments', async () => {
+      const { propertyId, serviceTypeId } = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+
+      for (const totalPrice of [0, 0.5, null]) {
+        const { status, body } = await callRoute<{ success: boolean; error: string }>(POST, {
+          method: 'POST',
+          headers: bearerHeader(org.admin.accessToken),
+          body: { ...baseBody(org.organizationId, org.homeowner.userId, propertyId, serviceTypeId), totalPrice },
+        });
+        expect(status).toBe(400);
+        expect(body).toMatchObject({ success: false, error: 'Price must be at least $1.' });
+      }
+
+      const db = createTestSupabaseClient();
+      const { data: series } = await db
+        .from('recurring_appointment_series')
+        .select('id')
+        .eq('organization_id', org.organizationId);
+      expect(series ?? []).toHaveLength(0);
+      const { data: generated } = await db
+        .from('appointments')
+        .select('id')
+        .eq('organization_id', org.organizationId)
+        .not('series_id', 'is', null);
+      expect(generated ?? []).toHaveLength(0);
+    });
+
+    it('POST 400s an override under $1 even when the service itself is priced', async () => {
+      const { propertyId, serviceTypeId } = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+      const { status } = await callRoute(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: {
+          ...baseBody(org.organizationId, org.homeowner.userId, propertyId, serviceTypeId),
+          totalPrice: 0.5,
+          priceOverrideEnabled: true,
+          priceOverrideTotal: 0.5,
+        },
+      });
+      expect(status).toBe(400);
+    });
+
+    it('POST succeeds at exactly $1 and prices every occurrence at $1', async () => {
+      const { propertyId, serviceTypeId } = await createTestAppointment({
+        organizationId: org.organizationId,
+        cleanerId: org.cleaner.userId,
+        homeownerId: org.homeowner.userId,
+      });
+      const { status, body } = await callRoute<{ success: boolean; data: { series: { id: string }; appointmentsCreated: number } }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.admin.accessToken),
+        body: { ...baseBody(org.organizationId, org.homeowner.userId, propertyId, serviceTypeId), totalPrice: 1 },
+      });
+      expect(status).toBe(200);
+      expect(body.data.appointmentsCreated).toBe(2);
+
+      const db = createTestSupabaseClient();
+      const { data: occurrences } = await db
+        .from('appointments')
+        .select('total_price')
+        .eq('series_id', body.data.series.id);
+      expect((occurrences ?? []).map((o) => Number((o as { total_price: number }).total_price))).toEqual([1, 1]);
+    });
   });
 
   it('GET returns 401 with no Authorization header', async () => {

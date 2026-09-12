@@ -7,6 +7,7 @@ import {
   slotOrdinal,
   formatSlotLabel,
   bookingTotal,
+  isBookableService,
 } from './deriveBooking';
 import { EMPTY_BOOKING, type BookingState } from './booking-types';
 
@@ -16,6 +17,21 @@ const filled = (over: Partial<BookingState> = {}): BookingState => ({
   serviceTypeId: 's',
   slots: [{ date: '2026-07-05', time: '10:00' }],
   ...over,
+});
+
+describe('isBookableService (homeowner picker)', () => {
+  it('offers an active service priced at least $1', () => {
+    expect(isBookableService({ is_active: true, base_price: 1 })).toBe(true);
+    expect(isBookableService({ is_active: true, base_price: 150 })).toBe(true);
+  });
+  it('hides a legacy under-$1 service (the pilot "Custom" at $0)', () => {
+    expect(isBookableService({ is_active: true, base_price: 0 })).toBe(false);
+    expect(isBookableService({ is_active: true, base_price: 0.5 })).toBe(false);
+    expect(isBookableService({ is_active: true, base_price: null })).toBe(false);
+  });
+  it('hides an inactive service regardless of price', () => {
+    expect(isBookableService({ is_active: false, base_price: 150 })).toBe(false);
+  });
 });
 
 describe('slots', () => {

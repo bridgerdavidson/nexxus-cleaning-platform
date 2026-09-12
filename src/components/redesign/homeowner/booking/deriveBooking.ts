@@ -1,5 +1,6 @@
 import { computeChargeBreakdown, type PaymentMethodKind } from '@/lib/payments/processingFee';
 import { formatTimeTo12h } from '@/lib/formatTime';
+import { meetsMinJobPrice } from '@/lib/pricing/minJobPrice';
 import { MAX_SLOTS, type BookingSlot, type BookingState } from './booking-types';
 
 export function addSlot(slots: BookingSlot[], slot: BookingSlot): BookingSlot[] {
@@ -8,6 +9,14 @@ export function addSlot(slots: BookingSlot[], slot: BookingSlot): BookingSlot[] 
 
 export function removeSlotAt(slots: BookingSlot[], idx: number): BookingSlot[] {
   return slots.filter((_, i) => i !== idx);
+}
+
+/**
+ * Whether a homeowner may be offered this service: active, and priced at least $1 (the
+ * minimum job price). A legacy under-$1 service stays hidden rather than failing at send.
+ */
+export function isBookableService(s: { is_active: boolean; base_price: number | string | null }): boolean {
+  return s.is_active && meetsMinJobPrice(s.base_price);
 }
 
 export function canReview(s: BookingState): boolean {

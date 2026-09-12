@@ -23,8 +23,10 @@ import {
   effectiveTotalUsd,
   canReview,
   canCreateBooking,
+  bookingPriceError,
   selfPayCleanerBlockReason,
 } from './deriveOperatorBooking';
+import { MIN_JOB_PRICE_USD } from '@/lib/pricing/minJobPrice';
 import { isRecurring, buildOccurrenceInput, previewOccurrences, recurrenceRecap } from './deriveRecurrence';
 import { EntityPickerField, type PickerItem } from './EntityPickerField';
 import { TimePickerPopover } from './TimePickerPopover';
@@ -168,6 +170,9 @@ export function OperatorBookingForm({
   const someCleanerBlocked = self && cleanerItems.some((i) => i.disabled);
 
   const total = effectiveTotalUsd(state, service, checklist);
+  // Blocking: every job must be priced at least $1 (a $0 job cannot be charged, pays a
+  // percentage cleaner nothing, and earns no platform fee). Review/Create gate on it too.
+  const priceError = bookingPriceError(state, service, checklist);
 
   // Assigning an unconfigured cleaner is ALLOWED (warned, not blocked): the
   // operator hits this at scheduling time instead of the cleaner mid-job. Their
@@ -304,7 +309,11 @@ export function OperatorBookingForm({
                   <span className="text-muted-foreground">$</span>
                   <input
                     type="number"
-                    min={0}
+                    min={MIN_JOB_PRICE_USD}
+                    step={0.01}
+                    aria-label="Price"
+                    aria-invalid={priceError ? true : undefined}
+                    aria-describedby={priceError ? 'operator-booking-price-error' : undefined}
                     className="ml-1 w-full appearance-none border-0 bg-transparent tabular-nums outline-none [appearance:textfield] focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
                     value={state.priceOverride ?? (service ? service.base_price + (checklist?.price_adder ?? 0) : '')}
                     onChange={(e) =>
@@ -320,14 +329,14 @@ export function OperatorBookingForm({
                   </Button>
                 )}
               </div>
-              {state.serviceTypeId && Number(total) === 0 && (
-                <div className="mt-2 flex items-start gap-2 rounded-control border border-caution-700/30 bg-caution-50 px-3 py-2 text-xs text-caution-700">
+              {priceError && (
+                <div
+                  id="operator-booking-price-error"
+                  role="alert"
+                  className="mt-2 flex items-start gap-2 rounded-control border border-critical-700/30 bg-critical-50 px-3 py-2 text-xs text-critical-700"
+                >
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                  <span>
-                    This job is priced at $0. A percentage-paid cleaner earns nothing on it, and a
-                    cleaner who names their pay will need your approval for every ask. You can still
-                    book it.
-                  </span>
+                  <span>{priceError} Enter a price for this job to continue.</span>
                 </div>
               )}
             </div>
@@ -438,7 +447,7 @@ export function OperatorBookingForm({
 
           <div className="flex shrink-0 items-center gap-3 border-t border-border p-4">
             <span className="shrink-0 text-lg font-extrabold tabular-nums">{money(total)}</span>
-            <Button className="flex-1" disabled={!canReview(state)} onClick={() => setPage('review')}>
+            <Button className="flex-1" disabled={!canReview(state, service, checklist)} onClick={() => setPage('review')}>
               Review &amp; create
             </Button>
           </div>
@@ -488,7 +497,7 @@ export function OperatorBookingForm({
             <Button
               className="flex-1"
               loading={creating}
-              disabled={!canCreateBooking(state, occurrences.length)}
+              disabled={!canCreateBooking(state, occurrences.length, service, checklist)}
               onClick={handleCreate}
             >
               {recurring ? `Create ${occurrences.length} cleaning${occurrences.length === 1 ? '' : 's'}` : 'Create booking'}

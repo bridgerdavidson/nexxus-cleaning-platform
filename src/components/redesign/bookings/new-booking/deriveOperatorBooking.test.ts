@@ -6,6 +6,8 @@ import {
   effectiveTotalUsd,
   canReview,
   canCreate,
+  canCreateBooking,
+  bookingPriceError,
   selfPayCleanerBlockReason,
 } from './deriveOperatorBooking';
 import { isCleanerPayable, type CleanerPayoutFields } from '@/lib/payments/isCleanerPayable';
@@ -56,23 +58,62 @@ describe('effectiveTotalUsd', () => {
 
 describe('canReview', () => {
   it('requires customer + property + service + checklist + a slot + cleaner (customer-billed)', () => {
-    expect(canReview(EMPTY_OPERATOR_BOOKING)).toBe(false);
-    expect(canReview(filled())).toBe(true);
-    expect(canReview(filled({ cleanerId: null }))).toBe(false);
-    expect(canReview(filled({ slots: [] }))).toBe(false);
+    expect(canReview(EMPTY_OPERATOR_BOOKING, null)).toBe(false);
+    expect(canReview(filled(), svc)).toBe(true);
+    expect(canReview(filled({ cleanerId: null }), svc)).toBe(false);
+    expect(canReview(filled({ slots: [] }), svc)).toBe(false);
   });
   it('does not require a customer for self-pay (org-owned)', () => {
-    expect(canReview(filled({ billTo: 'self_pay', customerId: null }))).toBe(true);
+    expect(canReview(filled({ billTo: 'self_pay', customerId: null }), svc)).toBe(true);
+  });
+});
+
+describe('minimum job price gate ($1)', () => {
+  const zeroSvc = { id: 's1', base_price: 0, duration_minutes: 60 } as ServiceType;
+
+  it('blocks Review on a $0 service with no override (the pilot "Custom" job)', () => {
+    expect(canReview(filled(), zeroSvc)).toBe(false);
+    expect(canReview(filled({ billTo: 'self_pay', customerId: null }), zeroSvc)).toBe(false);
+  });
+
+  it('blocks Review when the override is under $1', () => {
+    expect(canReview(filled({ priceOverride: 0 }), svc)).toBe(false);
+    expect(canReview(filled({ priceOverride: 0.5 }), svc)).toBe(false);
+  });
+
+  it('allows exactly $1, from an override or from base + checklist adder', () => {
+    expect(canReview(filled({ priceOverride: 1 }), zeroSvc)).toBe(true);
+    expect(canReview(filled(), zeroSvc, { price_adder: 1 })).toBe(true);
+  });
+
+  it('blocks when the service has not loaded (no price to write)', () => {
+    expect(canReview(filled(), null)).toBe(false);
+  });
+
+  it('blocks Create too, for one-time and recurring bookings', () => {
+    const selfPayReady = filled({ billTo: 'self_pay', customerId: null, selfPayHasMethod: true });
+    expect(canCreate(selfPayReady, zeroSvc)).toBe(false);
+    expect(canCreateBooking(selfPayReady, 0, zeroSvc)).toBe(false);
+    const recurring = filled({ recurrence: { ...EMPTY_OPERATOR_BOOKING.recurrence, enabled: true } });
+    expect(canCreateBooking(recurring, 4, zeroSvc)).toBe(false);
+    expect(canCreateBooking(recurring, 4, svc)).toBe(true);
+  });
+
+  it('bookingPriceError says nothing until a service is chosen, then names the rule', () => {
+    expect(bookingPriceError(EMPTY_OPERATOR_BOOKING, null)).toBeNull();
+    expect(bookingPriceError(filled(), zeroSvc)).toBe('Price must be at least $1.');
+    expect(bookingPriceError(filled({ priceOverride: 20 }), zeroSvc)).toBeNull();
+    expect(bookingPriceError(filled(), svc)).toBeNull();
   });
 });
 
 describe('canCreate', () => {
   it('customer-billed is creatable once reviewable (payment can defer)', () => {
-    expect(canCreate(filled())).toBe(true);
+    expect(canCreate(filled(), svc)).toBe(true);
   });
   it('self-pay needs an org method on file', () => {
-    expect(canCreate(filled({ billTo: 'self_pay', customerId: null }))).toBe(false);
-    expect(canCreate(filled({ billTo: 'self_pay', customerId: null, selfPayHasMethod: true }))).toBe(true);
+    expect(canCreate(filled({ billTo: 'self_pay', customerId: null }), svc)).toBe(false);
+    expect(canCreate(filled({ billTo: 'self_pay', customerId: null, selfPayHasMethod: true }), svc)).toBe(true);
   });
 });
 

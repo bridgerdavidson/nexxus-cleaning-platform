@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateOccurrences, validateRecurrenceInput } from '@/lib/appointments/recurrence';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
 import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
+import { jobPriceError } from '@/lib/pricing/minJobPrice';
 
 // Create admin client for server-side operations
 const supabaseAdmin = createClient(
@@ -106,6 +107,14 @@ export async function POST(request: NextRequest) {
         { success: false, error: validation.error },
         { status: 400 }
       );
+    }
+
+    // Minimum job price ($1), checked before the series insert so a rejected price
+    // never strands a series with no appointments. total_price is what every
+    // occurrence is charged, and the require_min_price DB trigger backstops it.
+    const priceError = jobPriceError(totalPrice);
+    if (priceError) {
+      return NextResponse.json({ success: false, error: priceError }, { status: 400 });
     }
 
     // 1. Insert the recurring series

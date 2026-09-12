@@ -2,6 +2,7 @@
 
 import { Check, Sparkles } from 'lucide-react';
 import { useServices } from '@/hooks/useServices';
+import { isBookableService } from './deriveBooking';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -32,7 +33,7 @@ export function serviceMetaLabel(basePrice: number, durationMinutes: number): st
 
 export function ServicePickerSheet({ open, onOpenChange, selectedId, onSelect }: ServicePickerSheetProps) {
   const { services, loading } = useServices();
-  const active = services.filter((s) => s.is_active);
+  const bookable = services.filter(isBookableService);
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -46,7 +47,7 @@ export function ServicePickerSheet({ open, onOpenChange, selectedId, onSelect }:
             Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-16 w-full rounded-card" />
             ))
-          ) : active.length === 0 ? (
+          ) : bookable.length === 0 ? (
             <div className="py-6">
               <EmptyState
                 icon={<Sparkles />}
@@ -55,7 +56,7 @@ export function ServicePickerSheet({ open, onOpenChange, selectedId, onSelect }:
               />
             </div>
           ) : (
-            active.map((s) => {
+            bookable.map((s) => {
               const on = selectedId === s.id;
               return (
                 <button
