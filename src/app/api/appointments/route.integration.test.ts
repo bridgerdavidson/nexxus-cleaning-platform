@@ -178,6 +178,15 @@ describe('POST /api/appointments', () => {
     expect(res.body.error).toBe('Customer is not a homeowner in this organization');
   });
 
+  it('rejects a service type from another org', async () => {
+    const other = await withTestOrg();
+    cleanups.push(() => other.cleanup());
+    const foreignService = await seedService(other.organizationId);
+    const res = await post(body({ service_type_id: foreignService }), org.admin.accessToken);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Service type is in a different organization');
+  });
+
   it('rejects a checklist that belongs to another service', async () => {
     const otherService = await seedService(org.organizationId);
     const wrongChecklist = await defaultChecklistOf(otherService);

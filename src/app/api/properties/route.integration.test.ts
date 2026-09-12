@@ -72,6 +72,14 @@ describe('POST /api/properties', () => {
     expect(wrongRole.body.error).toBe('owner_id must be a homeowner in this organization');
   });
 
+  it('rejects owner_id naming a homeowner of another org', async () => {
+    const other = await withTestOrg();
+    cleanups.push(() => other.cleanup());
+    const res = await post(fields({ owner_id: other.homeowner.userId }), org.admin.accessToken);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('owner_id must be a homeowner in this organization');
+  });
+
   it('returns 403 for a cleaner, a manager without can_edit_properties, and members of another org', async () => {
     const mgr = await addManagerToOrg(org.organizationId, { can_edit_properties: false });
     cleanups.push(() => mgr.cleanup());
