@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { keys } from '@/lib/queryKeys';
 import { updateProperty } from '@/hooks/useAdminData';
@@ -19,6 +18,7 @@ import {
 } from '@/components/ui/drawer';
 import type { Property } from '@/hooks/useHomeownerData';
 import { PropertyPhotoField } from '@/components/redesign/properties/PropertyPhotoField';
+import { createPropertyApi } from './properties-api';
 import {
   EMPTY_PROPERTY_FORM,
   toNumberOrNull,
@@ -122,12 +122,8 @@ export function PropertyFormSheet({ open, onOpenChange, property, onSaved }: Pro
         const res = await updateProperty(property.id, { ...payload, photo_url: photoUrl });
         if (!res.success) throw new Error(res.error ?? 'Could not save the property.');
       } else {
-        const { error: insertError } = await supabase.from('properties').insert({
-          ...payload,
-          owner_id: user.id,
-          organization_id: currentOrganizationId,
-        });
-        if (insertError) throw new Error(insertError.message);
+        const res = await createPropertyApi({ ...payload, organization_id: currentOrganizationId });
+        if (!res.success) throw new Error(res.error);
       }
       await queryClient.invalidateQueries({ queryKey: keys.properties.byHomeowner(user.id) });
       toast.success(isEdit ? 'Property updated' : 'Property added');
