@@ -95,7 +95,10 @@ export interface WithTestOrgOptions {
  * bound to it via `organization_members`. The cleaner gets a `cleaner_profiles` row
  * with sensible defaults (override via opts).
  *
- * Cleanup deletes the org (cascading to most child rows) and then deletes the auth users.
+ * Cleanup deletes this org's `service_types` and `cleaner_profiles` rows first (neither has
+ * ON DELETE CASCADE from organizations, so a leftover row of either makes the org delete
+ * fail with 23503 and leak it forever; checklists and checklist_line_items DO cascade off
+ * service_types), then the org (cascading to most other child rows), then the auth users.
  */
 export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOrgFixture> {
   const admin = createTestSupabaseClient();
@@ -171,7 +174,13 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
     cleaner: { userId: cleanerUser.id, email: cleanerUser.email, password: PASSWORD, accessToken: cleanerUser.accessToken },
     homeowner: { userId: homeownerUser.id, email: homeownerUser.email, password: PASSWORD, accessToken: homeownerUser.accessToken },
     async cleanup() {
-      // Delete org first — cascades remove most child rows.
+      // service_types and cleaner_profiles both have no ON DELETE CASCADE from
+      // organizations, so either one left behind makes the org delete below fail with
+      // 23503 and leak the org forever. Delete both first; checklists and
+      // checklist_line_items cascade off service_types so this clears those too.
+      await admin.from('service_types').delete().eq('organization_id', organizationId);
+      await admin.from('cleaner_profiles').delete().eq('organization_id', organizationId);
+      // Delete org next. Cascades remove most other child rows.
       await admin.from('organizations').delete().eq('id', organizationId);
       // Then auth users (auth.users isn't cascaded by org deletion).
       await Promise.all([
