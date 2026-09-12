@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PATCH, DELETE } from './route';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
-import { withTestOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
+import { withTestOrg, addManagerToOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
 
 type Body = { success?: boolean; data?: Record<string, unknown>; error?: string };
@@ -62,6 +62,26 @@ describe('/api/checklists/[id]', () => {
     cleanups.push(() => other.cleanup());
     expect((await patch(checklistId, { name: 'x' }, org.cleaner.accessToken)).status).toBe(403);
     expect((await patch(checklistId, { name: 'x' }, other.admin.accessToken)).status).toBe(403);
+  });
+
+  it('PATCH returns 404 for a malformed id', async () => {
+    expect((await patch('not-a-uuid', { name: 'x' }, org.admin.accessToken)).status).toBe(404);
+  });
+
+  it('PATCH returns 403 for a manager without can_manage_services', async () => {
+    const mgr = await addManagerToOrg(org.organizationId, { can_manage_services: false });
+    cleanups.push(() => mgr.cleanup());
+    const res = await patch(checklistId, { name: 'x' }, mgr.accessToken);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Requires the Manage services permission');
+  });
+
+  it('PATCH returns 200 for a manager with can_manage_services', async () => {
+    const mgr = await addManagerToOrg(org.organizationId, { can_manage_services: true });
+    cleanups.push(() => mgr.cleanup());
+    const res = await patch(checklistId, { name: 'Mgr Update' }, mgr.accessToken);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ id: checklistId, name: 'Mgr Update' });
   });
 
   it('PATCH returns 400 for a blank name', async () => {
