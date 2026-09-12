@@ -50,7 +50,7 @@ export function parsePropertyCreate(body: unknown): ParseResult<PropertyCreateIn
 
   const bedrooms = parseOptionalNumber(r.bedrooms, 'Bedrooms', true);
   if (!bedrooms.ok) return bedrooms;
-  const bathrooms = parseOptionalNumber(r.bathrooms, 'Bathrooms', false);
+  const bathrooms = parseOptionalNumber(r.bathrooms, 'Bathrooms', true);
   if (!bathrooms.ok) return bathrooms;
   const squareFeet = parseOptionalNumber(r.square_feet, 'Square feet', true);
   if (!squareFeet.ok) return squareFeet;
