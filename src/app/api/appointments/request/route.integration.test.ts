@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { POST } from './route';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { callRoute, bearerHeader } from '../../../../../tests/helpers/auth';
 import { withTestOrg, type TestOrgFixture } from '../../../../../tests/helpers/fixtures';
 import { createTestSupabaseClient } from '../../../../../tests/helpers/supabase';
@@ -115,6 +116,75 @@ describe('POST /api/appointments/request', () => {
     // base_price 200 + adder 20
     expect((appt as { total_price: number }).total_price).toBe(220);
     expect((appt as { checklist_id: string }).checklist_id).toBe((cl as { id: string }).id);
+  });
+
+  describe('minimum job price ($1)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('succeeds on a service priced exactly $1', async () => {
+      const admin = createTestSupabaseClient();
+      const { data: svc, error: svcErr } = await admin
+        .from('service_types')
+        .insert({ organization_id: org.organizationId, name: 'One dollar', base_price: 1, duration_minutes: 60, service_type: 'custom' })
+        .select('id')
+        .single();
+      expect(svcErr).toBeNull();
+
+      const { status, body } = await callRoute<{ success: boolean; appointmentId: string }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.homeowner.accessToken),
+        body: {
+          organizationId: org.organizationId,
+          propertyId,
+          serviceTypeId: (svc as { id: string }).id,
+          slots: [{ scheduled_date: '2026-07-01', scheduled_time: '09:00' }],
+        },
+      });
+      expect(status).toBe(200);
+      const { data: appt } = await admin.from('appointments').select('total_price').eq('id', body.appointmentId).single();
+      expect(Number((appt as { total_price: number }).total_price)).toBe(1);
+    });
+
+    it('400s (never 500s) a legacy service priced under $1, and writes nothing', async () => {
+      // The require_min_price trigger no longer lets a sub-$1 service be created, but
+      // production still holds one legacy $0 row. Simulate reading that row: only the
+      // service_types lookup is faked, every other query (auth, property, insert) is real.
+      const realFrom = supabaseAdmin.from.bind(supabaseAdmin);
+      vi.spyOn(supabaseAdmin, 'from').mockImplementation(((table: string) => {
+        if (table !== 'service_types') return realFrom(table);
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { id: serviceTypeId, organization_id: org.organizationId, base_price: 0, duration_minutes: 90 },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }) as unknown as typeof supabaseAdmin.from);
+
+      const { status, body } = await callRoute<{ success: boolean; error: string }>(POST, {
+        method: 'POST',
+        headers: bearerHeader(org.homeowner.accessToken),
+        body: {
+          organizationId: org.organizationId,
+          propertyId,
+          serviceTypeId,
+          slots: [{ scheduled_date: '2026-07-01', scheduled_time: '09:00' }],
+        },
+      });
+      expect(status).toBe(400);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe('This service is not available to book right now. Please contact your office.');
+
+      vi.restoreAllMocks();
+      const admin = createTestSupabaseClient();
+      const { data: rows } = await admin.from('appointments').select('id').eq('organization_id', org.organizationId);
+      expect(rows ?? []).toHaveLength(0);
+    });
   });
 
   it('rejects a property that does not belong to the homeowner', async () => {

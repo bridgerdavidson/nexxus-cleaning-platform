@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
+import { jobPriceError } from '@/lib/pricing/minJobPrice';
 
 /**
  * Edit-details save for the redesign booking sheet (spec: docs/superpowers/specs/
@@ -103,8 +104,19 @@ export async function PATCH(
       body.priceOverrideEnabled !== storedOverrideEnabled ||
       (body.priceOverrideEnabled && Number(body.priceOverrideTotal) !== storedOverrideTotal);
     const priceAffecting = serviceChanged || checklistChanged || overrideChanged;
+    const nextTotalPrice = body.priceOverrideEnabled
+      ? Number(body.priceOverrideTotal)
+      : Number(service.base_price) + checklistAdder;
 
     if (priceAffecting) {
+      // Minimum job price ($1). Only a price-affecting edit is checked, so a
+      // notes-only save on a legacy under-$1 booking still goes through (the
+      // require_min_price DB trigger makes the same distinction).
+      const priceError = jobPriceError(nextTotalPrice);
+      if (priceError) {
+        return NextResponse.json({ success: false, error: priceError }, { status: 400 });
+      }
+
       // Reconcile-parity predicate: a collected or in-flight revenue charge locks
       // the money fields. NULL charge_kind must block (legacy Stripe charges and
       // manual recorded payments carry no charge_kind); only cancellation_fee
@@ -145,9 +157,7 @@ export async function PATCH(
       update.checklist_id = checklistId ?? null;
       update.price_override_enabled = body.priceOverrideEnabled;
       update.price_override_total = body.priceOverrideEnabled ? body.priceOverrideTotal : null;
-      update.total_price = body.priceOverrideEnabled
-        ? body.priceOverrideTotal
-        : Number(service.base_price) + checklistAdder;
+      update.total_price = nextTotalPrice;
       if (serviceChanged) update.duration_minutes = service.duration_minutes;
     }
 
