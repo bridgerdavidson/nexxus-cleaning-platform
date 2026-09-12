@@ -1,11 +1,11 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { keys } from '@/lib/queryKeys';
 import { computeResponseDeadlineISO } from '@/lib/computeResponseDeadline';
 import type { ServiceType } from '@/hooks/useServices';
+import { createBookingApi } from './bookings-api';
 import { buildBookingInsert } from './buildBookingInsert';
 import { buildRecurringPayload } from './buildRecurringPayload';
 import { isRecurring } from './deriveRecurrence';
@@ -17,11 +17,11 @@ export interface CreateBookingResult {
 }
 
 /**
- * Create an operator booking. A one-time booking inserts an `appointments` row (+ offered slots) via
- * the anon RLS client, mirroring the legacy AddAppointmentModal. A recurring booking (customer-billed
- * only) POSTs to the existing /api/recurring-appointments with a Bearer token; the route enforces
- * org membership + role and generates the series. No new route/schema.
- * On success invalidates the org appointments so the booking(s) appear in the list.
+ * Create an operator booking. A one-time booking POSTs to /api/appointments (the route resolves and
+ * checks every referenced row and inserts the appointment plus offered slots). A recurring booking
+ * (customer-billed only) POSTs to /api/recurring-appointments. Both send a Bearer token and the route
+ * enforces org membership + role. On success invalidates the org appointments so the booking(s)
+ * appear in the list.
  */
 export function useCreateOperatorBooking() {
   const { currentOrganizationId, accessToken } = useAuth();
@@ -58,21 +58,8 @@ export function useCreateOperatorBooking() {
       const deadline = computeResponseDeadlineISO(primary.date, primary.time);
       const { appointment, slots } = buildBookingInsert(currentOrganizationId, state, service, deadline, checklist);
 
-      const { data, error } = await supabase
-        .from('appointments')
-        .insert(appointment)
-        .select('id')
-        .single();
-      if (error || !data) throw new Error(error?.message || 'Could not create the booking');
-      const appointmentId = (data as { id: string }).id;
-
-      // Offered slots (primary + alternates) are recorded only when the operator offered
-      // alternates; a lone primary is already the appointment's date/time. Non-fatal.
-      if (slots.length > 1) {
-        const slotRows = slots.map((sl) => ({ appointment_id: appointmentId, ...sl }));
-        await supabase.from('appointment_requested_slots').insert(slotRows);
-      }
-
+      const res = await createBookingApi({ organization_id: currentOrganizationId, appointment, slots });
+      if (!res.success) throw new Error(res.error);
       return { recurring: false, count: 1 };
     },
     onSuccess: () => {
