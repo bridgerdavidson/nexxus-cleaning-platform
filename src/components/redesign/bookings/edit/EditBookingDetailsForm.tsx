@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock } from 'lucide-react';
+import { AlertTriangle, CalendarClock } from 'lucide-react';
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,7 +14,8 @@ import { EntityPickerField, type PickerItem } from '../new-booking/EntityPickerF
 import { fmtTime, monthDay } from '../booking-vm';
 import { STALE_BOOKING_MESSAGE } from '@/lib/appointments/staleBookingError';
 import { seedEditDetails, type EditDetailsState } from './seedEditDetails';
-import { buildDetailsPatch } from './buildDetailsPatch';
+import { buildDetailsPatch, editDetailsPriceError } from './buildDetailsPatch';
+import { MIN_JOB_PRICE_USD } from '@/lib/pricing/minJobPrice';
 import { useEditBookingDetails } from './useEditBookingDetails';
 
 const NO_CHECKLIST = '__none__';
@@ -133,6 +134,8 @@ export function EditBookingDetailsForm({
       ? (appointment.checklist?.price_adder ?? 0)
       : 0;
   const systemTotal = service ? service.base_price + checklistAdder : 0;
+  // Blocking minimum price ($1), checked only when the edit re-prices the booking.
+  const priceError = editDetailsPriceError(initial, state, systemTotal);
 
   async function handleSave() {
     if (!state.serviceTypeId) return;
@@ -192,7 +195,11 @@ export function EditBookingDetailsForm({
               <span className="text-muted-foreground">$</span>
               <input
                 type="number"
-                min={0}
+                min={MIN_JOB_PRICE_USD}
+                step={0.01}
+                aria-label="Price"
+                aria-invalid={priceError ? true : undefined}
+                aria-describedby={priceError ? 'edit-booking-price-error' : undefined}
                 className="ml-1 w-full appearance-none border-0 bg-transparent tabular-nums outline-none [appearance:textfield] focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
                 value={state.overrideEnabled ? (state.overrideTotal ?? '') : systemTotal}
                 onChange={(e) => {
@@ -214,6 +221,16 @@ export function EditBookingDetailsForm({
               </Button>
             )}
           </div>
+          {priceError && (
+            <div
+              id="edit-booking-price-error"
+              role="alert"
+              className="flex items-start gap-2 rounded-control border border-critical-700/30 bg-critical-50 px-3 py-2 text-xs text-critical-700"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>{priceError} Enter a price for this job to save.</span>
+            </div>
+          )}
           <p className="px-0.5 text-xs text-muted-foreground">
             Changing the service or checklist updates the price, and the service updates the duration, unless you
             override.
@@ -249,7 +266,7 @@ export function EditBookingDetailsForm({
         <Button variant="outline" onClick={() => (dirty ? setConfirmDiscard(true) : onDone())}>
           Cancel
         </Button>
-        <Button className="flex-1" loading={saving} disabled={!state.serviceTypeId} onClick={handleSave}>
+        <Button className="flex-1" loading={saving} disabled={!state.serviceTypeId || !!priceError} onClick={handleSave}>
           Save changes
         </Button>
       </div>
