@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/components/ui/toast";
 import { useManagerPermissions } from "@/hooks/useManagerPermissions";
 import { EmptyState } from "@/components/ui/empty-state";
+import { jobPriceError } from "@/lib/pricing/minJobPrice";
 import {
   useServices,
   createService,
@@ -288,6 +289,16 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
 
   const handleDuplicateService = useCallback(async () => {
     if (!selectedService) return;
+    // A copy inherits the base price, and a service must cost at least $1. Say so up
+    // front for a legacy under-$1 service instead of letting the require_min_price DB
+    // trigger reject the insert with a generic failure.
+    const priceError = jobPriceError(selectedService.base_price);
+    if (priceError) {
+      toast.error("Could not duplicate the service", {
+        description: `${priceError} Edit this service's price, then duplicate it.`,
+      });
+      return;
+    }
     setBusy(true);
     try {
       const r = await duplicateService(orgId, selectedService.id);
