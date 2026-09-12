@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireManagerPermission } from '@/lib/auth/requireManagerPermission';
 import { isUuid } from './parse';
-import { resolveServiceOrg } from './resolveCatalogOrg';
+import { resolveChecklistOrg, resolveLineItemOrg, resolveServiceOrg } from './resolveCatalogOrg';
 
 /**
  * Catalog authorizers: resolve the org that owns a service (PR B: a checklist,
@@ -30,4 +30,32 @@ export async function authorizeService(
   });
   if (!auth.ok) return auth;
   return { ok: true, userId: auth.userId, organizationId: target.organizationId };
+}
+
+export async function authorizeChecklist(
+  request: NextRequest,
+  checklistId: string,
+): Promise<CatalogAuth<{ organizationId: string; serviceTypeId: string }>> {
+  if (!isUuid(checklistId)) return { ok: false, response: notFound('Checklist') };
+  const target = await resolveChecklistOrg(supabaseAdmin, checklistId);
+  if (!target) return { ok: false, response: notFound('Checklist') };
+  const auth = await requireManagerPermission(request, target.organizationId, supabaseAdmin, FLAG, {
+    errorMessage: MESSAGE,
+  });
+  if (!auth.ok) return auth;
+  return { ok: true, userId: auth.userId, ...target };
+}
+
+export async function authorizeLineItem(
+  request: NextRequest,
+  itemId: string,
+): Promise<CatalogAuth<{ organizationId: string; serviceTypeId: string; checklistId: string }>> {
+  if (!isUuid(itemId)) return { ok: false, response: notFound('Task') };
+  const target = await resolveLineItemOrg(supabaseAdmin, itemId);
+  if (!target) return { ok: false, response: notFound('Task') };
+  const auth = await requireManagerPermission(request, target.organizationId, supabaseAdmin, FLAG, {
+    errorMessage: MESSAGE,
+  });
+  if (!auth.ok) return auth;
+  return { ok: true, userId: auth.userId, ...target };
 }
