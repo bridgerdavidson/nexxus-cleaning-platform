@@ -18,11 +18,13 @@ const fail = (status: number, error: string) => NextResponse.json({ error }, { s
  * `appointment` is buildBookingInsert's output (extra fields ignored) and
  * `slots` is the primary time plus up to two alternates.
  *
- * Every referenced row must belong to the org: the property, the customer
- * (a homeowner member, checked before the property/customer ownership match so
- * an invalid customer reports as such), the service, the checklist (on that
- * service), and the cleaner. A company-paid job is refused for a cleaner
- * settlement could not pay, with the same reason text the booking form shows.
+ * Every referenced row must belong to the org: the property (and it must be
+ * the selected customer's, or org-owned when there is no customer), the
+ * customer (a homeowner member, checked before the property/customer ownership
+ * match so an invalid customer reports as such), the service, the checklist
+ * (on that service), and the cleaner. A company-paid job is refused for a
+ * cleaner settlement could not pay, with the same reason text the booking
+ * form shows.
  *
  * The row is inserted as pending / awaiting with a server-computed response
  * deadline. Offered slots are recorded only when more than one was given.
@@ -39,22 +41,24 @@ export async function POST(request: NextRequest) {
     });
     if (!auth.ok) return auth.response;
 
-    const { data: property } = await supabaseAdmin
+    const { data: property, error: propertyError } = await supabaseAdmin
       .from('properties')
       .select('id, owner_id, organization_id')
       .eq('id', a.property_id)
       .maybeSingle();
+    if (propertyError) return fail(500, propertyError.message);
     if (!property) return fail(404, 'Property not found');
     if (property.organization_id !== orgId) return fail(403, 'Property is in a different organization');
 
     if (a.homeowner_id) {
-      const { data: member } = await supabaseAdmin
+      const { data: member, error: memberError } = await supabaseAdmin
         .from('organization_members')
         .select('user_id')
         .eq('user_id', a.homeowner_id)
         .eq('organization_id', orgId)
         .eq('role', 'homeowner')
         .maybeSingle();
+      if (memberError) return fail(500, memberError.message);
       if (!member) return fail(400, 'Customer is not a homeowner in this organization');
     }
 
@@ -62,33 +66,36 @@ export async function POST(request: NextRequest) {
       return fail(400, 'Property does not belong to the selected customer');
     }
 
-    const { data: service } = await supabaseAdmin
+    const { data: service, error: serviceError } = await supabaseAdmin
       .from('service_types')
       .select('id, organization_id')
       .eq('id', a.service_type_id)
       .maybeSingle();
+    if (serviceError) return fail(500, serviceError.message);
     if (!service) return fail(404, 'Service type not found');
     if (service.organization_id !== orgId) return fail(403, 'Service type is in a different organization');
 
     if (a.checklist_id) {
-      const { data: checklist } = await supabaseAdmin
+      const { data: checklist, error: checklistError } = await supabaseAdmin
         .from('checklists')
         .select('id, service_type_id')
         .eq('id', a.checklist_id)
         .maybeSingle();
+      if (checklistError) return fail(500, checklistError.message);
       if (!checklist || checklist.service_type_id !== a.service_type_id) {
         return fail(400, 'Checklist does not match the selected service type');
       }
     }
 
     if (a.cleaner_id) {
-      const { data: cleaner } = await supabaseAdmin
+      const { data: cleaner, error: cleanerError } = await supabaseAdmin
         .from('cleaner_profiles')
         .select(
           'id, organization_id, payout_model, stripe_connect_account_id, stripe_connect_onboarding_complete, payout_percent, flat_rate_cents, payout_configured_at',
         )
         .eq('id', a.cleaner_id)
         .maybeSingle();
+      if (cleanerError) return fail(500, cleanerError.message);
       if (!cleaner) return fail(404, 'Cleaner not found');
       if (cleaner.organization_id !== orgId) return fail(403, 'Cleaner is in a different organization');
       if (a.is_self_pay) {
