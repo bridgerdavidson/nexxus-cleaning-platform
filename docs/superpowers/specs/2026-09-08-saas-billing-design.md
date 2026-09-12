@@ -18,8 +18,8 @@ The shape:
 - **Three tiers** (Starter / Growth / Pro, monthly or annual) and **purchased cleaner seats**. The bill follows the tier and the seat count the owner chose; adding or removing cleaners never changes the bill.
 - **Stripe Checkout** for the first purchase, one in-app `changePlan` call for every later change, and the **Stripe Customer Portal** for payment method, invoices, and cancellation.
 - A **freeze** for expired trials, exhausted dunning (`unpaid`), cancellation, and admin pause. Frozen orgs can see everything and finish scheduled work; they cannot create new work. Enforced **server-side on every route that creates new work**, which first requires moving the browser's remaining direct table writes behind routes (**Phase 1a**).
-- A **back office** that can comp, extend, pause, annotate, and see billing state for every tenant.
-- Everything ships behind `BILLING_ENFORCEMENT_ENABLED` (default off). The pilot is untouched until the flag flips.
+- A **back office** that can comp, un-comp, extend, pause, cancel, annotate, and see billing state for every tenant.
+- Everything ships behind `BILLING_ENFORCEMENT_ENABLED` (default off). The pilot is untouched until the flag flips, and the migration comps every pre-existing org, so the flag flip cannot touch it either. Leaving a comp is a deliberate back-office act that always lands the tenant in an open trial (§14).
 
 ## 2. Locked decisions (from the brainstorming sessions)
 
@@ -32,6 +32,7 @@ The shape:
 7. **Plan changes are immediate with proration**, including downgrades (deviation from the pricing doc's "downgrades at period end"; §18).
 8. **Trial cap is a flat 15 seats** (Growth's max). The Phase 2 signup team-size answer only pre-fills checkout.
 9. **Eight back-office additions** accepted (§14): Stripe deep links, billing timeline, tenant notes, roster billing columns and filters, admin-only pause, billing address collection, `checkout.session.completed` handling with `integration_identifier`, one Stripe Product per tier.
+10. **Pilots cannot hit a trial wall by accident** (2026-09-12). Every org that exists before the billing migration is comped by the migration itself, not by a checklist step. The platform admin controls every tenant's billing state from the back office (comp, un-comp with a runway, extend, pause, cancel), and un-comping always lands the tenant in an open trial, never a frozen one. Moving the Nexxus Core pilot onto paid billing is one back-office action followed by the tenant's own checkout.
 
 ## 3. Definitions
 
@@ -92,9 +93,14 @@ Values become `none | trialing | active | past_due | unpaid | canceled`. `mapSub
 update organizations set subscription_status = 'trialing' where subscription_status = 'none';
 update organizations set trial_ends_at = now() + interval '14 days'
   where subscription_status = 'trialing' and trial_ends_at is null;
+-- Every org that predates this migration was hand-provisioned for the pilot: comp it.
+-- The cutoff is this migration's own version timestamp, so a re-application on the
+-- shared dev database never comps an org created after it.
+update organizations set comped_at = now()
+  where comped_at is null and created_at < '<this migration's version timestamp>';
 ```
 
-Nothing is frozen on deploy: every existing org gets a fresh 14 days, and Bridger comps the anchor tenant from the back office (§14) before the flag flips.
+Nothing can freeze on deploy or on the later flag flip: every pre-existing org, the Nexxus Core pilot included, is comped by the migration and stays comped until a platform admin removes the comp from the back office (§14), which always lands it in an open trial. `trial_ends_at` is still stamped so the column is never null, but it is dormant while `comped_at` is set. Internal test orgs that should exercise a real trial are un-comped after the flag flips. If the migration is ever re-applied, a pre-existing org that had been deliberately un-comped is re-comped, which fails open (never frozen) and shows in the roster's comped filter.
 
 ### 5.4 `platform_tenant_notes` — new table
 
@@ -185,6 +191,7 @@ Precedence and derivation:
 - **Start.** `trial_ends_at = created_at + 14 days`, stamped by `POST /api/platform/organizations` (and later by the Phase 2 signup route). Backfilled per §5.3.
 - **Extension.** `POST /api/billing/trial/extend` `{ organization_id }`. Owner only. Allowed once: `trial_extended_at` must be null and state must be `trialing` or `trial_expired`. Sets `trial_ends_at = max(now, trial_ends_at) + 7 days`, stamps `trial_extended_at`. Offered on the paywall and in the banner when 3 or fewer days remain.
 - **Platform-side extension** (§14) is separate, unlimited, and does not touch `trial_extended_at`.
+- **Leaving a comp.** Remove comp (§14) always sets `trial_ends_at = now() + runway` (default 14 days) before clearing `comped_at`, so a formerly comped org lands in `trialing`, never `trial_expired`. A formerly comped org that already has an active Stripe subscription lands in `active` and needs no runway.
 - **End.** Nothing is charged (no card exists). State becomes `trial_expired`; the paywall (§13) is the conversion moment.
 
 ## 9. Purchased seats
@@ -193,6 +200,7 @@ Precedence and derivation:
 - `seat_count` bounds: `[includedSeats, maxSeats]` for Starter and Growth (3–5, 8–15); `[15, ∞)` for Pro. Never below seats in use.
 - The bill changes **only** on `changePlan` (§10.4). Adding or removing a cleaner never touches Stripe. There is no membership-triggered sync and no seat-reconcile job.
 - **Invite cap.** `admin/send-invite` with role `cleaner` computes seats in use and refuses with **409** `{ error: 'seat_cap_reached', cap, in_use, tier, next_tier }` when `in_use >= seatCap`. Pending invites reserve a slot so twenty invites cannot land at a five-seat cap. Comped orgs are never capped.
+- **Above the cap after un-comp.** A formerly comped org may have more cleaners than `TRIAL_SEAT_CAP`. It keeps every cleaner it has (nothing is removed and nothing freezes) but cannot invite more until it buys seats; checkout's `seat_count >= seatsInUse` rule then steers it to the tier that fits, or to Pro. The Billing section and the un-comp dialog both say so.
 - **Freeing a seat.** Deleting a cleaner or cancelling a pending invite frees the slot immediately. The bill is unchanged until the owner reduces `seat_count` in Billing. The Cleaners page says so after a delete ("1 seat is now open. Add a cleaner, or reduce your seats in Billing to lower your bill.").
 - **Accepted race.** Two invites sent simultaneously at cap-minus-one both pass; the org sits one over cap until someone leaves. Billing is unaffected (it counts purchased seats). Not worth a constraint trigger.
 - **No deactivate exists.** Delete is blocked while a cleaner has active appointments or an open pay request, so a seasonal cleaner with a job next month keeps a seat until it runs. Named follow-up (§21).
@@ -270,9 +278,11 @@ For `past_due` / `unpaid`, a plan change does not fix the failed payment; the UI
 
 `getOrgPortalLink(orgId, returnUrl)` gains the resolved configuration. Exposed as `POST /api/stripe/billing/portal-link` (exists). Owns payment method, billing email/name/address, invoice history, cancel at period end (with Stripe's cancellation survey). Plan changes disabled there.
 
-### 10.6 Pause (admin-only)
+### 10.6 Pause and cancel (admin-only)
 
 `PATCH /api/platform/organizations/[id]` with `{ action: 'pause', resumes_at }` → `subscriptions.update(subId, { pause_collection: { behavior: 'void', resumes_at } })`; `{ action: 'resume' }` → `pause_collection: ''`. `void` means no invoice records exist for paused months. Requires an active subscription (trialing orgs get a trial extension instead). The webhook mirrors `pause_collection` onto `billing_paused_at` / `billing_pause_resumes_at`; state `paused` is frozen (§7). Self-serve pause is a follow-up inside a cancellation flow (§21).
+
+`{ action: 'cancel', when: 'period_end' | 'now' }` → `period_end` calls `subscriptions.update(subId, { cancel_at_period_end: true })`; `now` calls `subscriptions.cancel(subId)`. `cancelOrgSubscription` in `orgBilling.ts` (today: immediate only) gains the `when` argument and is the single call site. Requires a subscription in `active`, `past_due`, or `unpaid`. The webhook mirrors `cancel_at` and then `canceled` exactly as a portal cancel does; state `canceled` is frozen (§7), so the dialog says the org will freeze unless it is comped first. Refunds stay a Dashboard action (§20 step 10).
 
 ### 10.7 Webhooks
 
@@ -375,7 +385,12 @@ No change. Nothing a cleaner does creates new work.
 ## 14. Platform back office (`/owner`)
 
 - **`TenantDetailSheet`** billing block: state (from `deriveBillingAccess`), plan, period, seats in use / purchased, MRR, trial ends, renews / cancels on, paused until; **Stripe deep links** to the customer and subscription (`https://dashboard.stripe.com/{test/}customers/{id}`, `/subscriptions/{id}`; test-mode prefix when the key is a test key); a **billing timeline** listing `tenant_subscription_events` newest first (event type, time, key payload fields); **internal notes** (list + add).
-- **Actions**, each behind a confirm dialog and each writing a `platform_audit_log` row (`billing.comp`, `billing.uncomp`, `billing.extend_trial`, `billing.pause`, `billing.resume`, `tenant.note`): Comp / Remove comp; Extend trial by N days (platform-side, unlimited); Pause until date / Resume (active subscriptions only).
+- **Actions**, each behind a confirm dialog and each writing a `platform_audit_log` row (`billing.comp`, `billing.uncomp`, `billing.extend_trial`, `billing.pause`, `billing.resume`, `billing.cancel`, `tenant.note`):
+  - **Comp.** Sets `comped_at = now()`. Warns when the org has an active subscription (comp wins, but Stripe keeps invoicing until the subscription is paused or canceled).
+  - **Remove comp.** Requires a **runway in days** (default 14, minimum 1). Sets `trial_ends_at = now() + runway`, then clears `comped_at`, in one update, so the tenant lands in an open `trialing` state and never in `trial_expired`. The dialog shows seats in use against `TRIAL_SEAT_CAP` and names the tier that fits, and the audit row records the runway. If the org already has an active subscription the runway field is hidden and the org lands in `active`. This is the "take them out of the pilot" action: for the Nexxus Core pilot it is one click, after which the tenant checks out on its own inside the runway.
+  - **Extend trial by N days** (platform-side, unlimited, any trialing or trial-expired org).
+  - **Pause until date / Resume** (active subscriptions only).
+  - **Cancel subscription** at period end or immediately (§10.6). The dialog states that the org freezes on cancellation unless it is comped.
 - **`PATCH /api/platform/organizations/[id]`** (new; `requirePlatformAdmin`) with a discriminated `action` body. **`POST /api/platform/organizations/[id]/notes`** (new).
 - **`GET /api/platform/organizations`** returns the billing columns plus computed `mrr_cents`, `seats_in_use`, `billing_state`. **`TenantRoster`** adds Plan, Seats, Trial/renews, MRR columns and a state filter (all / trialing / expiring in 7 days / past_due / unpaid / frozen / comped). `PlatformStatCards` adds MRR and past_due + unpaid counts.
 - **`ProvisionTenantDialog`** gains a "Complimentary (no trial clock, no billing)" checkbox → `comped_at = now()` at creation. Provisioning always stamps `trial_ends_at`.
@@ -388,12 +403,12 @@ No change. Nothing a cleaner does creates new work.
 | View Billing section | owner, admin |
 | Checkout, change plan, extend trial, portal link | owner (admin may open checkout; may not change an existing plan) |
 | Invite cleaner (cap-checked) | as today (owner, admin, manager with `can_manage_cleaners`) |
-| Comp, platform extend, pause, resume, notes | platform admin |
+| Comp, remove comp, platform extend, pause, resume, cancel, notes | platform admin |
 | Read `tenant_subscription_events` | org owners (existing RLS) and platform admin via the route |
 
 ## 16. Events, audit, observability
 
-- Every billing mutation the app initiates (`checkout` session created, `plan` changed, `trial` extended, platform actions) appends a `tenant_subscription_events` row with `event_type` prefixed `app.` (`app.checkout_started`, `app.plan_changed`, `app.trial_extended`, `app.comped`, …) so the timeline shows both what we did and what Stripe told us. `stripe_event_id` is `app:<uuid>` for these rows (the column is unique, not Stripe-validated).
+- Every billing mutation the app initiates (`checkout` session created, `plan` changed, `trial` extended, platform actions) appends a `tenant_subscription_events` row with `event_type` prefixed `app.` (`app.checkout_started`, `app.plan_changed`, `app.trial_extended`, `app.comped`, `app.uncomped`, `app.platform_extended`, `app.platform_paused`, `app.platform_resumed`, `app.platform_canceled`, …) so the timeline shows both what we did and what Stripe told us. `stripe_event_id` is `app:<uuid>` for these rows (the column is unique, not Stripe-validated).
 - Webhook mirror failures and `resolvePrices()` failures raise `platform_alerts` rows (`alert_type` `billing_mirror_failed`, `billing_prices_missing`).
 - A nightly `reconcileBillingMirror` job in the existing reconcile sweep compares each active org's `plan_tier / billing_period / seat_count / subscription_status` to Stripe and repairs drift, alerting on any repair. Cheap insurance in the codebase's own pattern.
 
@@ -407,6 +422,9 @@ No change. Nothing a cleaner does creates new work.
 - **`past_due` for an annual subscriber.** Same behavior: banner only until Stripe's retries end.
 - **Portal cancel then change of mind.** Portal allows reactivation before period end; `subscription_cancel_at` clears via webhook.
 - **Comped org with a Stripe subscription.** Comp wins (§7 precedence). The back office warns when comping an org that has an active subscription.
+- **Un-comping an org whose backfilled clock has long expired.** Cannot freeze: Remove comp always resets `trial_ends_at` in the same update that clears `comped_at` (§14). `deriveBillingAccess` is unit-tested for the row shape `comped_at null, trial_ends_at in the future` immediately after an un-comp.
+- **Un-comping an org above the trial seat cap.** Nothing is removed and nothing freezes; invites are refused at the cap until seats are bought (§9).
+- **Enforcement flag flipped with a pre-existing org still in `trialing`.** Cannot happen by accident: the §5.3 migration comps every pre-existing org. The roster's comped filter is the pre-flip check (§20 step 7).
 - **Multiple orgs per user.** Billing is per org; the pill/banner/paywall follow `currentOrganizationId`.
 
 ## 18. Accepted trade-offs and deviations from the pricing doc
@@ -435,10 +453,17 @@ No change. Nothing a cleaner does creates new work.
 | A | `/api/services` routes + `useServices` rewire + tests | n/a |
 | B | checklist routes + `useChecklists` / `useServices` rewire + tests | n/a |
 | C | `POST /api/appointments`, `POST /api/properties` + rewires + tests | n/a |
-| D | migration (§5), plan catalog, `deriveBillingAccess`, `requireWritable` + `assertOrgWritable`, guard wired on §11.2, `mapSubscriptionStatus('unpaid')`, `platform_stats` extension | off |
+| D | migration (§5, including the comp-every-pre-existing-org backfill), plan catalog, `deriveBillingAccess`, `requireWritable` + `assertOrgWritable`, guard wired on §11.2, `mapSubscriptionStatus('unpaid')`, `platform_stats` extension | off |
 | E | Stripe: setup script, resolvers, checkout, `changePlan`, trial extend, portal config, pause, webhook changes, `reconcileBillingMirror`, delete old start route | off |
 | F | UI: Billing section, pill/banner, paywall, seats UI, homeowner copy (via `ui-feature-workflow`) | off |
-| G | Back office: platform PATCH + notes route, `TenantDetailSheet` billing block/timeline/notes/actions, roster columns/filters, stat cards, provisioning checkbox | off |
+| G | Back office: platform PATCH (comp, un-comp with runway, extend, pause, resume, cancel) + notes route, `TenantDetailSheet` billing block/timeline/notes/actions, roster columns/filters, stat cards, provisioning checkbox | off |
+
+**Build model (decided 2026-09-12, to save tokens).** Fable is the decision-maker and reviewer, never the implementer:
+
+- **Fable** (the main session) writes and approves the implementation plan, makes every design call the plan leaves open, reviews each PR's full diff and test output before anything is pushed, and requests changes or approves. Fable does not write implementation code beyond a one-line fix found in review.
+- **Opus** subagents build the money-adjacent and multi-file work: PR D (migration, catalog, guard), PR E (Stripe integration and webhooks), PR G (platform actions), and any migration.
+- **Sonnet** subagents build the mechanical work: PRs A, B, C (route extraction and hook rewires), tests, and PR F once its design is fixed by `ui-feature-workflow`.
+- Fable chooses Opus or Sonnet per task at its discretion within those defaults. Each subagent receives the relevant spec sections, the plan task, and the repo conventions, and reports a diff summary plus the exact test output. Nothing merges without a Fable review.
 
 **Ops (Bridger), after E–G are in prod and before the flag:**
 
@@ -448,7 +473,7 @@ No change. Nothing a cleaner does creates new work.
 4. Live webhook endpoint: enable `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_succeeded`, `invoice.payment_failed`, `checkout.session.completed`.
 5. Portal branding (logo, colors) and public business info.
 6. **Stripe Tax:** set the head-office address so nexus monitoring runs from day one; choose the SaaS product tax code **with an accountant from Stripe's canonical tax-code list** (never guessed) and set it on the four Products; add registrations where required. Only then set `BILLING_TAX_ENABLED=true`, which adds `automatic_tax` to Checkout and subscriptions. Until a registration exists, Stripe Tax silently collects nothing, so the flag stays off.
-7. Comp the anchor tenant from the back office. Confirm every other prod org has a sensible `trial_ends_at`.
+7. In the roster's comped filter, confirm the Nexxus Core pilot and every other pre-existing org show as comped (the §5.3 migration did this; nothing to click). Un-comp any internal test org you want on a real trial, giving it a runway.
 8. On your own test org: full checkout, change plan, portal cancel, pause/resume. Watch the timeline.
 9. Set `BILLING_ENFORCEMENT_ENABLED=true` and `NEXT_PUBLIC_BILLING_ENFORCEMENT_ENABLED=true` in Vercel prod. Redeploy.
 10. Decide and log the **refund policy** in the pricing doc (Jobber: none prorated; Housecall Pro: 30-day money-back). Refunds themselves are Dashboard actions.
@@ -463,6 +488,8 @@ No change. Nothing a cleaner does creates new work.
 - **Atomic service-with-checklists RPC.**
 - **Self-serve pause** inside a cancellation flow.
 - **Annual prepay by invoice** (`collection_method: send_invoice`), referral credits, role-split back-office permissions.
+- **Platform suspend independent of Stripe.** A `suspended_at` stamp set from the back office, frozen at the same precedence as `paused`, for abuse or non-payment on a trialing or comped org. Phase 1 has no lever to shut off an org that has no subscription other than deleting it.
+- **Manual plan or seat override** for a tenant that pays by invoice or check. Phase 1 truths `plan_tier` and `seat_count` from webhooks only; comp covers these tenants until this exists.
 
 ## 22. Open items to verify at plan time
 
