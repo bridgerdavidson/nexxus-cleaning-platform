@@ -145,6 +145,7 @@ describe('POST /api/services', () => {
       org.admin.accessToken,
     );
     expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/numeric field overflow/);
     const { data } = await db
       .from('service_types')
       .select('id')

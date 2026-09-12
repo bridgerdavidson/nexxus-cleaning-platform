@@ -137,6 +137,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     error,
     refetch,
     updateServiceInState,
+    replaceServiceInState,
     maxChecklistAdderByServiceId,
     refreshMaxChecklistAdders,
   } = useServices();
@@ -263,6 +264,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
         if (serviceDialog?.mode === "edit" && selectedService) {
           const r = await updateService(selectedService.id, v);
           if (r.success) {
+            if (r.data) replaceServiceInState(r.data);
             toast.success("Service updated");
             setServiceDialog(null);
           } else {
@@ -284,7 +286,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
         setBusy(false);
       }
     },
-    [serviceDialog, selectedService, orgId, refetch, refreshMaxChecklistAdders, onSelect],
+    [serviceDialog, selectedService, orgId, refetch, refreshMaxChecklistAdders, onSelect, replaceServiceInState],
   );
 
   const handleDuplicateService = useCallback(async () => {

@@ -88,4 +88,15 @@ describe('apiFetch', () => {
       status: 0,
     });
   });
+
+  it('returns a 401 result without calling fetch when getAccessToken throws', async () => {
+    token.mockRejectedValue(new Error('AbortError: navigator.locks request aborted'));
+    const res = await apiFetch('/api/services', { method: 'POST', body: { a: 1 } });
+    expect(res).toEqual({
+      success: false,
+      error: 'You are signed out. Please sign in again.',
+      status: 401,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

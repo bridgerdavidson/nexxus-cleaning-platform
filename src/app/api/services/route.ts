@@ -60,7 +60,13 @@ export async function POST(request: NextRequest) {
     if (input.checklists !== undefined) {
       const seedError = await replaceChecklists(service.id as string, input.checklists);
       if (seedError) {
-        await supabaseAdmin.from('service_types').delete().eq('id', service.id);
+        const { error } = await supabaseAdmin.from('service_types').delete().eq('id', service.id);
+        if (error) {
+          console.error('[POST /api/services] compensating delete failed', {
+            serviceId: service.id,
+            error: error.message,
+          });
+        }
         return NextResponse.json({ error: seedError }, { status: 500 });
       }
     }

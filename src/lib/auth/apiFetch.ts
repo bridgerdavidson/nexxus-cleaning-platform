@@ -18,7 +18,12 @@ export interface ApiFetchInit {
  * return the same `{ success, error }` shape the pages already handle.
  */
 export async function apiFetch<T>(path: string, init: ApiFetchInit): Promise<ApiResult<T>> {
-  const token = await getAccessToken();
+  let token: string | null;
+  try {
+    token = await getAccessToken();
+  } catch {
+    return { success: false, error: 'You are signed out. Please sign in again.', status: 401 };
+  }
   if (!token) {
     return { success: false, error: 'You are signed out. Please sign in again.', status: 401 };
   }
