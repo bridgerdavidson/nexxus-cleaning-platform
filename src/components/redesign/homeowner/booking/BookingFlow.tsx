@@ -11,7 +11,7 @@ import { useServices } from '@/hooks/useServices';
 import { pickBookingDefaults } from './deriveBookingDefaults';
 import { useSavedPaymentMethods } from '../account/payment-methods/useSavedPaymentMethods';
 import { EMPTY_BOOKING, type BookingState } from './booking-types';
-import { addSlot, removeSlotAt } from './deriveBooking';
+import { addSlot, removeSlotAt, isBookableService } from './deriveBooking';
 import { useSubmitBookingRequest } from './useSubmitBookingRequest';
 import { BookingPicksView } from './BookingPicksView';
 import { BookingReviewView } from './BookingReviewView';
@@ -51,7 +51,7 @@ export function BookingFlow({
 
   const paymentRequired = homeownerCardPickerAvailable();
   const property = properties.find((p) => p.id === state.propertyId) ?? null;
-  const service = services.find((s) => s.id === state.serviceTypeId && s.is_active) ?? null;
+  const service = services.find((s) => s.id === state.serviceTypeId && isBookableService(s)) ?? null;
   const card = cards.find((c) => c.id === state.paymentMethodId) ?? null;
 
   // Pre-select the only home so a single-property homeowner skips the picker.
@@ -83,13 +83,14 @@ export function BookingFlow({
     }));
   }, [appointments, initialServiceTypeId, initialPropertyId]);
 
-  // Drop a stale prefill (e.g. Book again on a since-deactivated service or a deleted home)
-  // so the flow falls back to unselected instead of carrying an invalid id to submit.
+  // Drop a stale prefill (e.g. Book again on a since-deactivated service, a service priced
+  // under the $1 minimum, or a deleted home) so the flow falls back to unselected instead
+  // of carrying an invalid id to submit.
   useEffect(() => {
     if (
       !servicesLoading &&
       state.serviceTypeId &&
-      !services.some((s) => s.id === state.serviceTypeId && s.is_active)
+      !services.some((s) => s.id === state.serviceTypeId && isBookableService(s))
     ) {
       setState((s) => ({ ...s, serviceTypeId: null }));
     }
