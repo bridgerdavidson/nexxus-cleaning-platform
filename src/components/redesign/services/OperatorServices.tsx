@@ -261,7 +261,7 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
       setBusy(true);
       try {
         if (serviceDialog?.mode === "edit" && selectedService) {
-          const r = await updateService(selectedService.id, v, orgId);
+          const r = await updateService(selectedService.id, v);
           if (r.success) {
             toast.success("Service updated");
             setServiceDialog(null);
@@ -319,13 +319,13 @@ function OperatorServicesData({ canManage }: { canManage: boolean }) {
     async (next: boolean) => {
       if (!selectedService) return;
       updateServiceInState(selectedService.id, { is_active: next });
-      const r = await toggleServiceActive(selectedService.id, next, orgId);
+      const r = await toggleServiceActive(selectedService.id, next);
       if (!r.success) {
         updateServiceInState(selectedService.id, { is_active: !next });
         toast.error(r.error || "Could not update the service");
       }
     },
-    [selectedService, orgId, updateServiceInState],
+    [selectedService, updateServiceInState],
   );
 
   const handleDeleteServiceClick = useCallback(async () => {
