@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { constructWebhookEvent } from '@/lib/stripe';
 import { stripeEnabled } from '@/lib/stripe/flags';
+import { withGatewayRetry } from '@/lib/gatewayRetryFetch';
 import { dispatchStripeEvent } from '@/lib/payments/dispatchStripeEvent';
 import {
   claimWebhookEvent,
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: withGatewayRetry() },
   });
 
   // Raw body + signature verification (this stays in the route — it needs the raw request

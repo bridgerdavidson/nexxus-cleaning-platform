@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { withGatewayRetry } from './gatewayRetryFetch';
 
 // Server-side admin client - NEVER expose to client
 // Use a singleton pattern to reuse the same client instance
@@ -17,7 +18,9 @@ export const supabaseAdmin = (() => {
         global: {
           headers: {
             'x-application-name': 'nexxus-cleaning-platform'
-          }
+          },
+          // Retries a read once on a transient gateway 502/503/504 (see gatewayRetryFetch.ts).
+          fetch: withGatewayRetry()
         }
       }
     );
