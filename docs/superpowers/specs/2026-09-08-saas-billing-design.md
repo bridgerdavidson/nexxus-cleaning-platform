@@ -429,7 +429,7 @@ No change. Nothing a cleaner does creates new work.
 
 ## 18. Accepted trade-offs and deviations from the pricing doc
 
-1. **Downgrades are immediate with prorated credit**, not at period end. Avoids Subscription Schedules. Log in the pricing doc if accepted.
+1. **Downgrades are immediate with prorated credit**, not at period end. Avoids Subscription Schedules. Accepted; logged in the pricing doc's 2026-09-12 addendum together with items 2, 3, and 7.
 2. **Trial cap is 15 seats regardless of the signup answer.** Simpler; the friction case is one click in Billing after purchase.
 3. **Feature gates are not enforced** in Phase 1 (Starter gets analytics, fee tooling). Revisit when a Starter customer exists.
 4. **Monthly↔annual switches are self-serve** (the pricing doc is silent; this is a clarification, not a deviation).
@@ -499,4 +499,4 @@ No change. Nothing a cleaner does creates new work.
 4. Stripe SDK version in `package.json` supports `integration_identifier` (API ≥ 2026-03-25) and `pause_collection` resume via empty string; bump if needed.
 5. The `platform_audit_log` write helper used by `impersonation/route.ts`, to reuse for the new actions.
 6. `APP_URL` is set in every environment (checkout success/cancel URLs must be absolute and never built from the request host).
-7. **Pricing review 2026-09-09, pending Bridger's confirmation:** (a) annual plans are one upfront charge per year ($348 / $948 / $1,668), not monthly billing on a 12-month commitment; (b) the annual seat price ($120/yr = 12 × $10, no annual discount on seats) is an inference not yet logged in the pricing doc; (c) Pro's marketing bullet "Unlimited cleaner seats" reads as free seats; under purchased seats it should say "No seat limit" (one-line change in `pricing.ts`).
+7. **Pricing review 2026-09-09, confirmed by Bridger 2026-09-12** and logged in the pricing doc addendum: (a) annual plans are one upfront charge per year ($348 / $948 / $1,668), not monthly billing on a 12-month commitment; (b) the annual seat price is $120/yr (12 × $10, no annual discount on seats); (c) Pro's marketing bullet changes from "Unlimited cleaner seats" to "No seat limit" (one-line change in `pricing.ts`, lands in PR D with the catalog).
