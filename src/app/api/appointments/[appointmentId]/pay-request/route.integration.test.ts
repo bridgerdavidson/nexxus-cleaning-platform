@@ -294,13 +294,14 @@ describe('POST /api/appointments/[appointmentId]/pay-request', () => {
     );
   });
 
-  it('company pays: accepts an org-authored offer above the job price, even on a $0 job', async () => {
+  it('company pays: accepts an org-authored offer far above the job price, even on a $1 job', async () => {
     org = await requestOrg();
     const appt = await createTestAppointment({
       organizationId: org.organizationId,
       cleanerId: org.cleaner.userId,
       homeownerId: org.homeowner.userId,
-      totalPrice: 0,
+      // The lowest price a job may have (require_min_price); the $400 offer is 400x it.
+      totalPrice: 1,
       status: 'in_progress',
       selfPay: true,
       orgOwnedProperty: true,

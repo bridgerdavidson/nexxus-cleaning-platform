@@ -160,10 +160,11 @@ describe('POST /api/pay-requests/[payRequestId]/approve', () => {
     expect((data as { status: string }).status).toBe('pending_org');
   });
 
-  it('company pays: approves an ask above the job price, even on a $0 job (the org is the payer)', async () => {
+  it('company pays: approves an ask far above the job price, even on a $1 job (the org is the payer)', async () => {
     // The pilot deadlock: a "Custom" service left at $0, the cleaner asked $100, and the
-    // org could neither approve nor counter anything above $0.
-    const { pr } = await seed({ selfPay: true, priceCents: 0, askCents: 10000 });
+    // org could neither approve nor counter anything above the price. Jobs now cost at
+    // least $1 (require_min_price), so the lowest-price shape is a $1 job with a $100 ask.
+    const { pr } = await seed({ selfPay: true, priceCents: 100, askCents: 10000 });
     const res = await approve(pr.id, org!.organizationId, org!.admin.accessToken, 10000);
     expect(res.status).toBe(200);
     const body = res.body as { status: string; approvedAmountCents: number; settlement: string };

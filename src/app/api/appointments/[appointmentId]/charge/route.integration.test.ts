@@ -647,14 +647,16 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     await db.from('cleaner_profiles').update({ payout_model: 'request' }).eq('id', org.cleaner.userId);
     await db.from('organizations').update({ platform_fee_bps: 100 }).eq('id', org.organizationId);
     const apptId = await completedSelfPayAppt();
-    // The pilot shape: a "Custom" service left at $0, the cleaner asked $100, the org approved it.
-    await db.from('appointments').update({ total_price: 0 }).eq('id', apptId);
+    // The pilot shape, at the lowest price the platform now allows ($1, require_min_price):
+    // a low-priced company-pays job, the cleaner asked $100, the org approved it.
+    const { error: repriceErr } = await db.from('appointments').update({ total_price: 1 }).eq('id', apptId);
+    expect(repriceErr).toBeNull();
     await createTestPayRequest({
       organizationId: org.organizationId,
       appointmentId: apptId,
       cleanerId: org.cleaner.userId,
       status: 'approved',
-      jobPriceCents: 0,
+      jobPriceCents: 100,
       approvedAmountCents: 10000,
       approvedVia: 'org',
       offers: [{ actor: 'cleaner', actorUserId: org.cleaner.userId, amountCents: 10000, minMarginBpsSnapshot: 2000 }],
@@ -669,7 +671,7 @@ describe('POST /api/appointments/:appointmentId/charge — self-pay card', () =>
     expect(status).toBe(200);
     expect(body.code).toBe('charged');
     expect(vi.mocked(createSelfPayCharge)).toHaveBeenCalledTimes(1);
-    const expected = computeSelfPayAmountsFromCents({ jobGrossCents: 0, cleanerCutCents: 10000, platformFeeBps: 100 });
+    const expected = computeSelfPayAmountsFromCents({ jobGrossCents: 100, cleanerCutCents: 10000, platformFeeBps: 100 });
     expect(vi.mocked(createSelfPayCharge).mock.calls[0][0].chargeCents).toBe(expected.chargeCents);
 
     const { data: charged } = await db
