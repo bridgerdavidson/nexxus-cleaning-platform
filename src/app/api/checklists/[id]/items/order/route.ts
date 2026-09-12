@@ -30,7 +30,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
     const existingIds = (existing ?? []).map((row) => row.id as string);
     if (!orderMatchesItems(parsed.value.item_ids, existingIds)) {
       return NextResponse.json(
-        { error: 'item_ids must list every task in this checklist exactly once' },
+        { error: 'This checklist changed since you loaded it. Please try again.' },
         { status: 400 },
       );
     }

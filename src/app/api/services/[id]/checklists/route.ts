@@ -41,7 +41,13 @@ export async function POST(request: NextRequest, { params }: Ctx) {
         .select('*')
         .order('position', { ascending: true });
       if (itemsError) {
-        await supabaseAdmin.from('checklists').delete().eq('id', checklist.id);
+        const { error } = await supabaseAdmin.from('checklists').delete().eq('id', checklist.id);
+        if (error) {
+          console.error('[POST /api/services/[id]/checklists] compensating delete failed', {
+            checklistId: checklist.id,
+            error: error.message,
+          });
+        }
         return NextResponse.json({ error: itemsError.message }, { status: 500 });
       }
       items = inserted ?? [];

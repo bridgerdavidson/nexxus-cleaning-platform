@@ -81,7 +81,7 @@ describe('PUT /api/checklists/[id]/items/order', () => {
   });
 
   it('returns 400 when an item is missing, foreign, or duplicated', async () => {
-    const mismatch = 'item_ids must list every task in this checklist exactly once';
+    const mismatch = 'This checklist changed since you loaded it. Please try again.';
     expect((await put(checklistId, { item_ids: [ids.a, ids.b] }, org.admin.accessToken)).body.error).toBe(mismatch);
     expect((await put(checklistId, { item_ids: [ids.a, ids.b, FOREIGN_ID] }, org.admin.accessToken)).body.error).toBe(mismatch);
     expect((await put(checklistId, { item_ids: [ids.a, ids.a, ids.b] }, org.admin.accessToken)).body.error).toBe(
