@@ -343,7 +343,7 @@ Conventions for every new route: `requireOrgAuth` against the **resolved** org (
 - `POST /api/services/[id]/checklists` `{ name, price_adder, items?: string[] }`.
 - `PATCH /api/checklists/[id]` `{ name?, price_adder? }`. `DELETE /api/checklists/[id]`.
 - `POST /api/checklists/[id]/items` `{ task }` or `{ tasks: string[] }` (bulk; positions appended).
-- `PATCH /api/checklists/[id]/items/[itemId]` `{ task }`. `DELETE …/items/[itemId]`.
+- `PATCH /api/checklist-items/[itemId]` `{ task }`. `DELETE /api/checklist-items/[itemId]`. (Amended at plan time, 2026-09-12: keyed by item id alone because `updateLineItem(lineItemId, task)` and `deleteLineItem(lineItemId)` only know the item; the route resolves the org from the item.)
 - `PUT /api/checklists/[id]/items/order` `{ item_ids: string[] }` — validates the set equals the checklist's items, writes positions.
 - Tier order remains `checklistOrder.ts` (price_adder asc); reorder applies to items only, matching #263.
 
@@ -446,7 +446,7 @@ No change. Nothing a cleaner does creates new work.
 
 ## 20. Rollout and ops checklist
 
-**PRs, in order** (each through the normal branch → CI → PR flow; A–C may stack via `gh stack`):
+**PRs, in order** (each through the normal branch → CI → PR flow; A–C may stack via `gh stack`). Plans: A–C in `docs/superpowers/plans/2026-09-12-phase1a-write-routes.md`; D–G are planned after A–C land.
 
 | # | Contents | Flag |
 |---|---|---|
@@ -493,7 +493,7 @@ No change. Nothing a cleaner does creates new work.
 
 ## 22. Open items to verify at plan time
 
-1. Manager permission key that gates service/checklist writes today (from the existing `service_types` / `checklists` RLS policies) so the new routes' `allowedRoles` match.
+1. ~~Manager permission key that gates service/checklist writes today~~ **Resolved at plan time (2026-09-12):** migration 104 gates `service_types` on `can_manage_services` and `properties` on `can_edit_properties`; checklists carry no flag in RLS but the services page already hides them behind `can_manage_services`, so the checklist routes use it; bookings use `can_edit_bookings`. Routes call the existing `requireManagerPermission` helper.
 2. Whether `src/lib/settings.ts` (legacy sections list) is still consumed anywhere; if so, add `billing` there too.
 3. Exact `inv_status` enum values for the pending-invite count (`pending`, possibly `creating`).
 4. Stripe SDK version in `package.json` supports `integration_identifier` (API ≥ 2026-03-25) and `pause_collection` resume via empty string; bump if needed.
