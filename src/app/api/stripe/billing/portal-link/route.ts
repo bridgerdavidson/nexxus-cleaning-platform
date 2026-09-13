@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireOrgAuth } from '@/lib/auth/requireOrgAuth';
 import { stripeEnabled } from '@/lib/stripe/flags';
 import { getOrgPortalLink } from '@/lib/payments/orgBilling';
+import { requireAppUrl } from '@/lib/billing/appUrl';
 
 export const runtime = 'nodejs';
 
@@ -26,9 +27,7 @@ export async function GET(request: NextRequest) {
     });
     if (!auth.ok) return auth.response;
 
-    const returnUrl =
-      url.searchParams.get('return_url') ||
-      `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.nexxus'}/admin`;
+    const returnUrl = url.searchParams.get('return_url') || `${requireAppUrl()}/admin`;
 
     const link = await getOrgPortalLink(supabaseAdmin, organizationId!, returnUrl);
     return NextResponse.json({ success: true, url: link });
