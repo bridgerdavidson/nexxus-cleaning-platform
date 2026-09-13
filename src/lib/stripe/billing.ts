@@ -28,24 +28,6 @@ export async function createStripeBillingCustomer(params: {
   });
 }
 
-export async function createStripeSubscription(params: {
-  customerId: string;
-  priceId: string;
-  organizationId: string;
-}): Promise<Stripe.Subscription> {
-  const stripe = getStripe();
-  return stripe.subscriptions.create({
-    customer: params.customerId,
-    items: [{ price: params.priceId }],
-    // Create the subscription incomplete so the first invoice's PaymentIntent can be confirmed
-    // client-side; the card becomes the default payment method on success.
-    payment_behavior: 'default_incomplete',
-    payment_settings: { save_default_payment_method: 'on_subscription' },
-    expand: ['latest_invoice.payment_intent'],
-    metadata: { organization_id: params.organizationId },
-  });
-}
-
 export async function cancelStripeSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
   const stripe = getStripe();
   return stripe.subscriptions.cancel(subscriptionId);

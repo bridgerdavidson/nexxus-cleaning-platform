@@ -21,7 +21,6 @@ const {
 
 vi.mock('@/lib/stripe/billing', () => ({
   createStripeBillingCustomer: vi.fn(),
-  createStripeSubscription: vi.fn(),
   createBillingPortalSession: vi.fn(),
   createBillingCheckoutSession: vi.fn(),
   resolvePrices: vi.fn(),

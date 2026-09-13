@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('@/lib/stripe/billing', () => ({
   createStripeBillingCustomer: vi.fn(async () => ({ id: `cus_test_${crypto.randomUUID()}` })),
-  createStripeSubscription: vi.fn(async () => ({ id: 'sub_test', status: 'active' })),
   cancelStripeSubscription: vi.fn(async () => ({ id: 'sub_test', status: 'canceled' })),
   createBillingPortalSession: vi.fn(async () => ({ url: 'https://billing.stripe.test/session' })),
 }));
