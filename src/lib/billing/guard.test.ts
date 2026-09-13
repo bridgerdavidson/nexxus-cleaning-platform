@@ -112,14 +112,20 @@ describe('the service-role invariant', () => {
 
   it('is not imported by any service-role path', () => {
     const offenders: string[] = [];
+    let scanned = 0;
     for (const root of roots) {
       for (const file of walk(join(process.cwd(), root))) {
+        scanned += 1;
         const source = readFileSync(file, 'utf8');
         if (/from\s+['"](@\/lib\/billing\/guard|.*\/billing\/guard)['"]/.test(source)) {
           offenders.push(file.replace(process.cwd() + '/', ''));
         }
       }
     }
+    // Guards against a watched root being renamed out from under this test: `walk`
+    // returns [] for a missing directory, which would otherwise make this pass
+    // vacuously forever with zero files actually checked.
+    expect(scanned).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
   });
 });

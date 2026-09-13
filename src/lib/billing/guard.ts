@@ -16,7 +16,8 @@ import { billingEnforcementEnabled } from './flags';
 
 export type AssertWritableResult = { ok: true } | { ok: false; response: NextResponse };
 
-const WRITABLE: AssertWritableResult = { ok: true };
+// Frozen so no caller can mutate the single shared instance handed back below.
+const WRITABLE: AssertWritableResult = Object.freeze({ ok: true });
 
 /**
  * 402 when the organization is frozen, otherwise ok.
