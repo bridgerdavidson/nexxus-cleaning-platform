@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
     // grant themselves (or any manager) arbitrary permissions in any org.
     const auth = await requireOrgAuth(request, organizationId, supabaseAdmin, {
       allowedRoles: ['owner', 'admin'],
+      requireWritable: true,
     });
     if (!auth.ok) return auth.response;
 

@@ -8,6 +8,8 @@ import { createTestSupabaseClient } from '../../../../../../tests/helpers/supaba
 
 const BUCKET_PREFIX = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/org-branding`;
 
+type Body = { success?: boolean; error?: string };
+
 describe('PATCH /api/organizations/[orgId]/branding', () => {
   let org: TestOrgFixture;
   let owner: Awaited<ReturnType<typeof addOwnerToOrg>>;
@@ -23,7 +25,7 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
   });
 
   function patch(body: Record<string, unknown>, token?: string) {
-    return callRoute(
+    return callRoute<Body>(
       (req: NextRequest) => PATCH(req, { params: Promise.resolve({ orgId: org.organizationId }) }),
       {
         method: 'PATCH',
@@ -261,6 +263,65 @@ describe('PATCH /api/organizations/[orgId]/branding', () => {
       const after = await readBranding();
       expect(after.brand_updated_at).toBe(before.brand_updated_at);
       expect(await readName()).toBe('Rename Only Co');
+    });
+  });
+
+  describe('billing enforcement', () => {
+    afterEach(() => {
+      delete process.env.BILLING_ENFORCEMENT_ENABLED;
+    });
+
+    async function freezeOrg(organizationId: string) {
+      const db = createTestSupabaseClient();
+      await db
+        .from('organizations')
+        .update({
+          comped_at: null,
+          subscription_status: 'trialing',
+          trial_ends_at: new Date(Date.now() - 86_400_000).toISOString(),
+        })
+        .eq('id', organizationId);
+    }
+
+    it('passes through when the flag is off, even for a frozen org', async () => {
+      await freezeOrg(org.organizationId);
+
+      const res = await patch({ brand_color: '#B5179E' }, owner.accessToken);
+      expect(res.status).toBe(200);
+    });
+
+    it('returns 402 billing_frozen when the flag is on and the trial has expired', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      await freezeOrg(org.organizationId);
+
+      const res = await patch({ brand_color: '#B5179E' }, owner.accessToken);
+      expect(res.status).toBe(402);
+      expect(res.body.error).toBe('billing_frozen');
+    });
+
+    it('allows a comped org with the flag on', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      const db = createTestSupabaseClient();
+      await db
+        .from('organizations')
+        .update({ comped_at: new Date().toISOString() })
+        .eq('id', org.organizationId);
+
+      const res = await patch({ brand_color: '#B5179E' }, owner.accessToken);
+      expect(res.status).toBe(200);
+    });
+
+    it('still returns 403 to a non-member before it considers billing', async () => {
+      process.env.BILLING_ENFORCEMENT_ENABLED = 'true';
+      const outsider = await withTestOrg();
+      await freezeOrg(org.organizationId);
+
+      try {
+        const res = await patch({ brand_color: '#B5179E' }, outsider.admin.accessToken);
+        expect(res.status).toBe(403);
+      } finally {
+        await outsider.cleanup();
+      }
     });
   });
 });
