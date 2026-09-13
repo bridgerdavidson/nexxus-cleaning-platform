@@ -1514,7 +1514,7 @@ async function recordSubscriptionEvent(
 const SEAT_LOOKUP_KEYS: readonly string[] = [seatLookupKeyFor('monthly'), seatLookupKeyFor('annual')];
 
 /** What the subscription's line items say this org bought. */
-interface MirroredPlan {
+export interface MirroredPlan {
   tier: PlanTier;
   period: BillingPeriod;
   seatCount: number;
@@ -1528,8 +1528,12 @@ interface MirroredPlan {
  * Null when nothing on the subscription parses as one of our plan prices: that
  * subscription was not created by this system, and guessing at its shape would
  * mean writing nulls over good data.
+ *
+ * Exported for the nightly mirror reconcile (reconcile.ts): the backstop must read
+ * a subscription exactly the way the webhook does, or the two disagree and the
+ * sweep repairs rows that were never wrong.
  */
-function readPlanFromItems(sub: Stripe.Subscription): MirroredPlan | null {
+export function readPlanFromItems(sub: Stripe.Subscription): MirroredPlan | null {
   let base: { tier: PlanTier; period: BillingPeriod } | null = null;
   let seatQuantity = 0;
 
@@ -1568,8 +1572,11 @@ function readPlanFromItems(sub: Stripe.Subscription): MirroredPlan | null {
  *
  * So a cancellation only lands when the row says Stripe was actually billing
  * this org. Everything else on the mirror still writes either way.
+ *
+ * Exported for the same reason as readPlanFromItems: the nightly reconcile must
+ * apply the identical rule, not a second copy of it.
  */
-function statusToMirror(
+export function statusToMirror(
   mapped: OrgSubscriptionStatus,
   storedStatus: string | null,
 ): OrgSubscriptionStatus | null {

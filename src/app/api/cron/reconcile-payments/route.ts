@@ -13,6 +13,7 @@ import {
   retryStrandedClawbacks,
   retryStrandedRefundUnwinds,
   checkMoneyMathInvariants,
+  reconcileBillingMirror,
 } from '@/lib/payments/reconcile';
 import { raiseReconcileSweepAlerts } from '@/lib/payments/reconcileAlerts';
 import { recordPlatformAlert } from '@/lib/monitoring/platformAlert';
@@ -37,6 +38,7 @@ export const runtime = 'nodejs';
  *   3c) stranded refund-unwind   — re-run the refund transfer unwind for appointments stranded by a
  *                                  failed reversal (transfer_reversal_failed / refund_clawback_failed)
  *   4) money-math invariant      — flag any paid cleaner payout that doesn't match the locked split
+ *   5) billing-mirror reconcile  — repair a paying org's mirrored plan columns against Stripe
  *
  * Jobs run sequentially (so a dead-letter replay and a stuck-payment replay can't race on the
  * same row) and each swallows per-item errors. Safe to schedule on a heartbeat: with
@@ -74,6 +76,9 @@ export async function POST(request: NextRequest) {
     const strandedClawbacks = await retryStrandedClawbacks(supabaseAdmin);
     const strandedRefundUnwinds = await retryStrandedRefundUnwinds(supabaseAdmin);
     const moneyMath = await checkMoneyMathInvariants(supabaseAdmin);
+    // SaaS subscription billing, not homeowner money: last, and independent of everything
+    // above, so a Stripe outage on the billing side cannot delay a settlement sweep.
+    const billingMirror = await reconcileBillingMirror(supabaseAdmin);
 
     // T1-8: pg_cron discards this response, so the sweep alerts on its own results
     // (a dead-letter queue that won't drain). Money-math violations + failed
@@ -93,6 +98,7 @@ export async function POST(request: NextRequest) {
       strandedClawbacks,
       strandedRefundUnwinds,
       moneyMath,
+      billing_mirror: billingMirror,
     });
   } catch (error) {
     console.error('reconcile-payments sweep failed:', error);
