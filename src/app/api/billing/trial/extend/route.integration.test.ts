@@ -86,6 +86,35 @@ describe('POST /api/billing/trial/extend', () => {
     }
   });
 
+  it('a losing concurrent request gets the same 409, not a false 200, and writes no extra audit row', async () => {
+    // Both requests read canExtendTrial: true before either writes; only the
+    // `.is('trial_extended_at', null)` guard on the UPDATE decides a winner.
+    // Fired via Promise.all against the same org so the two reads genuinely
+    // race the same way two simultaneous clicks would.
+    const org = await withTestOrg({ billing: { trial_ends_at: daysFromNow(2) } });
+    try {
+      await promoteToOwner(org.organizationId, org.admin.userId);
+      const [a, b] = await Promise.all([
+        extend(org.admin.accessToken, org.organizationId),
+        extend(org.admin.accessToken, org.organizationId),
+      ]);
+
+      const statuses = [a.status, b.status].sort((x, y) => x - y);
+      expect(statuses).toEqual([200, 409]);
+      const loser = a.status === 409 ? a : b;
+      expect((loser.body as { error: string }).error).toBe('This trial has already been extended.');
+
+      const { data: events } = await supabase
+        .from('tenant_subscription_events')
+        .select('event_type')
+        .eq('organization_id', org.organizationId)
+        .eq('event_type', 'app.trial_extended');
+      expect(events?.length).toBe(1);
+    } finally {
+      await org.cleanup();
+    }
+  });
+
   it('refuses when there is no trial to extend', async () => {
     const org = await withTestOrg({ billing: { subscription_status: 'active', trial_ends_at: null } });
     try {

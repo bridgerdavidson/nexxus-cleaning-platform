@@ -199,12 +199,16 @@ export async function withTestOrg(opts: WithTestOrgOptions = {}): Promise<TestOr
     cleaner: { userId: cleanerUser.id, email: cleanerUser.email, password: PASSWORD, accessToken: cleanerUser.accessToken },
     homeowner: { userId: homeownerUser.id, email: homeownerUser.email, password: PASSWORD, accessToken: homeownerUser.accessToken },
     async cleanup() {
-      // service_types and cleaner_profiles both have no ON DELETE CASCADE from
-      // organizations, so either one left behind makes the org delete below fail with
-      // 23503 and leak the org forever. Delete both first; checklists and
-      // checklist_line_items cascade off service_types so this clears those too.
+      // service_types, cleaner_profiles, and tenant_subscription_events all have
+      // no ON DELETE CASCADE from organizations, so any one left behind makes the
+      // org delete below fail with 23503 and leak the org forever. Delete all
+      // three first; checklists and checklist_line_items cascade off
+      // service_types so this clears those too. tenant_subscription_events rows
+      // accumulate from the trial-extend route today and will from PR E's
+      // checkout/plan-change/pause/cancel/webhook handlers too.
       await admin.from('service_types').delete().eq('organization_id', organizationId);
       await admin.from('cleaner_profiles').delete().eq('organization_id', organizationId);
+      await admin.from('tenant_subscription_events').delete().eq('organization_id', organizationId);
       // Delete org next. Cascades remove most other child rows.
       await admin.from('organizations').delete().eq('id', organizationId);
       // Then auth users (auth.users isn't cascaded by org deletion).

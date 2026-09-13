@@ -52,15 +52,35 @@ export async function POST(request: NextRequest) {
     const trialEndsAt = new Date(from + TRIAL_EXTENSION_DAYS * 86_400_000).toISOString();
     const extendedAt = new Date(now).toISOString();
 
-    const { error: updateError } = await supabaseAdmin
+    const { data: updated, error: updateError } = await supabaseAdmin
       .from('organizations')
-      .update({ trial_ends_at: trialEndsAt, trial_extended_at: extendedAt })
+      .update({
+        // Also re-stamps 'trialing': an org whose subscription_status is still
+        // the database default 'none' derives as trial_expired with
+        // canExtendTrial true (deriveBillingAccess fails closed on 'none'
+        // regardless of the clock), so without this the org would burn its one
+        // extension and stay frozen anyway. Harmless on the normal path, since
+        // the row is already 'trialing' there.
+        subscription_status: 'trialing',
+        trial_ends_at: trialEndsAt,
+        trial_extended_at: extendedAt,
+      })
       .eq('id', organizationId)
       // Belt and braces against a double click: only extend a trial that has
       // not been extended yet.
-      .is('trial_extended_at', null);
+      .is('trial_extended_at', null)
+      .select('id');
 
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+    // supabase-js returns error: null for a zero-row update. Two simultaneous
+    // requests can both read canExtendTrial: true before either writes; the
+    // first UPDATE wins the `.is('trial_extended_at', null)` guard and the
+    // second matches zero rows. Without this check the loser would answer 200
+    // with a trial_ends_at it never persisted and write a second audit row.
+    if (!updated || updated.length === 0) {
+      return NextResponse.json({ error: 'This trial has already been extended.' }, { status: 409 });
+    }
 
     await supabaseAdmin.from('tenant_subscription_events').insert({
       organization_id: organizationId,
