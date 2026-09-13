@@ -9,8 +9,8 @@ describe('mapSubscriptionStatus', () => {
     expect(mapSubscriptionStatus('canceled')).toBe('canceled');
   });
 
-  it('maps unpaid → past_due (still owed, not yet terminal)', () => {
-    expect(mapSubscriptionStatus('unpaid')).toBe('past_due');
+  it('keeps unpaid its own status (retries exhausted, org freezes)', () => {
+    expect(mapSubscriptionStatus('unpaid')).toBe('unpaid');
   });
 
   it('maps incomplete_expired → canceled (terminal)', () => {
@@ -26,9 +26,28 @@ describe('mapSubscriptionStatus', () => {
   });
 
   it('only ever returns a status the organizations check constraint allows', () => {
-    const allowed = new Set(['none', 'trialing', 'active', 'past_due', 'canceled']);
+    const allowed = new Set(['none', 'trialing', 'active', 'past_due', 'unpaid', 'canceled']);
     for (const s of ['trialing', 'active', 'past_due', 'unpaid', 'canceled', 'incomplete', 'incomplete_expired', 'paused', 'weird', null, undefined]) {
       expect(allowed.has(mapSubscriptionStatus(s))).toBe(true);
     }
+  });
+});
+
+describe('mapSubscriptionStatus unpaid', () => {
+  it('keeps unpaid distinct from past_due', () => {
+    expect(mapSubscriptionStatus('past_due')).toBe('past_due');
+    expect(mapSubscriptionStatus('unpaid')).toBe('unpaid');
+  });
+
+  it('still collapses the states that have no row value', () => {
+    expect(mapSubscriptionStatus('incomplete')).toBe('none');
+    expect(mapSubscriptionStatus('paused')).toBe('none');
+    expect(mapSubscriptionStatus(null)).toBe('none');
+    expect(mapSubscriptionStatus('something_new')).toBe('none');
+  });
+
+  it('still maps the terminal states to canceled', () => {
+    expect(mapSubscriptionStatus('canceled')).toBe('canceled');
+    expect(mapSubscriptionStatus('incomplete_expired')).toBe('canceled');
   });
 });
