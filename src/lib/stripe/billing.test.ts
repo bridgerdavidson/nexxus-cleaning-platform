@@ -5,21 +5,30 @@ const configurationsList = vi.fn();
 const sessionsCreate = vi.fn();
 const subscriptionsUpdate = vi.fn();
 const subscriptionsRetrieve = vi.fn();
+const subscriptionsCancel = vi.fn();
 
 vi.mock('@/lib/stripe', () => ({
   getStripe: () => ({
     prices: { list },
     billingPortal: { configurations: { list: configurationsList } },
     checkout: { sessions: { create: sessionsCreate } },
-    subscriptions: { update: subscriptionsUpdate, retrieve: subscriptionsRetrieve },
+    subscriptions: {
+      update: subscriptionsUpdate,
+      retrieve: subscriptionsRetrieve,
+      cancel: subscriptionsCancel,
+    },
   }),
 }));
 
 import {
   __resetBillingCaches,
+  cancelStripeSubscription,
+  cancelSubscriptionAtPeriodEnd,
   createBillingCheckoutSession,
+  pauseSubscription,
   resolvePortalConfiguration,
   resolvePrices,
+  resumeSubscription,
   retrieveSubscription,
   updateSubscriptionItems,
   type BillingCheckoutInput,
@@ -189,5 +198,78 @@ describe('retrieveSubscription', () => {
     subscriptionsRetrieve.mockResolvedValue({ id: 'sub_1', items: { data: [] } });
     await retrieveSubscription('sub_1');
     expect(subscriptionsRetrieve).toHaveBeenCalledWith('sub_1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pause / resume / cancel payloads. Same reason as above: the orchestration
+// layer mocks this module, so these are the only tests that see the real
+// parameters, and every one of them is a decision that is invisible upstream.
+// ---------------------------------------------------------------------------
+
+describe('pauseSubscription payload', () => {
+  beforeEach(() => {
+    subscriptionsUpdate.mockReset();
+    subscriptionsUpdate.mockResolvedValue({ id: 'sub_1', status: 'active' });
+  });
+
+  it("voids invoices for the paused months rather than stacking drafts", async () => {
+    await pauseSubscription('sub_1', 1893456000);
+    const [id, params] = subscriptionsUpdate.mock.calls[0] as [string, Record<string, unknown>];
+    expect(id).toBe('sub_1');
+    expect(params.pause_collection).toEqual({ behavior: 'void', resumes_at: 1893456000 });
+  });
+
+  it('omits resumes_at entirely for an open-ended pause', async () => {
+    await pauseSubscription('sub_1', null);
+    const params = subscriptionsUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(params.pause_collection).toEqual({ behavior: 'void' });
+    expect('resumes_at' in (params.pause_collection as object)).toBe(false);
+  });
+
+  it('changes nothing else about the subscription', async () => {
+    await pauseSubscription('sub_1', null);
+    expect(Object.keys(subscriptionsUpdate.mock.calls[0][1] as object)).toEqual(['pause_collection']);
+  });
+});
+
+describe('resumeSubscription payload', () => {
+  beforeEach(() => {
+    subscriptionsUpdate.mockReset();
+    subscriptionsUpdate.mockResolvedValue({ id: 'sub_1', status: 'active' });
+  });
+
+  it('clears the pause with an empty string, which is the only value Stripe accepts', async () => {
+    await resumeSubscription('sub_1');
+    const [id, params] = subscriptionsUpdate.mock.calls[0] as [string, Record<string, unknown>];
+    expect(id).toBe('sub_1');
+    expect(params.pause_collection).toBe('');
+    // null would not clear it and undefined would be dropped from the body,
+    // leaving the customer paused while the app believed it had resumed them.
+    expect(params.pause_collection).not.toBeNull();
+    expect('pause_collection' in params).toBe(true);
+  });
+});
+
+describe('cancel payloads', () => {
+  beforeEach(() => {
+    subscriptionsUpdate.mockReset();
+    subscriptionsCancel.mockReset();
+    subscriptionsUpdate.mockResolvedValue({ id: 'sub_1', status: 'active' });
+    subscriptionsCancel.mockResolvedValue({ id: 'sub_1', status: 'canceled' });
+  });
+
+  it('period end schedules the cancel and does not end the subscription now', async () => {
+    await cancelSubscriptionAtPeriodEnd('sub_1');
+    const [id, params] = subscriptionsUpdate.mock.calls[0] as [string, Record<string, unknown>];
+    expect(id).toBe('sub_1');
+    expect(params.cancel_at_period_end).toBe(true);
+    expect(subscriptionsCancel).not.toHaveBeenCalled();
+  });
+
+  it('now ends the subscription and does not merely schedule it', async () => {
+    await cancelStripeSubscription('sub_1');
+    expect(subscriptionsCancel).toHaveBeenCalledWith('sub_1');
+    expect(subscriptionsUpdate).not.toHaveBeenCalled();
   });
 });

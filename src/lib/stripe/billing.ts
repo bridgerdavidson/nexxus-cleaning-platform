@@ -212,3 +212,52 @@ export async function updateSubscriptionItems(
     metadata: { organization_id: organizationId },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Pause, resume, cancel (Phase 1b SaaS billing)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pause collection on a live subscription.
+ *
+ * `behavior: 'void'` means Stripe writes NO invoices at all for the paused
+ * months, rather than stacking drafts that all come due on resume. That is what
+ * makes a pause clean to reverse: nothing accrues while the org is away.
+ *
+ * `resumesAt` is a unix timestamp (seconds). Omitted entirely when null, which
+ * leaves the pause open-ended until someone resumes it.
+ */
+export async function pauseSubscription(
+  subscriptionId: string,
+  resumesAt: number | null,
+): Promise<Stripe.Subscription> {
+  return getStripe().subscriptions.update(subscriptionId, {
+    pause_collection: { behavior: 'void', ...(resumesAt ? { resumes_at: resumesAt } : {}) },
+  });
+}
+
+/**
+ * Resume collection.
+ *
+ * Clearing pause_collection is an EMPTY STRING, not null and not undefined:
+ * undefined is dropped from the request body by the SDK (so the pause survives)
+ * and null is not what the API documents for this field. The installed types
+ * accept it because the parameter is `Emptyable<PauseCollection>`.
+ */
+export async function resumeSubscription(subscriptionId: string): Promise<Stripe.Subscription> {
+  return getStripe().subscriptions.update(subscriptionId, { pause_collection: '' });
+}
+
+/**
+ * Schedule cancellation for the end of the paid period. The subscription stays
+ * `active` until then, so the org keeps the service it already paid for; Stripe
+ * sets `cancel_at`, which the webhook mirrors onto `subscription_cancel_at`.
+ *
+ * Cancelling immediately is `cancelStripeSubscription` above: same SDK call,
+ * one wrapper, no second name for it.
+ */
+export async function cancelSubscriptionAtPeriodEnd(
+  subscriptionId: string,
+): Promise<Stripe.Subscription> {
+  return getStripe().subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+}

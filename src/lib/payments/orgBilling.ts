@@ -9,6 +9,9 @@ import {
   createStripeBillingCustomer,
   createStripeSubscription,
   cancelStripeSubscription,
+  cancelSubscriptionAtPeriodEnd,
+  pauseSubscription,
+  resumeSubscription,
   createBillingPortalSession,
   createBillingCheckoutSession,
   resolvePrices,
@@ -58,12 +61,13 @@ interface OrgBillingRow {
   billing_email: string | null;
   stripe_customer_id: string | null;
   subscription_id: string | null;
+  subscription_status: string | null;
 }
 
 async function loadOrg(supabase: SupabaseClient, organizationId: string): Promise<OrgBillingRow | null> {
   const { data } = await supabase
     .from('organizations')
-    .select('id, name, billing_email, stripe_customer_id, subscription_id')
+    .select('id, name, billing_email, stripe_customer_id, subscription_id, subscription_status')
     .eq('id', organizationId)
     .maybeSingle();
   return (data as OrgBillingRow | null) ?? null;
@@ -132,14 +136,103 @@ export async function getOrgPortalLink(
   return session.url;
 }
 
-/** Cancel the org's subscription immediately. The customer.subscription.deleted webhook mirrors state. */
-export async function cancelOrgSubscription(
+/**
+ * The subscription Stripe is actively billing for this org, or a thrown refusal.
+ *
+ * Pause, resume, and cancel all need the same thing: a subscription id plus a
+ * status that means Stripe is billing it. A trialing org has no subscription to
+ * pause, so it is refused here; extending its trial is a platform-side act and
+ * lives on the platform route, not in Stripe.
+ *
+ * A PAUSED subscription still reports `active` to Stripe, which is exactly why
+ * resume can share this guard.
+ */
+async function requireLiveSubscriptionId(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string> {
+  const org = await loadOrg(supabase, organizationId);
+  if (!org) throw new Error('organization_not_found');
+  if (!org.subscription_id || !LIVE_SUBSCRIPTION_STATUSES.includes(org.subscription_status ?? '')) {
+    throw new Error('This organization has no active subscription to change.');
+  }
+  return org.subscription_id;
+}
+
+/**
+ * Pause billing for an org. Nothing is invoiced while paused (behavior 'void'),
+ * so the months away cost the customer nothing and resuming owes nothing.
+ *
+ * `resumesAt` null leaves the pause open-ended.
+ *
+ * Deliberately does NOT write `billing_paused_at`: the customer.subscription.updated
+ * webhook mirrors `pause_collection` onto that column, and writing it here too
+ * would give one fact two sources of truth that can disagree.
+ */
+export async function pauseOrgBilling(
+  supabase: SupabaseClient,
+  organizationId: string,
+  resumesAt: Date | null,
+): Promise<void> {
+  const subscriptionId = await requireLiveSubscriptionId(supabase, organizationId);
+
+  let resumesAtUnix: number | null = null;
+  if (resumesAt) {
+    const ms = resumesAt.getTime();
+    if (!Number.isFinite(ms)) throw new Error('The resume date is not a valid date.');
+    resumesAtUnix = Math.floor(ms / 1000);
+  }
+
+  await pauseSubscription(subscriptionId, resumesAtUnix);
+  await appendBillingEvent(supabase, organizationId, 'app.platform_paused', {
+    subscription_id: subscriptionId,
+    resumes_at: resumesAt ? resumesAt.toISOString() : null,
+  });
+}
+
+/**
+ * Resume billing for a paused org. Same note as pause: the pause columns are the
+ * webhook's to clear, not this function's.
+ */
+export async function resumeOrgBilling(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<void> {
-  const org = await loadOrg(supabase, organizationId);
-  if (!org?.subscription_id) return;
-  await cancelStripeSubscription(org.subscription_id);
+  const subscriptionId = await requireLiveSubscriptionId(supabase, organizationId);
+  await resumeSubscription(subscriptionId);
+  await appendBillingEvent(supabase, organizationId, 'app.platform_resumed', {
+    subscription_id: subscriptionId,
+  });
+}
+
+/** When a cancellation takes effect. */
+export type CancelWhen = 'period_end' | 'now';
+
+/**
+ * Cancel the org's subscription.
+ *
+ * `period_end` leaves the org running on the period it already paid for and sets
+ * Stripe's `cancel_at`; `now` ends it immediately with no refund. The
+ * customer.subscription.updated / .deleted webhooks mirror the outcome onto the
+ * row, so this function writes no subscription columns itself.
+ */
+export async function cancelOrgSubscription(
+  supabase: SupabaseClient,
+  organizationId: string,
+  when: CancelWhen,
+): Promise<void> {
+  const subscriptionId = await requireLiveSubscriptionId(supabase, organizationId);
+
+  if (when === 'period_end') {
+    await cancelSubscriptionAtPeriodEnd(subscriptionId);
+  } else {
+    await cancelStripeSubscription(subscriptionId);
+  }
+
+  await appendBillingEvent(supabase, organizationId, 'app.platform_canceled', {
+    subscription_id: subscriptionId,
+    when,
+  });
 }
 
 /**
