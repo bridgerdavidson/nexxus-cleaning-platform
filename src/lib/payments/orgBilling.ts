@@ -14,6 +14,7 @@ import {
   createBillingPortalSession,
   createBillingCheckoutSession,
   resolvePrices,
+  resolvePortalConfiguration,
 } from '@/lib/stripe/billing';
 import { requireAppUrl } from '@/lib/billing/appUrl';
 import { billingTaxEnabled } from '@/lib/billing/flags';
@@ -90,13 +91,25 @@ export async function getOrCreateOrgCustomer(
   return customer.id;
 }
 
+/**
+ * A Customer Portal link for the org's billing Customer.
+ *
+ * The session is always created against OUR portal configuration (the one
+ * scripts/stripe-billing-setup.ts tags `nexxus_portal=default`). That is the
+ * only thing that turns plan changes off inside the portal, which the spec
+ * requires because plan changes belong in the app, and the only thing that turns
+ * the cancellation-reason survey on. Falling back to the Stripe account default
+ * would quietly enforce neither, so resolvePortalConfiguration() throwing on a
+ * half-configured account is the intended outcome.
+ */
 export async function getOrgPortalLink(
   supabase: SupabaseClient,
   organizationId: string,
   returnUrl: string,
 ): Promise<string> {
   const customerId = await getOrCreateOrgCustomer(supabase, organizationId);
-  const session = await createBillingPortalSession({ customerId, returnUrl });
+  const configuration = await resolvePortalConfiguration();
+  const session = await createBillingPortalSession({ customerId, returnUrl, configuration });
   return session.url;
 }
 

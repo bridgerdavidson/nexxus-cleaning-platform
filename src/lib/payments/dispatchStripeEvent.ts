@@ -1607,6 +1607,41 @@ async function alertMirrorFailed(
   });
 }
 
+/** The three freeze-bearing columns, exactly as the webhook writes them. */
+export interface PauseCancelMirror {
+  subscription_cancel_at: string | null;
+  billing_paused_at: string | null;
+  billing_pause_resumes_at: string | null;
+}
+
+/**
+ * The pause and scheduled-cancel columns for a subscription.
+ *
+ * Two of these three feed deriveBillingAccess, so getting them wrong freezes a
+ * paying organization or unfreezes a canceled one. Exported for the same reason
+ * as readPlanFromItems and statusToMirror: the nightly reconcile is the backstop
+ * for a lost resume webhook, and a second copy of these rules is exactly how the
+ * backstop and the webhook would start fighting over the same row.
+ *
+ * `storedPausedAt` is the row's current stamp. While the subscription is still
+ * paused it is kept as-is: re-stamping on every later update (or on every
+ * nightly sweep) would make "paused since" walk forward for no reason.
+ */
+export function pauseAndCancelMirror(
+  sub: Stripe.Subscription,
+  storedPausedAt: string | null,
+  now: Date = new Date(),
+): PauseCancelMirror {
+  const pause = sub.pause_collection;
+  return {
+    subscription_cancel_at: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
+    billing_paused_at: pause ? storedPausedAt ?? now.toISOString() : null,
+    billing_pause_resumes_at: pause?.resumes_at
+      ? new Date(pause.resumes_at * 1000).toISOString()
+      : null,
+  };
+}
+
 /**
  * Stripe is the source of truth for what an organization bought. The purchase
  * routes mirror optimistically so the UI does not lag; this is what makes the
@@ -1672,13 +1707,7 @@ async function handleSubscriptionUpsert(
   const update: Record<string, unknown> = {
     subscription_id: sub.id,
     subscription_current_period_end: cpe ? new Date(cpe * 1000).toISOString() : null,
-    subscription_cancel_at: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
-    // Keep the FIRST pause stamp: re-stamping on every later update while still
-    // paused would make "paused since" walk forward for no reason.
-    billing_paused_at: pause ? existing?.billing_paused_at ?? new Date().toISOString() : null,
-    billing_pause_resumes_at: pause?.resumes_at
-      ? new Date(pause.resumes_at * 1000).toISOString()
-      : null,
+    ...pauseAndCancelMirror(sub, existing?.billing_paused_at ?? null),
   };
 
   // Both freeze-a-trialing-org cases live in statusToMirror; see its comment.
